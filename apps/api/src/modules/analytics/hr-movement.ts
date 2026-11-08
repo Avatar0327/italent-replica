@@ -5,6 +5,7 @@
  * - 离职：exitCandidates（离职 + 退休，与“本年离职”同源），部门、序列、关键人员为离职前那段任职的值；看板（B50）按
  *   离职生效日 = 最后工作日 + 1 判断是否在职、归月，报表（B54）按最后工作日归年 / 归月，与人事看板“本年离职”一致（DEC-729）；
  * - 入职：entriesFrom（与“本年入职”同源），按入职任职记录开始日期取；
+ *   DEC-832①：实习生只在转正日计一次入职，实习开始日（含未转正者）不计（口径在 entriesFrom）；
  * - 调动：业务类型“调动”已生效的单据，按生效日期取，部门为调动后部门，类型取调动申请的异动类型；
  * - 编制：编制模块的组织编制（listCapacities），只取期间覆盖取数日、方案在该日有效的对象，只用于 3.1.36 与组织编制统计。
  * 人员口径都是内部员工 + 实习生（WORKING_TYPES）。
@@ -52,6 +53,7 @@ export interface MovementExit extends MovementPerson {
   /** 离职生效日 = 最后工作日 + 1（最后工作日当天仍在职）。 */
   readonly effectiveDate: string;
   readonly entryDate: string | null;
+  readonly workYearCompanyBefore: number;
   readonly keyPerson: boolean;
   readonly typeCode: string | null;
   readonly typeName: string | null;
@@ -160,13 +162,18 @@ function exitRows(a: MovementContext, kind: 'leave' | 'retirement', window: Exit
   const extended = {
     ...source,
     columns: sql`${source.columns} dc.entry_date::text AS "entryDate", prev.sequence_id AS "sequenceId",
+      (SELECT COALESCE((SELECT v.work_year_company_before FROM employment_payload_versions v
+          WHERE v.tenant_id=er.tenant_id AND v.business_id=er.id AND v.is_record_snapshot
+          ORDER BY v.version_no DESC LIMIT 1), er.work_year_company_before)::double precision
+        FROM employment_records er WHERE er.tenant_id=b.tenant_id AND er.id=b.id) AS "workYearCompanyBefore",
       prev.is_key_person AS "keyPerson",`,
   };
   const where = sql`s.state='effective' AND ${EXIT_DATED[window.dating](window.from, window.to)}
     AND dc.employ_type IN (${WORKING})`;
   return sql`SELECT ${kind}::text AS kind, x.id AS "billId", x."employeeId" AS employee_id, x."departmentId" AS org_id,
       NULL::uuid AS creator_id, ${a.tenantId}::uuid AS tenant_id, x."employeeId", x."departmentId", x."sequenceId",
-      x."lastWorkDate", x."entryDate", x."keyPerson", x."exitTypeCode", x."exitTypeName", x."reasonCode",
+      x."lastWorkDate", x."entryDate", x."workYearCompanyBefore", x."keyPerson",
+      x."exitTypeCode", x."exitTypeName", x."reasonCode",
       x."reasonName", x."whereaboutsCode", x."whereaboutsName"
     FROM (${exitCandidates(a.tenantId, undefined, [where], sql`b.id`, extended)}) x`;
 }
@@ -179,7 +186,7 @@ interface ExitWindow {
 async function exits(tx: Tx, a: MovementContext, window: ExitWindow) {
   return rowsOf<MovementExit>(
     await tx.execute(sql`SELECT m.kind, m."billId", m."employeeId", m."departmentId", m."sequenceId", m."lastWorkDate",
-        (m."lastWorkDate"::date + 1)::text AS "effectiveDate", m."entryDate", m."keyPerson",
+        (m."lastWorkDate"::date + 1)::text AS "effectiveDate", m."entryDate", m."workYearCompanyBefore", m."keyPerson",
         m."exitTypeCode" AS "typeCode", m."exitTypeName" AS "typeName", m."reasonCode", m."reasonName",
         m."whereaboutsCode", m."whereaboutsName", pv.*
       FROM (${exitRows(a, 'leave', window)} UNION ALL ${exitRows(a, 'retirement', window)}) m

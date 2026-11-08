@@ -1,6 +1,7 @@
 /** F-140 §3.4：替代是一次命令；前单撤销与后继 approved 的整体 ΔO / ΔP 由上游统一校验。 */
 import { exitRequests, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
+import { inheritAttachments } from '../attachments/binding.js';
 import { auditEmployment } from './context.js';
 import { remainingExitDuties } from './exit-replacement-plan.js';
 import { assertEmployeeLocksHeld } from './transfer-locks.js';
@@ -57,8 +58,15 @@ export async function replaceExit(
   );
   const successor = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: created.revision }, created.id);
   if (successor.state !== 'approved') await appendEmploymentState(tx, ctx, successor, 'approved');
+  // 后继单的附件引用必须归属后继单：复制已封存的附件行与字节，前单的附件原样保留（F-479 R1）
+  const attachmentRefs = await inheritAttachments(tx, ctx, {
+    fromBusinessId: business.id,
+    toBusinessId: created.id,
+    refs: old.attachmentRefs,
+  });
   await tx.insert(exitRequests).values({
     ...old,
+    attachmentRefs,
     businessId: created.id,
     preReleaseDate: null,
     supersedesBusinessId: business.id,

@@ -129,7 +129,7 @@ async function buildWorld() {
   const cancelExit = async (path: 'exits' | 'retirements', id: string) => {
     const response = await x.session.request('POST', `/${path}/${id}/cancel`, {
       ifMatch: (await x.business(id)).revision,
-      body: { reason: '录入有误' },
+      body: path === 'exits' ? { reason: '录入有误' } : {}, // 撤销退休不收原因（DEC-714）
     });
     expect(response.status, await response.clone().text()).toBe(200);
   };
@@ -334,8 +334,9 @@ describe('BE-12b 人事看板 23 项指标', () => {
   /** 花名册推导：asOf 时在职（本夹具里的离职都是 TODAY 之前落地的，asOf = TODAY）。 */
   const inService = (kinds: readonly Kind[], dept?: string) =>
     ids(w.roster.filter((p) => p.inService && kinds.includes(p.kind) && (!dept || p.dept === dept)));
+  // DEC-832①：实习生只在转正日计入职，本夹具的实习生都未转正（含已离职者）→ 不计；原口径为 kind !== 'external'
   const entered = (from: string, to: string) =>
-    ids(w.roster.filter((p) => p.kind !== 'external' && p.date >= from && p.date <= to));
+    ids(w.roster.filter((p) => p.kind === 'internal' && p.date >= from && p.date <= to));
 
   it('接口返回 23 项指标，编码与序号固定；asOf 缺省取租户当地今天', async () => {
     const overview = await board.overview();

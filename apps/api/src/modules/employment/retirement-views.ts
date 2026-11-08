@@ -13,6 +13,7 @@ import { exitListOrder } from './exit-list-order.js';
 import {
   exitCandidates,
   EXIT_RESPONSE_DEPENDENCIES,
+  filterPredicates,
   EXIT_SORT_DEPENDENCIES,
   exitDetailPayload,
   loadExitDetail,
@@ -25,6 +26,7 @@ import {
   type ExitDetail,
   type ExitRow,
   type ExitViewable,
+  type ExitViewFilter,
   viewPredicate,
 } from './exit-queries.js';
 import { personnelHooks } from './personnel-hooks.js';
@@ -110,6 +112,7 @@ const LEAVE_ONLY_KEYS = [
   'employerName',
   'actualLeaveDate',
   'attachmentRefs',
+  'attachments',
 ] as const;
 
 function withoutLeaveOnly<T extends object>(value: T): Record<string, unknown> {
@@ -136,6 +139,9 @@ export const RETIREMENT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependenc
   expectedRetirementDate: on('expectedRetirementDate'),
 };
 
+/** 退休视图只开放关键字与部门两项筛选（离职视图的其余筛选不适用于退休）。 */
+export type RetirementViewFilter = Pick<ExitViewFilter, 'departmentIds' | 'keyword'>;
+
 export async function listRetirementBills(
   tx: Tx,
   tenantId: string,
@@ -144,6 +150,8 @@ export async function listRetirementBills(
     readonly at: RetirementAsOf;
     readonly page: PageQuery;
     readonly show: ExitViewable;
+    /** F-351：关键字与部门（已展开含下级）筛选，分页前叠加；数据范围仍由 exitCandidates 里的可见谓词先行收窄。 */
+    readonly filter?: RetirementViewFilter;
   },
   scope: EmploymentScope | undefined,
 ) {
@@ -151,7 +159,13 @@ export async function listRetirementBills(
   const order = rule.anyOf.some(input.show.employment) ? rule.order : exitListOrder('businessId').order;
   const { rows, total } = await pageOfCandidates<RetirementRow>(
     tx,
-    exitCandidates(tenantId, scope, [billPredicate(input.view, input.at)], order, RETIREMENT_SOURCE),
+    exitCandidates(
+      tenantId,
+      scope,
+      [billPredicate(input.view, input.at), ...filterPredicates(tenantId, input.filter ?? {})],
+      order,
+      RETIREMENT_SOURCE,
+    ),
     input.page,
   );
   const trim = (row: RetirementRow) => trimWith(RETIREMENT_RESPONSE_DEPENDENCIES, toRetirementItem(row), input.show);
@@ -215,10 +229,27 @@ function blockedByBill(at: RetirementAsOf): SQL {
           AND ev.state IN ('in_review','approved') AND ev.created_at < ${dayEnd(at)}))))`;
 }
 
+/** 人员视图的关键字 / 部门筛选，口径同 exit-queries filterPredicates（strpos：% / _ 不当通配符；部门取展示部门）。 */
+function personFilter(tenantId: string, department: SQL, filter: RetirementViewFilter | undefined): SQL {
+  const parts: SQL[] = [sql`true`];
+  if (filter?.departmentIds) parts.push(sql`${department}=ANY(${`{${filter.departmentIds.join(',')}}`}::uuid[])`);
+  if (filter?.keyword) {
+    const name = personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`);
+    parts.push(sql`(strpos(lower(e.code), lower(${filter.keyword}))>0
+      OR strpos(lower(${name}), lower(${filter.keyword}))>0)`);
+  }
+  return sql.join(parts, sql` AND `);
+}
+
 function personCandidates(
   tenantId: string,
   scope: EmploymentScope | undefined,
-  input: { readonly view: RetirementPersonView; readonly at: RetirementAsOf; readonly upcomingDays: number },
+  input: {
+    readonly view: RetirementPersonView;
+    readonly at: RetirementAsOf;
+    readonly upcomingDays: number;
+    readonly filter?: RetirementViewFilter;
+  },
   order: SQL,
 ): SQL {
   const { asOf } = input.at;
@@ -254,7 +285,7 @@ function personCandidates(
     WHERE t.tenant_id=${tenantId} AND t.valid_during @> ${asOf}::date AND r.service_type='primary'
       AND r.kind NOT IN ('leave','retirement') AND s.employee_status <> ${EMPLOYEE_STATUS.pendingEntry}
       AND pv.expected_retirement_date >= c.entry_date AND ${window}
-      AND NOT ${blockedByBill(input.at)} AND ${visible}
+      AND NOT ${blockedByBill(input.at)} AND ${visible} AND ${personFilter(tenantId, department, input.filter)}
   `;
 }
 
@@ -267,6 +298,7 @@ export async function listRetirementPersons(
     readonly upcomingDays: number;
     readonly page: PageQuery;
     readonly show: ExitViewable;
+    readonly filter?: RetirementViewFilter;
   },
   scope: EmploymentScope | undefined,
 ) {

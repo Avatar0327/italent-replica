@@ -50,6 +50,7 @@ export const PRESET_FIELD_NAMES = [
   'dottedManagerId',
   'employmentType',
   'employmentSource',
+  'workYearCompanyBefore',
   'employmentForm',
   'sequenceId',
   'professionalLineId',
@@ -79,6 +80,8 @@ export interface PresetFields {
   readonly dottedManagerId: string | null;
   readonly employmentType: string | null;
   readonly employmentSource: string | null;
+  /** 原站 WorkYearCompanyBefore（DEC-793）：年，2 位小数，非负，默认 0。 */
+  readonly workYearCompanyBefore: number;
   readonly employmentForm: string | null;
   readonly sequenceId: string | null;
   readonly professionalLineId: string | null;
@@ -97,7 +100,9 @@ export interface PresetFields {
 }
 
 export function emptyPresetFields(): PresetFields {
-  return Object.fromEntries(PRESET_FIELD_NAMES.map((field) => [field, null])) as unknown as PresetFields;
+  return Object.fromEntries(
+    PRESET_FIELD_NAMES.map((field) => [field, field === 'workYearCompanyBefore' ? 0 : null]),
+  ) as unknown as PresetFields;
 }
 
 export type EmploymentScope = Awaited<ReturnType<typeof resolveModuleScope>>;
@@ -105,6 +110,8 @@ export type EmploymentScope = Awaited<ReturnType<typeof resolveModuleScope>>;
 export interface EmploymentContext {
   /** 本人自助路由重验账号绑定后设置；仅用于同表单的字段权限继承策略。 */
   readonly selfServiceEmployeeId?: string;
+  /** DEC-790：只由本人申请入口设置，用专属字段载体授权。 */
+  readonly selfApplicationKind?: 'exit' | 'partTime';
   readonly managerTransfer?: boolean;
   readonly scope?: EmploymentScope;
   readonly scopeEmployeeId?: string;
@@ -127,8 +134,9 @@ export interface EmploymentContext {
   /**
    * 离职门禁的可信端口（R2-T03 §4A）：只能由服务端内部构造（测试造数 / R2-T04 退休），HTTP 与审批路径不可达；
    * 带它的离职创建不经门禁，保持 main 的创建与落地行为，且不写离职扩展行。
+   * 'import'（F-139a，设计 §4.3）：历史离职导入服务专用——入职与离职两条业务都带它；离职先存 approved，由导入服务落地。
    */
-  readonly trustedExit?: 'seed' | 'retirement';
+  readonly trustedExit?: 'seed' | 'retirement' | 'import';
   /** 非保存当时落地（定时生效、HR 重试、审批通过）：迟到执行按实际执行日对齐联动（DEC-186 / DEC-195②）。 */
   readonly deferredExecution?: boolean;
   /** 系统代发（BE-15a 自动转正，R2e7）：userId 是规则配置的发起人，审批发起日志标“系统代发”。 */
@@ -171,6 +179,8 @@ export interface EmploymentRecord {
   readonly revision: number;
   readonly staffId: string;
   readonly entryDate: string;
+  /** DEC-797：实习转正开出的周期上保存的原实习开始日；其余周期为 null。 */
+  readonly traineeStartDate: string | null;
   readonly serviceType: string;
   readonly kind: BusinessKind;
   readonly changeType: ChangeType | null;

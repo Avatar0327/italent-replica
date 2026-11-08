@@ -15,6 +15,7 @@ import {
   numeric,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   unique,
@@ -263,9 +264,19 @@ export const approvalProcessNodes = pgTable(
         ELSE ${t.approverExpression} IS NOT NULL AND jsonb_typeof(${t.approverExpression}) = 'object'
           AND ${t.approverExpressions} = '[]'::jsonb END`,
     ),
+    // F-478 §2.1：业务出口组 approve_no_rehire / approve_rehire 必须成对，且不与通用 approve 并存；是否可用由出口登记表
+    // 与 validateRoutes 把关，数据库只兜底形状。
     check(
       'approval_nodes_exits',
-      sql`cardinality(${t.exits}) BETWEEN 1 AND 2 AND ${t.exits} <@ ARRAY['approve','disagree']::text[]`,
+      sql`cardinality(${t.exits}) BETWEEN 1 AND 3
+        AND ${t.exits} <@ ARRAY['approve','disagree','approve_no_rehire','approve_rehire']::text[]
+        AND ('approve_no_rehire' = ANY(${t.exits})) = ('approve_rehire' = ANY(${t.exits}))
+        AND NOT ('approve' = ANY(${t.exits}) AND 'approve_rehire' = ANY(${t.exits}))`,
+    ),
+    // 会签结算只认通用出口，业务出口组仅单人节点可用（F-478 §2.1）。
+    check(
+      'approval_nodes_countersign_exits',
+      sql`${t.nodeType} = 'single' OR ${t.exits} <@ ARRAY['approve','disagree']::text[]`,
     ),
     // DEC-106：自动处理的「跳过」仅单人审批节点可选。
     check(
@@ -322,6 +333,88 @@ export const approvalNodeMessageRules = pgTable(
       'approval_message_rules_channels',
       sql`cardinality(${t.channels}) > 0 AND ${t.channels} <@ ARRAY['inbox','email','sms']::text[]`,
     ),
+  ],
+);
+
+/**
+ * F-478 §2.2：节点出口的后继分支。一个出口至多 10 条分支；`kind = condition` 带优先级与条件表达式，`else` 为兜底，
+ * `direct` 为无条件单一去向；`target_node_key` 为空表示结束流程（END）。随流程版本冻结，已发布版本只读（触发器）。
+ */
+export const approvalNodeExitRoutes = pgTable(
+  'approval_node_exit_routes',
+  {
+    tenantId: tenantId(),
+    versionId: uuid('version_id').notNull(),
+    nodeKey: text('node_key').notNull(),
+    exit: text('exit').notNull(),
+    branchNo: smallint('branch_no').notNull(),
+    kind: text('kind').notNull(),
+    priority: smallint('priority'),
+    expression: text('expression'),
+    targetNodeKey: text('target_node_key'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.versionId, t.nodeKey, t.exit, t.branchNo] }),
+    foreignKey({
+      name: 'approval_exit_routes_node_fk',
+      columns: [t.tenantId, t.versionId, t.nodeKey],
+      foreignColumns: [approvalProcessNodes.tenantId, approvalProcessNodes.versionId, approvalProcessNodes.nodeKey],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'approval_exit_routes_target_fk',
+      columns: [t.tenantId, t.versionId, t.targetNodeKey],
+      foreignColumns: [approvalProcessNodes.tenantId, approvalProcessNodes.versionId, approvalProcessNodes.nodeKey],
+    }),
+    uniqueIndex('approval_exit_routes_priority')
+      .on(t.tenantId, t.versionId, t.nodeKey, t.exit, t.priority)
+      .where(sql`${t.kind} = 'condition'`),
+    uniqueIndex('approval_exit_routes_else')
+      .on(t.tenantId, t.versionId, t.nodeKey, t.exit)
+      .where(sql`${t.kind} IN ('else','direct')`),
+    check('approval_exit_routes_kind', sql`${t.kind} IN ('condition','else','direct')`),
+    check('approval_exit_routes_branch_no', sql`${t.branchNo} BETWEEN 1 AND 10`),
+    check(
+      'approval_exit_routes_condition',
+      sql`(${t.kind} = 'condition') = (${t.priority} IS NOT NULL AND ${t.expression} IS NOT NULL)`,
+    ),
+    check('approval_exit_routes_not_self', sql`${t.targetNodeKey} IS DISTINCT FROM ${t.nodeKey}`),
+  ],
+);
+
+/** F-478 §2.3：分支条件项，值载体与发起条件一致：单值进 value_text，列表（in / not_in）进 value_list，二者互斥。 */
+export const approvalNodeExitRouteConditions = pgTable(
+  'approval_node_exit_route_conditions',
+  {
+    tenantId: tenantId(),
+    versionId: uuid('version_id').notNull(),
+    nodeKey: text('node_key').notNull(),
+    exit: text('exit').notNull(),
+    branchNo: smallint('branch_no').notNull(),
+    itemNo: smallint('item_no').notNull(),
+    fieldPath: text('field_path').notNull(),
+    operator: text('operator').notNull(),
+    valueText: text('value_text'),
+    valueList: text('value_list').array(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.versionId, t.nodeKey, t.exit, t.branchNo, t.itemNo] }),
+    foreignKey({
+      name: 'approval_exit_route_conditions_route_fk',
+      columns: [t.tenantId, t.versionId, t.nodeKey, t.exit, t.branchNo],
+      foreignColumns: [
+        approvalNodeExitRoutes.tenantId,
+        approvalNodeExitRoutes.versionId,
+        approvalNodeExitRoutes.nodeKey,
+        approvalNodeExitRoutes.exit,
+        approvalNodeExitRoutes.branchNo,
+      ],
+    }).onDelete('cascade'),
+    check('approval_exit_route_conditions_item_no', sql`${t.itemNo} BETWEEN 1 AND 20`),
+    check(
+      'approval_exit_route_conditions_operator',
+      sql`${t.operator} IN ('eq','ne','in','not_in','is_empty','not_empty','in_org_tree')`,
+    ),
+    check('approval_exit_route_conditions_carrier', sql`${t.valueText} IS NULL OR ${t.valueList} IS NULL`),
   ],
 );
 
@@ -443,6 +536,8 @@ export const approvalTasks = pgTable(
      * （DEC-144），管理员跳转或重提再次进入节点时换新编号。R1-T07 时期的任务为空。
      */
     activationId: uuid('activation_id'),
+    /** F-478：办理时走的出口（approve / disagree / 业务出口）；缺省为空，历史任务按状态推断。 */
+    decisionExit: text('decision_exit'),
     comment: text('comment'),
     actedAt: utc('acted_at'),
     createdAt: utc('created_at').notNull().defaultNow(),
@@ -470,6 +565,43 @@ export const approvalTasks = pgTable(
         'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve',
         'add_sign_parallel','countersign_reopen','subject_skip')`,
     ),
+  ],
+);
+
+/**
+ * F-478 §3.2.1：节点激活台账，只追加。每次进入节点写一行，记录来路（上一激活 / 出口 / 分支），驳回到上一步、
+ * 重提与“与上一节点相同”都据此取路径前驱，不再按序号相邻推断。`activation_id` 与任务的 `activation_id` 同值。
+ */
+export const approvalNodeActivations = pgTable(
+  'approval_node_activations',
+  {
+    tenantId: tenantId(),
+    activationId: uuid('activation_id').notNull(),
+    instanceId: uuid('instance_id').notNull(),
+    round: integer('round').notNull(),
+    nodeKey: text('node_key').notNull(),
+    entryKind: text('entry_kind').notNull(),
+    fromActivationId: uuid('from_activation_id'),
+    fromNodeKey: text('from_node_key'),
+    fromExit: text('from_exit'),
+    fromBranchNo: smallint('from_branch_no'),
+    createdSeq: integer('created_seq').notNull(),
+    createdAt: utc('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.activationId] }),
+    index('approval_node_activations_instance').on(t.tenantId, t.instanceId, t.createdSeq),
+    foreignKey({
+      name: 'approval_node_activations_instance_fk',
+      columns: [t.tenantId, t.instanceId],
+      foreignColumns: [approvalInstances.tenantId, approvalInstances.id],
+    }),
+    check(
+      'approval_node_activations_kind',
+      sql`${t.entryKind} IN ('start','flow','jump','reject_previous','resubmit')`,
+    ),
+    check('approval_node_activations_flow_exit', sql`(${t.entryKind} = 'flow') = (${t.fromExit} IS NOT NULL)`),
+    check('approval_node_activations_start', sql`${t.entryKind} <> 'start' OR ${t.fromNodeKey} IS NULL`),
   ],
 );
 

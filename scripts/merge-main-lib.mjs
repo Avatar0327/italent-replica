@@ -174,7 +174,15 @@ export function planRenumber(mainJournal, branchJournal, sql = {}) {
 }
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/** 键序无关的深比较：对象按键比、数组保持顺序（元素顺序是语义）。F-483：改号写出的快照键序可能与前一条不同。 */
+function same(a, b) {
+  if (isObject(a) && isObject(b)) {
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every((k) => Object.hasOwn(b, k) && same(a[k], b[k]));
+  }
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((v, i) => same(v, b[i]));
+  return a === b;
+}
 
 /** JSON 三方合并：本分支改过的键取本分支，没改的取 main；两边都改且结果不同记冲突（取本分支）。 */
 export function merge3(base, ours, theirs, at = '') {

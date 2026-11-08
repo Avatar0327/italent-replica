@@ -42,6 +42,7 @@ import { MODEL_IMAGE_BODY_LIMIT } from './modules/talent/model-image-format.js';
 import { registerIdpRoutes } from './modules/idp/routes.js';
 import { registerQualificationRoutes } from './modules/qualification/routes.js';
 import { registerEvaluationRoutes } from './modules/evaluation/routes.js';
+import { ATTACHMENT_BODY_LIMIT, registerAttachmentRoutes } from './modules/attachments/routes.js';
 import { registerAvatarRoutes } from './modules/avatar/routes.js';
 import { registerCommandResultRoutes } from './modules/command-result/routes.js';
 import { registerTalentReviewRoutes } from './modules/talent-review/routes.js';
@@ -69,6 +70,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerQualificationRoutes, // R3-T02 任职资格配置（Qualification）
   registerEvaluationRoutes, // R3-T02 人才评定配置（TEvaluation；B1a 活动类型）
   registerAvatarRoutes, // F-058 账号头像与人员只读引用
+  registerAttachmentRoutes, // F-479 通用附件（S1：离职手写申请）
   registerCommandResultRoutes, // F-120 本人命令结果只读回查
   registerTalentReviewRoutes, // R3-T04 人才盘点（TalentReview；PR-A 准备度字典）
   registerSuccessionRoutes, // R3-T05 继任管理（SuccessionAndDevelopment；契约 PR 只占装配位）
@@ -123,6 +125,12 @@ export function createApp(deps: AppDeps = {}): Hono {
       { method: 'PUT', path: /^\/api\/tenant\/succession\/populations\/[^/]+$/, maxSize: 64 * 1024 },
       { method: 'POST', path: /^\/api\/tenant\/succession\/(risk|health)-levels$/, maxSize: 64 * 1024 },
       { method: 'PUT', path: /^\/api\/tenant\/succession\/(risk|health)-levels\/(?!order$)[^/]+$/, maxSize: 64 * 1024 },
+      // F-479：附件上传 10MiB 原文的 base64（≈13.4MB）+ 余量；其余附件接口仍为 32KB
+      {
+        method: 'POST',
+        path: /^\/api\/tenant\/attachments\/[^/]+\/upload$/,
+        maxSize: ATTACHMENT_BODY_LIMIT,
+      },
       {
         method: 'POST',
         path: /^\/api\/tenant\/account\/avatar\/attachments\/[^/]+\/upload$/,

@@ -263,6 +263,8 @@ export interface NewTask {
   readonly parentTaskId?: string | null;
   /** 节点的本次激活：进入节点时新取，转交、加签、撤回与恢复沿用上级任务的（F-003）。 */
   readonly activationId: string | null;
+  /** 自动同意 / 跳过时一并记下实际出口（人工办理在 closeTask 写入）。 */
+  readonly decisionExit?: string | null;
 }
 
 /** 任务字段级审计（清单 12）：创建（含自动跳过）、关闭、取消都按任务 ID 记录前后值，与写入同事务。 */
@@ -289,15 +291,17 @@ export async function insertTask(tx: Tx, ctx: ApprovalContext, instanceId: strin
     adminSelfTransfer: task.adminSelfTransfer ?? false,
     parentTaskId: task.parentTaskId ?? null,
     activationId: task.activationId,
+    ...(task.decisionExit ? { decisionExit: task.decisionExit } : {}),
   });
   await tx.execute(sql`INSERT INTO approval_tasks
     (id,tenant_id,instance_id,seq,round,node_key,assignee_user_id,candidate_user_id,merged_candidate_user_ids,
-     origin,status,is_exception_admin,admin_self_transfer,parent_task_id,activation_id,acted_at,created_at)
+     origin,status,is_exception_admin,admin_self_transfer,parent_task_id,activation_id,acted_at,created_at,
+     decision_exit)
     SELECT ${id},${ctx.tenantId},${instanceId}::uuid,COALESCE(max(seq),0)+1,${task.round},${task.nodeKey},
       ${task.assigneeUserId},${task.candidateUserId ?? null},${uuidArray(task.mergedCandidateUserIds ?? [])},
       ${task.origin},${task.status},
       ${task.isExceptionAdmin ?? false},${task.adminSelfTransfer ?? false},${task.parentTaskId ?? null},
-      ${task.activationId},${actedAt},${ctx.now.toISOString()}
+      ${task.activationId},${actedAt},${ctx.now.toISOString()},${task.decisionExit ?? null}
     FROM approval_tasks WHERE tenant_id=${ctx.tenantId} AND instance_id=${instanceId}::uuid`);
   return id;
 }
@@ -374,13 +378,17 @@ export async function closeTask(
   taskId: string,
   status: TaskStatus,
   comment: string | null = null,
+  decisionExit: string | null = null,
 ): Promise<void> {
   const closed = rowsOf(
-    await tx.execute(sql`UPDATE approval_tasks SET status=${status},comment=${comment},acted_at=${ctx.now.toISOString()}
+    await tx.execute(sql`UPDATE approval_tasks
+      SET status=${status},comment=${comment},acted_at=${ctx.now.toISOString()},decision_exit=${decisionExit}
     WHERE tenant_id=${ctx.tenantId} AND id=${taskId}::uuid AND status='pending' RETURNING id`),
   );
-  if (closed.length)
-    await auditTask(tx, ctx, 'approval.task.close', taskId, { status: 'pending', comment: null }, { status, comment });
+  if (closed.length) {
+    const after = { status, comment, ...(decisionExit ? { decisionExit } : {}) };
+    await auditTask(tx, ctx, 'approval.task.close', taskId, { status: 'pending', comment: null }, after);
+  }
 }
 
 /**

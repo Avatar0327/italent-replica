@@ -244,6 +244,18 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       43: '10be3d89590b6cf1',
       // F-472（DEC-767）：新增 HR 专员 / HR 经理预置身份；人事管理员去掉看板类授权项（合并时统一定号，DEC-439④）
       44: '04a3bdabbd936e11',
+      // F-020 / DEC-790：本人离职、兼职专属授权（占位 44，合并时按 main + 1 定号）。
+      45: '79acc91437c2ab79',
+      // F-432：司龄校正标准字段；版本为 main + 1 占位，合并时重算。
+      46: '2836fdc4e1b54269',
+      // F-139a / DEC-814：新增历史离职导入按钮 Employment.DimissionImport@list（三个预置管理员）；版本为 main + 1 占位，合并时重算。
+      47: '852cc4f73fe34ee8',
+      // F-479 S1（DEC-819）：本人离职申请专属字段 attachmentRefs（员工身份可查看 / 编辑）；版本为 main + 1 占位，合并时重算。
+      48: 'acea7ac6a18b528e',
+      // F-474-4a（DEC-776 / DEC-778）：员工列表补四列与培训 / 奖励 / 语言子集补字段；版本为 main + 1 占位，合并时重算。
+      49: '037c84bc0ad5afb2',
+      // F-480（DEC-797，占位同号）：任职记录新增只读系统字段 traineeStartDate（实习开始日）的查看授权
+      50: '9a513a1f39304868',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

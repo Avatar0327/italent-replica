@@ -61,7 +61,11 @@ describe('T8 详情动作：与命令同一判定（DEC-057 / DEC-329）', () =>
     const view = await submit(w, s);
     const detail = (await w.detail(view.id, s.outHead.userId)) as unknown as Record<string, unknown>;
     expect(Object.keys(detail).filter((key) => /subjects?(Ids|Users)|recus/i.test(key))).toEqual([]);
-    expect((detail.form as { values: Record<string, unknown> }).values).toEqual({ departmentId: s.to });
+    // F-474-3b 返工 P2-2：已下发的 departmentId 并列带名称；节点表单之外的字段仍然一个都没有
+    expect((detail.form as { values: Record<string, unknown> }).values).toEqual({
+      departmentId: s.to,
+      departmentIdName: '调入部门',
+    });
   });
 });
 

@@ -66,7 +66,13 @@ export const m = {
   },
   intentionEntries: { create: '新建', edit: '修改', submit: '提交审批', withdraw: '撤回' },
   tabs: { record: '退休信息', handover: '退休交接', versions: '变更记录' },
-  handoverGap: '后端未开放退休交接子流程（GET /exits/:id/handover 只受理离职单），本页签暂不展示交接事项。',
+  handoverStatus: {
+    not_started: '未发起',
+    in_progress: '交接中',
+    completed: '已完成',
+    terminated: '已终止',
+    not_launched: '未发起成功',
+  } as Record<string, string>,
   duty: {
     title: '职责转交',
     receiver: '职责接收人',
@@ -93,7 +99,8 @@ export const m = {
     EXIT_PART_TIMES_TO_END: '将结束的兼职或将作废的在途兼职申请',
   } as Record<string, string>,
   count: (n: number) => `${n} 件`,
-  cancelReason: '撤销原因',
+  // DEC-714：退休撤销不收原因，确认框只提示不可恢复
+  cancelWarning: '撤销后不可恢复。',
   withdrawConfirm: '确定撤回该退休申请？',
   submitConfirm: '确定提交该退休申请？',
   save: '保存',
@@ -116,25 +123,4 @@ export const m = {
     ...{ intention: '已保存', intentionSubmit: '意向退休日期申请已提交', intentionWithdraw: '已撤回' },
   },
   noIntention: '暂无进行中的意向退休日期申请',
-  // 撤销下游清单：类目 / 动作名对照 exit-downstream.ts FIXED_DOWNSTREAM_KINDS 与 ADDITIONAL，原站文案未取证
-  downstream: {
-    title: '撤销退休后的下游数据',
-    kinds: {
-      contract: '合同',
-      duty_transfer: '职责转交',
-      handover: '交接',
-      payroll: '薪资档案',
-      application_voided: '被作废的在途任职申请',
-      contract_request_withdrawn: '被撤回的合同申请',
-      future_transfer_detached: '被摘下的未来调动',
-      establishment_pre_released: '编制预减',
-    } as Record<string, string>,
-    states: { found: '有记录', none: '无', not_connected: '未接入' } as Record<string, string>,
-    actions: { reinitiate: '需重新发起', reattached: '已按原窗口挂回', restored: '占用已收回' } as Record<
-      string,
-      string
-    >,
-    count: (total: number) => `（${total} 件`,
-    hidden: (hidden: number) => `，其中 ${hidden} 件无权查看`,
-  },
 };

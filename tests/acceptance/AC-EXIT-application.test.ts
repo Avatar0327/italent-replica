@@ -89,7 +89,8 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
   it('self：缺 HR 字段可建单，原因缺省 personal，发起人 / 被离职人 / 发起方式分开记录并写审计', async () => {
     const { w, staff, userOf, create } = await world('app-self');
     const user = await userOf(staff.id);
-    const created = await create(user, self(staff.id, { whereaboutsCode: 'startup', attachmentRefs: [randomUUID()] }));
+    // F-479 S2 R-4：attachmentRefs 现在要求引用本人已上传的文件，随手造的 UUID 会被拒；绑定路径见 AC-ATT-09 ～ 18
+    const created = await create(user, self(staff.id, { whereaboutsCode: 'startup' }));
     expect(created.status).toBe('draft');
     expect(await w.exitRow(created.id)).toMatchObject({
       initiator: 'self',
@@ -105,7 +106,7 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
     expect(audit?.after).toMatchObject({ initiation: 'self', initiatorUserId: user, employeeId: staff.id });
   });
 
-  it('self 子集之外 400 且无写入：HR 字段、直接离职、去向缺失 / 非三选一、原因不在 personal / family', async () => {
+  it('self 子集之外 400 且无写入：HR 字段、直接离职、经理去向缺失 / 非三选一、原因不在 personal / family', async () => {
     const { w, staff, userOf, create } = await world('app-self-reject');
     const user = await userOf(staff.id);
     const before = await w.stateOf(staff.id);
@@ -116,7 +117,7 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
       ],
       [self(staff.id, { whereaboutsCode: 'startup', addToBlacklist: true }), 'EXIT_FIELD_NOT_ALLOWED_FOR_INITIATION'],
       [{ ...self(staff.id), mode: 'direct' as const }, 'EXIT_DIRECT_ONLY_HR'],
-      [self(staff.id, {}), 'EXIT_WHEREABOUTS_REQUIRED'],
+      [{ ...self(staff.id, {}), initiation: 'manager' as const }, 'EXIT_WHEREABOUTS_REQUIRED'],
       [self(staff.id, { whereaboutsCode: 'family' }), 'EXIT_WHEREABOUTS_NOT_ALLOWED'],
       [self(staff.id, { whereaboutsCode: 'startup', reasonCode: 'nope' }), 'EXIT_REASON_NOT_ALLOWED'],
     ] as const;

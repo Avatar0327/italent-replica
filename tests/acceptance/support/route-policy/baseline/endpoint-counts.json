@@ -1,20 +1,21 @@
 {
   "byModule": {
-    "approval": 36,
+    "approval": 37,
+    "attachments": 5,
     "audit": 4,
     "avatar": 5,
     "command-result": 1,
     "contract-board": 2,
     "contracts": 25,
     "duty-transfer": 5,
-    "employment": 177,
+    "employment": 181,
     "establishment": 16,
     "evaluation": 34,
     "hr-analysis": 5,
     "hr-dashboard": 2,
-    "hr-movement": 3,
+    "hr-movement": 4,
     "hr-process-dashboard": 2,
-    "hr-structure": 3,
+    "hr-structure": 4,
     "idp": 58,
     "job": 14,
     "offers": 21,
@@ -25,7 +26,7 @@
     "platform": 9,
     "qualification": 55,
     "root": 1,
-    "self-service": 9,
+    "self-service": 21,
     "succession": 52,
     "succession-platform": 2,
     "survey360": 75,
@@ -38,5 +39,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 849
+  "total": 873
 }

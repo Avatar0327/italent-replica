@@ -18,6 +18,7 @@ export interface Profile {
   selfServiceButtons?: readonly { buttonCode: string; level: string }[];
 }
 export interface Application {
+  applicationKind?: 'exit' | 'partTime';
   id: string;
   businessId: string;
   revision: number;

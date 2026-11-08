@@ -9,7 +9,8 @@ import { type Tx, withTenant } from '@italent/db';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
-import { AppError, handleError } from '../../errors.js';
+import { AppError } from '../../errors.js';
+import { pauseDisclosureHandler } from '../org-adjustment/pause-disclosure.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { getModuleViewableFields } from '../permission/module-access.js';
@@ -97,6 +98,7 @@ import { failedImportAnchors, importedItems } from './import-audit.js';
 import { policedSub } from '../../route-policy/index.js';
 import { EMPLOYMENT_POLICIES } from './policy.js';
 import { registerExitRoutes, runExitCancel } from './exit-routes.js';
+import { registerRecordList } from './record-list.js';
 import { registerRetirementRoutes } from './retirement-routes.js';
 import { assertNoRehireKeys } from './retirement-rehire.js';
 import { registerAutoAssessmentRoutes } from './auto-assessment-routes.js';
@@ -133,7 +135,8 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
     if (error instanceof EmploymentError) {
       return c.json({ error: { code: error.code, message: error.message, details: error.details } }, error.status);
     }
-    return handleError(error, c);
+    // 执行暂停（组织调整）的编号按查看人的调整单可见性披露，其余错误同 handleError（F-342 / F-355）
+    return pauseDisclosureHandler(deps)(error, c);
   });
   // R2-T05 §4.9：兼职的钩子 / 探针装配点，生产与测试都经 createApp 必经此处
   installPartTime();
@@ -142,6 +145,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerTransferRoutes(module, deps);
   registerEmployees(module, deps);
   registerEmployeeRecords(module, deps);
+  registerRecordList(module, deps);
   registerInheritancePreview(module, deps);
   registerBusinesses(module, deps);
   registerActivation(module, deps);

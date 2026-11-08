@@ -32,3 +32,9 @@ export function saveRecord(
     command: newCommand(body, record?.revision ?? 0),
   });
 }
+
+/** 冲突重读：按原单路径读最新记录交给表单内核核对差异（DEC-502① g）；两个配置表单共用。 */
+export const readLatest = (api: ApiClient, collection: string, fallbackId: string) => async (id?: string) => {
+  const latest = await api.request<ReviewRecord>(`${collection}/${id ?? fallbackId}`);
+  return { id: latest.id, revision: Number(latest.revision), values: latest };
+};

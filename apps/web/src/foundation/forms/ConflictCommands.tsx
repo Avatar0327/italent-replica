@@ -79,6 +79,12 @@ export function useConflictCommand(
     if (outcome.status !== 'done') throw outcome.error ?? new Error(ui.failed);
     command.clear();
   };
+  /** 结果未知时用户显式按原命令重发（同一 Idempotency-Key 与请求体，设计口径见 store.replay）。 */
+  const replay = async (send: Run['send']) => {
+    const outcome = await command.replay((request) => send({ edited: request.body, command: request }));
+    if (outcome?.status !== 'done') throw outcome?.error ?? new Error(ui.failed);
+    command.clear();
+  };
   return {
     form: { ...command, reload },
     /** 最新全量：重读并核对后是读回的那份，否则是打开时的快照。 */
@@ -88,5 +94,6 @@ export function useConflictCommand(
     /** 对象 id / 版本无效：入口应禁用，run 不发请求直接拒绝。 */
     invalid,
     run,
+    replay,
   };
 }

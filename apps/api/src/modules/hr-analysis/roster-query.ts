@@ -14,7 +14,7 @@ import { cycleRegularization } from '../employment/probation.js';
 import { personScope, type AccessContext } from '../personnel/access.js';
 import { employeeJoins } from '../personnel/employee-read.js';
 import { camel, rows, type Row } from '../personnel/store.js';
-import { rosterOrganizations } from './roster-org.js';
+import { orgDisplays } from '../org/org-display.js';
 
 export interface RosterFilter {
   readonly name?: string;
@@ -118,6 +118,7 @@ export async function listRoster(
         (SELECT et.name FROM employment_types et WHERE et.tenant_id=${ctx.tenantId}
           AND et.id::text=r.current_fields->>'employment_type') AS employment_type,
         r.current_fields->>'employment_form' AS employment_form,
+        r.current_fields->>'work_year_company_before' AS work_year_company_before,
         COALESCE(dmv.name, dm.name) AS direct_manager_name, dmv.work_email AS direct_manager_email,
         pi.has_probation, pi.start_date::text AS probation_start_date, pi.end_date::text AS probation_end_date,
         pv.months::integer AS probation_months, reg.effective_date AS regularization_date,
@@ -129,7 +130,7 @@ export async function listRoster(
       ORDER BY e.code COLLATE "C", e.id
       LIMIT ${page.limit} OFFSET ${page.offset}`),
   );
-  const organizations = await rosterOrganizations(
+  const organizations = await orgDisplays(
     tx,
     ctx.tenantId,
     asOf,
@@ -139,7 +140,7 @@ export async function listRoster(
 }
 
 /** 一行的全量列（键 = ROSTER_COLUMNS 的 key）；年龄 / 司龄 / 工龄按 asOf 计算。 */
-function rosterRow(row: Row, asOf: string, organizations: Awaited<ReturnType<typeof rosterOrganizations>>): Row {
+function rosterRow(row: Row, asOf: string, organizations: Awaited<ReturnType<typeof orgDisplays>>): Row {
   const profile = camel((row.profile ?? {}) as Row);
   const org = organizations.get(String(row.department_id));
   return {
@@ -178,7 +179,7 @@ function rosterRow(row: Row, asOf: string, organizations: Awaited<ReturnType<typ
     directManagerName: row.direct_manager_name ?? null,
     directManagerEmail: row.direct_manager_email ?? null,
     employmentType: row.employment_type ?? null,
-    companyTenureYears: tenureYears(row.entry_date as string, asOf),
+    companyTenureYears: tenureYears(row.entry_date as string, asOf, Number(row.work_year_company_before ?? 0)),
     workTenureYears: tenureYears((profile.workDate as string | null) ?? null, asOf),
     place: row.place ?? null,
     employmentForm: row.employment_form ?? null,

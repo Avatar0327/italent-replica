@@ -13,6 +13,7 @@ it.each([
   'survey360',
   'talent-review-projects',
   'talent-review-templates',
+  'talent-review-calc-rules',
   'talent-review-matrices',
   'talent-review-demo',
 ])('AC-FE-R3c-10 合并 main 后保留 %s 注释登记', (id) => {

@@ -1,3 +1,4 @@
+import { completeRehireSeniority } from './rehire-seniority.js';
 /**
  * 人员状态 / 入职状态的业务流转端口（F-022；docs/02_业务建模/15 §9、29 PB-R7、34 EN-R8～R11）。
  * 状态随承载它的任职版本生效而切换：每次流转追加版本（记录快照或申请载荷），不原地改写，不另建“变更前”列。
@@ -154,7 +155,14 @@ export async function completePendingEntry(
   // DEC-138 / 139：办理入职与添加 / 编辑共用同一入口，部门在保存后可能又排定停用
   await assertEmploymentDepartmentAvailable(tx, ctx, record.fields.departmentId, record.effectiveDate, true);
   const employeeStatus = options.probation ? EMPLOYEE_STATUS.probation : EMPLOYEE_STATUS.regular;
-  await appendStatusSnapshot(tx, ctx, business, record, { employeeStatus, entryStatus: record.entryStatus });
+  const fields = await completeRehireSeniority(tx, ctx, business, record);
+  await appendStatusSnapshot(
+    tx,
+    ctx,
+    business,
+    { ...record, fields },
+    { employeeStatus, entryStatus: record.entryStatus },
+  );
   await propagateEmployeeStatus(tx, ctx, record, record.employeeStatus, employeeStatus);
   // F-188：办理入职后人员状态已定，待入职阶段的试用期不再保留；BE-3：试用期信息写入任职上的版本链，开始日 = 入职日
   await clearPendingProbation(tx, ctx, recordId);

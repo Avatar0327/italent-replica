@@ -13,7 +13,7 @@ interface TodoList extends ApprovalList {
 }
 const firstPage: PageRequest = { page: 1, pageSize: 15 };
 
-/** DEC-799：待办三个视图读取独立投影；我的申请仍使用原 useApprovalList。 */
+/** DEC-799：待办三个视图读取独立投影；我的申请读 view=applications（useApplications）。 */
 export function useTodoCards(view: ApprovalView) {
   const api = useApiClient();
   const { timezone, tenantId, identityKey } = useSession();

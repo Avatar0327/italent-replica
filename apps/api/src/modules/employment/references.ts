@@ -24,9 +24,12 @@ export async function validateNewEmploymentReferences(
   entry = false,
   /** 离职 / 退休落地（R2-T03 §5.1 步骤 2，R-O6）：记录不占用部门、不在某一天“在职”，只校验稳定对象存在且同租户。 */
   terminating = false,
+  /** 历史离职导入（F-139a §4.1）：部门只需在 [入职日, importedUntil) 内每天可用，不按“现在”或 [入职日, ∞) 判。 */
+  importedUntil?: string,
 ): Promise<void> {
   if (terminating) return validateTerminatingReferences(tx, ctx, fields);
-  await assertEmploymentDepartmentAvailable(tx, ctx, fields.departmentId, effectiveDate, entry);
+  if (importedUntil !== undefined) await assertImportedTenureDepartment(tx, ctx, fields, effectiveDate, importedUntil);
+  else await assertEmploymentDepartmentAvailable(tx, ctx, fields.departmentId, effectiveDate, entry);
   await validateEmploymentReferences(tx, ctx, fields, effectiveDate, reporting);
 }
 
@@ -100,11 +103,29 @@ export async function assertEmploymentDepartmentAvailableWithin(
   departmentId: string | null,
   from: string,
   to: string | null,
+  /** 入职类调用方传入入职日：停用日不晚于入职日时给“入职日期时为停用状态”提示（F-139a R3）。 */
+  entryDate?: string,
 ): Promise<void> {
   if (!departmentId) return;
   await lockOrganizationSettings(tx, ctx.tenantId);
   const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, departmentId, from);
-  if (disabled && (to === null || disabled.disabledOn < to)) throw departmentDisabled(disabled);
+  if (disabled && (to === null || disabled.disabledOn < to)) throw departmentDisabled(disabled, entryDate);
+}
+
+/** 历史离职导入的部门校验（设计 §4.1）：设立日、存在性按入职日；可用性按 [入职日, 离职生效日) 整段。 */
+async function assertImportedTenureDepartment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  fields: PresetFields,
+  entryDate: string,
+  until: string,
+): Promise<void> {
+  const departmentId = fields.departmentId;
+  if (!departmentId) return;
+  await lockOrganizationSettings(tx, ctx.tenantId);
+  await assertNotBeforeFounded(tx, ctx.tenantId, departmentId, entryDate);
+  await assertEmploymentDepartmentAvailableWithin(tx, ctx, departmentId, entryDate, until, entryDate);
+  await assertOrg(tx, ctx.tenantId, departmentId, entryDate);
 }
 
 /**

@@ -13,6 +13,7 @@ it.each([
   'settings.snapshot',
   'talent-review-projects',
   'talent-review-templates',
+  'talent-review-calc-rules',
   'talent-review-matrices',
   'talent-review-demo',
 ])('AC-FE-R1c-20 合 main 后仍登记 %s 注释', (key) => {

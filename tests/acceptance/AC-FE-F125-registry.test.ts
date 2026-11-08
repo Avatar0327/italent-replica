@@ -91,6 +91,7 @@ const NOTES_BEFORE: Record<string, string> = {
   'talent-criterion': 'talent',
   'talent-review-projects': 'talent-review',
   'talent-review-templates': 'talent-review',
+  'talent-review-calc-rules': 'talent-review',
   'talent-review-matrices': 'talent-review',
   'talent-review-demo': 'talent-review',
   transfer: 'transfer',

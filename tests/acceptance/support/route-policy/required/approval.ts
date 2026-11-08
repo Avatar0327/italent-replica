@@ -348,8 +348,25 @@ export const APPROVAL: RequiredTable = {
       facts: ['own:listTodos / listNotifications / listInstances'],
       at: [route('GET', '/instances', 'listInstances(tx, ctx.tenantId, ctx.userId, { role,')],
     },
+    {
+      perm: 'own:approval.initiatedOrParticipated',
+      or: 'instances:applications',
+      facts: ['own:listTodos / listNotifications / listInstances'],
+      note: 'view=applications 只读本人发起的实例（i.initiator_user_id）；筛选、排序、总数共用同一条件。',
+      at: [
+        route('GET', '/instances', 'listMyApplications('),
+        fn('listMyApplications', 'i.initiator_user_id=', `${DIR}/my-applications.ts`),
+      ],
+    },
   ],
-  'GET /api/tenant/approval/instances/:id': canOpen(fn('respondDetail', 'const viewer = await viewerOf(deps, ctx)')),
+  // 详情与附件下载共用 detailViewOf（F-479 S2：同一个取值函数）
+  'GET /api/tenant/approval/instances/:id': canOpen(fn('detailViewOf', 'const viewer = await viewerOf(deps, ctx)')),
+  // 探测器在本路由处直接观测到 assertCanOpen / retrievableTask（与详情不同：载体读在入口里再取一次值），显式承接
+  'GET /api/tenant/approval/instances/:id/attachments/:fileId/content': canOpen(
+    fn('respondAttachment', 'const { ctx, view } = await detailViewOf(c, deps, instanceId)'),
+  ).map((o, index) =>
+    index === 0 ? { ...o, facts: ['relation:assertCanOpen', 'relation:retrievable（retrievableTask）'] } : o,
+  ),
   'GET /api/tenant/approval/instances/:id/tasks': canOpen(
     fn('respondHistory', 'const detail = await readDetail(tx, ctx, instanceId, viewer, false)'),
   ),

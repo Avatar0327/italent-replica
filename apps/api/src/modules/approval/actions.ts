@@ -40,8 +40,9 @@ import {
   type ApprovalContext,
   type Row,
 } from './context.js';
+import { jumpFrom, pathPredecessor, rejectPreviousFrom } from './activations.js';
 import {
-  advanceFrom,
+  advanceTo,
   assertBusinessUnchanged,
   currentRouting,
   exceptionAdminFor,
@@ -94,8 +95,15 @@ export function assertOpen(scene: TaskScene, ctx: ApprovalContext): void {
   assertBusinessUnchanged(scene.run);
 }
 
-/** DEC-144：同意 / 不同意是出口动作，节点没有配置该出口动作即不可用（详情同样不公布）。 */
-function assertExit(node: ApprovalNode, exit: NodeExit): void {
+/**
+ * DEC-144：同意 / 不同意是出口动作，节点没有配置该出口动作即不可用（详情同样不公布）。
+ * F-478 S2：请求显式带 exit 而节点没有该出口时是 409 APPROVAL_EXIT_NOT_AVAILABLE（前端按 exits 渲染，提示刷新）；
+ * 不带 exit 的旧请求保持 APPROVAL_ACTION_DISABLED，旧页面与既有验收不受影响。S2 的推进仍按同意 / 不同意出口，exit 只校验。
+ */
+function assertExit(node: ApprovalNode, exit: NodeExit, requested?: string): void {
+  if (requested !== undefined && !hasExit(node, requested as NodeExit)) {
+    throw approvalError('CONFLICT', 'APPROVAL_EXIT_NOT_AVAILABLE', '本节点没有该出口', { exit: requested });
+  }
   if (!hasExit(node, exit)) {
     throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', `本节点没有「${EXIT_LABELS[exit]}」出口动作`);
   }
@@ -289,6 +297,8 @@ export interface DecisionInput {
   readonly taskId: string;
   readonly comment: string | null;
   readonly fields?: Row;
+  /** F-478：同意 / 不同意族的出口编码，只在 approve / disagree 入口出现。 */
+  readonly exit?: string;
 }
 
 export async function approveTask(
@@ -299,7 +309,7 @@ export async function approveTask(
 ): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
   assertOpen(scene, ctx);
-  assertExit(scene.node, 'approve');
+  assertExit(scene.node, 'approve', input.exit);
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
   const { run, task, node } = scene;
@@ -317,7 +327,7 @@ export async function approveTask(
   // （BE-10c 第 3 轮）；同一事务内任一步失败整体回滚。
   await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'approve');
   const record = await captured(tx, run, task, 'approve', viewable);
-  await closeTask(tx, ctx, task.id, 'approved', input.comment);
+  await closeTask(tx, ctx, task.id, 'approved', input.comment, 'approve');
   await record(
     await appendLog(tx, ctx, run.instance, {
       event: 'approve',
@@ -370,7 +380,7 @@ export async function disagreeTask(
 ): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
   assertOpen(scene, ctx);
-  assertExit(scene.node, 'disagree');
+  assertExit(scene.node, 'disagree', input.exit);
   const tasks = await loadTasks(tx, ctx.tenantId, scene.run.instance.id);
   if (isCountersign(scene.node) && !votesInTransition(tasks, scene.task)) {
     throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '前加签人不计入流转规则，只能同意或驳回');
@@ -380,7 +390,7 @@ export async function disagreeTask(
   const { run, task, node } = scene;
   await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'disagree');
   const record = await captured(tx, run, task, 'disagree', viewable);
-  await closeTask(tx, ctx, task.id, 'disagreed', input.comment);
+  await closeTask(tx, ctx, task.id, 'disagreed', input.comment, 'disagree');
   await record(
     await appendLog(tx, ctx, run.instance, {
       event: 'disagree',
@@ -399,7 +409,7 @@ export async function disagreeTask(
   );
   await applyMessageRules(tx, ctx, run.instance, node, 'disagree', task);
   if (isCountersign(node)) await settleCountersign(tx, run, node, task);
-  else await followExit(tx, run, node.key, 'disagree');
+  else await followExit(tx, run, node.key, 'disagree', task.activationId);
   run.events.push('approval.task.disagreed');
   await persistRun(tx, run, outcomeAction(run));
   return ok(run);
@@ -464,8 +474,9 @@ export async function rejectToPreviousTask(
   if (!rejectToPreviousAllowed(node) || isCountersign(node)) {
     throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '本节点未开启驳回到上一步');
   }
-  const index = nodeIndex(run, node.key);
-  if (index === 0) throw approvalError('CONFLICT', 'APPROVAL_NO_PREVIOUS_NODE', '第一个节点没有上一步');
+  // F-478：上一步 = 本次激活的路径前驱（激活台账），不再是 seq 前一节点；没有前驱即没有上一步
+  const previousKey = (await pathPredecessor(tx, run, task)).nodeKey;
+  if (previousKey === null) throw approvalError('CONFLICT', 'APPROVAL_NO_PREVIOUS_NODE', '第一个节点没有上一步');
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
   const tasks = await loadTasks(tx, ctx.tenantId, run.instance.id);
@@ -473,7 +484,6 @@ export async function rejectToPreviousTask(
   if (node.rejectCommentRequired && !input.comment?.trim()) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_COMMENT_REQUIRED', '本节点驳回时必须填写意见');
   }
-  const previous = run.version.nodes[index - 1]!;
   const record = await captured(tx, run, task, 'reject_previous', viewable);
   await closeTask(tx, ctx, task.id, 'rejected', input.comment);
   await cancelPending(tx, ctx, run.instance.id);
@@ -484,7 +494,7 @@ export async function rejectToPreviousTask(
       event: 'reject_previous',
       nodeKey: node.key,
       taskId: task.id,
-      detail: { comment: input.comment, toNodeKey: previous.key },
+      detail: { comment: input.comment, toNodeKey: previousKey },
     }),
   );
   await auditTask(
@@ -492,10 +502,10 @@ export async function rejectToPreviousTask(
     run,
     'approval.task.reject_previous',
     { status: 'pending', comment: null },
-    { status: 'rejected', comment: input.comment, toNodeKey: previous.key },
+    { status: 'rejected', comment: input.comment, toNodeKey: previousKey },
   );
   await applyMessageRules(tx, ctx, run.instance, node, 'reject', task);
-  await advanceFrom(tx, run, index - 1);
+  await advanceTo(tx, run, previousKey, await rejectPreviousFrom(tx, run, previousKey));
   run.events.push('approval.task.rejected_previous');
   await persistRun(tx, run, outcomeAction(run));
   return ok(run);
@@ -525,7 +535,7 @@ export async function jumpTask(
   if (input.toNodeKey === node.key) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_JUMP_SAME_NODE', '只能跳到其他节点');
   }
-  const target = nodeIndex(run, input.toNodeKey);
+  nodeIndex(run, input.toNodeKey); // 目标不在本版本里时报 APPROVAL_NODE_UNKNOWN
   const tasks = await loadTasks(tx, ctx.tenantId, run.instance.id);
   assertNotAddSigner(tasks, task);
   const record = await captured(tx, run, task, 'jump', viewable);
@@ -547,7 +557,7 @@ export async function jumpTask(
     { currentNodeKey: node.key },
     { currentNodeKey: input.toNodeKey, comment: input.comment },
   );
-  await advanceFrom(tx, run, target);
+  await advanceTo(tx, run, input.toNodeKey, jumpFrom(run, input.toNodeKey));
   run.events.push('approval.instance.jumped');
   await persistRun(tx, run, outcomeAction(run));
   return ok(run);
@@ -656,7 +666,8 @@ export async function addSign(
   }
   const status = input.type === 'after' ? 'approved' : 'add_signed';
   const record = await captured(tx, run, task, input.type === 'after' ? 'add_sign_after' : 'add_sign_before', viewable);
-  await closeTask(tx, ctx, task.id, status, input.comment);
+  // 后加签 = 本人同意（设计 §3.2）：任务完成要记同意出口；前加签只是挂起，不算办理，出口留空。
+  await closeTask(tx, ctx, task.id, status, input.comment, input.type === 'after' ? 'approve' : null);
   if (input.type === 'after') {
     // 后加签：同意日志是唯一锚点，下面的 delegate 不再捕获
     await record(
@@ -1093,7 +1104,7 @@ function startHistoryAfter(run: Run, tasks: readonly TaskRow[]): void {
 }
 
 async function adminJump(tx: Tx, run: Run, input: AdminInput): Promise<Outcome> {
-  const index = nodeIndex(run, input.toNodeKey ?? '');
+  const target = run.version.nodes[nodeIndex(run, input.toNodeKey ?? '')]!.key;
   await cancelPending(tx, run.ctx, run.instance.id);
   const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
   startHistoryAfter(run, tasks);
@@ -1108,7 +1119,7 @@ async function adminJump(tx: Tx, run: Run, input: AdminInput): Promise<Outcome> 
     before: { currentNodeKey: run.instance.currentNodeKey, reason: null },
     after: { currentNodeKey: input.toNodeKey, reason: input.reason },
   });
-  await advanceFrom(tx, run, index, tasks);
+  await advanceTo(tx, run, target, jumpFrom(run, target), tasks);
   run.events.push('approval.instance.jumped');
   await persistRun(tx, run, 'approval.instance.admin');
   return ok(run);

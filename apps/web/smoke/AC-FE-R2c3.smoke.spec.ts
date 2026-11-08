@@ -266,18 +266,24 @@ test('AC-FE-R2c3-05 退休申请：无职责转交区，先建草稿再按草稿
   expect(sent[1]!.url).toContain(`/retirements/${draftId}/submit`);
 });
 
-test('AC-FE-R2c3-06 退休单详情：交接页签只读缺口，撤销后从退休中消失', async ({ page }) => {
+test('AC-FE-R2c3-06 退休单详情：交接页签读后端状态，撤销只提示不可恢复且不收原因', async ({ page }) => {
   const { server } = await setup(page);
   server.views.processing = [bill('approved')];
   server.views.all = [bill('approved')];
   const sent: ReturnType<typeof posted>[] = [];
   await page.route(`**/employment/retirements/${billId}/cancel`, (route) => {
     sent.push(posted(route.request()));
-    const cancellation = { id: '90000000-0000-4000-8000-000000000001', reason: '合成撤销原因' };
+    const cancellation = { id: '90000000-0000-4000-8000-000000000001', reason: null };
     server.billRevision = 3;
     server.views.processing = [];
     server.views.all = [bill('approved', { revision: 3, cancellation })];
     return route.fulfill({ json: { ...business({ revision: 3 }), cancellation, downstream: {} } });
+  });
+  // F-351：交接页签读 GET /exits/:id/handover（退休单读到“未发起”，不发起交接）
+  let handoverReads = 0;
+  await page.route(`**/employment/exits/${billId}/handover`, (route) => {
+    handoverReads += 1;
+    return route.fulfill({ json: { status: 'not_started', request: null } });
   });
   await openRow(page, 'processing');
   const drawer = page.locator('.ant-drawer');
@@ -286,15 +292,21 @@ test('AC-FE-R2c3-06 退休单详情：交接页签只读缺口，撤销后从退
     await expect(drawer.getByRole('tab', { name: tab })).toBeVisible();
   await expect(drawer.getByText('合成接收人')).toBeVisible();
   await drawer.getByRole('tab', { name: '退休交接' }).click();
-  await expect(drawer.getByText(/后端未开放退休交接子流程/)).toBeVisible();
+  await expect(drawer.getByRole('region', { name: '退休交接' }).getByText('未发起', { exact: true })).toBeVisible();
+  await expect(drawer.getByText(/后端未开放退休交接子流程/)).toHaveCount(0);
+  // 开发服务器 StrictMode 下读取 effect 会先后发两次（第一次被中止），只断言确实读了后端
+  expect(handoverReads).toBeGreaterThan(0);
   await drawer.getByRole('tab', { name: '变更记录' }).click();
   await expect(drawer.getByRole('cell', { name: '2026-11-29', exact: true })).toBeVisible();
   await expect(drawer.getByRole('button', { name: /提\s*交|撤\s*回/ })).toHaveCount(0);
   await drawer.getByRole('button', { name: '撤销退休', exact: true }).click();
-  await dialog(page).getByLabel('撤销原因').fill('合成撤销原因');
+  // DEC-714：确认框只提示不可恢复，没有撤销原因输入，也没有合同 / 下游处理提示
+  await expect(dialog(page).getByText(/不可恢复/)).toBeVisible();
+  await expect(dialog(page).getByRole('textbox')).toHaveCount(0);
+  await expect(dialog(page).getByText(/撤销原因|合同|手工|账号/)).toHaveCount(0);
   await confirm(page);
   await expect(page.getByText('已撤销退休')).toBeVisible();
-  expect(sent).toEqual([{ body: { reason: '合成撤销原因' }, ifMatch: '2', key: expect.any(String) }]);
+  expect(sent).toEqual([{ body: {}, ifMatch: '2', key: expect.any(String) }]);
   await expect(page.locator('.retirement-table tr.ant-table-row')).toHaveCount(0);
 });
 
@@ -411,7 +423,7 @@ test('AC-FE-R2c3-09 P2-1 撤销回执裁掉类型、意向回执裁掉状态：�
       id: '80000000-0000-4000-8000-000000000002',
       case: 'approved_voided',
       stateBefore: 'approved',
-      reason: '合成撤销原因',
+      reason: null,
       revision: 1,
       createdAt: '2026-10-30T00:00:00.000Z',
     };
@@ -427,7 +439,6 @@ test('AC-FE-R2c3-09 P2-1 撤销回执裁掉类型、意向回执裁掉状态：�
   });
   await openRow(page, 'processing');
   await page.locator('.ant-drawer').getByRole('button', { name: '撤销退休', exact: true }).click();
-  await dialog(page).getByLabel('撤销原因').fill('合成撤销原因');
   await confirm(page);
   await expect(page.getByText('已撤销退休')).toBeVisible();
   await expect(page.getByText(/结果待确认/)).toHaveCount(0);
@@ -592,14 +603,14 @@ test('AC-FE-R2c3-12 P2-3 申请第二步结果未知：关闭重开仍是同一�
   expect([creates(), submits]).toEqual([1, 1]);
 });
 
-test('AC-FE-R2c3-13 P2-5 撤销成功后展示服务端返回的下游清单，动作刷新后不丢', async ({ page }) => {
+test('AC-FE-R2c3-13 撤销成功后不展示下游清单与撤销原因（DEC-714），回执带下游也不推算', async ({ page }) => {
   const { server } = await setup(page);
   await page.route(`**/employment/retirements/${billId}/cancel`, (route) => {
     const cancellation = {
       id: '80000000-0000-4000-8000-000000000001',
       case: 'record_deleted_reinstated',
       stateBefore: 'effective',
-      reason: '合成撤销原因',
+      reason: null,
       revision: 1,
       createdAt: '2026-10-30T00:00:00.000Z',
     };
@@ -635,23 +646,18 @@ test('AC-FE-R2c3-13 P2-5 撤销成功后展示服务端返回的下游清单，�
   await openRow(page, 'completed');
   const drawer = page.locator('.ant-drawer');
   await drawer.getByRole('button', { name: '撤销退休', exact: true }).click();
-  await dialog(page).getByLabel('撤销原因').fill('合成撤销原因');
+  await expect(dialog(page).getByText(/不可恢复/)).toBeVisible();
   await confirm(page);
   await expect(page.getByText('已撤销退休')).toBeVisible();
-  // 撤销后单据带撤销记录，撤销按钮随刷新卸载；清单留在详情层
+  // 撤销后单据带撤销记录，撤销按钮随刷新卸载；回执里的下游不再列出，详情也不显示撤销原因
   await expect(drawer.getByRole('button', { name: '撤销退休', exact: true })).toHaveCount(0);
-  const list = drawer.getByRole('region', { name: '撤销退休后的下游数据' });
-  await expect(list).toBeVisible();
-  await expect(list.getByText('合同：有记录（1 件）')).toBeVisible();
-  await expect(list.getByText('薪资档案：未接入')).toBeVisible();
-  await expect(list.getByText('被作废的在途任职申请：需重新发起（2 件，其中 1 件无权查看）')).toBeVisible();
-  // DEC-714：前端不补“合同需手工处理 / 已恢复”等文案，也不推算账号状态
-  await expect(drawer.getByText(/手工|已恢复|账号/)).toHaveCount(0);
+  await expect(drawer.getByRole('region', { name: '撤销退休后的下游数据' })).toHaveCount(0);
+  await expect(drawer.getByText(/有记录|未接入|需重新发起|撤销原因|手工|已恢复|账号/)).toHaveCount(0);
 });
 
 const cancellation = {
   id: '80000000-0000-4000-8000-000000000099',
-  reason: '合成撤销原因',
+  reason: null,
   case: 'approved_voided',
   stateBefore: 'approved',
   revision: 1,
@@ -751,7 +757,6 @@ test('复核-已保存草稿从详情提交并撤销后，员工申请入口应�
     .click();
   await expect(page.getByText('已提交', { exact: true })).toBeVisible();
   await page.locator('.ant-drawer').getByRole('button', { name: '撤销退休', exact: true }).click();
-  await dialog(page).getByLabel('撤销原因').fill('合成撤销原因');
   await confirm(page);
   await expect(page.getByText('已撤销退休')).toBeVisible();
   await page.locator('.ant-drawer-close').last().click();

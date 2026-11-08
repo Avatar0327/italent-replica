@@ -18,6 +18,7 @@ const TRF = `${SRC}/transfer/routes.ts`;
 const MGR = `${SRC}/transfer/manager-routes.ts`;
 const LNK = `${SRC}/transfer/linkage/routes.ts`;
 const EXIT = `${SRC}/employment/exit-routes.ts`;
+const RECORD_LIST = `${SRC}/employment/record-list.ts`;
 const RETIRE = `${SRC}/employment/retirement-routes.ts`;
 const RETIRE_VIEWS = `${SRC}/employment/retirement-view-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
@@ -182,6 +183,54 @@ const ob = (perm: string, facts: readonly string[], evidence: readonly Evidence[
   at: evidence,
   ...(note ? { note } : {}),
 });
+
+const EXIT_IMPORT = `${SRC}/employment/exit-import.ts`;
+/** F-139a：历史离职导入的入口权限链（预览与导入共用 requireExitImportAccess，设计 §7）。 */
+function exitImportObligations(path: '/exits/import' | '/exits/import/preview'): Obligation[] {
+  const entry = at(EXIT, 'POST', path, "const ctx = await readContext(c, deps, 'object.create')");
+  const access = (anchor: string) => fn(EXIT_IMPORT, 'requireExitImportAccess', anchor);
+  const seeAll = bound({ scope: 'see-all' }, [
+    {
+      role: 'scope',
+      unit: `${EXIT_IMPORT}#requireExitImportAccess`,
+      anchor:
+        "if (ctx.scope && !ctx.scope.all) throw new AppError('FORBIDDEN', '批量导入历史离职人员需要“全部数据”范围')",
+    },
+  ]);
+  // 人员对象的范围与任职记录分开解析（P1-2）：POST /employees 看的是人员对象的“看全部”
+  const employeeSeeAll = bound({ scope: 'see-all' }, [
+    {
+      role: 'scope',
+      unit: `${EXIT_IMPORT}#requireExitImportAccess`,
+      anchor:
+        "if (!employeeScope?.all) throw new AppError('FORBIDDEN', '批量导入历史离职人员需要人员对象的“全部数据”范围')",
+    },
+  ]);
+  return withNeeds(
+    [
+      ob(
+        `obj:${RECORD}:create`,
+        ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+        [entry, READ],
+      ),
+      ob(
+        `obj:${EMPLOYEE}:create`,
+        ['objectOp:TenantBase.Employee:create'],
+        [
+          access("await requireEmploymentWrite(ctx, 'create', { code: 'x', name: 'x' }, undefined, EMPLOYEE_OBJECT)"),
+          WRITE_OBJECT,
+        ],
+      ),
+      ob(
+        `btn:${RECORD}#Employment.DimissionImport@list`,
+        [],
+        [access("await requireEmploymentWrite(ctx, 'create', writtenFields(rows), EXIT_IMPORT_BUTTON)"), WRITE_BUTTON],
+        '独立于五个离职按钮的批量入口按钮（DEC-814）；范围必须是显式“看全部”，不足 403',
+      ),
+    ],
+    { [`obj:${EMPLOYEE}:create`]: employeeSeeAll, [`obj:${RECORD}:create`]: seeAll },
+  );
+}
 
 /** F-317 固定路由决定按钮；批量每个子命令仍复用首次发起的权限和锁。 */
 function handoverListSubmit(path: string, batch: boolean): Obligation[] {
@@ -2043,6 +2092,18 @@ export const EMPLOYMENT: RequiredTable = {
       [at(EMP, 'GET', '/employees/:id/records', "if (!visible.length) throw new AppError('NOT_FOUND', '员工不存在')")],
     ),
   ],
+  // ---- F-474-4b #16 全租户任职记录列表（record-list.ts registerRecordList，只读）-------------------------------------
+  'GET /api/tenant/employment/records': [
+    recordView(at(RECORD_LIST, 'GET', '/records', "const ctx = await readPageContext(c, deps, 'list')")),
+    ob(
+      'guard:employment.viewableFilters',
+      [],
+      [
+        at(RECORD_LIST, 'GET', '/records', 'requireViewableFilters(filter, show)'),
+        fn(RECORD_LIST, 'requireViewableFilters', "throw new AppError('FORBIDDEN', '筛选字段不可查看')"),
+      ],
+    ),
+  ],
   'POST /api/tenant/employment/employees/:id/preview': [
     recordView(at(EMP, 'POST', '/employees/:id/preview', "const ctx = await readPageContext(c, deps, 'detail', id)"), [
       'object:readPageContext',
@@ -3435,6 +3496,19 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     linkage(at(EXIT, 'POST', '/exits/batch', 'body: await createExitBatch(tx, context, items, guard.failures())')),
   ],
+  // F-139a 历史离职人员导入（设计 §7）：预览与导入共用入口权限链 requireExitImportAccess；导入命令内另由 exitImportGuard 复核
+  'POST /api/tenant/employment/exits/import/preview': exitImportObligations('/exits/import/preview'),
+  'POST /api/tenant/employment/exits/import': [
+    ...exitImportObligations('/exits/import'),
+    linkage(
+      at(
+        EXIT,
+        'POST',
+        '/exits/import',
+        'async (tx, context) => ({ status: 201, body: await importExits(tx, context, body) })',
+      ),
+    ),
+  ],
   'PATCH /api/tenant/employment/exits/:id': [
     ...exitBusinessCommand('/exits/:id', 'Employment.DimissionEdit', 'route'),
     linkage(
@@ -3683,7 +3757,6 @@ export const EMPLOYMENT: RequiredTable = {
   // ---- R2-T04 BE-5a′ 撤销退休（同一套，按钮 RetireCancel）----
   'POST /api/tenant/employment/retirements/:id/cancel': exitCancelCommand(RETIRE_CANCEL),
   'POST /api/tenant/employment/retirements/:id/restore': exitCancelRestore(RETIRE_CANCEL),
-  'PATCH /api/tenant/employment/retirements/cancellations/:id': exitCancellationPatch(RETIRE_CANCEL),
   // ---- R2-T03 B5 离职视图与详情（exit-routes.ts registerExitViews）--------------------------------------------------
   'GET /api/tenant/employment/exits': [
     ...[
@@ -3738,8 +3811,12 @@ export const EMPLOYMENT: RequiredTable = {
       ],
     ),
   ],
+  // F-479 S2 HR 载体下载：与详情同一个取值（readExitDetail → readPageContext('detail')），再叠 attachmentRefs 字段权
+  'GET /api/tenant/employment/exits/:id/attachments/:fileId/content': [
+    recordView(at(EXIT, 'GET', '/exits/:id/attachments/:fileId/content', 'await readExitDetail(c)')),
+  ],
   'GET /api/tenant/employment/exits/:id': [
-    recordView(at(EXIT, 'GET', '/exits/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+    recordView(at(EXIT, 'GET', '/exits/:id', 'const { ctx, detail, show } = await readExitDetail(c)')),
     exitActionsIntervene(
       at(EXIT, 'GET', '/exits/:id', 'await exitActions(deps, ctx, [detail], { withHandle: false })'),
     ),
@@ -3889,6 +3966,23 @@ export const EMPLOYMENT: RequiredTable = {
   // ---- R2-T04 BE-5d1 退休五视图与详情（retirement-view-routes.ts registerRetirementViews）-------------------------------
   'GET /api/tenant/employment/retirements': [
     recordView(at(RETIRE_VIEWS, 'GET', '/retirements', "const ctx = await readPageContext(c, deps, 'list')")),
+  ],
+  // F-410 按员工查在途退休单：入口只判员工对象查看权（readContext object.view + 资源 id），内容走详情同一裁剪
+  'GET /api/tenant/employment/retirements/employees/:id/in-flight': [
+    ob(
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+      [
+        at(
+          RETIRE_VIEWS,
+          'GET',
+          '/retirements/employees/:id/in-flight',
+          "const ctx = await readContext(c, deps, 'object.view', 0, id)",
+        ),
+        READ,
+        RECORD_CONST,
+      ],
+    ),
   ],
   'GET /api/tenant/employment/retirements/:id': [
     recordView(at(RETIRE_VIEWS, 'GET', '/retirements/:id', "const ctx = await readPageContext(c, deps, 'detail')")),

@@ -20,10 +20,10 @@ export async function retirementCancelWorld(
   const x = withRetirement(db, await cancelWorld(db, label, today, options), today);
   const tenantId = x.session.tenant.id;
 
-  /** 专用撤销入口（If-Match 缺省取业务当前 revision）；返回原始响应。 */
+  /** 专用撤销入口（F-351：退休撤销不收原因，缺省空 body；If-Match 缺省取业务当前 revision）；返回原始响应。 */
   async function cancelRetire(
     id: string,
-    body: CancelBody = { reason: '录入有误' },
+    body: CancelBody = {},
     init: { ifMatch?: number; idempotencyKey?: string } = {},
   ) {
     return x.session.request('POST', `/retirements/${id}/cancel`, {
@@ -32,7 +32,7 @@ export async function retirementCancelWorld(
       ...(init.idempotencyKey ? { idempotencyKey: init.idempotencyKey } : {}),
     });
   }
-  async function retireCancelled(id: string, body: CancelBody = { reason: '录入有误' }) {
+  async function retireCancelled(id: string, body: CancelBody = {}) {
     const response = await cancelRetire(id, body);
     expect(response.status, await response.clone().text()).toBe(200);
     return (await response.json()) as Cancelled;

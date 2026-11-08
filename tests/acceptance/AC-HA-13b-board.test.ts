@@ -86,7 +86,8 @@ describe('AC-HA-13b B50 人员流动分析看板', () => {
 
   it('AC-HA-13b-01 / 05：6.26 入离职按月，离职归生效日所在月；外部人员不计', async () => {
     const { p } = w;
-    await c.expectCount(BASE, '6.26', ids(p.intern, p.hidden), AS_OF, 'hire:2026-02');
+    // DEC-832①：未转正的在职实习生（p.intern 2/1 入职）不计入职；原期望为 ids(p.intern, p.hidden)
+    await c.expectCount(BASE, '6.26', ids(p.hidden), AS_OF, 'hire:2026-02');
     await c.expectCount(BASE, '6.26', ids(p.m30, p.m31), AS_OF, 'hire:2026-03');
     await c.expectCount(BASE, '6.26', ids(p.oct1), AS_OF, 'hire:2026-10');
     await c.expectCount(BASE, '6.26', [], AS_OF, 'hire:2026-01'); // 外部人员离职者 1/5 入职，不计

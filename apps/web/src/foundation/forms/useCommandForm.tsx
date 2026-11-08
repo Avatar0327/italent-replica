@@ -58,6 +58,13 @@ export function usePinnedCommand(slots: readonly string[], entry: string, store?
       if (result.status !== 'unknown') owner.unpin(scoped, own);
       return result;
     },
+    /** 用户显式按原命令重发结果未知的命令（钉住它的条目）；结果确定后放开恢复槽。 */
+    async replay(send: SubmitInput['send']) {
+      const holder = owner.holder(scoped) ?? own;
+      const result = await owner.replay(holder, send);
+      if (result && result.status !== 'unknown') owner.unpin(scoped, holder);
+      return result;
+    },
     /** 存储里的当前状态（不是渲染时的快照）：异步流程中途据此核对恢复槽上有没有新的未确认命令。 */
     peek: () => owner.get(owner.holder(scoped) ?? own),
     reread: (read: (id?: string) => Promise<Latest>) => owner.reread(key, read),

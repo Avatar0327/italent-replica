@@ -7,10 +7,12 @@
  */
 import { APPROVAL_OBJECTS, APPROVAL_PROCESS_OBJECT } from '../approval/catalog.js';
 import {
+  SELF_APPLICATION_OBJECTS,
+  SELF_APPLICATION_BUTTONS,
   EMPLOYEE_DEFAULT_CREATE,
   EMPLOYEE_DEFAULT_EDIT_FIELDS,
   EMPLOYEE_PAGES,
-  EMPLOYEE_READONLY_FIELDS,
+  EMPLOYEE_DEFAULT_VIEW_FIELDS,
   EMPLOYEE_SELF_SERVICE_BUTTONS,
   EMPLOYEE_SELF_SERVICE_CODE,
 } from './employee-self-service.js';
@@ -194,7 +196,9 @@ function full(definition: ObjectDefinition): ObjectPermission {
     objectCode: definition.code,
     dataOperations: { create: true, update: true, delete: true },
     fields: definition.fields.map((f) => ({ fieldCode: f.code, view: true, edit: !f.system })),
-    buttons: definition.buttons.map((b) => ({ buttonCode: b.code, level: b.level })),
+    buttons: definition.buttons
+      .filter((b) => !Object.values(SELF_APPLICATION_BUTTONS).some((code) => code === b.code))
+      .map((b) => ({ buttonCode: b.code, level: b.level })),
   };
 }
 
@@ -420,9 +424,17 @@ const EMPLOYEE_PROFILE: StandardProfile = {
   licenseType: null,
   apps: [ORG_EMPLOYEE_APP, QUALIFICATION_APP],
   objects: [
+    ...Object.values(SELF_APPLICATION_OBJECTS).map((definition) =>
+      fieldSubset(
+        definition,
+        definition.fields.map((f) => f.code),
+        definition.fields.filter((f) => !f.system).map((f) => f.code),
+        { create: true, update: true, delete: false },
+      ),
+    ),
     fieldSubset(
       MODULE_OBJECTS.employmentRecord,
-      [...EMPLOYEE_DEFAULT_EDIT_FIELDS, ...EMPLOYEE_READONLY_FIELDS],
+      EMPLOYEE_DEFAULT_VIEW_FIELDS,
       EMPLOYEE_DEFAULT_EDIT_FIELDS,
       { create: EMPLOYEE_DEFAULT_CREATE, update: false, delete: false },
       EMPLOYEE_SELF_SERVICE_BUTTONS,

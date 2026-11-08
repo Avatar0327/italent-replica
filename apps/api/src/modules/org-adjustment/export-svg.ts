@@ -7,9 +7,10 @@
  * 无值或看不到都显示“--”。没有页眉、图例；文字都是 `<text>`，SVG 尺寸包住整张图。
  */
 import type { Tx } from '@italent/db';
-import { canSee, type Disclosure } from './disclosure.js';
+import { canSee, type Disclosure, orgInScope } from './disclosure.js';
 import { type PreviewNode, readPreview } from './preview.js';
 import { orgNamesAt } from './queries.js';
+import { inactiveOrgs } from './range.js';
 
 export interface ExportFile {
   /** 不含扩展名：前端按所选格式追加 `.svg` / `.png`，两态同名。 */
@@ -44,13 +45,28 @@ export async function readExport(
   today: string,
 ): Promise<ExportFile> {
   const preview = await readPreview(tx, tenantId, disclosure);
-  const range = canSee(disclosure.fields, 'adjustmentRange') ? disclosure.view.adjustmentRange : [];
-  const names = await orgNamesAt(tx, tenantId, range, preview.effectiveDate);
-  const label = range.flatMap((id) => (names.has(id) ? [names.get(id)!] : []));
+  const label = await fileNameOrgs(tx, tenantId, disclosure, today);
   return { fileName: exportFileName(label, today), svg: renderSvg(exportCards(preview.roots, after)) };
 }
 
-/** `架构图（{调整范围组织名}）_{yyyyMMdd}`：日期是下载当天（租户时区），多个组织按选择顺序以“、”连接。 */
+/**
+ * 文件名里的组织名（F-447 / DEC-783；F-446 返工）：只取查看人能看到的调整范围组织，且在下载当天（与文件名日期同一
+ * today）有效并启用的组织，名称取当天的当前名。范围外组织（与预览同一 `orgInScope`）不得出现在文件名里；
+ * 当天已停用或有效期已过的组织跳过。卡片内的组织名仍是预览口径（生效日），调整明细（detail.ts）同样按生效日。
+ */
+async function fileNameOrgs(tx: Tx, tenantId: string, disclosure: Disclosure, today: string): Promise<string[]> {
+  if (!canSee(disclosure.fields, 'adjustmentRange')) return [];
+  const visible = disclosure.view.adjustmentRange.filter((id) => orgInScope(disclosure, id));
+  const inactive = new Set(await inactiveOrgs(tx, tenantId, visible, today));
+  const active = visible.filter((id) => !inactive.has(id));
+  const names = await orgNamesAt(tx, tenantId, active, today);
+  return active.flatMap((id) => (names.has(id) ? [names.get(id)!] : []));
+}
+
+/**
+ * `架构图（{调整范围组织名}）_{yyyyMMdd}`：日期是下载当天（租户时区），组织名取下载当天的当前名（DEC-783），
+ * 多个组织按选择顺序以“、”连接。
+ */
 export function exportFileName(rangeNames: readonly string[], today: string): string {
   return xmlChars(`架构图（${rangeNames.length ? rangeNames.join('、') : NONE}）_${today.replaceAll('-', '')}`);
 }
@@ -90,24 +106,32 @@ export function establishmentMark(value: number | null, delta: number | null): E
   return { value: String(value), arrow, amount, label: `编制 ${value}${symbol}${amount ?? ''}` };
 }
 
-/** 估算显示宽度（单位 = 一个汉字宽）：全角 / CJK 记 1，其余记 0.6。 */
+/** 字形簇切分：组合记号、ZWJ 序列、变体选择符、国旗等整体算一个字，不在簇中间截断（F-446）。 */
+const GRAPHEMES = new Intl.Segmenter('en', { granularity: 'grapheme' });
+const clustersOf = (text: string) => Array.from(GRAPHEMES.segment(text), (part) => part.segment);
+
+/** 一个字形簇的宽度：按基字（首码点）计，后续组合记号 / ZWJ 成员不再累加。 */
+const clusterUnits = (cluster: string) => (cluster.codePointAt(0)! >= 0x2e80 ? 1 : 0.6);
+
+/** 估算显示宽度（单位 = 一个汉字宽）：以字形簇为单位，基字全角 / CJK 记 1，其余记 0.6。 */
 export function textUnits(text: string): number {
-  let units = 0;
-  for (const ch of text) units += ch.codePointAt(0)! >= 0x2e80 ? 1 : 0.6;
-  return units;
+  return clustersOf(text).reduce((units, cluster) => units + clusterUnits(cluster), 0);
 }
 
-/** 超过 max 个单位时截断并以“…”结尾（“…”记 1）；SVG 里就是截断后的文字。先去掉非法码点再量宽度。 */
+/**
+ * 超过 max 个单位时按字形簇截断并以“…”结尾（“…”记 1）；SVG 里就是截断后的文字。先去掉非法码点再量宽度。
+ * 簇宽按基字估算，不同字体对 emoji 序列的实际宽度可能偏大，该偏差随字体渲染，口径待取证（见 PR“未决 / 假设”）。
+ */
 export function truncate(raw: string, max: number): string {
   const text = xmlChars(raw);
   if (textUnits(text) <= max) return text;
   let units = 0;
   let kept = '';
-  for (const ch of text) {
-    const next = units + textUnits(ch);
+  for (const cluster of clustersOf(text)) {
+    const next = units + clusterUnits(cluster);
     if (next > max - 1) break;
     units = next;
-    kept += ch;
+    kept += cluster;
   }
   return `${kept}…`;
 }
@@ -144,6 +168,15 @@ const TAGGED_NAME_UNITS = 11;
 const VALUE_X = 84;
 const VALUE_UNITS = 13;
 const FONT = 12;
+/** 版式常量（供“文字不越出卡片”的边界测试按同一口径估算，F-446）。 */
+export const CARD_LAYOUT = {
+  width: W,
+  nameUnits: NAME_UNITS,
+  taggedNameUnits: TAGGED_NAME_UNITS,
+  valueX: VALUE_X,
+  valueUnits: VALUE_UNITS,
+  font: FONT,
+} as const;
 const COLORS = { border: '#D9DEE8', text: '#1F2A3D', label: '#8A93A6', line: '#B5BCC8', icon: '#5B8FF9' };
 const TAG_COLORS: Readonly<Record<Tag, { edge: string; fill: string; text: string }>> = {
   新增: { edge: '#00AD0E', fill: '#E6F7E8', text: '#00AD0E' },

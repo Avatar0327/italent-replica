@@ -6,6 +6,7 @@
  * “原定”最后工作日 = 计划生效日（plannedEffectiveDate，§5.0A 唯一来源）− 1 天，不另算。
  */
 import { sql, type Tx } from '@italent/db';
+import { attachmentSummaries, type AttachmentSummary } from '../attachments/carrier-read.js';
 import type { OrgId } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { listOrgDescendantsInTransaction } from '../org/hierarchy-reader.js';
@@ -33,8 +34,8 @@ export const EXIT_STATES = [
   'deleted',
 ] as const satisfies readonly EmploymentState[];
 
-/** 发起方式筛选：direct = 直接离职（mode=direct），其余按申请的发起人身份（§3.2）。 */
-export const EXIT_INITIATIONS = ['hr', 'self', 'manager', 'direct'] as const;
+/** 发起方式筛选：direct = 直接离职（mode=direct），import = 历史导入（mode=import，F-139a），其余按申请的发起人身份（§3.2）。 */
+export const EXIT_INITIATIONS = ['hr', 'self', 'manager', 'direct', 'import'] as const;
 export type ExitInitiationFilter = (typeof EXIT_INITIATIONS)[number];
 
 export interface ExitViewFilter {
@@ -68,7 +69,7 @@ export interface ExitRow {
   whereaboutsCode: string | null;
   whereaboutsName: string | null;
   status: EmploymentState;
-  mode: 'application' | 'direct';
+  mode: 'application' | 'direct' | 'import';
   initiator: 'hr' | 'self' | 'manager';
   initiatorUserId: string;
   batchId: string | null;
@@ -111,7 +112,7 @@ export interface ExitItem {
   readonly status: EmploymentState;
   /** 路由层并入；读模型本身不产生。 */
   readonly actions?: readonly ExitActionCode[];
-  readonly mode: 'application' | 'direct';
+  readonly mode: 'application' | 'direct' | 'import';
   readonly initiator: 'hr' | 'self' | 'manager';
   readonly initiatorUserId: string;
   readonly batchId: string | null;
@@ -215,7 +216,8 @@ function viewOrder(view: ExitView, show: ExitViewable): SQL {
 
 const SHOWN_DEPARTMENT = sql`COALESCE(prev.department_id, p.department_id)`;
 
-function filterPredicates(tenantId: string, filter: ExitViewFilter): SQL[] {
+/** 退休单据视图（retirement-views.ts）复用同一组筛选谓词。 */
+export function filterPredicates(tenantId: string, filter: ExitViewFilter): SQL[] {
   const parts: SQL[] = [];
   if (filter.departmentIds) parts.push(sql`${SHOWN_DEPARTMENT}=ANY(${`{${filter.departmentIds.join(',')}}`}::uuid[])`);
   if (filter.keyword) {
@@ -230,7 +232,7 @@ function filterPredicates(tenantId: string, filter: ExitViewFilter): SQL[] {
   if (filter.reasonCode) parts.push(sql`lower(x.reason_code)=lower(${filter.reasonCode})`);
   if (filter.whereaboutsCode) parts.push(sql`lower(x.whereabouts_code)=lower(${filter.whereaboutsCode})`);
   if (filter.status) parts.push(sql`s.state=${filter.status}`);
-  if (filter.initiation === 'direct') parts.push(sql`x.mode='direct'`);
+  if (filter.initiation === 'direct' || filter.initiation === 'import') parts.push(sql`x.mode=${filter.initiation}`);
   else if (filter.initiation) parts.push(sql`(x.mode='application' AND x.initiator=${filter.initiation})`);
   return parts;
 }
@@ -365,6 +367,8 @@ export async function listExitView(
 /** 扩展行的业务字段（详情用）；金额按数字返回，缺省为 null。 */
 export interface ExitExtension {
   readonly attachmentRefs: readonly string[] | null;
+  /** F-479 §3.1：引用展开的元数据（无字节）；与 attachmentRefs 同一字段权，无权整个键缺席。 */
+  readonly attachments: readonly AttachmentSummary[];
   readonly handoverEmployeeId: string | null;
   readonly addToBlacklist: boolean;
   /** F-393：加黑三项（有效截止日期空 = 永久）；只在详情披露，按任职记录同名字段的查看权裁剪。 */
@@ -472,6 +476,7 @@ export async function loadExitDetail(
     ...item,
     ...(failure?.details && item.activation ? { activation: { ...item.activation, details: failure.details } } : {}),
     attachmentRefs: (ext.attachmentRefs as string[] | null | undefined) ?? null,
+    attachments: await attachmentSummaries(tx, tenantId, id, ext.attachmentRefs as string[] | null | undefined),
     handoverEmployeeId: (ext.handoverEmployeeId as string | null) ?? null,
     addToBlacklist: Boolean(ext.addToBlacklist),
     blacklistExpiryDate: (ext.blacklistExpiryDate as string | null) ?? null,
@@ -571,6 +576,15 @@ export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = 
   // 附件元数据 ID：数组与元素同一字段权；空数组、未填写也是该字段的值，无权时整个键缺席
   attachmentRefs: on('attachmentRefs'),
   'attachmentRefs[]': on('attachmentRefs'),
+  // 附件摘要（F-479 §3.1）：数组 / 元素 / 每个键都跟随 attachmentRefs 的字段权
+  attachments: on('attachmentRefs'),
+  'attachments[]': on('attachmentRefs'),
+  'attachments[].id': on('attachmentRefs'),
+  'attachments[].filename': on('attachmentRefs'),
+  'attachments[].contentType': on('attachmentRefs'),
+  'attachments[].byteSize': on('attachmentRefs'),
+  'attachments[].uploadedAt': on('attachmentRefs'),
+  'attachments[].missing': on('attachmentRefs'),
   // 生效失败 / 挂起标记（最近一次生效尝试）
   activation: on('activation'),
   'activation.status': on('activation'),

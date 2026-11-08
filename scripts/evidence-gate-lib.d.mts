@@ -10,6 +10,7 @@ export interface EvidenceRow extends StatusDetails {
   tasks: Set<string>;
   st: string;
   level: '开工前' | '可后补';
+  taskLevels: Map<string, '开工前' | '可后补'>;
 }
 export interface DecisionRow extends StatusDetails {
   id: string;
@@ -19,6 +20,8 @@ export interface DecisionRow extends StatusDetails {
   tasks: Set<string> | null;
 }
 export declare function taskIds(text: string): Set<string>;
+export declare function taskLevels(blocks: string): Map<string, '开工前' | '可后补'>;
+export declare function deferredTasks(blocks: string): Set<string>;
 export declare function evidenceState(
   blocks: string,
   statusCell: string,

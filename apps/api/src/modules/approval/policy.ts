@@ -348,6 +348,16 @@ const canOpen = relation({
 // 无 view 时仍是 listTodos 原固定键；卡片摘要取 todoForm 裁剪后字段，不能登记为未裁剪 fixed。
 const TODO_FIELDS = projector('approval.todoCards', 'approval.todoCards');
 const NOTIFICATION_KEYS = ['id', 'instanceId', 'taskId', 'kind', 'channel', 'template', 'status', 'createdAt'];
+const APPLICATION_KEYS = [
+  'id',
+  'title',
+  'status',
+  'approvalType',
+  'approvalTypeName',
+  'initiatorName',
+  'currentHandlers',
+  'createdAt',
+];
 const INSTANCE_KEYS = [
   'id',
   'title',
@@ -449,16 +459,27 @@ export const APPROVAL_POLICIES = defineTable('approval', {
     fields: fixed(NOTIFICATION_KEYS, 'F-039 §3.5 固定键 listNotifications'),
   }),
   // role 域 initiated（发起人）/ participated（任一非 self_skip 任务的审批人或被抄送人）；businessId 可选过滤
-  'GET /instances': own({
-    predicate: 'approval.initiatedOrParticipated',
-    fields: fixed(INSTANCE_KEYS, 'F-039 §3.5 固定键 listInstances'),
-    knownGap: {
-      scenario: 'role / businessId 查询参数非法：z.parse 抛裸 ZodError，handleError 兜底 500 INTERNAL_ERROR，应为 400',
-      issue: '待开',
-    },
-  }),
+  // view=applications（F-474-3b）：只含本人发起的实例，固定键为 APPLICATION_KEYS；无 view 保持 listInstances 原行为
+  'GET /instances': any([
+    own({
+      predicate: 'approval.initiatedOrParticipated',
+      fields: fixed(INSTANCE_KEYS, 'F-039 §3.5 固定键 listInstances'),
+      knownGap: {
+        scenario:
+          'role / businessId 查询参数非法：z.parse 抛裸 ZodError，handleError 兜底 500 INTERNAL_ERROR，应为 400',
+        issue: '待开',
+      },
+    }),
+    own({
+      predicate: 'approval.initiatedOrParticipated',
+      fields: fixed(APPLICATION_KEYS, 'F-474-3b 固定键 listMyApplications'),
+    }),
+  ]),
   // 详情按钮逐个公布（viewerOf 两个 adminScope，N8）；tasks 为展示窗口，logs 受 DEC-104 / 115 记录隐藏
   'GET /instances/:id': canOpen,
+  // F-479 §3.3 审批载体下载：与详情同一个取值函数（能打开实例 + 节点表单含 attachmentRefs + 字段查看权），只认 bound
+  // 响应只有字节；字段声明沿用详情（取值函数同一份，字段裁剪决定“能不能读到这个附件”）
+  'GET /instances/:id/attachments/:fileId/content': canOpen,
   // 历史分页（DEC-101 / X-19）：items 经 visibleTasks / projectLog，recordsHidden 同详情
   'GET /instances/:id/tasks': canOpen,
   'GET /instances/:id/logs': canOpen,

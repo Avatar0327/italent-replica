@@ -29,7 +29,10 @@ export function columnName(field: string): string {
 
 export function snapshotFields(row: Record<string, unknown>): PresetFields {
   return Object.fromEntries(
-    PRESET_FIELD_NAMES.map((field) => [field, row[columnName(field)] ?? null]),
+    PRESET_FIELD_NAMES.map((field) => [
+      field,
+      field === 'workYearCompanyBefore' ? Number(row[columnName(field)] ?? 0) : (row[columnName(field)] ?? null),
+    ]),
   ) as unknown as PresetFields;
 }
 
@@ -48,6 +51,7 @@ function record(row: Record<string, unknown>): EmploymentRecord {
     revision: Number(row.revision),
     staffId: String(row.staff_id),
     entryDate: String(row.entry_date),
+    traineeStartDate: (row.trainee_start_date as string | null) ?? null,
     kind: row.kind as BusinessKind,
     changeType: (row.change_type as ChangeType | null) ?? null,
     serviceType: row.service_type as EmploymentRecord['serviceType'],
@@ -77,7 +81,10 @@ function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: Pag
     creator: employmentCreator(tenantId, sql`r.id`, true),
   });
   return sql`
-    SELECT r.*,t.start_date::text AS start_date,b.revision,current_payload.body AS current_payload,
+    SELECT r.*,t.start_date::text AS start_date,
+      (SELECT c.trainee_start_date::text FROM employment_cycles c
+        WHERE c.tenant_id=r.tenant_id AND c.id=r.staff_id) AS trainee_start_date,
+      b.revision,current_payload.body AS current_payload,
       CASE WHEN isempty(t.valid_during) THEN (t.start_date-1)::text
         WHEN upper_inf(t.valid_during) THEN '9999-12-31' ELSE (upper(t.valid_during)-1)::text END AS stop_date,
       t.valid_during @> ${asOf}::date AS is_current,
@@ -135,6 +142,28 @@ export async function listEmploymentRecords(
   checkPage(page);
   return rowsOf<Record<string, unknown>>(
     await tx.execute(recordsQuery(tenantId, asOf, sql`r.employee_id=${employeeId}`, page, scope)),
+  ).map(record);
+}
+
+/** 按 id 批量取记录（全租户列表分页后补全字段）；返回顺序不保证，调用方按 id 对应。 */
+export async function listEmploymentRecordsByIds(
+  tx: Tx,
+  tenantId: string,
+  ids: readonly string[],
+  asOf: string,
+  scope?: EmploymentScope,
+) {
+  if (!ids.length) return [];
+  return rowsOf<Record<string, unknown>>(
+    await tx.execute(
+      recordsQuery(
+        tenantId,
+        asOf,
+        sql`r.id=ANY(${`{${ids.join(',')}}`}::uuid[])`,
+        { limit: ids.length, offset: 0 },
+        scope,
+      ),
+    ),
   ).map(record);
 }
 

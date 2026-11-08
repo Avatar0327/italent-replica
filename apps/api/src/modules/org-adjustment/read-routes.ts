@@ -7,7 +7,7 @@
  *   先于披露判定校验（400）；文件名日期取下载当天的租户时区日期（DEC-056）。
  */
 import { withTenant } from '@italent/db';
-import { ORG_ADJUSTMENT_OBJECT_CODE, tenantLocalDate } from '@italent/domain';
+import { MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE, tenantLocalDate } from '@italent/domain';
 import type { Hono } from 'hono';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -39,7 +39,9 @@ export function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
       const scope = await resolveModuleScopeInTransaction(bound, ctx, tx, OBJECT);
       const fields = await getModuleViewableFieldsInTransaction(bound, ctx, OBJECT, tx);
       const { rows, total } = await listAdjustments(tx, ctx.tenantId, scope, filter, page);
-      const items = (await projectHeads(tx, ctx.tenantId, rows, fields)).map(listColumns);
+      // 范围 / 主体组织名称另按组织对象范围遮罩（F-412）
+      const orgScope = await resolveModuleScopeInTransaction(bound, ctx, tx, MODULE_OBJECTS.organization.code);
+      const items = (await projectHeads(tx, ctx.tenantId, rows, fields, orgScope)).map(listColumns);
       return { items, total, page: page.page, pageSize: page.pageSize };
     });
     return c.json(body, 200);

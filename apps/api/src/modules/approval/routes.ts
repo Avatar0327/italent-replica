@@ -1,3 +1,5 @@
+import { listMyApplications, myApplicationsQuery } from './my-applications.js';
+import { readCarrierAttachment, respondAttachment as respondAttachmentBytes } from '../attachments/carrier-read.js';
 import { listTodoCards, todoCardsQuery } from './todo-cards.js';
 import { todoForm, todoSummary } from './todo-summary.js';
 /**
@@ -18,13 +20,14 @@ import {
   APPROVAL_PROCESS_OBJECT,
   APPROVAL_TYPES,
   APPROVER_EXPRESSIONS,
+  BUSINESS_EXIT_CODES,
   MAX_ADD_SIGNERS,
   PERSONNEL_OBJECT,
 } from '@italent/domain';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { runCommand, type CommandGuard, type CommandResult } from '../../commands.js';
-import { handleError } from '../../errors.js';
+import { pauseDisclosureHandler } from '../org-adjustment/pause-disclosure.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { registerEmploymentApprovalHooks } from '../employment/approval-hooks.js';
@@ -77,6 +80,7 @@ import {
   publishProcess,
   replaceDraft,
 } from './definitions.js';
+import { loadPathFacts } from './detail-path.js';
 import {
   detailView,
   namedForm,
@@ -204,12 +208,41 @@ async function ownViewable(deps: TenantRouteDeps, ctx: TenantContext, data: Deta
   return new Set([...own, ...profileFields.filter((field) => profile === undefined || profile.has(field))]);
 }
 
-async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
+/**
+ * 详情视图：与附件下载共用同一个取值函数（F-479）。path 只有详情接口下发，事实在这里按 withPath 取（同一事务、
+ * 取自 readDetail 的 allTasks），不放进 readDetail（它还被别的模块的披露复用）；附件下载不需要（默认 false），不多读。
+ */
+async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, withPath = false) {
   const ctx = readCtx(c, deps);
   const viewer = await viewerOf(deps, ctx);
-  const data = await withTenant(deps.db, ctx.tenantId, (tx) => readDetail(tx, ctx, instanceId, viewer));
-  const view = detailView(data, ctx.userId, await detailViewable(deps, ctx, data));
-  return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx.tenantId, view)));
+  const { data, pathFacts } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const detail = await readDetail(tx, ctx, instanceId, viewer);
+    if (!withPath) return { data: detail, pathFacts: undefined };
+    const { instance, version, snapshot, allTasks } = detail;
+    const facts = await loadPathFacts(tx, ctx, instance, version.nodes, snapshot.conditionValues, allTasks);
+    return { data: detail, pathFacts: facts };
+  });
+  return { ctx, view: detailView(data, ctx.userId, await detailViewable(deps, ctx, data), pathFacts) };
+}
+
+async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
+  const { ctx, view } = await detailViewOf(c, deps, instanceId, true);
+  return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view)));
+}
+
+/**
+ * F-479 §3.3 审批载体下载：先走与详情同一个取值函数（readDetail → detailView：能打开实例、节点表单含 attachmentRefs、
+ * 查看人有字段查看权才有值），再只认值里的引用且 status=bound；打不开实例 404“审批实例不存在”，其余 404“附件不存在”。
+ */
+async function respondAttachment(c: C, deps: TenantRouteDeps) {
+  const instanceId = uuidParam(c);
+  const fileId = uuidParam(c, 'fileId');
+  const { ctx, view } = await detailViewOf(c, deps, instanceId);
+  const refs = (view.form.values as Record<string, unknown>).attachmentRefs;
+  const { row, bytes } = await withTenant(deps.db, ctx.tenantId, (tx) =>
+    readCarrierAttachment(tx, ctx.tenantId, view.businessId, Array.isArray(refs) ? refs : [], fileId),
+  );
+  return respondAttachmentBytes(c, row, bytes);
 }
 
 /** DEC-101 / X-19：完整任务与日志历史分页读取（最新在前），权限与披露同详情。 */
@@ -258,7 +291,8 @@ export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
   registerHooks(deps);
   // F-039：子应用套本模块登记表（APPROVAL_POLICIES），注册行不变、处理函数不变
   const module = policedSub(router, APPROVAL_POLICIES, () => new Hono<TenantEnv>());
-  module.onError(handleError);
+  // 审批通过后的任职联动可能撞到组织调整的执行暂停：编号按查看人的调整单可见性披露（F-342 / F-355）
+  module.onError(pauseDisclosureHandler(deps));
   registerProcessRoutes(module, deps);
   registerTenantConfigRoutes(module, deps);
   registerSimulationRoutes(module, deps);
@@ -493,6 +527,13 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/instances', async (c) => {
     const ctx = readCtx(c, deps);
     const page = pageQuery(c);
+    if (c.req.query('view') !== undefined) {
+      const query = myApplicationsQuery(c.req.query());
+      const result = await withTenant(deps.db, ctx.tenantId, (tx) =>
+        listMyApplications(tx, ctx.tenantId, ctx.userId, query, page),
+      );
+      return c.json({ ...result, page: page.page, pageSize: page.pageSize });
+    }
     const role = z.enum(['initiated', 'participated']).parse(c.req.query('role') ?? 'initiated');
     const businessId = c.req.query('businessId');
     if (businessId !== undefined) z.uuid().parse(businessId);
@@ -502,6 +543,7 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     return c.json({ items, page: page.page, pageSize: page.pageSize });
   });
   router.get('/instances/:id', (c) => respondDetail(c, deps, uuidParam(c)));
+  router.get('/instances/:id/attachments/:fileId/content', (c) => respondAttachment(c, deps));
   router.get('/instances/:id/tasks', (c) => respondHistory(c, deps, 'tasks'));
   router.get('/instances/:id/logs', (c) => respondHistory(c, deps, 'logs'));
   router.get('/admin-logs', async (c) => {
@@ -552,11 +594,30 @@ async function fieldRights(c: C, deps: TenantRouteDeps, taskId: string, edits: R
 const comment = z.string().trim().max(2000).nullable().optional();
 const fields = z.record(z.string().max(100), z.unknown());
 
+const exitReschedule = z
+  .strictObject({ pendingTransferAck: z.string().max(200).optional(), confirmed: z.boolean().optional() })
+  .optional();
+const decision = z.strictObject({ comment, fields: fields.optional(), exitReschedule });
+// F-478 S2：只有 approve / disagree 接受 exit，且各自只收本族编码；驳回类不加（DEC-831⑥），多带字段一律 400。
+const withExit = (codes: readonly [string, ...string[]]) => decision.extend({ exit: z.enum(codes).optional() });
+const DECISION_SCHEMAS = {
+  approve: withExit(['approve', ...BUSINESS_EXIT_CODES]),
+  disagree: withExit(['disagree']),
+  reject: decision,
+  'reject-previous': decision,
+};
+
+/** 命令指纹：与端点默认出口相同的 exit 视同未带，带不带 exit:'approve' 的重放才幂等（DEC-067）。 */
+function decisionLedger<T extends { exit?: string }>(
+  path: 'approve' | 'disagree' | 'reject' | 'reject-previous',
+  request: T,
+) {
+  const defaultExit = path === 'disagree' ? 'disagree' : 'approve';
+  const { exit: _same, ...bare } = request;
+  return request.exit && request.exit !== defaultExit ? request : bare;
+}
+
 function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  const exitReschedule = z
-    .strictObject({ pendingTransferAck: z.string().max(200).optional(), confirmed: z.boolean().optional() })
-    .optional();
-  const decision = z.strictObject({ comment, fields: fields.optional(), exitReschedule });
   for (const [path, act] of [
     ['approve', approveTask],
     ['disagree', disagreeTask],
@@ -566,15 +627,18 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     router.post(`/tasks/:id/${path}`, async (c) => {
       const ctx = writeCtx(c, deps);
       const taskId = uuidParam(c);
-      const input = await parseBody(c, decision);
+      const input = (await parseBody(c, DECISION_SCHEMAS[path])) as z.infer<typeof decision> & { exit?: string };
       const viewable = await fieldRights(c, deps, taskId, input.fields);
       const request = {
         taskId,
         comment: input.comment ?? null,
         ...(input.fields ? { fields: input.fields } : {}),
         ...(input.exitReschedule ? { exitReschedule: input.exitReschedule } : {}),
+        ...(input.exit ? { exit: input.exit } : {}),
       };
-      const result = await command(c, deps, ctx, request, (tx, context) => act(tx, context, request, viewable));
+      const result = await command(c, deps, ctx, decisionLedger(path, request), (tx, context) =>
+        act(tx, context, request, viewable),
+      );
       return respondOutcome(c, deps, result);
     });
   }

@@ -19,12 +19,13 @@ import { withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
+import { readCarrierAttachment, respondAttachment } from '../attachments/carrier-read.js';
 import { exitActions } from './exit-actions.js';
 import { handoverRowActions } from './exit-handover-batch.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { getModuleViewableFields } from '../permission/module-access.js';
+import { getModuleViewableFields, resolveModuleScope } from '../permission/module-access.js';
 import { registerSettingValidator } from '../tenant-settings/service.js';
 import {
   EMPLOYEE_OBJECT,
@@ -42,6 +43,8 @@ import {
   uuidParam,
   type EmploymentContext,
 } from './context.js';
+import { rawImportRows, withFailedImportLog } from '../../audit/record.js';
+import { importExits, parseExitImportBody, previewExitImport, requireExitImportAccess } from './exit-import.js';
 import { createExitApplication, parseExitPatch, updateExitFields } from './exit-application.js';
 import {
   cancelExit,
@@ -72,7 +75,7 @@ import { previewExit } from './exit-preview.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import { businessDate, normalizeEmploymentInput, normalizedUuid } from './fields.js';
 import type { BusinessWriteGuard } from './entry-routes.js';
-import { exitBatchGuard, exitCommandGuard, exitEditGuard } from './replay-guard.js';
+import { exitBatchGuard, exitCommandGuard, exitEditGuard, exitImportGuard } from './replay-guard.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import { transitionEmployment } from './transitions.js';
 import {
@@ -232,6 +235,7 @@ function registerExitCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       { guard: exitCommandGuard(deps, ctx, 'create', gate, { departmentId }) },
     );
   });
+  registerExitImportRoutes(router, deps);
   router.post('/exits/batch', async (c) => {
     const ctx = await readContext(c, deps, 'object.create');
     const { items } = parse(batchSchema, await jsonBody(c));
@@ -246,6 +250,46 @@ function registerExitCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       async (tx, context) => ({ status: 201, body: await createExitBatch(tx, context, items, guard.failures()) }),
       { guard },
     );
+  });
+}
+
+/**
+ * F-139a 历史离职人员导入（设计 §3 / §7）：preview 不写数据、不进命令台账；import 整批一个事务，必须带 Idempotency-Key。
+ * 权限先于请求体与幂等键校验（无权者不应得到任何逐行结果）。
+ */
+/** 人员对象的数据范围（与任职记录分开解析，同 POST /employees 的口径）。 */
+const employeeScopeOf = (deps: TenantRouteDeps, ctx: EmploymentContext) =>
+  resolveModuleScope(deps, ctx, tenantLocalDate(ctx.now, ctx.timezone), EMPLOYEE_OBJECT);
+
+function registerExitImportRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.post('/exits/import/preview', async (c) => {
+    const ctx = await readContext(c, deps, 'object.create');
+    const body = parseExitImportBody(await jsonBody(c));
+    await requireExitImportAccess(ctx, body.rows, await employeeScopeOf(deps, ctx));
+    const result = await withTenant(deps.db, ctx.tenantId, (tx) => previewExitImport(tx, ctx, body));
+    return c.json(result, 200);
+  });
+  router.post('/exits/import', async (c) => {
+    const ctx = await readContext(c, deps, 'object.create');
+    const raw = await jsonBody(c);
+    const task = {
+      ...ctx,
+      commandId: c.req.header('idempotency-key'),
+      objectType: 'exit-import',
+      total: rawImportRows(raw, 'rows').length,
+    };
+    return withFailedImportLog(deps.db, task, async () => {
+      const body = parseExitImportBody(raw);
+      await requireExitImportAccess(ctx, body.rows, await employeeScopeOf(deps, ctx));
+      return runWrite(
+        c,
+        deps,
+        ctx,
+        body,
+        async (tx, context) => ({ status: 201, body: await importExits(tx, context, body) }),
+        { guard: exitImportGuard(deps, ctx, body.rows), project: (receipt) => receipt },
+      );
+    });
   });
 }
 
@@ -356,6 +400,8 @@ function registerExitChanges(
 // ---- 撤销离职（B4，设计 §7.1 / §7.3 / §9.1）------------------------------------------------------------------------
 
 const cancelSchema = z.strictObject({ reason: z.string().max(500), confirmed: z.boolean().optional() });
+/** 撤销退休不收原因（DEC-714）：带 reason 一律 400，不是静默忽略。 */
+const retirementCancelSchema = z.strictObject({ confirmed: z.boolean().optional() });
 
 /**
  * 撤销回执响应前的按查看人裁剪：业务头按任职字段权，撤销清单目标按各自对象的可见性（不可见只计 hiddenCount）。
@@ -374,10 +420,26 @@ async function projectCancelReceipt(deps: TenantRouteDeps, ctx: EmploymentContex
   return { ...trimmed, cancellation, downstream: visible };
 }
 
+function parseRetirementCancel(raw: unknown): { confirmed?: boolean } {
+  const parsed = retirementCancelSchema.safeParse(raw);
+  if (!parsed.success) throw new AppError('VALIDATION_FAILED', '撤销退休不收撤销原因', { issues: parsed.error.issues });
+  return parsed.data;
+}
+
+function parseLeaveCancel(raw: unknown, kind: 'leave' | 'retirement') {
+  const parsed = cancelSchema.safeParse(raw);
+  if (!parsed.success || !parsed.data.reason.trim())
+    throw new AppError('VALIDATION_FAILED', `请填写撤销${exitKindLabel(kind)}原因`, {
+      reason: 'EXIT_CANCEL_REASON_REQUIRED',
+      issues: parsed.success ? [] : parsed.error.issues,
+    });
+  return parsed.data;
+}
+
 /**
  * POST exits/:id/cancel、POST retirements/:id/cancel 与通用 DELETE businesses/:id（对离职 / 退休单映射到撤销）共用：
- * 解析 { reason, confirmed? }，命令内复核权限（按钮取 buttonsOf(kind).cancel）与范围，同一事务执行 cancelExit。
- * reason 缺失 / 空白 400；超编走 DEC-258 确认（confirmed: true 重提）。
+ * 解析 { reason, confirmed? }（退休只收 { confirmed? }，DEC-714），命令内复核权限（按钮取 buttonsOf(kind).cancel）与范围，同一事务执行 cancelExit。
+ * 离职 reason 缺失 / 空白 400；超编走 DEC-258 确认（confirmed: true 重提）。
  */
 export async function runExitCancel(
   c: Context<TenantEnv>,
@@ -390,13 +452,8 @@ export async function runExitCancel(
 ) {
   // 权限链先于校验（§9.1）：无 DimissionCancel / RetireCancel 者先得 403，不因缺原因而得 400
   await requireExitPermission(ctx, 'cancel', { employeeId, deleting, kind });
-  const parsed = cancelSchema.safeParse(await jsonBody(c).catch(() => ({})));
-  if (!parsed.success || !parsed.data.reason.trim())
-    throw new AppError('VALIDATION_FAILED', `请填写撤销${exitKindLabel(kind)}原因`, {
-      reason: 'EXIT_CANCEL_REASON_REQUIRED',
-      issues: parsed.success ? [] : parsed.error.issues,
-    });
-  const input = parsed.data;
+  const raw = await jsonBody(c).catch(() => ({}));
+  const input = kind === 'retirement' ? parseRetirementCancel(raw) : parseLeaveCancel(raw, kind);
   return runWrite(
     c,
     deps,
@@ -512,7 +569,7 @@ export async function viewableIn(deps: TenantRouteDeps, ctx: EmploymentContext):
 }
 
 /** 筛选用到的字段必须可见，否则 403，不让筛选成为看不见字段的探针（同实习视图）。 */
-function requireViewableExitFilters(filter: ExitViewFilter, show: ExitViewable) {
+export function requireViewableExitFilters(filter: ExitViewFilter, show: ExitViewable) {
   const fields = filterFieldsOf(filter);
   if (!fields.employee.every(show.employee) || !fields.employment.every(show.employment))
     throw new AppError('FORBIDDEN', '筛选字段不可查看');
@@ -548,7 +605,8 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     });
   });
   // 详情：范围外 / 不存在 / 不是离职单同一个 404；先按任职业务口径（DEC-177）确认可见，再取离职详情
-  router.get('/exits/:id', async (c) => {
+  // 详情与附件下载共用的取值：按钮 / 范围 / 读权限同一套判定（F-479 §3.3 “与详情接口同一个取值函数”）
+  const readExitDetail = async (c: Context<TenantEnv>) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
     const today = tenantLocalDate(ctx.now, ctx.timezone);
@@ -559,7 +617,20 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     );
     if (!detail) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
-    const show = await viewableIn(deps, ctx);
+    return { ctx, detail, show: await viewableIn(deps, ctx) };
+  };
+  // F-479 §3.3 HR 载体下载：无附件字段查看权 / 文件不属于本单 / 不是 bound 一律 404“附件不存在”；缺详情按钮 403（readPageContext）
+  router.get('/exits/:id/attachments/:fileId/content', async (c) => {
+    const fileId = uuidParam(c, 'fileId');
+    const { ctx, detail, show } = await readExitDetail(c);
+    if (!show.employment('attachmentRefs')) throw new AppError('NOT_FOUND', '附件不存在');
+    const { row, bytes } = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      readCarrierAttachment(tx, ctx.tenantId, detail.id, detail.attachmentRefs, fileId),
+    );
+    return respondAttachment(c, row, bytes);
+  });
+  router.get('/exits/:id', async (c) => {
+    const { ctx, detail, show } = await readExitDetail(c);
     // 动作随“状态”字段权裁剪（依赖表登记 actions）：无状态查看权的人拿不到，也就无法由动作反推状态
     const actions = (await exitActions(deps, ctx, [detail], { withHandle: false })).get(detail.id) ?? [];
     if (detail.activation?.details) {

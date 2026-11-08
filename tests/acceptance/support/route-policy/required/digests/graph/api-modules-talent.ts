@@ -335,7 +335,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent/write-support.ts#bumped',
     'apps/api/src/modules/talent/write-support.ts#lockOwned',
   ],
-  'apps/api/src/modules/talent/model-image-format.ts#decodeImage': ['#MODEL_IMAGE_MAX_BYTES'],
+  'apps/api/src/modules/talent/model-image-format.ts#decodeImage': ['#MODEL_IMAGE_MAX_BYTES', '#sizeText'],
   'apps/api/src/modules/talent/model-image-format.ts#staticGif': [
     '#gifPixels',
     '#skipGifBlocks',
@@ -352,6 +352,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent/model-image-format.ts#validateImageMetadata': [
     '#MIME',
     '#MODEL_IMAGE_MAX_BYTES',
+    '#sizeText',
     '#unsupported',
   ],
   'apps/api/src/modules/talent/model-image-routes.ts#BASE': ['apps/api/src/modules/talent/http.ts#TALENT_BASE'],

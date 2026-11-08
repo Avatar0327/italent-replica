@@ -10,6 +10,8 @@ export const ERROR_STATUS = {
   UNAUTHENTICATED: 401,
   FORBIDDEN: 403,
   VALIDATION_FAILED: 400,
+  // F-139a：历史离职导入整批校验不过（逐行原因在 details.rows），零写入。
+  IMPORT_ROWS_INVALID: 400,
   // F-325 / DEC-685①：日工资标准的金额校验按派发契约返回 422。
   DAILY_WAGE_STANDARD_INVALID: 422,
   EMPLOYMENT_FORM_INVALID: 422,
@@ -36,6 +38,13 @@ export const ERROR_STATUS = {
   IDEMPOTENCY_CONFLICT: 409,
   // F-061：保存对象权限时带的对象目录指纹与服务端当前不一致（目录或租户扩展字段变了），刷新后重提
   CATALOG_CHANGED: 409,
+  // F-479：同一所有人未绑定的临时附件已达上限（删除或等待过期后再登记）
+  ATTACHMENT_TEMP_LIMIT: 409,
+  // F-479 S2：绑定到载体的引用校验（只回显下标）、张数上限、只读载体的写入、封存时字节缺失
+  ATTACHMENT_INVALID: 400,
+  ATTACHMENT_LIMIT: 400,
+  ATTACHMENT_REFS_READONLY: 400,
+  ATTACHMENT_MISSING: 409,
   PAYLOAD_TOO_LARGE: 413,
   UNSUPPORTED_MEDIA_TYPE: 415,
   SERVICE_UNAVAILABLE: 503,

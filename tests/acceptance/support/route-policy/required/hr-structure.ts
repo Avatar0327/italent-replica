@@ -38,4 +38,12 @@ export const HR_STRUCTURE: RequiredTable = {
   [`GET ${BASE}/reports/:report`]: [
     view(`${BASE}/reports/:report`, 'TenantBase.HrStructureReport', 'HR_STRUCTURE_REPORT_OBJECT', 'reportContext'),
   ],
+  [`GET ${BASE}/reports/:report/export`]: [
+    view(
+      `${BASE}/reports/:report/export`,
+      'TenantBase.HrStructureReport',
+      'HR_STRUCTURE_REPORT_OBJECT',
+      'reportContext',
+    ),
+  ],
 };

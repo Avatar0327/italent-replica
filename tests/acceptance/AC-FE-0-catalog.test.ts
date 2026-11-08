@@ -91,8 +91,11 @@ describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
     expect(result.menus.map((menu) => menu.key)).toEqual([
       app,
       ...(code === M.contract.code ? ['contracts'] : []),
+      // F-465b：人事报表子菜单按三张报表任一对象显示。
+      ...([M.hrRoster.code, M.hrMovementReport.code, M.hrStructureReport.code].includes(code) ? ['hr-reports'] : []),
       ...(app === 'transfer' && code === M.employmentRecord.code
         ? [
+            'employment-records',
             'entries',
             'exit-settings',
             'exits',

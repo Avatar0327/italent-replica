@@ -5,12 +5,13 @@
  * 裁剪（§4.5）：HR 看不到的组织（组织对象范围外）不出节点，其可见下级挂到最近的可见祖先；被隐去的明细行不出节点
  * 也不改树；看不到的值给 null 并记入 masked。看不到新上级时节点不移动（变更）或放在根层（新建）。
  * 既有节点的属性（现名、负责人、编制原值）是调整范围的展开：调整范围可见，或节点是一条可见明细的目标（targetOrgId
- * 可见）时给出，否则给 null。HR 与审批人同一口径。看不到 `orgItems.name` 时保留现名，并在 masked 记 name。
+ * 可见）时给出，否则给 null。HR 与审批人同一口径。看不到 `orgItems.name` 时保留现名，并在 masked 记 newName
+ * （masked 含 name 则 name 一定为 null，F-442）。
  * 节点不带在岗 / 兼岗人数（DEC-745，照北森：调整预览各视图都没有人数，也没有调整前后对比，F273A §8.1）。
  * 负责人与“编制原值”（DEC-653，BE-10e 导出用）：
  * 负责人取生效日组织版本，可见的变更行给了新负责人时以明细为准，新增节点取明细值，姓名取人员版本链的最新姓名；
  * 编制原值口径同编制详情（readCapacity：覆盖生效日的期间、生效日版本的含下级编制，“仅本级”方案按启用子树汇总，
- * 复用 batchLocalSums），新增节点无编制；多方案时按 pickScheme 取一个。
+ * 复用 batchLocalSums），新增节点无编制；同期多方案属防御兜底，按 pickScheme 取一个。
  * 编制增减数随 11e / 11f 的编制生成行。
  * 同级顺序同组织模块（DEC-089）：行政顺序号（明细指定值优先，其次组织现值；空排最后）→ 编码 → 既有在前 → 录入顺序。
  * 改上级不填顺序号即沿用组织原顺序号（DEC-745，F273A §8.2）。
@@ -22,8 +23,7 @@ import { DEFAULT_SCHEME_CODE } from '../establishment/default-scheme.js';
 import { loadSchemeBatch } from '../establishment/schemes.js';
 import { currentPersonName } from '../personnel/employee-projection.js';
 import { type OrgRecord, rowsOf } from '../org/read-model.js';
-import { scopeAllows } from '../permission/module-access.js';
-import { canSee, visibleItems, type Disclosure } from './disclosure.js';
+import { canSee, orgInScope, visibleItems, type Disclosure } from './disclosure.js';
 import type { OrgItem } from './items-store.js';
 import { loadWorld } from './item-tree.js';
 
@@ -73,10 +73,10 @@ export async function readPreview(tx: Tx, tenantId: string, disclosure: Disclosu
   const view = disclosure.view;
   const world = await loadWorld(tx, tenantId, view);
   const see = (field: string) => canSee(disclosure.fields, `orgItems.${field}`);
-  const scope = disclosure.orgScope;
-  const orgVisible = (orgId: string) => !scope || scopeAllows(scope, { orgId });
-  // 暂存行不执行，不进预览，也不让目标的既有属性变为可见。
-  const items = visibleItems(disclosure, world.items).items.filter((item) => !item.isStaged);
+  const orgVisible = (orgId: string) => orgInScope(disclosure, orgId);
+  // 暂存行不执行，不进预览，也不让目标的既有属性变为可见；但它仍是别的行的挂接目标（见 stagedParents）。
+  const visible = visibleItems(disclosure, world.items).items;
+  const items = visible.filter((item) => !item.isStaged);
   const targeted = new Set(items.flatMap((item) => (item.targetOrgId && see('targetOrgId') ? [item.targetOrgId] : [])));
   const rangeVisible = canSee(disclosure.fields, 'adjustmentRange');
   const attrsVisible = (orgId: string) => rangeVisible || targeted.has(orgId);
@@ -87,6 +87,7 @@ export async function readPreview(tx: Tx, tenantId: string, disclosure: Disclosu
     if (orgVisible(orgId)) drafts.set(orgId, existingDraft(world.orgs.get(orgId)!, attrsVisible(orgId)));
   }
   for (const item of items) overlay(item, drafts, see);
+  throughStaged(drafts, stagedParents(visible, see));
 
   if (drafts.size > PREVIEW_NODE_LIMIT) {
     throw new AppError('PAYLOAD_TOO_LARGE', `预览节点超过 ${PREVIEW_NODE_LIMIT} 个，请缩小调整范围`);
@@ -100,6 +101,36 @@ export async function readPreview(tx: Tx, tenantId: string, disclosure: Disclosu
 }
 
 type OrgMap = Awaited<ReturnType<typeof loadWorld>>['orgs'];
+
+/**
+ * 暂存行不执行、不进预览，但非暂存行可以把它当上级（提交校验 ORG_ADJUSTMENT_STAGED_REFERENCE 才拒绝，F-414①）。
+ * 记下每条暂存行自己的上级（看不到新上级时为 null），预览里把挂在暂存行下的节点接到这个上级上。
+ */
+function stagedParents(items: readonly OrgItem[], see: (field: string) => boolean) {
+  const result = new Map<string, string | null>();
+  for (const item of items) {
+    if (item.isStaged) result.set(item.id, see('parentOrgId') ? (item.parentOrgId ?? item.parentItemId) : null);
+  }
+  return result;
+}
+
+/** 挂接目标是暂存行时沿暂存行的上级链上移，直到落在非暂存行 / 组织上；成环或断链放根层。 */
+function throughStaged(drafts: Map<string, Draft>, staged: ReadonlyMap<string, string | null>) {
+  if (!staged.size) return;
+  for (const draft of drafts.values()) {
+    const seen = new Set<string>();
+    let key = draft.parentKey;
+    while (key && staged.has(key)) {
+      if (seen.has(key)) {
+        key = null;
+        break;
+      }
+      seen.add(key);
+      key = staged.get(key) ?? null;
+    }
+    draft.parentKey = key;
+  }
+}
 
 function existingDraft(org: OrgRecord, visible: boolean): Draft {
   const masked = visible ? [] : ['name', ...ATTR_FIELDS];
@@ -133,7 +164,7 @@ interface CapacityRow {
 }
 
 /**
- * 编制原值：组织在生效日有多个方案的编制时按 `pickScheme` 取一个。
+ * 编制原值：生效日所在周期的编制；兜底场景下同一组织有多个方案时按 `pickScheme` 取一个。
  * “仅本级”方案的含下级直接用编制详情的 `batchLocalSums`（同一汇总类型与子树预算）。
  */
 async function fillEstablishment(tx: Tx, tenantId: string, date: string, nodes: readonly PreviewNode[]) {
@@ -184,10 +215,16 @@ interface SchemeKey {
 }
 
 /**
- * 同一组织在生效日有多个方案的编制时选哪一个（复刻系统的临时口径，BE-10e 第 2 轮总编排补充）：
- * 先排除已停用方案；启用方案里预置默认方案（DEFAULT_SCHEME_CODE）优先；其余按方案编码升序取第一个。
- * 多方案并存属上游既有问题（DEC-279 / DEC-295 要求重叠周期唯一编制），本函数只做确定性兜底，待取证。
- * TODO(需取证)：原站同一组织多方案时编制原值取哪个方案。
+ * 同一组织在生效日有多个方案的编制时选哪一个（F-446，北森实测，DEC-784）：
+ * - 北森同一组织在重叠周期内只能有一个方案的编制（新建时前端即拦），不同年份 / 不重叠周期的方案可并存（如某年度方案
+ *   与另一年的月度方案）；预览取生效日所在周期的那一条（上面查询的 period_start / period_end 条件已做到），
+ *   不存在“同期多方案取哪个”的业务情形。
+ * - 北森停用被当前 / 未来周期编制引用的方案会被直接拒绝；复刻同口径（schemes.ts 的 SCHEME_IN_USE，提示照北森原文），
+ *   所以生效日所在周期的编制不会指向已停用方案；组织没有编制时显示“--”，与北森一致。
+ * 复刻写入侧目前只有 unique(组织, 方案, 周期起始)（capacity-service.ts 的 CAPACITY_EXISTS），
+ * 跨方案重叠周期的拦截（DEC-279① / DEC-295①，F-037）尚未落地，所以同期多方案在复刻里理论上仍可能出现，
+ * 这里保留确定性兜底（防御用）：先排除已停用方案；启用方案里预置默认方案（DEFAULT_SCHEME_CODE）优先；
+ * 其余按方案编码升序取第一个。结果与录入顺序无关。
  */
 export function pickScheme<T extends SchemeKey>(candidates: readonly T[]): T | null {
   const rank = (row: T) => (row.code === DEFAULT_SCHEME_CODE ? 0 : 1);
@@ -246,9 +283,10 @@ function overlay(item: OrgItem, drafts: Map<string, Draft>, see: (field: string)
   if (!draft) return;
   const target = draft.node as { itemId: string | null } & PreviewNode;
   Object.assign(target, { itemId: item.id, mark });
-  // 看不到新名称时保留可见的现名（现名已按既有属性口径给出），masked 记 name 表示调整后名称未披露。
+  // 看不到新名称时保留可见的现名（现名已按既有属性口径给出），masked 记 newName 表示调整后名称未披露；
+  // masked 含 name 只留给“名称本身被遮住、name 为 null”的节点，前端据此只有一种解读（F-442）。
   const renamed = see('name') && item.name !== null;
-  if (!see('name')) masked.add('name');
+  if (!see('name')) masked.add('newName');
   else if (renamed) target.name = item.name;
   // 新名称本身可见时，原先因调整范围不披露而遮住的名称以新名称为准。
   target.masked = [...new Set([...target.masked.filter((code) => !(renamed && code === 'name')), ...masked])];

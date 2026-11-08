@@ -284,3 +284,31 @@
   font-size: 14px;
   font-weight: 500;
 }
+
+.approval-initiator {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.approval-filter-dropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.approval-filter-dropdown .ant-checkbox-group {
+  flex-direction: column;
+}
+.approval-filter-actions {
+  justify-content: flex-end;
+}
+.approval-field-group + .approval-field-group {
+  margin-top: 16px;
+}
+.approval-field-group h3 {
+  margin: 0 0 12px;
+  padding-inline-start: 10px;
+  border-inline-start: 3px solid #146eff;
+  font-size: 14px;
+  font-weight: 500;
+}

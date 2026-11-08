@@ -1,3 +1,6 @@
+import { applyInternSeniority } from './intern-seniority.js';
+import { applyRehireSeniority } from './rehire-seniority.js';
+import { assertRegularizationApplication } from './regularization-eligibility.js';
 import { exitDateChange, lockExitForEdit, rescheduleExit, type RescheduleOptions } from './exit-reschedule.js';
 import { carryEstablishment } from '../establishment/carried-transfer.js';
 import { reconcileCompletion, openCompletion } from '../transfer/completion.js';
@@ -111,6 +114,12 @@ export interface CreateEmploymentOptions {
    * 不再判 PB-R9 互斥（考核自己正是在审批中的那一个）。只由考核审批回调传入，不开放给请求体。
    */
   readonly generatedByAssessment?: true;
+  /**
+   * 历史离职导入的入职段（F-139a 设计 §4.3）：部门可用性按 [入职日, until) 有终点校验；
+   * 只有导入服务传，配 ctx.trustedExit = 'import'。
+   * 编制不在这里判（普通 hire 的 kind 过滤保持不变），由导入服务在第 1 步统一评估。
+   */
+  readonly importedTenure?: { readonly until: string };
 }
 
 export async function createEmploymentBusiness(
@@ -124,8 +133,10 @@ export async function createEmploymentBusiness(
   // 离职与退休同门禁（R2-T04 §1.2）：不再有不带下游（预减 / 作废 / 合同 / 转交）的当场落地退休
   if (isExitKind(normalized.kind) && !ctx.trustedExit && options.exitPass !== EXIT_GATE_PASS)
     throw new AppError('FORBIDDEN', '离职 / 退休业务须经离职门禁创建', { reason: 'EXIT_GATE_REQUIRED' });
-  // 经门禁的直接离职先存 approved；生效由 createExitApplication 在写完扩展行与 confirmed 阶段后调用 activateIfDue（§5.3）
-  const gatedDirect = options.exitPass === EXIT_GATE_PASS && normalized.mode === 'direct';
+  // 经门禁的直接离职先存 approved；生效由 createExitApplication 写完扩展行后调用 activateIfDue（§5.3）；
+  // 导入的离职段同样先存 approved，导入服务随后写 effective 并落地（F-139a 设计 §6 第 4～5 步）
+  const importedLeave = ctx.trustedExit === 'import' && isExitKind(normalized.kind);
+  const gatedDirect = (options.exitPass === EXIT_GATE_PASS || importedLeave) && normalized.mode === 'direct';
   if (normalized.kind === 'transfer')
     await lockTransferParticipants(tx, ctx, employeeId, normalized.fields.addedSubordinateIds ?? []);
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
@@ -158,7 +169,8 @@ export async function createEmploymentBusiness(
     prepared,
     effective.fields,
     undefined,
-    options.rescheduledExit === true && normalized.kind === 'leave',
+    (options.rescheduledExit === true && normalized.kind === 'leave') || importedLeave,
+    options.importedTenure?.until,
   );
   const id = await initializeEmploymentBusiness(
     tx,
@@ -174,9 +186,7 @@ export async function createEmploymentBusiness(
   if (NEW_CYCLE_KINDS.includes(normalized.kind)) await assertNotBlacklisted(tx, ctx, employee.id);
   // F-188：待入职阶段的“是否有试用期”随记录落库（改期 / 编辑换日期替换记录时由 entry-actions 带到这里）
   // F-194：同时生成待入职合同（起始日 = 计划入职日期、终止日为空）；Offer 同步生成待入职（BE-14）走同一通道
-  const pendingAudit = await saveAddedPendingEntryData(tx, ctx, employee.id, id, normalized, options.entry);
-  // BE-3：入职 / 实习转正带了是否有试用期时写试用期版本链（entry-probation.ts；申请的开始日到生效时再定）
-  await saveCreatedProbation(tx, ctx, employee.id, id, normalized, options.entry);
+  const pendingAudit = await saveEntryExtras(tx, ctx, employee.id, id, normalized, options);
   const payload = await appendEmploymentPayload(
     tx,
     ctx,
@@ -191,7 +201,8 @@ export async function createEmploymentBusiness(
     entryStatusFor(normalized.kind, options.entry),
   );
   const business = initialBusiness(employee, payload, gatedDirect);
-  if (normalized.mode === 'direct' && !gatedDirect) await materializeEmploymentRecord(tx, ctx, business, options);
+  if (normalized.mode === 'direct' && !gatedDirect)
+    await materializeEmploymentRecord(tx, ctx, business, withImportedUntil(options));
   await appendEmploymentState(tx, ctx, business, business.state);
   await bindRehireRetirement(tx, ctx, business);
   await bumpEmploymentEmployee(tx, ctx, employee);
@@ -199,6 +210,29 @@ export async function createEmploymentBusiness(
   const created = { ...payloadAudit(payload), ...pendingAudit };
   await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, created);
   return requireSavedBusiness(tx, ctx, id);
+}
+
+/** 导入入职段落地时把有终点带给部门可用性校验（设计 §4.3）；普通入职原样透传。 */
+function withImportedUntil(options: CreateEmploymentOptions) {
+  return options.importedTenure ? { ...options, importedUntil: options.importedTenure.until } : options;
+}
+
+/**
+ * 待入职合同 + 试用期随创建落库；历史离职导入两者都不生成（设计 §6 第 3 步）。
+ * BE-3：入职 / 实习转正带了是否有试用期时写试用期版本链（entry-probation.ts；申请的开始日到生效时再定）。
+ */
+async function saveEntryExtras(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  businessId: string,
+  normalized: NormalizedEmploymentInput,
+  options: CreateEmploymentOptions,
+) {
+  if (options.importedTenure) return {};
+  const pendingAudit = await saveAddedPendingEntryData(tx, ctx, employeeId, businessId, normalized, options.entry);
+  await saveCreatedProbation(tx, ctx, employeeId, businessId, normalized, options.entry);
+  return pendingAudit;
 }
 
 /**
@@ -353,6 +387,7 @@ export async function updateEmploymentBusiness(
   }
   const before = business.payload;
   const normalized = normalizePatchedInput(ctx, before, patch);
+  await assertRegularizationApplication(tx, ctx, business, normalized);
   await assertNotBeforeCurrentCycle(tx, ctx, business.employeeId, normalized);
   await assertBusinessSequence(tx, ctx, business.employeeId, normalized);
   assertEmployTypeUsage(normalized);
@@ -701,11 +736,15 @@ async function cycleForMaterialization(
   position: TimelinePosition,
 ): Promise<SelectedEmploymentCycle | undefined> {
   if (newCycle) return undefined;
-  return selectEmploymentCycle(tx, ctx, business.employeeId, {
+  const selected = await selectEmploymentCycle(tx, ctx, business.employeeId, {
     effectiveDate: business.payload.effectiveDate,
     expectedStaffId: business.payload.selectedStaffId,
     beforeOrder: position.order,
   });
+  if (selected && business.payload.kind === 'intern_regularization') {
+    await assertNoInternCycleSuccessor(tx, ctx, business, selected.cycle.id);
+  }
+  return selected;
 }
 
 /** DEC-186：已物化的未来调动改期也必须重新验证实际插入点，禁止越过离职或跨任职周期。 */
@@ -745,6 +784,8 @@ interface MaterializeOptions {
   establishmentWarnings?: EstablishmentWarning[];
   /** 离职落地（exit-activation.ts）：不作为状态传播的来源（设计 §5.6）。 */
   skipStatusPropagation?: boolean;
+  /** 历史离职导入的入职段（F-139a）：部门可用性按 [入职日, until) 整段判，而不是 [入职日, ∞)。 */
+  importedUntil?: string;
 }
 
 /**
@@ -758,9 +799,52 @@ function validateMaterializedReferences(
   fields: PresetFields,
   reporting: ReportingCheck | undefined,
   newCycle: boolean,
+  importedUntil?: string,
 ) {
   const terminating = ['leave', 'retirement'].includes(payload.kind);
-  return validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting, newCycle, terminating);
+  return validateNewEmploymentReferences(
+    tx,
+    ctx,
+    fields,
+    payload.effectiveDate,
+    reporting,
+    newCycle,
+    terminating,
+    importedUntil,
+  );
+}
+
+async function materializedFields(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  inherited: Pick<PreparedInheritance, 'fields' | 'customFields'>,
+  employType: EmployType,
+  order: number,
+  traineeStartDate?: string,
+) {
+  const values = {
+    fields: { ...inherited.fields, employType, jobNumber: business.employee.code },
+    customFields: inherited.customFields,
+  };
+  // 两个开关各管各的业务类型（DEC-796 重聘 / DEC-797 实习转正），同一次落地只会命中其一。
+  const rehired = await applyRehireSeniority(tx, ctx, business, values, order);
+  return applyInternSeniority(tx, ctx, business, { ...values, fields: rehired }, traineeStartDate);
+}
+
+/**
+ * 落地记录所属的任职周期标识。DEC-797：实习转正也开新任职周期（入职日期 = 转正日、新 staffId），
+ * 原实习开始日存到新周期上；继承仍取实习周期（sourceStaffId）的前一条。
+ */
+function cycleIdentity(payload: LockedEmploymentBusiness['payload'], selected: SelectedEmploymentCycle | undefined) {
+  const regularizes = payload.kind === 'intern_regularization';
+  const staffId = regularizes ? randomUUID() : (selected?.cycle.id ?? randomUUID());
+  return {
+    staffId,
+    entryDate: regularizes ? payload.effectiveDate : (selected?.cycle.entryDate ?? payload.effectiveDate),
+    traineeStartDate: regularizes ? selected?.cycle.entryDate : undefined,
+    sourceStaffId: selected?.cycle.id ?? staffId,
+  };
 }
 
 export async function materializeEmploymentRecord(
@@ -777,14 +861,13 @@ export async function materializeEmploymentRecord(
   await assertSuccessorSequence(tx, ctx, business.employeeId, payload.kind, position);
   const newCycle = NEW_CYCLE_KINDS.includes(payload.kind);
   const selected = await cycleForMaterialization(tx, ctx, business, newCycle, position);
-  const staffId = selected?.cycle.id ?? randomUUID();
-  const entryDate = selected?.cycle.entryDate ?? payload.effectiveDate;
+  const { staffId, entryDate, traineeStartDate, sourceStaffId } = cycleIdentity(payload, selected);
   const inherited = await resolveEffectiveInheritance(tx, ctx, payload, {
-    staffId,
+    staffId: sourceStaffId,
     predecessor: selected?.predecessor ?? null,
   });
   const employType = effectiveEmployType(payload, selected);
-  const fields = { ...inherited.fields, employType, jobNumber: business.employee.code };
+  const fields = await materializedFields(tx, ctx, business, inherited, employType, position.order, traineeStartDate);
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, fields.departmentId);
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
   // 申请到生效日落地时按实际插入位置（DEC-108）与当日的汇报链再判一次循环汇报（审批期间他人的任职可能已变）；
@@ -793,16 +876,17 @@ export async function materializeEmploymentRecord(
     fields.directManagerId !== null
       ? { employeeId: business.employeeId, window: windowBefore(payload.effectiveDate, next) }
       : undefined;
-  await validateMaterializedReferences(tx, ctx, payload, fields, reporting, newCycle);
-  assertRequiredTransferFields(payload.kind, payload.formSnapshot, fields);
+  await validateMaterializedReferences(tx, ctx, payload, fields, reporting, newCycle, options.importedUntil);
+  assertRequiredTransferFields(payload.kind, payload.formSnapshot, { ...fields });
   await checkMaterializedCapacity(tx, ctx, business, fields, options);
-  if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
+  if (newCycle || payload.kind === 'intern_regularization')
+    await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType, traineeStartDate });
   await insertEmploymentRow(tx, 'employment_records', {
     ...fields,
     id: business.id,
     tenantId: ctx.tenantId,
     employeeId: business.employeeId,
-    payloadVersionId: payload.id,
+    payloadVersionId: business.payload.id,
     staffId,
     entryDate,
     kind: payload.kind,
@@ -811,7 +895,7 @@ export async function materializeEmploymentRecord(
     lastWorkDate: payload.lastWorkDate,
     serviceType: 'primary',
     isInserted: !!next,
-    inheritanceSourceId: selected?.predecessor?.staffId === staffId ? selected.predecessor.id : null,
+    inheritanceSourceId: selected?.predecessor?.staffId === sourceStaffId ? selected.predecessor.id : null,
     customFields: inherited.customFields,
     createdAt: ctx.now.toISOString(),
   });
@@ -946,11 +1030,29 @@ async function forwardMaterializedRecord(
   });
 }
 
+/** 转正日之后不能还有实习周期的记录：它们会悬在新周期之外（与删除转正的既有限制同一原因）。 */
+async function assertNoInternCycleSuccessor(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  internStaffId: string,
+) {
+  const { next } = await employmentTimelineNeighbors(
+    tx,
+    ctx,
+    business.employeeId,
+    business.payload.effectiveDate,
+    business.id,
+  );
+  if (next && next.staffId === internStaffId)
+    throw new AppError('CONFLICT', '转正日之后还有实习期内的任职记录', { reason: 'INTERN_CYCLE_SUCCESSOR_EXISTS' });
+}
+
 async function insertNewEmploymentCycle(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
-  cycle: { staffId: string; entryDate: string; employType: EmployType },
+  cycle: { staffId: string; entryDate: string; employType: EmployType; traineeStartDate?: string },
 ) {
   await insertEmploymentRow(tx, 'employment_cycles', {
     id: cycle.staffId,
@@ -959,6 +1061,7 @@ async function insertNewEmploymentCycle(
     entryDate: cycle.entryDate,
     entryType: business.payload.kind,
     employType: cycle.employType,
+    traineeStartDate: cycle.traineeStartDate ?? null,
     createdAt: ctx.now.toISOString(),
   });
 }
@@ -1003,6 +1106,7 @@ async function validatePreparedEmployment(
   effectiveFields: PresetFields,
   existing?: LockedEmploymentBusiness,
   terminatingSnapshot = false,
+  importedUntil?: string,
 ) {
   assertRequiredTransferFields(kind, prepared.formSnapshot, { ...effectiveFields });
   if (kind === 'transfer')
@@ -1025,6 +1129,7 @@ async function validatePreparedEmployment(
     reporting,
     NEW_CYCLE_KINDS.includes(kind),
     terminatingSnapshot,
+    importedUntil,
   );
   // R2-T08 §7.6：保存 / 修改时员工主部门或目标部门正在执行组织调整即 409；离职 / 退休不判。
   if (!isExitKind(kind)) {

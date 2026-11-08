@@ -476,7 +476,8 @@ const CATALOG = MODULE_OBJECTS.employmentRecord.fields.map((field) => field.code
 /** 全字段权：任职记录对象的整份字段目录 + 人员对象的姓名 / 工号。 */
 const FULL = [...CATALOG, 'name', 'code'];
 /** 响应键与字段目录的对应：派生的显示名跟随编码；这些结构 / 汇总键没有自己的字段编码，行可见即可见。 */
-const DERIVED = ['plannedLastWorkDate', 'exitTypeName', 'reasonName', 'whereaboutsName'];
+// F-479：attachments 是 attachmentRefs 的展开摘要，跟随该字段权（R-4 契约变更）
+const DERIVED = ['plannedLastWorkDate', 'exitTypeName', 'reasonName', 'whereaboutsName', 'attachments'];
 // F-317：rowActions 是服务端按对象 / 行按钮 / 当前写范围判定的控制项，行为另由 F-317 验收守卫。
 // F-352①：actions 是逐单动作（状态 × 按钮权 × 写范围），依赖状态字段权，行为另由 AC-EXIT-F352-actions 守卫。
 const STRUCTURES = [
@@ -913,6 +914,8 @@ const ITEM_SAMPLE = {
 const DETAIL_SAMPLE = {
   ...ITEM_SAMPLE,
   attachmentRefs: [''],
+  // F-479 §3.1：引用展开的摘要（与 attachmentRefs 同权限）；R-4 契约变更，旧样本没有这个响应路径
+  attachments: [{ id: '', filename: '', contentType: '', byteSize: 0, uploadedAt: '', missing: true as const }],
   handoverEmployeeId: null,
   addToBlacklist: false,
   blacklistExpiryDate: null,
@@ -1091,12 +1094,18 @@ describe('AC-DM-19 容器整体判权（第 5 轮）', () => {
 // ---- 第 6 轮（#409 审查 P2）：默认拒绝——没有登记依赖的路径一律不输出，空数组 / 未填写也不例外 --------------------------
 
 describe('AC-DM-19 默认拒绝与附件（第 6 轮）', () => {
-  it('无 attachmentRefs 字段权：空数组 / 非空 / 未填写三类在详情里形状一致（均无该键）；有权时原样返回', async () => {
+  // F-479 S2 R-4：HR 新建不再收 attachmentRefs（只读，本人草稿才能绑定，AC-ATT-16），空数组 / 非空引用改为按后端落库形状造数
+  it('无 attachmentRefs 字段权：空数组 / 非空 / 未填写三类在详情里形状一致（均无该键、无 attachments）；有权时原样返回', async () => {
     const x = await world('views-attachments');
-    const empty = await x.exit('空附件', '2026-10-20', 'application', { exit: { attachmentRefs: [] } });
+    const empty = await x.exit('空附件', '2026-10-20');
     const refs = [randomUUID()];
-    const filled = await x.exit('有附件', '2026-10-21', 'application', { exit: { attachmentRefs: refs } });
+    const filled = await x.exit('有附件', '2026-10-21');
     const unset = await x.exit('未填附件', '2026-10-22');
+    const seed = (id: string, value: unknown) =>
+      x.run(sql`UPDATE exit_requests SET attachment_refs=${JSON.stringify(value)}::jsonb
+        WHERE tenant_id=${x.w.session.tenant.id} AND business_id=${id}::uuid`);
+    await seed(empty.id, []);
+    await seed(filled.id, refs);
     const viewer = (fields: readonly string[]) => x.w.restricted(denyButtons(), undefined, fields);
     const detail = async (api: Api, id: string) =>
       (await (await api('GET', `/exits/${id}`)).json()) as Record<string, unknown>;
@@ -1105,6 +1114,7 @@ describe('AC-DM-19 默认拒绝与附件（第 6 轮）', () => {
     for (const made of [empty, filled, unset]) {
       const seen = await detail(blind, made.id);
       expect(seen, made.id).not.toHaveProperty('attachmentRefs');
+      expect(seen, made.id).not.toHaveProperty('attachments');
       shapes.push(keysOf(seen).join());
     }
     expect(new Set(shapes).size, '三类形状一致').toBe(1);
@@ -1112,6 +1122,8 @@ describe('AC-DM-19 默认拒绝与附件（第 6 轮）', () => {
     expect((await detail(sighted, empty.id)).attachmentRefs).toEqual([]);
     expect((await detail(sighted, filled.id)).attachmentRefs).toEqual(refs);
     expect((await detail(sighted, unset.id)).attachmentRefs).toBeNull();
+    // 引用列表里没有绑定在本单的文件时，摘要不回显任何元数据（只列 bound）
+    for (const made of [empty, filled, unset]) expect((await detail(sighted, made.id)).attachments).toEqual([]);
   });
 
   it('默认拒绝：生产输出里临时多出未登记的标量 / 空数组 / 空对象 / 嵌套数组，裁剪后都不出现（即使字段权不受限）', () => {

@@ -16,7 +16,7 @@ import {
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { rowsOf, validIsoDate } from '../org/read-model.js';
-import { scopeSql, type ModuleScope } from '../permission/module-access.js';
+import { scopeAllows, scopeSql, type ModuleScope } from '../permission/module-access.js';
 import { canSee } from './disclosure.js';
 
 export interface HeadRow {
@@ -130,7 +130,12 @@ export async function listAdjustments(
   page: { readonly limit: number; readonly offset: number },
 ) {
   const where = sql.join(
-    [sql`a.tenant_id = ${tenantId}`, scopeSql(scope, { org: sql`a.approval_subject_org_id` }), ...filterSql(filter)],
+    [
+      sql`a.tenant_id = ${tenantId}`,
+      // 与详情 / 预览同一口径：“本人创建”范围项比对 created_by（F-414②）。
+      scopeSql(scope, { org: sql`a.approval_subject_org_id`, creator: sql`a.created_by` }),
+      ...filterSql(filter),
+    ],
     sql` AND `,
   );
   const [count] = rowsOf<{ n: number }>(
@@ -170,6 +175,7 @@ export async function rangesOf(tx: Tx, tenantId: string, ids: readonly string[])
       ORDER BY r.adjustment_id, r.seq`),
   );
   for (const row of rows) {
+    // 读全：不按查看人范围裁剪（办理时冻结的是完整内容，F-476 DEC-834④）；范围外组织不带名称的裁剪在投影时做
     const label = row.name === null ? null : `${row.name}（包含下级）`;
     ranges.set(row.adjustmentId, [
       ...(ranges.get(row.adjustmentId) ?? []),
@@ -180,9 +186,23 @@ export async function rangesOf(tx: Tx, tenantId: string, ids: readonly string[])
 }
 
 type Fields = ReadonlySet<string> | undefined;
+/** 查看人的组织对象范围；null = 不按组织对象范围裁剪（审批人路径，沿用审批中心可打开口径）。 */
+export type OrgScope = ModuleScope | null;
+const orgVisible = (scope: OrgScope, orgId: string | null) => !scope || !orgId || scopeAllows(scope, { orgId });
+
+/** 范围外的组织不带出现名与文案（F-412，同明细 targetOrgName / 预览的口径）。 */
+function scopedRange(range: RangeOrg, orgScope: OrgScope): RangeOrg {
+  return orgVisible(orgScope, range.orgId) ? range : { orgId: range.orgId, name: null, label: null };
+}
 
 /** 头列投影：每个源字段连同它的派生列一起出现或一起隐去。 */
-export async function projectHeads(tx: Tx, tenantId: string, rows: readonly HeadRow[], fields: Fields) {
+export async function projectHeads(
+  tx: Tx,
+  tenantId: string,
+  rows: readonly HeadRow[],
+  fields: Fields,
+  orgScope: OrgScope,
+) {
   const ranges = canSee(fields, 'adjustmentRange')
     ? await rangesOf(
         tx,
@@ -196,7 +216,7 @@ export async function projectHeads(tx: Tx, tenantId: string, rows: readonly Head
         rows.map((row) => row.createdBy),
       )
     : null;
-  return projectHeadRows(rows, fields, ranges, names);
+  return projectHeadRows(rows, fields, ranges, names, orgScope);
 }
 
 /**
@@ -207,6 +227,7 @@ export function projectHeadRows(
   fields: Fields,
   ranges: ReadonlyMap<string, readonly RangeOrg[]> | null,
   names: ReadonlyMap<string, string> | null,
+  orgScope: OrgScope,
 ) {
   return rows.map((row) => {
     const out: Record<string, unknown> = { id: row.id };
@@ -219,9 +240,9 @@ export function projectHeadRows(
     put('content', { content: row.content });
     put('approvalSubjectOrgId', {
       approvalSubjectOrgId: row.approvalSubjectOrgId,
-      approvalSubjectOrgName: row.approvalSubjectOrgName,
+      approvalSubjectOrgName: orgVisible(orgScope, row.approvalSubjectOrgId) ? row.approvalSubjectOrgName : null,
     });
-    if (ranges) out.adjustmentRange = ranges.get(row.id) ?? [];
+    if (ranges) out.adjustmentRange = (ranges.get(row.id) ?? []).map((range) => scopedRange(range, orgScope));
     put('approvalStatus', {
       approvalStatus: row.approvalStatus,
       approvalStatusLabel: ORG_ADJUSTMENT_APPROVAL_STATUS_LABELS[row.approvalStatus] ?? null,

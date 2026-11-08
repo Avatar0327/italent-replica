@@ -14,6 +14,7 @@ import {
   EXIT_REQUEST_SYSTEM_FIELDS,
   RETIREMENT_BUTTONS,
 } from '../employment/exit.js';
+import { EXIT_IMPORT_BUTTON } from '../employment/exit-import.js';
 import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
 import { DUTY_TRANSFER_FIELDS, DUTY_TRANSFER_SET_RECEIVER_BUTTON } from '../employment/duty-transfer-menu.js';
 import {
@@ -468,6 +469,7 @@ export const MODULE_OBJECTS = {
       'dottedManagerId',
       'employmentType',
       'employmentSource',
+      'workYearCompanyBefore',
       'employmentForm',
       'sequenceId',
       'professionalLineId',
@@ -499,6 +501,8 @@ export const MODULE_OBJECTS = {
       button('Transfer.Hr', 'detail', 'create'),
       button('Transfer.Manager', 'detail', 'create'),
       button('Transfer.Self', 'detail', 'create'),
+      button('Exit.Self', 'detail', 'create'),
+      button('PartTime.Self', 'detail', 'create'),
       button('EmploymentRecord.LineOp.Transfer', 'list_row', 'create'),
       button('Employment.Tranfer', 'list', 'create'),
       button('Employment.Edit', 'detail', 'update'),
@@ -516,6 +520,8 @@ export const MODULE_OBJECTS = {
       button(EXIT_BUTTONS.application, 'detail', 'create'),
       button(EXIT_BUTTONS.edit, 'detail', 'update'),
       button(EXIT_BUTTONS.cancel, 'detail', 'update'),
+      // F-139a：历史离职人员批量导入入口（list 级、不在 EXIT_BUTTONS，DEC-814）
+      button(EXIT_IMPORT_BUTTON, 'list', 'create'),
       HANDOVER_RESUBMIT_BUTTON,
       HANDOVER_SUBMIT_BUTTON,
       HANDOVER_ROW_SUBMIT_BUTTON,
@@ -540,6 +546,8 @@ export const MODULE_OBJECTS = {
       'employeeRevision',
       'status',
       'entryDate',
+      // DEC-797：实习转正新周期保存的原实习开始日，只读，随记录视图返回
+      'traineeStartDate',
       'serviceType',
       'stopDate',
       'previousRecordId',

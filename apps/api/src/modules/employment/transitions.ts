@@ -1,3 +1,5 @@
+import { restoreRehireSeniority } from './rehire-seniority.js';
+import { assertRegularizationApplication } from './regularization-eligibility.js';
 import { reverseCarriedEstablishment, assertReleasedEstablishment } from '../establishment/carried-transfer.js';
 import { postponeLateTransfer } from './late-transfer.js';
 import { activationFailureOf, assertEstablishmentCapacity } from './activation-checks.js';
@@ -7,6 +9,7 @@ import { personnelHooks } from './personnel-hooks.js';
 import { assertNotPausedByOrgAdjustment } from '../org-adjustment/pause.js';
 import { employeeStatusHooks } from './status-hooks.js';
 import { randomUUID } from 'node:crypto';
+import { sealAttachments } from '../attachments/binding.js';
 import { sql, type Db, type Tx } from '@italent/db';
 import { resolveLateExecution, tenantLocalDate } from '@italent/domain';
 import { runCommand, type CommandResult } from '../../commands.js';
@@ -132,11 +135,40 @@ async function approveBusiness(
 /** 29 PB-R9 / AC-PB-03：转正申请在提交时判互斥（草稿照常保存），自己不拦自己。 */
 async function assertRegularizationSubmittable(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
   if (business.payload.kind !== 'regularization') return;
+  await assertRegularizationApplication(tx, ctx, business, business.payload);
   await assertProbationProcessesIdle(tx, ctx, {
     employeeId: business.employeeId,
     action: 'apply',
     businessId: business.id,
   });
+}
+
+/** 提交时只对常规转正、退休返聘做的两条前置校验（其余业务不判）。 */
+async function assertSubmitPreconditions(
+  tx: Tx,
+  ctx: EmploymentContext,
+  action: EmploymentTransitionInput['action'],
+  business: LockedEmploymentBusiness,
+) {
+  if (action !== 'submit') return;
+  await assertRegularizationSubmittable(tx, ctx, business);
+  if (business.payload.kind === 'retire_rehire')
+    await assertBusinessSequence(tx, ctx, business.employeeId, business.payload);
+}
+
+/**
+ * F-479 §2.3：离职提交封存附件。放在 execute 链（本函数的调用者）而不是守卫，重放命中台账时不会走到这里（AC-ATT-24）；
+ * 在所有提交前置校验之后、状态写之前调用：封存失败（字节缺失）整命令回滚。
+ */
+async function sealOnSubmit(
+  tx: Tx,
+  ctx: EmploymentContext,
+  action: EmploymentTransitionInput['action'],
+  businessId: string,
+  row: { readonly attachmentRefs?: unknown } | null | undefined,
+) {
+  if (action === 'submit' && row)
+    await sealAttachments(tx, ctx, { id: businessId, attachmentRefs: row.attachmentRefs });
 }
 
 /** 同事务编排端口；审批中心（R1-T07）对操作者、节点与参与人规则负责。 */
@@ -153,9 +185,7 @@ export async function transitionEmployment(
   assertTransition(business, input.action);
   // 调动业务的员工侧校验留在主函数里：F-039 按调用邻近度探测 transfer write，下沉一层会被判为口径变弱
   if (input.action === 'submit') await requireEmployeeTransferBusiness(tx, ctx, input.id);
-  if (input.action === 'submit') await assertRegularizationSubmittable(tx, ctx, business);
-  if (input.action === 'submit' && business.payload.kind === 'retire_rehire')
-    await assertBusinessSequence(tx, ctx, business.employeeId, business.payload);
+  await assertSubmitPreconditions(tx, ctx, input.action, business);
   if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
     // DEC-195② / DEC-272：审批通过时已过计划生效日的调动改到批准当天（共用判定函数，起点是 §5.0A 计划生效日，D-8）。
@@ -197,6 +227,7 @@ export async function transitionEmployment(
       fields,
     });
   }
+  await sealOnSubmit(tx, ctx, input.action, business.id, gatedExit?.row);
   const released = ['delete', 'withdraw', 'revoke', 'reject', 'disapprove'].includes(input.action)
     ? await reverseCarriedEstablishment(tx, ctx, business.id)
     : [];
@@ -413,7 +444,9 @@ async function deleteEmploymentBusiness(
       createdAt: ctx.now.toISOString(),
     });
     if (record) {
-      const opensCycle = NEW_CYCLE_KINDS.includes(business.payload.kind);
+      // DEC-797：实习转正也开新周期，删除规则同入职类。
+      const opensCycle =
+        NEW_CYCLE_KINDS.includes(business.payload.kind) || business.payload.kind === 'intern_regularization';
       const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
       if (!isExitKind(record.kind)) await assertDeletionNotPaused(tx, ctx, record, point);
       if (point && exitCancel)
@@ -436,6 +469,7 @@ async function deleteEmploymentBusiness(
         employeeStatus: record.employeeStatus,
       });
   }
+  await restoreRehireSeniority(tx, ctx, business);
   await appendEmploymentState(tx, ctx, business, 'deleted');
   await auditEmployment(tx, ctx, 'employment.business.delete', 'employment-business', business.id, before, null);
   // F-199：通用删除与专用 DELETE /pending-entries 共用此内核；待入职合同随业务一并清理并留审计（没有合同的不留）

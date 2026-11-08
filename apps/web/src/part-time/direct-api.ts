@@ -26,13 +26,13 @@ function directErrorKind(status: number, code: string) {
   return 'unknown';
 }
 // 共享 ApiError 不保留 details.items；局部保留批量明细，不改共享客户端契约。
-export function useDirectApi() {
+export function useDirectApi(root = apiRoot) {
   const session = useSession();
   const latest = useRef(session);
   latest.current = session;
   return useMemo(
     () => async (path: string, method: 'POST' | 'PATCH', command: Command, signal?: AbortSignal) => {
-      if (!path.startsWith(`${apiRoot}/`) || /[\\\r\n]/.test(path)) throw new Error('Invalid API path');
+      if (!path.startsWith(`${root}/`) || /[\\\r\n]/.test(path)) throw new Error('Invalid API path');
       const context = latest.current;
       if (!context.tenantId) throw new ApiError(401, 'TENANT_CONTEXT_REQUIRED', 'login', ui.login);
       const headers = new Headers({
@@ -68,6 +68,6 @@ export function useDirectApi() {
       if (!payload) throw new Error(d.invalidReceipt);
       return payload as Values;
     },
-    [],
+    [root],
   );
 }

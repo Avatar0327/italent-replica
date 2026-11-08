@@ -1,3 +1,5 @@
+import { employmentDashboardDate } from './dashboard-date.js';
+import { assertRefsUnchanged } from '../attachments/binding.js';
 import { createHash } from 'node:crypto';
 import { linkageApproval } from '../transfer/linkage/approval.js';
 import type { ForeignField } from './foreign-fields.js';
@@ -127,7 +129,8 @@ export interface BusinessAdapter {
   snapshot(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<BusinessSnapshot>;
   /** 实例推进的同事务出口；包括只改任务/实例、尚未改变业务状态的办理。不得在这里更新全局账号。 */
   persisted?(tx: Tx, ctx: ApprovalContext, snapshot: BusinessSnapshot): Promise<void>;
-  approved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
+  /** 批准可能自动顺延业务日期；只回传看板投影，不替换审批人所读的业务版本。 */
+  approved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void | { readonly dashboardDate: string | null }>;
   rejected(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   /** 沿「不同意」连线流转到结束（DEC-144）：业务单办结为“未通过”、不生效，不能修改重提。 */
   disapproved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
@@ -233,7 +236,10 @@ async function exitInitiation(tx: Tx, tenantId: string, businessId: string): Pro
 async function exitMetadata(tx: Tx, tenantId: string, businessId: string, kind: string): Promise<Row> {
   const row = (await loadExitRequest(tx, tenantId, businessId)) as Row | undefined;
   if (!row) return {};
-  if (kind !== 'retirement') return Object.fromEntries(EXIT_FORM_FIELDS.map((field) => [field, row[field] ?? null]));
+  // 空列表按“没填”口径（null），避免撤光附件后的 [] 被当成新填内容进变化字段 / 盲审
+  const value = (field: string) =>
+    field === 'attachmentRefs' ? ((row[field] as unknown[] | null)?.length ? row[field] : null) : (row[field] ?? null);
+  if (kind !== 'retirement') return Object.fromEntries(EXIT_FORM_FIELDS.map((field) => [field, value(field)]));
   const retirement = await loadRetirementRequest(tx, tenantId, businessId);
   return {
     handoverEmployeeId: row.handoverEmployeeId ?? null,
@@ -355,10 +361,6 @@ async function completedTransferDates(
   const [dates] = rowsOf<Row>(await tx.execute(sql`SELECT ${planned}::text AS "originalEffectiveDate"`));
   return { ...dates, actualEffectiveDate: business.effectiveDate };
 }
-
-/** 规格 35 B51：离职（及同走最后工作日的退休）取最后工作日，其余任职业务取生效日期。 */
-const employmentDashboardDate = (kind: string, lastWorkDate: string | null | undefined, effectiveDate: string) =>
-  ['leave', 'retirement'].includes(kind) ? (lastWorkDate ?? effectiveDate) : effectiveDate;
 
 const employmentAdapter: BusinessAdapter = {
   async lock(tx, ctx, businessId, reassignFrom) {
@@ -499,14 +501,26 @@ const employmentAdapter: BusinessAdapter = {
     if (!['leave', 'retirement'].includes(snapshot.approvalType)) return;
     await queueExitAccount(tx, ctx, snapshot.businessId);
   },
-  approved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'approve'),
+  async approved(tx, ctx, id) {
+    await employmentTransition(tx, ctx, id, 'approve');
+    // F-417③ / DEC-677：只补退休返聘批准时的派生顺延，其他任职类型保留原审批日期语义。
+    if ((await businessKind(tx, ctx.tenantId, id)) !== 'retire_rehire') return;
+    const latest = await employmentAdapter.snapshot(tx, ctx, id);
+    return { dashboardDate: latest.dashboardDate ?? null };
+  },
   rejected: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'reject'),
   disapproved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'disapprove'),
   withdrawn: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'withdraw'),
   resubmit: () => {
     throw approvalError('CONFLICT', 'APPROVAL_RESUBMIT_VIA_BUSINESS', '任职申请请在申请单上修改后重新提交');
   },
-  async edit(tx, ctx, id, input) {
+  async edit(tx, ctx, id, rawInput) {
+    // F-479 §2.4：审批编辑不能改附件。表单整张回传时带的 attachmentRefs 与当前相同视同没改（不进字段编辑权判定），不同 400
+    const { attachmentRefs, ...input } = rawInput;
+    if (attachmentRefs !== undefined)
+      assertRefsUnchanged((await loadExitRequest(tx, ctx.tenantId, id))?.attachmentRefs, attachmentRefs);
+    // 同值回传剔除后没有业务字段变更：不调 updateEmploymentBusiness({})，动作沿用既有授权照常成功
+    if (!Object.keys(input).length) return;
     await requireExitApprovalEdit(tx, ctx, id, input);
     // R2-T03 §4B / F-140：扩展字段写薄扩展行，日期变更与任职字段共用改期编排。
     const { exit, employment, datesOnly } = splitExitEdit(input);

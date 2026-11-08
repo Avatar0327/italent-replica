@@ -8,6 +8,7 @@
  * transfer.direct 守卫只在 mode = direct（requireDirectTransfer）或
  * initiator = hr（预览 allowedActions）时求值，本人入口固定 application / employee，恒不触发——按代码路径上的具名守卫登记。
  */
+import { SELF_APPLICATIONS, OWN_APPLICATION_ACCESS } from './self-applications.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const ROUTES = 'apps/api/src/modules/employee-self-service/routes.ts';
@@ -140,6 +141,7 @@ const SUBMIT_BUTTONS_GUARD = [
 ] as const;
 
 export const SELF_SERVICE: RequiredTable = {
+  ...SELF_APPLICATIONS,
   'GET /api/tenant/self-service/profile': [self('GET', '/profile', ['self:selfAccess'])],
   'GET /api/tenant/self-service/employees/:id/records': [
     {
@@ -343,8 +345,35 @@ export const SELF_SERVICE: RequiredTable = {
   ],
   'GET /api/tenant/self-service/applications': [
     self('GET', '/applications', ['self:selfAccess', 'self:transferFieldAccess', 'own:ownRecords / ownApplications']),
+    ...(['exit', 'partTime'] as const).flatMap((kind): Obligation[] => [
+      {
+        ...self('GET', '/applications', ['self:selfAccess']),
+        purpose: `disclosure:${kind === 'exit' ? 'exitApplications' : 'partTimeApplications'}`,
+        need: { scope: 'none' },
+      },
+      {
+        perm: `btn:self#${kind === 'exit' ? 'Exit.Self' : 'PartTime.Self'}@detail`,
+        purpose: `disclosure:${kind === 'exit' ? 'exitApplications' : 'partTimeApplications'}`,
+        need: { scope: 'none' },
+        note: '授权器返回布尔值用于行披露，非强制按钮准入；同事务SQL在分页前排除撤权类型，无独立total查询',
+        at: [
+          route('GET', '/applications', 'await grantedSelfServiceButtons(tx, self.ctx)'),
+          {
+            role: 'impl',
+            unit: `${ACCESS}#grantedSelfServiceButtons`,
+            anchor: 'resource: buttonResource(EMPLOYMENT_OBJECT, buttonCode, level)',
+          },
+          {
+            role: 'impl',
+            unit: 'apps/api/src/modules/employee-self-service/queries.ts#ownApplications',
+            anchor: `buttons.includes(SELF_APPLICATION_BUTTONS.${kind})`,
+          },
+        ],
+      },
+    ]),
   ],
   'GET /api/tenant/self-service/applications/:id': [
+    ...OWN_APPLICATION_ACCESS,
     self('GET', '/applications/:id', ['self:selfAccess', 'own:ownRecords / ownApplications']),
     {
       perm: 'guard:selfService.ownApplication',

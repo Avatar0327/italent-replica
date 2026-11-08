@@ -18,6 +18,7 @@ import {
   STALLED_COUNTERSIGN_HANDLING,
   type CountersignApprovalNode,
   type CountersignVote,
+  type ExitRules,
 } from '@italent/domain';
 import {
   currentRouting,
@@ -48,18 +49,41 @@ function votingTasks(activation: readonly TaskRow[]): TaskRow[] {
   return withoutRetrieved(activation).filter((task) => votesInTransition(activation, task));
 }
 
-/**
- * 本次激活中仍有效的票，按人计（一人一票，P2-1）：同一人只计一票，已投的票（同意 / 不同意）优先于仍在办的任务。
- */
-export function activationVotes(activation: readonly TaskRow[]): CountersignVote[] {
+/** 一人一票折算：同一人只计一票，已投的票（同意 / 不同意）优先于仍在办的任务。 */
+function tally(activation: readonly TaskRow[], voteOf: (task: TaskRow) => CountersignVote | null): CountersignVote[] {
   const votes = new Map<string, CountersignVote>();
   for (const task of votingTasks(activation)) {
-    const vote = countersignVote(task.status);
+    const vote = voteOf(task);
     if (!vote || task.assigneeUserId === null) continue;
     const held = votes.get(task.assigneeUserId);
     if (held === undefined || held === 'open') votes.set(task.assigneeUserId, vote);
   }
   return [...votes.values()];
+}
+
+/**
+ * 本次激活中仍有效的票，按人计（一人一票，P2-1）：同一人只计一票，已投的票（同意 / 不同意）优先于仍在办的任务。
+ */
+export function activationVotes(activation: readonly TaskRow[]): CountersignVote[] {
+  return tally(activation, (task) => countersignVote(task.status));
+}
+
+/**
+ * 节点流转之后的结算出口（F-478 详情 path）：流转时其余未处理的待办被自动结束（ended），节点被跳转 / 驳回中断时
+ * 被取消（cancelled），它们在结算那一刻都还是未投的席位，仍按“未投”计入人数（百分比分母），所以这里把两者折回
+ * 未投；撤回后已恢复出新待办的旧任务由新待办接续，不重复计。返回的是此刻按领域规则能得到的出口，
+ * 尚未达成（含被中断）时不是 flow。
+ */
+export function settledOutcome(activation: readonly TaskRow[], rules: ExitRules) {
+  const restored = new Set(
+    activation.filter((task) => RESTORE_ORIGINS.has(task.origin)).map((task) => task.parentTaskId),
+  );
+  const closedOpen = (task: TaskRow) =>
+    (task.status === 'ended' || task.status === 'cancelled') && !restored.has(task.id);
+  return countersignOutcome(
+    rules,
+    tally(activation, (task) => (closedOpen(task) ? 'open' : countersignVote(task.status))),
+  );
 }
 
 const HELD: ReadonlySet<TaskStatus> = new Set([...OPEN_STATUSES, 'approved', 'disagreed']);
@@ -104,7 +128,7 @@ export async function settleCountersign(tx: Tx, run: Run, node: CountersignAppro
   for (const task of await endOpenTasks(tx, run.ctx, activation)) {
     await logEnded(tx, run, node.key, task.id, task.assigneeUserId, reason);
   }
-  await followExit(tx, run, node.key, exit);
+  await followExit(tx, run, node.key, exit, acted.activationId);
 }
 
 /** 会签节点上撤回同意时，节点是否已沿出口动作流转（已流转要先取消其后的待办，再恢复本节点结束的任务）。 */

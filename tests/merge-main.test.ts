@@ -520,6 +520,79 @@ describe('快照三方合并（merge3 / rebaseSnapshots）', () => {
     const { conflicts } = rebaseSnapshots(fork, [own], mainLast);
     expect(conflicts).toEqual(['b: tables.org.columns.id.type']);
   });
+
+  // F-483：比对须键序无关（#572 第二次合 main 误报索引冲突）
+  describe('键序无关比对（F-483）', () => {
+    const idxA = { name: 'idx_a', columns: ['x', 'y'], isUnique: false };
+    const idxAReordered = { isUnique: false, columns: ['x', 'y'], name: 'idx_a' };
+
+    it('同内容不同键序视为未改：ours 与 base 只差键序时取 main 值，不报冲突', () => {
+      const merged = merge3(
+        { t: { idx: idxA } },
+        { t: { idx: idxAReordered } },
+        { t: { idx: { ...idxA, name: 'idx_b' } } },
+      );
+      expect(merged).toEqual({ value: { t: { idx: { ...idxA, name: 'idx_b' } } }, conflicts: [] });
+    });
+
+    it('同内容不同键序：ours 与 main 只差键序时不报冲突', () => {
+      const merged = merge3({ t: { idx: idxA } }, { t: { idx: idxAReordered } }, { t: { idx: idxA } });
+      expect(merged.conflicts).toEqual([]);
+    });
+
+    it('F-483 场景：base 与 ours 内容相同键序不同，main 删掉既有索引 → 不报冲突，结果等于 main', () => {
+      const base = { tables: { org: { indexes: { i1: idxA, i2: { name: 'i2', columns: ['z'] } } } } };
+      const ours = { tables: { org: { indexes: { i2: { columns: ['z'], name: 'i2' }, i1: idxAReordered } } } };
+      const theirs = { tables: { org: { indexes: { i2: { name: 'i2', columns: ['z'] } } } } };
+      expect(merge3(base, ours, theirs)).toEqual({ value: theirs, conflicts: [] });
+    });
+
+    it('F-483 场景：main 改了既有索引的定义 → 不报冲突，结果等于 main', () => {
+      const base = { tables: { org: { indexes: { i1: idxA } } } };
+      const ours = { tables: { org: { indexes: { i1: idxAReordered } } } };
+      const theirs = { tables: { org: { indexes: { i1: { ...idxA, columns: ['x'] } } } } };
+      expect(merge3(base, ours, theirs)).toEqual({ value: theirs, conflicts: [] });
+    });
+
+    it('数组元素顺序仍是语义：顺序不同视为不同，两边都改则报冲突', () => {
+      const base = { columns: ['a', 'b'] };
+      const merged = merge3(base, { columns: ['b', 'a'] }, { columns: ['a', 'b', 'c'] });
+      expect(merged.conflicts).toEqual(['columns']);
+    });
+
+    it('数组顺序不同不会被当成未改：ours 重排数组而 main 不动，取 ours', () => {
+      const merged = merge3({ columns: ['a', 'b'] }, { columns: ['b', 'a'] }, { columns: ['a', 'b'] });
+      expect(merged).toEqual({ value: { columns: ['b', 'a'] }, conflicts: [] });
+    });
+
+    it('真实冲突仍报：两边把同一键改成不同的值', () => {
+      expect(merge3({ a: { x: 1, y: 2 } }, { a: { y: 2, x: 5 } }, { a: { y: 3, x: 1 } }).conflicts).toEqual([]);
+      expect(merge3({ a: { x: 1 } }, { a: { x: 2 } }, { a: { x: 3 } }).conflicts).toEqual(['a.x']);
+    });
+
+    it('合并输出的键序沿用现有行为（不为比对改写）：整体取 main 时保持 main 的键序', () => {
+      const merged = merge3({ a: 1, b: 2 }, { b: 2, a: 1 }, { a: 1, b: 2, c: 3 });
+      expect(Object.keys(merged.value as object)).toEqual(['a', 'b', 'c']);
+    });
+
+    it('rebaseSnapshots：本分支快照键序与分叉点不同、main 删索引 → 无冲突（对应 #572 的 0191 / 0190）', () => {
+      const withIdx = (indexes: Record<string, unknown>, order: 'a' | 'b'): Snapshot => ({
+        id: 'x',
+        prevId: 'y',
+        version: '7',
+        tables:
+          order === 'a'
+            ? { org: { columns: { id: { type: 'uuid' } }, indexes } }
+            : { org: { indexes, columns: { id: { type: 'uuid' } } } },
+      });
+      const fork = withIdx({ i1: idxA }, 'a');
+      const own = { ...withIdx({ i1: idxAReordered }, 'b'), id: 'b' };
+      const mainLast = { ...withIdx({}, 'a'), id: 'm' };
+      const { conflicts, snapshots } = rebaseSnapshots(fork, [own], mainLast);
+      expect(conflicts).toEqual([]);
+      expect(snapshots[0]!['tables']).toEqual({ org: { columns: { id: { type: 'uuid' } }, indexes: {} } });
+    });
+  });
 });
 
 describe('生成物开关（GENERATED_STRICT）', () => {

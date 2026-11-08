@@ -5,15 +5,17 @@
  * - 明细：只有 org 分区，其它分区与未知分区 404；行可见性见 disclosure.visibleItems，列按 `orgItems.*` 字段裁剪，
  *   行身份列（id / seq / 连带发起行 / 基线）总返回，执行结果四列跟随所在行（§4.5“执行结果三列跟随所在行的可见性”）。
  */
-import type { Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import {
   ORG_ADJUSTMENT_ITEM_RESULT_LABELS,
   ORG_ADJUSTMENT_ORG_ITEM_TYPE_LABELS,
   ORG_ADJUSTMENT_STAGED_LABEL,
 } from '@italent/domain';
-import { scopeAllows } from '../permission/module-access.js';
+import { rowsOf } from '../org/read-model.js';
+import { currentPersonName } from '../personnel/employee-projection.js';
+import { scopeSql } from '../permission/module-access.js';
 import { loadOrgContent, type ExecutionResult, type OrgContent } from './content.js';
-import { canSee, notFound, orgSectionDisclosed, visibleItems, type Disclosure } from './disclosure.js';
+import { canSee, notFound, orgInScope, orgSectionDisclosed, visibleItems, type Disclosure } from './disclosure.js';
 import { CONTENT_KEYS, type OrgItem } from './items-store.js';
 import { projectHeadRows } from './queries.js';
 
@@ -35,7 +37,8 @@ export async function readDetail(tx: Tx, tenantId: string, disclosure: Disclosur
   const ranges = canSee(fields, 'adjustmentRange') ? new Map([[head.id, source.ranges]]) : null;
   const names =
     canSee(fields, 'createdBy') && source.creatorName ? new Map([[head.createdBy, source.creatorName]]) : null;
-  const [projected] = projectHeadRows([head], fields, ranges, names);
+  // 范围裁剪只作用于现值读（HR 路径）；已办冻结份走审批人路径，orgScope 为 null，完整展示（DEC-834④）
+  const [projected] = projectHeadRows([head], fields, ranges, names, disclosure.orgScope);
   const sections: Record<string, { count: number; hiddenRowCount: number }> = {};
   if (orgSectionDisclosed(disclosure)) {
     const { items, hiddenRowCount } = visibleItems(disclosure, source.items);
@@ -52,16 +55,15 @@ export async function readItems(tx: Tx, tenantId: string, disclosure: Disclosure
   const { items, hiddenRowCount } = visibleItems(disclosure, source.items);
   const results = new Map(source.results.map((row) => [row.id, row]));
   // 原上级不参与行可见性，但同样按 HR 的组织对象范围复核：范围外的给 null，不带出名称（§4.5，F-339 同类）。
-  const scope = disclosure.orgScope;
   const parents = new Map(Object.entries(source.parents));
-  if (scope) {
-    for (const [versionId, orgId] of parents) {
-      if (orgId && !scopeAllows(scope, { orgId })) parents.set(versionId, null);
-    }
+  for (const [versionId, orgId] of parents) {
+    if (orgId && !orgInScope(disclosure, orgId)) parents.set(versionId, null);
   }
   const names = new Map(Object.entries(source.names));
   const itemNames = new Map(items.map((item) => [item.id, item.name]));
-  const context = { fields: disclosure.fields, names, itemNames, parents, results };
+  // 逐员工失败是执行态，读现值，并只对 HR 路径（任职对象范围非空）展示；冻结读（审批人路径）不展示逐员工行
+  const failures = await employmentFailures(tx, tenantId, disclosure, items);
+  const context = { fields: disclosure.fields, names, itemNames, parents, results, failures };
   const projected = items.map((item) => projectItem(item, context));
   return { adjustmentId: source.head.id, section, items: projected, hiddenRowCount };
 }
@@ -72,6 +74,51 @@ interface ProjectContext {
   readonly itemNames: ReadonlyMap<string, string | null>;
   readonly parents: ReadonlyMap<string, string | null>;
   readonly results: ReadonlyMap<string, ExecutionResult>;
+  /** 逐员工失败（HR 路径）；审批人路径为 null，不展示逐员工行。 */
+  readonly failures: ReadonlyMap<string, ItemFailures> | null;
+}
+
+interface EmployeeFailure {
+  readonly employeeId: string;
+  readonly employeeName: string;
+  readonly reason: string;
+  readonly message: string;
+}
+interface ItemFailures {
+  readonly shown: EmployeeFailure[];
+  /** 该行失败总人数（组织级口径，不随查看人范围变化）与按员工范围未披露的人数。 */
+  hidden: number;
+}
+
+/**
+ * 逐员工失败（BE-11b，§7.5 / §10“可见员工才列”）：员工须在查看人任职对象范围内才列姓名与原因，范围外只计入
+ * `employmentFailureHiddenCount`；范围为空即全部未披露（fail-closed）。范围判断用与列表同一 `scopeSql`，
+ * 按员工范围一次查询，不逐人调用。组织级结果（executionResult / executionMessage）不受员工范围影响。
+ */
+async function employmentFailures(tx: Tx, tenantId: string, disclosure: Disclosure, items: readonly OrgItem[]) {
+  const scope = disclosure.employmentScope;
+  if (!scope) return null;
+  const result = new Map<string, ItemFailures>();
+  if (!items.length) return result;
+  const adjustmentId = disclosure.view.id;
+  const name = currentPersonName(tenantId, sql`e.id`, sql`e.name`);
+  const rows = rowsOf<EmployeeFailure & { itemId: string; allowed: boolean }>(
+    await tx.execute(sql`SELECT f.item_id AS "itemId", f.employee_id AS "employeeId", f.reason, f.message,
+        ${scopeSql(scope, { person: sql`f.employee_id` })} AS allowed, ${name} AS "employeeName"
+      FROM org_adjustment_employment_failures f
+      JOIN employment_employees e ON e.tenant_id = f.tenant_id AND e.id = f.employee_id
+      WHERE f.tenant_id = ${tenantId} AND f.adjustment_id = ${adjustmentId}::uuid
+      ORDER BY f.created_at, f.employee_id`),
+  );
+  for (const row of rows) {
+    const entry = result.get(row.itemId) ?? { shown: [], hidden: 0 };
+    if (row.allowed) {
+      const { employeeId, employeeName, reason, message } = row;
+      entry.shown.push({ employeeId, employeeName, reason, message });
+    } else entry.hidden += 1;
+    result.set(row.itemId, entry);
+  }
+  return result;
 }
 
 /** 有引用的列（上级、转移目标）连同名称一起出现或隐去；引用本单新增行时名称跟随 `orgItems.name`。 */
@@ -121,6 +168,13 @@ function projectItem(item: OrgItem, context: ProjectContext) {
   }
   if (see('isStaged')) {
     Object.assign(out, { isStaged: item.isStaged, stagedLabel: item.isStaged ? ORG_ADJUSTMENT_STAGED_LABEL : null });
+  }
+  if (context.failures) {
+    const failures = context.failures.get(item.id);
+    Object.assign(out, {
+      employmentFailures: failures?.shown ?? [],
+      employmentFailureHiddenCount: failures?.hidden ?? 0,
+    });
   }
   const result = context.results.get(item.id);
   const code = result?.result ?? null;

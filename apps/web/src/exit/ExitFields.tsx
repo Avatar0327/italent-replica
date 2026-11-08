@@ -71,8 +71,13 @@ const dictionaries = Object.entries({ exitTypeCode: 'types', reasonCode: 'reason
 export function ExitFields({
   black,
   blackRequired = black,
+  selfOptions,
   ...props
-}: Access & { black: boolean; blackRequired?: boolean }) {
+}: Access & {
+  black: boolean;
+  blackRequired?: boolean;
+  selfOptions?: Record<string, { value: string; label: string }[]>;
+}) {
   return (
     <>
       <ExitField name="lastWorkDate" {...props} required>
@@ -80,7 +85,11 @@ export function ExitFields({
       </ExitField>
       {dictionaries.map(([name, kind]) => (
         <ExitField key={name} name={name} {...props}>
-          <DictSelect kind={kind as Kind} label={x.fields[name]!} />
+          {selfOptions?.[name] ? (
+            <Select allowClear={name === 'whereaboutsCode'} aria-label={x.fields[name]!} options={selfOptions[name]} />
+          ) : (
+            <DictSelect kind={kind as Kind} label={x.fields[name]!} />
+          )}
         </ExitField>
       ))}
       <ExitField name="addToBlacklist" {...props}>

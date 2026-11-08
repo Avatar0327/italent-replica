@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  autoApproveExit,
   conditionViolations,
   adminRecused,
   avoidSelfExceptionAdmin,
@@ -18,19 +19,22 @@ import {
   countersignOutcome,
   decideNode,
   effectiveHistory,
-  EXIT_TARGETS,
+  exitFamily,
   exitRulesOf,
   isCountersign,
   mayResubmit,
   nodeExits,
   approvalCategoryOf,
   previousNodeComparand,
+  resolveSuccessor,
+  ROUTE_END,
   STALLED_COUNTERSIGN_HANDLING,
   submitBlockers,
   tenantLocalDate,
   type ApprovalNode,
   type ApproverSource,
   type Candidate,
+  type ConditionContext,
   type CountersignApprovalNode,
   type NodeDecision,
   type NodeExit,
@@ -39,6 +43,14 @@ import {
   type SingleApprovalNode,
 } from '@italent/domain';
 import { ADAPTERS, type BusinessSnapshot, type BusinessType } from './adapters.js';
+import {
+  predecessorOf,
+  recordActivation,
+  resubmitFrom,
+  seqPredecessor,
+  type EntryFrom,
+  type Predecessor,
+} from './activations.js';
 import { viewableWithForeign } from './foreign-fields.js';
 import { approvalError, auditApproval, emitOutbox, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
@@ -67,6 +79,7 @@ import {
   type InstanceRow,
   type TaskRow,
 } from './store.js';
+import { AWAITING_STATUSES } from './task-state.js';
 import { withoutRetrieved, withoutRewoundDownstream } from './task-history.js';
 
 /** 一次命令内的流转现场：实例状态在内存中推进，命令结束时一次落库（revision 只加一）。 */
@@ -78,6 +91,8 @@ export interface Run {
   snapshot: BusinessSnapshot;
   instance: InstanceRow;
   readonly events: string[];
+  /** 业务批准出口已完成后的看板日期；不改变审批版本或审批中改单语义。 */
+  approvedDashboardDate?: string | null;
   /** 本次命令内的回避事实缓存（读冻结行；冻结写入后清空，见 recusal.ts）。 */
   recusal?: RecusalFacts;
 }
@@ -141,8 +156,10 @@ function instanceAudit(instance: InstanceRow): Row {
 
 /** 落库实例状态 + 字段级审计 + outbox，与本命令的其他写入同事务。 */
 export async function persistRun(tx: Tx, run: Run, action: string, created = false): Promise<InstanceRow> {
-  // 规格 35 B51：业务版本换了（中途改单、重提）就按新载荷刷新看板日期，与审批人所读的版本一致
-  if (run.instance.businessVersion !== run.before.businessVersion)
+  // 规格 35 B51 / F-417③：最终批准优先取业务出口完成后的日期；中途改单、重提仍取审批快照。
+  if (run.approvedDashboardDate !== undefined)
+    run.instance = { ...run.instance, dashboardDate: run.approvedDashboardDate };
+  else if (run.instance.businessVersion !== run.before.businessVersion)
     run.instance = { ...run.instance, dashboardDate: run.snapshot.dashboardDate ?? null };
   const saved = await updateInstance(tx, run.ctx, run.before, run.instance);
   await auditApproval(tx, run.ctx, {
@@ -152,6 +169,18 @@ export async function persistRun(tx: Tx, run: Run, action: string, created = fal
     before: created ? null : instanceAudit(run.before),
     after: instanceAudit(saved),
   });
+  // F-417③：最终批准派生的日期变化，也须与本次实例 revision 一起留字段审计和刷新事件。
+  if (run.approvedDashboardDate !== undefined && saved.dashboardDate !== run.before.dashboardDate) {
+    const eventType = 'approval.instance.dashboard_date_refreshed';
+    await auditApproval(tx, run.ctx, {
+      action: eventType,
+      objectType: 'approval-instance',
+      objectId: saved.id,
+      before: { businessDate: run.before.dashboardDate },
+      after: { businessDate: saved.dashboardDate },
+    });
+    run.events.push(eventType);
+  }
   for (const eventType of new Set(run.events)) {
     await emitOutbox(tx, run.ctx, {
       objectType: 'approval-instance',
@@ -186,7 +215,13 @@ function routingSubject(run: Run): RoutingSubject {
   };
 }
 
-function routingFacts(run: Run, tasks: readonly TaskRow[], index: number, recusal: RecusalFacts): RoutingFacts {
+function routingFacts(
+  run: Run,
+  tasks: readonly TaskRow[],
+  index: number,
+  recusal: RecusalFacts,
+  previous: Predecessor,
+): RoutingFacts {
   // DEC-124 / F7：只认本轮、有效历史边界之后的任务（policies.effectiveHistory，暂定待 Q-M0-43）。
   // 自动「跳过」的节点处理人是系统（DEC-106），不计为任何人的同意。
   const history = effectiveHistory(tasks, run.instance);
@@ -194,8 +229,12 @@ function routingFacts(run: Run, tasks: readonly TaskRow[], index: number, recusa
   // F-379 / F-392 / DEC-097：撤回的同意及撤回点之后的旧下游结果已失效，撤回后转交也不恢复；
   // 仍有效的系统自动同意照常计入（不用 actualApprovals，口径不变）
   const approvals = withoutRetrieved(history).filter(approvedBy);
-  const previousKey = index > 0 ? run.version.nodes[index - 1]!.key : null;
-  const previousNode = withoutRewoundDownstream(history).filter((task) => task.nodeKey === previousKey);
+  // F-478：上一节点 = 路径前驱（激活台账，设计 §3.2.1）；无分支配置的版本里恒等于 seq 前一节点
+  const previousNode = withoutRewoundDownstream(history).filter(
+    (task) =>
+      task.nodeKey === previous.nodeKey &&
+      (previous.activationId === null || task.activationId === previous.activationId),
+  );
   return {
     ...recusal,
     isFirstNode: index === 0,
@@ -283,7 +322,8 @@ export async function currentRouting(tx: Tx, run: Run, nodeKey: string | null) {
   const subject = routingSubject(run);
   const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
   const index = nodeKey ? nodeIndex(run, nodeKey) : 0;
-  return { subject, facts: routingFacts(run, tasks, index, await recusalFactsOf(tx, run)) };
+  const previous = nodeKey ? seqPredecessor(run, nodeKey) : { nodeKey: null, activationId: null };
+  return { subject, facts: routingFacts(run, tasks, index, await recusalFactsOf(tx, run), previous) };
 }
 
 interface Entry {
@@ -383,36 +423,95 @@ async function announceAssignment(
 }
 
 /**
- * 从第 index 个节点起激活，直到出现待审批任务或流程结束。任务只读一次，本次推进新增的自动处理任务在内存中追加，
- * 路由查询按推进缓存（X-20）。每次进入节点都取新的激活编号（F-003）。
+ * 从 nodeKey 起激活（F-478：由 advanceFrom 的下标线性推进改为沿出口后继推进），直到出现待审批任务或流程结束。
+ * 任务只读一次，本次推进新增的自动处理任务在内存中追加，路由查询按推进缓存（X-20）。每次进入节点都取新的激活编号
+ * （F-003）并在激活台账追加一行（来路见 activations.ts）。没有分支配置时后继恒为 seq 下一节点，行为与线性推进相同。
  */
-export async function advanceFrom(tx: Tx, run: Run, index: number, known?: readonly TaskRow[]): Promise<void> {
+export async function advanceTo(
+  tx: Tx,
+  run: Run,
+  nodeKey: string,
+  from: EntryFrom,
+  known?: readonly TaskRow[],
+): Promise<void> {
   const subject = routingSubject(run);
   const recusal = await recusalFactsOf(tx, run);
   const tasks = [...(known ?? (await loadTasks(tx, run.ctx.tenantId, run.instance.id)))];
-  for (let i = index; i < run.version.nodes.length; i++) {
-    const node = run.version.nodes[i]!;
-    const previousKey = i > 0 ? run.version.nodes[i - 1]!.key : null;
+  let key = nodeKey;
+  let entering = from;
+  // 后继只指向更靠后的节点（定义校验保证），最多经过全部节点各一次；超出视为数据被改动，不放行
+  for (let hops = 0; hops <= run.version.nodes.length; hops += 1) {
+    const index = nodeIndex(run, key);
+    const node = run.version.nodes[index]!;
+    const previous = predecessorOf(entering);
     const currentSubject = {
       ...subject,
-      previousApprovedUserIds: previousApproved(effectiveHistory(tasks, run.instance), previousKey),
+      previousApprovedUserIds: previousApproved(
+        effectiveHistory(tasks, run.instance),
+        previous.nodeKey,
+        previous.activationId,
+      ),
       samplingSeed: `${run.instance.id}:${run.instance.round}:${run.instance.historyFromSeq}:${node.key}`,
     };
     const entry: Entry = {
       subject: currentSubject,
-      facts: routingFacts(run, tasks, i, recusal),
+      facts: routingFacts(run, tasks, index, recusal, previous),
       activationId: randomUUID(),
     };
+    await recordActivation(tx, run, entry.activationId, node.key, entering);
     const result = isCountersign(node)
       ? await enterCountersign(tx, run, node, entry, tasks)
       : await enterSingle(tx, run, node, entry, tasks);
-    if (result !== 'next') return;
+    if (result.kind !== 'next') return;
+    const successor = await successorOf(tx, run, node, result.exit);
+    if (successor.target === ROUTE_END) return finishAt(tx, run, node.key, result.exit);
+    key = successor.target;
+    entering = {
+      kind: 'flow',
+      nodeKey: node.key,
+      activationId: entry.activationId,
+      exit: result.exit,
+      branchNo: successor.branchNo,
+    };
   }
-  await complete(tx, run);
+  throw approvalError('CONFLICT', 'APPROVAL_ROUTE_LOOP', '流程分支配置异常，已停止推进');
+}
+
+/** 业务快照上的条件上下文，一个快照只算一次（审批中编辑重载快照后自然失效）。 */
+const conditionContexts = new WeakMap<BusinessSnapshot, Promise<ConditionContext>>();
+
+/** 节点某出口的后继；没有分支配置的出口不读条件上下文，与线性推进零差异。 */
+async function successorOf(tx: Tx, run: Run, node: ApprovalNode, exit: string) {
+  if (!node.routes?.some((route) => route.exit === exit)) {
+    return resolveSuccessor(run.version.nodes, node.key, exit, { values: {}, orgAncestors: {} });
+  }
+  const type = run.snapshot.approvalType;
+  const asOf = tenantLocalDate(run.ctx.now, run.ctx.timezone);
+  let context = conditionContexts.get(run.snapshot);
+  if (!context) {
+    context = conditionContext(tx, run.ctx.tenantId, asOf, type, run.snapshot.conditionValues);
+    conditionContexts.set(run.snapshot, context);
+  }
+  const successor = resolveSuccessor(run.version.nodes, node.key, exit, await context);
+  await appendLog(tx, run.ctx, run.instance, {
+    event: 'route',
+    nodeKey: node.key,
+    actorUserId: null,
+    detail: { exit, target: successor.target, branchNo: successor.branchNo },
+  });
+  return successor;
+}
+
+/** 后继为 END：同意族出口办结为批准，不同意族出口办结为未通过。 */
+async function finishAt(tx: Tx, run: Run, nodeKey: string, exit: string): Promise<void> {
+  if (exitFamily(exit) === 'approve') return complete(tx, run);
+  return endDisapproved(tx, run, nodeKey);
 }
 
 /** 进入节点的结果：继续下一节点 / 停在本节点等待人工处理 / 实例已退回发起人。 */
-type EntryResult = 'next' | 'stay' | 'returned';
+type EntryResult =
+  { readonly kind: 'next'; readonly exit: string } | { readonly kind: 'stay' } | { readonly kind: 'returned' };
+const STAY: EntryResult = { kind: 'stay' };
 
 function firstNodeEmpty(nodeKey: string, decision: { readonly reason: string }) {
   return approvalError('CONFLICT', 'APPROVAL_FIRST_NODE_EMPTY', decision.reason, { nodeKey });
@@ -437,7 +536,7 @@ async function enterSingle(
   if (decision.kind === 'assign') {
     await assign(tx, run, node, decision, { ...entry, candidateUserId: candidate.userId });
     run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
-    return 'stay';
+    return STAY;
   }
   // 多主体回避的“跳过”没有审批人作判断，不做盲审（设计 §3.1，Q14）
   const hidden = decision.outcome === 'subject_skip' ? [] : await hiddenForAuto(tx, run, entry, decision.userId!);
@@ -450,10 +549,11 @@ async function enterSingle(
       entry,
     );
     run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
-    return 'stay';
+    return STAY;
   }
-  tasks.push(await autoProcess(tx, run, node, decision, tasks, entry.activationId));
-  return 'next';
+  const exit = autoExitOf(run, node);
+  tasks.push(await autoProcess(tx, run, node, decision, tasks, entry.activationId, exit));
+  return { kind: 'next', exit };
 }
 
 /**
@@ -556,6 +656,7 @@ async function enterCountersign(
   if (resolved.kind === 'stop') throw noAssignee(node.key, { reason: '工作交接审批人为空，流程不再继续流转' });
   if (resolved.kind === 'auto_approve') {
     // 节点级自动同意直接走同意出口，不伪造人员席位或受自定义会签人数阈值阻塞（DEC-678）。
+    const exit = autoExitOf(run, node);
     tasks.push(
       await autoProcess(
         tx,
@@ -570,9 +671,10 @@ async function enterCountersign(
         },
         tasks,
         entry.activationId,
+        exit,
       ),
     );
-    return 'next';
+    return { kind: 'next', exit };
   }
   if (resolved.kind === 'exception_admin') {
     await assign(
@@ -590,7 +692,7 @@ async function enterCountersign(
       { ...entry, candidateUserId: null },
     );
     run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
-    return 'stay';
+    return STAY;
   }
   const { seats, selfSkips } = await countersignSeats(tx, run, node, entry, resolved.candidates);
   for (const skipped of selfSkips) await recordSelfSkip(tx, run, node.key, skipped, entry.activationId);
@@ -603,7 +705,7 @@ async function enterCountersign(
   for (const seat of seats) await writeSeat(tx, run, node, seat, entry, tasks, ended);
   if (outcome.kind === 'pending') {
     run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
-    return 'stay';
+    return STAY;
   }
   tasks.splice(0, tasks.length, ...(await loadTasks(tx, run.ctx.tenantId, run.instance.id)));
   if (outcome.kind === 'flow') {
@@ -613,7 +715,7 @@ async function enterCountersign(
       actorUserId: null,
       detail: { exit: outcome.exit, count: outcome.count, threshold: outcome.threshold, onEntry: true },
     });
-    return 'next';
+    return { kind: 'next', exit: outcome.exit };
   }
   await appendLog(tx, run.ctx, run.instance, {
     event: 'countersign_stalled',
@@ -622,7 +724,7 @@ async function enterCountersign(
     detail: { handling: STALLED_COUNTERSIGN_HANDLING, onEntry: true },
   });
   await returnInstance(tx, run, node.key);
-  return 'returned';
+  return { kind: 'returned' };
 }
 
 /** 写入一席的任务：自动同意直接记同意；人工审批派待办，或在节点进入即流转时记为已结束（不发待办）。 */
@@ -636,7 +738,7 @@ async function writeSeat(
   endedReason: string | null,
 ) {
   if (seat.kind === 'auto') {
-    await autoProcess(tx, run, node, seat.decision, tasks, entry.activationId, mergedCandidateUserIds);
+    await autoProcess(tx, run, node, seat.decision, tasks, entry.activationId, 'approve', mergedCandidateUserIds);
     return;
   }
   if (seat.kind === 'blind') {
@@ -681,6 +783,20 @@ export async function logEnded(
 }
 
 /**
+ * 自动处理（相同 / 历史相同审批人、主体回避、无审批人同意）所走的出口：取守卫通过的唯一同意族出口（设计 §3.3）。
+ * 不唯一（定义校验已排除，仅作防御）时不自动处理——失败关闭，拒绝本次推进，交由管理员调整流程。
+ */
+function autoExitOf(run: Run, node: ApprovalNode): string {
+  const exit = autoApproveExit(node, run.snapshot.approvalType, run.snapshot.conditionValues ?? {});
+  if (exit === null) {
+    throw approvalError('CONFLICT', 'APPROVAL_AUTO_EXIT_AMBIGUOUS', '节点自动处理找不到唯一的同意出口', {
+      nodeKey: node.key,
+    });
+  }
+  return exit;
+}
+
+/**
  * DEC-106：自动「同意」记为该审批人同意，并与人工同意一样触发本节点的“同意”消息规则（X-14）；
  * 自动「跳过」沿同意路径流转，处理人记为系统（任务无审批人），审批记录里两者分别记为 auto_approve / skip。
  */
@@ -691,6 +807,7 @@ async function autoProcess(
   decision: Extract<NodeDecision, { kind: 'auto' }>,
   tasks: readonly TaskRow[],
   activationId: string,
+  exit: string,
   mergedCandidateUserIds: readonly string[] = [],
 ): Promise<TaskRow> {
   const skip = decision.result === 'skip';
@@ -708,6 +825,7 @@ async function autoProcess(
     origin: decision.outcome,
     status,
     activationId,
+    decisionExit: exit,
   });
   const mechanism = MECHANISMS[decision.outcome];
   const detail =
@@ -790,12 +908,23 @@ async function blindReviewSeat(
 }
 
 /**
- * 沿出口动作的连线流转（DEC-144，types.EXIT_TARGETS）：「同意」进入下一节点；「不同意」连到结束。单人节点点了即流转，
- * 会签节点达到该动作的规则才流转（countersign.settleCountersign）。
+ * 沿出口动作的连线流转（DEC-144，F-478 起由 resolveSuccessor 求后继）：没有分支配置时「同意」进入下一节点、「不同意」
+ * 连到结束；配置了分支的出口按条件去往目标节点或 END。单人节点点了即流转，会签节点达到该动作的规则才流转
+ * （countersign.settleCountersign）。`activationId` 是产生该出口的那次激活，写入下游激活的来路。
  */
-export async function followExit(tx: Tx, run: Run, nodeKey: string, exit: NodeExit): Promise<void> {
-  if (EXIT_TARGETS[exit] === 'next') return advanceFrom(tx, run, nodeIndex(run, nodeKey) + 1);
-  await endDisapproved(tx, run, nodeKey);
+export async function followExit(
+  tx: Tx,
+  run: Run,
+  nodeKey: string,
+  exit: NodeExit,
+  activationId: string | null,
+  known?: readonly TaskRow[],
+): Promise<void> {
+  const node = run.version.nodes[nodeIndex(run, nodeKey)]!;
+  const successor = await successorOf(tx, run, node, exit);
+  if (successor.target === ROUTE_END) return finishAt(tx, run, nodeKey, exit);
+  const from: EntryFrom = { kind: 'flow', nodeKey, activationId, exit, branchNo: successor.branchNo };
+  await advanceTo(tx, run, successor.target, from, known);
 }
 
 /**
@@ -824,17 +953,24 @@ export async function returnInstance(tx: Tx, run: Run, nodeKey: string): Promise
 async function complete(tx: Tx, run: Run): Promise<void> {
   run.instance = { ...run.instance, status: 'approved', currentNodeKey: null, returnedFromNodeKey: null };
   await appendLog(tx, run.ctx, run.instance, { event: 'complete', actorUserId: null });
-  await ADAPTERS[run.instance.businessType].approved(tx, run.ctx, run.instance.businessId);
+  const approved = await ADAPTERS[run.instance.businessType].approved(tx, run.ctx, run.instance.businessId);
+  if (approved) run.approvedDashboardDate = approved.dashboardDate;
   run.events.push('approval.instance.approved');
 }
 
 /** 节点上没有待审批或排队中的任务时推进到下一节点（加签要求同节点全部完成）。 */
-export async function afterNodeApproved(tx: Tx, run: Run, nodeKey: string, known?: readonly TaskRow[]): Promise<void> {
+export async function afterNodeApproved(
+  tx: Tx,
+  run: Run,
+  approved: Pick<TaskRow, 'nodeKey' | 'activationId'>,
+  known?: readonly TaskRow[],
+): Promise<void> {
+  const nodeKey = approved.nodeKey;
   const tasks = known ?? (await loadTasks(tx, run.ctx.tenantId, run.instance.id));
   const open = (task: TaskRow) =>
-    task.round === run.instance.round && task.nodeKey === nodeKey && ['pending', 'queued'].includes(task.status);
+    task.round === run.instance.round && task.nodeKey === nodeKey && AWAITING_STATUSES.has(task.status);
   if (tasks.some(open)) return;
-  await advanceFrom(tx, run, nodeIndex(run, nodeKey) + 1, tasks);
+  await followExit(tx, run, nodeKey, 'approve', approved.activationId, tasks);
 }
 
 export interface StartRequest {
@@ -899,7 +1035,7 @@ async function launch(
     },
   });
   await assertExceptionAdminAvailable(tx, run);
-  await advanceFrom(tx, run, 0);
+  await advanceTo(tx, run, run.version.nodes[0]!.key, { kind: 'start' });
   return persistRun(tx, run, 'approval.instance.start', true);
 }
 
@@ -996,6 +1132,7 @@ export async function resume(tx: Tx, ctx: ApprovalContext, instanceId: string): 
   const adapter = ADAPTERS[run.instance.businessType];
   await freezeRunSubjects(tx, run, (await adapter.subjects?.(tx, ctx, run.instance.businessId)) ?? []);
   await assertExceptionAdminAvailable(tx, run);
-  await advanceFrom(tx, run, toRejecting ? nodeIndex(run, rejecting) : 0);
+  if (toRejecting) await advanceTo(tx, run, rejecting!, await resubmitFrom(tx, run, rejecting!));
+  else await advanceTo(tx, run, run.version.nodes[0]!.key, { kind: 'start' });
   return persistRun(tx, run, 'approval.instance.resubmit');
 }

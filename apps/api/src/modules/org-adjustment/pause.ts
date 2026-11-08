@@ -38,8 +38,27 @@ export async function assertNotPausedByOrgAdjustment(tx: Tx, ctx: PauseContext, 
     await tx.execute(sql`SELECT code FROM org_adjustments
       WHERE tenant_id=${ctx.tenantId} AND id=${hit.adjustment_id}::uuid`),
   );
-  throw new AppError('CONFLICT', '相关组织正在执行组织调整，请执行完成后再操作', {
-    reason: 'ORG_ADJUSTMENT_EXECUTING',
-    adjustmentCode: adjustment?.code,
-  });
+  throw new OrgAdjustmentPausedError(hit.adjustment_id, adjustment?.code);
+}
+
+/**
+ * 暂停 409。单据编号不进 `details`：写入口拿不到查看人的授权，是否披露由租户路由层的错误处理按调整单可见性补上
+ * （`pause-disclosure.ts`，F-342 / F-355）；没经过那一层的出口（审批回调、台账、日志）因此默认只有通用原因。
+ */
+export class OrgAdjustmentPausedError extends AppError {
+  constructor(
+    readonly adjustmentId: string,
+    readonly adjustmentCode: string | undefined,
+    extra: Record<string, unknown> = {},
+  ) {
+    super('CONFLICT', '相关组织正在执行组织调整，请执行完成后再操作', { reason: 'ORG_ADJUSTMENT_EXECUTING', ...extra });
+  }
+
+  /** 批量入口给错误加行定位等附加信息时用：仍是同一个暂停错误，披露判定不丢。 */
+  withDetails(extra: Record<string, unknown>): OrgAdjustmentPausedError {
+    return new OrgAdjustmentPausedError(this.adjustmentId, this.adjustmentCode, {
+      ...(this.details as Record<string, unknown>),
+      ...extra,
+    });
+  }
 }
