@@ -1005,7 +1005,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/attachments/access.ts#requireAttachmentRead': ['7beee6b567c7', '681115585f42'],
   'apps/api/src/modules/attachments/access.ts#requireAttachmentWrite': ['d37b3c674a8d', '2caf4216be75'],
   'apps/api/src/modules/attachments/audit.ts#receipt': ['8c4ba196f9f1', 'e3b0c44298fc'],
-  'apps/api/src/modules/attachments/audit.ts#record': ['27da419d528b', 'f3cc584b1df1'],
+  'apps/api/src/modules/attachments/audit.ts#record': ['fedcefb2225d', '813ae2732244'],
   'apps/api/src/modules/attachments/audit.ts#snapshot': ['0810935ef868', 'f9c0f27ea917'],
   'apps/api/src/modules/attachments/binding.ts#EXIT_BUSINESS_TYPE': ['4537c1a8c895', 'e3b0c44298fc'],
   'apps/api/src/modules/attachments/binding.ts#EXIT_CARRIER': ['aa32b3e8de00', 'e3b0c44298fc'],
