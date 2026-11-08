@@ -106,8 +106,15 @@ export const employmentCycles = pgTable(
     ),
     check(
       'employment_cycles_trainee_start',
-      sql`${t.traineeStartDate} IS NULL OR
-        (${t.entryType} = 'intern_regularization' AND ${t.traineeStartDate} <= ${t.entryDate})`,
+      // 快照与 0201 迁移里该表达式是单行（IS NULL OR 后一个空格）；换行会让 db:generate 多出一条重建约束的迁移（F-497）。
+      // 用 sql.join 拼接，既满足 120 字符行宽，又不在表达式里引入换行。
+      sql.join(
+        [
+          sql`${t.traineeStartDate} IS NULL OR `,
+          sql`(${t.entryType} = 'intern_regularization' AND ${t.traineeStartDate} <= ${t.entryDate})`,
+        ],
+        sql``,
+      ),
     ),
     check('employment_cycles_employ_type', sql`${t.employType} IN ('internal', 'intern', 'external')`),
     check('employment_cycles_entry_finite', sql`isfinite(${t.entryDate})`),

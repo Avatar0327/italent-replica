@@ -268,6 +268,9 @@ export const DIGESTS: Digests = {
     ownTransferInput: '39cbe940fbc7',
     ownTransferPreview: '1251dd2e1f1e',
   },
+  'apps/api/src/modules/employment/all-people.ts': {
+    'route:GET /all-people': '2218165f65c3',
+  },
   'apps/api/src/modules/employment/assessment-routes.ts': {
     'route:GET /probation-assessments': '47f2e8dfaa4c',
     'route:GET /probation-assessments/:id': 'bff8ddc87a0f',
@@ -748,11 +751,12 @@ export const DIGESTS: Digests = {
     CONTRACT_OBJECT: '76ce5952c0a8',
     RECORD_OBJECT: '681652578035',
     ROSTER_OBJECT: '8de8f6aea0b4',
+    allPeopleAccess: 'd19fc725bb9a',
     requireExportButton: 'd538719feb46',
     rosterAccess: '08e8fd92d1ce',
   },
   'apps/api/src/modules/hr-analysis/roster-query.ts': {
-    population: '404d96dc7d4e',
+    population: 'a6206e9f7311',
   },
   'apps/api/src/modules/hr-analysis/roster-routes.ts': {
     'route:GET /api/tenant/hr-analysis/roster': '7627ba7c5dbd',
@@ -2093,6 +2097,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/routes.ts#selfTransferGuard': '008aa7f3f314',
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferInput': 'e6d695e50de9',
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview': '78398667795d',
+  'apps/api/src/modules/employment/all-people.ts#route:GET /all-people': 'cc5c2830b78c',
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments': '0bbbce83c90f',
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': '10fc77350e79',
   'apps/api/src/modules/employment/assessment-routes.ts#route:PATCH /probation-assessments/:id': '1856c700e55a',
@@ -2441,9 +2446,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/hr-analysis/roster-access.ts#CONTRACT_OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/hr-analysis/roster-access.ts#RECORD_OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/hr-analysis/roster-access.ts#ROSTER_OBJECT': '962a8dd9a03e',
+  'apps/api/src/modules/hr-analysis/roster-access.ts#allPeopleAccess': '3e4d1f0fc9c3',
   'apps/api/src/modules/hr-analysis/roster-access.ts#requireExportButton': '30576ab5fbab',
   'apps/api/src/modules/hr-analysis/roster-access.ts#rosterAccess': '79a6993f4391',
-  'apps/api/src/modules/hr-analysis/roster-query.ts#population': '2de0c1b69b04',
+  'apps/api/src/modules/hr-analysis/roster-query.ts#population': '710dd5888097',
   'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster': 'ffc50c07facf',
   'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster/export': '9f87c8ad7cca',
   'apps/api/src/modules/idp/access.ts#idpContext': '6f9ce2c87c01',

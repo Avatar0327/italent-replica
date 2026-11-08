@@ -5,6 +5,7 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/hr-analysis/all-people.ts#ALL_PEOPLE_COLUMNS': ['#person', '#record'],
   'packages/domain/src/hr-analysis/reports.ts#CONTRACT_LEDGER_COLUMNS': ['#FIXED', '#col'],
   'packages/domain/src/hr-analysis/reports.ts#EMPLOYMENT_HISTORY_COLUMNS': ['#FIXED', '#col'],
   'packages/domain/src/hr-analysis/reports.ts#FIXED': ['#col'],
