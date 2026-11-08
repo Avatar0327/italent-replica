@@ -35,7 +35,7 @@ export interface PersonRefAccess {
 
 export interface PersonRefView {
   readonly name?: string;
-  readonly code?: string;
+  readonly code?: string | null;
 }
 
 const visibleField = (fields: ReadonlySet<string> | undefined, field: string) =>
@@ -109,9 +109,9 @@ export async function loadEmployees(
   tx: Tx,
   tenantId: string,
   ids: readonly string[],
-): Promise<{ id: string; name: string; code: string }[]> {
+): Promise<{ id: string; name: string; code: string | null }[]> {
   if (!ids.length) return [];
-  return rowsOf<{ id: string; name: string; code: string }>(
+  return rowsOf<{ id: string; name: string; code: string | null }>(
     await tx.execute(sql`SELECT e.id, COALESCE(v.name, e.name) AS name, e.code
       FROM employment_employees e
       LEFT JOIN LATERAL (SELECT pv.name FROM personnel_employee_versions pv

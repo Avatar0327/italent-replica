@@ -68,7 +68,7 @@ describe('AC-DM-30-F493-31 ④ 已绑定账号登录名为空时办理入职', (
     const before = await counts(employee.id, world.tenant.id);
     const current = await hr.getEmployee(employee.id);
     const missing = await hr.hire(current, departmentId);
-    expect(await reasonOf(missing)).toMatchObject({ status: 409, code: 'ACCOUNT_LOGIN_MISSING' });
+    expect(await reasonOf(missing)).toMatchObject({ status: 409, reason: 'ACCOUNT_LOGIN_MISSING' });
     expect(await counts(employee.id, world.tenant.id)).toEqual(before);
     expect(await getTenantUser(world, userId)).toMatchObject({ membershipStatus: 'revoked', email: '' });
 

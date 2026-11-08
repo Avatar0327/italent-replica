@@ -11,7 +11,14 @@ import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import { audit, type WriteContext } from './audit.js';
 import { scopeRows } from './scope-hierarchy.js';
-import { getTenantUser, insertMembership, memberSnapshot, provisionAccount, updateMembership } from './tenant-users.js';
+import {
+  accountLogin,
+  getTenantUser,
+  insertMembership,
+  memberSnapshot,
+  provisionAccount,
+  updateMembership,
+} from './tenant-users.js';
 
 /** 同一账号的并发建档串行化（租户 × 账号）。 */
 export async function lockPersonLink(tx: Tx, tenantId: string, userId: string): Promise<void> {
@@ -110,14 +117,20 @@ async function keepBinding(
   request: EmployeeUserRequest,
 ): Promise<EmployeeUser> {
   const current = await getTenantUser(tx, userId);
+  // 内部登录名（可空）：与展示用的空串区分，空登录名绝不回传给账号函数（F-493 S1，设计 §4.1）
+  const login = await accountLogin(tx, userId);
   const asked = request.loginEmail?.trim().toLowerCase();
   // 同一事务里重聘刚把登录名改成联系邮箱（F-328）：请求里的原登录邮箱仍指同一账号，不算改绑
-  if (asked && asked !== current.email && renamedInTx.get(tx)?.get(userId) !== asked) {
+  if (asked && asked !== login && renamedInTx.get(tx)?.get(userId) !== asked) {
     throw conflict('USER_REBIND_FORBIDDEN', '人员已绑定用户，不能改绑到另一登录账号');
   }
   if (current.membershipStatus === 'active') return { userId, created: false };
+  // 账号没有登录名（历史离职人员导入）又已被移出租户：无从恢复成员关系，整单回滚，先维护员工电子邮件
+  if (login === null) {
+    throw conflict('ACCOUNT_LOGIN_MISSING', '该账号还没有登录名，请先维护员工电子邮件后再办理');
+  }
   // 被移出租户后（重新）入职：恢复成员关系，绑定不变。先以 FOR SHARE 锁账号再锁成员行，与平台授予成员关系同序。
-  await provisionAccount(tx, write, current.email, current.displayName);
+  await provisionAccount(tx, write, login, current.displayName);
   const [membership] = await tx
     .select()
     .from(tenantMemberships)

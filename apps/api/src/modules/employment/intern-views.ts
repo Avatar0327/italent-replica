@@ -19,7 +19,7 @@ export interface InternViewItem {
   /** 任职记录 ID；实习转正中为申请单 ID。 */
   readonly id: string;
   readonly employeeId: string;
-  readonly code: string;
+  readonly code: string | null;
   readonly name: string;
   readonly kind: BusinessKind;
   readonly effectiveDate: string;

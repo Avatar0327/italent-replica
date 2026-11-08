@@ -752,7 +752,11 @@ export const GRAPH: Graph = {
     '#sources',
     'packages/domain/src/permission/object-permission.ts#ObjectCatalog',
   ],
+  'apps/api/src/modules/permission/tenant-users.ts#accountLogin': ['#accountsOf'],
   'apps/api/src/modules/permission/tenant-users.ts#accountsOf': [
+    'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
+  ],
+  'apps/api/src/modules/permission/tenant-users.ts#contactEmails': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#getTenantUser': ['#memberQuery', '#notFound', '#viewsOf'],
@@ -784,9 +788,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/tenant-users.ts#viewsOf': [
     'apps/api/src/modules/avatar/references.ts#userAvatars',
     '#accountsOf',
+    '#contactEmails',
   ],
   'apps/api/src/modules/permission/user-provisioning.ts#keepBinding': [
     'apps/api/src/modules/permission/audit.ts#audit',
+    'apps/api/src/modules/permission/tenant-users.ts#accountLogin',
     'apps/api/src/modules/permission/tenant-users.ts#getTenantUser',
     'apps/api/src/modules/permission/tenant-users.ts#memberSnapshot',
     'apps/api/src/modules/permission/tenant-users.ts#provisionAccount',

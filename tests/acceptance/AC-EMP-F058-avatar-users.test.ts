@@ -236,7 +236,7 @@ describe('AC-EMP-F058-P1 tenant_user 审计冻结目标头像引用', () => {
     const commandId = randomUUID();
     if (entry === '登记') {
       await revokeMembership(w.db, { tenantId: w.tenant.id, userId: b.id, expectedRevision: 1 }, cmd(w.admin.id));
-      await ok<AvatarUser>(register(w, b.email, commandId), 201);
+      await ok<AvatarUser>(register(w, b.email!, commandId), 201);
     } else {
       await ok<AvatarUser>(
         w.api.request('PUT', `${BASE}/users/${b.id}`, {

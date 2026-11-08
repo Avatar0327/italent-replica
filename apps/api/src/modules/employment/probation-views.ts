@@ -38,7 +38,7 @@ export interface ProbationViewItem {
   /** 当前主职任职记录。 */
   readonly id: string;
   readonly employeeId: string;
-  readonly code: string;
+  readonly code: string | null;
   readonly name: string;
   readonly departmentId: string | null;
   /** 机构（R2f B5、15 OIdOrganization“任职部门对应的机构”）：部门在行政维度上最近的、大类不是“部门”的组织（含部门本身）。 */

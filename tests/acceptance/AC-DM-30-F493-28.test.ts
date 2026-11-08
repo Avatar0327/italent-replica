@@ -160,13 +160,13 @@ describe('AC-DM-30-F493-28 ⑥ 任职工号必须等于员工主档工号', () =
     const { employee, hire } = await hireNullCode(db, w, '空工号编辑人', { departmentId: org.id });
     const [record] = await w.records(employee.id);
     const invalid = await w.request('PATCH', `/records/${record!.id}`, {
-      ifMatch: record!.revision,
+      ifMatch: hire.revision,
       body: { fields: { jobNumber: 'SYNTHETIC_ANY' } },
     });
     expect(invalid.status, await invalid.clone().text()).toBe(400);
     expect(JSON.stringify(await invalid.json())).toContain('任职工号必须等于员工主档工号');
     const cleared = await w.request('PATCH', `/records/${record!.id}`, {
-      ifMatch: record!.revision,
+      ifMatch: hire.revision,
       body: { fields: { jobNumber: null } },
     });
     expect(cleared.status, await cleared.clone().text()).toBe(200);
@@ -198,10 +198,15 @@ describe('AC-DM-30-F493-28 ⑦ 组织调整失败清单', () => {
     const w = await itemsWorld(db, 'f493s1-28-failures');
     const view = await w.created(w.head({ adjustmentRange: [w.a] }));
     const itemId = (await w.item(view.id, rename(w.a))).items.at(-1)!.id;
-    const coded = await w.person('ZZ_有工号', w.a);
-    const none = await nullCodeEmployee(db, { tenant: w.tenant, user: w.hr }, 'ZZ_空工号');
-    await w.hire(none.id, { departmentId: w.a });
-    for (const employeeId of [none.id, coded.employeeId]) {
+    // 两个有工号 + 两个空工号：排序比较器必然拿空工号当比较对象（单对排序受引擎比较顺序影响，会侥幸通过）
+    const coded = [await w.person('ZZ_有工号甲', w.a), await w.person('ZZ_有工号乙', w.a)];
+    const nones = [];
+    for (const name of ['ZZ_空工号甲', 'ZZ_空工号乙']) {
+      const none = await nullCodeEmployee(db, { tenant: w.tenant, user: w.hr }, name);
+      await w.hire(none.id, { departmentId: w.a });
+      nones.push(none);
+    }
+    for (const employeeId of [...coded.map((p) => p.employeeId), ...nones.map((n) => n.id)]) {
       await withTenant(db, w.tenant.id, (tx) =>
         tx.execute(sql`INSERT INTO org_adjustment_employment_failures
           (tenant_id, adjustment_id, item_id, employee_id, reason, message)
@@ -211,8 +216,17 @@ describe('AC-DM-30-F493-28 ⑦ 组织调整失败清单', () => {
     const detail = (await reader(w).detail(view.id)) as unknown as {
       employmentFailures?: { employeeId: string; employeeCode: string | null }[];
     };
-    expect(detail.employmentFailures?.map((f) => f.employeeId)).toEqual([coded.employeeId, none.id]);
-    expect(detail.employmentFailures?.[1]?.employeeCode).toBeNull();
+    const listed = detail.employmentFailures ?? [];
+    expect(listed).toHaveLength(4);
+    expect(
+      listed
+        .slice(0, 2)
+        .map((f) => f.employeeId)
+        .sort(),
+    ).toEqual(coded.map((p) => p.employeeId).sort());
+    expect(listed.slice(0, 2).every((f) => f.employeeCode !== null)).toBe(true);
+    expect(listed.slice(2).map((f) => f.employeeCode)).toEqual([null, null]);
+    expect(listed.slice(2).map((f) => f.employeeId)).toEqual(nones.map((n) => n.id).sort());
   });
 });
 

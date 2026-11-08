@@ -98,7 +98,7 @@ export interface CreatedPartTime {
 export async function checkNewPartTime(
   tx: Tx,
   ctx: EmploymentContext,
-  employee: { readonly id: string; readonly code: string },
+  employee: { readonly id: string; readonly code: string | null },
   normalized: NormalizedPartTime,
   excludeRequestId?: string,
   savedType?: string | null,
