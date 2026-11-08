@@ -164,13 +164,16 @@ async function advance(
   return true;
 }
 
+/** 失败原因只留首行：数据库驱动的错误正文会带整条 SQL 和参数，不进失败记录与日志。 */
 const reasonOf = (error: unknown) =>
   (error instanceof AppError
     ? `${error.code}: ${error.message}`
     : error instanceof Error
       ? `${error.name}: ${error.message}`
       : String(error)
-  ).slice(0, 500);
+  )
+    .split('\n')[0]!
+    .slice(0, 500);
 
 /** 失败回滚后另开事务记 failed：先回查，若其实已被推进（提交结果未知）就不记失败。记录本身写不进去则继续抛出，不伪造。 */
 async function recordFailure(db: Db, tenant: Tenant, fileId: string, kind: CleanupKind, now: Date, error: unknown) {
