@@ -98,6 +98,7 @@ import { failedImportAnchors, importedItems } from './import-audit.js';
 import { policedSub } from '../../route-policy/index.js';
 import { EMPLOYMENT_POLICIES } from './policy.js';
 import { registerExitRoutes, runExitCancel } from './exit-routes.js';
+import { registerAllPeople } from './all-people.js';
 import { registerRecordList } from './record-list.js';
 import { registerRetirementRoutes } from './retirement-routes.js';
 import { assertNoRehireKeys } from './retirement-rehire.js';
@@ -146,6 +147,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerEmployees(module, deps);
   registerEmployeeRecords(module, deps);
   registerRecordList(module, deps);
+  registerAllPeople(module, deps);
   registerInheritancePreview(module, deps);
   registerBusinesses(module, deps);
   registerActivation(module, deps);
