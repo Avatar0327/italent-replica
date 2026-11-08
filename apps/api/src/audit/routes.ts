@@ -49,7 +49,7 @@ import {
   queryWindow,
   tenantRetention,
 } from './query.js';
-import { auditViewer, visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
+import { auditViewer, visibleAttachment, visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
 import { linkageSnapshot } from './transfer-linkage.js';
 
 const BASE = '/api/tenant/audit';
@@ -360,7 +360,7 @@ function operationView(
     objectId: row.objectId,
     ...task.counts,
     errorReport: visibleErrorReport(row.errorReport, fields, task.rows),
-    attachment: row.attachment,
+    attachment: visibleAttachment(row.objectType, row.attachment),
     ...sourceView(row),
     commandId: row.commandId,
   };
