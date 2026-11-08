@@ -1,6 +1,6 @@
 /**
  * F-478 节点出口分支的读写与校验（设计 §2、§2.4）。路由随流程版本冻结：草稿整体替换时先清后写，已发布版本只读（迁移 0197 触发器）。
- * 本片只在进程内读写，HTTP 草稿入参 schema 不开放 routes。
+ * S2 起 HTTP 草稿入参开放 routes（definition-input.ts），违规经 routeError 映射为 400 APPROVAL_ROUTE_INVALID。
  */
 import { sql, type Tx } from '@italent/db';
 import {

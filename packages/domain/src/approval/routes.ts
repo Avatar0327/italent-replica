@@ -11,6 +11,8 @@ export const ROUTE_END = 'END';
 export const MAX_ROUTE_BRANCHES = 10;
 /** 分支条件项上限，对应 item_no 的数据库范围。 */
 export const MAX_ROUTE_CONDITION_ITEMS = 20;
+/** 条件分支优先级的可存储上限：库里是 smallint，越界写库会变成 500，所以在域内就按 invalid_condition 拒绝。 */
+export const MAX_ROUTE_PRIORITY = 32767;
 
 export type RouteBranchKind = 'condition' | 'else' | 'direct';
 
@@ -123,7 +125,8 @@ function branchViolation(
 ): RouteReason | null {
   if (branch.kind === 'condition') {
     const conditions = branch.conditions;
-    const prioritized = Number.isSafeInteger(branch.priority) && (branch.priority ?? 0) >= 1;
+    const priority = branch.priority ?? 0;
+    const prioritized = Number.isSafeInteger(priority) && priority >= 1 && priority <= MAX_ROUTE_PRIORITY;
     if (!conditions || !conditions.items.length || !prioritized) return 'invalid_condition';
     const reason = conditionReason(conditions, fields);
     if (reason) return reason;
@@ -255,6 +258,65 @@ export function resolveSuccessor(
   const chosen = hit ?? fallback;
   if (!chosen) throw new RouteResolutionError(nodeKey, exit);
   return { target: chosen.branch.target, branchNo: chosen.branchNo };
+}
+
+export interface PathStep {
+  readonly nodeKey: string;
+  /** 本节点选的出口；节点没有可自动选的出口时为 null。 */
+  readonly exit: string | null;
+  readonly branchNo: number | null;
+  /** 分支条件所需字段在数据里缺失：不猜路径，推演停在本节点（设计 §3.4）。 */
+  readonly undetermined?: true;
+}
+
+export interface PathWalk {
+  readonly steps: readonly PathStep[];
+  /** end：走到结束；undetermined：缺字段停住；stuck：本节点没有可自动选的出口（如只配了不同意）。 */
+  readonly end: 'end' | 'undetermined' | 'stuck';
+}
+
+/** 节点某出口的分支条件引用了 context 里没有给出的字段（缺失与“给了空值”不同：后者是已知的空）。 */
+function missingFields(node: ApprovalNode, exit: string, context: ConditionContext): boolean {
+  const branches = node.routes?.find((route) => route.exit === exit)?.branches ?? [];
+  return branches.some((branch) =>
+    (branch.conditions?.items ?? []).some((item) => !Object.hasOwn(context.values, item.field)),
+  );
+}
+
+/**
+ * 从 startKey 起按「默认同意族出口」推演后继，直到结束 / 缺字段 / 无可选出口（设计 §3.4、§4）。
+ * 仿真（虚拟数据）与详情 path（当前快照）共用，两边不各自解释路由。
+ * stopOnMissing=true（仿真）：条件字段在 context 里缺失就停；false（详情）：快照里缺失按空值求值，与引擎推进一致。
+ */
+export function walkDefaultPath(
+  nodes: readonly ApprovalNode[],
+  startKey: string,
+  approvalType: string,
+  context: ConditionContext,
+  stopOnMissing = true,
+): PathWalk {
+  const steps: PathStep[] = [];
+  const seen = new Set<string>();
+  let key = startKey;
+  while (!seen.has(key)) {
+    seen.add(key);
+    const node = nodes.find((candidate) => candidate.key === key);
+    if (!node) break;
+    const exit = autoApproveExit(node, approvalType, {});
+    if (exit === null) {
+      steps.push({ nodeKey: key, exit: null, branchNo: null });
+      return { steps, end: 'stuck' };
+    }
+    if (stopOnMissing && missingFields(node, exit, context)) {
+      steps.push({ nodeKey: key, exit, branchNo: null, undetermined: true });
+      return { steps, end: 'undetermined' };
+    }
+    const successor = resolveSuccessor(nodes, key, exit, context);
+    steps.push({ nodeKey: key, exit, branchNo: successor.branchNo });
+    if (successor.target === ROUTE_END) break;
+    key = successor.target;
+  }
+  return { steps, end: 'end' };
 }
 
 /**

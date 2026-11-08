@@ -690,7 +690,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/context.ts#schedulerAwareContext': ['apps/api/src/system-actor.ts#SYSTEM_USER_ID'],
   'apps/api/src/modules/approval/countersign.ts#HELD': ['apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES'],
   'apps/api/src/modules/approval/countersign.ts#activationVotes': [
-    '#votingTasks',
+    '#tally',
     'packages/domain/src/approval/countersign.ts#countersignVote',
   ],
   'apps/api/src/modules/approval/countersign.ts#countersignFlowed': [
@@ -740,6 +740,13 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/policies.ts#countersignEndedReason',
     'packages/domain/src/approval/types.ts#nodeExits',
   ],
+  'apps/api/src/modules/approval/countersign.ts#settledOutcome': [
+    '#RESTORE_ORIGINS',
+    '#tally',
+    'packages/domain/src/approval/countersign.ts#countersignOutcome',
+    'packages/domain/src/approval/countersign.ts#countersignVote',
+  ],
+  'apps/api/src/modules/approval/countersign.ts#tally': ['#votingTasks'],
   'apps/api/src/modules/approval/countersign.ts#votingTasks': [
     'apps/api/src/modules/approval/rules.ts#votesInTransition',
     'apps/api/src/modules/approval/task-history.ts#withoutRetrieved',
@@ -750,6 +757,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#schedulerAwareContext',
     'apps/api/src/modules/approval/store.ts#latestInstanceOf',
     'apps/api/src/modules/approval/store.ts#loadInstance',
+  ],
+  'apps/api/src/modules/approval/definition-input.ts#ROUTE_EXIT_CODES': [
+    'packages/domain/src/approval/routes.ts#BUSINESS_EXIT_CODES',
+    'packages/domain/src/approval/types.ts#NODE_EXITS',
   ],
   'apps/api/src/modules/approval/definition-input.ts#approvalTypeOf': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -779,6 +790,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/definition-input.ts#emptyPolicyError': [
     'apps/api/src/modules/approval/context.ts#approvalError',
   ],
+  'apps/api/src/modules/approval/definition-input.ts#exitRoute': ['#ROUTE_EXIT_CODES', '#routeBranch'],
   'apps/api/src/modules/approval/definition-input.ts#exitRule': [
     'packages/domain/src/approval/types.ts#EXIT_RULE_KINDS',
   ],
@@ -790,22 +802,25 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/definition-input.ts#node': [
     'apps/api/src/modules/approval/context.ts#canonicalId',
+    '#ROUTE_EXIT_CODES',
     '#avoidSubjectsResult',
     '#codeList',
     '#emptyApproverPolicy',
     '#messageRule',
+    '#nodeRoutes',
     '#sourceSchema',
     '#text',
     '#transitionRule',
     'packages/domain/src/approval/types.ts#AUTO_RESULTS',
     'packages/domain/src/approval/types.ts#EDIT_MODES',
     'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_LIMIT',
-    'packages/domain/src/approval/types.ts#NODE_EXITS',
     'packages/domain/src/approval/types.ts#NODE_KINDS',
     'packages/domain/src/approval/types.ts#NO_ASSIGNEE_POLICIES',
     'packages/domain/src/approval/types.ts#REJECT_RESUBMIT_MODES',
     'packages/domain/src/approval/types.ts#URGE_MODES',
   ],
+  'apps/api/src/modules/approval/definition-input.ts#nodeRoutes': ['#ROUTE_EXIT_CODES', '#exitRoute'],
+  'apps/api/src/modules/approval/definition-input.ts#routeBranch': ['#conditionItem', '#text'],
   'apps/api/src/modules/approval/definition-input.ts#sourceSchema': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#canonicalId',
@@ -822,6 +837,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/definition.ts#definitionViolations',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
+  'apps/api/src/modules/approval/definition-input.ts#toNode': ['#toRoutes'],
   'apps/api/src/modules/approval/definition-input.ts#transitionRule': [
     '#exitRule',
     'packages/domain/src/approval/types.ts#TRANSITION_RULE_TYPES',
@@ -1015,6 +1031,32 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/read-model.ts#validIsoDate',
     'packages/domain/src/approval/sources.ts#RELATION_SOURCE_TYPES',
   ],
+  'apps/api/src/modules/approval/detail-path.ts#activatedExits': [
+    '#decisionExits',
+    '#entriesOf',
+    '#exitOfActivation',
+    '#flowFrom',
+  ],
+  'apps/api/src/modules/approval/detail-path.ts#decisionExits': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/detail-path.ts#entriesOf': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/detail-path.ts#exitOfActivation': [
+    'apps/api/src/modules/approval/countersign.ts#settledOutcome',
+    '#settledExitOf',
+    'packages/domain/src/approval/countersign.ts#exitRulesOf',
+    'packages/domain/src/approval/types.ts#isCountersign',
+    'packages/domain/src/approval/types.ts#nodeExits',
+  ],
+  'apps/api/src/modules/approval/detail-path.ts#exitsView': ['packages/domain/src/approval/types.ts#EXIT_LABELS'],
+  'apps/api/src/modules/approval/detail-path.ts#loadPathFacts': ['#activatedExits', '#pendingWalk'],
+  'apps/api/src/modules/approval/detail-path.ts#pendingWalk': [
+    'apps/api/src/modules/approval/matching.ts#conditionContext',
+    'packages/domain/src/approval/routes.ts#walkDefaultPath',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/approval/detail-path.ts#settledExitOf': [
+    'apps/api/src/modules/approval/task-history.ts#withoutRetrieved',
+    'apps/api/src/modules/approval/task-state.ts#AWAITING_STATUSES',
+  ],
   'apps/api/src/modules/approval/disclosure.ts#actionsFor': [
     '#initiatorActions',
     'apps/api/src/modules/approval/edit-surface.ts#editSurface',
@@ -1037,6 +1079,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/disclosure.ts#ccNodeOf': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/disclosure.ts#detailView': [
+    'apps/api/src/modules/approval/detail-path.ts#NO_PATH_FACTS',
+    'apps/api/src/modules/approval/detail-path.ts#exitsView',
+    'apps/api/src/modules/approval/detail-path.ts#pathView',
     '#COMMENT_NOTICE',
     '#actionsFor',
     '#disclosedFields',
@@ -1119,6 +1164,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/engine.ts#afterNodeApproved': [
     '#followExit',
     'apps/api/src/modules/approval/store.ts#loadTasks',
+    'apps/api/src/modules/approval/task-state.ts#AWAITING_STATUSES',
   ],
   'apps/api/src/modules/approval/engine.ts#announceAssignment': [
     'apps/api/src/modules/approval/notifications.ts#applyMessageRules',
@@ -1669,12 +1715,19 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/routing.ts#avoidSelfExceptionAdmin',
   ],
   'apps/api/src/modules/approval/resolver.ts#userOfPerson': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/routes.ts#DECISION_SCHEMAS': [
+    '#decision',
+    '#withExit',
+    'packages/domain/src/approval/routes.ts#BUSINESS_EXIT_CODES',
+  ],
   'apps/api/src/modules/approval/routes.ts#adminBody': ['#userIdInput'],
   'apps/api/src/modules/approval/routes.ts#command': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     '#LOCK_CONFLICTS',
   ],
+  'apps/api/src/modules/approval/routes.ts#decision': ['#comment', '#exitReschedule', '#fields'],
   'apps/api/src/modules/approval/routes.ts#detailViewOf': [
+    'apps/api/src/modules/approval/detail-path.ts#loadPathFacts',
     'apps/api/src/modules/approval/disclosure.ts#detailView',
     'apps/api/src/modules/approval/disclosure.ts#readDetail',
     '#detailViewable',
@@ -1765,8 +1818,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/actions.ts#transferTask',
     'apps/api/src/modules/approval/node-actions.ts#copySend',
     'apps/api/src/modules/approval/node-actions.ts#retrieveTask',
+    '#DECISION_SCHEMAS',
     '#command',
     '#comment',
+    '#decisionLedger',
+    '#exitReschedule',
     '#fieldRights',
     '#fields',
     '#respondOutcome',
@@ -1949,6 +2005,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/routes.ts#route:POST /tasks/:id/edit': [
     'apps/api/src/modules/approval/actions.ts#editTask',
     '#command',
+    '#exitReschedule',
     '#fieldRights',
     '#fields',
     '#respondOutcome',
@@ -2020,6 +2077,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
   'apps/api/src/modules/approval/routes.ts#viewerOf': ['apps/api/src/modules/approval/access.ts#adminScope'],
+  'apps/api/src/modules/approval/routes.ts#withExit': ['#decision'],
   'apps/api/src/modules/approval/routes.ts#writeCtx': ['#readCtx', 'apps/api/src/modules/job/context.ts#revision'],
   'apps/api/src/modules/approval/rules.ts#addSignAllowed': ['#addSignLink'],
   'apps/api/src/modules/approval/rules.ts#addSignLink': ['#ADD_SIGN_ORIGINS', '#REASSIGN_ORIGINS'],
@@ -2070,6 +2128,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/routing.ts#adminRecused',
     'packages/domain/src/approval/routing.ts#avoidSelfExceptionAdmin',
   ],
+  'apps/api/src/modules/approval/simulation.ts#offPathNode': [
+    'packages/domain/src/approval/types.ts#nodeExits',
+    'packages/domain/src/approval/types.ts#nodeKindOf',
+  ],
   'apps/api/src/modules/approval/simulation.ts#preflight': [
     '#NOBODY',
     '#managerOf',
@@ -2092,7 +2154,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/simulation.ts#simulateNodes': [
     '#countersignSummary',
+    '#offPathNode',
     '#simulatedSeats',
+    '#stepFields',
     '#virtualDecisions',
     '#virtualFacts',
     'packages/domain/src/approval/types.ts#isCountersign',
@@ -2105,6 +2169,7 @@ export const GRAPH: Graph = {
     '#conditionContext',
     '#preflight',
     '#simulateNodes',
+    '#walkOf',
     'packages/domain/src/approval/conditions.ts#evaluateCondition',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
@@ -2128,6 +2193,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/sources.ts#expressionValue',
     'packages/domain/src/approval/sources.ts#sourceKey',
   ],
+  'apps/api/src/modules/approval/simulation.ts#walkOf': ['packages/domain/src/approval/routes.ts#walkDefaultPath'],
   'apps/api/src/modules/approval/source-identity.ts#memberUserIds': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/permission/auto-held.ts#isAutoHeld',

@@ -20,6 +20,7 @@ import {
   APPROVAL_PROCESS_OBJECT,
   APPROVAL_TYPES,
   APPROVER_EXPRESSIONS,
+  BUSINESS_EXIT_CODES,
   MAX_ADD_SIGNERS,
   PERSONNEL_OBJECT,
 } from '@italent/domain';
@@ -79,6 +80,7 @@ import {
   publishProcess,
   replaceDraft,
 } from './definitions.js';
+import { loadPathFacts } from './detail-path.js';
 import {
   detailView,
   namedForm,
@@ -206,15 +208,25 @@ async function ownViewable(deps: TenantRouteDeps, ctx: TenantContext, data: Deta
   return new Set([...own, ...profileFields.filter((field) => profile === undefined || profile.has(field))]);
 }
 
-async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string) {
+/**
+ * 详情视图：与附件下载共用同一个取值函数（F-479）。path 只有详情接口下发，事实在这里按 withPath 取（同一事务、
+ * 取自 readDetail 的 allTasks），不放进 readDetail（它还被别的模块的披露复用）；附件下载不需要（默认 false），不多读。
+ */
+async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, withPath = false) {
   const ctx = readCtx(c, deps);
   const viewer = await viewerOf(deps, ctx);
-  const data = await withTenant(deps.db, ctx.tenantId, (tx) => readDetail(tx, ctx, instanceId, viewer));
-  return { ctx, view: detailView(data, ctx.userId, await detailViewable(deps, ctx, data)) };
+  const { data, pathFacts } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const detail = await readDetail(tx, ctx, instanceId, viewer);
+    if (!withPath) return { data: detail, pathFacts: undefined };
+    const { instance, version, snapshot, allTasks } = detail;
+    const facts = await loadPathFacts(tx, ctx, instance, version.nodes, snapshot.conditionValues, allTasks);
+    return { data: detail, pathFacts: facts };
+  });
+  return { ctx, view: detailView(data, ctx.userId, await detailViewable(deps, ctx, data), pathFacts) };
 }
 
 async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
-  const { ctx, view } = await detailViewOf(c, deps, instanceId);
+  const { ctx, view } = await detailViewOf(c, deps, instanceId, true);
   return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view)));
 }
 
@@ -582,11 +594,30 @@ async function fieldRights(c: C, deps: TenantRouteDeps, taskId: string, edits: R
 const comment = z.string().trim().max(2000).nullable().optional();
 const fields = z.record(z.string().max(100), z.unknown());
 
+const exitReschedule = z
+  .strictObject({ pendingTransferAck: z.string().max(200).optional(), confirmed: z.boolean().optional() })
+  .optional();
+const decision = z.strictObject({ comment, fields: fields.optional(), exitReschedule });
+// F-478 S2：只有 approve / disagree 接受 exit，且各自只收本族编码；驳回类不加（DEC-831⑥），多带字段一律 400。
+const withExit = (codes: readonly [string, ...string[]]) => decision.extend({ exit: z.enum(codes).optional() });
+const DECISION_SCHEMAS = {
+  approve: withExit(['approve', ...BUSINESS_EXIT_CODES]),
+  disagree: withExit(['disagree']),
+  reject: decision,
+  'reject-previous': decision,
+};
+
+/** 命令指纹：与端点默认出口相同的 exit 视同未带，带不带 exit:'approve' 的重放才幂等（DEC-067）。 */
+function decisionLedger<T extends { exit?: string }>(
+  path: 'approve' | 'disagree' | 'reject' | 'reject-previous',
+  request: T,
+) {
+  const defaultExit = path === 'disagree' ? 'disagree' : 'approve';
+  const { exit: _same, ...bare } = request;
+  return request.exit && request.exit !== defaultExit ? request : bare;
+}
+
 function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  const exitReschedule = z
-    .strictObject({ pendingTransferAck: z.string().max(200).optional(), confirmed: z.boolean().optional() })
-    .optional();
-  const decision = z.strictObject({ comment, fields: fields.optional(), exitReschedule });
   for (const [path, act] of [
     ['approve', approveTask],
     ['disagree', disagreeTask],
@@ -596,15 +627,18 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     router.post(`/tasks/:id/${path}`, async (c) => {
       const ctx = writeCtx(c, deps);
       const taskId = uuidParam(c);
-      const input = await parseBody(c, decision);
+      const input = (await parseBody(c, DECISION_SCHEMAS[path])) as z.infer<typeof decision> & { exit?: string };
       const viewable = await fieldRights(c, deps, taskId, input.fields);
       const request = {
         taskId,
         comment: input.comment ?? null,
         ...(input.fields ? { fields: input.fields } : {}),
         ...(input.exitReschedule ? { exitReschedule: input.exitReschedule } : {}),
+        ...(input.exit ? { exit: input.exit } : {}),
       };
-      const result = await command(c, deps, ctx, request, (tx, context) => act(tx, context, request, viewable));
+      const result = await command(c, deps, ctx, decisionLedger(path, request), (tx, context) =>
+        act(tx, context, request, viewable),
+      );
       return respondOutcome(c, deps, result);
     });
   }

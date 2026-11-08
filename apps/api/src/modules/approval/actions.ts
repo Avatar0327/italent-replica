@@ -94,8 +94,15 @@ export function assertOpen(scene: TaskScene, ctx: ApprovalContext): void {
   assertBusinessUnchanged(scene.run);
 }
 
-/** DEC-144：同意 / 不同意是出口动作，节点没有配置该出口动作即不可用（详情同样不公布）。 */
-function assertExit(node: ApprovalNode, exit: NodeExit): void {
+/**
+ * DEC-144：同意 / 不同意是出口动作，节点没有配置该出口动作即不可用（详情同样不公布）。
+ * F-478 S2：请求显式带 exit 而节点没有该出口时是 409 APPROVAL_EXIT_NOT_AVAILABLE（前端按 exits 渲染，提示刷新）；
+ * 不带 exit 的旧请求保持 APPROVAL_ACTION_DISABLED，旧页面与既有验收不受影响。S2 的推进仍按同意 / 不同意出口，exit 只校验。
+ */
+function assertExit(node: ApprovalNode, exit: NodeExit, requested?: string): void {
+  if (requested !== undefined && !hasExit(node, requested as NodeExit)) {
+    throw approvalError('CONFLICT', 'APPROVAL_EXIT_NOT_AVAILABLE', '本节点没有该出口', { exit: requested });
+  }
   if (!hasExit(node, exit)) {
     throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', `本节点没有「${EXIT_LABELS[exit]}」出口动作`);
   }
@@ -274,6 +281,8 @@ export interface DecisionInput {
   readonly taskId: string;
   readonly comment: string | null;
   readonly fields?: Row;
+  /** F-478：同意 / 不同意族的出口编码，只在 approve / disagree 入口出现。 */
+  readonly exit?: string;
 }
 
 export async function approveTask(
@@ -284,7 +293,7 @@ export async function approveTask(
 ): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
   assertOpen(scene, ctx);
-  assertExit(scene.node, 'approve');
+  assertExit(scene.node, 'approve', input.exit);
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
   const { run, task, node } = scene;
@@ -352,7 +361,7 @@ export async function disagreeTask(
 ): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
   assertOpen(scene, ctx);
-  assertExit(scene.node, 'disagree');
+  assertExit(scene.node, 'disagree', input.exit);
   const tasks = await loadTasks(tx, ctx.tenantId, scene.run.instance.id);
   if (isCountersign(scene.node) && !votesInTransition(tasks, scene.task)) {
     throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '前加签人不计入流转规则，只能同意或驳回');
