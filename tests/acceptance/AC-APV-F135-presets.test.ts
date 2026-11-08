@@ -41,22 +41,6 @@ const cases = [
     ],
   ],
   ['emp_info_change', '个人信息变更', [['HRBP审核', 'department', 'latest_record_department_hrbp']]],
-  [
-    'regularization',
-    '转正（DEC-789 保持基线）',
-    [
-      ['部门负责人审批', 'department', 'latest_record_department_head'],
-      ['HRBP审核', 'department', 'record_department_hrbp'],
-    ],
-  ],
-  [
-    'intern_regularization',
-    '实习转正（本批不改动）',
-    [
-      ['部门负责人审批', 'department', 'latest_record_department_head'],
-      ['HRBP审核', 'department', 'record_department_hrbp'],
-    ],
-  ],
 ] as const satisfies readonly (readonly [ApprovalTypeCode, string, readonly (readonly [string, string, string])[]])[];
 
 beforeAll(async () => {
@@ -105,6 +89,25 @@ describe('AC-APV-F135：真实安装接口保存并读回线性预置', () => {
         },
       });
     }
+  });
+
+  // F-478 S3 有意改契约：转正 / 实习转正不再是“部门负责人 → HRBP”基线两节点（原 DEC-789 行），改为下列结构；
+  // 节点动作、出口与读回细节在 AC-APV-F478-s3.presets.test.ts 逐项断言。
+  it.each([
+    [
+      'regularization',
+      [
+        ['员工自评', 'object_field', 'subject_employee'],
+        ['上级评价', 'department', 'record_department_head'],
+      ],
+    ],
+    ['intern_regularization', [['系统管理员', 'identity', 'system_admin']]],
+  ] as const)('%s：F-478 S3 新预置节点、顺序与来源', (type, expected) => {
+    const matches = installed.filter((item) => item.approvalType === type);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]!.latestVersion.nodes.map((n) => [n.name, n.approver?.type, n.approver?.value])).toEqual(expected);
+    expect(matches[0]!.currentVersion).toBeNull();
+    expect(matches[0]!.latestVersion.status).toBe('draft');
   });
 
   it('AC-APV-F135：重复安装保持已有流程与版本，不回填或重建', async () => {
