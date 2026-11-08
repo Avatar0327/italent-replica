@@ -44,6 +44,7 @@ export const jobFields: Record<JobKind, string[]> = {
     'maxLevelId',
     'minGradeId',
     'maxGradeId',
+    'competencyModelId',
     'responsibilities',
     'requirements',
     'evaluationScore',
@@ -82,7 +83,23 @@ const references: Record<string, string> = {
   adminParent: 'positions',
   dottedParent: 'positions',
   standardPositionId: 'positions',
+  competencyModelId: 'criteria',
+  qualificationId: 'qualification-categories',
 };
+/** 跨模块引用目标：路径与权限对象各自独立，且不按职务体系的业务日期取值（Q-M0-17：人才标准、任职类别）。 */
+const external: Record<string, { path: string; object: string }> = {
+  criteria: { path: '/api/tenant/talent/criteria', object: 'TalentCenter.TalentCriterion' },
+  'qualification-categories': {
+    path: '/api/tenant/qualification/categories',
+    object: 'Qualification.EmploymentCategory',
+  },
+};
+export const isExternalReference = (kind: string) => kind in external;
+/** 候选列表与按 ID 读取的接口前缀。 */
+export function referencePath(kind: string) {
+  if (kind === 'org') return '/api/tenant/org/organizations';
+  return external[kind]?.path ?? `/api/tenant/job/${kind}`;
+}
 /** 引用字段指向的对象；parentId 指向同类对象。'org' 为组织。 */
 export function referenceKind(kind: JobKind, field: string): string | undefined {
   return field === 'parentId' ? kind : references[field];
@@ -133,6 +150,8 @@ interface JobLayout {
   traits: string[];
   others: string[];
   extra: { key: string; fields: string[] };
+  // 职务在职位说明之前另有「胜任力模型」分区（R1a §3.7）；其中派生字段只在详情只读展示。
+  mid?: { key: string; fields: string[] };
   // 职位另有末尾的「职责说明」分区（R1a §3.8）：表单与详情都排在汇报关系之后。
   tail?: { key: string; fields: string[] };
 }
@@ -141,6 +160,7 @@ const layouts: Partial<Record<JobKind, JobLayout>> = {
     head: ['code', 'name', 'establishedOn', 'sequenceId', 'levelTypeId', 'minLevelId', 'maxLevelId'],
     traits: ['evaluationScore', 'isKey', 'isConfidential', 'displayOrder'],
     others: ['professionalLineId', 'minGradeId', 'maxGradeId'],
+    mid: { key: 'competency', fields: ['competencyModelId', 'qualificationId'] },
     extra: { key: 'duty', fields: ['responsibilities', 'requirements'] },
   },
   positions: {
@@ -162,6 +182,8 @@ const layouts: Partial<Record<JobKind, JobLayout>> = {
     tail: { key: 'positionDuty', fields: ['responsibilities', 'requirements'] },
   },
 };
+// 由别的模块的关联带出的只读字段：详情展示，表单不出控件（关联任职资格由任职类别关联，Q-M0-17）。
+const derivedFields = new Set(['qualificationId']);
 // 原站职位表单：上级职位、虚线上级穿插在基本信息里；职位汇报关系只是详情分区。
 const positionForm = ['adminParent', 'isKey', 'dottedParent', 'isConfidential', 'displayOrder'];
 export function jobLabel(kind: JobKind, field: string, place?: 'form') {
@@ -201,7 +223,12 @@ export function jobFormGroups(kind: JobKind, editing = false) {
       ...(layout.tail ? [layout.tail] : []),
     ];
   }
-  return [{ key: 'basic', fields: [...head, ...traits, ...others, 'stopDate', 'enabled'] }, extra];
+  const mid = layout.mid && { ...layout.mid, fields: layout.mid.fields.filter((f) => !derivedFields.has(f)) };
+  return [
+    { key: 'basic', fields: [...head, ...traits, ...others, 'stopDate', 'enabled'] },
+    ...(mid ? [mid] : []),
+    extra,
+  ];
 }
 export function jobDetailSections(kind: JobKind, access: FieldGate, values: Record<string, unknown>) {
   const layout = layouts[kind];
@@ -211,6 +238,7 @@ export function jobDetailSections(kind: JobKind, access: FieldGate, values: Reco
           key: 'basic',
           fields: [...layout.head, ...layout.traits, 'enabled', 'startDate', ...layout.others, 'stopDate'],
         },
+        ...(layout.mid ? [layout.mid] : []),
         layout.extra,
         ...(layout.tail ? [layout.tail] : []),
       ]
@@ -259,7 +287,7 @@ export function jobCatalogQuery(kind: JobKind, filters: JobCatalogFilters, nameV
 }
 /** 候选目标对象的权限对象：名称搜索按目标对象（而非当前表单对象）的名称查看权裁剪。 */
 export function referenceObject(kind: string) {
-  return kind === 'org' ? orgObject : jobObjects[kind as JobKind];
+  return kind === 'org' ? orgObject : (external[kind]?.object ?? jobObjects[kind as JobKind]);
 }
 /** 无名称查看权时不发 name：否则可按匹配结果推断被裁剪的名称；接口无按编码搜索，故不提供搜索。 */
 export function referenceQuery(date: string, name: string, nameSearchable: boolean) {

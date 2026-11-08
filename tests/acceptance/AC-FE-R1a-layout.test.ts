@@ -44,6 +44,8 @@ const ALL = [
   'responsibilities',
   'requirements',
   'evaluationScore',
+  'competencyModelId',
+  'qualificationId',
 ];
 function permission(viewable: string[], editable = viewable, update = true) {
   return {
@@ -158,6 +160,8 @@ describe('AC-FE-R1a-23 职务、职位表单按原站分组与排序', () => {
           'enabled',
         ],
       },
+      // F-474-2a #5：胜任力模型（人才标准引用）在职位说明之前；关联任职资格由类别关联带出，表单不出控件（R1a §3.7）。
+      { key: 'competency', fields: ['competencyModelId'] },
       { key: 'duty', fields: ['responsibilities', 'requirements'] },
     ]);
   });
@@ -272,7 +276,24 @@ describe('AC-FE-R1a-24 职务、职位详情按原站分区', () => {
     const { jobDetailSections } = await job();
     const { pageAccess } = await org();
     const sections = jobDetailSections('posts', pageAccess(permission(ALL)), position);
-    expect(sections[1]).toEqual({ key: 'duty', fields: ['responsibilities', 'requirements'] });
+    expect(sections.find((section: { key: string }) => section.key === 'duty')).toEqual({
+      key: 'duty',
+      fields: ['responsibilities', 'requirements'],
+    });
+  });
+  it('职务详情：胜任力模型与只读的关联任职资格排在职位说明之前；无查看权的字段不出', async () => {
+    const { jobDetailSections } = await job();
+    const { pageAccess } = await org();
+    const values = { name: '合成职务', competencyModelId: null, qualificationId: null, responsibilities: '职责' };
+    const sections = jobDetailSections('posts', pageAccess(permission(ALL)), values);
+    expect(sections.map((section: { key: string }) => section.key)).toEqual(['basic', 'competency', 'duty']);
+    expect(sections[1].fields).toEqual(['competencyModelId', 'qualificationId']);
+    const hidden = jobDetailSections(
+      'posts',
+      pageAccess(permission(ALL.filter((field) => field !== 'qualificationId'))),
+      values,
+    );
+    expect(hidden[1].fields).toEqual(['competencyModelId']);
   });
 });
 

@@ -105,8 +105,10 @@ export function normalizeFields(ctx: JobWriteContext, kind: JobKind, input: JobI
 }
 
 function rejectUnsupported(data: Record<string, unknown>): void {
-  // TODO(需取证 Q-M0-17): 接入真实任职资格与胜任力模型后验证引用对象、租户与可用状态。
-  if (data.qualificationId || data.competencyModelId) {
-    throw new AppError('SERVICE_UNAVAILABLE', '任职资格或胜任力模型的租户引用验证尚未接入');
+  // Q-M0-17：关联任职资格只读，由任职类别关联带出，不接受手选；胜任力模型的引用校验在 validateJobFields。
+  if (data.qualificationId) {
+    throw new AppError('VALIDATION_FAILED', '关联任职资格由任职类别关联带出，不能手动选择', {
+      field: 'qualificationId',
+    });
   }
 }

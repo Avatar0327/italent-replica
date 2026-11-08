@@ -13,6 +13,7 @@ import {
   jobTiming,
   referenceKind,
   referenceObject,
+  referencePath,
   referenceQuery,
   type JobKind,
   type JobRow,
@@ -53,7 +54,7 @@ export function ReferenceSelect({
 }) {
   const [query, setQuery] = useState('');
   const searchable = useNameSearchable(kind);
-  const base = kind === 'org' ? '/api/tenant/org/organizations' : `/api/tenant/job/${kind}`;
+  const base = referencePath(kind);
   const remote = useRemote<{ items: JobRow[] }>(`${base}?${referenceQuery(date, query, searchable)}`);
   const choices = (remote.data?.items ?? [])
     .filter((item) => item.id !== exclude)

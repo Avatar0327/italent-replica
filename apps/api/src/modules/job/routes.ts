@@ -41,6 +41,7 @@ import { jobSettingsCommandSchema, readJobSettings, writeJobSettings } from './s
 import type { JobInput, JobPatch } from './types.js';
 import { validateJobAssignment } from './validation.js';
 import { employmentJobPersonnel, trimManagerSync } from './employment-port.js';
+import { withLinkedQualification } from './qualification-link.js';
 import { createJobObject, updateJobObject } from './write-service.js';
 import { rawImportRows, rawUuid, withFailedImportLog } from '../../audit/record.js';
 
@@ -255,7 +256,9 @@ function registerObjects(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const enabled = enabledFilter(c);
     const scope = await requestScope(c, deps, ctx, objectCode);
     const query = { asOf: queryDate(c, ctx), name: c.req.query('name'), orgId: orgId.data, enabled, scope, ...page };
-    const items = await withTenant(deps.db, ctx.tenantId, (tx) => listJobObjects(tx, ctx.tenantId, kind, query));
+    const items = await withTenant(deps.db, ctx.tenantId, async (tx) =>
+      withLinkedQualification(tx, ctx.tenantId, kind, await listJobObjects(tx, ctx.tenantId, kind, query)),
+    );
     return c.json({
       items: await trimModuleResponse(deps, ctx, objectCode, items),
       today: tenantLocalDate(ctx.now, ctx.timezone),
@@ -271,7 +274,11 @@ function registerObjects(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const id = uuidParam(c);
     const asOf = queryDate(c, ctx);
     const scope = await requestScope(c, deps, ctx, objectCode);
-    const result = await withTenant(deps.db, ctx.tenantId, (tx) => visibleJob(tx, ctx, scope, kind, id, asOf));
+    const found = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const row = await visibleJob(tx, ctx, scope, kind, id, asOf);
+      return row && (await withLinkedQualification(tx, ctx.tenantId, kind, [row]))[0];
+    });
+    const result = found || undefined;
     if (!result) throw new AppError('NOT_FOUND', '职务体系对象不存在或已失效');
     c.header('ETag', `"${result.revision}"`);
     return c.json(await trimModuleResponse(deps, ctx, objectCode, result));
