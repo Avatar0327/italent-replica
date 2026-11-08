@@ -2,7 +2,8 @@
  * F-479 S3 过期清理（设计 §2.5）：
  * - expire：registered / uploaded 且过期（expires_at 早于现在；registered 没有 expires_at，按登记时间 + 用途 TTL）→ pending_cleanup；
  * - purge：pending_cleanup 且满 1 小时宽限、从未封存 → 删除字节行，元数据置 purged（保留作快照）。
- * 已绑定 / 已封存 / detached 的文件不在任何候选条件里；封存文件即使被恢复校验置为 pending_cleanup 也不删字节（§2.3）。
+ * 已绑定 / 已封存 / detached 的文件不在任何候选条件里；恢复校验隔离件（pending_cleanup 且 cleanup_at 为空）
+ * 不论是否封存都不自动删字节，留待人工核对（§2.3、§2.6）。
  * 每条一个小事务（行锁 SKIP LOCKED + 复核状态），失败回滚后另开事务记 attachment_cleanup_attempts，不影响其他条；
  * 状态推进后文件不再是候选，所以重复执行无额外变化（AGENTS §10 定时任务：可重复执行，失败记次数与原因）。
  */
@@ -75,6 +76,7 @@ function eligible(row: FileRow, kind: CleanupKind, now: Date): boolean {
     const expiry = expiryOf(row);
     return (row.status === 'registered' || row.status === 'uploaded') && !!expiry && expiry < now;
   }
+  // cleanup_at 为空 = 恢复校验隔离件（等人工核对），不是“允许回收”；正常回收一定写了 cleanup_at
   const graceEnd = row.cleanupAt && new Date(row.cleanupAt.getTime() + ATTACHMENT_PURGE_GRACE_HOURS * HOUR);
   return row.status === 'pending_cleanup' && row.sealedAt === null && !!graceEnd && graceEnd < now;
 }
@@ -92,6 +94,7 @@ async function candidates(tx: Tx, tenantId: string, kind: CleanupKind, now: Date
       : await tx.execute(sql`SELECT f.id FROM attachment_files f
           LEFT JOIN attachment_cleanup_attempts a ON a.tenant_id=f.tenant_id AND a.file_id=f.id AND a.kind='purge'
           WHERE f.tenant_id=${tenantId} AND f.status='pending_cleanup' AND f.sealed_at IS NULL
+            AND f.cleanup_at IS NOT NULL
             AND f.cleanup_at + make_interval(hours => ${ATTACHMENT_PURGE_GRACE_HOURS}) < ${stamp}::timestamptz
           ORDER BY coalesce(a.attempts,0), f.cleanup_at, f.id LIMIT ${limit}`);
   return rowsOf<{ id: string }>(rows).map((row) => row.id);

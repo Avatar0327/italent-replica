@@ -2,8 +2,9 @@
  * F-479 S3 恢复校验（设计 §2.6）：备份恢复后（或运维定期）逐文件核对“元数据 ↔ 字节”。
  * 范围：status ∈ {uploaded, bound, detached}（registered 还没有字节，pending_cleanup / purged 本就不可读）。
  * 做法：重算 sha256 与长度，与登记值比对；缺字节、长度不符、摘要不符的写进报告，并置为 pending_cleanup 使其不可读。
- * 不自动修复、不改字节：只隔离，等人工用备份核对。已封存的文件被隔离后保留字节（清理任务的 purge 阶段跳过 sealed_at，
- * 见 cleanup.ts），保留证据，也避免把审批在途引用的材料悄悄删光。
+ * 不自动修复、不改字节：只隔离，等人工用备份核对。隔离件的标记是 pending_cleanup 且 cleanup_at 为空（正常回收一定
+ * 写 cleanup_at；business_id 在正常解绑后也保留，不能拿来区分）。清理任务的候选与锁内复核都要求 cleanup_at 非空，
+ * 所以隔离件不论是否封存都不会被自动删字节，保留证据，也避免把审批在途引用的材料悄悄删光。
  * 调用方在目标租户的 withTenant 事务里调用；tenantId 与事务租户不一致时 RLS 让它什么都看不到，结果是空报告（fail-closed）。
  */
 import { createHash } from 'node:crypto';
@@ -60,7 +61,7 @@ export async function verifyAttachmentManifest(
       corrupted.push({ fileId: file.id, problem });
       const [isolated] = await tx
         .update(F)
-        .set({ status: 'pending_cleanup', cleanupAt: now, revision: file.revision + 1, updatedAt: now })
+        .set({ status: 'pending_cleanup', cleanupAt: null, revision: file.revision + 1, updatedAt: now })
         .where(and(eq(F.tenantId, tenantId), eq(F.id, file.id), eq(F.revision, file.revision)))
         .returning();
       if (isolated)
