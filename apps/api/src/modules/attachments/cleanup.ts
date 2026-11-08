@@ -209,18 +209,28 @@ export const cleanupFailureReason = (error: unknown) => {
   return `${code}: ${FAILURE_SUMMARY[code]}`;
 };
 
-/** 失败回滚后另开事务记 failed：先回查，若其实已被推进（提交结果未知）就不记失败。记录本身写不进去则继续抛出，不伪造。 */
+/**
+ * 失败回滚后另开事务记 failed。先锁文件行再重读状态（R1 P2-3），与正常推进路径串行：
+ * 若文件已被另一实例推进（purged / 离开可处理状态）或本 kind 已有成功记录，就不写失败，不覆盖 succeeded。
+ * 记录本身写不进去则继续抛出，不伪造。
+ */
 async function recordFailure(db: Db, tenant: Tenant, fileId: string, kind: CleanupKind, now: Date, error: unknown) {
   return withTenant(db, tenant.id, async (tx) => {
     const [current] = await tx
       .select({ status: F.status })
       .from(F)
-      .where(and(eq(F.tenantId, tenant.id), eq(F.id, fileId)));
-    const moved =
+      .where(and(eq(F.tenantId, tenant.id), eq(F.id, fileId)))
+      .for('update');
+    const processable =
       kind === 'expire'
-        ? current?.status !== 'registered' && current?.status !== 'uploaded'
-        : current?.status === 'purged';
-    if (!current || moved) return false;
+        ? current?.status === 'registered' || current?.status === 'uploaded'
+        : current?.status === 'pending_cleanup';
+    if (!current || !processable) return false;
+    const [done] = await tx
+      .select({ status: A.status })
+      .from(A)
+      .where(and(eq(A.tenantId, tenant.id), eq(A.fileId, fileId), eq(A.kind, kind)));
+    if (done?.status === 'succeeded') return false;
     await saveAttempt(tx, tenant, fileId, kind, now, 'failed', cleanupFailureReason(error));
     return true;
   });
