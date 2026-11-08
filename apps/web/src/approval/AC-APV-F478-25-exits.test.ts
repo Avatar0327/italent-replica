@@ -75,7 +75,13 @@ async function render(detail: Record<string, unknown>) {
       return Response.json(String(path).includes('/logs?') ? { items: [], page: 1, pageSize: 20 } : current);
     }),
   );
-  const row = { id: INSTANCE, title: String(detail.title), approvalType: 'transfer', status: 'pending', taskId: TASK };
+  const row = {
+    id: String(detail.id),
+    title: String(detail.title),
+    approvalType: 'transfer',
+    status: 'pending',
+    taskId: String(detail.taskId),
+  };
   await act(async () => {
     root.render(
       h(SessionProvider, {
@@ -200,6 +206,24 @@ describe('AC-APV-F478-25 409 提示重新读取，不自动重提', () => {
       expect(document.body.textContent).not.toContain(reason);
     });
   }
+
+  it('旧形状下同意结果未知（槽里无 exit），重读后详情带 exits：同意出口按钮仍可打开核对，不发第二次请求', async () => {
+    // 审批命令槽按实例 / 任务存在模块级 store：本条留下结果未知的槽，换一组编号不影响其他用例
+    const ids = { id: '70000000-0000-4000-8000-000000000479', taskId: '50000000-0000-4000-8000-000000000479' };
+    const { exits: _exits, path: _path, ...legacy } = fixture(ids);
+    reply = () => Response.json({ error: { code: 'UNAVAILABLE', message: '合成服务暂不可用' } }, { status: 503 });
+    await render(legacy);
+    await clickHead('同意');
+    await save();
+    expect(posts).toHaveLength(1);
+    await click(anyButton('取消'), '取消');
+    current = fixture(ids);
+    await clickHead('重新读取');
+    const approve = headButtons().find((node) => squash(node.textContent) === '合成同意标签');
+    expect(approve?.disabled).toBe(false);
+    expect(headButtons().find((node) => squash(node.textContent) === '合成不同意标签')?.disabled).toBe(true);
+    expect(posts).toHaveLength(1);
+  });
 
   it('409 后点“重新读取”：出口已不在最新详情里，再点保存不发第二次请求', async () => {
     reply = conflict('APPROVAL_EXIT_NOT_AVAILABLE', '本节点没有该出口', { exit: 'approve' });
