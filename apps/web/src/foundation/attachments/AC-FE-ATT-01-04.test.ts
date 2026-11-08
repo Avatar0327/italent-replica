@@ -178,6 +178,7 @@ describe('AC-FE-ATT-02 上传结果未知：先回查元数据，已上传不重
     expect(uploads[1]!.headers.get('if-match')).toBe(uploads[0]!.headers.get('if-match'));
     expect(uploads[1]!.body).toEqual(uploads[0]!.body);
     const metaIndex = backend.calls.findIndex((call) => call.method === 'GET' && META.test(call.path));
+    expect(metaIndex).toBeGreaterThan(-1);
     expect(metaIndex).toBeLessThan(backend.calls.indexOf(uploads[1]!));
     expect(changes.at(-1)?.map((item) => item.filename)).toEqual(['没送达.png']);
   });

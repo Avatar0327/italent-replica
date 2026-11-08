@@ -188,6 +188,8 @@ describe('AC-FE-ATT-12 downloadAttachment', () => {
   });
 
   it('useAttachmentDownload：请求期间禁用；释放前卸载也释放地址；请求中卸载会 abort；失败给出中文提示', async () => {
+    // 假定时器固定“下一拍释放”的时机：真定时器下 await act 可能让出宏任务，释放先于卸载发生，用例失真
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     let api: ReturnType<typeof useAttachmentDownload> | undefined;
     function Button() {
