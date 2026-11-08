@@ -7,6 +7,7 @@ import { ORG_ADJUSTMENT_FORM_FIELDS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { flowWorld, oaNodes } from './AC-OA-approval-support.js';
+import { reader } from './AC-OA-read-support.js';
 import { NAME_A, NAME_B, SUBJECT_A, SUBJECT_B, copiesOf, handledThenChanged, seenBy } from './AC-F476-support.js';
 
 const testDb = useTestDb();
@@ -25,6 +26,20 @@ describe('AC-F476-01 已办读办理时内容（两入口）', () => {
       expect(seen.orgSubject, `${actor.name} 组织详情主题`).toBe(SUBJECT_A);
     }
     expect((await copiesOf(w, s.instanceId)).map((c) => c.handling_kind)).toEqual(['human', 'human']);
+  });
+
+  it('组织调整详情：内容取冻结的 A，并发元数据（revision）取当前业务现值，并标明来源 frozen（设计 §0.2 / §1.2 / §5.4）', async () => {
+    const w = await flowWorld(testDb().db, 'f476-01-meta');
+    const s = await handledThenChanged(w);
+    const current = await w.revisionOf(s.id);
+    const detail = await reader(w).detail(s.id, w.hrbp.userId);
+    expect(detail.subject).toBe(SUBJECT_A); // 内容仍是办理时的 A
+    expect(detail.revision).toBe(current); // 并发元数据是当前版本，不是冻结时的版本
+    expect(detail.contentView).toMatchObject({ mode: 'frozen', instanceId: s.instanceId });
+    // 发起人读现值：同一 revision，来源 live
+    const live = await reader(w).detail(s.id, w.hr.id);
+    expect(live.revision).toBe(current);
+    expect(live.contentView).toMatchObject({ mode: 'live' });
   });
 
   it('发起人读现值 B（审批中心 + 组织调整两入口），不因别人有办理份而变', async () => {
