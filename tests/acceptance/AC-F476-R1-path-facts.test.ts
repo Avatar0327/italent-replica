@@ -7,6 +7,7 @@
 import { approverSource } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import type { ApprovalWorld } from './AC-APV-support.js';
 import { approveTo, otherwise, republishRouted, when } from './AC-APV-F478-support.js';
 import { SUBJECT_A, SUBJECT_B } from './AC-F476-support.js';
 import { flowWorld, oaNodes } from './AC-OA-approval-support.js';
@@ -25,7 +26,8 @@ describe('AC-F476-R1 冻结份不污染当前路径推演', () => {
     const [n1, n2] = oaNodes();
     const n3 = { ...n2!, key: 'n3', name: '备选负责人审批', approver: approverSource('approval_subject_org_head') };
     const w = await flowWorld(testDb().db, 'f476-r1-path', { nodes: [n1!, n2!, n3] });
-    await republishRouted(w, w.process, {
+    // republishRouted 只用 db / tenant / hr；flowWorld 的 submit 签名不同，故收窄转换
+    await republishRouted(w as unknown as ApprovalWorld, w.process, {
       n1: [approveTo(when(1, 'eq', w.subject, 'n2', 'adjustment.approvalSubjectOrgId'), otherwise('n3'))],
     });
     const orgB = await w.org(`主体二${uniqueSuffix()}`);
