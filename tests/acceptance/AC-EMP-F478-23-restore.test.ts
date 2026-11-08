@@ -17,11 +17,10 @@ it.each([0, 1])(
       body: { fields: { remarks: '撤销前的合成备注' } },
     });
     expect(edit.status, await edit.clone().text()).toBe(200);
-    // 撤销退休在返聘未删时仍 409，且不留任何写入
+    // 手工返聘不是退休生成的：撤销退休在返聘未删时仍被后续版本守卫拦下 409（R-2 生成的返聘见 22-simultaneous）
     const retirement = await w.saved(prior.retirement.id);
     const blocked = await w.s.request('DELETE', `/businesses/${prior.retirement.id}`, { ifMatch: retirement.revision });
     expect(blocked.status).toBe(409);
-    expect(JSON.stringify(await blocked.json())).toContain('RETIREMENT_HAS_REHIRE');
     // 关开关后删除返聘：恢复与开关当前值无关
     await w.setting(RETIRE_REHIRE_SETTING, false);
     const current = await w.saved(rehire.id);

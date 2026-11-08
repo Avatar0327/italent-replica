@@ -30,6 +30,11 @@ it.each([true, false])('AC-EMP-F478-22：同时返聘经调度落地，开关 %s
   expect(rehired.record?.fields.workYearCompanyBefore).toBe(on ? expected : 0.5);
   if (on) expect(expected).toBe(2.4);
   expect((await x.audits(rehireId, 'employment.retire_rehire.seniority')).length).toBe(on ? 1 : 0);
+  const blocked = await x.session.request('DELETE', `/businesses/${retire.id}`, {
+    ifMatch: (await x.business(retire.id)).revision,
+  });
+  expect(blocked.status).toBe(409);
+  expect(JSON.stringify(await blocked.json())).toContain('RETIREMENT_HAS_REHIRE');
   const removed = await x.session.request('DELETE', `/businesses/${rehireId}`, { ifMatch: rehired.revision, body: {} });
   expect(removed.status, await removed.clone().text()).toBe(200);
   expect((await x.audits(rehireId, 'employment.retire_rehire.seniority.restore')).length).toBe(on ? 1 : 0);

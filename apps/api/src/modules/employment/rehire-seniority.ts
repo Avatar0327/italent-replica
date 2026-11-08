@@ -1,4 +1,7 @@
-/** DEC-796：只做离职重聘；实习转正、退休返聘不使用这个开关。 */
+/**
+ * DEC-796 离职重聘、F-478 S6 退休返聘：同一套累计 / 快照 / 恢复，按业务类型各用自己的开关与前驱类型（两个开关互相独立）。
+ * 实习转正不使用这里的开关（DEC-797，见 intern-seniority.ts）。
+ */
 import { sql, type Tx } from '@italent/db';
 import { EMPLOYEE_STATUS, tenureYears } from '@italent/domain';
 import { AppError } from '../../errors.js';
@@ -9,10 +12,36 @@ import { forwardUpdateEmployment } from './forward-update.js';
 import type { ForwardValues } from './forward-rules.js';
 import { findPredecessor } from './read-model.js';
 import { rowsOf, type LockedEmploymentBusiness } from './record-store.js';
-import type { EmploymentContext, EmploymentRecord } from './types.js';
+import type { BusinessKind, EmploymentContext, EmploymentRecord } from './types.js';
 
-const SETTING = 'employment.rehire_accumulate_seniority';
-registerSettingValidator(SETTING, (value) => typeof value === 'boolean');
+export const REHIRE_SENIORITY_SETTING = 'employment.rehire_accumulate_seniority';
+export const RETIRE_REHIRE_SENIORITY_SETTING = 'employment.retire_rehire_accumulate_seniority';
+
+interface SeniorityRule {
+  readonly setting: string;
+  /** 累计所依据的上一段：重聘接离职，返聘接退休；二者都以该记录的最后工作日为终点。 */
+  readonly predecessor: BusinessKind;
+  readonly audit: string;
+  readonly unavailable: string;
+}
+
+// docs/08_设计/F-478 §7.2：按 kind 配置化，新增类型只加一行。
+const RULES: Readonly<Partial<Record<BusinessKind, SeniorityRule>>> = {
+  rehire: {
+    setting: REHIRE_SENIORITY_SETTING,
+    predecessor: 'leave',
+    audit: 'employment.rehire.seniority',
+    unavailable: '重聘累计所需的上一段离职记录不可用',
+  },
+  retire_rehire: {
+    setting: RETIRE_REHIRE_SENIORITY_SETTING,
+    predecessor: 'retirement',
+    audit: 'employment.retire_rehire.seniority',
+    unavailable: '返聘累计所需的上一段退休记录不可用',
+  },
+};
+for (const { setting } of Object.values(RULES))
+  registerSettingValidator(setting, (value) => typeof value === 'boolean');
 
 /** 只从任职落地内核调用；审批、开关修改、查询均不追补已有业务。 */
 export async function applyRehireSeniority(
@@ -23,9 +52,10 @@ export async function applyRehireSeniority(
   beforeOrder: number,
   completingPendingEntry = false,
 ) {
-  if (business.payload.kind !== 'rehire') return values.fields;
+  const rule = RULES[business.payload.kind];
+  if (!rule) return values.fields;
   if (!completingPendingEntry && business.payload.employeeStatus === EMPLOYEE_STATUS.pendingEntry) return values.fields;
-  const setting = await readEffectiveSetting(tx, ctx.tenantId, SETTING);
+  const setting = await readEffectiveSetting(tx, ctx.tenantId, rule.setting);
   if (setting.value !== true) return values.fields;
   const previous = await findPredecessor(
     tx,
@@ -42,8 +72,7 @@ export async function applyRehireSeniority(
     ORDER BY version_no DESC LIMIT 1`),
       )
     : [];
-  if (previous?.kind !== 'leave' || !exit?.lastWorkDate)
-    throw new AppError('CONFLICT', '重聘累计所需的上一段离职记录不可用');
+  if (previous?.kind !== rule.predecessor || !exit?.lastWorkDate) throw new AppError('CONFLICT', rule.unavailable);
   const total = tenureYears(previous.entryDate, exit.lastWorkDate, previous.fields.workYearCompanyBefore);
   if (total === null) throw new AppError('CONFLICT', '上一段任职日期无法计算累计司龄');
   if (Number(total) > Number.MAX_SAFE_INTEGER / 100) throw new AppError('VALIDATION_FAILED', '累计司龄超出可保存范围');
@@ -65,7 +94,7 @@ export async function applyRehireSeniority(
   await auditEmployment(
     tx,
     ctx,
-    'employment.rehire.seniority',
+    rule.audit,
     'employment-record',
     business.id,
     { workYearCompanyBefore: before },
@@ -75,9 +104,10 @@ export async function applyRehireSeniority(
   return fields;
 }
 
-/** 生效重聘按既有删除任职契约撤销；开关当前状态不影响历史快照恢复。 */
+/** 生效重聘 / 返聘按既有删除任职契约撤销；开关当前状态不影响历史快照恢复。 */
 export async function restoreRehireSeniority(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
-  if (business.payload.kind !== 'rehire') return;
+  const rule = RULES[business.payload.kind];
+  if (!rule) return;
   const [snapshot] = rowsOf<{ value: string }>(
     await tx.execute(sql`
     SELECT p.work_year_company_before::text AS value
@@ -101,7 +131,7 @@ export async function restoreRehireSeniority(tx: Tx, ctx: EmploymentContext, bus
   await auditEmployment(
     tx,
     ctx,
-    'employment.rehire.seniority.restore',
+    `${rule.audit}.restore`,
     'employment-record',
     business.id,
     { workYearCompanyBefore: before },
@@ -117,7 +147,7 @@ export async function completeRehireSeniority(
   business: LockedEmploymentBusiness,
   record: EmploymentRecord,
 ) {
-  if (record.kind !== 'rehire') return record.fields;
+  if (!RULES[record.kind]) return record.fields;
   const [point] = rowsOf<{ sortOrder: number }>(
     await tx.execute(sql`
     SELECT sort_order AS "sortOrder" FROM employment_timeline
