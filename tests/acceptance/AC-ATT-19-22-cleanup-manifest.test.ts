@@ -203,7 +203,9 @@ describe('AC-ATT-20 清理幂等；单条失败记 failed、次数、原因，�
     expect((await fileRow(db, tenantId, good.id)).status).toBe('purged');
     const purgeAttempt = async (id: string) => (await attemptRows(db, tenantId, id)).find((r) => r.kind === 'purge')!;
     expect(await purgeAttempt(bad.id)).toMatchObject({ status: 'failed', attempts: 1 });
-    expect((await purgeAttempt(bad.id)).reason).toContain('注入存储异常');
+    // R1 P2-2：失败原因只存白名单错误码 + 安全摘要，不持久化 error.message
+    expect((await purgeAttempt(bad.id)).reason).toMatch(/^blob_delete_failed/);
+    expect((await purgeAttempt(bad.id)).reason).not.toContain('注入存储异常');
 
     await run(27 * HOUR + 15 * 60_000); // 仍失败：次数累加
     expect(await purgeAttempt(bad.id)).toMatchObject({ status: 'failed', attempts: 2 });

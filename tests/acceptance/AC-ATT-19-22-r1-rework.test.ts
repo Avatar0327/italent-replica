@@ -86,3 +86,58 @@ describe('R1 P2-1 恢复隔离件不被自动删字节（AC-ATT-22 / AC-ATT-21�
   });
 });
 
+describe('R1 P2-2 失败记录与回报不带 SQL / 参数 / 内容（AC-ATT-20）', () => {
+  it('数据库驱动错误与带文件内容的异常：attempts.reason、outcome.error、调度器 onError 都只含白名单码', async () => {
+    const { db } = database();
+    const x = await exitWorld(db, 'att-r1-2');
+    const tenantId = x.w.tenant.id;
+    const me = await x.a.person('合成本人丑');
+    const [sqlFail, contentFail] = await x.uploads(me, 2);
+    const t0 = new Date(sqlFail!.uploadedAt!);
+    const store: AttachmentBlobStore = {
+      ...PgBlobStore,
+      async remove(tx: Tx, tid, fileId) {
+        // 真实的驱动错误：Failed query: <SQL> + params，正是 DrizzleQueryError 的形态
+        if (fileId === sqlFail!.id)
+          await tx.execute(sql`delete from attachment_blobs_missing where marker = ${'PARAM-SECRET'}`);
+        if (fileId === contentFail!.id) throw new Error('写入失败，片段 CONTENT-FRAGMENT-89504e47');
+        return PgBlobStore.remove(tx, tid, fileId);
+      },
+    };
+    await runAttachmentCleanup({ db, clock: () => at(t0, 25 * HOUR), tenantId });
+    const run = await runAttachmentCleanup({ db, clock: () => at(t0, 27 * HOUR), tenantId, store });
+    const outcomes = run.runs.flatMap((r) => r.outcomes);
+    expect(outcomes.map((o) => [o.fileId, o.state]).sort()).toEqual(
+      [
+        [sqlFail!.id, 'failed'],
+        [contentFail!.id, 'failed'],
+      ].sort(),
+    );
+
+    const reported: unknown[] = [];
+    const scheduler = startAttachmentCleanupScheduler(db, {
+      intervalMs: 3_600_000,
+      clock: () => at(t0, 28 * HOUR),
+      store,
+      onError: (error) => reported.push(error),
+    });
+    await scheduler.stop();
+    expect(reported.length).toBeGreaterThan(0);
+
+    const rows = [...(await attempts(db, tenantId, sqlFail!.id)), ...(await attempts(db, tenantId, contentFail!.id))];
+    const purgeRows = rows.filter((r) => r.kind === 'purge');
+    expect(purgeRows).toHaveLength(2);
+    for (const row of purgeRows) {
+      expect(row.status).toBe('failed');
+      expect(row.reason).toMatch(/^(blob_delete_failed|db_error|unknown)\b/);
+    }
+    const everything = JSON.stringify([
+      rows,
+      outcomes,
+      reported.map((e) => String(e)),
+      reported.map((e) => (e as Error).stack),
+    ]);
+    for (const fragment of SENSITIVE) expect(everything).not.toContain(fragment);
+  });
+});
+
