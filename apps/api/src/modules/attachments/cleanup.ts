@@ -149,7 +149,8 @@ async function advance(
     .for('update', { skipLocked: true });
   if (!before || !eligible(before, kind, now)) return false;
   const patch = kind === 'expire' ? { status: 'pending_cleanup', cleanupAt: now } : { status: 'purged', purgedAt: now };
-  if (kind === 'purge') await store.remove(tx, tenant.id, fileId);
+  if (kind === 'purge')
+    await store.remove(tx, tenant.id, fileId).catch(() => Promise.reject(new CleanupStepFailure('blob_delete_failed')));
   const [after] = await tx
     .update(F)
     .set({ ...patch, revision: before.revision + 1, updatedAt: now })
@@ -167,16 +168,46 @@ async function advance(
   return true;
 }
 
-/** 失败原因只留首行：数据库驱动的错误正文会带整条 SQL 和参数，不进失败记录与日志。 */
-const reasonOf = (error: unknown) =>
-  (error instanceof AppError
-    ? `${error.code}: ${error.message}`
-    : error instanceof Error
-      ? `${error.name}: ${error.message}`
-      : String(error)
-  )
-    .split('\n')[0]!
-    .slice(0, 500);
+/**
+ * 失败原因只存白名单错误码 + 固定摘要，绝不持久化 error.message / 栈（R1 P2-2）：数据库驱动错误的正文是整条 SQL 加参数，
+ * 存储层异常可能带着文件内容片段，它们都不能进 attachment_cleanup_attempts、结果回报和调度器日志。
+ */
+const FAILURE_SUMMARY = {
+  blob_delete_failed: '删除字节失败',
+  db_error: '数据库操作失败',
+  app_error: '业务校验未通过',
+  unknown: '未归类的异常',
+} as const;
+type FailureCode = keyof typeof FAILURE_SUMMARY;
+
+/** 只携带错误码的内部异常：包住底层异常但不保留其 message / cause。 */
+class CleanupStepFailure extends Error {
+  constructor(readonly code: FailureCode) {
+    super(FAILURE_SUMMARY[code]);
+    this.name = 'CleanupStepFailure';
+  }
+}
+
+/** 驱动层错误的形态：Drizzle 的 DrizzleQueryError（query + params）或 postgres 的 PostgresError（5 位 SQLSTATE）。 */
+function isDatabaseError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const shape = error as { query?: unknown; params?: unknown; code?: unknown; severity?: unknown; cause?: unknown };
+  if (typeof shape.query === 'string' && Array.isArray(shape.params)) return true;
+  if (typeof shape.severity === 'string' && typeof shape.code === 'string') return true;
+  return shape.cause !== undefined && shape.cause !== error && isDatabaseError(shape.cause);
+}
+
+function failureCodeOf(error: unknown): FailureCode {
+  if (error instanceof CleanupStepFailure) return error.code;
+  if (error instanceof AppError) return 'app_error';
+  return isDatabaseError(error) ? 'db_error' : 'unknown';
+}
+
+/** 对外（失败记录、回报、日志）统一的失败原因：白名单码 + 固定摘要。 */
+export const cleanupFailureReason = (error: unknown) => {
+  const code = failureCodeOf(error);
+  return `${code}: ${FAILURE_SUMMARY[code]}`;
+};
 
 /** 失败回滚后另开事务记 failed：先回查，若其实已被推进（提交结果未知）就不记失败。记录本身写不进去则继续抛出，不伪造。 */
 async function recordFailure(db: Db, tenant: Tenant, fileId: string, kind: CleanupKind, now: Date, error: unknown) {
@@ -190,7 +221,7 @@ async function recordFailure(db: Db, tenant: Tenant, fileId: string, kind: Clean
         ? current?.status !== 'registered' && current?.status !== 'uploaded'
         : current?.status === 'purged';
     if (!current || moved) return false;
-    await saveAttempt(tx, tenant, fileId, kind, now, 'failed', reasonOf(error));
+    await saveAttempt(tx, tenant, fileId, kind, now, 'failed', cleanupFailureReason(error));
     return true;
   });
 }
@@ -208,7 +239,7 @@ async function processFile(
     return done ? ({ fileId, kind, state: 'succeeded' } as const) : null;
   } catch (error) {
     const recorded = await recordFailure(db, tenant, fileId, kind, now, error);
-    return recorded ? ({ fileId, kind, state: 'failed', error: reasonOf(error) } as const) : null;
+    return recorded ? ({ fileId, kind, state: 'failed', error: cleanupFailureReason(error) } as const) : null;
   }
 }
 

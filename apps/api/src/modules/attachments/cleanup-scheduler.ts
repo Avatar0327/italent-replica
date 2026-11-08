@@ -4,7 +4,7 @@
  * 测试注入 clock，不依赖真实等待。
  */
 import type { Db } from '@italent/db';
-import { runAttachmentCleanup, type CleanupRun } from './cleanup.js';
+import { cleanupFailureReason, runAttachmentCleanup, type CleanupRun } from './cleanup.js';
 import type { AttachmentBlobStore } from './blob-store.js';
 
 export interface AttachmentCleanupScheduler {
@@ -37,7 +37,8 @@ export function startAttachmentCleanupScheduler(
     if (running) return;
     running = runAttachmentCleanup({ db, clock, ...(options.store ? { store: options.store } : {}) })
       .then((result) => report(result.runs))
-      .catch(onError)
+      // 整轮抛出的异常可能是带 SQL / 参数的驱动错误：只上报白名单码，不把原始异常交给日志
+      .catch((error: unknown) => onError(new Error(`附件清理运行失败：${cleanupFailureReason(error)}`)))
       .finally(() => {
         running = null;
       });
