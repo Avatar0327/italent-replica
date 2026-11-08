@@ -1429,6 +1429,13 @@
       "when": 1794175973372,
       "tag": "0203_f474_2a_position_duty",
       "breakpoints": true
+    },
+    {
+      "idx": 204,
+      "version": "7",
+      "when": 1794178071834,
+      "tag": "0204_f474_2a_level_resource",
+      "breakpoints": true
     }
   ]
 }

@@ -41,6 +41,7 @@ import { jobSettingsCommandSchema, readJobSettings, writeJobSettings } from './s
 import type { JobInput, JobPatch } from './types.js';
 import { validateJobAssignment } from './validation.js';
 import { employmentJobPersonnel, trimManagerSync } from './employment-port.js';
+import { registerResourceSetCandidates } from './resource-set-candidates.js';
 import { withLinkedQualification } from './qualification-link.js';
 import { createJobObject, updateJobObject } from './write-service.js';
 import { rawImportRows, rawUuid, withFailedImportLog } from '../../audit/record.js';
@@ -83,6 +84,7 @@ function registerSettings(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 }
 
 function registerCandidates(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  registerResourceSetCandidates(router, BASE, deps);
   for (const kind of ['levels', 'grades'] as const) {
     router.get(`${BASE}/candidates/${kind}`, async (c) => {
       const objectCode = JOB_OBJECT_CODES[kind];

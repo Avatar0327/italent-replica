@@ -48,7 +48,16 @@ const specific = {
   layers: { layerLevel: order },
   grades: { grade: order, layerId: reference, scoreLow: number, scoreHigh: number },
   'level-types': {},
-  levels: { level: order, levelTypeId: reference, minGradeId: reference, maxGradeId: reference },
+  levels: {
+    level: order,
+    levelTypeId: reference,
+    minGradeId: reference,
+    maxGradeId: reference,
+    ownerOrgId: reference,
+    salaryUpper: number,
+    salaryMid: number,
+    salaryLower: number,
+  },
   sequences: { parentId: reference, levelTypeId: reference, source: text, externalId: text },
   'professional-lines': { parentId: reference },
   posts: {
@@ -80,6 +89,9 @@ export function jobCreationSchema(kind: JobKind) {
 
 export function jobPatchSchema(kind: JobKind) {
   const patch = jobCreationSchema(kind).omit({ startDate: true }).partial().extend({ effectiveDate: businessDate });
+  // 职级的所属资源集合只在新建时按授权管理单元定，修改请求不接受（DEC-778④：列表只读）
+  // 类型上仍沿用 patch：按 kind 泛型取到的是各对象表单的并集，omit 的键不在所有成员里。
+  if (kind === 'levels') return patch.omit({ ownerOrgId: true } as never) as typeof patch;
   return kind === 'positions' ? patch.extend({ adjustEmployeeDirectManager: z.boolean().optional() }) : patch;
 }
 

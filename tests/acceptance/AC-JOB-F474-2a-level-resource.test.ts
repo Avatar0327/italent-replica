@@ -1,0 +1,251 @@
+/**
+ * F-474-2a #6：职级「所属资源集合」与「薪资上限 / 中位 / 下限」（R1a §2.8、§3.6；DEC-778④ 沿用 DEC-339①）。
+ * - 资源集合 = 创建人在职务体系应用（TenantBase）里的授权管理单元：一个自动填，多个由新建请求选一个，列表只读；
+ * - 薪资三值按版本链保存，规格未验证数值关系，因此不校验 下限 ≤ 中位 ≤ 上限；
+ * - 字段权限：无查看权的薪资字段列表与详情都不返回，无编辑权的整单拒绝。
+ */
+import { MODULE_OBJECTS } from '@italent/domain';
+import { useTestDb } from '@italent/testkit';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { createMou, createOrg, talentWorld, TC_PERMISSION_PATH } from './AC-TC-support.js';
+import {
+  addMember,
+  createProfile,
+  grant,
+  makeGrantable,
+  seedPermissionWorld,
+  setObjectPermission,
+  type PermissionWorld,
+} from './AC-PRM-support.js';
+import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
+
+const testDb = useTestDb();
+const LEVELS = '/api/tenant/job/levels';
+const ASOF = '?asOf=2026-10-07';
+const APP = 'TenantBase';
+
+type World = Awaited<ReturnType<typeof talentWorld>>;
+interface Level {
+  id: string;
+  revision: number;
+  ownerOrgId?: string | null;
+  salaryUpper?: number | null;
+  salaryMid?: number | null;
+  salaryLower?: number | null;
+}
+
+describe('AC-JOB-F474-2a-03 职级资源集合 / 薪资区间', () => {
+  let w: World;
+  let orgA: string;
+  let orgB: string;
+  let revision = 0;
+
+  /** 换成员在职务体系应用的授权管理单元；null 撤掉授权。 */
+  async function setUnits(orgIds: readonly string[] | null) {
+    const mouId = orgIds ? await createMou(w.api, w.as, orgIds, '职务体系') : null;
+    const response = await w.api.request('PUT', `${TC_PERMISSION_PATH}/scopes/${w.as.user}/${APP}`, {
+      ...w.as,
+      ifMatch: revision,
+      body: mouId ? { kind: 'mou', mouId } : { kind: 'default' },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    revision = ((await response.json()) as { revision: number }).revision;
+  }
+
+  const createLevel = (extra: Record<string, unknown> = {}) =>
+    w.api.request('POST', LEVELS, {
+      ...w.as,
+      ifMatch: 0,
+      body: { name: `职级${uniqueSuffix()}`, level: 1, startDate: '2026-01-01', ...extra },
+    });
+  const read = async (id: string) =>
+    (await (await w.api.request('GET', `${LEVELS}/${id}${ASOF}`, w.as)).json()) as Level;
+
+  beforeAll(async () => {
+    w = await talentWorld(testDb().db, 'f4742lvl');
+    orgA = w.orgId;
+    orgB = await createOrg(w.api, w.as, '第二个管理单元');
+  });
+
+  describe('资源集合（DEC-339①）', () => {
+    it('只有一个授权管理单元：自动填写，详情与列表都返回', async () => {
+      await setUnits([orgA]);
+      const created = await createLevel();
+      expect(created.status, await created.clone().text()).toBe(201);
+      const level = (await created.json()) as Level;
+      expect((await read(level.id)).ownerOrgId).toBe(orgA);
+      const list = (await (await w.api.request('GET', `${LEVELS}${ASOF}`, w.as)).json()) as { items: Level[] };
+      expect(list.items.find((item) => item.id === level.id)?.ownerOrgId).toBe(orgA);
+    });
+
+    it('有多个授权管理单元：不选 400；选其一保存；选了不属于自己的单元 404', async () => {
+      await setUnits([orgA, orgB]);
+      const missing = await createLevel();
+      expect(missing.status).toBe(400);
+      expect(JSON.stringify(await missing.json())).toContain('MANAGEMENT_UNIT_REQUIRED');
+      const chosen = await createLevel({ ownerOrgId: orgB });
+      expect(chosen.status, await chosen.clone().text()).toBe(201);
+      expect((await read(((await chosen.json()) as Level).id)).ownerOrgId).toBe(orgB);
+      const foreign = await createLevel({ ownerOrgId: '00000000-0000-4000-8000-0000000000cc' });
+      expect(foreign.status).toBe(404);
+    });
+
+    it('候选接口只列创建人自己的授权管理单元', async () => {
+      const candidates = async () => {
+        const response = await w.api.request('GET', '/api/tenant/job/candidates/resource-sets', w.as);
+        expect(response.status, await response.clone().text()).toBe(200);
+        return ((await response.json()) as { items: { id: string }[] }).items.map((item) => item.id).sort();
+      };
+      await setUnits([orgA, orgB]);
+      expect(await candidates()).toEqual([orgA, orgB].sort());
+      await setUnits([orgB]);
+      expect(await candidates()).toEqual([orgB]);
+      await setUnits(null);
+      expect(await candidates()).toEqual([]);
+    });
+
+    it('没有授权管理单元：资源集合留空，不挡新建；硬塞一个单元 404', async () => {
+      await setUnits(null);
+      const created = await createLevel();
+      expect(created.status, await created.clone().text()).toBe(201);
+      expect((await read(((await created.json()) as Level).id)).ownerOrgId).toBeNull();
+      expect((await createLevel({ ownerOrgId: orgA })).status).toBe(404);
+    });
+
+    it('列表只读：修改请求不接受 ownerOrgId；改其他字段后新版本沿用原资源集合', async () => {
+      await setUnits([orgA]);
+      const level = (await (await createLevel()).json()) as Level;
+      const send = (body: Record<string, unknown>) =>
+        w.api.request('PATCH', `${LEVELS}/${level.id}`, {
+          ...w.as,
+          ifMatch: level.revision,
+          body: { effectiveDate: '2026-10-07', ...body },
+        });
+      expect((await send({ ownerOrgId: orgA })).status).toBe(400);
+      const renamed = await send({ name: `改名${uniqueSuffix()}` });
+      expect(renamed.status, await renamed.clone().text()).toBe(200);
+      expect((await read(level.id)).ownerOrgId).toBe(orgA);
+    });
+  });
+
+  describe('薪资上限 / 中位 / 下限', () => {
+    beforeAll(() => setUnits([orgA]));
+
+    it('新建保存，详情与列表返回数值；修改按生效日期追加版本，旧时点仍是旧值，可清空', async () => {
+      const created = await createLevel({ salaryUpper: 30000, salaryMid: 22000.5, salaryLower: 15000 });
+      expect(created.status, await created.clone().text()).toBe(201);
+      let level = (await created.json()) as Level;
+      expect(await read(level.id)).toMatchObject({ salaryUpper: 30000, salaryMid: 22000.5, salaryLower: 15000 });
+      const patch = await w.api.request('PATCH', `${LEVELS}/${level.id}`, {
+        ...w.as,
+        ifMatch: level.revision,
+        body: { effectiveDate: '2026-12-01', salaryMid: null },
+      });
+      expect(patch.status, await patch.clone().text()).toBe(200);
+      level = (await patch.json()) as Level;
+      const later = (await (await w.api.request('GET', `${LEVELS}/${level.id}?asOf=2026-12-01`, w.as)).json()) as Level;
+      expect(later).toMatchObject({ salaryUpper: 30000, salaryMid: null, salaryLower: 15000 });
+      expect((await read(level.id)).salaryMid).toBe(22000.5);
+    });
+
+    it('规格未验证数值关系，不校验 下限 ≤ 中位 ≤ 上限', async () => {
+      const created = await createLevel({ salaryUpper: 100, salaryMid: 500, salaryLower: 900 });
+      expect(created.status, await created.clone().text()).toBe(201);
+    });
+
+    it('非数值 400', async () => {
+      expect((await createLevel({ salaryUpper: '三万' })).status).toBe(400);
+    });
+  });
+
+  it('字段目录登记了资源集合与三个薪资字段', () => {
+    const codes = MODULE_OBJECTS.jobLevel.fields.map((field) => field.code);
+    expect(codes).toEqual(expect.arrayContaining(['ownerOrgId', 'salaryUpper', 'salaryMid', 'salaryLower']));
+  });
+});
+
+describe('AC-JOB-F474-2a-04 职级薪资字段权限', () => {
+  let world: PermissionWorld;
+  let level: Level;
+  const TODAY = '2026-10-01';
+
+  async function actor(options: { hidden?: readonly string[]; editable?: readonly string[] }) {
+    const definition = MODULE_OBJECTS.jobLevel;
+    const profile = await createProfile(world, `salary-${uniqueSuffix()}`);
+    const permission = await setObjectPermission(
+      world,
+      profile,
+      {
+        dataOperations: { create: true, update: true, delete: false },
+        fields: definition.fields.map((field) => ({
+          fieldCode: field.code,
+          view: !options.hidden?.includes(field.code),
+          edit:
+            !field.system &&
+            !options.hidden?.includes(field.code) &&
+            (options.editable === undefined || options.editable.includes(field.code)),
+        })),
+        buttons: [],
+      },
+      definition.code,
+    );
+    expect(permission.status, await permission.clone().text()).toBe(200);
+    await makeGrantable(world, [profile.id]);
+    const user = await addMember(world, 'salary-actor');
+    expect((await grant(world, user.id, profile.id)).status).toBe(201);
+    const all = await world.api.request('PUT', `/api/tenant/permission/profiles/${profile.id}/data-scopes/TenantBase`, {
+      ...world.asAdmin,
+      ifMatch: 0,
+      body: { targetKind: 'app', targetCode: '', seeAll: true },
+    });
+    expect(all.status, await all.clone().text()).toBe(200);
+    return { user: user.id, tenant: world.tenant.id };
+  }
+
+  beforeAll(async () => {
+    world = await seedPermissionWorld(testDb().db);
+    const clock = () => new Date(`${TODAY}T12:00:00Z`);
+    const admin = tenantApi(world.db, { clock });
+    world = { ...world, api: tenantApi(world.db, { authorize: undefined, clock }) };
+    const created = await admin.request('POST', LEVELS, {
+      ...world.asAdmin,
+      ifMatch: 0,
+      body: {
+        name: '合成职级',
+        level: 1,
+        startDate: '2026-01-01',
+        salaryUpper: 30000,
+        salaryMid: 20000,
+        salaryLower: 10000,
+      },
+    });
+    expect(created.status, await created.clone().text()).toBe(201);
+    level = (await created.json()) as Level;
+  });
+
+  it('无查看权的薪资字段列表与详情都不返回，其余字段照常', async () => {
+    const as = await actor({ hidden: ['salaryUpper', 'salaryMid', 'salaryLower'] });
+    const read = await world.api.request('GET', `${LEVELS}/${level.id}?asOf=${TODAY}`, as);
+    expect(read.status).toBe(200);
+    const body = (await read.json()) as Record<string, unknown>;
+    for (const field of ['salaryUpper', 'salaryMid', 'salaryLower']) expect(body).not.toHaveProperty(field);
+    expect(body).toHaveProperty('level');
+    const list = await world.api.request('GET', `${LEVELS}?asOf=${TODAY}`, as);
+    for (const row of ((await list.json()) as { items: Record<string, unknown>[] }).items) {
+      expect(row).not.toHaveProperty('salaryUpper');
+    }
+  });
+
+  it('有查看权的薪资字段返回数值；无编辑权的字段整单拒绝', async () => {
+    const as = await actor({ editable: ['name', 'effectiveDate'] });
+    const read = await world.api.request('GET', `${LEVELS}/${level.id}?asOf=${TODAY}`, as);
+    expect(await read.json()).toMatchObject({ salaryUpper: 30000, salaryMid: 20000, salaryLower: 10000 });
+    const denied = await world.api.request('PATCH', `${LEVELS}/${level.id}`, {
+      ...as,
+      ifMatch: level.revision,
+      body: { effectiveDate: '2026-12-01', salaryUpper: 99999 },
+    });
+    expect(denied.status).toBe(403);
+  });
+});

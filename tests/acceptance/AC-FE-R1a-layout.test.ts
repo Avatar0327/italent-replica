@@ -36,6 +36,10 @@ const ALL = [
   'sequenceId',
   'professionalLineId',
   'orgId',
+  'ownerOrgId',
+  'salaryUpper',
+  'salaryMid',
+  'salaryLower',
   'postId',
   'workLocation',
   'standardPositionId',
@@ -72,11 +76,15 @@ describe('AC-FE-R1a-21 职务体系各类列表列按原站', () => {
     expect(jobListFields('level-types', access)).toEqual(['name', 'displayOrder', 'startDate']);
     expect(jobListFields('grades', access)).toEqual(['grade', 'name', 'layerId', 'scoreHigh', 'scoreLow', 'startDate']);
     expect(jobListFields('levels', access)).toEqual([
+      'ownerOrgId',
       'levelTypeId',
       'name',
       'level',
       'minGradeId',
       'maxGradeId',
+      'salaryUpper',
+      'salaryMid',
+      'salaryLower',
       'startDate',
     ]);
     expect(jobListFields('posts', access)).toEqual([
@@ -99,6 +107,46 @@ describe('AC-FE-R1a-21 职务体系各类列表列按原站', () => {
       'displayOrder',
     ]);
     expect(jobListFields('layers', access)).toEqual(['code', 'name', 'layerLevel', 'enabled', 'startDate', 'stopDate']);
+  });
+  it('职级薪资三列随字段查看权隐藏，其余列照常（R1a §3.6）', async () => {
+    const { jobListFields, jobColumnWidth } = await job();
+    const { pageAccess } = await org();
+    const hidden = ALL.filter((field) => !field.startsWith('salary'));
+    expect(jobListFields('levels', pageAccess(permission(hidden)))).toEqual([
+      'ownerOrgId',
+      'levelTypeId',
+      'name',
+      'level',
+      'minGradeId',
+      'maxGradeId',
+      'startDate',
+    ]);
+    // 宽度按列键匹配：隐藏薪资列后生效日期仍取自己的宽度
+    expect(jobColumnWidth('levels', 'startDate')).toBe(105);
+    expect(jobColumnWidth('levels', 'salaryMid')).toBe(172);
+  });
+  it('职级新建表单按原站顺序（资源集合在首、薪资三值在职等之后）；编辑不再出资源集合', async () => {
+    const { jobFormGroups, jobLabel } = await job();
+    expect(jobFormGroups('levels', false)[0]?.fields).toEqual([
+      'ownerOrgId',
+      'name',
+      'levelTypeId',
+      'level',
+      'minGradeId',
+      'maxGradeId',
+      'salaryUpper',
+      'salaryMid',
+      'salaryLower',
+      'startDate',
+      'enabled',
+    ]);
+    expect(jobFormGroups('levels', true)[0]?.fields).not.toContain('ownerOrgId');
+    expect(jobLabel('levels', 'ownerOrgId')).toBe('资源集合');
+    expect([
+      jobLabel('levels', 'salaryUpper'),
+      jobLabel('levels', 'salaryMid'),
+      jobLabel('levels', 'salaryLower'),
+    ]).toEqual(['薪资上限值', '薪资中位值', '薪资下限制']);
   });
   it('无查看权的字段不出列（反向）', async () => {
     const { jobListFields } = await job();

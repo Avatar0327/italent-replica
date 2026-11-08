@@ -56,7 +56,16 @@ const catalog: Record<JobKind, JobTables> = {
   layers: tables('layer', 'layerId', ['layerLevel']),
   grades: tables('grade', 'gradeId', ['grade', 'scoreLow', 'scoreHigh', 'layerId']),
   'level-types': tables('level_type', 'levelTypeId', []),
-  levels: tables('level', 'levelId', ['level', 'levelTypeId', 'minGradeId', 'maxGradeId']),
+  levels: tables('level', 'levelId', [
+    'level',
+    'levelTypeId',
+    'minGradeId',
+    'maxGradeId',
+    'ownerOrgId',
+    'salaryUpper',
+    'salaryMid',
+    'salaryLower',
+  ]),
   sequences: tables('sequence', 'sequenceId', [
     'parentId',
     'level',
