@@ -17,6 +17,7 @@ let ID = '';
 let PATH = '';
 const EXPIRED = '33333333-3333-4333-8333-000000000001';
 const KEPT = '33333333-3333-4333-8333-000000000002';
+const FRESH = '33333333-3333-4333-8333-000000000003';
 const REASON_CODE = /[A-Z][A-Z0-9]*_[A-Z0-9_]+/;
 
 interface Write {
@@ -106,11 +107,11 @@ describe('AC-FE-ATT-05 P2-1 结果未知后回放遇到附件过期：交还内�
     expect(message).toBe('附件不可用，请重新上传');
     expect(message).not.toMatch(REASON_CODE);
 
-    // 用户删掉过期那张，重新暂存：新命令、新键，只带剩下的引用，成功
-    const again = await store.submit(PATH, saveInput([KEPT]));
+    // 用户删掉过期那张、重新上传一张，再暂存：新命令、新键，不再带失效引用，成功
+    const again = await store.submit(PATH, saveInput([KEPT, FRESH]));
     expect(again.status).toBe('done');
     expect(writes).toHaveLength(3);
-    expect(JSON.parse(writes[2]!.body)).toEqual({ attachmentRefs: [KEPT] });
+    expect(JSON.parse(writes[2]!.body)).toEqual({ attachmentRefs: [KEPT, FRESH] });
     expect(writes[2]!.key).not.toBe(writes[0]!.key);
     expect(pendingReplay(PATH)).toBeUndefined();
   });
