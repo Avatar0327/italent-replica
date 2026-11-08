@@ -213,6 +213,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/disclosure.ts#OBJECT': [
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
   ],
+  'apps/api/src/modules/org-adjustment/disclosure.ts#contentViewFor': [
+    'apps/api/src/modules/approval/handling-content.ts#contentViewOf',
+  ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#hrDisclosure': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     '#OBJECT',
@@ -237,6 +240,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#latestInstanceOf',
     '#APPROVER_SCOPE',
     '#OBJECT',
+    '#contentViewFor',
     '#hrDisclosure',
     '#notFound',
     '#openDetail',
