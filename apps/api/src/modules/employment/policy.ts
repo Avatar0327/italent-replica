@@ -64,7 +64,6 @@ import {
   RETIREMENT_INTENTION_BUTTON,
   MODULE_OBJECTS,
   PART_TIME_BUTTONS,
-  PERSONNEL_OBJECT,
 } from '@italent/domain';
 import {
   type ButtonPolicy,
@@ -2062,25 +2061,18 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: RESPONSE,
   }),
   // ---- employment/all-people.ts：F-474-4c 全部人员列表（DEC-776 / DEC-836，只读）-----------------------------------
-  // allPeopleAccess（花名册同链，入口对象 = 任职记录）：员工档案对象查看权 + 页面 list 范围解析（personnel.access，personScope 先于分页，
-  // total 与本页同一谓词）→ 任职记录对象（TenantBase.EmploymentRecord）查看权 → 逐列字段权（人员侧按员工档案、任职侧按
-  // 任职记录，无权整列缺席）；筛选 name / email / employeeId / employmentForm / employType / employeeStatus(逗号多选) /
-  // serviceType 严格校验 400，用无权字段筛选 403「花名册筛选字段不可查看」。入口不依赖人事分析对象（TenantBase.HrRoster），
-  // 不新增对象 / 字段编码
+  // allPeopleAccess：入口 = 任职记录对象（TenantBase.EmploymentRecord）的查看权，不要求员工档案对象查看权（DEC-836）；
+  // 准入后数据范围按员工档案列表页解析（resolveModuleScope，personScope 先于分页，total 与本页同一谓词），逐列字段权
+  // （人员侧按员工档案、任职侧按任职记录，无权整列缺席）；筛选 name / email / employeeId / employmentForm / employType /
+  // employeeStatus(逗号多选) / serviceType 严格校验 400，用无权字段筛选 403「花名册筛选字段不可查看」。入口不依赖人事分析
+  // 对象（TenantBase.HrRoster），不新增对象 / 字段编码
   'GET /all-people': all(
     [
-      object({
-        object: PERSONNEL_OBJECT,
-        operation: 'view',
-        button: noButton('列表无按钮'),
-        scope: listScope('personnel.personScope'),
-        fields: projector('employment.allPeople', 'employment.allPeople'),
-      }),
       object({
         object: EMPLOYMENT,
         operation: 'view',
         button: noButton('列表无按钮'),
-        scope: noScope('任职记录对象在此只作入口权；数据范围由员工档案对象解析，字段权按列逐对象裁剪'),
+        scope: listScope('personnel.personScope'),
         fields: projector('employment.allPeople', 'employment.allPeople'),
       }),
     ],

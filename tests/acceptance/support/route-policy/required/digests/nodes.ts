@@ -3849,7 +3849,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/hr-analysis/roster-access.ts#ROSTER_ALL_COLUMNS': ['969f023ff58c', '9647515745d2'],
   'apps/api/src/modules/hr-analysis/roster-access.ts#ROSTER_OBJECT': ['8de8f6aea0b4', '962a8dd9a03e'],
   'apps/api/src/modules/hr-analysis/roster-access.ts#SOURCE_OBJECTS': ['157ea0358c38', 'd4774cf2023e'],
-  'apps/api/src/modules/hr-analysis/roster-access.ts#allPeopleAccess': ['630ac3b80c47', 'dc09323fdfa2'],
+  'apps/api/src/modules/hr-analysis/roster-access.ts#allPeopleAccess': ['d19fc725bb9a', '3e4d1f0fc9c3'],
   'apps/api/src/modules/hr-analysis/roster-access.ts#requireExportButton': ['d538719feb46', '30576ab5fbab'],
   'apps/api/src/modules/hr-analysis/roster-access.ts#requireFilterField': ['6c6d968ad242', '583ee92c250c'],
   'apps/api/src/modules/hr-analysis/roster-access.ts#rosterAccess': ['08e8fd92d1ce', '79a6993f4391'],

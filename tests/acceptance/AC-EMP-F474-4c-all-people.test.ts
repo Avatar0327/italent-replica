@@ -193,7 +193,11 @@ describe('AC-EMP F-474-4c 全部人员', () => {
     const page = await list(onlyZhang);
     expect(mine(page)).toEqual(['F4C001']);
     expect(page.total).toBe(1);
-    expect((await (await onlyZhang('GET', `${LIST}?page=1&pageSize=1`)).json()) as Page).toMatchObject({ total: 1 });
+    // 排序靠后的李四 + pageSize=1：若先分页后过滤，第一页会落在范围外的人身上，items 为空而 total 仍可能正确
+    const onlyLi = w.restricted(allow, { personIds: [li.id] });
+    const first = (await (await onlyLi('GET', `${LIST}?page=1&pageSize=1`)).json()) as Page;
+    expect(first.total).toBe(1);
+    expect(first.items.map((item) => item.code)).toEqual(['F4C002']);
     expect(mine(await list(w.restricted(allow, { personIds: [li.id] })))).toEqual(['F4C002']);
     expect(await list(w.restricted(allow, { personIds: [] }))).toMatchObject({ items: [], total: 0 });
     expect(await list(onlyZhang, `&name=${encodeURIComponent('李四')}`)).toMatchObject({ total: 0 });
@@ -258,11 +262,31 @@ describe('AC-EMP F-474-4c 全部人员', () => {
     expect(mine(page)).toEqual(['F4C001', 'F4C002', 'F4C004']);
     // 任职记录查看权不放行人事分析：花名册入口仍按人事分析对象拒绝，授权口径互不串用
     expect((await onlyRecord('GET', '/api/tenant/hr-analysis/roster?page=1&pageSize=5')).status).toBe(403);
-    // 缺员工档案对象查看权：数据范围与人员字段无从解析，同样拒绝（不退化成全部可见）
-    const noPerson = w.restricted(
-      (request) => !(request.resource === PERSON_OBJECT && request.action === 'object.view'),
-    );
-    expect((await noPerson('GET', `${LIST}?page=1&pageSize=5`)).status).toBe(403);
+  });
+
+  it('入口只看任职记录查看权：没有员工档案对象查看权也能进，范围与字段权仍按员工档案裁剪（DEC-836）', async () => {
+    const { w, zhang, li } = await fixture('emp4c-gate-noperson');
+    const noPersonView: Authorizer = (request) =>
+      !(request.resource === PERSON_OBJECT && request.action === 'object.view');
+    // 有任职记录查看权、明确没有员工档案对象查看权，范围只含张三，员工档案隐藏邮箱与证件号码
+    const restrictedEntry = w.restricted(noPersonView, {
+      personIds: [zhang.id],
+      hidden: { [PERSON_OBJECT]: ['email', 'idNumber'] },
+    });
+    const page = await list(restrictedEntry);
+    expect(mine(page)).toEqual(['F4C001']);
+    expect(page.total).toBe(1);
+    const keys = page.columns.map((column) => column.key);
+    expect(keys).not.toContain('email');
+    expect(keys).not.toContain('idNumber');
+    expect(keys).toContain('idType');
+    expect(rowOf(page, 'F4C001')).not.toHaveProperty('email');
+    expect(rowOf(page, 'F4C001')).toMatchObject({ employeeId: zhang.id, employeeName: '张三', idType: '合成证件类型' });
+    // 范围外的人探不到，无权字段仍 403
+    expect(await list(restrictedEntry, `&employeeId=${li.id}`)).toMatchObject({ items: [], total: 0 });
+    expect((await restrictedEntry('GET', `${LIST}?email=zhang`)).status).toBe(403);
+    // 范围为空仍 fail-closed（不因为缺员工档案查看权退化成全部可见）
+    expect(await list(w.restricted(noPersonView, { personIds: [] }))).toMatchObject({ items: [], total: 0 });
   });
 
   it('租户隔离：另一租户看不到本租户的人，用本租户的人员 ID 筛选也是 0', async () => {

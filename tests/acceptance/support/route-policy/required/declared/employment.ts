@@ -7,7 +7,6 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/employment-forms',
     'PUT /api/tenant/employment/employment-forms/:id',
     'GET /api/tenant/employment/transfers/employees/:id/contracts',
-    'GET /api/tenant/employment/all-people',
     'POST /api/tenant/employment/custom-fields',
     'POST /api/tenant/employment/exits/dictionaries/:dict',
     'POST /api/tenant/employment/probation-results',

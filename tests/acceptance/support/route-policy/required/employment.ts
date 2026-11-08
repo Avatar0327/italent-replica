@@ -27,8 +27,6 @@ const allPeopleImpl = (anchor: string): Evidence => ({
   unit: `${ROSTER_ACCESS}#allPeopleAccess`,
   anchor,
 });
-const PERSONNEL_ACCESS = `${SRC}/personnel/access.ts`;
-const PERSON = 'TenantBase.EmployeeInformation';
 const RETIRE = `${SRC}/employment/retirement-routes.ts`;
 const RETIRE_VIEWS = `${SRC}/employment/retirement-view-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
@@ -2121,43 +2119,18 @@ export const EMPLOYMENT: RequiredTable = {
     ),
   ],
   // ---- F-474-4c 全部人员列表（all-people.ts registerAllPeople，只读；DEC-836）-----------------------------------------
-  // allPeopleAccess（花名册同链）：员工档案对象查看权 + 页面 list 范围（personScope 先于分页）→ 入口 = 任职记录对象的
-  // 查看权（不再依赖人事分析对象）→ 合同对象查看权只决定合同列是否出现（披露，不拒绝）；筛选字段无查看权 403。
+  // allPeopleAccess：入口 = 任职记录对象的查看权（不要求员工档案对象查看权，不依赖人事分析对象，DEC-836）→ 准入后
+  // 数据范围按员工档案列表页解析（resolveModuleScope，personScope 先于分页）→ 合同对象查看权只决定合同列是否出现
+  // （披露，不拒绝）；筛选字段无查看权 403。
   'GET /api/tenant/employment/all-people': withNeeds(
     [
-      ob(
-        `obj:${PERSON}:view`,
-        // 探测器的 access 形状只认 personnel / hr-analysis 模块，employment 里观测不到 objectOp 事实，故不登记
-        [],
-        [
-          ALL_PEOPLE_CALL,
-          allPeopleImpl("const ctx = await access(c, deps, PERSONNEL_OBJECT, 'view', {}, undefined, 0, 'list')"),
-          {
-            role: 'impl',
-            unit: `${PERSONNEL_ACCESS}#access`,
-            anchor: 'await authorize(deps.authorize, ctx, operation, payload, button)',
-          },
-          {
-            role: 'impl',
-            unit: `${PERSONNEL_ACCESS}#authorize`,
-            anchor:
-              'else await requirePermission(authorizer, ' +
-              '{ ...ctx, action: `object.${operation}`, resource: ctx.objectCode })',
-          },
-          {
-            role: 'const',
-            unit: 'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
-            anchor: "'TenantBase.EmployeeInformation'",
-          },
-        ],
-      ),
       ob(
         `obj:${RECORD}:view`,
         ['object:object.* 动作'],
         [
           ALL_PEOPLE_CALL,
           allPeopleImpl(
-            "await requirePermission(deps.authorize, { ...ctx, action: 'object.view', resource: RECORD_OBJECT })",
+            "await requirePermission(deps.authorize, { ...base, action: 'object.view', resource: RECORD_OBJECT })",
           ),
           { role: 'const', unit: `${ROSTER_ACCESS}#RECORD_OBJECT`, anchor: 'MODULE_OBJECTS.employmentRecord.code' },
         ],
@@ -2179,10 +2152,9 @@ export const EMPLOYMENT: RequiredTable = {
       },
     ],
     {
-      [`obj:${PERSON}:view`]: bound(list('personnel.personScope'), [
+      [`obj:${RECORD}:view`]: bound(list('personnel.personScope'), [
         { role: 'scope', unit: `${SRC}/hr-analysis/roster-query.ts#population`, anchor: 'personScope(ctx),' },
       ]),
-      [`obj:${RECORD}:view`]: bound(NONE),
       [`obj:${CONTRACT}:view|disclosure:contractColumns`]: bound(list('personnel.personScope')),
     },
   ),

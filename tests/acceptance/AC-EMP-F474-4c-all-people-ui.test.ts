@@ -8,7 +8,7 @@
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, type Mock } from 'vitest';
 import { PAGES } from '../../apps/web/src/foundation/routes.js';
-import { allFields, h, uiHarness } from './support/f474-ui.js';
+import { act, allFields, h, uiHarness } from './support/f474-ui.js';
 import { ALL_PEOPLE_COLUMNS, ALL_PEOPLE_PAGE, ALL_PEOPLE_ROW } from './support/f474-all-people-row.js';
 
 const LIST = '/api/tenant/employment/all-people';
@@ -112,6 +112,51 @@ describe('AC-EMP F-474-4c 全部人员页面', () => {
       expect(ui.host.querySelector(`[aria-label="${label}"]`), label).toBeNull();
     const query = Object.fromEntries(listCalls().at(-1)!.searchParams);
     expect(query).toEqual({ page: '1', pageSize: '15' });
+  });
+
+  it('可见员工超过 1000 人时，员工筛选走服务端搜索，选中后带该员工的 employeeId', async () => {
+    const people = Array.from({ length: 1201 }, (_, index) => ({
+      employeeId: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      employeeName: `合成员工${String(index + 1).padStart(4, '0')}`,
+      name: `合成员工${String(index + 1).padStart(4, '0')}`,
+    }));
+    // 与后端一致：name 子串匹配，page / pageSize 分页，total 为命中总数
+    const search = (url: URL) => {
+      const name = url.searchParams.get('name');
+      const hits = name ? people.filter((person) => person.employeeName.includes(name)) : people;
+      const size = Number(url.searchParams.get('pageSize'));
+      const no = Number(url.searchParams.get('page'));
+      return { ...body(), items: hits.slice((no - 1) * size, no * size), total: hits.length };
+    };
+    await ui.render(h(await page()), '/', fields, {
+      [LIST]: search,
+      '/api/tenant/personnel/employees': search,
+    });
+    const input = ui.host.querySelector<HTMLInputElement>('input[aria-label="员工"]')!;
+    const type = async (text: string) => {
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+        setter.call(input, text);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      });
+    };
+    await type('合成员工1201');
+    const option = Array.from(document.body.querySelectorAll<HTMLElement>('.ant-select-item-option')).find((item) =>
+      item.textContent?.includes('合成员工1201'),
+    );
+    expect(option, '第 1201 名员工应能搜索到并选择').toBeTruthy();
+    await act(async () => {
+      option!.click();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    const picked = listCalls().filter((url) => url.searchParams.has('employeeId'));
+    expect(picked.at(-1)!.searchParams.get('employeeId')).toBe(people[1200]!.employeeId);
   });
 
   it('无数据范围时给出无权限空态', async () => {

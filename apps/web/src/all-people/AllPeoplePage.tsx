@@ -1,10 +1,11 @@
 import { Button, Input, Select, Space, type TableColumnsType } from 'antd';
-import { useState, type Key } from 'react';
+import { useCallback, useState, type Key } from 'react';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import type { PageRequest } from '../foundation/client.js';
+import { useApiClient } from '../foundation/Session.js';
+import { PersonSelect, type Choice } from '../foundation/selectors.js';
 import { ListPage } from '../foundation/templates.js';
-import { RefSelect } from '../contracts/references.js';
 import { useRead } from '../personnel/useRead.js';
 import {
   PAGE_SIZE,
@@ -82,6 +83,7 @@ export function AllPeoplePage() {
   );
 }
 
+const CANDIDATE_SIZE = 20;
 const statusOptions = Object.entries(m.statuses).map(([value, label]) => ({ value: Number(value), label }));
 const employTypeOptions = Object.entries(m.employTypes).map(([value, label]) => ({ value, label }));
 
@@ -117,6 +119,43 @@ function StatusFilter(props: { value?: readonly number[]; onChange(value: number
   );
 }
 
+/**
+ * 员工候选走服务端搜索（可见员工可达数千人，不整表预载）：按姓名子串查本接口同一口径的前 20 条，
+ * 并带上当前的人员状态 / 任职类型，所以候选 = 此刻筛选下会出现在列表里的人，数据范围与字段权由接口裁剪。
+ */
+function EmployeeFilter(props: { filters: Filters; allowed: Allowed; onChange(employeeId?: string): void }) {
+  const api = useApiClient();
+  const [choice, setChoice] = useState<Choice>();
+  const { employeeStatus, serviceType } = allowedFilters(props.filters, props.allowed);
+  const statuses = (employeeStatus ?? []).join(',');
+  const load = useCallback(
+    async (query: string, signal: AbortSignal) => {
+      const path = allPeoplePath(
+        { employeeStatus: statuses ? statuses.split(',').map(Number) : undefined, serviceType, name: query },
+        {
+          page: 1,
+          pageSize: CANDIDATE_SIZE,
+        },
+      );
+      const result = await api.request<{ items: Row[] }>(path, { signal });
+      return result.items.map((row) => ({ value: row.employeeId, label: cell(row, 'employeeName') }));
+    },
+    [api, statuses, serviceType],
+  );
+  const value = props.filters.employeeId === choice?.value ? choice : undefined;
+  return (
+    <PersonSelect
+      label={m.employee}
+      load={load}
+      value={value}
+      onChange={(next) => {
+        setChoice(next);
+        props.onChange(next?.value);
+      }}
+    />
+  );
+}
+
 function QuickFilters({ filters, allowed, apply }: { filters: Filters; allowed: Allowed; apply(next: Filters): void }) {
   const [resetKey, setResetKey] = useState(0);
   const forms = useRead<{ items: { code: string; name: string }[] }>(
@@ -128,12 +167,7 @@ function QuickFilters({ filters, allowed, apply }: { filters: Filters; allowed: 
       <Space wrap key={resetKey}>
         {allowed('name') && (
           <span className="all-people-employee">
-            <RefSelect
-              path="/api/tenant/personnel/employees"
-              ariaLabel={m.employee}
-              value={filters.employeeId}
-              onChange={(next) => set({ employeeId: typeof next === 'string' ? next : undefined })}
-            />
+            <EmployeeFilter filters={filters} allowed={allowed} onChange={(employeeId) => set({ employeeId })} />
           </span>
         )}
         {allowed('name') && (
