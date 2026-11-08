@@ -865,6 +865,8 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   retirement_rule: { code: 'TenantBase.EmploymentSettings' },
   retirement_identity_type: { code: 'TenantBase.EmploymentSettings' },
   employment_custom_field: { code: 'TenantBase.EmploymentCustomField' },
+  'esign-template': { code: MODULE_OBJECTS.eSignSettings.code },
+  'esign-scene-settings': { code: MODULE_OBJECTS.eSignSettings.code },
   'approval-process': { code: 'TenantBase.ApprovalProcess' },
   transfer_form: {
     code: EMPLOYMENT,

@@ -131,6 +131,8 @@ describe('写入审计的对象类型都已登记查看规则（PR #75 第三轮
       'establishment-notification',
       'establishment-scheme',
       'establishment-settings',
+      'esign-scene-settings',
+      'esign-template',
       'grades',
       'job_setting',
       'layers',

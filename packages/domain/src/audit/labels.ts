@@ -120,6 +120,8 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   permission_dynamic_org_grant: { label: '动态组织授权', app: ENTERPRISE },
   license_pool: { label: '许可', app: ENTERPRISE },
   audit_retention: { label: '日志保留期', app: ENTERPRISE },
+  'esign-template': { label: '电子签署模板', app: ORG_PEOPLE },
+  'esign-scene-settings': { label: '签署场景设置', app: ORG_PEOPLE },
   'survey360-settings': { label: '360设置', app: SURVEY360 },
   'survey360-person': { label: '360人员', app: SURVEY360 },
   'survey360-role': { label: '评价角色', app: SURVEY360 },
@@ -332,6 +334,12 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   dutyDetails: '职责描述',
   transferDate: '转交日期',
   failureCode: '失败原因',
+  // F-481 调动电子签署：签署模板（code / name / status 沿用上方同名字段）与场景设置
+  body: '模板正文',
+  sortOrder: '显示顺序',
+  scene: '签署场景',
+  validityDays: '签署有效期（天）',
+  remindBeforeExpiry: '到期前自动提醒',
 };
 
 /** 职责转交菜单的审计动作（R2-T09a）：设置 / 改期 / 撤回 / 到期执行成功或失败；改写组织与任职的审计由执行入口照常写。 */
@@ -462,6 +470,8 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'establishment-settings',
   'approval-process',
   'approval-exception-admin',
+  'esign-template',
+  'esign-scene-settings',
 ]);
 
 /**
