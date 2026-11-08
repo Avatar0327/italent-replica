@@ -121,6 +121,8 @@ async function otherOwnedCapacity(w: World, variant: 'scheme' | 'capacity' | 'ac
   });
   expect(schemeResponse.status).toBe(201);
   const scheme = (await schemeResponse.json()) as { id: string };
+  // F-484（DEC-295①）：from / to 已有本方案的 2026 年度编制，别人用另一方案在同组织同期间建编制一律被拒，
+  // “他人创建的第二候选”在写入侧不再可能出现。
   for (const orgId of [w.from.id, w.to.id]) {
     const capacity = await write('capacities', {
       schemeId: scheme.id,
@@ -129,17 +131,19 @@ async function otherOwnedCapacity(w: World, variant: 'scheme' | 'capacity' | 'ac
       effectiveDate: variant === 'active' ? '2026-10-01' : '2026-11-01',
       localCapacity: 5,
     });
-    expect(capacity.status, await capacity.clone().text()).toBe(201);
+    expect(capacity.status, await capacity.clone().text()).toBe(409);
+    expect(await capacity.json()).toMatchObject({
+      error: { code: 'CONFLICT', details: { reason: 'CAPACITY_PERIOD_OVERLAP' } },
+    });
   }
 }
 
 it.each(['scheme', 'capacity', 'active'] as const)(
-  'AC-EST-19 创建人范围下，他人创建的 %s 候选仅在实际参与时需要授权',
+  'AC-EST-19 创建人范围下，他人用另一方案（%s 变体）无法在同组织同期间建编制，调动按原编制正常落地',
   async (variant) => {
     const w = await carriedWorld(database().db, `creator-time-${variant}`);
     const person = await w.hired();
     await otherOwnedCapacity(w, variant);
-    const before = await w.capacities();
     const result = await scopedApi(w, 'creator').request(
       'POST',
       `/api/tenant/employment/transfers/employees/${person.employee.id}`,
@@ -157,14 +161,8 @@ it.each(['scheme', 'capacity', 'active'] as const)(
         },
       },
     );
-    expect(result.status, await result.clone().text()).toBe(variant === 'active' ? 404 : 201);
-    if (variant === 'active') {
-      expect(await result.json()).toEqual(absent);
-      expect(await w.capacities()).toEqual(before);
-      expect(await w.history()).toEqual([]);
-    } else {
-      expect((await w.capacities()).map((c) => c.localCapacity)).toEqual([2, 1]);
-      expect(await w.history()).toHaveLength(2);
-    }
+    expect(result.status, await result.clone().text()).toBe(201);
+    expect((await w.capacities()).map((c) => c.localCapacity)).toEqual([2, 1]);
+    expect(await w.history()).toHaveLength(2);
   },
 );
