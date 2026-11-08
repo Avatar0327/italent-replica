@@ -270,6 +270,8 @@ export const jobPositionVersions = pgTable(
     dottedSequence: integer('dotted_sequence'),
     standardPositionId: uuid('standard_position_id'),
     workLocation: text('work_location'),
+    responsibilities: text('responsibilities'),
+    requirements: text('requirements'),
     isKey: boolean('is_key').notNull().default(false),
     isConfidential: boolean('is_confidential').notNull().default(false),
     syncSequenceToAssignments: boolean('sync_sequence_to_assignments').notNull().default(false),

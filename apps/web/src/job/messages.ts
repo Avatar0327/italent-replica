@@ -115,6 +115,7 @@ export const pageText = {
   isConfidential: '涉密',
   duty: '职位说明',
   reporting: '职位汇报关系',
+  positionDuty: '职责说明',
   orgFilter: '所属组织',
   hiddenReference: '（不在可见范围）',
 };

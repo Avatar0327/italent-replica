@@ -164,7 +164,9 @@ describe('AC-FE-R1a-23 职务、职位表单按原站分组与排序', () => {
   it('职位表单：上级职位、虚线上级排在基本信息里，汇报关系只在详情分区；未截到表单的对象保持原顺序', async () => {
     const { jobFormGroups, jobLabel } = await job();
     const groups = jobFormGroups('positions');
-    expect(groups.map((group: { key: string }) => group.key)).toEqual(['basic']);
+    expect(groups.map((group: { key: string }) => group.key)).toEqual(['basic', 'positionDuty']);
+    // F-474-2a #4：原站职位新建弹窗末尾的「职责说明」分区（R1a §3.8）。
+    expect(groups[1]).toEqual({ key: 'positionDuty', fields: ['responsibilities', 'requirements'] });
     expect(groups[0].fields.slice(0, 15)).toEqual([
       'code',
       'name',
@@ -225,7 +227,7 @@ describe('AC-FE-R1a-24 职务、职位详情按原站分区', () => {
     const { jobDetailSections } = await job();
     const { pageAccess } = await org();
     const sections = jobDetailSections('positions', pageAccess(permission(ALL)), values);
-    expect(sections.map((section: { key: string }) => section.key)).toEqual(['basic', 'reporting']);
+    expect(sections.map((section: { key: string }) => section.key)).toEqual(['basic', 'reporting', 'positionDuty']);
     expect(sections[0].fields.slice(0, 15)).toEqual([
       'code',
       'name',
@@ -244,6 +246,18 @@ describe('AC-FE-R1a-24 职务、职位详情按原站分区', () => {
       'startDate',
     ]);
     expect(sections[1].fields).toEqual(['adminParent', 'adminSequence', 'dottedParent', 'dottedSequence']);
+    expect(sections[2]).toEqual({ key: 'positionDuty', fields: ['responsibilities', 'requirements'] });
+  });
+  it('职位「职责说明」分区：标题取原站叫法；无查看权或接口未返回时不出现', async () => {
+    const { pageText } = await import(resolve('apps/web/src/job/messages.ts'));
+    expect(pageText.positionDuty).toBe('职责说明');
+    const { jobDetailSections } = await job();
+    const { pageAccess } = await org();
+    const hidden = ALL.filter((field) => !['responsibilities', 'requirements'].includes(field));
+    const trimmed = jobDetailSections('positions', pageAccess(permission(hidden)), values);
+    expect(trimmed.map((section: { key: string }) => section.key)).toEqual(['basic', 'reporting']);
+    const absent = jobDetailSections('positions', pageAccess(permission(ALL)), { name: '合成职位' });
+    expect(absent).toEqual([{ key: 'basic', fields: ['name'] }]);
   });
   it('无上级查看权时不出汇报关系分区；接口未返回的字段不展示（反向）', async () => {
     const { jobDetailSections } = await job();

@@ -83,6 +83,8 @@ const catalog: Record<JobKind, JobTables> = {
     'dottedSequence',
     'standardPositionId',
     'workLocation',
+    'responsibilities',
+    'requirements',
   ]),
 };
 

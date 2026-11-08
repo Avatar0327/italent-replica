@@ -68,6 +68,8 @@ const specific = {
     postId: z.uuid(),
     parents: z.strictObject({ admin: parent.optional(), dotted: parent.optional() }).optional(),
     workLocation: text,
+    responsibilities: text,
+    requirements: text,
     standardPositionId: reference,
   },
 } satisfies Record<JobKind, z.ZodRawShape>;

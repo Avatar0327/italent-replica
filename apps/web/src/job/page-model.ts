@@ -59,6 +59,8 @@ export const jobFields: Record<JobKind, string[]> = {
     'minGradeId',
     'maxGradeId',
     'workLocation',
+    'responsibilities',
+    'requirements',
     'standardPositionId',
     'adminParent',
     'adminSequence',
@@ -131,6 +133,8 @@ interface JobLayout {
   traits: string[];
   others: string[];
   extra: { key: string; fields: string[] };
+  // 职位另有末尾的「职责说明」分区（R1a §3.8）：表单与详情都排在汇报关系之后。
+  tail?: { key: string; fields: string[] };
 }
 const layouts: Partial<Record<JobKind, JobLayout>> = {
   posts: {
@@ -155,6 +159,7 @@ const layouts: Partial<Record<JobKind, JobLayout>> = {
     traits: ['isKey', 'isConfidential', 'displayOrder'],
     others: ['professionalLineId', 'minGradeId', 'maxGradeId', 'standardPositionId'],
     extra: { key: 'reporting', fields: ['adminParent', 'adminSequence', 'dottedParent', 'dottedSequence'] },
+    tail: { key: 'positionDuty', fields: ['responsibilities', 'requirements'] },
   },
 };
 // 原站职位表单：上级职位、虚线上级穿插在基本信息里；职位汇报关系只是详情分区。
@@ -191,7 +196,10 @@ export function jobFormGroups(kind: JobKind, editing = false) {
   const { head, traits, others, extra } = layout;
   if (kind === 'positions') {
     const tail = ['adminSequence', 'dottedSequence', 'stopDate', 'enabled'];
-    return [{ key: 'basic', fields: [...head, ...positionForm, ...others, ...tail] }];
+    return [
+      { key: 'basic', fields: [...head, ...positionForm, ...others, ...tail] },
+      ...(layout.tail ? [layout.tail] : []),
+    ];
   }
   return [{ key: 'basic', fields: [...head, ...traits, ...others, 'stopDate', 'enabled'] }, extra];
 }
@@ -204,6 +212,7 @@ export function jobDetailSections(kind: JobKind, access: FieldGate, values: Reco
           fields: [...layout.head, ...layout.traits, 'enabled', 'startDate', ...layout.others, 'stopDate'],
         },
         layout.extra,
+        ...(layout.tail ? [layout.tail] : []),
       ]
     : [
         {

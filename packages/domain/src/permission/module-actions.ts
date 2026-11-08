@@ -273,7 +273,16 @@ export const MODULE_OBJECTS = {
   jobPost: job('JobPost', [...assignment, 'competencyModelId', 'responsibilities', 'requirements', 'evaluationScore']),
   jobPosition: job(
     'Position',
-    [...assignment, 'orgId', 'postId', 'parents', 'workLocation', 'standardPositionId'],
+    [
+      ...assignment,
+      'orgId',
+      'postId',
+      'parents',
+      'workLocation',
+      'responsibilities',
+      'requirements',
+      'standardPositionId',
+    ],
     ['directParentId', 'dottedParentId', 'directSequence', 'dottedSequence'],
   ),
   establishment: object(
