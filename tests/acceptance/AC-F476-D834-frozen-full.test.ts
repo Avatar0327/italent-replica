@@ -1,5 +1,5 @@
 /**
- * AC-F476-12（DEC-834④）：已办按办理时冻结的那份完整可见，不套用审批人当前的组织数据范围；
+ * AC-F476-D834（DEC-834④）：已办按办理时冻结的那份完整可见，不套用审批人当前的组织数据范围；
  * 在办审批人 / 发起人等现值读路径仍按 B1b 的范围披露规则过滤（不被放宽）。
  * 世界：调整范围 [甲, 乙]，两条改名明细（甲行、乙行）；HRBP 同时持有组织对象数据范围（access.org 对所有人生效）。
  */
@@ -25,9 +25,9 @@ async function draftBoth(w: FlowWorld) {
 const rangeOf = (detail: DetailView) => detail.adjustmentRange as RangeOrg[];
 const namesOf = (view: ItemsView) => view.items.map((item) => item.name);
 
-describe('AC-F476-12 已办冻结份完整可见（DEC-834④）', () => {
+describe('AC-F476-D834 已办冻结份完整可见（DEC-834④）', () => {
   it('审批人办理后组织数据范围缩小到只剩乙：读已办冻结份仍完整（甲行、调整范围甲、办理时名称），不受当前范围影响', async () => {
-    const w = await flowWorld(testDb().db, 'f476-12-frozen');
+    const w = await flowWorld(testDb().db, 'f476-d834-frozen');
     const { id, itemId } = await draftBoth(w);
     await w.submitted(id);
     await w.acted(id, w.hrbp, 'approve');
@@ -51,7 +51,7 @@ describe('AC-F476-12 已办冻结份完整可见（DEC-834④）', () => {
   });
 
   it('反向对照：同一时刻的发起人读现值，仍按范围隐去甲行与调整范围里甲的名称（B1b 不被放宽）', async () => {
-    const w = await flowWorld(testDb().db, 'f476-12-initiator');
+    const w = await flowWorld(testDb().db, 'f476-d834-initiator');
     const { id, itemId } = await draftBoth(w);
     await w.submitted(id);
     await w.acted(id, w.hrbp, 'approve');
@@ -69,9 +69,9 @@ describe('AC-F476-12 已办冻结份完整可见（DEC-834④）', () => {
   });
 });
 
-describe('AC-F476-12 在办审批人仍按 B1b 规则过滤', () => {
+describe('AC-F476-D834 在办审批人仍按 B1b 规则过滤', () => {
   it('HRBP 有待办（未办理）且组织范围只含乙：读现值，甲行隐去并计数、调整范围里甲的名称为 null；办理后才读到完整冻结份', async () => {
-    const w = await flowWorld(testDb().db, 'f476-12-pending');
+    const w = await flowWorld(testDb().db, 'f476-d834-pending');
     const { id } = await draftBoth(w);
     await w.submitted(id);
     w.access.org = only(w.b);
