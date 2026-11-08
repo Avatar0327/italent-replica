@@ -66768,7 +66768,7 @@
           "name": "disclosure_ceiling",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "payload_bytes": {
           "name": "payload_bytes",

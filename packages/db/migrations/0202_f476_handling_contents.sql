@@ -17,7 +17,7 @@ CREATE TABLE "approval_handling_contents" (
 	"business_version" text NOT NULL,
 	"content_schema_version" integer NOT NULL,
 	"content" jsonb NOT NULL,
-	"disclosure_ceiling" jsonb NOT NULL,
+	"disclosure_ceiling" jsonb,
 	"payload_bytes" integer NOT NULL,
 	"content_digest" text NOT NULL,
 	"acted_at" timestamp with time zone NOT NULL,

@@ -127,6 +127,9 @@ export async function recordHandlingContent(
   const { ctx, instance } = run;
   const { task } = anchor;
   const actor = ctx.actorUserId === undefined ? ctx.userId : ctx.actorUserId;
+  // null = 办理人不受字段权限约束（不设上限），写 SQL NULL 而非 jsonb 'null'：租户备份 / 恢复按 JSON 往返，
+  // 'null' 字面量会被还原成 SQL NULL（F-476 预检返工）。
+  const ceiling = prepared.ceiling === null ? null : JSON.stringify(prepared.ceiling);
   await tx.execute(sql`INSERT INTO approval_handling_contents
     (tenant_id,instance_id,task_id,handling_log_id,round,node_key,activation_id,process_version_id,actor_user_id,
      handling_kind,action,business_type,business_id,business_version,content_schema_version,content,
@@ -134,7 +137,7 @@ export async function recordHandlingContent(
     VALUES (${ctx.tenantId},${instance.id}::uuid,${task.id}::uuid,${anchor.logId}::uuid,${task.round},${task.nodeKey},
       ${task.activationId}::uuid,${instance.versionId}::uuid,${actor}::uuid,${actor ? 'human' : 'system'},
       ${anchor.action},${instance.businessType},${instance.businessId}::uuid,${prepared.businessVersion},
-      ${CONTENT_SCHEMA_VERSION},${prepared.json}::jsonb,${JSON.stringify(prepared.ceiling)}::jsonb,${prepared.bytes},
+      ${CONTENT_SCHEMA_VERSION},${prepared.json}::jsonb,${ceiling}::jsonb,${prepared.bytes},
       ${prepared.digest},${ctx.now.toISOString()})`);
 }
 
