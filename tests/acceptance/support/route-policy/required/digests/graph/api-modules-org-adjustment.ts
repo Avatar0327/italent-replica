@@ -586,14 +586,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
   ],
   'apps/api/src/modules/org-adjustment/preview.ts#assemble': ['#compareSort'],
-  'apps/api/src/modules/org-adjustment/preview.ts#existingDraft': ['#ATTR_FIELDS', '#node'],
-  'apps/api/src/modules/org-adjustment/preview.ts#fillEstablishment': [
+  'apps/api/src/modules/org-adjustment/preview.ts#establishmentByOrg': [
     'apps/api/src/modules/establishment/capacity-read.ts#batchLocalSums',
     'apps/api/src/modules/establishment/schemes.ts#loadSchemeBatch',
     '#pickScheme',
     'apps/api/src/modules/org/read-model.ts#rowsOf',
   ],
-  'apps/api/src/modules/org-adjustment/preview.ts#fillHeads': [
+  'apps/api/src/modules/org-adjustment/preview.ts#existingDraft': ['#ATTR_FIELDS', '#node'],
+  'apps/api/src/modules/org-adjustment/preview.ts#fillEstablishment': ['#establishmentByOrg'],
+  'apps/api/src/modules/org-adjustment/preview.ts#fillHeads': ['#headNames'],
+  'apps/api/src/modules/org-adjustment/preview.ts#headNames': [
     'apps/api/src/modules/personnel/employee-projection.ts#currentPersonName',
   ],
   'apps/api/src/modules/org-adjustment/preview.ts#overlay': ['#MARKS', '#node'],

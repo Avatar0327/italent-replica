@@ -102,6 +102,7 @@ const importRow = z.strictObject({
 });
 
 export function registerOrgRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerOrgViews(router, deps);
   registerQueries(router, deps);
   registerPersonCandidates(router, deps);
   registerReservations(router, deps);
@@ -109,6 +110,49 @@ export function registerOrgRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
   registerEmploymentPreview(router, deps);
   registerCorrection(router, deps);
   registerOrgImport(router, deps);
+}
+
+/** 完整树与架构图（F-474-2b）：路径必须在 registerQueries 的 /organizations/:id 之前注册。 */
+function registerOrgViews(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  // 完整组织树（F-474-2b）：服务端按查看人范围组装，必须排在 /organizations/:id 之前。
+  router.get(`${BASE}/organizations/tree`, async (c) => {
+    const ctx = await context(c, deps, 'read');
+    const { scope, view } = await listView(c, deps, ctx);
+    const tree = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const config = await readOrgSettings(tx, ctx.tenantId);
+      if (!config.enabledDimensions.includes(view.dimension)) return { nodes: [], parents: [] };
+      return readOrgTreeNodes(tx, { ...view, fullNameStartLevel: config.fullNameStartLevel });
+    });
+    const flat = tree.nodes.map(({ id, code, name, enabled, headcount }) => ({ id, code, name, enabled, headcount }));
+    const trimmed = await trimModuleResponse<(typeof flat)[number]>(deps, ctx, OBJECT, flat);
+    return c.json({
+      roots: nestTree(trimmed, tree.parents),
+      total: flat.length,
+      hasDataPermission: scope.hasDataPermission,
+    });
+  });
+  // 架构图卡片（F-474-2b）：树节点 + 负责人姓名 + 编制；同样先于 /organizations/:id。
+  router.get(`${BASE}/organizations/chart`, async (c) => {
+    const ctx = await context(c, deps, 'read');
+    const { scope, view } = await listView(c, deps, ctx);
+    const chart = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const config = await readOrgSettings(tx, ctx.tenantId);
+      if (!config.enabledDimensions.includes(view.dimension))
+        return { cards: [], parents: [], headNameOf: new Map<string, string | null>() };
+      return readOrgChartNodes(tx, { ...view, fullNameStartLevel: config.fullNameStartLevel });
+    });
+    // 负责人姓名跟随「负责人」字段的查看权：personInChargeId 被裁掉时姓名一并去掉；ID 本身不返回
+    const trimmed = await trimModuleResponse<(typeof chart.cards)[number]>(deps, ctx, OBJECT, chart.cards);
+    const cards = trimmed.map(({ personInChargeId, ...card }) => ({
+      ...card,
+      ...(personInChargeId !== undefined ? { personInChargeName: chart.headNameOf.get(card.id!) ?? null } : {}),
+    }));
+    return c.json({
+      roots: nestTree(cards, chart.parents),
+      total: cards.length,
+      hasDataPermission: scope.hasDataPermission,
+    });
+  });
 }
 
 function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
@@ -129,45 +173,6 @@ function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     return c.json({
       items: await trimModuleResponse(deps, ctx, OBJECT, result.items),
       total: result.total,
-      hasDataPermission: scope.hasDataPermission,
-    });
-  });
-  // 完整组织树（F-474-2b）：服务端按查看人范围组装，必须排在 /organizations/:id 之前。
-  router.get(`${BASE}/organizations/tree`, async (c) => {
-    const ctx = await context(c, deps, 'read');
-    const { scope, view } = await listView(c, deps, ctx);
-    const tree = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const config = await readOrgSettings(tx, ctx.tenantId);
-      if (!config.enabledDimensions.includes(view.dimension)) return { nodes: [], parents: [] };
-      return readOrgTreeNodes(tx, { ...view, fullNameStartLevel: config.fullNameStartLevel });
-    });
-    const flat = tree.nodes.map(({ id, code, name, enabled, headcount }) => ({ id, code, name, enabled, headcount }));
-    const trimmed = await trimModuleResponse(deps, ctx, OBJECT, flat);
-    return c.json({
-      roots: nestTree(trimmed, tree.parents),
-      total: flat.length,
-      hasDataPermission: scope.hasDataPermission,
-    });
-  });
-  // 架构图卡片（F-474-2b）：树节点 + 负责人姓名 + 编制；同样先于 /organizations/:id。
-  router.get(`${BASE}/organizations/chart`, async (c) => {
-    const ctx = await context(c, deps, 'read');
-    const { scope, view } = await listView(c, deps, ctx);
-    const chart = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const config = await readOrgSettings(tx, ctx.tenantId);
-      if (!config.enabledDimensions.includes(view.dimension))
-        return { cards: [], parents: [], headNameOf: new Map<string, string | null>() };
-      return readOrgChartNodes(tx, { ...view, fullNameStartLevel: config.fullNameStartLevel });
-    });
-    // 负责人姓名跟随「负责人」字段的查看权：personInChargeId 被裁掉时姓名一并去掉；ID 本身不返回
-    const trimmed = await trimModuleResponse(deps, ctx, OBJECT, chart.cards);
-    const cards = trimmed.map(({ personInChargeId, ...card }) => ({
-      ...card,
-      ...(personInChargeId !== undefined ? { personInChargeName: chart.headNameOf.get(card.id!) ?? null } : {}),
-    }));
-    return c.json({
-      roots: nestTree(cards, chart.parents),
-      total: cards.length,
       hasDataPermission: scope.hasDataPermission,
     });
   });
