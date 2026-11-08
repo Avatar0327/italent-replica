@@ -54,7 +54,10 @@ export interface Viewer {
 export interface DetailData {
   readonly instance: InstanceRow;
   readonly version: VersionView;
+  /** 展示用快照：已办读冻结份里的快照，其余读现值。 */
   readonly snapshot: BusinessSnapshot;
+  /** 当前流程事实的条件值（始终取现值）：路径推演用它，不随冻结份回退（F-476 §0.2）。 */
+  readonly conditionValues: BusinessSnapshot['conditionValues'];
   /** 展示窗口：最新 200 条与全部在办 / 排队任务。 */
   readonly tasks: readonly TaskRow[];
   /** 完整任务：查看人所在节点、记录隐藏与可用动作都按它判断，不受展示窗口影响（F1）。 */
@@ -106,13 +109,13 @@ export async function readDetail(
   const content: ContentSelection = forceLive
     ? { mode: 'live' }
     : await selectContent(tx, ctx, instance, allTasks, viewer.userId);
+  // 当前流程事实始终读现值；冻结份只供展示（设计 §0.2），不得进入路径推演
+  const live = await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId);
   return {
     instance,
     version: await loadVersion(tx, ctx.tenantId, instance.versionId),
-    snapshot:
-      content.mode === 'frozen'
-        ? content.frozen.content.snapshot
-        : await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId),
+    snapshot: content.mode === 'frozen' ? content.frozen.content.snapshot : live,
+    conditionValues: live.conditionValues,
     content,
     tasks: displayWindow(allTasks),
     allTasks,

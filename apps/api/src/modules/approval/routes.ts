@@ -218,8 +218,8 @@ async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, wit
   const { data, pathFacts } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
     const detail = await readDetail(tx, ctx, instanceId, viewer);
     if (!withPath) return { data: detail, pathFacts: undefined };
-    const { instance, version, snapshot, allTasks } = detail;
-    const facts = await loadPathFacts(tx, ctx, instance, version.nodes, snapshot.conditionValues, allTasks);
+    const { instance, version, conditionValues, allTasks } = detail;
+    const facts = await loadPathFacts(tx, ctx, instance, version.nodes, conditionValues, allTasks);
     return { data: detail, pathFacts: facts };
   });
   return { ctx, view: detailView(data, ctx.userId, await detailViewable(deps, ctx, data), pathFacts) };
