@@ -2,6 +2,8 @@
  * AC-APV-F478-16 / 17（F-478 S3，设计 §5.1 / §5.2）：「主体员工本人」「系统管理员」两个新审批人来源。
  * 保存走真实 HTTP + 真实库，来源误用统一 422（DEC-697）；运行取人走真实提交与待办。
  */
+import { randomUUID } from 'node:crypto';
+import { sql, withTenant } from '@italent/db';
 import { APPROVAL_TYPES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -182,4 +184,30 @@ describe('AC-APV-F478-17 系统管理员：取开通顺序第一位', () => {
     expect(response.status).toBe(409);
     expect((await response.json()).error).toMatchObject({ details: { reason: 'APPROVAL_FIRST_NODE_EMPTY' } });
   });
+
+  it('前 200 名系统管理员的成员关系都已停用 → 继续往后扫，任务派给第 201 名（不被首批截断误判为无人）', async () => {
+    const w = await approvalWorld(database().db, 'f478s3-admin-201');
+    const scene = await transferScene(w);
+    const ids = Array.from({ length: 200 }, () => randomUUID());
+    const tag = randomUUID();
+    // 批量造数：200 个成员关系已停用、管理员记录仍有效的系统管理员，开通时间都早于第 201 名
+    const list = `{${ids.join(',')}}`;
+    // 用户是全局表，租户事务里没有权限，建账号放在租户事务之外
+    await w.db.execute(sql`INSERT INTO users(id,email,display_name)
+      SELECT u, 'f478s3-' || ${tag} || '-' || n || '@example.com', '合成停用管理员' || n
+      FROM unnest(${list}::uuid[]) WITH ORDINALITY AS t(u,n)`);
+    await withTenant(w.db, w.tenant.id, async (tx) => {
+      await tx.execute(sql`INSERT INTO tenant_memberships(tenant_id,user_id,status)
+        SELECT ${w.tenant.id}, u, 'revoked' FROM unnest(${list}::uuid[]) AS t(u)`);
+      await tx.execute(sql`INSERT INTO permission_admins(tenant_id,user_id,role,status,created_at,updated_at)
+        SELECT ${w.tenant.id}, u, 'system_admin', 'active',
+          '2025-01-01T00:00:00Z'::timestamptz + n * interval '1 second',
+          '2025-01-01T00:00:00Z'::timestamptz + n * interval '1 second'
+        FROM unnest(${list}::uuid[]) WITH ORDINALITY AS t(u,n)`);
+    });
+    const last = await w.person('合成第201名管理员', scene.from);
+    await addAdminRecord(w, last.userId, 'system_admin', '2026-01-01T00:00:00Z');
+    await w.publishedProcess({ nodes: [node('admin', systemAdminSource)] });
+    expect(await assignee(w, scene)).toEqual([last.userId]);
+  }, 120_000);
 });
