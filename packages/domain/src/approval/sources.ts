@@ -43,6 +43,10 @@ export const EXPRESSION_SOURCE_TYPES: Readonly<Record<ApproverExpression, Approv
   handover_work_owner: 'object_field',
   handover_hr_admin: 'identity',
   handover_employee: 'object_field',
+  // F-478 S3：主体员工本人与 assessment_employee 同取法（对象字段）；系统管理员无对应的 role 来源类型，沿用
+  // handover_hr_admin 先例归 identity（设计 §5.2 写“类型 role”，偏离见 PR 描述）
+  subject_employee: 'object_field',
+  system_admin: 'identity',
 };
 /** 预置定义使用同一结构，函数不接收网络输入、不提供字符串兼容路径。 */
 export const approverSource = (value: ApproverExpression): ApproverSource => ({
