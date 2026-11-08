@@ -149,7 +149,7 @@ async function keepBinding(
 }
 
 /** 本事务里重聘改过登录名的账号：账号 → 改名前的登录邮箱（供同一事务内的绑定校验认出原登录邮箱）。 */
-const renamedInTx = new WeakMap<Tx, Map<string, string>>();
+const renamedInTx = new WeakMap<Tx, Map<string, string | null>>();
 
 export interface RehireLoginChange {
   readonly beforeRevision: number;
@@ -167,7 +167,7 @@ export async function changeRehireLoginEmail(
   userId: string,
   contactEmail: string,
 ): Promise<RehireLoginChange | null> {
-  let row: { outcome: string; before_email: string; after_email: string; revision: number } | undefined;
+  let row: { outcome: string; before_email: string | null; after_email: string; revision: number } | undefined;
   try {
     [row] = scopeRows<NonNullable<typeof row>>(
       await tx.execute(sql`SELECT outcome, before_email, after_email, revision FROM tenant_rehire_login_email(
@@ -178,7 +178,7 @@ export async function changeRehireLoginEmail(
     throw error;
   }
   if (row?.outcome !== 'changed') return null;
-  const renamed = renamedInTx.get(tx) ?? new Map<string, string>();
+  const renamed = renamedInTx.get(tx) ?? new Map<string, string | null>();
   renamedInTx.set(tx, renamed.set(userId, row.before_email));
   await audit(tx, write, {
     action: 'tenant_user.login_email',
