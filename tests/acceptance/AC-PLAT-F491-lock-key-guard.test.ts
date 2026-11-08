@@ -16,12 +16,28 @@ import { asUuid, lockKey, lockKey32 } from '../../apps/api/src/advisory-lock.js'
 const ROOT = join(import.meta.dirname, '..', '..');
 const COMMON = 'apps/api/src/advisory-lock.ts';
 
-/** 白名单：键里没有（可大小写变化的）UUID，或 UUID 在数据库里已是 uuid 类型。文件须仍含命中，防止登记过期。 */
-const ALLOWED: Readonly<Record<string, string>> = {
-  'apps/api/src/modules/survey360/credential-key-registry.ts': '常量键 LOCK_KEY，键里没有 UUID',
-  'apps/api/src/modules/survey360/credential-ops.ts': '键 = 固定前缀 + 密钥版本号（整数），没有 UUID',
-  'packages/db/migrations/0027_personnel_sort_rank_refresh.sql':
-    '键里的租户是 plpgsql 的 uuid 类型变量，target::text 即数据库规范小写文本',
+/**
+ * 白名单：键里没有（可大小写变化的）UUID，或 UUID 在数据库里已是 uuid 类型。
+ * 按文件登记允许出现的命中行（去首尾空白后的原文，重复出现就登记多次）；多出、改写或少了都报红，防登记过期或被夹带。
+ */
+const ALLOWED: Readonly<Record<string, { reason: string; lines: readonly string[] }>> = {
+  'apps/api/src/modules/survey360/credential-key-registry.ts': {
+    reason: '常量键 LOCK_KEY，键里没有 UUID',
+    lines: [
+      'await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(hashtextextended(${LOCK_KEY}, 0))`);',
+      'await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${LOCK_KEY}, 0))`);',
+    ],
+  },
+  'apps/api/src/modules/survey360/credential-ops.ts': {
+    reason: '键 = 固定前缀 + 密钥版本号（整数），没有 UUID',
+    lines: [
+      'await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`survey360:key_rotated:${to}`}, 0))`);',
+    ],
+  },
+  'packages/db/migrations/0027_personnel_sort_rank_refresh.sql': {
+    reason: '键里的租户是 plpgsql 的 uuid 类型变量，target::text 即数据库规范小写文本',
+    lines: ["PERFORM pg_advisory_xact_lock(hashtextextended('personnel_sort_ranks:' || target::text, 0));"],
+  },
 };
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'coverage', '.turbo', '.vite']);
@@ -51,6 +67,18 @@ export function findBypasses(text: string): number[] {
   });
 }
 
+/** 去掉白名单登记的命中行（每条登记只抵消一次）后剩下的自拼锁键行号。 */
+export function unlistedBypasses(text: string, allowed: readonly string[] = []): number[] {
+  const lines = text.split('\n');
+  const quota = [...allowed];
+  return findBypasses(text).filter((n) => {
+    const at = quota.indexOf(lines[n - 1]!.trim());
+    if (at < 0) return true;
+    quota.splice(at, 1);
+    return false;
+  });
+}
+
 describe('F-491 静态守卫：锁键不得绕过公共函数', () => {
   const files = ['apps', 'packages']
     .flatMap((dir) => sourceFiles(join(ROOT, dir)))
@@ -58,18 +86,18 @@ describe('F-491 静态守卫：锁键不得绕过公共函数', () => {
     .filter((file) => file !== COMMON);
 
   it('apps/、packages/ 里没有未登记的自拼锁键（附件登记锁键也走公共函数）', () => {
-    const bypasses = files
-      .filter((file) => !(file in ALLOWED))
-      .flatMap((file) => findBypasses(readFileSync(join(ROOT, file), 'utf8')).map((line) => `${file}:${line}`));
+    const bypasses = files.flatMap((file) =>
+      unlistedBypasses(readFileSync(join(ROOT, file), 'utf8'), ALLOWED[file]?.lines).map((line) => `${file}:${line}`),
+    );
     expect(bypasses, '这些位置自己拼了咨询锁键：改用 advisory-lock.ts 的 advisoryLock / lockKey + asUuid').toEqual([]);
   });
 
-  it('白名单没有过期：登记的文件仍存在且仍含咨询锁调用', () => {
-    for (const file of Object.keys(ALLOWED)) {
+  it('白名单没有过期：登记的文件仍存在，命中行与登记逐条一致、数量相同', () => {
+    for (const [file, { lines: allowed }] of Object.entries(ALLOWED)) {
       expect(files, `${file} 已不存在，请从白名单删除`).toContain(file);
-      expect(findBypasses(readFileSync(join(ROOT, file), 'utf8')).length, `${file} 已没有咨询锁调用`).toBeGreaterThan(
-        0,
-      );
+      const text = readFileSync(join(ROOT, file), 'utf8');
+      const hits = findBypasses(text).map((n) => text.split('\n')[n - 1]!.trim());
+      expect(hits.sort(), `${file} 的咨询锁调用与白名单登记不一致`).toEqual([...allowed].sort());
     }
   });
 
@@ -93,6 +121,18 @@ describe('F-491 静态守卫：锁键不得绕过公共函数', () => {
     ];
     expect(findBypasses(foreign.join('\n'))).toEqual([2]);
     expect(findBypasses('// pg_advisory_xact_lock 说明\n/** hashtext(…) */\n * pg_try_advisory_lock')).toEqual([]);
+  });
+
+  it('白名单自检：登记文件里追加未规范化的裸锁调用会被抓到，登记行只抵消一次', () => {
+    const file = 'apps/api/src/modules/survey360/credential-key-registry.ts';
+    const { lines: allowed } = ALLOWED[file]!;
+    const text = readFileSync(join(ROOT, file), 'utf8');
+    expect(unlistedBypasses(text, allowed)).toEqual([]);
+    const raw = 'await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ctx.tenantId}, 0))`);';
+    const injected = `${text}\n${raw}`;
+    expect(unlistedBypasses(injected, allowed)).toEqual([injected.split('\n').length]);
+    const duplicated = `${text}\n${allowed[1]}`;
+    expect(unlistedBypasses(duplicated, allowed)).toEqual([duplicated.split('\n').length]);
   });
 });
 
