@@ -1,4 +1,5 @@
 import { registerContractRoutes } from './modules/contracts/routes.js';
+import { registerESignRoutes } from './modules/esign/routes.js';
 import { registerHrAnalysisRoutes } from './modules/hr-analysis/routes.js';
 import { registerOfferRoutes } from './modules/offer/routes.js';
 import { registerEmployeeSelfServiceRoutes } from './modules/employee-self-service/routes.js';
@@ -82,6 +83,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerTeamDashboardRoutes, // F-467 团队人事看板（负责部门 + 汇报关系，DEC-763③）
   registerOrgAdjustmentRoutes, // R2-T08 组织调整审批（BE-10b1 头字段与调整范围）
   registerDutyTransferRoutes, // R2-T09a 职责转交菜单
+  registerESignRoutes, // F-481 调动电子签署（S1：模板库、场景设置）
 ];
 
 export interface AppDeps {

@@ -11,6 +11,7 @@ import { HR_MOVEMENT_POLICIES } from './modules/analytics/hr-movement-policy.js'
 import { TEAM_DASHBOARD_POLICIES } from './modules/analytics/team-dashboard-policy.js';
 import { ORG_ADJUSTMENT_POLICIES } from './modules/org-adjustment/policy.js';
 import { DUTY_TRANSFER_POLICIES } from './modules/duty-transfer/policy.js';
+import { ESIGN_POLICIES } from './modules/esign/policy.js';
 import { ATTACHMENT_POLICIES } from './modules/attachments/policy.js';
 import { AVATAR_POLICIES } from './modules/avatar/policy.js';
 import { COMMAND_RESULT_POLICIES } from './modules/command-result/policy.js';
@@ -63,6 +64,7 @@ export function tenantPolicyTable(extra: readonly PolicyTable[] = []): PolicyTab
     TEAM_DASHBOARD_POLICIES,
     ORG_ADJUSTMENT_POLICIES,
     DUTY_TRANSFER_POLICIES,
+    ESIGN_POLICIES,
     ...extra,
   ]);
 }
