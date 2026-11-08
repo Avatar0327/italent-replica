@@ -118,6 +118,32 @@ export const GRAPH: Graph = {
     '#TENANT_PAGE',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/all-people.ts#parseQuery': [
+    '#query',
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS_CODES',
+  ],
+  'apps/api/src/modules/employment/all-people.ts#query': [
+    '#text',
+    'apps/api/src/modules/employment/fields.ts#normalizedUuid',
+    'packages/domain/src/hr-analysis/all-people.ts#ALL_PEOPLE_EMPLOY_TYPES',
+    'packages/domain/src/hr-analysis/all-people.ts#ALL_PEOPLE_SERVICE_TYPES',
+  ],
+  'apps/api/src/modules/employment/all-people.ts#requireFilterRights': [
+    'apps/api/src/modules/hr-analysis/roster-access.ts#requireFilterField',
+  ],
+  'apps/api/src/modules/employment/all-people.ts#route:GET /all-people': [
+    '#PATH',
+    '#parseQuery',
+    '#requireFilterRights',
+    'apps/api/src/modules/hr-analysis/roster-access.ts#allPeopleAccess',
+    'apps/api/src/modules/hr-analysis/roster-query.ts#countRoster',
+    'apps/api/src/modules/hr-analysis/roster-query.ts#listRoster',
+    'apps/api/src/modules/hr-analysis/roster-query.ts#trimRosterRow',
+    'apps/api/src/modules/job/context.ts#pageQuery',
+    'packages/domain/src/hr-analysis/all-people.ts#ALL_PEOPLE_COLUMNS',
+    'packages/domain/src/hr-analysis/all-people.ts#ALL_PEOPLE_DEFAULT_STATUSES',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/employment/approval-hooks.ts#employmentApprovalHooks': ['#hooks'],
   'apps/api/src/modules/employment/approval-hooks.ts#hooks': ['#unavailable'],
   'apps/api/src/modules/employment/assessment-access.ts#assessmentCommandContext': [

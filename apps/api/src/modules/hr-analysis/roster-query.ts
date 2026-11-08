@@ -23,6 +23,10 @@ export interface RosterFilter {
   readonly workDateTo?: string;
   readonly employeeStatus?: number;
   readonly employType?: string;
+  /** 用工形式编码（任职记录 employment_form，F-474-4c 全部人员）。 */
+  readonly employmentForm?: string;
+  /** 指定一名员工（员工选择器，F-474-4c）；仍受数据范围约束。 */
+  readonly employeeId?: string;
 }
 
 const like = (value: string) => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -32,10 +36,13 @@ const list = (values: readonly (string | number)[]) =>
     sql`, `,
   );
 
-/** 人员范围的基础口径：哪些人员状态、哪些雇佣关系。花名册缺省 = 在职内部员工 + 实习生；人事报表（F-465a）按报表定义传入。 */
+/**
+ * 人员范围的基础口径：哪些人员状态、哪些雇佣关系。花名册缺省 = 在职内部员工 + 实习生；人事报表（F-465a）按报表定义传入；
+ * 全部人员（F-474-4c）不限雇佣关系（缺省 = 不限，包括未填雇佣关系的人），由调用方按用户选择传入人员状态。
+ */
 export interface RosterBase {
   readonly statuses: readonly number[];
-  readonly employTypes: readonly string[];
+  readonly employTypes?: readonly string[];
 }
 const ROSTER_BASE: RosterBase = { statuses: ROSTER_EMPLOYEE_STATUSES, employTypes: ROSTER_EMPLOY_TYPES };
 
@@ -45,14 +52,16 @@ function population(ctx: AccessContext, filter: RosterFilter, base: RosterBase):
     sql`e.tenant_id=${ctx.tenantId}`,
     personScope(ctx),
     sql`r.current_employee_status IN (${list(base.statuses)})`,
-    sql`r.current_fields->>'employ_type' IN (${list(base.employTypes)})`,
   ];
+  if (base.employTypes) parts.push(sql`r.current_fields->>'employ_type' IN (${list(base.employTypes)})`);
   if (filter.name) parts.push(sql`COALESCE(v.name,e.name) ILIKE ${like(filter.name)}`);
   if (filter.email) parts.push(sql`v.email ILIKE ${like(filter.email)}`);
   if (filter.workDateFrom) parts.push(sql`v.work_date>=${filter.workDateFrom}::date`);
   if (filter.workDateTo) parts.push(sql`v.work_date<=${filter.workDateTo}::date`);
   if (filter.employeeStatus) parts.push(sql`r.current_employee_status=${filter.employeeStatus}`);
   if (filter.employType) parts.push(sql`r.current_fields->>'employ_type'=${filter.employType}`);
+  if (filter.employmentForm) parts.push(sql`r.current_fields->>'employment_form'=${filter.employmentForm}`);
+  if (filter.employeeId) parts.push(sql`e.id=${filter.employeeId}::uuid`);
   return sql.join(parts, sql` AND `);
 }
 
@@ -113,7 +122,7 @@ export async function listRoster(
     await tx.execute(sql`SELECT e.id, e.code, COALESCE(v.name,e.name) AS employee_name, to_jsonb(v) AS profile,
         r.entry_date::text AS entry_date, r.start_date::text AS start_date, cur_end.end_date,
         r.current_employee_status AS employee_status, r.last_work_date::text AS own_last_work_date,
-        nx.last_work_date AS next_last_work_date, jl.name AS level_name,
+        nx.last_work_date AS next_last_work_date, jl.name AS level_name, jp.name AS position_name,
         r.current_fields->>'department_id' AS department_id, r.current_fields->>'place' AS place,
         (SELECT et.name FROM employment_types et WHERE et.tenant_id=${ctx.tenantId}
           AND et.id::text=r.current_fields->>'employment_type') AS employment_type,
@@ -148,6 +157,11 @@ function rosterRow(row: Row, asOf: string, organizations: Awaited<ReturnType<typ
     employeeName: row.employee_name,
     code: row.code,
     level: row.level_name ?? null,
+    // 以下四列只给全部人员列表（F-474-4c）用；花名册 / 报表的可见列里没有它们，trimRosterRow 会裁掉
+    email: profile.email ?? null,
+    idType: profile.idType ?? null,
+    positionName: row.position_name ?? null,
+    departmentName: org?.levels.at(-1) ?? null,
     ...Object.fromEntries(
       [
         'gender',
