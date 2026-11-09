@@ -47,6 +47,11 @@ async function setup(page: Page, options: { hiddenName?: boolean; schemeOnly?: b
       }),
     );
   }
+  // 完整树与架构图按后端真实形状：{ roots: 嵌套节点, total, hasDataPermission }（apps/api org/routes.ts）
+  for (const kind of ['tree', 'chart'])
+    await page.route(`**/api/tenant/org/organizations/${kind}**`, (route) =>
+      route.fulfill({ json: { roots: [{ ...row, children: [] }], total: 1, hasDataPermission: true } }),
+    );
   await page.goto('/self');
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.waitForURL('**/staff');
