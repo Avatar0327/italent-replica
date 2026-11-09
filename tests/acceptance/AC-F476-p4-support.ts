@@ -4,13 +4,22 @@
  * 此后 A 读三个人事详情入口（任职业务 / 离职 / 退休）应读到办理时的值；HR（发起人）读现值。
  * 内容用 ZZ_ 前缀的合成文本；断言只看业务字段值与 contentView，不依赖办理份内部形状。
  */
+import { randomUUID } from 'node:crypto';
+import { runEmploymentActivations } from '@italent/api';
 import { sql, withTenant } from '@italent/db';
-import { APPROVAL_TYPES } from '@italent/domain';
+import { APPROVAL_TYPES, MODULE_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
-import { approvalWorld, type ApprovalWorld, type Person } from './AC-APV-support.js';
+import {
+  approvalWorld,
+  grantVisibleFields,
+  permissionAdmin,
+  type ApprovalWorld,
+  type Person,
+} from './AC-APV-support.js';
 import { installExitSeeds } from './AC-EXIT-support.js';
 import { installProbationSeeds, loginEmailOf } from './AC-EMP-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
+import { cmd, tenantApi } from './support/tenant-api.js';
 
 export const EMP = '/api/tenant/employment';
 export const BEFORE = 'ZZ_办理时';
@@ -28,6 +37,10 @@ export interface Scene {
   handover: { before: string; after: string };
   businessId: string;
   instanceId: string;
+  /** 被办理人所在部门（真实授权器夹具的数据范围用）。 */
+  departmentId: string;
+  /** 合成自定义字段编号（SceneOptions.customField 打开时才有）；审批 / 字段权编码是 `custom:<id>`，存储键是裸 id。 */
+  customFieldId: string | null;
 }
 
 /** 详情响应体里本片断言用到的字段（其余字段按未知处理）。 */
@@ -62,8 +75,13 @@ const createBody = (
   subject: { employeeId: string },
   handover: string,
   extra: Record<string, unknown> = {},
+  customFieldId: string | null = null,
 ) => {
-  const base = { mode: 'application', fields: { departmentId: dept, place: BEFORE } };
+  const base = {
+    mode: 'application',
+    fields: { departmentId: dept, place: BEFORE },
+    ...(customFieldId ? { customFields: { [customFieldId]: BEFORE } } : {}),
+  };
   switch (kind) {
     case 'hire':
       return { ...base, kind, effectiveDate: '2026-10-05', loginEmail: loginEmailOf(subject.employeeId) };
@@ -92,12 +110,12 @@ const createPath = (kind: ScenarioKind, employeeId: string) =>
       ? `${EMP}/retirements/employees/${employeeId}`
       : `${EMP}/employees/${employeeId}/businesses`;
 
-const patchBody = (kind: ScenarioKind, handover: string) =>
+const patchBody = (kind: ScenarioKind, handover: string, customFieldId: string | null) =>
   kind === 'leave'
     ? { employerName: AFTER }
     : kind === 'retirement'
       ? { handoverEmployeeId: handover }
-      : { fields: { place: AFTER } };
+      : { fields: { place: AFTER }, ...(customFieldId ? { customFields: { [customFieldId]: AFTER } } : {}) };
 
 const patchPath = (kind: ScenarioKind, id: string) =>
   kind === 'leave'
@@ -156,6 +174,8 @@ export interface SceneOptions {
   exit?: Record<string, unknown>;
   /** 提交前先给被办理人补一条直接调动记录（生效日、地点），作为本次调动的前驱。 */
   predecessor?: { place: string; effectiveDate: string };
+  /** 建一个合成自定义字段并在申请里填值（仅任职类）：node = 并入审批人节点表单；hidden = 不并入。 */
+  customField?: 'node' | 'hidden';
 }
 
 /** 建场景：发起 → 提交 → A 驳回；不改单（改单由 changeAfterHandled 单独做，便于测“办理后”时点）。 */
@@ -170,6 +190,7 @@ export async function handledScene(
   if (kind === 'regularization') await installProbationSeeds(db, w.tenant.id);
   const dept = await w.org('合成部门');
   const approver = await w.person('审批人A', dept);
+  const customFieldId = options.customField ? await createCustomField(w) : null;
   const code = APPROVAL_TYPES[kind].defaultProcessCode;
   await w.publishedProcess({
     approvalType: kind,
@@ -179,7 +200,10 @@ export async function handledScene(
         key: 'review',
         name: '审核',
         approver: { type: 'specified', value: approver.userId },
-        formFields: options.nodeForm ?? defaultNodeForm(kind),
+        formFields: [
+          ...(options.nodeForm ?? defaultNodeForm(kind)),
+          ...(customFieldId && options.customField === 'node' ? [`custom:${customFieldId}`] : []),
+        ],
       },
     ],
   });
@@ -193,7 +217,7 @@ export async function handledScene(
   const created = await w.json<{ id: string; revision: number }>(
     await w.request(w.hr.id, 'POST', createPath(kind, subjectId), {
       ifMatch: current.revision,
-      body: createBody(kind, dept, { employeeId: subjectId }, handover.before, options.exit),
+      body: createBody(kind, dept, { employeeId: subjectId }, handover.before, options.exit, customFieldId),
     }),
     201,
   );
@@ -202,7 +226,28 @@ export async function handledScene(
   const action = options.action ?? 'reject';
   const done = await w.taskAction(approver.userId, task.id, action, view.revision, { comment: '合成意见' });
   expect(done.status, await done.clone().text()).toBe(200);
-  return { w, kind, approver, subjectId, handover, businessId: created.id, instanceId: view.id };
+  return {
+    w,
+    kind,
+    approver,
+    subjectId,
+    handover,
+    businessId: created.id,
+    instanceId: view.id,
+    departmentId: dept,
+    customFieldId,
+  };
+}
+
+async function createCustomField(w: ApprovalWorld): Promise<string> {
+  const created = await w.json<{ id: string }>(
+    await w.request(w.hr.id, 'POST', `${EMP}/custom-fields`, {
+      ifMatch: 0,
+      body: { name: '合成自定义字段', valueType: 'text', objectType: 'employment' },
+    }),
+    201,
+  );
+  return created.id;
 }
 
 /** 发起人在驳回态下改单（审批人 A 已办理）：把可辨认值从 BEFORE 改成 AFTER。 */
@@ -211,9 +256,31 @@ export async function changeAfterHandled(scene: Scene): Promise<void> {
   const current = await w.business(businessId);
   const response = await w.request(w.hr.id, 'PATCH', patchPath(kind, businessId), {
     ifMatch: current.revision,
-    body: patchBody(kind, scene.handover.after),
+    body: patchBody(kind, scene.handover.after, scene.customFieldId),
   });
   expect(response.status, await response.clone().text()).toBe(200);
+}
+
+/** 发起人在驳回态下把最后工作日改到别的日子（离职 / 退休）。 */
+export async function changeLastWorkDate(scene: Scene, lastWorkDate: string): Promise<void> {
+  const { w, kind, businessId } = scene;
+  const current = await w.business(businessId);
+  const response = await w.request(w.hr.id, 'PATCH', patchPath(kind, businessId), {
+    ifMatch: current.revision,
+    body: { lastWorkDate },
+  });
+  expect(response.status, await response.clone().text()).toBe(200);
+}
+
+/** 业务批准后到生效日由定时任务落地（审批通过 ≠ 生效）。 */
+export async function activateOn(scene: Scene, day: string): Promise<void> {
+  const run = await runEmploymentActivations(
+    scene.w.db,
+    cmd(),
+    { tenantId: scene.w.tenant.id },
+    { clock: () => new Date(`${day}T01:00:00.000Z`) },
+  );
+  expect(run.runs[0]?.activated.length, JSON.stringify(run)).toBeGreaterThan(0);
 }
 
 const read = async (scene: Scene, user: string, path: string) => {
@@ -230,6 +297,102 @@ export async function readsBy(scene: Scene, user: string): Promise<Reads> {
     exit: await read(scene, user, `${EMP}/exits/${id}`),
     retirement: await read(scene, user, `${EMP}/retirements/${id}`),
   };
+}
+
+export type Entry = 'business' | 'exit' | 'retirement' | 'inFlight';
+export type Result = { status: number; body: Body };
+type Fetcher = (user: string, path: string) => Promise<Response>;
+
+const entryPath = (scene: Scene, entry: Entry): string =>
+  ({
+    business: `${EMP}/businesses/${scene.businessId}`,
+    exit: `${EMP}/exits/${scene.businessId}`,
+    retirement: `${EMP}/retirements/${scene.businessId}`,
+    inFlight: `${EMP}/retirements/employees/${scene.subjectId}/in-flight`,
+  })[entry];
+
+/** 本类型的人事详情入口（含退休的员工在途入口）。 */
+export const detailEntries = (kind: ScenarioKind): Entry[] =>
+  kind === 'leave'
+    ? ['business', 'exit']
+    : kind === 'retirement'
+      ? ['business', 'retirement', 'inFlight']
+      : ['business'];
+
+/** 读若干入口；在途入口的响应体是 `{ item }`，这里取出 item 方便与详情同形比较。 */
+export async function readEntries(
+  scene: Scene,
+  user: string,
+  entries: readonly Entry[] = detailEntries(scene.kind),
+  fetcher: Fetcher = (who, path) => scene.w.request(who, 'GET', path),
+): Promise<Partial<Record<Entry, Result>>> {
+  const result: Partial<Record<Entry, Result>> = {};
+  for (const entry of entries) {
+    const response = await fetcher(user, entryPath(scene, entry));
+    const text = await response.text();
+    const raw = text ? (JSON.parse(text) as Body) : {};
+    const item = entry === 'inFlight' && response.status === 200 ? ((raw.item as Body | null) ?? {}) : raw;
+    result[entry] = { status: response.status, body: item };
+  }
+  return result;
+}
+
+/**
+ * 真实授权器夹具：与 allowAll 的 `scene.w.request` 并存，另起一个不注入授权器的应用；
+ * 读者的对象 / 字段权限走权限模块的身份，数据范围走管理单元（permission_mous）挂到“用户 × 应用”。
+ */
+export async function realWorld(scene: Scene) {
+  const { w } = scene;
+  const world = await permissionAdmin(w);
+  const api = tenantApi(w.db, { authorize: undefined, clock: w.clock });
+  const mous = new Map<string, string>();
+  const codes = (definition: { fields: readonly { code: string }[] }) => definition.fields.map((f) => f.code);
+  return {
+    /** 授予人事对象与人员对象的全部字段查看权（只有对象 / 字段权，不含数据范围）。 */
+    async grantRead(userId: string) {
+      await grantVisibleFields(world, userId, codes(MODULE_OBJECTS.employmentRecord));
+      await grantVisibleFields(world, userId, codes(MODULE_OBJECTS.employee), MODULE_OBJECTS.employee);
+    },
+    /** contains = 范围含被办理人所在部门；empty = 范围为空（管理单元停用）。 */
+    async setScope(userId: string, mode: 'contains' | 'empty') {
+      await withTenant(w.db, w.tenant.id, async (tx) => {
+        const known = mous.get(userId);
+        if (known) {
+          await tx.execute(sql`UPDATE permission_mous SET status=${mode === 'contains' ? 'active' : 'disabled'}
+            WHERE tenant_id=${w.tenant.id} AND id=${known}::uuid`);
+          return;
+        }
+        if (mode === 'empty') return;
+        const mou = randomUUID();
+        await tx.execute(sql`INSERT INTO permission_mous(id,tenant_id,code,name)
+          VALUES (${mou}::uuid,${w.tenant.id},${`P4_${mou.slice(0, 8)}`},'合成管理单元')`);
+        await tx.execute(sql`INSERT INTO permission_mou_org_refs(tenant_id,mou_id,org_id,include_descendants)
+          VALUES (${w.tenant.id},${mou}::uuid,${scene.departmentId}::uuid,true)`);
+        await tx.execute(sql`INSERT INTO permission_user_app_scopes(tenant_id,user_id,app_code,kind,mou_id)
+          VALUES (${w.tenant.id},${userId}::uuid,'TenantBase','mou',${mou}::uuid)`);
+        mous.set(userId, mou);
+      });
+    },
+    fetch: ((user, path) => api.request('GET', path, { user, tenant: w.tenant.id })) satisfies Fetcher,
+  };
+}
+
+/** 对办理份做“当前完整性故障”注入（新写的办理份局部缺损）：绕开只增表的触发器，直接改 JSON。 */
+export async function damageCopy(scene: Scene, damage: 'remove' | 'null', path: readonly string[]): Promise<void> {
+  const { w, approver } = scene;
+  const target = `{${path.join(',')}}`;
+  await w.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
+    await tx.execute(sql`ALTER TABLE approval_handling_contents DISABLE TRIGGER USER`);
+    await tx.execute(
+      damage === 'remove'
+        ? sql`UPDATE approval_handling_contents SET content = content #- ${target}::text[]
+            WHERE actor_user_id = ${approver.userId}::uuid`
+        : sql`UPDATE approval_handling_contents SET content = jsonb_set(content, ${target}::text[], 'null'::jsonb)
+            WHERE actor_user_id = ${approver.userId}::uuid`,
+    );
+    await tx.execute(sql`ALTER TABLE approval_handling_contents ENABLE TRIGGER USER`);
+  });
 }
 
 /** 入口只对本类型有效：任职类走 business，离职走 exit（同时也能走 business），退休走 retirement（同时也能走 business）。 */
