@@ -127,6 +127,7 @@ export const GRAPH: Graph = {
     '#COUNTED_STATUSES',
     'apps/api/src/modules/org/read-model.ts#rowsOf',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
+    'apps/api/src/modules/permission/scope-audit.ts#creatorSql',
   ],
   'apps/api/src/modules/org/headcount.ts#loadDimensionEdges': ['apps/api/src/modules/org/read-model.ts#rowsOf'],
   'apps/api/src/modules/org/headcount.ts#readHeadcounts': ['#directCounts', '#loadDimensionEdges', '#rollUpper'],

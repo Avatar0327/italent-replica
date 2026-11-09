@@ -1008,7 +1008,7 @@ export const DIGESTS: Digests = {
     'route:DELETE /api/tenant/org/code-reservations/:id': '97446b576363',
     'route:GET /api/tenant/org/organizations': 'dbcc88271778',
     'route:GET /api/tenant/org/organizations/:id': '085e3cd5c4db',
-    'route:GET /api/tenant/org/organizations/chart': '0136a7444dd4',
+    'route:GET /api/tenant/org/organizations/chart': '1fd6c623afe5',
     'route:GET /api/tenant/org/organizations/tree': '429a2461f723',
     'route:GET /api/tenant/org/person-candidates': '0ffa40ad682b',
     'route:GET /api/tenant/org/settings': '49e435b638c5',
