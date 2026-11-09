@@ -6,7 +6,17 @@ import { describe, expect, it } from 'vitest';
 const columns = () => import(resolve('apps/web/src/org/columns.ts'));
 const importing = () => import(resolve('apps/web/src/org/import-model.ts'));
 const pageModel = () => import(resolve('apps/web/src/org/page-model.ts'));
-const DEFAULT = ['code', 'name', 'fullName', 'location', 'broadType', 'establishedOn', 'startDate', 'stopDate'];
+const DEFAULT = [
+  'code',
+  'name',
+  'fullName',
+  'location',
+  'broadType',
+  'establishedOn',
+  'startDate',
+  'stopDate',
+  'headcount',
+];
 const gate = (hidden: string[]) => ({ field: (name: string) => ({ visible: !hidden.includes(name) }) });
 
 describe('AC-FE-R1a-40 组织列设置', () => {
@@ -38,6 +48,7 @@ describe('AC-FE-R1a-40 组织列设置', () => {
       'broadType',
       'establishedOn',
       'startDate',
+      'headcount',
     ]);
     expect(toggleOrgColumnGroup(DEFAULT, DEFAULT, false)).toEqual(['code', 'name']);
   });
