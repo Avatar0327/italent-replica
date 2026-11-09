@@ -28,6 +28,10 @@ import { checkRequired } from './support/route-policy/required.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
 import { tenantApi } from './support/tenant-api.js';
+import { allowEvidenceScan } from './support/route-policy/evidence-timeout.js';
+
+// F-501：真实源码闭包解析冷启动 + 全表求闭包，高负载 / CI 分片下越过全局 30 秒；文件级放宽到 120 秒（依据见该模块）。
+allowEvidenceScan();
 
 const database = useTestDb();
 

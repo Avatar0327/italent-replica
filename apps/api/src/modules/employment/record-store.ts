@@ -18,7 +18,7 @@ import {
 export interface EmploymentEmployeeRow {
   id: string;
   tenantId: string;
-  code: string;
+  code: string | null;
   name: string;
   revision: number;
 }

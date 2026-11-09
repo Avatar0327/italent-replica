@@ -17456,6 +17456,12 @@
           "assertRevision",
           "write() / command()"
         ],
+        "domain": [
+          "approval.taskObject"
+        ],
+        "fieldsIn": [
+          "fieldRights"
+        ],
         "fieldsOut": [
           "approval views"
         ],
@@ -17617,6 +17623,12 @@
         "command": [
           "assertRevision",
           "write() / command()"
+        ],
+        "domain": [
+          "approval.taskObject"
+        ],
+        "fieldsIn": [
+          "fieldRights"
         ],
         "fieldsOut": [
           "approval views"

@@ -161,7 +161,7 @@ function filterPredicates(tenantId: string, asOf: string, filter: RecordListFilt
 
 interface PageRow {
   readonly id: string;
-  readonly code: string;
+  readonly code: string | null;
   readonly name: string;
 }
 
@@ -205,7 +205,7 @@ async function pageOfRecords(
   const total = result[0]?.total ?? 0;
   return {
     total,
-    rows: result.filter((row) => row.id).map((row) => ({ id: row.id!, code: row.code!, name: row.name! })),
+    rows: result.filter((row) => row.id).map((row) => ({ id: row.id!, code: row.code, name: row.name! })),
   };
 }
 

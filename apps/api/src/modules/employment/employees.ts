@@ -23,7 +23,8 @@ export type EmployeeStatus = 'pending' | 'employed' | 'left' | 'retired';
 export interface Employee {
   readonly avatar?: AvatarReference | null;
   readonly id: string;
-  readonly code: string;
+  /** F-493 S1：历史离职人员导入可无工号；公开建档入口仍必填（routes.ts）。 */
+  readonly code: string | null;
   readonly name: string;
   readonly revision: number;
   readonly status: EmployeeStatus;
@@ -40,10 +41,10 @@ export interface EmployeeFilters {
   readonly name?: string;
 }
 const inputSchema = z
-  .object({ code: z.string().trim().min(1).max(100), name: z.string().trim().min(1).max(200) })
+  .object({ code: z.string().trim().min(1).max(100).nullable(), name: z.string().trim().min(1).max(200) })
   .strict();
 
-export async function createEmployee(tx: Tx, ctx: EmploymentContext, input: { code: string; name: string }) {
+export async function createEmployee(tx: Tx, ctx: EmploymentContext, input: { code: string | null; name: string }) {
   assertRevision(ctx.expectedRevision, 0);
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '员工工号和姓名不合法');
@@ -53,6 +54,7 @@ export async function createEmployee(tx: Tx, ctx: EmploymentContext, input: { co
     WHERE tenant_id=${ctx.tenantId} AND lower(code)=lower(${parsed.data.code}) LIMIT 1
   `),
   );
+  // 空工号不参与查重（lower(NULL) 比较为 NULL，本就查不到；NULL 在唯一索引里互不相等）
   if (duplicate) throw new AppError('CONFLICT', '工号在当前租户已存在');
   const id = randomUUID();
   // ON CONFLICT 覆盖并发同工号创建；不捕获已中止事务中的唯一约束异常。
