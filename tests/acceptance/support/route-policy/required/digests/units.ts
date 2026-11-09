@@ -80,7 +80,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/disclosure.ts': {
     assertCanOpen: 'd0a07eb26026',
-    readDetail: '58279a582a46',
+    readDetail: '6baed15620cc',
   },
   'apps/api/src/modules/approval/my-applications.ts': {
     listMyApplications: 'ace0fe7e3d49',
@@ -967,8 +967,8 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/org-adjustment/disclosure.ts': {
     OBJECT: 'b007f3f6067a',
     hrDisclosure: 'e95fadfbd629',
-    openDetail: '73a3c2535515',
-    orgAdjustmentDisclosure: '124cff9b77a6',
+    openDetail: '5abf9d780173',
+    orgAdjustmentDisclosure: '8a34bafd4b86',
   },
   'apps/api/src/modules/org-adjustment/queries.ts': {
     listAdjustments: '4d3bcb00cad6',
@@ -978,8 +978,8 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/org-adjustment/adjustments': '1ffdb77dda79',
     'route:GET /api/tenant/org-adjustment/adjustments/:id': '2c2e854986da',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section': 'b4c22d15149d',
-    'route:GET /api/tenant/org-adjustment/adjustments/:id/preview': '3994ae9514b5',
-    'route:GET /api/tenant/org-adjustment/adjustments/:id/preview/export': '762a3e1385d9',
+    'route:GET /api/tenant/org-adjustment/adjustments/:id/preview': '75a523e0af2c',
+    'route:GET /api/tenant/org-adjustment/adjustments/:id/preview/export': 'd217289095cb',
   },
   'apps/api/src/modules/org-adjustment/routes.ts': {
     OBJECT: 'b007f3f6067a',

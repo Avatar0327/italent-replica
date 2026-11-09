@@ -58,7 +58,7 @@ const CORE_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
       {
         role: 'call',
         unit: 'apps/api/src/modules/org-adjustment/disclosure.ts#openDetail',
-        anchor: 'return await readDetail(tx, command, instance.id, viewer, false, live)',
+        anchor: 'return await readDetail(tx, command, instance.id, viewer, false)',
       },
       {
         role: 'impl',

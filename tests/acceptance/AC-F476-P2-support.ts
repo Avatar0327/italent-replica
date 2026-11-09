@@ -56,6 +56,17 @@ export async function everything(w: FlowWorld, id: string, user: string) {
   return { preview, before, after, text: JSON.stringify([preview, before, after]) };
 }
 
+/** 读库：组织在 asOf 的最新名称（orgName 要 HeadWorld，FlowWorld 的 head 是人员，类型不通用）。 */
+export async function orgNameOf(w: FlowWorld, orgId: string, asOf = '2026-11-01'): Promise<string> {
+  return withTenant(w.db, w.tenant.id, async (tx) => {
+    const [row] = resultRows<{ name: string }>(
+      await tx.execute(sql`SELECT name FROM org_versions WHERE org_id = ${orgId}
+        AND start_date <= ${asOf}::date ORDER BY start_date DESC, version_no DESC LIMIT 1`),
+    );
+    return row!.name;
+  });
+}
+
 export const nodeOf = (view: PreviewView, orgId: string): PreviewNode =>
   flatten(view.roots).find((n) => n.orgId === orgId)!;
 

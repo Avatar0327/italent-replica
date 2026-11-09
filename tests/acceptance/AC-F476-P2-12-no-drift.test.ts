@@ -7,7 +7,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { flowWorld } from './AC-OA-approval-support.js';
 import { newOrg } from './AC-OA-items-support.js';
-import { orgName, reader } from './AC-OA-read-support.js';
+import { reader } from './AC-OA-read-support.js';
 import { NAME_A } from './AC-F476-support.js';
 import {
   appendOrgVersion,
@@ -16,6 +16,7 @@ import {
   everything,
   handledScene,
   NEW_HEAD,
+  orgNameOf,
   nodeOf,
   OLD_HEAD,
   RANGE_RENAMED,
@@ -29,7 +30,7 @@ describe('AC-F476-12 冻结后不漂移', () => {
   it('删明细 / 新增明细 / 下级改名 / 范围组织改名 / 下级改上级 / 换负责人：已办预览与导出逐字不变，发起人读到现值', async () => {
     const w = await flowWorld(testDb().db, 'f476p2-12-drift');
     const s = await handledScene(w);
-    const rangeName = await orgName(w, w.a);
+    const rangeName = await orgNameOf(w, w.a);
     const frozen = await everything(w, s.id, w.hrbp.userId);
     expect(frozen.text).toContain(NAME_A);
     expect(frozen.text).toContain(CHILD_NAME);
