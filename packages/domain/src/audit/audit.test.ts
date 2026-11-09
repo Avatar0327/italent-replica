@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addMonths,
   auditContent,
+  auditObjectMeta,
   auditOperationOf,
   auditQueryWindow,
   auditTaskSummary,
@@ -84,5 +85,14 @@ describe('任务级日志汇总文案（20 §3）', () => {
       summary: '3条导入成功，2条失败',
     });
     expect(auditTaskSummary('import', { success: 0, failure: 2 }).result).toBe('failed');
+  });
+});
+
+describe('统计报表导出日志的对象中文名（F-489，DEC-045：页面不露机器编码）', () => {
+  it.each([
+    ['TenantBase.HrMovementReport', '流动情况报表'],
+    ['TenantBase.HrStructureReport', '员工结构报表'],
+  ])('%s → %s，归组织员工', (type, label) => {
+    expect(auditObjectMeta(type)).toEqual({ label, app: auditObjectMeta('TenantBase.EmploymentContract').app });
   });
 });

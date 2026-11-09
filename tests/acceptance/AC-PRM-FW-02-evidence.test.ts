@@ -42,6 +42,10 @@ import type { Evidence, Obligation, RequiredTable } from './support/route-policy
 import { mapSelectors } from './support/route-policy/selectors.js';
 import { WEAKENING_KINDS, weakeningsOf } from './support/route-policy/weakenings.js';
 import { tenantApi } from './support/tenant-api.js';
+import { allowEvidenceScan } from './support/route-policy/evidence-timeout.js';
+
+// F-501：真实源码闭包解析冷启动 + 全表求闭包，高负载 / CI 分片下越过全局 30 秒；文件级放宽到 120 秒（依据见该模块）。
+allowEvidenceScan();
 
 const testDb = useTestDb();
 

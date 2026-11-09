@@ -19,6 +19,8 @@ const CODE_NAMED_FIELDS: Readonly<Record<string, string>> = {
 export const NAME_KEYS: ReadonlySet<string> = new Set([
   ...Object.values(ID_NAMED_FIELDS),
   ...Object.values(CODE_NAMED_FIELDS),
+  // attachmentRefs 的展开（文件名等元数据）随 ID 一起下发，由附件行展示，不单独成行（F-479 设计 §5.3）
+  'attachments',
 ]);
 
 export function namedValue(record: Readonly<Record<string, unknown>>, key: string): unknown {

@@ -33,6 +33,10 @@ import { registrationGate } from './support/route-policy/registration.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import { TENANT_SETTINGS } from './support/route-policy/required/tenant-settings.js';
 import type { RequiredTable } from './support/route-policy/required/types.js';
+import { allowEvidenceScan } from './support/route-policy/evidence-timeout.js';
+
+// F-501：真实源码闭包解析冷启动 + 全表求闭包，高负载 / CI 分片下越过全局 30 秒；文件级放宽到 120 秒（依据见该模块）。
+allowEvidenceScan();
 
 const FX = 'apps/api/src/modules/fx';
 const readerOf =
@@ -52,8 +56,20 @@ const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.l
 const fileOf = (id: string) => id.slice(0, id.indexOf('#'));
 const nameOf = (id: string) => id.slice(id.indexOf('#') + 1);
 
-/** 朴素广度优先：到各节点的最短层数（含 MAX_DEPTH 上限，根自身为 0）。 */
+const distMemo = new WeakMap<Graph, Map<string, Map<string, number>>>();
+/**
+ * 朴素广度优先：到各节点的最短层数（含 MAX_DEPTH 上限，根自身为 0）。
+ * 同一张图对象 × 同一个根只算一次（F-488）：真实登记上的多个样本 / 多次 oracle 共用同一张 REGISTRY.graph，
+ * 逐根求闭包是 oracle 的主要耗时；图对象在使用期间不被修改（要改的用例先复制再改，得到新对象）。结果只读。
+ */
 function dist(graph: Graph, root: string): Map<string, number> {
+  let byRoot = distMemo.get(graph);
+  if (!byRoot) distMemo.set(graph, (byRoot = new Map()));
+  let out = byRoot.get(root);
+  if (!out) byRoot.set(root, (out = bfs(graph, root)));
+  return out;
+}
+function bfs(graph: Graph, root: string): Map<string, number> {
   const out = new Map<string, number>([[root, 0]]);
   let layer = [root];
   for (let depth = 1; depth <= MAX_DEPTH && layer.length; depth++) {
