@@ -14,7 +14,16 @@ import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext, TenantEnv } from '../../tenant-context.js';
-import { pageQuery, parseBody, queryDate, readContext, revision, runWrite, uuidParam } from '../job/context.js';
+import {
+  pageQuery,
+  parseBody,
+  queryDate,
+  readContext,
+  revision,
+  runWrite,
+  uuidParam,
+  type BusinessContext,
+} from '../job/context.js';
 import {
   button,
   creatorOf,
@@ -32,7 +41,16 @@ import { validIsoDate } from '../org/read-model.js';
 import { listCapacities, readCapacity, type CapacityRecord } from './capacity-read.js';
 import { capacityContext } from '../permission/module-capacity-authorization.js';
 import { createCapacity, updateCapacity } from './capacity-service.js';
-import { enqueueCopyJob, executeCopyJob, listNotifications, readCopyJob, readCopyJobReport } from './copy-service.js';
+import {
+  enqueueCopyJob,
+  executeCopyJob,
+  listNotifications,
+  readCopyJob,
+  readCopyJobReport,
+  renderCopyJob,
+  renderExecutedFailure,
+  renderNotifications,
+} from './copy-service.js';
 import { createScheme, deleteScheme, loadScheme, loadSchemeBatch, updateScheme } from './schemes.js';
 import { readSettings, updateSettings } from './settings.js';
 
@@ -94,6 +112,7 @@ export function registerEstablishmentRoutes(router: Hono<TenantEnv>, deps: Tenan
   registerCapacities(router, deps);
   registerTiming(router, deps);
   registerCopyJobs(router, deps);
+  registerNotifications(router, deps);
 }
 
 function registerSchemes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
@@ -319,8 +338,8 @@ function registerCopyJobs(router: Hono<TenantEnv>, deps: TenantRouteDeps): void 
     const ctx = await objectContext(c, deps, OBJECT);
     const id = uuidParam(c);
     const scope = await requestScope(c, deps, ctx, OBJECT);
-    const record = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      visibleCopyJob(tx, ctx, scope, id, queryDate(c, ctx)),
+    const record = await withTenant(deps.db, ctx.tenantId, async (tx) =>
+      renderCopyJob(tx, capacityContext(deps, ctx, scope), await visibleCopyJob(tx, ctx, scope, id, queryDate(c, ctx))),
     );
     return c.json(await trimModuleResponse(deps, ctx, OBJECT, record));
   });
@@ -332,7 +351,7 @@ function registerCopyJobs(router: Hono<TenantEnv>, deps: TenantRouteDeps): void 
     await button(deps, ctx, OBJECT, 'execute', 'detail');
     const scope = await requestScope(c, deps, ctx, OBJECT);
     await withTenant(deps.db, ctx.tenantId, (tx) => visibleCopyJob(tx, ctx, scope, id, queryDate(c, ctx)));
-    return runWrite(
+    const response = await runWrite(
       c,
       deps,
       ctx,
@@ -343,6 +362,7 @@ function registerCopyJobs(router: Hono<TenantEnv>, deps: TenantRouteDeps): void 
       },
       OBJECT,
     );
+    return renderExecuteResponse(c, deps, ctx, scope, id, response);
   });
   router.get(`${BASE}/copy-jobs/:id/report`, async (c) => {
     const ctx = await objectContext(c, deps, OBJECT);
@@ -352,24 +372,60 @@ function registerCopyJobs(router: Hono<TenantEnv>, deps: TenantRouteDeps): void 
     const fields = await getModuleViewableFields(deps, ctx, OBJECT);
     const report = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       await visibleCopyJob(tx, ctx, scope, id, queryDate(c, ctx));
-      return readCopyJobReport(tx, ctx, id, fields);
+      return readCopyJobReport(tx, capacityContext(deps, ctx, scope), id, fields);
     });
     c.header('Content-Type', 'text/csv; charset=utf-8');
     c.header('Content-Disposition', `attachment; filename="${report.filename}"`);
     return c.body(report.content);
   });
+}
+
+function registerNotifications(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   router.get(`${BASE}/notifications`, async (c) => {
     const ctx = await objectContext(c, deps, OBJECT);
     const page = pageQuery(c);
     const scope = await requestScope(c, deps, ctx, OBJECT);
-    const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listNotifications(tx, ctx.tenantId, ctx.userId, page, scope),
+    const items = await withTenant(deps.db, ctx.tenantId, async (tx) =>
+      renderNotifications(
+        tx,
+        capacityContext(deps, ctx, scope),
+        await listNotifications(tx, ctx.tenantId, ctx.userId, page, scope),
+      ),
     );
     return c.json({
       items: await trimModuleResponse(deps, ctx, OBJECT, items),
       hasDataPermission: scope.hasDataPermission,
     });
   });
+}
+
+/**
+ * 台账与首次响应只存通用句（fail-closed）；失败原因按当前操作人权限在出口换成 DEC-295 原文，
+ * 首次执行与幂等重放同口径。结构化冲突信息（组织 / 方案 ID）不返回。
+ */
+async function renderExecuteResponse(
+  c: Context,
+  deps: TenantRouteDeps,
+  ctx: BusinessContext,
+  scope: ModuleScope,
+  id: string,
+  response: Response,
+): Promise<Response> {
+  const { failureDetail, ...body } = (await response.clone().json()) as {
+    failureReason?: unknown;
+    failureDetail?: unknown;
+  };
+  if (failureDetail === undefined && typeof body.failureReason !== 'string') return response;
+  const shown = typeof body.failureReason === 'string' ? body.failureReason : undefined;
+  const failureReason =
+    shown === undefined
+      ? undefined
+      : await withTenant(deps.db, ctx.tenantId, (tx) =>
+          renderExecutedFailure(tx, capacityContext(deps, ctx, scope), id, shown),
+        );
+  const etag = response.headers.get('ETag');
+  if (etag) c.header('ETag', etag);
+  return c.json(failureReason === undefined ? body : { ...body, failureReason }, 200);
 }
 
 function queryUuid(c: Context, name: string): string | undefined {

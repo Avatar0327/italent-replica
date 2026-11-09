@@ -1,4 +1,11 @@
-import { eq, establishmentNotifications, establishmentOutbox, establishmentSettings, type Tx } from '@italent/db';
+import {
+  eq,
+  establishmentNotifications,
+  establishmentOutbox,
+  establishmentSettings,
+  type EstablishmentCapacityConflict,
+  type Tx,
+} from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { AppError } from '../../errors.js';
@@ -110,7 +117,13 @@ export async function notify(
   tx: Tx,
   ctx: EstablishmentContext,
   reason: string,
-  reference: { jobId?: string; movementId?: string; attempt: number; recipientUserId?: string | null },
+  reference: {
+    jobId?: string;
+    movementId?: string;
+    attempt: number;
+    recipientUserId?: string | null;
+    reasonDetail?: EstablishmentCapacityConflict | null;
+  },
 ): Promise<void> {
   const [notice] = await tx
     .insert(establishmentNotifications)

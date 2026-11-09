@@ -4,6 +4,7 @@ import {
   desc,
   eq,
   establishmentObjects,
+  type EstablishmentCapacityConflict,
   establishmentSchemeVersions,
   gte,
   lte,
@@ -68,30 +69,43 @@ export async function findCapacityOverlap(tx: Tx, tenantId: string, period: Capa
 const GENERIC_EXISTS = '该组织、方案和周期已有编制';
 const GENERIC_OVERLAP = '该组织在重叠期间已有编制，不可新建，请检查';
 
+export const genericOverlapMessage = (reason: EstablishmentCapacityConflict['reason']) =>
+  reason === 'CAPACITY_EXISTS' ? GENERIC_EXISTS : GENERIC_OVERLAP;
+
+/**
+ * 重叠拒绝：对外 details 仍只有原因码；结构化冲突信息（组织 / 方案 ID、月份）放在 conflict 上，
+ * 只供复制任务持久化后在读取时按读取人权限重新生成文案，不进入 HTTP 响应（F-484 第 2 轮）。
+ */
+export class CapacityOverlapError extends AppError {
+  constructor(
+    message: string,
+    readonly conflict: EstablishmentCapacityConflict,
+  ) {
+    super('CONFLICT', message, { reason: conflict.reason });
+  }
+}
+
 /**
  * 拒绝文案照北森原文：“{组织}已设有{M}月编制，编制方案为{方案}，不可新建，请检查”（DEC-295①）。
- * 重叠检查全量执行；只有操作人对该方案有详情查看范围且可读名称字段时才在提示里披露方案名（DEC-121）。
- * 组织名是操作人已通过编制范围校验的写入目标，随同披露；不可披露时整句不带任何名称。
- * 复制任务的失败原因取自同一条错误，披露边界随之一致。
+ * 只有读取人对该方案有详情查看范围且可读名称字段（disclose）时才披露方案名与组织名（DEC-121）；
+ * 否则整句不带任何名称。
  */
-export async function assertNoCapacityOverlap(
+export async function overlapMessage(
   tx: Tx,
   tenantId: string,
-  period: CapacityPeriod,
-  asOf: string,
-  canDiscloseSchemeName?: (schemeId: string) => Promise<boolean>,
-) {
-  const overlap = await findCapacityOverlap(tx, tenantId, period);
-  if (!overlap) return;
-  const details = { reason: overlap.sameKey ? 'CAPACITY_EXISTS' : 'CAPACITY_PERIOD_OVERLAP' };
-  if (!(await canDiscloseSchemeName?.(overlap.schemeId))) {
-    throw new AppError('CONFLICT', overlap.sameKey ? GENERIC_EXISTS : GENERIC_OVERLAP, details);
-  }
+  conflict: EstablishmentCapacityConflict,
+  disclose: boolean,
+): Promise<string> {
+  if (!disclose) return genericOverlapMessage(conflict.reason);
   const [org] = await tx
     .select({ name: orgVersions.name })
     .from(orgVersions)
     .where(
-      and(eq(orgVersions.tenantId, tenantId), eq(orgVersions.orgId, period.orgId), lte(orgVersions.startDate, asOf)),
+      and(
+        eq(orgVersions.tenantId, tenantId),
+        eq(orgVersions.orgId, conflict.orgId),
+        lte(orgVersions.startDate, conflict.asOf),
+      ),
     )
     .orderBy(desc(orgVersions.startDate), desc(orgVersions.versionNo))
     .limit(1);
@@ -101,14 +115,31 @@ export async function assertNoCapacityOverlap(
     .where(
       and(
         eq(establishmentSchemeVersions.tenantId, tenantId),
-        eq(establishmentSchemeVersions.schemeId, overlap.schemeId),
+        eq(establishmentSchemeVersions.schemeId, conflict.schemeId),
       ),
     )
     .orderBy(desc(establishmentSchemeVersions.versionNo))
     .limit(1);
-  throw new AppError(
-    'CONFLICT',
-    `${org?.name ?? ''}已设有${overlap.month}月编制，编制方案为${scheme?.name ?? ''}，不可新建，请检查`,
-    details,
-  );
+  return `${org?.name ?? ''}已设有${conflict.month}月编制，编制方案为${scheme?.name ?? ''}，不可新建，请检查`;
+}
+
+/** 重叠检查全量执行；提示按操作人当前权限生成（canDiscloseSchemeName 未注入 = 可信端口，不披露）。 */
+export async function assertNoCapacityOverlap(
+  tx: Tx,
+  tenantId: string,
+  period: CapacityPeriod,
+  asOf: string,
+  canDiscloseSchemeName?: (schemeId: string) => Promise<boolean>,
+) {
+  const overlap = await findCapacityOverlap(tx, tenantId, period);
+  if (!overlap) return;
+  const conflict: EstablishmentCapacityConflict = {
+    reason: overlap.sameKey ? 'CAPACITY_EXISTS' : 'CAPACITY_PERIOD_OVERLAP',
+    orgId: period.orgId,
+    schemeId: overlap.schemeId,
+    month: overlap.month,
+    asOf,
+  };
+  const disclose = (await canDiscloseSchemeName?.(overlap.schemeId)) ?? false;
+  throw new CapacityOverlapError(await overlapMessage(tx, tenantId, conflict, disclose), conflict);
 }
