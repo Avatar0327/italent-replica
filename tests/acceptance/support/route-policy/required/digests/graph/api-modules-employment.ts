@@ -2390,8 +2390,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/duty-transfer/uncovered.ts#plannedDutyKeys',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     '#attempt',
-    '#lockSubordinates',
     '#toItem',
+    'apps/api/src/modules/employment/transfer-locks.ts#assertEmployeeLocksHeld',
     'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_SOURCE',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
@@ -2400,12 +2400,24 @@ export const GRAPH: Graph = {
     '#clearUncoveredDuties',
     'apps/api/src/modules/employment/exit-duty-transfer.ts#runExitDutyTransfer',
   ],
+  'apps/api/src/modules/employment/exit-duty-participants.ts#pendingClearSubordinates': [
+    'apps/api/src/modules/duty-transfer/uncovered.ts#uncoveredDuties',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/employment/exit-duty-timing.ts#chooseDutyTransferTiming': ['#invalid'],
   'apps/api/src/modules/employment/exit-duty-timing.ts#dutyTransferExecuted': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-duty-timing.ts#settleChoice': [
     'packages/domain/src/employment/exit.ts#settleDutyTransferTiming',
+  ],
+  'apps/api/src/modules/employment/exit-duty-timing.ts#settleTimingOnReschedule': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#dutyTransferExecuted',
+    '#settleChoice',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-duty-transfer.ts#executeExitDutyTransfer': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -2539,7 +2551,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
     'packages/domain/src/employment/exit-termination.ts#assessmentTypeFlow',
   ],
-  'apps/api/src/modules/employment/exit-gate.ts#permissionSpec': ['#buttonsFor', '#createPayload', '#kindOfTarget'],
+  'apps/api/src/modules/employment/exit-gate.ts#permissionSpec': [
+    '#buttonsFor',
+    '#createPayload',
+    '#kindOfTarget',
+    '#updatePayload',
+  ],
   'apps/api/src/modules/employment/exit-gate.ts#regularizationBlocker': [
     '#REGULARIZATION_KINDS',
     '#disclose',
@@ -2559,6 +2576,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     '#permissionSpec',
+    '#updatePayload',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#submitConditions': [
     '#assertNoOverdueTransfer',
@@ -2571,11 +2589,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
     'apps/api/src/modules/employment/exit-termination-policy.ts#untickedFlows',
   ],
+  'apps/api/src/modules/employment/exit-gate.ts#updatePayload': ['#withoutControls'],
   'apps/api/src/modules/employment/exit-gate.ts#withAckWarnings': [
     '#VOID_LIMIT',
     '#isOverLimitAck',
     '#loadExitRequest',
   ],
+  'apps/api/src/modules/employment/exit-gate.ts#withoutControls': ['#EXIT_CONTROL_KEYS'],
   'apps/api/src/modules/employment/exit-handover-adapter.ts#HANDOVER_OBJECT': ['#TYPE'],
   'apps/api/src/modules/employment/exit-handover-adapter.ts#TYPE': [
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
@@ -3465,6 +3485,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-cancel-intervals.ts#loadOccupancy',
     'apps/api/src/modules/employment/exit-confirmation.ts#runExitReplannedHooks',
     'apps/api/src/modules/employment/exit-downstream.ts#probeRescheduleDownstream',
+    'apps/api/src/modules/employment/exit-duty-timing.ts#settleTimingOnReschedule',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
     'apps/api/src/modules/employment/exit-gate.ts#saveAck',
@@ -7728,6 +7749,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants': ['#acquire'],
   'apps/api/src/modules/employment/transfer-locks.ts#participants': [
+    'apps/api/src/modules/employment/exit-duty-participants.ts#pendingClearSubordinates',
     'apps/api/src/modules/employment/exit-replacement-plan.ts#remainingExitDuties',
     'apps/api/src/modules/employment/part-time/linkage-participants.ts#partTimeLinkageParticipants',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',

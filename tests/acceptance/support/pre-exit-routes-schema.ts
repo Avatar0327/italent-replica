@@ -2,7 +2,8 @@
  * 升级测试夹具（F-478 S1，迁移 0197）：当前接口发布流程要读出口路由表，发起 / 办理要写节点激活台账和任务的
  * decision_exit 列，而这些在迁移 0197 才建。在更早的结构上用当前接口造在途数据时，临时建同名空表（只含读写到的列）
  * 并补列，前置步骤跑完即撤掉，再由测试执行升级迁移按正式结构重建——同 pre-blacklist-schema、pre-approval-scope-schema
- * 先例。生产总是先迁移再服务，生产代码不判断表是否存在（DEC-402）。已有这些对象（已升级）的库不动。
+ * 先例。R2-T09b 迁移 0209 给 exit_requests 加 duty_transfer_date，当前接口建离职单会写它，同样临时补列。
+ * 生产总是先迁移再服务，生产代码不判断表是否存在（DEC-402）。已有这些对象（已升级）的库不动。
  */
 import { type Db, sql } from '@italent/db';
 
@@ -45,7 +46,10 @@ export async function addPreExitRoutesObjects(db: Db): Promise<() => Promise<voi
   if (tables.length) await db.execute(sql.raw(`GRANT SELECT, INSERT ON ${tables.join(', ')} TO app_user`));
   const addColumn = !(await hasColumn(db, 'approval_tasks', 'decision_exit'));
   if (addColumn) await db.execute(sql`ALTER TABLE approval_tasks ADD COLUMN decision_exit text`);
+  const addDutyDate = !(await hasColumn(db, 'exit_requests', 'duty_transfer_date'));
+  if (addDutyDate) await db.execute(sql`ALTER TABLE exit_requests ADD COLUMN duty_transfer_date date`);
   return async () => {
+    if (addDutyDate) await db.execute(sql`ALTER TABLE exit_requests DROP COLUMN duty_transfer_date`);
     if (addColumn) await db.execute(sql`ALTER TABLE approval_tasks DROP COLUMN decision_exit`);
     if (tables.length) await db.execute(sql.raw(`DROP TABLE ${tables.join(', ')}`));
   };

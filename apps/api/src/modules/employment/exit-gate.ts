@@ -127,6 +127,16 @@ export async function loadExitRequest(tx: Tx, tenantId: string, businessId: stri
 // ---- 权限链 ----------------------------------------------------------------------------------------------
 
 const EXIT_CONTROL_KEYS = ['dutyTransfer', 'dutyTransferTiming', 'dutyTransferDate', 'pendingTransferAck'];
+/**
+ * 转交控制项不是可写业务字段（时机是系统只读快照、日期随时机、其余为确认令牌）：入口、命令前置复核与服务层
+ * 共用这一处剥离，字段权只看真正的业务字段；对象、按钮、范围授权不受影响（P2-1）。
+ */
+const withoutControls = (record: object | undefined): object =>
+  Object.fromEntries(Object.entries(record ?? {}).filter(([key]) => !EXIT_CONTROL_KEYS.includes(key)));
+const updatePayload = (target: ExitGateTarget) => ({
+  ...withoutControls(target.patch),
+  ...withoutControls(target.payload),
+});
 const createPayload = (target: ExitGateTarget) => ({
   kind: target.kind ?? 'leave',
   mode: target.mode,
@@ -156,7 +166,7 @@ function permissionSpec(operation: ExitOperation, target: ExitGateTarget): Permi
         buttons: [target.mode === 'direct' ? BUTTON.direct : BUTTON.application],
       };
     case 'update':
-      return { op: 'update', payload: { ...target.patch, ...target.payload }, buttons: [BUTTON.edit] };
+      return { op: 'update', payload: updatePayload(target), buttons: [BUTTON.edit] };
     case 'submit':
     case 'withdraw':
       return !target.row || target.row.initiator === 'hr'
@@ -181,7 +191,7 @@ export async function requireExitPermission(ctx: EmploymentContext, operation: E
     target.row.initiatorUserId === ctx.userId;
   const spec =
     own && operation === 'update'
-      ? { op: 'update' as const, payload: { ...target.patch, ...target.payload }, buttons: ['Exit.Self'] }
+      ? { op: 'update' as const, payload: updatePayload(target), buttons: ['Exit.Self'] }
       : permissionSpec(operation, target);
   if (!spec) return;
   // 空载荷的命令类按钮（提交 / 撤回 / 撤销 / 重试）只校验按钮

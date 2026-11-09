@@ -5,6 +5,7 @@
  * 退休与离职共用同一时机与执行（来源 4）。
  */
 import './support/exit-gate-enforced.js';
+import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { dutyExitWorld, TODAY } from './AC-DT-exit-support.js';
@@ -177,5 +178,79 @@ describe('④ 退休内转交：与离职同一时机和执行（来源 4）', (
     expect(await x.managerOf(subordinate.id, '2026-10-12')).toBe(receiver.id);
     expect(await x.items(retire.id)).toHaveLength(1);
     expect(await x.exitRecords()).toEqual([expect.objectContaining({ source: 4, status: 1 })]);
+  });
+});
+
+describe('P2-3 通用任职编辑改期：指定日期时机同样结算', () => {
+  it('草稿离职经通用 PATCH 把生效日提前到指定日期之前：改为 business_effective，并在新生效日转交', async () => {
+    const x = await world('timing-generic-reschedule');
+    const { subordinate, receiver } = await oneSubordinate(x);
+    const org = await x.headedOrg('合成负责人组织');
+    const both = x.plan({
+      subordinates: [{ employeeId: subordinate.id, receiverId: receiver.id }],
+      orgRoles: [{ orgId: org.id, receiverId: receiver.id }],
+    });
+    const draft = await x.createdLeave(
+      x.employee.id,
+      x.bodyOf('leave', '2026-10-20', 'application', {
+        dutyTransferTiming: 'specified_date',
+        dutyTransferDate: '2026-10-12',
+        dutyTransfer: both,
+      }),
+    );
+    expect(await x.exitTiming(draft.id)).toEqual({ timing: 'specified_date', date: '2026-10-12' });
+
+    const moved = await x.session.request('PATCH', `/businesses/${draft.id}`, {
+      ifMatch: draft.revision,
+      body: { lastWorkDate: '2026-10-10' },
+    });
+    expect(moved.status, await moved.clone().text()).toBe(200);
+    expect(await x.exitTiming(draft.id)).toEqual({ timing: 'business_effective', date: null });
+
+    const latest = await x.business(draft.id);
+    const sent = await x.session.request('POST', `/businesses/${draft.id}/submit`, {
+      ifMatch: latest.revision,
+      body: {},
+    });
+    expect(sent.status, await sent.clone().text()).toBe(200);
+    await x.approve(latest, `${TODAY}T02:00:00Z`);
+    await x.runScheduler('2026-10-11T02:00:00Z');
+
+    expect((await x.items(draft.id)).map((item) => [item.status, item.effective])).toEqual([
+      ['succeeded', '2026-10-11'],
+      ['succeeded', '2026-10-11'],
+    ]);
+    expect(await x.headAt(org.id, '2026-10-11')).toBe(receiver.id);
+    expect((await x.orgVersions(org.id)).at(-1)).toEqual({ start: '2026-10-11', head: receiver.id });
+    expect(await x.managerOf(subordinate.id, '2026-10-11')).toBe(receiver.id);
+  });
+});
+
+describe('P2-4 过去的指定日期：立即执行，业务生效日仍是指定日期（DT-R7）', () => {
+  it('指定 10-05，10-06 节点通过：当场转交，转交子项 / 效果台账 / 组织版本的生效日都是 10-05', async () => {
+    const x = await world('timing-past-date');
+    const { subordinate, receiver } = await oneSubordinate(x);
+    const org = await x.headedOrg('合成负责人组织');
+    const both = x.plan({
+      subordinates: [{ employeeId: subordinate.id, receiverId: receiver.id }],
+      orgRoles: [{ orgId: org.id, receiverId: receiver.id }],
+    });
+    const leave = await x.approvedApplication('leave', '2026-10-20', TODAY, {
+      dutyTransferTiming: 'specified_date',
+      dutyTransferDate: '2026-10-05',
+      dutyTransfer: both,
+    });
+
+    const items = await x.items(leave.id);
+    expect(items.map((item) => [item.status, item.effective])).toEqual([
+      ['succeeded', '2026-10-05'],
+      ['succeeded', '2026-10-05'],
+    ]);
+    const ledger = await x.sqlRows<{ day: string }>(sql`SELECT detail->>'effectiveDate' AS day FROM exit_effects
+      WHERE tenant_id=${x.tenantId} AND business_id=${leave.id}::uuid AND kind='duty_transferred'`);
+    expect(ledger).toEqual([{ day: '2026-10-05' }, { day: '2026-10-05' }]);
+    expect((await x.orgVersions(org.id)).at(-1)).toEqual({ start: '2026-10-05', head: receiver.id });
+    expect(await x.headAt(org.id, '2026-10-05')).toBe(receiver.id);
+    expect(await x.managerOf(subordinate.id, '2026-10-05')).toBe(receiver.id);
   });
 });

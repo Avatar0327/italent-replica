@@ -6,6 +6,7 @@
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { sql } from '@italent/db';
 import { dutyExitWorld, TODAY, type ExitKind } from './AC-DT-exit-support.js';
 
 const database = useTestDb();
@@ -93,5 +94,44 @@ describe('DT-R5 已有接收人的职责不被清空', () => {
     expect((await x.exitRecords()).filter((row) => row.status === 0)).toEqual([]);
     x.setNow(`${EFFECTIVE}T02:00:00Z`);
     expect((await x.departed()).items).toEqual([]);
+  });
+});
+
+/**
+ * 固定“下属先于经理”的锁序场景：UUID 是随机生成的，所以先换世界直到经理的 UUID 落在上半区，再逐个造下属直到有一个更小的
+ * （经理在上半区时每次命中概率 ≥ 1/2，30 次内未命中的概率约 1e-9，不会随机红）。
+ */
+async function worldWithSmallerSubordinate(label: string) {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const x = await world(`${label}-${attempt}`);
+    if (x.employee.id.toLowerCase() < '80000000') continue;
+    for (let index = 0; index < 30; index++) {
+      const candidate = await x.subordinateOf(x.employee.id, `合成小号下属${index}`);
+      if (candidate.id.toLowerCase() < x.employee.id.toLowerCase()) return { x, subordinate: candidate };
+    }
+  }
+  throw new Error('未取得 UUID 小于经理的下属');
+}
+
+describe('P2-2 清空下属不得因预锁计划变化失败', () => {
+  it('下属当前任职来自已生效调动、UUID 小于经理：上级被清空，清空记录无锁计划失败', async () => {
+    const { x, subordinate } = await worldWithSmallerSubordinate('clear-lock-order');
+    const fresh = await x.session.getEmployee(subordinate.id);
+    await x.session.business(
+      subordinate.id,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-15', fields: { departmentId: x.to.id } },
+      fresh.revision,
+    );
+    expect(await x.managerOf(subordinate.id, '2026-09-20')).toBe(x.employee.id);
+    const exit = await x.approvedApplication('leave', '2026-10-20', TODAY);
+
+    expect(await x.activate(exit.id, EFFECTIVE)).toMatchObject({ outcome: 'effective' });
+
+    expect(await x.managerOf(subordinate.id, EFFECTIVE)).toBeNull();
+    const failures = await x.sqlRows<{ code: string | null; subordinate: string }>(sql`
+      SELECT failure_code AS code, subordinate_id::text AS subordinate FROM duty_transfer_records
+      WHERE tenant_id=${x.tenantId} AND employee_id=${x.employee.id}::uuid AND duty_type=2
+        AND subordinate_id=${subordinate.id}::uuid`);
+    expect(failures).toEqual([{ code: null, subordinate: subordinate.id }]);
   });
 });

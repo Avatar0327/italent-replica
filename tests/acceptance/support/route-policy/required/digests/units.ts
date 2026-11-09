@@ -385,7 +385,7 @@ export const DIGESTS: Digests = {
     exitActions: 'aea292d2440d',
   },
   'apps/api/src/modules/employment/exit-gate.ts': {
-    requireExitPermission: 'bab3da3cf152',
+    requireExitPermission: 'c44e1d56c3a3',
   },
   'apps/api/src/modules/employment/exit-handover-batch.ts': {
     batchGuard: '8f0ebe7f3c4f',
@@ -2183,7 +2183,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-account-routes.ts#route:PUT /exit-account/settings': '6641fd835a82',
   'apps/api/src/modules/employment/exit-account-routes.ts#settingsObject': 'e3b0c44298fc',
   'apps/api/src/modules/employment/exit-actions.ts#exitActions': 'c34e05738e99',
-  'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': 'cdfa06966e5b',
+  'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': '0a0a8c1ae2bf',
   'apps/api/src/modules/employment/exit-handover-batch.ts#batchGuard': '47659727261c',
   'apps/api/src/modules/employment/exit-handover-batch.ts#handoverRowActions': 'd5fce766c2f9',
   'apps/api/src/modules/employment/exit-handover-batch.ts#runHandoverBatch': '7d1ba027343a',

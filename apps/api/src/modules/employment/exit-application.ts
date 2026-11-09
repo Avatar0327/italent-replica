@@ -267,23 +267,23 @@ export interface ExitPatch extends RescheduleOptions {
 }
 
 /**
- * 编辑时转交时机的新列值（DT-R3）：已执行过转交的不能改（409 EXIT_DUTY_TRANSFER_LOCKED，值不变的请求照常通过）；
- * 改期后指定日期晚于新生效日的，同样改为“生效时转交”。
+ * 编辑时显式选择的转交时机的新列值（DT-R3）：已执行过转交的不能改（409 EXIT_DUTY_TRANSFER_LOCKED，值不变的请求照常通过）；
+ * 晚于（本次改期后的）生效日的指定日期改为“生效时转交”。只改日期不带时机的情形，由所有改期入口共用的
+ * rescheduleExit（settleTimingOnReschedule）结算，不在这里重复。
  */
 async function timingValues(
   tx: Tx,
   ctx: EmploymentContext,
   row: typeof exitRequests.$inferSelect,
   request: { dutyTransferTiming?: DutyTransferTimingChoice['timing']; dutyTransferDate?: string },
-  at: { effectiveDate: string; rescheduled: boolean },
+  effectiveDate: string,
 ): Promise<Record<string, unknown>> {
   const current = { timing: row.dutyTransferTiming as DutyTransferTimingChoice['timing'], date: row.dutyTransferDate };
   const chosen = chooseDutyTransferTiming(request, current);
-  if (!chosen && !(at.rescheduled && current.timing === 'specified_date')) return {};
-  const next = settleChoice(chosen ?? current, at.effectiveDate);
+  if (!chosen) return {};
+  const next = settleChoice(chosen, effectiveDate);
   if (next.timing === current.timing && next.date === current.date) return {};
-  if (chosen && (await dutyTransferExecuted(tx, ctx, row.businessId))) throw lockedError();
-  if (!chosen && (await dutyTransferExecuted(tx, ctx, row.businessId))) return {};
+  if (await dutyTransferExecuted(tx, ctx, row.businessId)) throw lockedError();
   return { dutyTransferTiming: next.timing, dutyTransferDate: next.date };
 }
 
@@ -401,10 +401,9 @@ export async function updateExitFields(
   const planned = await loadPlannedEffectiveDate(tx, ctx.tenantId, businessId, business.payload.effectiveDate);
   const effectiveForBlacklist = changing ? changing.effectiveDate : planned;
   const asked = { dutyTransferTiming: askedTiming, dutyTransferDate: askedDate };
-  const when = { effectiveDate: effectiveForBlacklist, rescheduled: Boolean(changing) };
   const values: Record<string, unknown> = {
     ...columnValues(withBlacklist(patchFields, row, effectiveForBlacklist)),
-    ...(await timingValues(tx, ctx, row, asked, when)),
+    ...(await timingValues(tx, ctx, row, asked, effectiveForBlacklist)),
   };
   await writeRefs(tx, ctx, {
     bind: options.bindAttachments,

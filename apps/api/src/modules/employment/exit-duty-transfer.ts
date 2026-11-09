@@ -2,7 +2,8 @@
  * 离职职责转交（R2-T03 设计 §5.7，DEC-213；原 BE-9 并入 B3-2）：执行复用 transfer/linkage 的 applyDutyTransfer
  * （只建职责子项，每个子项自己的保存点，失败只记 duty_failed、可重试），这里按时机配置决定在哪个阶段调用并写离职台账：
  * business_effective → 离职落地（activateExit 步骤 6，生效日 = 最终生效日 E′）；
- * approval_passed → confirmed 阶段（审批通过 / 直接离职保存，生效日 = 当天）。同一离职至多执行一次（联动执行行幂等）。
+ * approval_passed → confirmed 阶段（审批通过 / 直接离职保存，生效日 = 当天；确认阶段已过去的由落地阶段兜底）。
+ * 同一离职至多执行一次（联动执行行幂等）。
  */
 import { exitEffects, type Tx } from '@italent/db';
 import { applyDutyTransfer } from '../transfer/linkage/execute.js';
@@ -19,18 +20,20 @@ export interface ExitTimingRow {
 type Phase = 'confirmed' | 'effective';
 
 /**
- * 本阶段是否执行转交，以及转交生效日（R2-T09b DT-R3）：
- * - approval_passed：confirmed 阶段，生效日 = 当天；business_effective：effective 阶段，生效日 = 最终生效日；
- * - specified_date：指定日期 ≤ 当天的，节点通过当场（confirmed 阶段）转交，生效日 = 当天（不回溯）；晚于当天的由到期扫描
- *   （exit-duty-due.ts，生效日 = 指定日期）转交；effective 阶段作兜底（联动执行行保证至多一次），生效日同样取指定日期。
+ * 本阶段是否执行转交，以及转交的业务生效日（R2-T09b DT-R3 / DT-R7）。执行时间与业务生效日是两件事：
+ * - approval_passed：confirmed 阶段，生效日 = 当天；若确认阶段已过去（已确认的单据后来改成此时机），落地阶段兜底，
+ *   生效日 = 落地日，不会永远不执行（联动执行行保证至多一次）；business_effective：effective 阶段，生效日 = 最终生效日；
+ * - specified_date：指定日期 ≤ 当天的，节点通过当场（confirmed 阶段）执行，但生效日仍是指定日期（DT-R7 允许过去日期，
+ *   不改成确认日）；晚于当天的由到期扫描（exit-duty-due.ts）在指定日期执行；effective 阶段作兜底，生效日同样取指定日期。
+ * confirmed 阶段的 effectiveDate 参数是当天（租户本地日），effective 阶段是落地日。
  */
 function plan(exit: ExitTimingRow, phase: Phase, effectiveDate: string): { at: string } | null {
-  if (exit.dutyTransferTiming === 'approval_passed') return phase === 'confirmed' ? { at: effectiveDate } : null;
+  if (exit.dutyTransferTiming === 'approval_passed') return { at: effectiveDate };
   if (exit.dutyTransferTiming === 'business_effective') return phase === 'effective' ? { at: effectiveDate } : null;
   const date = exit.dutyTransferDate;
   if (exit.dutyTransferTiming !== 'specified_date' || !date) return null;
   if (phase === 'effective') return { at: date };
-  return date <= effectiveDate ? { at: effectiveDate } : null;
+  return date <= effectiveDate ? { at: date } : null;
 }
 
 export async function runExitDutyTransfer(

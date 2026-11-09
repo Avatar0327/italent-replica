@@ -6,7 +6,7 @@
  * 计划里的职责不在这里处理：成功的已转给接收人，失败的维持“失败可重试”（B-16），不被清空。
  * 重复调用幂等：落地只发生一次，清空后当日不再持有职责，第二次取不到。
  */
-import { dutyTransferRecords, sql, type Tx } from '@italent/db';
+import { dutyTransferRecords, type Tx } from '@italent/db';
 import { DUTY_TRANSFER_SOURCE, DUTY_TRANSFER_STATUS } from '@italent/domain';
 import { currentDuties, dutyKey, type Duty } from '../duty-transfer/duties.js';
 import { plannedDutyKeys } from '../duty-transfer/uncovered.js';
@@ -18,6 +18,7 @@ import {
 } from '../transfer/linkage/duty-execution.js';
 import { latestLinkage } from '../transfer/linkage/store.js';
 import { auditEmployment } from './context.js';
+import { assertEmployeeLocksHeld } from './transfer-locks.js';
 import { runExitDutyTransfer, type ExitTimingRow } from './exit-duty-transfer.js';
 import type { EmploymentContext } from './types.js';
 
@@ -65,7 +66,11 @@ async function clearUncoveredDuties(
     (duty) => !planned.has(dutyKey(duty)),
   );
   if (!left.length) return 0;
-  await lockSubordinates(tx, ctx, left);
+  // 被清空上级的下属已由入口的统一预锁计划取齐（transfer-locks.ts participants 并入，P2-2）：这里只重入复核，不新取锁
+  await assertEmployeeLocksHeld(
+    tx,
+    left.flatMap((duty) => (duty.subordinateId ? [duty.subordinateId] : [])),
+  );
   const source = payloadKind === 'retirement' ? DUTY_TRANSFER_SOURCE.retirement : DUTY_TRANSFER_SOURCE.leave;
   const failures: string[] = [];
   for (const duty of left) {
@@ -108,14 +113,6 @@ async function clearUncoveredDuties(
     { employeeId: exit.employeeId },
   );
   return left.length;
-}
-
-/** 被清空上级的下属按 UUID 升序一次取员工行锁（与其它入口同序，避免交叉等待）；组织角色之前先取。 */
-async function lockSubordinates(tx: Tx, ctx: EmploymentContext, duties: readonly Duty[]) {
-  const ids = [...new Set(duties.flatMap((duty) => (duty.subordinateId ? [duty.subordinateId] : [])))].sort();
-  if (!ids.length) return;
-  await tx.execute(sql`SELECT id FROM employment_employees WHERE tenant_id=${ctx.tenantId}
-    AND id=ANY(${`{${ids.join(',')}}`}::uuid[]) ORDER BY id FOR NO KEY UPDATE`);
 }
 
 /**
