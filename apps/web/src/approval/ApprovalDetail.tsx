@@ -233,9 +233,21 @@ function decisionLabel(detail: Detail | undefined, action: ApprovalAction | 'urg
 export function ApprovalProgress({ detail, terminatedGrey }: { detail: Detail; terminatedGrey?: boolean }) {
   // 我的申请（§3.8）：已终止的流程，终止的节点与结尾置灰；其他入口保持原呈现
   const terminated = !!terminatedGrey && detail.status === 'cancelled';
-  if (detail.path?.length)
-    return <PathProgress path={detail.path} running={detail.status === 'running'} terminated={terminated} />;
   const nodes = [...new Map(detail.tasks.map((task) => [task.nodeName, task])).values()];
+  if (detail.path?.length) {
+    // 终止时被取消任务所在的节点置灰（后端把已激活节点报为 passed，不能只看 path state）
+    const cancelled = new Set(
+      terminated ? nodes.filter((task) => task.status === 'cancelled').map((t) => t.nodeName) : [],
+    );
+    return (
+      <PathProgress
+        path={detail.path}
+        running={detail.status === 'running'}
+        terminated={terminated}
+        greyed={cancelled}
+      />
+    );
+  }
   const running = detail.status === 'running';
   const nodeStatus = (status: string) =>
     status === 'pending'
@@ -266,7 +278,12 @@ const endStep = (running: boolean, terminated: boolean) =>
     : { title: d.end, status: running ? ('wait' as const) : ('finish' as const) };
 const pathStatus = { passed: 'finish', current: 'process', pending: 'wait', not_on_path: 'wait' } as const;
 /** 节点名与可见性按接口披露（pathView）；不显示 path[].exit，经过的出口见操作记录。 */
-function PathProgress(props: { path: ApprovalPathStep[]; running: boolean; terminated: boolean }) {
+function PathProgress(props: {
+  path: ApprovalPathStep[];
+  running: boolean;
+  terminated: boolean;
+  greyed: ReadonlySet<string>;
+}) {
   return (
     <div className="approval-progress">
       <Steps
@@ -277,7 +294,7 @@ function PathProgress(props: { path: ApprovalPathStep[]; running: boolean; termi
             key: step.nodeKey,
             title: step.name,
             description: d.pathStates[step.state],
-            status: pathStatus[step.state],
+            status: props.greyed.has(step.name) ? ('wait' as const) : pathStatus[step.state],
             className: step.state === 'not_on_path' ? 'approval-path-skipped' : undefined,
           })),
           endStep(props.running, props.terminated),
