@@ -15,8 +15,8 @@ import type { Context } from 'hono';
 import { requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
-import type { TenantEnv } from '../../tenant-context.js';
-import { getModuleViewableFields } from '../permission/module-access.js';
+import { tenantOf, type TenantEnv } from '../../tenant-context.js';
+import { getModuleViewableFields, resolveModuleScope } from '../permission/module-access.js';
 import { access, type AccessContext } from '../personnel/access.js';
 
 export const ROSTER_OBJECT = MODULE_OBJECTS.hrRoster.code;
@@ -51,6 +51,44 @@ export async function rosterAccess(
   const viewable: Record<RosterSource, boolean> = {
     person: true,
     record: await deps.authorize({ ...ctx, action: 'object.view', resource: RECORD_OBJECT }),
+    contract: await deps.authorize({ ...ctx, action: 'object.view', resource: CONTRACT_OBJECT }),
+  };
+  const sets = new Map<RosterSource, ReadonlySet<string> | undefined | false>();
+  for (const source of Object.keys(SOURCE_OBJECTS) as RosterSource[])
+    sets.set(source, viewable[source] ? await getModuleViewableFields(deps, ctx, SOURCE_OBJECTS[source]) : false);
+  const canSee = (source: RosterSource, field: string) => {
+    const fields = sets.get(source);
+    return fields === undefined || (fields !== false && fields.has(field));
+  };
+  const columns = definitions.filter((column) => column.gate.every(([source, field]) => canSee(source, field)));
+  return { ctx, columns, canSee, viewable };
+}
+
+/**
+ * 全部人员（F-474-4c，DEC-836）的权限链：入口只看任职记录对象的查看权（不要求员工档案对象查看权，也不依赖人事分析
+ * 对象）→ 准入后数据范围与字段权沿用员工档案：范围按员工档案列表页解析（personScope 先于分页，同花名册；无范围
+ * fail-closed）→ 逐列字段权。入口授权与范围解析拆开，所以这里不经 access()（它会先要求员工档案对象查看权）。
+ * 另起一个函数而不给 rosterAccess 加参数，是为了让花名册 / 人事报表既有的权限链源码与 F-039 登记保持原样。
+ */
+export async function allPeopleAccess(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  definitions: readonly RosterColumn[],
+): Promise<RosterAccess> {
+  const base = {
+    ...tenantOf(c),
+    objectCode: PERSONNEL_OBJECT,
+    expectedRevision: 0,
+    now: deps.clock(),
+    commandId: '',
+    authorizer: deps.authorize,
+  };
+  await requirePermission(deps.authorize, { ...base, action: 'object.view', resource: RECORD_OBJECT });
+  const scope = await resolveModuleScope(deps, base, undefined, PERSONNEL_OBJECT, `${PERSONNEL_OBJECT}.list`);
+  const ctx: AccessContext = { ...base, scope };
+  const viewable: Record<RosterSource, boolean> = {
+    person: true,
+    record: true,
     contract: await deps.authorize({ ...ctx, action: 'object.view', resource: CONTRACT_OBJECT }),
   };
   const sets = new Map<RosterSource, ReadonlySet<string> | undefined | false>();

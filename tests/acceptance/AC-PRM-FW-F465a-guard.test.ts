@@ -16,6 +16,10 @@ import { checkRequired } from './support/route-policy/required.js';
 import { requiredMutants } from './support/route-policy/required-mutate.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import { tenantApi } from './support/tenant-api.js';
+import { allowEvidenceScan } from './support/route-policy/evidence-timeout.js';
+
+// F-501：真实源码闭包解析冷启动 + 全表求闭包，高负载 / CI 分片下越过全局 30 秒；文件级放宽到 120 秒（依据见该模块）。
+allowEvidenceScan();
 
 let handle: Awaited<ReturnType<typeof createTestDb>>;
 beforeAll(async () => {
@@ -81,9 +85,13 @@ describe('AC-PRM-FW F-465a P2-2：报表对象准入是具名守卫 + 条件准�
       }
     });
 
-    it(`${key}：源码删掉守卫调用 → EVIDENCE_STALE；把拒绝改成不拒绝（只裁列）→ EVIDENCE_STALE`, () => {
+    // F-494：原一条用例连跑两次全量 checkEvidence，贴 30 秒全局超时；拆成两条，各跑一次，断言不变。
+    it(`${key}：源码删掉守卫调用 → EVIDENCE_STALE`, () => {
       const removed = patched((text) => text.replaceAll('requireReportObjects(rights, report);', ''));
       expect(codes(checkEvidence(only(key), { read: removed })), '删守卫调用').toContain('EVIDENCE_STALE');
+    });
+
+    it(`${key}：把拒绝改成不拒绝（只裁列）→ EVIDENCE_STALE`, () => {
       const softened = patched((text) =>
         text.replace(/(function requireReportObjects[\s\S]*?)throw new AppError/, '$1void new AppError'),
       );

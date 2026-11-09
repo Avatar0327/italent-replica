@@ -98,9 +98,16 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'TenantBase.EmploymentContract': { label: '合同协议', app: ORG_PEOPLE },
   'TenantBase.EmployeeInformation': { label: '员工信息', app: ORG_PEOPLE },
   'TenantBase.PersonalInformationChange': { label: '个人信息变更申请', app: ORG_PEOPLE },
+  // F-489：统计报表导出日志的对象（F-482）；名称取原站菜单“流动情况报表 / 员工结构报表”（规格 35 B53 / B54）
+  'TenantBase.HrMovementReport': { label: '流动情况报表', app: ORG_PEOPLE },
+  'TenantBase.HrStructureReport': { label: '员工结构报表', app: ORG_PEOPLE },
   'approval-instance': { label: '审批单', app: APPROVAL },
   'approval-task': { label: '审批任务', app: APPROVAL },
   'approval-process': { label: '审批流程', app: APPROVAL },
+  'approval-public-variable': { label: '公共变量', app: APPROVAL },
+  'approval-application-variable': { label: '应用变量', app: APPROVAL },
+  'approval-matrix': { label: '审批矩阵', app: APPROVAL },
+  'approval-matrix-row': { label: '审批矩阵规则行', app: APPROVAL },
   'approval-exception-admin': { label: '异常管理员', app: APPROVAL },
   tenant: { label: '租户', app: ENTERPRISE },
   tenant_setting: { label: '租户配置', app: ENTERPRISE },
@@ -274,6 +281,12 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   name: '名称',
   shortName: '简称',
   code: '编码',
+  // F-326 变量字段（设计 §4.5）：编码、名称、状态已在上方
+  dataType: '数据类型',
+  defaultValue: '默认值',
+  usageScopes: '适用范围',
+  description: '描述',
+  appId: '应用',
   establishedOn: '成立日期',
   personInChargeId: '负责人',
   hrbpId: 'HRBP',
@@ -459,6 +472,11 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'establishment-settings',
   'approval-process',
   'approval-exception-admin',
+  // F-326：变量与矩阵是租户级配置，没有人员 / 组织归属（设计 §4.5）
+  'approval-public-variable',
+  'approval-application-variable',
+  'approval-matrix',
+  'approval-matrix-row',
 ]);
 
 /**

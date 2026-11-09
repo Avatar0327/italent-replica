@@ -6,7 +6,8 @@ import { LockedField } from '../foundation/forms/FormLock.js';
 import { fieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import { x } from './messages.js';
-import { blacklistReasons } from './exit-model.js';
+import { AttachmentRefsInput, type AttachmentView } from '../foundation/attachments/index.js';
+import { blacklistReasons, EXIT_ATTACHMENT } from './exit-model.js';
 import { dictionaryPath, parseEntries, type Kind } from './model.js';
 
 type Access = { editable: readonly string[]; permission: ObjectPermission | undefined; projected?: Values };
@@ -62,6 +63,15 @@ function YesNo(props: { value?: boolean; onChange?(value: boolean): void; disabl
   );
 }
 
+/** 本人表单的附件字段（F-479 §5.2）：只有本人自助传入；HR 表单共用 ExitFields 但不传，字段不出现。 */
+export interface ExitAttachments {
+  /** 已有单号时内容走本人载体；新建时只有临时文件。 */
+  readonly ownerId?: string;
+  readonly views: readonly AttachmentView[];
+  readonly readonly: boolean;
+  readonly onBusyChange: (busy: boolean) => void;
+}
+
 const dictionaries = Object.entries({ exitTypeCode: 'types', reasonCode: 'reasons', whereaboutsCode: 'whereabouts' });
 /**
  * 新建与编辑共用：最后工作日、三个字典项、加入黑名单（默认否；选“是”才出现加黑三项）。
@@ -72,11 +82,13 @@ export function ExitFields({
   black,
   blackRequired = black,
   selfOptions,
+  attachments,
   ...props
 }: Access & {
   black: boolean;
   blackRequired?: boolean;
   selfOptions?: Record<string, { value: string; label: string }[]>;
+  attachments?: ExitAttachments;
 }) {
   return (
     <>
@@ -92,6 +104,18 @@ export function ExitFields({
           )}
         </ExitField>
       ))}
+      {attachments && (
+        <ExitField name="attachmentRefs" {...props} extra={x.attachmentHint}>
+          <AttachmentRefsInput
+            purpose={EXIT_ATTACHMENT}
+            carrier="selfExit"
+            ownerId={attachments.ownerId}
+            views={attachments.views}
+            readonly={attachments.readonly}
+            onBusyChange={attachments.onBusyChange}
+          />
+        </ExitField>
+      )}
       <ExitField name="addToBlacklist" {...props}>
         <YesNo />
       </ExitField>

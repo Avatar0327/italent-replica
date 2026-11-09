@@ -1,10 +1,12 @@
 {
-  "reason": "F-480（DEC-797）：任职记录新增只读系统字段 traineeStartDate（实习转正前的实习开始日），随司龄校正值的查看口径授给同样能看入职日的身份；不新增编辑、按钮或数据范围",
+  "reason": "F-474-2b（DEC-778②）：组织新增只读系统字段 headcount（在岗人数，按查看人组织范围现算）与 establishment（架构图卡片编制），随组织可查看口径授给组织系统管理员 / HR 管理员 / HR 专员；不新增编辑、按钮或数据范围；其他身份与自定义档案默认不可见",
   "add": [
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:traineeStartDate:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:traineeStartDate:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:traineeStartDate:view",
-    "standard_manager/TenantBase.EmploymentRecord/field:traineeStartDate:view"
+    "standard_org_system_admin/TenantBase.Organization/field:headcount:view",
+    "standard_org_system_admin/TenantBase.Organization/field:establishment:view",
+    "standard_hr_admin/TenantBase.Organization/field:headcount:view",
+    "standard_hr_admin/TenantBase.Organization/field:establishment:view",
+    "standard_hr_specialist/TenantBase.Organization/field:headcount:view",
+    "standard_hr_specialist/TenantBase.Organization/field:establishment:view"
   ],
   "remove": []
 }

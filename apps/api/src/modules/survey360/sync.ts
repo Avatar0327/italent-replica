@@ -263,7 +263,7 @@ type OrgValues = Partial<{
   name: string;
   email: string | null;
   mobile: string | null;
-  staffCode: string;
+  staffCode: string | null;
   department: string | null;
   position: string | null;
 }>;
@@ -277,7 +277,7 @@ interface EmployeeSnapshot {
 
 interface EmployeeRow {
   id: string;
-  code: string;
+  code: string | null;
   name: string;
   email: string | null;
   work_email: string | null;

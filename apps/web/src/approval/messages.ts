@@ -91,6 +91,7 @@ export const typeLabels: Record<string, string> = {
 };
 export const fieldLabels: Record<string, string> = {
   effectiveDate: '生效日期',
+  attachmentRefs: '手写离职申请附件',
   originalEffectiveDate: '原计划生效日期',
   actualEffectiveDate: '实际生效日期',
   reasonCode: '调动原因',

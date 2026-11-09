@@ -57,7 +57,8 @@ export const users = pgTable(
   'users',
   {
     id: id(),
-    email: text('email').notNull().unique(),
+    // F-493 S1：登录名可空（导入的历史离职人员无登录名）；UNIQUE 对 NULL 不冲突
+    email: text('email').unique(),
     displayName: text('display_name').notNull(),
     status: text('status').$type<UserStatus>().notNull().default('active'),
     revision: integer('revision').notNull().default(1),

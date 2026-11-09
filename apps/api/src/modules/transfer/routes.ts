@@ -323,7 +323,7 @@ function registerPersonalEntry(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readPageContext(c, deps, 'detail');
     await requireTransferButton(ctx, 'employee');
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const [employee] = rowsOf<{ id: string; name: string; code: string; revision: number }>(
+      const [employee] = rowsOf<{ id: string; name: string; code: string | null; revision: number }>(
         await tx.execute(sql`
         SELECT e.id,e.name,e.code,e.revision FROM permission_user_person_links l
         JOIN employment_employees e ON e.tenant_id=l.tenant_id AND e.id=l.employee_id
