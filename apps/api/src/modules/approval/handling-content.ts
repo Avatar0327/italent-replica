@@ -55,7 +55,17 @@ export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> 
 };
 
 export type HandlingAction =
-  'approve' | 'disagree' | 'reject' | 'reject_previous' | 'jump' | 'transfer' | 'add_sign_before' | 'add_sign_after';
+  | 'approve'
+  | 'disagree'
+  | 'reject'
+  | 'reject_previous'
+  | 'jump'
+  | 'transfer'
+  | 'add_sign_before'
+  | 'add_sign_after'
+  // 系统处理（自动同意 / 自动跳过，设计 §1.3）：actor 为空的系统份，不是任何人的亲自办理
+  | 'auto_approve'
+  | 'skip';
 
 /** 视为“办理”的日志事件（选择时按它找查看人最近一次办理）；管理员事件与引擎系统日志不是办理锚点。 */
 export const HANDLING_EVENTS: readonly string[] = [
@@ -115,6 +125,8 @@ export interface HandlingAnchor {
   readonly logId: string;
   readonly task: TaskRow;
   readonly action: HandlingAction;
+  /** true：系统处理（自动同意 / 跳过）。actor 固定为空，不取 ctx 的操作人，更不冒认候选人（设计 §1.3）。 */
+  readonly system?: boolean;
 }
 
 /** 写办理份（调用方已写好办理日志）。唯一约束 / 守卫触发器把任务、日志、实例的一致性兜在库里。 */
@@ -126,7 +138,7 @@ export async function recordHandlingContent(
 ): Promise<void> {
   const { ctx, instance } = run;
   const { task } = anchor;
-  const actor = ctx.actorUserId === undefined ? ctx.userId : ctx.actorUserId;
+  const actor = anchor.system ? null : ctx.actorUserId === undefined ? ctx.userId : ctx.actorUserId;
   // null = 办理人不受字段权限约束（不设上限），写 SQL NULL 而非 jsonb 'null'：租户备份 / 恢复按 JSON 往返，
   // 'null' 字面量会被还原成 SQL NULL（F-476 预检返工）。
   const ceiling = prepared.ceiling === null ? null : JSON.stringify(prepared.ceiling);
