@@ -15,10 +15,14 @@ import {
   assessmentTypeFlow,
   BATCH_TRANSFER_FORM_ID_PREFIX,
   buttonsOf,
+  DUTY_TRANSFER_REQUIRED_MESSAGE,
   INTER_ORG_TRANSFER_FORM_IDS,
   PROBATION_ASSESSMENT_OBJECT,
+  tenantLocalDate,
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { uncoveredDuties } from '../duty-transfer/uncovered.js';
+import { normalizeLinkage } from '../transfer/linkage/input.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { findOverdueTransfers } from './activation-store.js';
 import { assessmentVoidNotice, inFlightAssessments, type InFlightAssessment } from './assessment-in-flight.js';
@@ -122,7 +126,7 @@ export async function loadExitRequest(tx: Tx, tenantId: string, businessId: stri
 
 // ---- 权限链 ----------------------------------------------------------------------------------------------
 
-const EXIT_CONTROL_KEYS = ['dutyTransfer', 'pendingTransferAck'];
+const EXIT_CONTROL_KEYS = ['dutyTransfer', 'dutyTransferTiming', 'dutyTransferDate', 'pendingTransferAck'];
 const createPayload = (target: ExitGateTarget) => ({
   kind: target.kind ?? 'leave',
   mode: target.mode,
@@ -663,6 +667,19 @@ export async function assertLastWorkDateNotBeforeEntry(
     });
 }
 
+/**
+ * DT-R4 强校验：直接离职 / 直接退休时，人员还有职责没指定接收人就拒绝（409，首个写之前）。
+ * 申请办理不查（审批节点另有转交计划）；直接转交也不查。表单随带的转交计划已覆盖的职责不算“未指定”。
+ */
+async function assertDutiesAssigned(tx: Tx, ctx: EmploymentContext, target: ExitGateTarget) {
+  if (target.mode !== 'direct') return;
+  const plan = normalizeLinkage({ dutyTransfer: target.exit?.dutyTransfer }).dutyTransfer;
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const left = await uncoveredDuties(tx, ctx.tenantId, target.employeeId, today, plan);
+  if (left.length)
+    throw conflict('EXIT_DUTY_TRANSFER_REQUIRED', DUTY_TRANSFER_REQUIRED_MESSAGE, { count: left.length });
+}
+
 async function createConditions(tx: Tx, ctx: EmploymentContext, target: ExitGateTarget): Promise<AckRecord | null> {
   const exit = target.exit ?? {};
   const lastWorkDate = target.lastWorkDate!;
@@ -675,6 +692,7 @@ async function createConditions(tx: Tx, ctx: EmploymentContext, target: ExitGate
   await assertLastWorkDateNotBeforeEntry(tx, ctx, target.employeeId, lastWorkDate);
   await assertNoLeaveInProgress(tx, ctx, target.employeeId);
   await assertNoOverdueTransfer(tx, ctx, target.employeeId);
+  await assertDutiesAssigned(tx, ctx, target);
   const kind = kindOfTarget(target);
   await assertNoRegularizationInFlight(
     tx,

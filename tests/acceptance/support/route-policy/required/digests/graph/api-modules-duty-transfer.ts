@@ -18,6 +18,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     'packages/domain/src/employment/duty-transfer-menu.ts#DEPARTED_LOOKBACK_MONTHS',
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_SOURCE',
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
   ],
   'apps/api/src/modules/duty-transfer/duties.ts#dutiesSql': [
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
@@ -27,6 +29,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/duty-transfer/duties.ts#pendingRecords': [
     '#dutyKey',
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_SOURCE',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
   ],
   'apps/api/src/modules/duty-transfer/records.ts#TAB_STATUS': [
@@ -216,5 +219,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/duty-transfer/service.ts#voidRecord': [
     '#auditRecord',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
+  ],
+  'apps/api/src/modules/duty-transfer/uncovered.ts#uncoveredDuties': [
+    'apps/api/src/modules/duty-transfer/duties.ts#currentDuties',
+    'apps/api/src/modules/duty-transfer/duties.ts#dutyKey',
+    '#plannedDutyKeys',
   ],
 };

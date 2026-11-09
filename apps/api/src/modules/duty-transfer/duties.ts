@@ -4,7 +4,13 @@
  * HRBP；下属 = 当日任职（快照优先，同 deletion-guards.ts）的直线 / 虚线经理是本人、且下属本人当日未离职 / 退休。
  */
 import { dutyTransferRecords, sql, type Tx } from '@italent/db';
-import { DEPARTED_LOOKBACK_MONTHS, dutyDescription, DUTY_TRANSFER_STATUS, DUTY_TYPE } from '@italent/domain';
+import {
+  DEPARTED_LOOKBACK_MONTHS,
+  dutyDescription,
+  DUTY_TRANSFER_SOURCE,
+  DUTY_TRANSFER_STATUS,
+  DUTY_TYPE,
+} from '@italent/domain';
 import { and, eq, type SQL } from 'drizzle-orm';
 import { personnelHooks } from '../employment/personnel-hooks.js';
 import { rowsOf } from '../employment/read-model.js';
@@ -83,6 +89,7 @@ export async function pendingRecords(tx: Tx, tenantId: string, employeeId: strin
       and(
         eq(dutyTransferRecords.tenantId, tenantId),
         eq(dutyTransferRecords.employeeId, employeeId),
+        eq(dutyTransferRecords.source, DUTY_TRANSFER_SOURCE.menu),
         eq(dutyTransferRecords.status, DUTY_TRANSFER_STATUS.unfinished),
       ),
     )
@@ -100,7 +107,8 @@ export interface DepartedPerson {
 }
 
 /**
- * 检查离职退休人员（DEC-726）：当日任职为离职 / 退休、生效日在最近 3 个月内，且仍承担职责（离职生效不清空职责）。
+ * 检查离职退休人员（DEC-726）：当日任职为离职 / 退休、生效日在最近 3 个月内，且仍承担职责（离职生效不清空职责）
+ * 或有落地时被清空、尚未补办的职责记录（来源 2 / 4，DT-R5）。
  * visible 为调用方的数据范围谓词（列 t.employee_id）。“仍承担职责”在分页前过滤，total 按完整过滤集计（第 2 轮 P2-6）；
  * 排序稳定：生效日倒序、员工 ID 升序。
  */
@@ -116,6 +124,7 @@ export async function departedWithDuties(
   visible: SQL,
   page: { readonly limit: number; readonly offset: number },
 ): Promise<DepartedPage> {
+  const live = dutiesSql(tenantId, today, (c) => sql`${c} IN (SELECT employee_id FROM departed)`);
   const rows = rowsOf<DepartedPerson & { total: number }>(
     await tx.execute(sql`
       WITH departed AS (
@@ -130,8 +139,13 @@ export async function departedWithDuties(
       holding AS (
         SELECT d.employee_id, d.kind, d.since, count(*)::int AS duty_count, count(*) OVER ()::int AS total
         FROM departed d
-        JOIN (${dutiesSql(tenantId, today, (c) => sql`${c} IN (SELECT employee_id FROM departed)`)}) duty
-          ON duty."holderId"=d.employee_id::text
+        JOIN (
+          SELECT "holderId" FROM (${live}) live
+          UNION ALL
+          SELECT employee_id::text FROM duty_transfer_records
+          WHERE tenant_id=${tenantId} AND source IN (${DUTY_TRANSFER_SOURCE.leave}, ${DUTY_TRANSFER_SOURCE.retirement})
+            AND status=${DUTY_TRANSFER_STATUS.unfinished} AND employee_id IN (SELECT employee_id FROM departed)
+        ) duty ON duty."holderId"=d.employee_id::text
         GROUP BY d.employee_id, d.kind, d.since
         ORDER BY d.since DESC, d.employee_id
         LIMIT ${page.limit} OFFSET ${page.offset}

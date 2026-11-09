@@ -36,8 +36,8 @@ export const dutyTransferRecords = pgTable(
       .notNull()
       .references(() => tenants.id),
     employeeId: uuid('employee_id').notNull(),
-    /** 清空接收人即撤回：作废记录保留原接收人，便于在“全部”页签回看。 */
-    receiverId: uuid('receiver_id').notNull(),
+    /** 清空接收人即撤回：作废记录保留原接收人，便于在“全部”页签回看。离职 / 退休落地清空（来源 2 / 4）的记录没有接收人。 */
+    receiverId: uuid('receiver_id'),
     /** 1 组织角色 / 2 下属员工。 */
     dutyType: smallint('duty_type').notNull(),
     orgId: uuid('org_id'),
@@ -50,9 +50,13 @@ export const dutyTransferRecords = pgTable(
     transferDate: date('transfer_date', { mode: 'string' }).notNull(),
     transferAt: utc('transfer_at'),
     batchId: uuid('batch_id').notNull(),
-    /** 1 菜单（本表只写菜单；2 离职 / 3 调动 / 4 退休在联动子项里）。 */
+    /**
+     * 1 菜单；2 离职 / 4 退休：落地时仍持有又没有接收人的职责被清空（R2-T09b DT-R5），写一条无接收人的未完成记录。
+     * 有接收人的离职 / 调动内转交仍记在联动子项里（3 调动不写本表）。
+     */
     source: smallint('source').notNull().default(1),
-    operatorId: uuid('operator_id').notNull(),
+    /** 菜单操作人；系统清空（来源 2 / 4）没有。 */
+    operatorId: uuid('operator_id'),
     attemptCount: integer('attempt_count').notNull().default(0),
     failureCode: text('failure_code'),
     failureMessage: text('failure_message'),
@@ -89,7 +93,7 @@ export const dutyTransferRecords = pgTable(
       columns: [t.tenantId, t.operatorId],
       foreignColumns: [tenantMemberships.tenantId, tenantMemberships.userId],
     }),
-    /** 同一被转交人同一职责至多一条待生效记录：再次设置即覆盖（F-408）。 */
+    /** 同一被转交人同一职责至多一条待生效菜单记录：再次设置即覆盖（F-408）；清空记录（来源 2 / 4）不参与。 */
     uniqueIndex('duty_transfer_records_one_pending')
       .on(
         t.tenantId,
@@ -97,11 +101,17 @@ export const dutyTransferRecords = pgTable(
         sql`COALESCE(${t.orgId}, ${t.subordinateId})`,
         sql`COALESCE(${t.orgRole}, ${t.relation})`,
       )
-      .where(sql`${t.status} = 0`),
+      .where(sql`${t.status} = 0 AND ${t.source} = 1`),
     index('duty_transfer_records_due').on(t.tenantId, t.status, t.transferDate),
     index('duty_transfer_records_employee').on(t.tenantId, t.employeeId, t.createdAt),
     check('duty_transfer_records_status', sql`${t.status} IN (0, 1, 2, 3)`),
-    check('duty_transfer_records_source', sql`${t.source} = 1`),
+    check('duty_transfer_records_source', sql`${t.source} IN (1, 2, 4)`),
+    // 菜单记录必须有接收人和操作人；系统清空记录（来源 2 / 4）必须没有接收人，且只能是未完成
+    check(
+      'duty_transfer_records_party',
+      sql`(${t.source} = 1 AND ${t.receiverId} IS NOT NULL AND ${t.operatorId} IS NOT NULL)
+        OR (${t.source} IN (2, 4) AND ${t.receiverId} IS NULL AND ${t.status} = 0)`,
+    ),
     check(
       'duty_transfer_records_target',
       sql`(${t.dutyType} = 1 AND ${t.orgId} IS NOT NULL AND ${t.orgRole} IN ('person_in_charge', 'shop_owner', 'hrbp')

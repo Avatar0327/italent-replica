@@ -9,23 +9,56 @@ import { applyDutyTransfer } from '../transfer/linkage/execute.js';
 import { auditEmployment } from './context.js';
 import type { EmploymentContext } from './types.js';
 
-/** 阶段与时机配置一一对应；配置的是另一个时机时本阶段什么也不做。 */
-const TIMING_OF = { confirmed: 'approval_passed', effective: 'business_effective' } as const;
+export interface ExitTimingRow {
+  readonly businessId: string;
+  readonly employeeId: string;
+  readonly dutyTransferTiming: string;
+  readonly dutyTransferDate?: string | null;
+}
+
+type Phase = 'confirmed' | 'effective';
+
+/**
+ * 本阶段是否执行转交，以及转交生效日（R2-T09b DT-R3）：
+ * - approval_passed：confirmed 阶段，生效日 = 当天；business_effective：effective 阶段，生效日 = 最终生效日；
+ * - specified_date：指定日期 ≤ 当天的，节点通过当场（confirmed 阶段）转交，生效日 = 当天（不回溯）；晚于当天的由到期扫描
+ *   （exit-duty-due.ts，生效日 = 指定日期）转交；effective 阶段作兜底（联动执行行保证至多一次），生效日同样取指定日期。
+ */
+function plan(exit: ExitTimingRow, phase: Phase, effectiveDate: string): { at: string } | null {
+  if (exit.dutyTransferTiming === 'approval_passed') return phase === 'confirmed' ? { at: effectiveDate } : null;
+  if (exit.dutyTransferTiming === 'business_effective') return phase === 'effective' ? { at: effectiveDate } : null;
+  const date = exit.dutyTransferDate;
+  if (exit.dutyTransferTiming !== 'specified_date' || !date) return null;
+  if (phase === 'effective') return { at: date };
+  return date <= effectiveDate ? { at: effectiveDate } : null;
+}
 
 export async function runExitDutyTransfer(
   tx: Tx,
   ctx: EmploymentContext,
-  exit: { readonly businessId: string; readonly employeeId: string; readonly dutyTransferTiming: string },
-  phase: keyof typeof TIMING_OF,
+  exit: ExitTimingRow,
+  phase: Phase,
   effectiveDate: string,
 ) {
-  if (exit.dutyTransferTiming !== TIMING_OF[phase]) return;
+  const planned = plan(exit, phase, effectiveDate);
+  if (!planned) return;
+  await executeExitDutyTransfer(tx, ctx, exit, phase, planned.at);
+}
+
+/** 指定日期到期扫描（exit-duty-due.ts）直接调用：生效日 = 指定日期，台账阶段记 confirmed（离职仍是已确认未落地）。 */
+export async function executeExitDutyTransfer(
+  tx: Tx,
+  ctx: EmploymentContext,
+  exit: ExitTimingRow,
+  phase: Phase,
+  effectiveDate: string,
+) {
   const items = await applyDutyTransfer(tx, ctx, {
     businessId: exit.businessId,
     employeeId: exit.employeeId,
     effectiveDate,
   });
-  if (!items.length) return;
+  if (!items.length) return items;
   await tx.insert(exitEffects).values(
     items.map((item) => ({
       tenantId: ctx.tenantId,
@@ -66,4 +99,5 @@ export async function runExitDutyTransfer(
     undefined,
     { employeeId: exit.employeeId },
   );
+  return items;
 }

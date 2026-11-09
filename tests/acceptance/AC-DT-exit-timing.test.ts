@@ -52,9 +52,12 @@ describe('DT-R3 指定日期介于今天与业务生效日之间：到日由定�
 
   it('到日转交一次，组织变更启用日 = 指定日期；重复触发不重复；生效时不再转交', async () => {
     const x = await world('timing-due');
-    const { subordinate, receiver, plan } = await oneSubordinate(x);
+    const { subordinate, receiver } = await oneSubordinate(x);
     const org = await x.headedOrg('合成负责人组织');
-    const both = { ...plan, ...x.plan({ orgRoles: [{ orgId: org.id, receiverId: receiver.id }] }) };
+    const both = x.plan({
+      subordinates: [{ employeeId: subordinate.id, receiverId: receiver.id }],
+      orgRoles: [{ orgId: org.id, receiverId: receiver.id }],
+    });
     const leave = await x.createdDirect('leave', '2026-10-20', {
       dutyTransferTiming: 'specified_date',
       dutyTransferDate: DUE,
@@ -63,19 +66,22 @@ describe('DT-R3 指定日期介于今天与业务生效日之间：到日由定�
     expect(await x.managerOf(subordinate.id)).toBe(x.employee.id);
 
     expect(await x.runScheduler('2026-10-11T02:00:00Z')).toMatchObject({ errors: [] });
-    expect(await x.items(leave.id)).toEqual([expect.objectContaining({ status: 'pending' })]);
+    expect(await x.items(leave.id)).toEqual([]);
 
     expect(await x.runScheduler(`${DUE}T02:00:00Z`)).toMatchObject({ errors: [] });
     expect(await x.managerOf(subordinate.id, DUE)).toBe(receiver.id);
     expect((await x.orgVersions(org.id)).at(-1)).toEqual({ start: DUE, head: receiver.id });
     expect(await x.stateOfBusiness(leave.id)).toBe('approved');
     const items = await x.items(leave.id);
-    expect(items.map((item) => [item.status, item.effective])).toEqual([['succeeded', DUE]]);
+    expect(items.map((item) => [item.status, item.effective])).toEqual([
+      ['succeeded', DUE],
+      ['succeeded', DUE],
+    ]);
 
     await x.runScheduler(`${DUE}T05:00:00Z`);
     await x.runScheduler('2026-10-13T02:00:00Z');
     expect(await x.items(leave.id)).toEqual(items);
-    expect(await x.orgVersions(org.id)).toHaveLength(2);
+    expect(await x.orgVersions(org.id)).toHaveLength(3);
 
     expect(await x.activate(leave.id, '2026-10-21')).toMatchObject({ outcome: 'effective' });
     expect(await x.items(leave.id)).toEqual(items);
@@ -93,8 +99,8 @@ describe('DT-R3 指定日期晚于业务生效日：生效时转交，时机改�
     });
     expect(await x.exitTiming(leave.id)).toEqual({ timing: 'business_effective', date: null });
 
-    await x.runScheduler('2026-10-30T02:00:00Z');
-    expect(await x.items(leave.id)).toEqual([expect.objectContaining({ status: 'pending' })]);
+    await x.runScheduler('2026-10-15T02:00:00Z');
+    expect(await x.items(leave.id)).toEqual([]);
 
     expect(await x.activate(leave.id, '2026-10-21')).toMatchObject({ outcome: 'effective' });
     expect(await x.managerOf(subordinate.id, '2026-10-21')).toBe(receiver.id);
@@ -135,8 +141,12 @@ describe('DT-R3 校验与时机锁', () => {
 
     await x.runScheduler('2026-10-12T02:00:00Z');
     expect((await x.items(leave.id))[0]).toMatchObject({ status: 'succeeded' });
-    const locked = await x.patchExit(leave.id, saved.revision + 1, { dutyTransferTiming: 'business_effective' });
-    expect(await x.problem(locked)).toMatchObject({ status: 409, reason: 'EXIT_DUTY_TRANSFER_LOCKED' });
+    const locked = await x.patchExit(leave.id, saved.revision, { dutyTransferTiming: 'business_effective' });
+    const lockedText = await locked.clone().text();
+    expect(await x.problem(locked), lockedText).toMatchObject({
+      status: 409,
+      reason: 'EXIT_DUTY_TRANSFER_LOCKED',
+    });
     expect(await x.exitTiming(leave.id)).toEqual({ timing: 'specified_date', date: '2026-10-12' });
   });
 });

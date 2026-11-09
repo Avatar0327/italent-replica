@@ -27,7 +27,8 @@ export type DutyItem =
       readonly employeeId: string;
       readonly orgId: string;
       readonly orgRole: OrgRole;
-      readonly receiverId: string;
+      /** 空 = 清空该职责（R2-T09b DT-R5：离职 / 退休落地时仍无接收人的职责，只在 linkage 口径使用）。 */
+      readonly receiverId: string | null;
       readonly effectiveDate: string;
     }
   | {
@@ -35,7 +36,7 @@ export type DutyItem =
       readonly employeeId: string;
       readonly subordinateId: string;
       readonly relation: DutyRelation;
-      readonly receiverId: string;
+      readonly receiverId: string | null;
       readonly effectiveDate: string;
     };
 
@@ -64,21 +65,23 @@ export function dutyItemFailure(error: unknown): DutyItemFailure | null {
 export async function executeDutyItem(tx: Tx, ctx: EmploymentContext, item: DutyItem, mode: DutyExecutionMode) {
   // `30` DT-R6：接收人已离职等不再在职时报错；迟到执行再按执行当日判一次（离职 / 退休可能发生在转交日期之后）。
   const days = [...new Set([item.effectiveDate, mode.eligibleOn ?? item.effectiveDate])];
-  for (const day of days)
-    if ((await ineligibleOrgPeople(tx, ctx.tenantId, [item.receiverId], day)).length)
+  const receiverId = item.receiverId;
+  if (receiverId === null && mode.caller !== 'linkage') throw new Error('清空职责只能经离职 / 调动联动口径执行');
+  for (const day of receiverId === null ? [] : days)
+    if ((await ineligibleOrgPeople(tx, ctx.tenantId, [receiverId!], day)).length)
       throw new AppError('VALIDATION_FAILED', '接收人不是在职员工', { reason: 'TRANSFER_PERSON_NOT_ELIGIBLE' });
   if (item.kind === 'org_role') {
     if (mode.caller === 'menu') await requireEnabledOrg(tx, ctx.tenantId, item.orgId, days);
     await requireRoleHolder(tx, ctx, item.employeeId, item.orgId, item.orgRole, item.effectiveDate);
     // DT-R7：组织变更记录取转交生效日（业务内 = 业务生效日；菜单 = 当天或指定日期，W-607 / F-408）。
-    const people: Partial<Record<(typeof ROLE_FIELDS)[OrgRole], string>> = {
-      [ROLE_FIELDS[item.orgRole]]: item.receiverId,
+    const people: Partial<Record<(typeof ROLE_FIELDS)[OrgRole], string | null>> = {
+      [ROLE_FIELDS[item.orgRole]]: receiverId,
     };
     await assignTransferOrganizationPeople(tx, ctx, item.orgId, item.effectiveDate, people);
     return;
   }
   const record = await requireReportingSubordinate(tx, ctx, item.employeeId, item.subordinateId, item.relation);
-  const fields = { [RELATION_FIELDS[item.relation]]: item.receiverId };
+  const fields = { [RELATION_FIELDS[item.relation]]: receiverId };
   if (mode.caller === 'menu') {
     await appendDataAdjustment(tx, ctx, item.subordinateId, item.effectiveDate, fields);
     return;
@@ -106,7 +109,7 @@ async function appendDataAdjustment(
   ctx: EmploymentContext,
   subordinateId: string,
   effectiveDate: string,
-  fields: Record<string, string>,
+  fields: Record<string, string | null>,
 ) {
   const [employee] = await tx
     .select({ revision: employmentEmployees.revision })

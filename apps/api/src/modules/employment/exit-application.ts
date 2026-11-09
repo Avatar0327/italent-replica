@@ -8,6 +8,8 @@ import { exitDateChange, lockExitForEdit, rescheduleExit, type RescheduleOptions
  */
 import { and, eq, exitRequests, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
+import type { DutyTransferTimingChoice } from '@italent/domain';
+import { chooseDutyTransferTiming, dutyTransferExecuted, lockedError, settleChoice } from './exit-duty-timing.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { z } from 'zod';
 import { auditEmployment } from './context.js';
@@ -94,6 +96,9 @@ function columnValues(exit: ExitOptions) {
   const {
     dutyTransfer: _duty,
     pendingTransferAck: _ack,
+    // 转交时机与日期要和生效日一起结算，由创建 / 编辑显式写入（DT-R3）
+    dutyTransferTiming: _timing,
+    dutyTransferDate: _timingDate,
     attachmentRefs: _refs,
     compensationAmount,
     nonCompeteAmount,
@@ -109,6 +114,13 @@ function columnValues(exit: ExitOptions) {
 
 export async function dutyTransferTiming(tx: Tx, tenantId: string) {
   return (await readEffectiveSetting(tx, tenantId, 'exit.duty_transfer_timing')).value as string;
+}
+
+/** 创建时本单的转交时机：请求里选了用请求的（指定日期晚于生效日则改为生效时转交），否则快照租户配置（DEC-213）。 */
+async function initialTimingChoice(tx: Tx, tenantId: string, exit: ExitOptions, effectiveDate: string) {
+  const tenantDefault = (await dutyTransferTiming(tx, tenantId)) as DutyTransferTimingChoice['timing'];
+  const chosen = chooseDutyTransferTiming(exit, { timing: tenantDefault, date: null });
+  return settleChoice(chosen ?? { timing: tenantDefault, date: null }, effectiveDate);
 }
 
 /** 离职单所在任职周期（最新载荷版本的 selected_staff_id）。 */
@@ -144,6 +156,7 @@ export async function createExitApplication(
   });
   // 加黑三项在锁之前校验（400 不占锁）；只在勾选时把合并后的整组写进扩展行，未勾选的离职扩展行与审计保持原样
   const { attachmentRefs: requestedRefs, ...exit } = withBlacklist(subset, NO_BLACKLIST, normalized.effectiveDate);
+  const timing = await initialTimingChoice(tx, ctx.tenantId, exit, normalized.effectiveDate);
   // 职责转交计划（DEC-213）：结构校验在锁之前；参与员工闭包（离职人 + 转交下属）先于任何其他锁取齐（§5.2 ①，与批量共用）
   const duty = exit.dutyTransfer === undefined ? null : normalizeLinkage({ dutyTransfer: exit.dutyTransfer });
   await lockExitParticipants(tx, ctx, [{ employeeId, dutyTransfer: exit.dutyTransfer }]);
@@ -166,7 +179,12 @@ export async function createExitApplication(
   });
   // 绑定在业务行之后（需要业务 ID）、扩展行之前：失败整命令回滚；只在 execute 内（台账未命中）执行
   const attachmentRefs = await bindOnCreate(tx, ctx, input.bindAttachments, business.id, requestedRefs);
-  const stored = { ...columnValues(exit), ...(attachmentRefs ? { attachmentRefs } : {}) };
+  const stored = {
+    ...columnValues(exit),
+    ...(attachmentRefs ? { attachmentRefs } : {}),
+    dutyTransferTiming: timing.timing,
+    dutyTransferDate: timing.date,
+  };
   await tx.insert(exitRequests).values({
     ...stored,
     tenantId: ctx.tenantId,
@@ -178,20 +196,8 @@ export async function createExitApplication(
     initiatorUserId: ctx.userId,
     pendingTransferAck: ack,
     batchId: input.batchId ?? null,
-    dutyTransferTiming: await dutyTransferTiming(tx, ctx.tenantId),
   });
-  await auditEmployment(
-    tx,
-    ctx,
-    kind === 'retirement' ? 'retirement.request.create' : 'exit.request.create',
-    'exit-request',
-    business.id,
-    null,
-    { initiation: input.initiation, initiatorUserId: ctx.userId, employeeId, mode: input.mode, ...stored },
-    undefined,
-    undefined,
-    { employeeId },
-  );
+  await auditCreate(tx, ctx, { kind, business, input, employeeId, stored });
   // 退休薄扩展行（R2-T04 §3.2 第 6 步）：在 exit_requests 之后、生效链之前冻结 P 并派生类型，失败整单回滚
   if (kind === 'retirement')
     await writeRetirement(tx, ctx, { id: business.id, employeeId, lastWorkDate: normalized.lastWorkDate! }, input);
@@ -207,6 +213,25 @@ export async function createExitApplication(
   const locked = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: business.revision }, business.id);
   await bumpEmploymentBusiness(tx, ctx, locked);
   return withAckWarnings(tx, ctx, await requireSavedBusiness(tx, ctx, business.id));
+}
+
+async function auditCreate(
+  tx: Tx,
+  ctx: EmploymentContext,
+  args: {
+    kind: 'leave' | 'retirement';
+    business: EmploymentBusiness;
+    input: ExitApplicationInput;
+    employeeId: string;
+    stored: object;
+  },
+) {
+  const { kind, business, input, employeeId, stored } = args;
+  const after = { initiation: input.initiation, initiatorUserId: ctx.userId, employeeId, mode: input.mode, ...stored };
+  const action = kind === 'retirement' ? 'retirement.request.create' : 'exit.request.create';
+  await auditEmployment(tx, ctx, action, 'exit-request', business.id, null, after, undefined, undefined, {
+    employeeId,
+  });
 }
 
 /**
@@ -239,6 +264,27 @@ const SETTLED = ['voided', 'disapproved', 'deleted'];
 export interface ExitPatch extends RescheduleOptions {
   readonly fields: Omit<ExitOptions, 'dutyTransfer' | 'pendingTransferAck'>;
   readonly dates: { readonly lastWorkDate?: string; readonly effectiveDate?: string };
+}
+
+/**
+ * 编辑时转交时机的新列值（DT-R3）：已执行过转交的不能改（409 EXIT_DUTY_TRANSFER_LOCKED，值不变的请求照常通过）；
+ * 改期后指定日期晚于新生效日的，同样改为“生效时转交”。
+ */
+async function timingValues(
+  tx: Tx,
+  ctx: EmploymentContext,
+  row: typeof exitRequests.$inferSelect,
+  request: { dutyTransferTiming?: DutyTransferTimingChoice['timing']; dutyTransferDate?: string },
+  at: { effectiveDate: string; rescheduled: boolean },
+): Promise<Record<string, unknown>> {
+  const current = { timing: row.dutyTransferTiming as DutyTransferTimingChoice['timing'], date: row.dutyTransferDate };
+  const chosen = chooseDutyTransferTiming(request, current);
+  if (!chosen && !(at.rescheduled && current.timing === 'specified_date')) return {};
+  const next = settleChoice(chosen ?? current, at.effectiveDate);
+  if (next.timing === current.timing && next.date === current.date) return {};
+  if (chosen && (await dutyTransferExecuted(tx, ctx, row.businessId))) throw lockedError();
+  if (!chosen && (await dutyTransferExecuted(tx, ctx, row.businessId))) return {};
+  return { dutyTransferTiming: next.timing, dutyTransferDate: next.date };
 }
 
 const exitPatchSchema = exitOptionsSchema.omit({ dutyTransfer: true }).extend({
@@ -334,6 +380,8 @@ export async function updateExitFields(
   if (SETTLED.includes(business.state))
     throw new AppError('CONFLICT', '已办结的离职不能再编辑', { reason: 'EXIT_NOT_EDITABLE' });
   const { attachmentRefs: nextRefs, ...patchFields } = patch.fields;
+  // 转交时机是本单控制项，不走字段权限（同 dutyTransfer）；其余字段照旧
+  const { dutyTransferTiming: askedTiming, dutyTransferDate: askedDate, ...permissionFields } = patchFields;
   const mayReschedule =
     kind === 'leave' && ['draft', 'rejected', 'in_review', 'approved', 'effective'].includes(business.state);
   const changing = mayReschedule && (await exitDateChange(tx, ctx, business, patch.dates));
@@ -344,16 +392,20 @@ export async function updateExitFields(
     kind,
     business: validationBusiness,
     patch: patch.dates,
-    payload: options.bindAttachments ? patch.fields : patchFields,
+    payload: options.bindAttachments ? { ...permissionFields, attachmentRefs: nextRefs } : permissionFields,
     ...(options.approvalEdit ? { approvalEdit: true } : {}),
   });
   await assertDictionaries(tx, ctx, patchFields, row);
   await assertHandoverEmployee(tx, ctx, patchFields.handoverEmployeeId);
   // 加黑三项与 addToBlacklist 合并校验（创建同一入口）：生效日取计划生效日，“是”改“否”清掉旧值
   const planned = await loadPlannedEffectiveDate(tx, ctx.tenantId, businessId, business.payload.effectiveDate);
-  const values: Record<string, unknown> = columnValues(
-    withBlacklist(patchFields, row, changing ? changing.effectiveDate : planned),
-  );
+  const effectiveForBlacklist = changing ? changing.effectiveDate : planned;
+  const asked = { dutyTransferTiming: askedTiming, dutyTransferDate: askedDate };
+  const when = { effectiveDate: effectiveForBlacklist, rescheduled: Boolean(changing) };
+  const values: Record<string, unknown> = {
+    ...columnValues(withBlacklist(patchFields, row, effectiveForBlacklist)),
+    ...(await timingValues(tx, ctx, row, asked, when)),
+  };
   await writeRefs(tx, ctx, {
     bind: options.bindAttachments,
     businessId,

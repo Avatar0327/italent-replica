@@ -36,6 +36,7 @@ import { dueLinkageEmployees, runDuePartTimeLinkage } from './part-time/linkage.
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 import { drainExitAccounts, startExitAccountScheduler } from './exit-account-worker.js';
+import { runDueExitDutyTransfers } from './exit-duty-due.js';
 import { runDueMenuDutyTransfers, runErrorCode, type DutyTransferRun } from '../duty-transfer/scheduler.js';
 
 const RUN_OPERATION = 'employment.activation.run';
@@ -121,11 +122,22 @@ export async function runEmploymentActivations(
 
 /** 单租户这一步出错不中断整轮（第 2 轮 P3-1）：记在该租户结果上，下轮重试。 */
 async function dueDutyTransfers(db: Db, tenant: TenantRow, now: Date, commandId: string): Promise<DutyTransferRun> {
-  try {
-    return await runDueMenuDutyTransfers(db, tenant, now, commandId);
-  } catch (error) {
-    return { completed: 0, failed: 0, skippedLocked: 0, errors: [{ employeeId: null, code: runErrorCode(error) }] };
-  }
+  const guarded = async (run: () => Promise<DutyTransferRun>): Promise<DutyTransferRun> => {
+    try {
+      return await run();
+    } catch (error) {
+      return { completed: 0, failed: 0, skippedLocked: 0, errors: [{ employeeId: null, code: runErrorCode(error) }] };
+    }
+  };
+  // 菜单指定日期 + 离职 / 退休指定日期（R2-T09b DT-R3）两条各自兜底，汇总成同一份结果
+  const menu = await guarded(() => runDueMenuDutyTransfers(db, tenant, now, commandId));
+  const exits = await guarded(() => runDueExitDutyTransfers(db, tenant, now, commandId));
+  return {
+    completed: menu.completed + exits.completed,
+    failed: menu.failed + exits.failed,
+    skippedLocked: menu.skippedLocked + exits.skippedLocked,
+    errors: [...menu.errors, ...exits.errors],
+  };
 }
 
 async function sweepTenant(

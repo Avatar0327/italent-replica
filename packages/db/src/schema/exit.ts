@@ -125,6 +125,8 @@ export const exitRequests = pgTable(
     pendingTransferAck: jsonb('pending_transfer_ack'),
     batchId: uuid('batch_id'),
     dutyTransferTiming: text('duty_transfer_timing').notNull(),
+    /** 转交时机为 specified_date 时的指定日期（R2-T09b DT-R3）；其余时机恒为空。 */
+    dutyTransferDate: day('duty_transfer_date'),
     /** 编制预减时点 R（DEC-266①）：审批通过 / 直接离职确认的租户日，与生效日分离（§6）。 */
     preReleaseDate: day('pre_release_date'),
     createdAt: utc(),
@@ -161,7 +163,14 @@ export const exitRequests = pgTable(
     check('exit_requests_initiator', sql`${t.initiator} IN ('hr', 'self', 'manager')`),
     // 本人申请与经理代发只能走申请（§4B）
     check('exit_requests_direct_by_hr', sql`${t.mode} <> 'direct' OR ${t.initiator} = 'hr'`),
-    check('exit_requests_timing', sql`${t.dutyTransferTiming} IN ('business_effective', 'approval_passed')`),
+    check(
+      'exit_requests_timing',
+      sql`${t.dutyTransferTiming} IN ('business_effective', 'approval_passed', 'specified_date')`,
+    ),
+    check(
+      'exit_requests_timing_date',
+      sql`(${t.dutyTransferTiming} = 'specified_date') = (${t.dutyTransferDate} IS NOT NULL)`,
+    ),
     check('exit_requests_attachments', sql`${t.attachmentRefs} IS NULL OR jsonb_typeof(${t.attachmentRefs}) = 'array'`),
     check(
       'exit_requests_amounts',

@@ -10,7 +10,7 @@
  * 不打断同租户后续被转交人；任职生效调度外层的 dueDutyTransfers 只兜整租户这一步。
  */
 import { dutyTransferRecords, sql, withTenant, type Db, type Tx } from '@italent/db';
-import { DUTY_TRANSFER_STATUS, tenantLocalDate } from '@italent/domain';
+import { DUTY_TRANSFER_SOURCE, DUTY_TRANSFER_STATUS, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { EmploymentError } from '../employment/errors.js';
@@ -57,8 +57,8 @@ export async function runDueMenuDutyTransfers(
   const people = await withTenant(db, tenant.id, async (tx) =>
     rowsOf<{ employeeId: string }>(
       await tx.execute(sql`SELECT DISTINCT employee_id::text AS "employeeId" FROM duty_transfer_records
-        WHERE tenant_id=${tenant.id} AND status=${DUTY_TRANSFER_STATUS.unfinished} AND failure_code IS NULL
-          AND transfer_date<=${today}::date
+        WHERE tenant_id=${tenant.id} AND source=${DUTY_TRANSFER_SOURCE.menu}
+          AND status=${DUTY_TRANSFER_STATUS.unfinished} AND failure_code IS NULL AND transfer_date<=${today}::date
         ORDER BY 1 LIMIT ${PEOPLE_PER_RUN}`),
     ),
   );
@@ -102,8 +102,8 @@ function lockDueRecords(tx: Tx, ctx: EmploymentContext, employeeId: string, toda
     .select()
     .from(dutyTransferRecords)
     .where(
-      sql`tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND status=${DUTY_TRANSFER_STATUS.unfinished}
-        AND failure_code IS NULL AND transfer_date<=${today}::date`,
+      sql`tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND source=${DUTY_TRANSFER_SOURCE.menu}
+        AND status=${DUTY_TRANSFER_STATUS.unfinished} AND failure_code IS NULL AND transfer_date<=${today}::date`,
     )
     .orderBy(dutyTransferRecords.transferDate, dutyTransferRecords.id)
     .for('update');
@@ -113,7 +113,8 @@ async function runPerson(tx: Tx, ctx: EmploymentContext, employeeId: string, tod
   const subordinates = rowsOf<{ id: string }>(
     await tx.execute(sql`SELECT DISTINCT subordinate_id::text AS id FROM duty_transfer_records
       WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND subordinate_id IS NOT NULL
-        AND status=${DUTY_TRANSFER_STATUS.unfinished} AND transfer_date<=${today}::date`),
+        AND source=${DUTY_TRANSFER_SOURCE.menu} AND status=${DUTY_TRANSFER_STATUS.unfinished}
+        AND transfer_date<=${today}::date`),
   ).map((row) => row.id);
   const lock = await lockTransferParticipants(tx, ctx, employeeId, subordinates, { skipLocked: true });
   if (lock !== 'acquired') return lock;
@@ -137,7 +138,7 @@ async function attempt(
   const item = dutyItemOf(
     record as DutyTarget & DutyRecordRow,
     record.employeeId,
-    record.receiverId,
+    record.receiverId!, // 到期扫描只取菜单记录（来源 1），菜单记录必有接收人（表约束 duty_transfer_records_party）
     record.transferDate,
   );
   try {

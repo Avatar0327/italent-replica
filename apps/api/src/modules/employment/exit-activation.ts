@@ -22,7 +22,7 @@ import {
 } from './activation-store.js';
 import { auditEmployment } from './context.js';
 import { handleContractsOnExitEffective } from './exit-contract-effects.js';
-import { runExitDutyTransfer } from './exit-duty-transfer.js';
+import { settleExitDuties } from './exit-duty-clear.js';
 import { runExitEffectiveHooks, type ExitActivationSource } from './exit-confirmation.js';
 // 订阅方在加载时登记到 effective 端口（F-229 作废在途考核）；编排器是唯一调用端口的地方，随它一起加载
 import './exit-void-assessments.js';
@@ -458,7 +458,7 @@ async function runSteps(
   // 步骤 4：合同端口（生效时终止，Q-M0-100 取“生效时”，§19 B-8）；步骤 6：职责转交，子项失败只记 duty_failed
   await handleContractsOnExitEffective(tx, ctx, business, late.lastWorkDate);
   const retirement = await createRehireIfPlanned(tx, ctx, business, late.effectiveDate);
-  await runExitDutyTransfer(tx, ctx, exit, 'effective', late.effectiveDate);
+  await settleExitDuties(tx, ctx, exit, business.payload.kind, late.effectiveDate);
   await appendEmploymentState(tx, ctx, business, 'effective');
   await auditEmployment(
     tx,
