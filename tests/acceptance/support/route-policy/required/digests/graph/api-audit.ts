@@ -24,6 +24,19 @@ export const GRAPH: Graph = {
   'apps/api/src/audit/calc-rule-sources.ts#visible': [
     'apps/api/src/modules/talent-review/access.ts#requireConfigVisible',
   ],
+  'apps/api/src/audit/controlled-fields.ts#ControlledAuditFields': [
+    '#SNAPSHOT_PATH',
+    '#STRUCTURE_PATH',
+    'apps/api/src/audit/transfer-linkage.ts#ExactAuditFields',
+  ],
+  'apps/api/src/audit/controlled-fields.ts#SNAPSHOT_PATH': ['#UUID'],
+  'apps/api/src/audit/controlled-fields.ts#STRUCTURE_PATH': ['#UUID'],
+  'apps/api/src/audit/controlled-fields.ts#approvalContentFields': [
+    '#BASIC_KEYS',
+    '#CONTENT_FIELD',
+    '#CONTENT_KEYS',
+    '#ControlledAuditFields',
+  ],
   'apps/api/src/audit/establishment-capacity.ts#capacityAuditChanges': ['#PART_FIELDS'],
   'apps/api/src/audit/establishment-capacity.ts#visibleCapacityParts': ['#PART_FIELDS'],
   'apps/api/src/audit/failures.ts#failureResponse': ['#CommandFailureError'],
@@ -147,6 +160,7 @@ export const GRAPH: Graph = {
   'apps/api/src/audit/routes.ts#operationView': [
     '#sourceView',
     '#visibleTask',
+    'apps/api/src/audit/visibility.ts#visibleAttachment',
     'apps/api/src/audit/visibility.ts#visibleErrorReport',
     'packages/domain/src/audit/labels.ts#auditObjectMeta',
     'packages/domain/src/audit/operations.ts#AUDIT_BEHAVIOR_LABELS',
@@ -282,10 +296,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/linkage/validation.ts#RELATION_FIELDS',
   ],
   'apps/api/src/audit/transfer-linkage.ts#transferEmployee': ['#idOf'],
+  'apps/api/src/audit/visibility.ts#ATTACHMENT_WITHHELD_TYPES': [
+    'packages/domain/src/analytics/hr-movement.ts#HR_MOVEMENT_REPORT_OBJECT',
+    'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORT_OBJECT',
+  ],
   'apps/api/src/audit/visibility.ts#CONFIG_FIELDS_BY_ACTION': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/audit/visibility.ts#CONFIG_FIELDS_BY_TYPE': [
+    'apps/api/src/audit/controlled-fields.ts#approvalContentFields',
     '#EMPLOYMENT',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
@@ -338,6 +357,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent/access.ts#TALENT_AUDIT_ACTIONS',
     'apps/api/src/modules/talent/access.ts#isDictionary',
     'apps/api/src/modules/talent/model-image-service.ts#MODEL_IMAGE_AUDIT_TYPE',
+    'packages/domain/src/analytics/hr-movement.ts#HR_MOVEMENT_REPORT_OBJECT',
+    'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORT_OBJECT',
     'packages/domain/src/approval/catalog.ts#APPROVAL_INSTANCE_OBJECT',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
@@ -554,6 +575,7 @@ export const GRAPH: Graph = {
     '#personRule',
     'apps/api/src/modules/employment/context.ts#employmentCreator',
   ],
+  'apps/api/src/audit/visibility.ts#visibleAttachment': ['#ATTACHMENT_WITHHELD_TYPES'],
   'apps/api/src/audit/visibility.ts#visibleChanges': [
     'apps/api/src/audit/nested-fields.ts#NestedAuditFields',
     'apps/api/src/audit/nested-fields.ts#visibleNestedChanges',

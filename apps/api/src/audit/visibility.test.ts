@@ -113,9 +113,13 @@ describe('写入审计的对象类型都已登记查看规则（PR #75 第三轮
   ]
     .map((code) => `TenantBase.${code}`)
     .concat([
+      'approval-application-variable',
       'approval-exception-admin',
       'approval-instance',
+      'approval-matrix',
+      'approval-matrix-row',
       'approval-process',
+      'approval-public-variable',
       'approval-task',
       'audit_retention',
       'duty-transfer-record',
@@ -189,6 +193,9 @@ describe('写入审计的对象类型都已登记查看规则（PR #75 第三轮
       'IDP.WorkShift',
       // R3-T04 人才盘点（PR-A）
       'TalentReview.Readiness',
+      // F-489：F-482 统计报表导出日志（recordOperationLog，objectType = 报表所属的人事分析对象）
+      'TenantBase.HrMovementReport',
+      'TenantBase.HrStructureReport',
     ]);
 
   it.each(written)('%s', (objectType) => {

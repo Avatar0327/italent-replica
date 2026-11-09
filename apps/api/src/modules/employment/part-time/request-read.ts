@@ -43,7 +43,7 @@ export interface PartTimeRequestDto {
 
 export interface PartTimeRequestDetail extends PartTimeRequestDto {
   readonly primary: { readonly id: string; readonly fields: PresetFields } | null;
-  readonly employee: { readonly code: string; readonly name: string };
+  readonly employee: { readonly code: string | null; readonly name: string };
 }
 
 /** 申请 → DTO；warnings 是写入时 B-4 等只提示不拦的信息（读取时为空）。 */

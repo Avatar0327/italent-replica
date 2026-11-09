@@ -83,12 +83,16 @@ export async function resolveModuleScopeInTransaction(
   tx: Tx,
   objectCode: string,
   pageCode?: string,
+  viewCode?: string,
 ): Promise<ModuleScope> {
   const provider = providers.get(deps.authorize);
   if (provider) {
     const asOf = tenantLocalDate(deps.clock(), ctx.timezone);
     const query = { tenantId: ctx.tenantId, userId: ctx.userId, appCode: scopeAppOf(objectCode), asOf, objectCode };
-    return provider.scope({ ...query, ...(pageCode ? { pageCode, dataSourceCode: pageCode } : {}) }, tx);
+    return provider.scope(
+      { ...query, ...(pageCode ? { pageCode, dataSourceCode: pageCode } : {}), ...(viewCode ? { viewCode } : {}) },
+      tx,
+    );
   }
   const all = await deps.authorize({ ...ctx, action: 'data.scope.all', resource: objectCode });
   return all ? { ...EMPTY_SCOPE, all: true, hasDataPermission: true, source: 'identity' } : EMPTY_SCOPE;

@@ -414,19 +414,31 @@ function closureEnvFor(read: SourceReader, boundary: readonly BoundaryEntry[]) {
   return env;
 }
 
+/**
+ * 每个单元的依赖闭包按环境缓存（F-501）：同一环境（= 同一读取器 + 同一边界，源码在其生命周期内不变）下，闭包是单元的
+ * 纯函数；整表校验每调一次 checkEvidence 都要对几百个单元各做一遍广度优先，是证据门禁族用例超时的主要来源。
+ * 缓存的闭包只读（调用方只取 deps / unresolved / depth），与环境内其他缓存同一前提。
+ */
+const closureMemo = new WeakMap<ClosureEnv, Map<string, Closure | Error>>();
+
 function closuresOf(
   units: Iterable<string>,
   read: SourceReader,
   boundary: readonly BoundaryEntry[],
 ): Map<string, Closure | Error> {
   const env = closureEnvFor(read, boundary);
+  let memo = closureMemo.get(env);
+  if (!memo) closureMemo.set(env, (memo = new Map()));
   const out = new Map<string, Closure | Error>();
   for (const unit of units) {
-    try {
-      out.set(unit, closureOf(env, unit));
-    } catch (error) {
-      out.set(unit, error as Error);
+    if (!memo.has(unit)) {
+      try {
+        memo.set(unit, closureOf(env, unit));
+      } catch (error) {
+        memo.set(unit, error as Error);
+      }
     }
+    out.set(unit, memo.get(unit)!);
   }
   return out;
 }
@@ -489,8 +501,22 @@ const formatBinding = (line: BindingLine) => `${line.at}:${line.local} → ${lin
 /** 绑定指纹：按序的“局部标识符 → 解析链”清单的摘要；别名交换、转导出改指、遮蔽全局都会改变它（F-072 §2.3.2）。 */
 const bindingDigest = (lines: readonly BindingLine[]) => sha(lines.map(formatBinding).join('\n'));
 
-/** 由一组根（及其单元文本）算出的登记：全部可达依赖（不设层数上限，层数上限只作用于闭包推导）。 */
+const registryMemo = new WeakMap<ClosureEnv, Map<string, Registry>>();
+
+/**
+ * 由一组根（及其单元文本）算出的登记：全部可达依赖（不设层数上限，层数上限只作用于闭包推导）。
+ * 同一环境 + 同一组根的结果按环境缓存（F-501）：环境内源码不变、单元文本是根与读取器的函数，结果只读（调用方一律展开复制）。
+ */
 function registryFor(env: ClosureEnv, roots: readonly string[], texts: ReadonlyMap<string, string>): Registry {
+  let memo = registryMemo.get(env);
+  if (!memo) registryMemo.set(env, (memo = new Map()));
+  const key = roots.join('\n');
+  let registry = memo.get(key);
+  if (!registry) memo.set(key, (registry = computeRegistry(env, roots, texts)));
+  return registry;
+}
+
+function computeRegistry(env: ClosureEnv, roots: readonly string[], texts: ReadonlyMap<string, string>): Registry {
   const graph: Record<string, readonly string[]> = {};
   const targets = new Set<string>();
   for (const id of explore(env, roots)) {

@@ -68,7 +68,7 @@ export interface PartTimeViewInput extends ViewSort {
 }
 
 interface Shared {
-  readonly employee: { readonly code: string; readonly name: string };
+  readonly employee: { readonly code: string | null; readonly name: string };
   /** 员工当前主职部门；操作人看不到该主职记录时缺席。 */
   readonly primaryDepartmentId?: string;
   readonly pendingKind?: PartTimeRequestType | null;
@@ -178,7 +178,7 @@ function employeeColumns(ctx: EmploymentContext, employee: SQL): SQL {
 
 function shared(row: Record<string, unknown>): Shared {
   return {
-    employee: { code: String(row.emp_code), name: String(row.emp_name) },
+    employee: { code: row.emp_code === null ? null : String(row.emp_code), name: String(row.emp_name) },
     ...(row.primary_visible && row.primary_department_id
       ? { primaryDepartmentId: String(row.primary_department_id) }
       : {}),

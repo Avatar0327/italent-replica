@@ -70,7 +70,7 @@ export async function orgNamesAt(tx: Tx, tenantId: string, orgIds: readonly stri
 }
 
 /** 成员显示名（申请人列）。 */
-async function memberNames(tx: Tx, userIds: readonly string[]) {
+export async function memberNames(tx: Tx, userIds: readonly string[]) {
   const ids = [...new Set(userIds)];
   if (!ids.length) return new Map<string, string>();
   const rows = rowsOf<{ id: string; name: string | null }>(
@@ -163,7 +163,7 @@ export interface RangeOrg {
 }
 
 /** 调整范围列：按选择顺序，名称按单据生效日，文案“组织名（包含下级）”（F273A §4）。 */
-async function rangesOf(tx: Tx, tenantId: string, ids: readonly string[], orgScope: OrgScope) {
+export async function rangesOf(tx: Tx, tenantId: string, ids: readonly string[]) {
   const ranges = new Map<string, RangeOrg[]>();
   if (!ids.length) return ranges;
   const rows = rowsOf<{ adjustmentId: string; orgId: string; name: string | null }>(
@@ -175,18 +175,25 @@ async function rangesOf(tx: Tx, tenantId: string, ids: readonly string[], orgSco
       ORDER BY r.adjustment_id, r.seq`),
   );
   for (const row of rows) {
-    // 范围外的组织不带出现名与文案（F-412，同明细 targetOrgName / 预览的口径）
-    const name = orgVisible(orgScope, row.orgId) ? row.name : null;
-    const label = name === null ? null : `${name}（包含下级）`;
-    ranges.set(row.adjustmentId, [...(ranges.get(row.adjustmentId) ?? []), { orgId: row.orgId, name, label }]);
+    // 读全：不按查看人范围裁剪（办理时冻结的是完整内容，F-476 DEC-834④）；范围外组织不带名称的裁剪在投影时做
+    const label = row.name === null ? null : `${row.name}（包含下级）`;
+    ranges.set(row.adjustmentId, [
+      ...(ranges.get(row.adjustmentId) ?? []),
+      { orgId: row.orgId, name: row.name, label },
+    ]);
   }
   return ranges;
 }
 
 type Fields = ReadonlySet<string> | undefined;
 /** 查看人的组织对象范围；null = 不按组织对象范围裁剪（审批人路径，沿用审批中心可打开口径）。 */
-type OrgScope = ModuleScope | null;
+export type OrgScope = ModuleScope | null;
 const orgVisible = (scope: OrgScope, orgId: string | null) => !scope || !orgId || scopeAllows(scope, { orgId });
+
+/** 范围外的组织不带出现名与文案（F-412，同明细 targetOrgName / 预览的口径）。 */
+function scopedRange(range: RangeOrg, orgScope: OrgScope): RangeOrg {
+  return orgVisible(orgScope, range.orgId) ? range : { orgId: range.orgId, name: null, label: null };
+}
 
 /** 头列投影：每个源字段连同它的派生列一起出现或一起隐去。 */
 export async function projectHeads(
@@ -201,7 +208,6 @@ export async function projectHeads(
         tx,
         tenantId,
         rows.map((row) => row.id),
-        orgScope,
       )
     : null;
   const names = canSee(fields, 'createdBy')
@@ -210,6 +216,19 @@ export async function projectHeads(
         rows.map((row) => row.createdBy),
       )
     : null;
+  return projectHeadRows(rows, fields, ranges, names, orgScope);
+}
+
+/**
+ * 头列投影的纯函数部分（F-476：现值与办理时冻结份共用同一套裁剪）；ranges / names 为 null 表示该派生列不披露。
+ */
+export function projectHeadRows(
+  rows: readonly HeadRow[],
+  fields: Fields,
+  ranges: ReadonlyMap<string, readonly RangeOrg[]> | null,
+  names: ReadonlyMap<string, string> | null,
+  orgScope: OrgScope,
+) {
   return rows.map((row) => {
     const out: Record<string, unknown> = { id: row.id };
     const put = (code: string, values: Record<string, unknown>) => {
@@ -223,7 +242,7 @@ export async function projectHeads(
       approvalSubjectOrgId: row.approvalSubjectOrgId,
       approvalSubjectOrgName: orgVisible(orgScope, row.approvalSubjectOrgId) ? row.approvalSubjectOrgName : null,
     });
-    if (ranges) out.adjustmentRange = ranges.get(row.id) ?? [];
+    if (ranges) out.adjustmentRange = (ranges.get(row.id) ?? []).map((range) => scopedRange(range, orgScope));
     put('approvalStatus', {
       approvalStatus: row.approvalStatus,
       approvalStatusLabel: ORG_ADJUSTMENT_APPROVAL_STATUS_LABELS[row.approvalStatus] ?? null,

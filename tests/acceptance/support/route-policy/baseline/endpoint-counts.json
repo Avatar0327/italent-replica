@@ -19,7 +19,7 @@
     "idp": 58,
     "job": 15,
     "offers": 21,
-    "org": 14,
+    "org": 16,
     "org-adjustment": 16,
     "permission": 44,
     "personnel": 18,
@@ -39,5 +39,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 875
+  "total": 877
 }

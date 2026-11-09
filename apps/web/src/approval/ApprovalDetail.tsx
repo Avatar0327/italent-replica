@@ -1,6 +1,8 @@
 import { Alert, Button, Drawer, Empty, Input, Space, Steps, Tabs, Tag, Timeline, Tooltip } from 'antd';
 import { useEffect, useState } from 'react';
 import { DecisionNote, FormOverlay, PageState, useApiClient, useSession } from '../foundation/index.js';
+import { attachmentViews, CarrierAttachments } from '../foundation/attachments/index.js';
+import { EXIT_ATTACHMENT } from '../exit/exit-model.js';
 import { presetLabels } from '../transfer/messages.js';
 import { completedDetail } from '../demo-stubs/approval.js';
 import { applicationGroups } from './application-groups.js';
@@ -51,6 +53,7 @@ function FieldList({ detail, fields }: { detail: Detail; fields: { key: string; 
   return (
     <dl className="approval-fields">
       {fields.map(({ key, label }) => {
+        if (key === 'attachmentRefs') return <AttachmentField key={key} detail={detail} label={label} />;
         // 后端 originals 带着前一条记录的全部字段，没变的也在里面：只有值真的不同才算“改变”
         const changed = key in originals && !sameValue(detail.form.values[key], originals[key]);
         return (
@@ -64,6 +67,22 @@ function FieldList({ detail, fields }: { detail: Detail; fields: { key: string; 
         );
       })}
     </dl>
+  );
+}
+/** 附件行：按 attachments 展开显示缩略图，内容走审批载体（只认详情同一取值）；附件不做“原：旧值”对比。 */
+function AttachmentField({ detail, label }: { detail: Detail; label: string }) {
+  return (
+    <div className="approval-field">
+      <dt>{label}</dt>
+      <dd>
+        <CarrierAttachments
+          purpose={EXIT_ATTACHMENT}
+          carrier="approval"
+          ownerId={detail.id}
+          items={attachmentViews(detail.form.values.attachments)}
+        />
+      </dd>
+    </div>
   );
 }
 

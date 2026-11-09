@@ -1,12 +1,16 @@
 import type { Tx } from '@italent/db';
 import type { EmploymentContext } from '../employment/types.js';
 import { auditActor } from '../../system-actor.js';
-import { MODULE_OBJECTS } from '@italent/domain';
+import { ESTABLISHMENT_SCHEME_DATASOURCE, MODULE_OBJECTS } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { creatorOf, hasCreatorScope, visible, writeFields, type ModuleScope } from './module-route-access.js';
 import type { ScopeBusinessContext } from './module-contracts.js';
-import { authorizeInTransaction, resolveModuleScopeInTransaction } from './module-access.js';
+import {
+  authorizeInTransaction,
+  getModuleViewableFieldsInTransaction,
+  resolveModuleScopeInTransaction,
+} from './module-access.js';
 import type { CapacityScopeTarget, EstablishmentContext } from '../establishment/store.js';
 
 /** HTTP 提供事务内钩子；自动补月、跨期调整、复制和同步祖先不能越过发起人的范围/字段权限。 */
@@ -33,8 +37,33 @@ export function capacityContext(
       throw error;
     }
   };
+  // 与 GET /schemes/:id 同口径：详情页方案看全部（或创建人规则）命中，且方案 name 字段可读，才披露方案名称
+  const canDiscloseSchemeName = async (tx: Tx, schemeId: string) => {
+    const bound = { authorize: authorizeInTransaction(deps.authorize, tx), clock: () => ctx.now };
+    const objectCode = MODULE_OBJECTS.establishment.code;
+    const schemeScope = await resolveModuleScopeInTransaction(
+      bound,
+      ctx,
+      tx,
+      objectCode,
+      `${objectCode}.detail`,
+      ESTABLISHMENT_SCHEME_DATASOURCE,
+    );
+    const creator = hasCreatorScope(schemeScope)
+      ? await creatorOf(tx, ctx.tenantId, schemeId, 'establishment.scheme.create', 'establishment-scheme')
+      : undefined;
+    try {
+      visible(schemeScope, undefined, '编制方案在该时点不存在', creator);
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'NOT_FOUND') return false;
+      throw error;
+    }
+    const fields = await getModuleViewableFieldsInTransaction(bound, ctx, objectCode, tx);
+    return fields === undefined || fields.has('name');
+  };
   return {
     ...ctx,
+    canDiscloseSchemeName,
     authorizeCapacityScope,
     authorizeCapacity: async (tx, change) => {
       await authorizeCapacityScope(tx, change);

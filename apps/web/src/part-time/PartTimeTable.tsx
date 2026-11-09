@@ -8,6 +8,7 @@ export function PartTimeTable({
   rows,
   view,
   loading,
+  disabled,
   noScope,
   profile,
   onOpen,
@@ -20,6 +21,8 @@ export function PartTimeTable({
   rows: Row[];
   view: View;
   loading: boolean;
+  /** 切视图期间旧行不接受操作（list-state.ts useViewSwitching）。 */
+  disabled?: boolean;
   noScope?: boolean;
   profile?: boolean;
   onOpen(row: Row): void;
@@ -62,7 +65,7 @@ export function PartTimeTable({
           render: (_: unknown, row: Row) => (
             <>
               {actions?.(row)}
-              <Button type="link" onClick={() => onOpen(row)}>
+              <Button type="link" disabled={disabled} onClick={() => onOpen(row)}>
                 {m.open}
               </Button>
               {!profile && view !== 'in_approval' && <DateRequestButtons row={row} />}
