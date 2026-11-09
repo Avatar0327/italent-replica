@@ -65,19 +65,31 @@ export async function readContext(
     ? undefined
     : await resolveModuleScope(deps, context, tenantLocalDate(now, tenant.timezone), objectCode, pageCode);
   const trustedScopeBypass = await deps.authorize({ ...tenant, action: 'data.scope.all' });
-  if (resource && trustedScopeBypass) {
+  const result = { ...context, scope, authorize: deps.authorize, objectCode, trustedScopeBypass };
+  return resource ? bindEmployeeResource(deps, result, operation, resource) : result;
+}
+
+/**
+ * 把读 / 写上下文绑定到某名员工：受信的范围旁路也要有该员工的读 / 写权，其余按数据范围确认员工可见（范围外同 404）。
+ * 从 readContext 拆出，供“要先看单据才能决定是否套用范围”的入口分两步调用（F-476 P4：已办审批人读本人冻结内容免范围）。
+ */
+export async function bindEmployeeResource(
+  deps: TenantRouteDeps,
+  context: EmploymentContext,
+  operation: string,
+  resource: string,
+): Promise<EmploymentContext> {
+  if (context.trustedScopeBypass) {
     await requirePermission(deps.authorize, {
-      ...tenant,
+      tenantId: context.tenantId,
+      userId: context.userId,
+      timezone: context.timezone,
       action: operation === 'object.view' ? 'tenant.employment.read' : 'tenant.employment.write',
       resource,
     });
   }
-  const result = { ...context, scope, authorize: deps.authorize, objectCode, trustedScopeBypass };
-  if (resource) {
-    const creatorId = await withTenant(deps.db, tenant.tenantId, (tx) => requireEmployeeInScope(tx, result, resource));
-    return { ...result, scopeEmployeeId: resource, scopeEmployeeCreatorId: creatorId };
-  }
-  return result;
+  const creatorId = await withTenant(deps.db, context.tenantId, (tx) => requireEmployeeInScope(tx, context, resource));
+  return { ...context, scopeEmployeeId: resource, scopeEmployeeCreatorId: creatorId };
 }
 
 /**

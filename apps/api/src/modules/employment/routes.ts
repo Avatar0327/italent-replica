@@ -1,4 +1,4 @@
-import { composeBusiness, selectEmploymentRead } from './approval-content.js';
+import { composeBusiness, selectEmploymentRead, type EmploymentRead } from './approval-content.js';
 import { registerEmploymentFormRoutes } from './employment-form-routes.js';
 import { registerEmploymentTypeRoutes } from './employment-type-routes.js';
 import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
@@ -86,7 +86,7 @@ import {
 } from './deletion-guards.js';
 import { visibleEmploymentRecords } from './visibility.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
-import type { EmploymentBusinessPatch, EmploymentContext } from './types.js';
+import type { EmploymentBusiness, EmploymentBusinessPatch, EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
 import { requireTransferSource } from '../transfer/access.js';
 import { requireDirectTransfer, transferBusinessContext } from '../transfer/service.js';
@@ -409,20 +409,34 @@ function requireResultApplicable(result: string | undefined, kind: string) {
     });
 }
 
+// 已办读取：业务内容全取冻结份（含生效后的记录），流程事实取现值；字段仍叠当前字段权，范围不再参与裁剪。
+async function shownBusiness(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  read: EmploymentRead,
+  value: EmploymentBusiness,
+) {
+  const frozen = read.frozen;
+  const shown = frozen ? composeBusiness(value, frozen.content, frozen.allowed) : value;
+  const body = await trimEmploymentResponse(deps, frozen ? { ...ctx, scope: undefined } : ctx, shown);
+  return { ...(body as object), contentView: read.contentView };
+}
+
+// F-476 P4：GET /businesses/:id 先判内容来源——已办审批人读本人冻结内容（流程事实取现值），不套用其当前数据范围（DEC-834④），
+// 字段仍叠当前字段权；其余读现值，范围照旧。
 function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/businesses/:id', async (c) => {
     const id = uuidParam(c);
     let ctx = await readPageContext(c, deps, 'detail');
-    ctx = await withTenant(deps.db, ctx.tenantId, (tx) => transferBusinessContext(tx, ctx, id));
+    const read = await selectEmploymentRead(deps, ctx, id);
+    if (!read.frozen) ctx = await withTenant(deps.db, ctx.tenantId, (tx) => transferBusinessContext(tx, ctx, id));
+    const scope = read.frozen || ctx.transferTarget ? undefined : ctx.scope;
     const value = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      loadEmploymentBusiness(tx, ctx.tenantId, id, queryDate(c, ctx), ctx.transferTarget ? undefined : ctx.scope),
+      loadEmploymentBusiness(tx, ctx.tenantId, id, queryDate(c, ctx), scope),
     );
     if (!value) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: value.employeeId });
-    // F-476 P4：已办审批人读办理时冻结的业务内容，其余读现值；流程事实始终是现值
-    const read = await selectEmploymentRead(deps, ctx, id);
-    const shown = read.frozen ? composeBusiness(value, read.frozen.content, read.frozen.allowed) : value;
-    return c.json({ ...((await trimEmploymentResponse(deps, ctx, shown)) as object), contentView: read.contentView });
+    return c.json(await shownBusiness(deps, ctx, read, value));
   });
   router.get('/records/:id', async (c) => {
     const id = uuidParam(c);

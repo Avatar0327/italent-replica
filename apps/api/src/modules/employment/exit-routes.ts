@@ -20,7 +20,7 @@ import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
 import { readCarrierAttachment, respondAttachment } from '../attachments/carrier-read.js';
-import { composeExit, selectEmploymentRead } from './approval-content.js';
+import { composeExit, disclosing, selectEmploymentRead } from './approval-content.js';
 import { exitActions } from './exit-actions.js';
 import { handoverRowActions } from './exit-handover-batch.js';
 import { AppError } from '../../errors.js';
@@ -607,18 +607,21 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
   // 详情：范围外 / 不存在 / 不是离职单同一个 404；先按任职业务口径（DEC-177）确认可见，再取离职详情
   // 详情与附件下载共用的取值：按钮 / 范围 / 读权限同一套判定（F-479 §3.3 “与详情接口同一个取值函数”）
-  const readExitDetail = async (c: Context<TenantEnv>) => {
+  // withHandled：详情入口为 true——已办审批人读本人办理时冻结的内容，不套用其当前数据范围（F-476 P4，DEC-834④）
+  const readExitDetail = async (c: Context<TenantEnv>, withHandled = false) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
+    const read = withHandled ? await selectEmploymentRead(deps, ctx, id, ['leave']) : null;
+    const scope = read?.frozen ? undefined : ctx.scope;
     const today = tenantLocalDate(ctx.now, ctx.timezone);
     const detail = await withTenant(deps.db, ctx.tenantId, async (tx) =>
-      (await loadEmploymentBusiness(tx, ctx.tenantId, id, today, ctx.scope))
-        ? loadExitDetail(tx, ctx.tenantId, id, ctx.scope)
+      (await loadEmploymentBusiness(tx, ctx.tenantId, id, today, scope))
+        ? loadExitDetail(tx, ctx.tenantId, id, scope)
         : null,
     );
     if (!detail) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
-    return { ctx, detail, show: await viewableIn(deps, ctx) };
+    return { ctx, detail, show: await viewableIn(deps, ctx), read };
   };
   // F-479 §3.3 HR 载体下载：无附件字段查看权 / 文件不属于本单 / 不是 bound 一律 404“附件不存在”；缺详情按钮 403（readPageContext）
   router.get('/exits/:id/attachments/:fileId/content', async (c) => {
@@ -631,21 +634,21 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     return respondAttachment(c, row, bytes);
   });
   router.get('/exits/:id', async (c) => {
-    const { ctx, detail, show } = await readExitDetail(c);
-    // F-476 P4：已办审批人读办理时冻结的离职内容，其余读现值；流程事实（状态、动作、生效结果）始终是现值
-    const read = await selectEmploymentRead(deps, ctx, detail.id);
-    const frozen = read.frozen ? composeExit(detail, read.frozen.content, read.frozen.allowed) : null;
-    if (read.frozen && !frozen) throw new AppError('NOT_FOUND', '任职业务不存在');
-    const shown = (frozen ?? detail) as typeof detail;
+    const { ctx, detail, show: current, read } = await readExitDetail(c, true);
+    // F-476 P4：已办审批人读办理时冻结的离职内容（逐路径按披露集合取舍），其余读现值；流程事实始终是现值
+    const frozen = read?.frozen ?? null;
+    const shown = (frozen ? composeExit(detail, frozen.content) : detail) as typeof detail;
+    const show = frozen ? disclosing(current, frozen.allowed) : current;
     // 动作随“状态”字段权裁剪（依赖表登记 actions）：无状态查看权的人拿不到，也就无法由动作反推状态；动作是流程事实，取现值
     const actions = (await exitActions(deps, ctx, [detail], { withHandle: false })).get(detail.id) ?? [];
+    const contentView = read?.contentView;
     if (shown.activation?.details) {
       const details = await withTenant(deps.db, ctx.tenantId, (tx) =>
         projectExitFailureDetails(tx, ctx, shown.activation!.details!, { has: show.employment }),
       );
       const body = trimExitDetail({ ...shown, actions, activation: { ...shown.activation, details } }, show);
-      return c.json({ ...body, contentView: read.contentView });
+      return c.json({ ...body, contentView });
     }
-    return c.json({ ...trimExitDetail({ ...shown, actions }, show), contentView: read.contentView });
+    return c.json({ ...trimExitDetail({ ...shown, actions }, show), contentView });
   });
 }

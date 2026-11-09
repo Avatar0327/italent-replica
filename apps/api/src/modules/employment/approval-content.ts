@@ -1,13 +1,15 @@
 /**
  * 任职 / 离退类审批的“内容源”（F-476 P4，设计 §5.4）：三个人事详情入口（任职业务 / 离职 / 退休）共用这一份对象。
- * - 办理时冻结 `loadEmploymentContent` 的结果（办理份 ext）：业务内容 = 详情里除“流程事实”以外的全部键；
- *   流程事实（状态、版本号、生效结果、动作、日志等）始终读现值，不进办理份，也不会被办理份盖掉。
- * - 已办读取：现值里只留流程事实，业务内容全部取自冻结份，再按披露集合（办理时上限 ∩ 办理节点表单 ∩ 当前权限）取舍——
- *   办理份里没有的内容键或不在披露集合里的键一律缺席，不退回现值（DEC-807）。
- * - 内容键对应的审批字段编码：fields.X / customFields.X / 扩展字段 X 就是 X；名称类派生键跟随其编码；
- *   不属于审批表单的键（试用期、加黑原因等）没有编码，已办读取不披露。
+ * - 办理时冻结 `loadEmploymentContent` 的结果（办理份 ext）：业务内容 = 详情里除“流程事实”以外的全部键，
+ *   含嵌套的业务值（任职记录 record 及其 fields / before、部门、职位、版本列表里的日期）；
+ *   流程事实（状态、版本号、动作、生效 / 撤销结果、事件、下游执行结果等）始终读现值，不进办理份。
+ * - 已办读取：现值只留流程事实，业务内容全部取自冻结份，再逐字段按披露集合（办理时上限 ∩ 办理节点表单）取舍，
+ *   最后仍叠当前字段权；办理份里没有的内容键或不在披露集合里的键一律缺席，不退回现值（DEC-807）。
+ * - 字段编码：fields.X / 扩展字段 X 就是 X；自定义字段按 `custom:<id>` 判，响应键仍是裸 id；
+ *   离职的 positionId 对应审批表单的 postId；不属于审批表单的键（试用期、加黑原因等）没有编码，已办读取不披露。
  */
 import { withTenant, type Tx } from '@italent/db';
+import { sql } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
@@ -17,13 +19,13 @@ import { foreignVisibility, viewableWithForeign } from '../approval/foreign-fiel
 import { contentViewOf, type ContentSelection } from '../approval/handling-content.js';
 import { latestInstanceOf } from '../approval/store.js';
 import { authorizeInTransaction, getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
-import { loadExitDetail } from './exit-queries.js';
-import { loadEmploymentBusiness } from './read-model.js';
+import { loadExitDetail, type ExitViewable } from './exit-queries.js';
+import { loadEmploymentBusiness, rowsOf } from './read-model.js';
 import { loadRetirementDetail } from './retirement-views.js';
 
 type Row = Record<string, unknown>;
 
-/** 任职业务详情里的流程事实（读现值）；其余键都是业务内容。 */
+/** 任职业务详情里的流程事实（读现值）；其余键都是业务内容（含 record：生效后的记录是业务值，不能由现值旁路补露）。 */
 const BUSINESS_FACTS: ReadonlySet<string> = new Set([
   'id',
   'employeeId',
@@ -35,18 +37,18 @@ const BUSINESS_FACTS: ReadonlySet<string> = new Set([
   'formId',
   'employeeStatus',
   'entryStatus',
-  'record',
   'activation',
 ]);
 
-/** 离职 / 退休详情里的流程事实（读现值）：身份、状态、动作、生效 / 撤销结果、版本与事件、下游执行结果。 */
+/**
+ * 离职 / 退休详情里的流程事实（读现值）：身份、状态、动作、生效 / 撤销结果、事件、下游执行结果。
+ * 部门、职位、版本列表（里面有最后工作日 / 生效日）是业务内容，取冻结份；dutyTransfer 的件数读现值、timing 取冻结份。
+ */
 const EXIT_FACTS: ReadonlySet<string> = new Set([
   'id',
   'employeeId',
   'code',
   'name',
-  'departmentId',
-  'positionId',
   'status',
   'actions',
   'mode',
@@ -57,19 +59,45 @@ const EXIT_FACTS: ReadonlySet<string> = new Set([
   'createdAt',
   'activation',
   'cancellation',
-  'versions',
   'events',
   'approvalInstanceId',
   'effects',
   'dutyTransfer',
 ]);
 
-/** 名称类派生键跟随的审批字段。 */
-const EXIT_CODE_OF: Readonly<Record<string, string>> = {
-  exitTypeName: 'exitTypeCode',
-  reasonName: 'reasonCode',
-  whereaboutsName: 'whereaboutsCode',
-};
+/** 响应路径依赖的字段里属于流程事实的那些：只按当前字段权判，不要求在办理披露集合里。 */
+const FACT_FIELDS: ReadonlySet<string> = new Set([
+  'id',
+  'employeeId',
+  'status',
+  'mode',
+  'initiator',
+  'initiatorUserId',
+  'batchId',
+  'revision',
+  'createdAt',
+  'activation',
+  'kind',
+  'versionNo',
+]);
+
+/** 审批表单里与响应键不同名的字段编码。 */
+const approvalCodeOf = (field: string): string => (field === 'positionId' ? 'postId' : field);
+
+/** 记录里不含业务值的结构键（标识、版本、状态标记、链接）；其余记录键按编码判披露。 */
+const RECORD_STRUCTURE: ReadonlySet<string> = new Set([
+  'id',
+  'employeeId',
+  'tenantId',
+  'revision',
+  'kind',
+  'changeType',
+  'status',
+  'isCurrent',
+  'isLatest',
+  'isInserted',
+  'previousRecordId',
+]);
 
 export interface EmploymentContent {
   readonly business: Row;
@@ -77,8 +105,12 @@ export interface EmploymentContent {
   readonly exit: Row | null;
 }
 
+const isRow = (value: unknown): value is Row => typeof value === 'object' && value !== null && !Array.isArray(value);
+
 const contentOf = (source: Row, facts: ReadonlySet<string>): Row =>
   Object.fromEntries(Object.entries(source).filter(([key]) => !facts.has(key)));
+
+const EXIT_KINDS: ReadonlySet<string> = new Set(['leave', 'retirement']);
 
 /** 读全任职业务的内容现值（办理时冻结的 ext）；业务不存在返回 null。 */
 export async function loadEmploymentContent(
@@ -101,34 +133,77 @@ export async function loadEmploymentContent(
   };
 }
 
-const pickCodes = (source: unknown, allowed: ReadonlySet<string>): Row =>
-  Object.fromEntries(Object.entries((source ?? {}) as Row).filter(([code]) => allowed.has(code)));
+/**
+ * 按可信的业务类型（现值里的 kind，不取自办理份）核对办理份的必备结构；缺损一律视为办理份不可读（503）。
+ * 这是新写办理份的结构自检，不是旧数据兼容（DEC-402）。
+ */
+function hasRequiredContent(ext: unknown, kind: string): ext is EmploymentContent {
+  if (!isRow(ext) || !isRow(ext.business) || !isRow(ext.business.fields)) return false;
+  if (!EXIT_KINDS.has(kind)) return true;
+  return isRow(ext.exit) && Array.isArray(ext.exit.versions);
+}
 
-/** 已办读取：现值只留流程事实，业务内容全部取自冻结份且只留披露集合内的键。 */
-function compose(
-  live: Row,
-  frozen: Row,
-  facts: ReadonlySet<string>,
-  codeOf: (key: string) => string | null,
-  allowed: ReadonlySet<string>,
-): Row {
-  const result: Row = Object.fromEntries(Object.entries(live).filter(([key]) => facts.has(key)));
-  for (const [key, value] of Object.entries(frozen)) {
-    if (key === 'fields' || key === 'customFields') result[key] = pickCodes(value, allowed);
-    else {
-      const code = codeOf(key);
-      if (code !== null && allowed.has(code)) result[key] = value;
-    }
+const pickCodes = (source: unknown, allowed: ReadonlySet<string>): Row =>
+  Object.fromEntries(Object.entries(isRow(source) ? source : {}).filter(([code]) => allowed.has(approvalCodeOf(code))));
+
+/** 自定义字段：按 `custom:<id>` 判披露，响应键仍是裸 id。 */
+const pickCustom = (source: unknown, allowed: ReadonlySet<string>): Row =>
+  Object.fromEntries(Object.entries(isRow(source) ? source : {}).filter(([id]) => allowed.has(`custom:${id}`)));
+
+const pickFacts = (live: object, facts: ReadonlySet<string>): Row =>
+  Object.fromEntries(Object.entries(live).filter(([key]) => facts.has(key)));
+
+function pickRecord(record: unknown, allowed: ReadonlySet<string>): Row | null {
+  if (!isRow(record)) return null;
+  const result: Row = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (key === 'fields') result.fields = pickCodes(value, allowed);
+    else if (key === 'customFields') result.customFields = pickCustom(value, allowed);
+    else if (key === 'before')
+      result.before = isRow(value)
+        ? { fields: pickCodes(value.fields, allowed), customFields: pickCustom(value.customFields, allowed) }
+        : null;
+    else if (RECORD_STRUCTURE.has(key) || allowed.has(approvalCodeOf(key))) result[key] = value;
   }
   return result;
 }
 
-export const composeBusiness = (live: object, content: EmploymentContent, allowed: ReadonlySet<string>): Row =>
-  compose(live as Row, content.business, BUSINESS_FACTS, (key) => (key === 'effectiveDate' ? key : null), allowed);
+/** 已办读取（任职业务）：现值只留流程事实，业务内容（含 record）全部取自冻结份且逐字段按披露集合取舍。 */
+export function composeBusiness(live: object, content: EmploymentContent, allowed: ReadonlySet<string>): Row {
+  const frozen = content.business;
+  const result = pickFacts(live, BUSINESS_FACTS);
+  result.fields = pickCodes(frozen.fields, allowed);
+  result.customFields = pickCustom(frozen.customFields, allowed);
+  result.record = pickRecord(frozen.record, allowed);
+  if (allowed.has('effectiveDate') && Object.hasOwn(frozen, 'effectiveDate'))
+    result.effectiveDate = frozen.effectiveDate;
+  return result;
+}
 
-/** 离职 / 退休单没有对应冻结内容（办理的是别的类型）时返回 null，调用方按原样 404。 */
-export const composeExit = (live: object, content: EmploymentContent, allowed: ReadonlySet<string>): Row | null =>
-  content.exit ? compose(live as Row, content.exit, EXIT_FACTS, (key) => EXIT_CODE_OF[key] ?? key, allowed) : null;
+/**
+ * 已办读取（离职 / 退休）：现值只留流程事实，业务内容全取自冻结份。逐路径的披露取舍由 `disclosing` 在裁剪时完成，
+ * 所以原定 / 最终日期块、版本列表、名称类派生键都跟随各自字段，不再有单独的映射。
+ */
+export function composeExit(live: object, content: EmploymentContent): Row {
+  const frozen = content.exit as Row;
+  const duty = (live as Row).dutyTransfer as Row | undefined;
+  return {
+    ...pickFacts(live, EXIT_FACTS),
+    ...frozen,
+    dutyTransfer: { ...duty, timing: frozen.dutyTransferTiming },
+  };
+}
+
+/**
+ * 已办读取的字段可见性：当前字段权 ∩ （流程事实字段，或在办理披露集合里的字段）。
+ * 不在表里的业务字段一律缺席（fail-closed）。
+ */
+export function disclosing(show: ExitViewable, allowed: ReadonlySet<string>): ExitViewable {
+  return {
+    employee: show.employee,
+    employment: (field) => show.employment(field) && (FACT_FIELDS.has(field) || allowed.has(approvalCodeOf(field))),
+  };
+}
 
 /**
  * 以参与人身份打开最新审批实例，只为决定内容来源：不带管理员范围——纯管理员没有办理记录，本来就读现值，
@@ -155,26 +230,43 @@ export interface EmploymentRead {
   readonly frozen: { readonly content: EmploymentContent; readonly allowed: ReadonlySet<string> } | null;
 }
 
+const LIVE_READ: EmploymentRead = { contentView: { mode: 'live', instanceId: null }, frozen: null };
+
+async function liveKindOf(tx: Tx, tenantId: string, businessId: string): Promise<string | null> {
+  const [row] = rowsOf<{ kind: string }>(
+    await tx.execute(sql`
+      SELECT kind FROM employment_payload_versions
+      WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid ORDER BY version_no DESC LIMIT 1
+    `),
+  );
+  return row?.kind ?? null;
+}
+
 /**
- * 选内容来源：本人有待办 / 是发起人 / 没办理过 → 现值；本人最近一次办理 → 冻结份（缺份 503）。
- * 调用方已通过原有的人事读权限与数据范围，这里只决定“读哪一份内容”。
+ * 选内容来源：本人有待办 / 是发起人 / 没办理过 → 现值；本人最近一次办理 → 冻结份（缺份、缺结构 503）。
+ * 调用方在自己的入口里决定数据范围：已办读取（返回 frozen）是本人办理时那份，不套用当前数据范围（DEC-834④），
+ * 其余读取沿用原入口的范围规则；成员、对象权限与当前字段权两种读取都照旧校验。
+ * `kinds` 是该入口接受的业务类型（离职入口只认 leave 等）；类型不符按现值读，由入口原有的取数返回 404。
  */
 export async function selectEmploymentRead(
   deps: TenantRouteDeps,
   ctx: TenantContext,
   businessId: string,
+  kinds?: readonly string[],
 ): Promise<EmploymentRead> {
   return withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const kind = await liveKindOf(tx, ctx.tenantId, businessId);
+    if (!kind || (kinds && !kinds.includes(kind))) return LIVE_READ;
     const instance = await latestInstanceOf(tx, ctx.tenantId, 'employment', businessId);
-    if (!instance) return { contentView: { mode: 'live', instanceId: null }, frozen: null } as const;
+    if (!instance) return LIVE_READ;
     const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
     const data = await openAsParticipant(tx, ctx, deps.clock(), instance.id);
     const selection: ContentSelection = data?.content ?? { mode: 'live' };
     const contentView = contentViewOf(instance.id, selection);
     if (!data || selection.mode === 'live') return { contentView, frozen: null };
-    const content = selection.frozen.content.ext as EmploymentContent | null;
-    // 改造前写下的办理份没有 ext：同样失败闭合，不拿现值顶替（DEC-807；不做旧数据兼容，DEC-402）
-    if (!content) {
+    const content = selection.frozen.content.ext;
+    // 缺办理份内容（含改造前写下的、新写但局部缺损的）一律失败闭合，不拿现值顶替（DEC-807；不做旧数据兼容，DEC-402）
+    if (!hasRequiredContent(content, kind)) {
       throw approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_HANDLING_CONTENT_MISSING', '办理记录暂不可读取，请稍后重试');
     }
     const own = await getModuleViewableFieldsInTransaction(bound, ctx, data.snapshot.fieldObjectCode, tx);
