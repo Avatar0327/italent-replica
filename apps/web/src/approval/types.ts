@@ -29,6 +29,8 @@ export interface ApprovalDetail extends ApprovalRow {
   };
   tasks: {
     id: string;
+    /** 后端 TaskRow.nodeKey（detailView 原样展开）；路径条按它关联 path[].nodeKey，节点名可重复。 */
+    nodeKey?: string;
     nodeName: string;
     status: string;
     assigneeUserId?: string | null;

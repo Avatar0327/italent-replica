@@ -233,12 +233,12 @@ function decisionLabel(detail: Detail | undefined, action: ApprovalAction | 'urg
 export function ApprovalProgress({ detail, terminatedGrey }: { detail: Detail; terminatedGrey?: boolean }) {
   // 我的申请（§3.8）：已终止的流程，终止的节点与结尾置灰；其他入口保持原呈现
   const terminated = !!terminatedGrey && detail.status === 'cancelled';
-  const nodes = [...new Map(detail.tasks.map((task) => [task.nodeName, task])).values()];
   if (detail.path?.length) {
-    // 终止时被取消任务所在的节点置灰（后端把已激活节点报为 passed，不能只看 path state）
-    const cancelled = new Set(
-      terminated ? nodes.filter((task) => task.status === 'cancelled').map((t) => t.nodeName) : [],
-    );
+    // 终止时最近任务被取消的节点置灰（后端把已激活节点报为 passed，不能只看 path state）。
+    // 按 nodeKey 关联：节点名可重复，按名称会把同名的已同意节点一并置灰
+    const latest = new Map(detail.tasks.map((task) => [task.nodeKey, task.status]));
+    const cancelled = new Set<string>();
+    for (const [key, status] of latest) if (terminated && key && status === 'cancelled') cancelled.add(key);
     return (
       <PathProgress
         path={detail.path}
@@ -248,6 +248,7 @@ export function ApprovalProgress({ detail, terminatedGrey }: { detail: Detail; t
       />
     );
   }
+  const nodes = [...new Map(detail.tasks.map((task) => [task.nodeName, task])).values()];
   const running = detail.status === 'running';
   const nodeStatus = (status: string) =>
     status === 'pending'
@@ -294,7 +295,7 @@ function PathProgress(props: {
             key: step.nodeKey,
             title: step.name,
             description: d.pathStates[step.state],
-            status: props.greyed.has(step.name) ? ('wait' as const) : pathStatus[step.state],
+            status: props.greyed.has(step.nodeKey) ? ('wait' as const) : pathStatus[step.state],
             className: step.state === 'not_on_path' ? 'approval-path-skipped' : undefined,
           })),
           endStep(props.running, props.terminated),
