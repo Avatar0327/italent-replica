@@ -405,7 +405,7 @@ function mergePatch(
 async function rewriteVersion(
   tx: Tx,
   ctx: EmploymentContext,
-  employee: { readonly id: string; readonly code: string },
+  employee: { readonly id: string; readonly code: string | null },
   request: PartTimeRequestRow,
   patch: AddRequestPatch,
   meta?: Readonly<Record<string, unknown>>,
@@ -552,7 +552,7 @@ const approvalContext = (ctx: EmploymentContext, fields?: FieldAccess): Approval
 async function recheckForSubmit(
   tx: Tx,
   ctx: EmploymentContext,
-  employee: { readonly id: string; readonly code: string },
+  employee: { readonly id: string; readonly code: string | null },
   request: PartTimeRequestRow,
   target: PartTimeRecordRow | null,
 ) {
@@ -695,7 +695,7 @@ function isLandingRejection(error: unknown): error is AppError {
 async function landAddRequest(
   tx: Tx,
   ctx: EmploymentContext,
-  employee: { readonly id: string; readonly code: string },
+  employee: { readonly id: string; readonly code: string | null },
   approved: PartTimeRequestRow,
 ): Promise<string> {
   const normalized = normalizeNewPartTime(inputOf(approved));

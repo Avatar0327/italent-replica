@@ -358,6 +358,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
     'apps/api/src/modules/org-adjustment/disclosure.ts#orgSectionDisclosed',
     'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
+    '#compareCodeNullsLast',
     'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
     'apps/api/src/modules/org/read-model.ts#rowsOf',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',

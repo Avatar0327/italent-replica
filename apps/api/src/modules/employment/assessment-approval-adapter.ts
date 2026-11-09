@@ -43,7 +43,7 @@ async function lockBoth(tx: Tx, ctx: ApprovalContext, id: string): Promise<Asses
 }
 
 async function employeeHeader(tx: Tx, tenantId: string, employeeId: string) {
-  const [row] = rowsOf<{ code: string; name: string }>(
+  const [row] = rowsOf<{ code: string | null; name: string }>(
     await tx.execute(sql`SELECT code, name FROM employment_employees
       WHERE tenant_id=${tenantId} AND id=${employeeId}::uuid`),
   );

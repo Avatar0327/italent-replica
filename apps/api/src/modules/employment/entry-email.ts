@@ -161,7 +161,7 @@ async function orgChain(tx: Tx, tenantId: string, departmentId: string, asOf: st
 }
 
 async function personFacts(tx: Tx, tenantId: string, employeeId: string) {
-  const [row] = rowsOf<{ employeeCode: string; namePinyin: string | null; pinyinInitials: string | null }>(
+  const [row] = rowsOf<{ employeeCode: string | null; namePinyin: string | null; pinyinInitials: string | null }>(
     await tx.execute(sql`
     SELECT e.code AS "employeeCode", v.name_pinyin AS "namePinyin", v.pinyin_initials AS "pinyinInitials"
     FROM employment_employees e

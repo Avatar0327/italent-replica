@@ -116,7 +116,7 @@ async function applyExplicitPresetFields(
   fields: PresetFields,
   explicitFieldCodes: string[],
   derivedOrigins: FieldDerivation[],
-  employeeCode: string,
+  employeeCode: string | null,
 ): Promise<void> {
   const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
   for (const [field, value] of Object.entries(parsedFields)) {
@@ -130,7 +130,8 @@ async function applyExplicitPresetFields(
   Object.assign(fields, derived.values);
   derivedOrigins.push(...derived.origins);
   if (owns(parsedFields, 'jobNumber') && parsedFields.jobNumber !== null) {
-    if (parsedFields.jobNumber!.toLowerCase() !== employeeCode.toLowerCase()) {
+    // F-493 S1：员工主档无工号时，任职工号只能为空（NULL 不做 toLowerCase）
+    if (employeeCode === null || parsedFields.jobNumber!.toLowerCase() !== employeeCode.toLowerCase()) {
       throw new AppError('VALIDATION_FAILED', '任职工号必须等于员工主档工号');
     }
     setField(fields, 'jobNumber', employeeCode);
@@ -232,7 +233,7 @@ export async function prepareInheritance(
         excludedAutofillFields: frozenForm.excludedAutofillFields ?? [],
       }
     : configured;
-  const [employee] = rowsOf<{ code: string }>(
+  const [employee] = rowsOf<{ code: string | null }>(
     await tx.execute(sql`
       SELECT code FROM employment_employees WHERE tenant_id=${ctx.tenantId} AND id=${input.employeeId} LIMIT 1
     `),
