@@ -129,3 +129,81 @@ export async function withoutPreviewInput(w: FlowWorld, userId: string) {
     await tx.execute(sql.raw(`INSERT INTO approval_handling_contents SELECT * FROM ${table}`));
   });
 }
+
+/**
+ * 可信夹具：在 parentId 下批量铺 count 个直属下级（行政维度，生效日前已成立、启用），名称为 nameLength 个字。
+ * 一条 SQL 铺完（HTTP 逐个建要几十分钟）；返回按顺序号排的前 keep 个组织 ID，给编制夹具用。
+ */
+export async function seedChildren(
+  w: FlowWorld,
+  parentId: string,
+  count: number,
+  options: { nameLength?: number; keep?: number; enabled?: boolean } = {},
+): Promise<string[]> {
+  const tag = `ZZ_BIG_${uniqueSuffix().replaceAll('-', '_')}_`;
+  return withTenant(w.db, w.tenant.id, async (tx) => {
+    await tx.execute(sql`WITH n AS (
+        SELECT g, gen_random_uuid() AS org_id, gen_random_uuid() AS version_id FROM generate_series(1, ${count}::int) g
+      ), o AS (
+        INSERT INTO org_objects (id, tenant_id) SELECT org_id, ${w.tenant.id}::uuid FROM n
+      ), v AS (
+        INSERT INTO org_versions
+          (id, tenant_id, org_id, version_no, start_date, code, name, full_name, established_on, enabled)
+        SELECT version_id, ${w.tenant.id}::uuid, org_id, 1, '2020-01-01', ${tag} || g,
+          repeat('名', ${options.nameLength ?? 12}::int), repeat('名', ${options.nameLength ?? 12}::int), '2020-01-01', ${options.enabled ?? true} FROM n
+      )
+      INSERT INTO org_hierarchy_links (tenant_id, version_id, dimension, parent_org_id, sequence)
+      SELECT ${w.tenant.id}::uuid, version_id, 'admin', ${parentId}::uuid, g FROM n`);
+    // 组织名次表在提交时按全租户重算（延迟触发器登记“待重算租户”，万级节点要几十分钟）；本夹具只读组织树，
+    // 不涉及人员排序，所以提交前清空登记（事务内设置，触发器见空则不重算）。
+    await tx.execute(sql`SELECT set_config('personnel.rank_tenants', '', true)`);
+    return resultRows<{ org_id: string }>(
+      await tx.execute(sql`SELECT v.org_id::text FROM org_versions v
+        JOIN org_hierarchy_links l ON l.tenant_id = v.tenant_id AND l.version_id = v.id AND l.dimension = 'admin'
+        WHERE v.code LIKE ${`${tag}%`} ORDER BY l.sequence LIMIT ${options.keep ?? 0}`),
+    ).map((row) => row.org_id);
+  });
+}
+
+/** 可信夹具：给组织挂一份覆盖生效日的「仅本级」编制（本级 local）；sharedScheme 缺省时新建方案，返回方案 ID。 */
+export async function localCapacity(w: FlowWorld, orgId: string, local: number, sharedScheme?: string) {
+  const schemeId = sharedScheme ?? randomUUID();
+  await withTenant(w.db, w.tenant.id, async (tx) => {
+    if (!sharedScheme) {
+      await tx.execute(
+        sql`INSERT INTO establishment_scheme_objects (id, tenant_id) VALUES (${schemeId}, ${w.tenant.id})`,
+      );
+      await tx.execute(sql`INSERT INTO establishment_scheme_versions
+        (tenant_id, scheme_id, version_no, code, name, cycle, maintenance_mode, enabled, start_date)
+        VALUES (${w.tenant.id}, ${schemeId}, 1, ${`ZZ_S${uniqueSuffix()}`}, 'ZZ_合成方案', 'annual', 'local', true,
+          '2020-01-01')`);
+    }
+    const objectId = randomUUID();
+    await tx.execute(sql`INSERT INTO establishment_objects (id, tenant_id, org_id, scheme_id, period_start, period_end)
+      VALUES (${objectId}, ${w.tenant.id}, ${orgId}, ${schemeId}, '2026-01-01', '2026-12-31')`);
+    await tx.execute(sql`INSERT INTO establishment_versions
+      (tenant_id, object_id, version_no, start_date, local_capacity, inclusive_capacity)
+      VALUES (${w.tenant.id}, ${objectId}, 1, '2026-01-01', ${local}, NULL)`);
+  });
+  return schemeId;
+}
+
+/** 可信夹具：追加编制新版本（版本只增不改）；开始日在生效日之前，现值读立刻变，冻结份不该变。 */
+export async function raiseLocalCapacity(w: FlowWorld, orgId: string, local: number) {
+  await withTenant(w.db, w.tenant.id, (tx) =>
+    tx.execute(sql`INSERT INTO establishment_versions
+      (tenant_id, object_id, version_no, start_date, local_capacity, inclusive_capacity)
+      SELECT o.tenant_id, o.id, 2, '2026-02-01', ${local}, NULL FROM establishment_objects o
+      WHERE o.tenant_id = ${w.tenant.id} AND o.org_id = ${orgId}::uuid`),
+  );
+}
+
+/** 某实例办理份的体积（字节）。 */
+export async function payloadBytes(w: FlowWorld, instanceId: string): Promise<number[]> {
+  return withTenant(w.db, w.tenant.id, async (tx) =>
+    resultRows<{ bytes: string }>(
+      await tx.execute(sql`SELECT payload_bytes::text AS bytes FROM approval_handling_contents
+        WHERE instance_id = ${instanceId}::uuid ORDER BY created_at`),
+    ).map((row) => Number(row.bytes)),
+  );
+}
