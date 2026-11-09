@@ -11,7 +11,7 @@ import { sql, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import { SYSTEM_USER_ID } from '../../apps/api/src/system-actor.js';
-import type * as DutyService from '../../apps/api/src/modules/duty-transfer/service.js';
+import type * as AuditRecord from '../../apps/api/src/audit/record.js';
 import { rowsOf } from '../../apps/api/src/modules/employment/read-model.js';
 import type * as TransferLocks from '../../apps/api/src/modules/employment/transfer-locks.js';
 import type * as DutyExecution from '../../apps/api/src/modules/transfer/linkage/duty-execution.js';
@@ -80,13 +80,14 @@ vi.mock('../../apps/api/src/modules/employment/transfer-locks.js', async (import
   };
 });
 
-vi.mock('../../apps/api/src/modules/duty-transfer/service.js', async (importOriginal) => {
-  const original = await importOriginal<typeof DutyService>();
+// 覆盖在写完记录之后写审计：service.ts 内部直接调自己的 auditRecord，替身挂不上，所以挂在它调用的 recordAudit 上。
+vi.mock('../../apps/api/src/audit/record.js', async (importOriginal) => {
+  const original = await importOriginal<typeof AuditRecord>();
   return {
     ...original,
-    auditRecord: async (...args: Parameters<typeof original.auditRecord>) => {
-      if (args[2] === 'duty_transfer.menu.rescheduled') await hooks.onReschedule?.();
-      return original.auditRecord(...args);
+    recordAudit: async (...args: Parameters<typeof original.recordAudit>) => {
+      if (args[1].action === 'duty_transfer.menu.rescheduled') await hooks.onReschedule?.();
+      return original.recordAudit(...args);
     },
   };
 });
@@ -164,7 +165,15 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('F-454 真 PG：菜单覆盖 vs 
       await reachedWithin(counting.reached, '记次取参与人锁之前');
       // 2. 菜单覆盖抢先拿到参与人锁和记录行锁，写完记录停在审计上
       const overriding = override(revision);
-      await reachedWithin(rescheduling.reached, '菜单覆盖写审计');
+      await reachedWithin(
+        Promise.race([
+          rescheduling.reached,
+          overriding.then(async (early) => {
+            throw new Error(`菜单覆盖提前返回 ${early.status}：${await early.clone().text()}`);
+          }),
+        ]),
+        '菜单覆盖写审计',
+      );
       // 3. 放行记次：它要先取参与人锁，被覆盖占着，skipLocked 让路（不阻塞在记录行锁上）
       counting.release();
       const outcome = await Promise.race([

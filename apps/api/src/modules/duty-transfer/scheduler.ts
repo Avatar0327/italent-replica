@@ -6,8 +6,12 @@
  * 只记该条的原因与次数、不整批回滚；失败的记录不自动重试，由操作人在菜单里改接收人 / 日期再提交（覆盖时清空失败原因）。
  * 迟到执行（第 2 轮 P2-4）：接收人资格在转交日期与执行当日（租户时区）都校验，组织新版本启用日仍取转交日期。
  * 逐人兜底（第 2 轮 P3-1，同 sweepTenant）：非业务异常整人回滚、只记本轮 errors 与执行次数，不记失败原因，下轮照常重试；
- * 执行次数到上限（F-448，第 2 轮交叉审 P3-4）后按失败口径落账、不再重试。记次自身出错也只在逐人兜底这一处吞掉，
- * 不打断同租户后续被转交人；任职生效调度外层的 dueDutyTransfers 只兜整租户这一步。
+ * 执行次数到上限（F-448，第 2 轮交叉审 P3-4）后按失败口径落账、不再重试。记次自身出错也只在逐人兜底这一处接住、记进
+ * errors（ATTEMPT_COUNT_FAILED，F-454），不打断同租户后续被转交人；任职生效调度外层的 dueDutyTransfers 只兜整租户这一步。
+ * 重试预算（F-454）：attempt_count 只会在“非业务异常且仍是到期候选”期间累计——业务失败 / 成功落账后记录不再是候选，
+ * 只有菜单覆盖才会让它回到候选，而覆盖把 attempt_count 清零（service.saveRecord），所以到记次时它就是“上次覆盖以来连续
+ * 非业务异常的次数”，业务失败不占预算，不必另起列。记次只记抛错的那一条（RecordRunError 带出记录 ID）；定位不到具体记录
+ * （取锁、读取等整人级步骤出错）时按整人口径：该人全部到期记录一起记次。
  */
 import { dutyTransferRecords, sql, withTenant, type Db, type Tx } from '@italent/db';
 import { DUTY_TRANSFER_STATUS, tenantLocalDate } from '@italent/domain';
@@ -33,11 +37,28 @@ export interface DutyTransferRun {
   readonly failed: number;
   readonly skippedLocked: number;
   /** 非业务异常（存储 / 依赖不可用、未映射错误）：不记失败原因，下轮重试；employeeId 为 null 表示整步出错。 */
-  readonly errors: { readonly employeeId: string | null; readonly code: string }[];
+  readonly errors: { readonly employeeId: string | null; readonly code: string; readonly cause?: string }[];
 }
 
-export const runErrorCode = (error: unknown) =>
-  error instanceof AppError || error instanceof EmploymentError ? error.code : 'INTERNAL_ERROR';
+/** 记次自身出错：记进本轮 errors，供任职生效调度的 onError 汇总看到（F-454，不再静默吞掉）。 */
+const ATTEMPT_COUNT_FAILED = 'ATTEMPT_COUNT_FAILED';
+
+/** 整人事务里某一条记录抛出的非业务异常：带出记录 ID，让记次只落到真正出错的那一条（F-454，P3-2）。 */
+class RecordRunError extends Error {
+  constructor(
+    readonly recordId: string,
+    readonly original: unknown,
+  ) {
+    super('职责转交到期执行出错');
+  }
+}
+
+const rootCause = (error: unknown) => (error instanceof RecordRunError ? error.original : error);
+
+export const runErrorCode = (error: unknown) => {
+  const cause = rootCause(error);
+  return cause instanceof AppError || cause instanceof EmploymentError ? cause.code : 'INTERNAL_ERROR';
+};
 
 export async function runDueMenuDutyTransfers(
   db: Db,
@@ -72,8 +93,11 @@ export async function runDueMenuDutyTransfers(
       run.failed += outcome.failed;
     } catch (error) {
       run.errors.push({ employeeId, code: runErrorCode(error) });
-      // 记次自身出错：该人本轮已记入 errors，次数下轮再记，不再往外抛打断后续被转交人。
-      await countAttempt(db, ctx, employeeId, today).catch(() => undefined);
+      // 记次自身出错：次数下轮再记，另记一条 errors 留痕，不再往外抛打断后续被转交人。
+      const failedRecordId = error instanceof RecordRunError ? error.recordId : null;
+      await countAttempt(db, ctx, employeeId, today, failedRecordId).catch((countError: unknown) => {
+        run.errors.push({ employeeId, code: ATTEMPT_COUNT_FAILED, cause: runErrorCode(countError) });
+      });
     }
   }
   return run;
@@ -82,10 +106,24 @@ export async function runDueMenuDutyTransfers(
 /**
  * 整人回滚后另开事务记执行次数与时间：未到上限不写失败原因，仍是到期候选、下轮重试；
  * 到上限的记录按既有失败口径落账（失败原因、revision、失败审计），不再是候选。
+ * failedRecordId 非空只记那一条（其余到期记录整人回滚、没出过错，不占预算）；为空 = 整人口径，该人全部到期记录一起记。
+ * 锁序（F-454，P3-3）：与菜单提交、runPerson 一样先取参与人锁（skipLocked），再锁记录行；拿不到说明菜单提交 / 联动正占着，
+ * 本轮不记（errors 里已有本轮的异常，下轮再记）。选这条而不是只改按 id 排序，是因为参与人锁串行了同一被转交人的所有写入口，
+ * 记录行锁之间不可能成环，同时菜单覆盖永远先于或后于一次完整的记次，不会出现读到旧 revision 就落账。
  */
-async function countAttempt(db: Db, ctx: EmploymentContext, employeeId: string, today: string) {
+async function countAttempt(
+  db: Db,
+  ctx: EmploymentContext,
+  employeeId: string,
+  today: string,
+  failedRecordId: string | null,
+) {
   await withTenant(db, ctx.tenantId, async (tx) => {
+    const subordinates = await dueSubordinates(tx, ctx, employeeId, today);
+    if ((await lockTransferParticipants(tx, ctx, employeeId, subordinates, { skipLocked: true })) !== 'acquired')
+      return;
     for (const record of await lockDueRecords(tx, ctx, employeeId, today)) {
+      if (failedRecordId !== null && record.id !== failedRecordId) continue;
       if (record.attemptCount + 1 >= MAX_ERROR_ATTEMPTS) await settle(tx, ctx, record, EXECUTION_ERROR);
       else
         await tx
@@ -94,6 +132,15 @@ async function countAttempt(db: Db, ctx: EmploymentContext, employeeId: string, 
           .where(sql`tenant_id=${ctx.tenantId} AND id=${record.id}::uuid`);
     }
   });
+}
+
+/** 该被转交人到期记录涉及的下属（参与人锁的输入）；runPerson 与 countAttempt 共用，保证两处锁的是同一批人。 */
+async function dueSubordinates(tx: Tx, ctx: EmploymentContext, employeeId: string, today: string) {
+  return rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT DISTINCT subordinate_id::text AS id FROM duty_transfer_records
+      WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND subordinate_id IS NOT NULL
+        AND status=${DUTY_TRANSFER_STATUS.unfinished} AND transfer_date<=${today}::date`),
+  ).map((row) => row.id);
 }
 
 /** 该被转交人到期待办的记录（未完成、无失败原因、转交日期已到），行锁后返回。 */
@@ -110,20 +157,20 @@ function lockDueRecords(tx: Tx, ctx: EmploymentContext, employeeId: string, toda
 }
 
 async function runPerson(tx: Tx, ctx: EmploymentContext, employeeId: string, today: string) {
-  const subordinates = rowsOf<{ id: string }>(
-    await tx.execute(sql`SELECT DISTINCT subordinate_id::text AS id FROM duty_transfer_records
-      WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND subordinate_id IS NOT NULL
-        AND status=${DUTY_TRANSFER_STATUS.unfinished} AND transfer_date<=${today}::date`),
-  ).map((row) => row.id);
+  const subordinates = await dueSubordinates(tx, ctx, employeeId, today);
   const lock = await lockTransferParticipants(tx, ctx, employeeId, subordinates, { skipLocked: true });
   if (lock !== 'acquired') return lock;
   // 锁后重读：等锁期间菜单可能已覆盖 / 撤回。
   const due = await lockDueRecords(tx, ctx, employeeId, today);
   const outcome = { completed: 0, failed: 0 };
   for (const record of due) {
-    const failure = await attempt(tx, ctx, record, today);
-    await settle(tx, ctx, record, failure);
-    outcome[failure ? 'failed' : 'completed'] += 1;
+    try {
+      const failure = await attempt(tx, ctx, record, today);
+      await settle(tx, ctx, record, failure);
+      outcome[failure ? 'failed' : 'completed'] += 1;
+    } catch (error) {
+      throw new RecordRunError(record.id, error); // 非业务异常整人回滚；带出是哪一条，记次只落它（F-454）
+    }
   }
   return outcome;
 }
