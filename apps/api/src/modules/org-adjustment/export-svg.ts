@@ -8,7 +8,7 @@
  */
 import type { Tx } from '@italent/db';
 import { canSee, type Disclosure, orgInScope } from './disclosure.js';
-import { type PreviewNode, readPreview } from './preview.js';
+import { type PreviewNode, previewOf, previewSourceOf, type PreviewSource } from './preview.js';
 import { orgNamesAt } from './queries.js';
 import { inactiveOrgs } from './range.js';
 
@@ -44,9 +44,25 @@ export async function readExport(
   after: boolean,
   today: string,
 ): Promise<ExportFile> {
-  const preview = await readPreview(tx, tenantId, disclosure);
-  const label = await fileNameOrgs(tx, tenantId, disclosure, today);
+  const source = await previewSourceOf(tx, tenantId, disclosure);
+  const preview = previewOf(source, disclosure);
+  const label = disclosure.source
+    ? frozenFileNameOrgs(source, disclosure)
+    : await fileNameOrgs(tx, tenantId, disclosure, today);
   return { fileName: exportFileName(label, today), svg: renderSvg(exportCards(preview.roots, after)) };
+}
+
+/**
+ * 已办读者的文件名组织名（F-476 P2）：只读办理时冻结的预览输入，不再查下载当天的组织现值——否则办理之后范围组织改名
+ * 或停用会让同一份已办导出的文件名漂移（AC-F476-12）。因此名称取生效日的名称（现值读取下载当天名称，DEC-783），
+ * 范围外组织与看不到调整范围的规则同现值读；生效日已停用的范围组织不在输入里，自然跳过。
+ */
+function frozenFileNameOrgs({ content, input }: PreviewSource, disclosure: Disclosure): string[] {
+  if (!canSee(disclosure.fields, 'adjustmentRange')) return [];
+  const names = new Map(input.orgs.map((org) => [org.id, org.name]));
+  return content.ranges.flatMap(({ orgId }) =>
+    orgInScope(disclosure, orgId) && names.has(orgId) ? [names.get(orgId)!] : [],
+  );
 }
 
 /**

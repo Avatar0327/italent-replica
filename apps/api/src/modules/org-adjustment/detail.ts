@@ -21,10 +21,18 @@ import { projectHeadRows } from './queries.js';
 
 export const ORG_SECTION = 'org';
 
-/** 内容源：办理时冻结份（已办）或现值（在办 / HR）；两个读入口共用，之后只做纯投影（F-476 §5.4）。 */
-async function sourceOf(tx: Tx, tenantId: string, disclosure: Disclosure): Promise<OrgContent> {
+/**
+ * 内容源：办理时冻结份（已办）或现值（在办 / HR）；详情 / 明细 / 预览 / 导出四个读入口共用，之后只做纯投影（F-476 §5.4）。
+ * `preview`：现值是否一并读预览输入（预览 / 导出读 true，详情 / 明细不需要）。
+ */
+export async function sourceOf(
+  tx: Tx,
+  tenantId: string,
+  disclosure: Disclosure,
+  options: { preview: boolean } = { preview: false },
+): Promise<OrgContent> {
   if (disclosure.source) return disclosure.source;
-  const live = await loadOrgContent(tx, tenantId, disclosure.view.id);
+  const live = await loadOrgContent(tx, tenantId, disclosure.view.id, options);
   if (!live) throw notFound();
   return live;
 }
