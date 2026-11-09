@@ -273,7 +273,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employment/assessment-routes.ts': {
     'route:GET /probation-assessments': '47f2e8dfaa4c',
-    'route:GET /probation-assessments/:id': 'bff8ddc87a0f',
+    'route:GET /probation-assessments/:id': 'd1e3f84d0453',
     'route:PATCH /probation-assessments/:id': 'f805edcc68ba',
     'route:POST /probation-assessments': '17037f156e66',
   },
@@ -452,6 +452,9 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/forward-preview.ts': {
     previewEmploymentForwardUpdate: '4e3f3230bc73',
   },
+  'apps/api/src/modules/employment/handled-read.ts': {
+    selectHandledRead: '8a4056c7f6b1',
+  },
   'apps/api/src/modules/employment/intern-actions.ts': {
     requireRevokeAccess: '8f3da55b73bc',
     rowActions: 'a98eb54c83ef',
@@ -558,7 +561,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/retirement-intention-routes.ts': {
     intentionGuard: 'a4ae072e9f95',
     'route:GET /retirement-intentions': 'c27ab662952e',
-    'route:GET /retirement-intentions/:id': '98cc81b89c0c',
+    'route:GET /retirement-intentions/:id': 'af80a48b5814',
     'route:PATCH /retirement-intentions/:id': '3974ae923459',
     'route:POST /retirement-intentions/:id/submit': 'a6c1e862c697',
     'route:POST /retirement-intentions/:id/withdraw': 'a6c1e862c697',
@@ -2101,7 +2104,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview': '78398667795d',
   'apps/api/src/modules/employment/all-people.ts#route:GET /all-people': 'cc5c2830b78c',
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments': '0bbbce83c90f',
-  'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': '10fc77350e79',
+  'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': 'ef6635089abf',
   'apps/api/src/modules/employment/assessment-routes.ts#route:PATCH /probation-assessments/:id': '1856c700e55a',
   'apps/api/src/modules/employment/assessment-routes.ts#route:POST /probation-assessments': '5dd78b722ceb',
   'apps/api/src/modules/employment/assessment-store.ts#assessmentScopeSql': '0602b4cb55a7',
@@ -2235,6 +2238,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#runExitCancel': 'ba269b777c05',
   'apps/api/src/modules/employment/forward-import.ts#schema': '12907b33413c',
   'apps/api/src/modules/employment/forward-preview.ts#previewEmploymentForwardUpdate': '3bddf9cc4a51',
+  'apps/api/src/modules/employment/handled-read.ts#selectHandledRead': '01704aa908da',
   'apps/api/src/modules/employment/intern-actions.ts#requireRevokeAccess': '28203aac1ec9',
   'apps/api/src/modules/employment/intern-actions.ts#rowActions': '75815f414437',
   'apps/api/src/modules/employment/intern-create.ts#createInternEntry': '93cde734e116',
@@ -2309,7 +2313,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionWriteScope': '0b611979014e',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#intentionGuard': '02aebe00f7b4',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions': '9e50ab965e69',
-  'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions/:id': 'f621e1693421',
+  'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions/:id': '3235864d8cfc',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:PATCH /retirement-intentions/:id':
     '3523950dadcd',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:POST /retirement-intentions/:id/submit':
