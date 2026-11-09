@@ -60,7 +60,7 @@ function write(method: string, path: string, operation: 'create' | 'update'): Ob
   const open = `await objectContext(c, deps, OBJECT, '${operation}')`;
   return {
     perm: `obj:${OBJ}:${operation}`,
-    facts: ['object:objectContext', `objectOp:${OBJ}:${operation}`, 'object:requireObjectWrite（对象写操作权）'],
+    facts: ['object:objectContext', `objectOp:${OBJ}:${operation}`],
     at: [
       call(method, path, `const ${operation === 'create' ? 'ctx' : 'base'} = ${open}`),
       CONTEXT,

@@ -80,6 +80,7 @@ export const GRAPH: Graph = {
     '#trim',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
   ],
+  'apps/api/src/modules/esign/service.ts#assertBelowLimit': ['#ESIGN_TEMPLATE_LIMIT'],
   'apps/api/src/modules/esign/service.ts#assertKnownVariables': [
     'packages/domain/src/esign/variables.ts#unknownTemplateVariables',
   ],
@@ -88,12 +89,18 @@ export const GRAPH: Graph = {
     '#ESIGN_TEMPLATE_AUDIT_TYPE',
     'apps/api/src/system-actor.ts#auditActor',
   ],
-  'apps/api/src/modules/esign/service.ts#createTemplate': ['#assertUnique', '#auditTemplate', '#lockConfig', '#view'],
+  'apps/api/src/modules/esign/service.ts#createTemplate': [
+    '#assertBelowLimit',
+    '#assertUnique',
+    '#auditTemplate',
+    '#lockConfig',
+    '#view',
+  ],
   'apps/api/src/modules/esign/service.ts#getSceneSettings': [
     'packages/domain/src/esign/settings.ts#ESIGN_DEFAULT_REMIND_BEFORE_EXPIRY',
     'packages/domain/src/esign/settings.ts#ESIGN_DEFAULT_VALIDITY_DAYS',
   ],
-  'apps/api/src/modules/esign/service.ts#listTemplates': ['#ordered', '#view'],
+  'apps/api/src/modules/esign/service.ts#listTemplates': ['#ESIGN_TEMPLATE_LIMIT', '#ordered', '#view'],
   'apps/api/src/modules/esign/service.ts#lockConfig': [
     'apps/api/src/advisory-lock.ts#advisoryLock',
     'apps/api/src/advisory-lock.ts#asUuid',
@@ -106,5 +113,5 @@ export const GRAPH: Graph = {
     '#lockConfig',
     'apps/api/src/system-actor.ts#auditActor',
   ],
-  'apps/api/src/modules/esign/service.ts#templateOptions': ['#ordered'],
+  'apps/api/src/modules/esign/service.ts#templateOptions': ['#ESIGN_TEMPLATE_LIMIT', '#ordered'],
 };
