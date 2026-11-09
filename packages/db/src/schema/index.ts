@@ -23,6 +23,7 @@ export * from './talent-review-template-results.js';
 export * from './succession.js';
 export * from './seeds.js';
 export * from './exit.js';
+export * from './exit-import.js';
 export * from './employment-entry.js';
 export * from './employment-email.js';
 export * from './employment-probation.js';

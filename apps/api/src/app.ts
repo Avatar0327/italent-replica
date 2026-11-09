@@ -11,6 +11,7 @@ import { registerTeamDashboardRoutes } from './modules/analytics/team-dashboard-
 import { registerOrgAdjustmentRoutes } from './modules/org-adjustment/routes.js';
 import { registerDutyTransferRoutes } from './modules/duty-transfer/routes.js';
 import type { Db } from '@italent/db';
+import { EXIT_IMPORT_BODY_LIMIT } from '@italent/domain';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import type { Authorizer } from './authorization.js';
@@ -147,6 +148,8 @@ export function createApp(deps: AppDeps = {}): Hono {
         maxSize: 16 * 1024 * 1024,
       },
       { method: 'POST', path: /^\/api\/tenant\/contracts\/batch$/, maxSize: 1024 * 1024 },
+      // F-493 §5：历史离职导入最多 1000 行 JSON，放宽到 1 MiB；预览与其他导入接口仍为 32KB
+      { method: 'POST', path: /^\/api\/tenant\/employment\/exits\/import$/, maxSize: EXIT_IMPORT_BODY_LIMIT },
     ]),
     'limitBody',
   );
