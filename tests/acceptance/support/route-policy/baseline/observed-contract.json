@@ -5708,10 +5708,13 @@
           "trimEmploymentResponse"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
-          "readPageContext"
+          "checkScope",
+          "readPageContext",
+          "visible()"
         ]
       }
     },
@@ -5916,13 +5919,16 @@
           "trimEmploymentResponse"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
+          "checkScope",
           "employment visibility",
           "readPageContext",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },

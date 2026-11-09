@@ -452,6 +452,9 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/forward-preview.ts': {
     previewEmploymentForwardUpdate: '4e3f3230bc73',
   },
+  'apps/api/src/modules/employment/handled-read.ts': {
+    selectHandledRead: '8022790b0537',
+  },
   'apps/api/src/modules/employment/intern-actions.ts': {
     requireRevokeAccess: '8f3da55b73bc',
     rowActions: 'a98eb54c83ef',
@@ -2235,6 +2238,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#runExitCancel': 'ba269b777c05',
   'apps/api/src/modules/employment/forward-import.ts#schema': '12907b33413c',
   'apps/api/src/modules/employment/forward-preview.ts#previewEmploymentForwardUpdate': '3bddf9cc4a51',
+  'apps/api/src/modules/employment/handled-read.ts#selectHandledRead': 'f98f4beac95a',
   'apps/api/src/modules/employment/intern-actions.ts#requireRevokeAccess': '28203aac1ec9',
   'apps/api/src/modules/employment/intern-actions.ts#rowActions': '75815f414437',
   'apps/api/src/modules/employment/intern-create.ts#createInternEntry': '93cde734e116',
