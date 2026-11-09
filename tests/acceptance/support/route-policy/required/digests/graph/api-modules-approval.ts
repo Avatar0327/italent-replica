@@ -1440,6 +1440,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/handling-content.ts#CONTENT_PROVIDERS': [
     '#SNAPSHOT_ONLY',
+    'apps/api/src/modules/employment/approval-content.ts#loadEmploymentContent',
     'apps/api/src/modules/org-adjustment/content.ts#loadOrgContent',
   ],
   'apps/api/src/modules/approval/handling-content.ts#prepareHandlingContent': [
