@@ -12,6 +12,7 @@ import {
   establishmentNotifications,
   inArray,
   isUuid,
+  type EstablishmentCapacityConflict,
   type EstablishmentCopyStatus,
   sql,
   type Tx,
@@ -19,6 +20,7 @@ import {
 import { scopeSql } from '../permission/module-access.js';
 import { AppError } from '../../errors.js';
 import { readCapacity, type CapacityRecord } from './capacity-read.js';
+import { CapacityOverlapError, genericOverlapMessage, overlapMessage } from './capacity-overlap.js';
 import { createCapacity } from './capacity-service.js';
 import { loadScheme, nextPeriod, type SchemeRecord } from './schemes.js';
 import {
@@ -86,7 +88,8 @@ export async function readCopyJobReport(
   if (ctx.now.getTime() >= expiresAt) throw new AppError('NOT_FOUND', '复制明细不存在或已过期');
   const columns = ['capacityIds', 'status', 'failureReason'];
   const allowed = (values: string[]) => values.filter((_value, index) => !fields || fields.has(columns[index]!));
-  const rows = job.capacityIds.map((capacityId) => allowed([capacityId, job.status, job.failureReason ?? '']));
+  const failureReason = await renderFailureText(tx, ctx, job.failureReason, job.failureDetail);
+  const rows = job.capacityIds.map((capacityId) => allowed([capacityId, job.status, failureReason ?? '']));
   return {
     filename: `establishment-copy-${job.id}.csv`,
     content: [allowed(['capacityId', 'status', 'reason']), ...rows]
@@ -137,7 +140,7 @@ export async function executeCopyJob(tx: Tx, ctx: EstablishmentContext, jobId: s
   assertRevision(ctx.expectedRevision, before.revision);
   if (before.status === 'succeeded') return before;
 
-  let failureReason: string | null = null;
+  let failure: BusinessFailure | null = null;
   try {
     // 所有目标容量、细分、审计及 outbox 同属一个 savepoint；一行失败不能留下先前成功行。
     await tx.transaction(async (savepoint) => {
@@ -148,9 +151,9 @@ export async function executeCopyJob(tx: Tx, ctx: EstablishmentContext, jobId: s
       }
     });
   } catch (error) {
-    failureReason = classifyBusinessFailure(error);
+    failure = classifyBusinessFailure(error);
     // 存储、审计或结果未知错误不能伪装为业务失败；外层命令事务须回滚，原 pending 可重新执行。
-    if (failureReason === null) throw error;
+    if (failure === null) throw error;
   }
 
   const revision = before.revision + 1;
@@ -158,14 +161,15 @@ export async function executeCopyJob(tx: Tx, ctx: EstablishmentContext, jobId: s
     .update(establishmentCopyJobs)
     .set({ revision })
     .where(and(eq(establishmentCopyJobs.tenantId, ctx.tenantId), eq(establishmentCopyJobs.id, jobId)));
-  const status = failureReason === null ? 'succeeded' : 'failed';
-  await appendJobVersion(tx, ctx, jobId, revision, status, before.attempts + 1, failureReason, before.versionId);
+  const status = failure === null ? 'succeeded' : 'failed';
+  await appendJobVersion(tx, ctx, jobId, revision, status, before.attempts + 1, failure, before.versionId);
   const saved = await readCopyJob(tx, ctx.tenantId, jobId);
   await audit(tx, ctx, 'establishment.copy.executed', 'establishment-copy-job', jobId, before, saved);
-  await notify(tx, ctx, failureReason ?? '下期编制复制成功', {
+  await notify(tx, ctx, failure?.text ?? '下期编制复制成功', {
     jobId,
     attempt: saved.attempts,
     recipientUserId: before.createdBy,
+    reasonDetail: failure?.detail ?? null,
   });
   return saved;
 }
@@ -190,16 +194,83 @@ async function copyCapacity(tx: Tx, ctx: EstablishmentContext, source: CapacityR
   );
 }
 
-function classifyBusinessFailure(error: unknown): string | null {
+interface BusinessFailure {
+  /** 落库 / 通知用的文本：重叠冲突只存不带名称的通用句，名称由读取人权限在读取时重新生成。 */
+  readonly text: string;
+  readonly detail: EstablishmentCapacityConflict | null;
+}
+
+function classifyBusinessFailure(error: unknown): BusinessFailure | null {
   if (
     !(error instanceof AppError) ||
     !['VALIDATION_FAILED', 'CONFLICT', 'NOT_FOUND', 'REVISION_CONFLICT'].includes(error.code)
   ) {
     return null;
   }
+  if (error instanceof CapacityOverlapError) {
+    const { conflict } = error;
+    return { text: `${conflict.reason}: ${genericOverlapMessage(conflict.reason)}`, detail: conflict };
+  }
   const details = error.details as { reason?: unknown } | undefined;
   const reason = typeof details?.reason === 'string' ? details.reason : error.code;
-  return `${reason}: ${error.message}`;
+  return { text: `${reason}: ${error.message}`, detail: null };
+}
+
+/**
+ * 按读取人 / 接收人当前权限生成失败文案（DEC-121）：有结构化冲突信息时，方案详情范围与名称读权齐备才用
+ * DEC-295 原文，否则用落库的通用句。没有读取人身份的出口（未注入 canDiscloseSchemeName）一律不披露。
+ */
+export async function renderFailureText(
+  tx: Tx,
+  ctx: Pick<EstablishmentContext, 'tenantId' | 'canDiscloseSchemeName'>,
+  text: string | null,
+  detail: EstablishmentCapacityConflict | null,
+): Promise<string | null> {
+  if (!detail || text === null) return text;
+  const disclose = (await ctx.canDiscloseSchemeName?.(tx, detail.schemeId)) ?? false;
+  return disclose ? `${detail.reason}: ${await overlapMessage(tx, ctx.tenantId, detail, true)}` : text;
+}
+
+/**
+ * 执行响应 / 幂等重放的出口：命令台账与响应体只存通用句（fail-closed），这里按当前操作人权限换成原文。
+ * 按回执里的版本（versionId，被字段读权裁掉时用 revision = 版本号）读对应的不可变失败版本，而不是任务最新版本，
+ * 旧命令重放时才不会混入后续失败的冲突；回执里没有可定位版本的信息时保持通用句。
+ */
+export async function renderExecutedFailure(
+  tx: Tx,
+  ctx: EstablishmentContext,
+  jobId: string,
+  receipt: { readonly versionId?: unknown; readonly revision?: unknown },
+  shown: string,
+): Promise<string> {
+  const { versionId, revision } = receipt;
+  const byId = typeof versionId === 'string' && isUuid(versionId);
+  const byNo = typeof revision === 'number' && Number.isSafeInteger(revision);
+  if (!byId && !byNo) return shown;
+  const [version] = await tx
+    .select({
+      failureReason: establishmentCopyJobVersions.failureReason,
+      failureDetail: establishmentCopyJobVersions.failureDetail,
+    })
+    .from(establishmentCopyJobVersions)
+    .where(
+      and(
+        eq(establishmentCopyJobVersions.tenantId, ctx.tenantId),
+        eq(establishmentCopyJobVersions.jobId, jobId),
+        byId
+          ? eq(establishmentCopyJobVersions.id, versionId)
+          : eq(establishmentCopyJobVersions.versionNo, revision as number),
+      ),
+    )
+    .limit(1);
+  if (!version || version.failureReason !== shown) return shown;
+  return (await renderFailureText(tx, ctx, version.failureReason, version.failureDetail)) ?? shown;
+}
+
+/** 任务读取出口：失败原因按读取人权限渲染，结构化冲突信息（组织 / 方案 ID）不外露。 */
+export async function renderCopyJob(tx: Tx, ctx: EstablishmentContext, job: JobRecord) {
+  const { failureDetail, ...rest } = job;
+  return { ...rest, failureReason: await renderFailureText(tx, ctx, job.failureReason, failureDetail) };
 }
 
 async function appendJobVersion(
@@ -209,7 +280,7 @@ async function appendJobVersion(
   versionNo: number,
   status: EstablishmentCopyStatus,
   attempts: number,
-  failureReason: string | null,
+  failure: BusinessFailure | null,
   previousVersionId: string | null,
 ): Promise<void> {
   await tx.insert(establishmentCopyJobVersions).values({
@@ -219,7 +290,8 @@ async function appendJobVersion(
     previousVersionId,
     status,
     attempts,
-    failureReason,
+    failureReason: failure?.text ?? null,
+    failureDetail: failure?.detail ?? null,
     createdAt: ctx.now,
   });
 }
@@ -299,4 +371,21 @@ export async function listNotifications(
     businessId,
     status: deliveryByNotice.get(notice.id)?.status ?? notice.status,
   }));
+}
+
+/**
+ * 通知读取出口：接收人即读取人（listNotifications 只返回本人的通知），名称按其本人当前权限生成，
+ * 与发起人 / 执行人的权限无关；结构化冲突信息（组织 / 方案 ID）不外露。
+ */
+export async function renderNotifications(
+  tx: Tx,
+  ctx: EstablishmentContext,
+  items: Awaited<ReturnType<typeof listNotifications>>,
+) {
+  return Promise.all(
+    items.map(async ({ reasonDetail, ...notice }) => ({
+      ...notice,
+      reason: await renderFailureText(tx, ctx, notice.reason, reasonDetail),
+    })),
+  );
 }
