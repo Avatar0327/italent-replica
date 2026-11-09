@@ -24,6 +24,19 @@ export const GRAPH: Graph = {
   'apps/api/src/audit/calc-rule-sources.ts#visible': [
     'apps/api/src/modules/talent-review/access.ts#requireConfigVisible',
   ],
+  'apps/api/src/audit/controlled-fields.ts#ControlledAuditFields': [
+    '#SNAPSHOT_PATH',
+    '#STRUCTURE_PATH',
+    'apps/api/src/audit/transfer-linkage.ts#ExactAuditFields',
+  ],
+  'apps/api/src/audit/controlled-fields.ts#SNAPSHOT_PATH': ['#UUID'],
+  'apps/api/src/audit/controlled-fields.ts#STRUCTURE_PATH': ['#UUID'],
+  'apps/api/src/audit/controlled-fields.ts#approvalContentFields': [
+    '#BASIC_KEYS',
+    '#CONTENT_FIELD',
+    '#CONTENT_KEYS',
+    '#ControlledAuditFields',
+  ],
   'apps/api/src/audit/establishment-capacity.ts#capacityAuditChanges': ['#PART_FIELDS'],
   'apps/api/src/audit/establishment-capacity.ts#visibleCapacityParts': ['#PART_FIELDS'],
   'apps/api/src/audit/failures.ts#failureResponse': ['#CommandFailureError'],
@@ -291,6 +304,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/audit/visibility.ts#CONFIG_FIELDS_BY_TYPE': [
+    'apps/api/src/audit/controlled-fields.ts#approvalContentFields',
     '#EMPLOYMENT',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],

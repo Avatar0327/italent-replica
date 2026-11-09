@@ -107,6 +107,8 @@ const READ = "const ctx = await context(c, deps, 'read')";
 
 export const ORG: RequiredTable = {
   'GET /api/tenant/org/organizations': [op('GET', '/organizations', 'view', READ)],
+  'GET /api/tenant/org/organizations/tree': [op('GET', '/organizations/tree', 'view', READ)],
+  'GET /api/tenant/org/organizations/chart': [op('GET', '/organizations/chart', 'view', READ)],
   'GET /api/tenant/org/organizations/:id': [op('GET', '/organizations/:id', 'view', READ)],
   'GET /api/tenant/org/settings': [settings('GET')],
   'GET /api/tenant/org/views': [op('GET', '/views', 'view', READ)],

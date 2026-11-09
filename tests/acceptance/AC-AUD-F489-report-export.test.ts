@@ -3,8 +3,8 @@
  * F-482 每次成功导出写一条 behavior=export 的对象操作日志（对象类型 = 报表所属的人事分析对象，对象编号 = 报表编码），
  * 但审计页对未登记查看规则的对象类型 fail-closed，行写进了 audit_operation_logs，页面却一条也查不到。
  * 本用例走真 HTTP：先在导出接口导出，再用审计接口（/api/tenant/audit/operation-logs）查；
- * 口径沿用审计页既有“需要归属的对象”规则（personRule + 执行人回退，visibility.ts 第四轮 N2）：
- * 看全部可见；非看全部只在“使用用户”维度下看到自己执行的导出；没有该报表对象的查看权 / 范围为空 / 别的租户一律看不到。
+ * 口径（F-509 / DEC-855 改后）：有日志审计能力又有该报表对象查看权的人看全部人的导出，不再按数据范围或“本人导出”过滤
+ * （他人导出可见的专项用例见 AC-AUD-F509）；没有该报表对象的查看权 / 别的租户一律看不到。
  * 失败的导出（F-482 AC-HA-F482-06/12/13 约定一条都不记）在审计页同样查不到。
  */
 import { randomUUID } from 'node:crypto';
@@ -129,7 +129,7 @@ describe('AC-AUD-F489 审计页显示统计报表导出日志', () => {
     expect((await page(movementAs(), { objectType: HR_MOVEMENT_REPORT_OBJECT })).items.length).toBe(settled);
   });
 
-  it('AC-AUD-F489-04：没有该报表对象查看权的人、范围为空 / 非“使用用户”维度 / 别人的“使用用户”范围，都查不到', async () => {
+  it('AC-AUD-F489-04：没有该报表对象查看权的人查不到；有查看权时数据范围（空 / 管理单元 / 别人的“使用用户”）不再裁剪（F-509）', async () => {
     await exportMovement('institution', 'data');
     const own = (await page(movementAs(), { objectType: HR_MOVEMENT_REPORT_OBJECT })).items;
     expect(own.length, '看全部可见，下面的空才是裁剪的结果').toBeGreaterThan(0);
@@ -140,16 +140,17 @@ describe('AC-AUD-F489 审计页显示统计报表导出日志', () => {
     expect(
       await seen(restricted({ deny: (r) => r.action === 'object.view' && r.resource === HR_MOVEMENT_REPORT_OBJECT })),
     ).toEqual([]);
-    // 数据范围为空（fail-closed）、管理单元范围（没有人员 / 组织归属可比）
-    expect(await seen(restricted({ scope: { ...EMPTY_SCOPE, hasDataPermission: true } }))).toEqual([]);
-    expect(await seen(restricted({ scope: orgScope(movement.who.tenant, '2026-10-06', randomUUID()) }))).toEqual([]);
-    // “使用用户”维度只认执行人：别人的范围看不到，自己的看得到（本人执行的导出对本人可见）
+    // 有查看权：数据范围为空、管理单元范围、别人的“使用用户”范围都看得到全部导出（DEC-855 口径 A）
     const usingUser = (creatorId: string) => ({
       ...EMPTY_SCOPE,
       hasDataPermission: true,
       terms: [{ dimension: 'using_user' as const, orgIds: [], personIds: [], creatorId }],
     });
-    expect(await seen(restricted({ scope: usingUser(randomUUID()) }))).toEqual([]);
+    expect(idsOf(await seen(restricted({ scope: { ...EMPTY_SCOPE, hasDataPermission: true } })))).toEqual(idsOf(own));
+    expect(idsOf(await seen(restricted({ scope: orgScope(movement.who.tenant, '2026-10-06', randomUUID()) })))).toEqual(
+      idsOf(own),
+    );
+    expect(idsOf(await seen(restricted({ scope: usingUser(randomUUID()) })))).toEqual(idsOf(own));
     expect(idsOf(await seen(restricted({ scope: usingUser(movement.who.user) })))).toEqual(idsOf(own));
   });
 
