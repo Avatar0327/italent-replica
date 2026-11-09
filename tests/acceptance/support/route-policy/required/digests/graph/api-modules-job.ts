@@ -170,6 +170,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/job/resource-set.ts#resolveResourceSet': [
+    'apps/api/src/modules/permission/owner-units.ts#NO_UNIT_MESSAGE',
     'apps/api/src/modules/permission/owner-units.ts#UNIT_NOT_FOUND',
     'apps/api/src/modules/permission/owner-units.ts#authorizedUnits',
     'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
