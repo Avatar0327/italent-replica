@@ -1,12 +1,13 @@
 /**
  * AC-F476-08（P8 IDP，第 1 轮审查返工 P2-3）：审批中心入口 GET /approval/instances/:id 与计划详情读到同一份办理时内容；
  * 办理份缺 IDP 扩展时两个入口都拒绝（503 APPROVAL_HANDLING_CONTENT_MISSING，不回退现值，DEC-807）。
+ * 第 2 轮返工：计划被正常删除后，完整的办理份照样能在审批中心读到（呈现不依赖当前计划存在）。
  * 断言只看业务内容（响应里出现哪些合成名称），不依赖响应字段形状。
  */
 import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { type PlanWorld, planWorld } from './AC-IDP-plan-support.js';
+import { IDP, type PlanWorld, planWorld } from './AC-IDP-plan-support.js';
 import { ANALYSIS_A, GOAL_A, GOAL_B, handledThenModified, seen, TASK_A, TASK_B } from './AC-F476-idp-support.js';
 
 const testDb = useTestDb();
@@ -59,5 +60,17 @@ describe('AC-F476-08 IDP：审批中心入口接入办理时内容', () => {
 
     // 指导人（在办，读现值）不受影响
     expect(await centerText(w, w.manager.userId, instanceId)).not.toContain('APPROVAL_HANDLING_CONTENT_MISSING');
+  });
+
+  it('办理 A 后 HR 删除计划：本人打开原审批实例详情仍读到办理时的 A', async () => {
+    const w = await planWorld(testDb().db, 'f476-idp-08-center-deleted');
+    const { plan, instanceId } = await handledThenModified(w);
+    const removed = await w.http(w.hrUser, 'DELETE', `${IDP}/plans/${plan.id}`, { ifMatch: plan.revision });
+    expect(removed.status, await removed.clone().text()).toBeLessThan(300);
+    expect((await w.realHttp(w.hrUser, 'GET', `${IDP}/plans/${plan.id}`)).status, '计划确已删除').toBe(404);
+
+    const center = await centerText(w, w.employee.userId, instanceId);
+    for (const kept of [GOAL_A, TASK_A, ANALYSIS_A]) expect(center, kept).toContain(kept);
+    for (const leaked of [GOAL_B, TASK_B]) expect(center, leaked).not.toContain(leaked);
   });
 });
