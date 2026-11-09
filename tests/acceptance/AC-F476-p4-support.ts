@@ -377,8 +377,13 @@ export async function realWorld(scene: Scene) {
   };
 }
 
-/** 对办理份做“当前完整性故障”注入（新写的办理份局部缺损）：绕开只增表的触发器，直接改 JSON。 */
-export async function damageCopy(scene: Scene, damage: 'remove' | 'null', path: readonly string[]): Promise<void> {
+/**
+ * 对办理份做“当前完整性故障”注入（新写的办理份局部缺损）：绕开只增表的触发器，直接改 JSON。
+ * invalid = 把该路径改成一个不是日期、也不是对象 / 数组的字符串（结构与日期格式都不合法）。
+ */
+export type Damage = 'remove' | 'null' | 'invalid';
+const DAMAGED_VALUE = '"ZZ_非法值"';
+export async function damageCopy(scene: Scene, damage: Damage, path: readonly string[]): Promise<void> {
   const { w, approver } = scene;
   const target = `{${path.join(',')}}`;
   await w.db.transaction(async (tx) => {
@@ -388,7 +393,8 @@ export async function damageCopy(scene: Scene, damage: 'remove' | 'null', path: 
       damage === 'remove'
         ? sql`UPDATE approval_handling_contents SET content = content #- ${target}::text[]
             WHERE actor_user_id = ${approver.userId}::uuid`
-        : sql`UPDATE approval_handling_contents SET content = jsonb_set(content, ${target}::text[], 'null'::jsonb)
+        : sql`UPDATE approval_handling_contents
+            SET content = jsonb_set(content, ${target}::text[], ${damage === 'null' ? 'null' : DAMAGED_VALUE}::jsonb)
             WHERE actor_user_id = ${approver.userId}::uuid`,
     );
     await tx.execute(sql`ALTER TABLE approval_handling_contents ENABLE TRIGGER USER`);

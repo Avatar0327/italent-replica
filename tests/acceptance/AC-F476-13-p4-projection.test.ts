@@ -2,6 +2,7 @@
  * AC-F476-13（P4 第 1 轮审查返工）：已办读取的“业务内容”整体取自办理时冻结份，并逐字段按
  * 办理时上限 ∩ 办理节点表单 ∩ 当前字段权取舍（P1-1）；自定义字段按 `custom:<id>` 判权（P2-2）；
  * 原定最后工作日跟随最后工作日的披露（P2-3）；新写办理份局部缺损一律 503（P2-4）。
+ * 第 2 轮返工（P2-4）：投影实际会读的必需键（日期块、版本列表、字段对象等）缺失或非法，也一律 503，不得 500。
  * 夹具：业务数据都经真实接口创建；日期、部门等取值手写，便于断言“旁路值”不在整个响应里。
  */
 import { useTestDb } from '@italent/testkit';
@@ -16,6 +17,7 @@ import {
   detailEntries,
   handledScene,
   readEntries,
+  type Damage,
   type ScenarioKind,
 } from './AC-F476-p4-support.js';
 
@@ -161,5 +163,51 @@ describe('AC-F476-13 P4 transfer：新办理份缺 ext.business → 503（P2-4�
     const approver = (await readEntries(scene, scene.approver.userId)).business!;
     expect(approver.status).toBe(503);
     expect(text(approver.body)).toContain('APPROVAL_HANDLING_CONTENT_MISSING');
+  });
+});
+
+/** 投影实际会读的必需键：缺失 / null / 非法值都按办理份不可读处理（503），不得在投影里抛 500。 */
+const BUSINESS_KEYS: readonly (readonly [string, Damage])[] = [
+  ['fields', 'invalid'],
+  ['customFields', 'remove'],
+  ['customFields', 'invalid'],
+  ['record', 'remove'],
+  ['record', 'invalid'],
+  ['effectiveDate', 'remove'],
+  ['effectiveDate', 'invalid'],
+];
+const EXIT_KEYS: readonly (readonly [string, Damage])[] = [
+  ['plannedLastWorkDate', 'remove'],
+  ['plannedLastWorkDate', 'null'],
+  ['plannedLastWorkDate', 'invalid'],
+  ['lastWorkDate', 'remove'],
+  ['lastWorkDate', 'invalid'],
+  ['effectiveDate', 'remove'],
+  ['effectiveDate', 'invalid'],
+  ['versions', 'invalid'],
+];
+
+async function expectAll503(kind: ScenarioKind, label: string, damage: Damage, path: readonly string[]) {
+  const scene = await handledScene(testDb().db, `f476-p4-proj-key-${kind}-${label}-${damage}`, kind);
+  await damageCopy(scene, damage, path);
+  const approver = await readEntries(scene, scene.approver.userId);
+  for (const entry of detailEntries(kind)) {
+    expect(approver[entry]!.status, `${kind}/${entry} ${path.join('.')} ${damage}`).toBe(503);
+    expect(text(approver[entry]!.body), `${kind}/${entry}`).toContain('APPROVAL_HANDLING_CONTENT_MISSING');
+  }
+}
+
+describe('AC-F476-13 P4 transfer：业务部分的必需键缺失 / 非法 → 503（第 2 轮 P2-4）', () => {
+  it.each(BUSINESS_KEYS)('ext.business.%s %s', async (key, damage) => {
+    await expectAll503('transfer', `b-${key}`, damage, ['ext', 'business', key]);
+  });
+});
+
+describe.each(EXIT_SCENES)('AC-F476-13 P4 %s：离退部分的必需键缺失 / 非法 → 各入口 503（第 2 轮 P2-4）', (kind) => {
+  it.each(EXIT_KEYS)('ext.exit.%s %s', async (key, damage) => {
+    await expectAll503(kind, `x-${key}`, damage, ['ext', 'exit', key]);
+  });
+  it('ext.business.effectiveDate invalid：离退入口同样 503', async () => {
+    await expectAll503(kind, 'b-effectiveDate', 'invalid', ['ext', 'business', 'effectiveDate']);
   });
 });
