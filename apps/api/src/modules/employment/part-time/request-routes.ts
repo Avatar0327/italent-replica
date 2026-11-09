@@ -19,7 +19,12 @@ import type { TenantEnv } from '../../../tenant-context.js';
 import { LIVE_VIEW, openContentRead } from '../../approval/frozen-read.js';
 import { foreignVisibility } from '../../approval/foreign-fields.js';
 import type { FieldAccess } from '../../approval/context.js';
-import { getModuleViewableFieldsInTransaction, trimModuleResponse } from '../../permission/module-access.js';
+import { storedCeiling } from '../../approval/object-ceiling.js';
+import {
+  getModuleViewableFields,
+  getModuleViewableFieldsInTransaction,
+  trimModuleResponse,
+} from '../../permission/module-access.js';
 import {
   EMPLOYEE_OBJECT,
   EMPLOYMENT_OBJECT,
@@ -313,7 +318,8 @@ function registerRequestRead(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // 申请详情（含主职信息 / 员工信息分组，读员工当前主职）：DEC-177 可见（申请部门 ∪ 员工当前主职部门）；范围外与不存在同一个 404；
   // 主职分组只在操作人看得到该主职记录时给出；三组各按所属对象的字段查看权逐层裁剪。
   // F-476 P5：已办人读办理时冻结的申请内容（不套数据范围，DEC-834④）：申请内容按完整披露集（办理上限 ∩ 办理节点表单 ∩
-  // 当前字段权）逐层裁；主职 / 员工分组是办理时冻结的展示材料，按办理上限与当前字段权裁（R1 P2-3）；其余人读现值。
+  // 当前字段权）逐层裁；主职 / 员工分组是办理时冻结的展示材料，主职按任职对象办理上限、员工按员工对象办理上限（R2 P1），
+  // 再按当前字段权裁（R1 P2-3）；其余人读现值。
   router.get('/part-time-requests/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
@@ -330,18 +336,14 @@ function registerRequestRead(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return { detail: await loadPartTimeRequestDetail(tx, ctx, id), view: content?.contentView ?? LIVE_VIEW };
     });
     if (read.frozen) {
-      const { primary, employee, ...request } = read.frozen;
-      const trimmed = (await trimEmploymentResponse(
-        deps,
-        ctx,
-        capByDisclosed(request, read.ceiling, read.fields),
-      )) as object;
+      const { primary, employee, employeeCeiling, ...request } = read.frozen;
       const cappedPrimary = primary && { ...primary, fields: keepIn(primary.fields, read.ceiling) };
+      const cappedEmployee = keepIn(employee, storedCeiling(employeeCeiling));
       return c.json({
-        ...trimmed,
+        ...(await trimRequestDto(deps, ctx, capByDisclosed(request, read.ceiling, read.fields))),
         availableActions: [],
         primary: cappedPrimary ? await trimEmploymentResponse(deps, ctx, cappedPrimary) : null,
-        employee: await trimModuleResponse(deps, ctx, EMPLOYEE_OBJECT, employee),
+        employee: await trimModuleResponse(deps, ctx, EMPLOYEE_OBJECT, cappedEmployee),
         contentView: read.view,
       });
     }
@@ -349,7 +351,7 @@ function registerRequestRead(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     if (!detail) throw notFound();
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
     const { primary, employee, ...request } = detail;
-    const trimmed = (await trimEmploymentResponse(deps, ctx, request)) as object;
+    const trimmed = await trimRequestDto(deps, ctx, request);
     return c.json({
       ...trimmed,
       // F-268：逐单可用动作（写入口同一组判定，request-actions.ts）；状态字段对当前操作人不可见时不下发，避免动作集合泄露状态
@@ -359,6 +361,22 @@ function registerRequestRead(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       contentView: read.view,
     });
   });
+}
+
+/**
+ * 申请 DTO 的最终投影（R2 P2-3）：任职类型在 DTO 里叫 serviceType，在字段权限 / 节点表单里叫 partTimeType（与审批中心、
+ * 自助申请 application-access.ts 同一编码），按后者判权；其余键交 trimEmploymentResponse。
+ */
+async function trimRequestDto(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  request: object,
+): Promise<Record<string, unknown>> {
+  const { serviceType, ...rest } = request as Record<string, unknown>;
+  const trimmed = (await trimEmploymentResponse(deps, ctx, rest)) as Record<string, unknown>;
+  if (!Object.hasOwn(request, 'serviceType')) return trimmed;
+  const viewable = await getModuleViewableFields(deps, ctx, ctx.objectCode ?? EMPLOYMENT_OBJECT);
+  return !viewable || viewable.has(formCode('serviceType')) ? { ...trimmed, serviceType } : trimmed;
 }
 
 /** 申请 DTO 里属于「申请表单业务字段」的顶层键；其余顶层键（id、状态、版本号等）只受办理上限约束。 */

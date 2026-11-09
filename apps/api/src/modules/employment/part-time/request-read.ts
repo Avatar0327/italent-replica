@@ -9,6 +9,9 @@ import { tenantLocalDate, type PartTimeRequestState, type PartTimeRequestType } 
 import { AppError } from '../../../errors.js';
 import { rowsOf } from '../record-store.js';
 import { employeeHeader } from '../../approval/adapter-support.js';
+import type { ApprovalContext } from '../../approval/context.js';
+import { handlingCeilingOf } from '../../approval/object-ceiling.js';
+import { EMPLOYEE_OBJECT } from '../context.js';
 import { findCurrentRecord } from '../read-model.js';
 import type { CustomFields, EmploymentContext, PresetFields } from '../types.js';
 import { isEmploymentRecordVisible } from '../visibility.js';
@@ -47,8 +50,13 @@ export interface PartTimeRequestDetail extends PartTimeRequestDto {
   readonly employee: { readonly code: string | null; readonly name: string };
 }
 
-/** 办理份内容：与申请详情同形（申请 + 主职 + 员工分组），但取办理当时的材料。 */
-export type PartTimeContent = PartTimeRequestDetail;
+/**
+ * 办理份内容：与申请详情同形（申请 + 主职 + 员工分组），但取办理当时的材料。员工分组属于员工对象，不在引擎披露上限
+ * （任职记录对象）之内，另存办理人当时对员工对象的可见字段（R2 P1）；null = 当时不受字段权限约束。
+ */
+export interface PartTimeContent extends PartTimeRequestDetail {
+  readonly employeeCeiling: readonly string[] | null;
+}
 
 /** 申请 → DTO；warnings 是写入时 B-4 等只提示不拦的信息（读取时为空）。 */
 export function requestDto(
@@ -115,13 +123,13 @@ async function landedRecordId(tx: Tx, tenantId: string, requestId: string): Prom
 /**
  * 办理份内容 / 冻结读的来源（F-476 P5 R1 P2-3）：申请头 + 最新版本（含落地记录）+ 办理当时的主职与员工展示材料。
  * 主职 / 员工分组随办理冻结：办理后改主职、改档案不让已办人看到的内容漂移；不做 DEC-177 范围判定（办理份是已办人
- * 当时看到的内容，读取时按披露集与当前字段权限裁，不套数据范围，DEC-834④）。
+ * 当时看到的内容，读取时按披露集与当前字段权限裁，不套数据范围，DEC-834④）；员工分组的办理时上限见 PartTimeContent。
  */
 export async function loadPartTimeContent(
   tx: Tx,
   tenantId: string,
   id: string,
-  ctx: { readonly now: Date; readonly timezone: string },
+  ctx: Pick<ApprovalContext, 'now' | 'timezone' | 'userId' | 'fields'>,
 ): Promise<PartTimeContent> {
   const request = await loadPartTimeRequest(tx, tenantId, id);
   if (!request) throw new AppError('NOT_FOUND', '兼职申请不存在');
@@ -130,6 +138,7 @@ export async function loadPartTimeContent(
     ...requestDto(request, { recordId: await landedRecordId(tx, tenantId, id) }),
     primary: primary ? { id: primary.id, fields: primary.fields } : null,
     employee: await employeeHeader(tx, tenantId, request.employeeId),
+    employeeCeiling: await handlingCeilingOf(tx, ctx, EMPLOYEE_OBJECT),
   };
 }
 

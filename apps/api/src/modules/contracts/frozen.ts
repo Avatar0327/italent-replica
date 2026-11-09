@@ -15,7 +15,8 @@ export const loadContractContent = (tx: Tx, tenantId: string, id: string): Promi
 const BUSINESS_KEYS = new Set<string>([...CONTRACT_FIELDS, 'customFields', 'submittedFields']);
 
 /**
- * 申请详情响应的投影契约（F-476 P5 R1 P2-2）。`viewable`：当前合同对象字段权限，决定非业务键（id、状态、版本号等）；
+ * 申请详情响应的投影契约（F-476 P5 R1 P2-2）。`viewable`：非业务键（id、状态、版本号等）的可见集（已办 = 办理上限 ∩
+ * 当前合同对象字段权，R2 自查；现读 = 当前字段权）；
  * `disclosed`：业务字段披露集（已办 = 办理上限 ∩ 节点表单 ∩ 当前字段权，现读 = 当前字段权）。
  * 容器键 `submittedFields` / `customFields` 不在字段目录里，不按 viewable 整个放行或整个丢弃：永远出现，内部按披露集逐键裁。
  */
