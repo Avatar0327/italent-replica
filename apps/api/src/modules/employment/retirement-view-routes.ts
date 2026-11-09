@@ -17,6 +17,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
+import { composeExit, selectEmploymentRead } from './approval-content.js';
 import { pageQuery, readContext, readPageContext, uuidParam } from './context.js';
 import { resolveDepartmentIds, type ExitViewFilter } from './exit-queries.js';
 import { day, parse, requireViewableExitFilters, viewableIn } from './exit-routes.js';
@@ -143,6 +144,11 @@ export function registerRetirementViews(router: Hono<TenantEnv>, deps: TenantRou
     );
     if (!detail) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
-    return c.json(trimRetirementDetail(detail, await viewableIn(deps, ctx)));
+    // F-476 P4：已办审批人读办理时冻结的退休内容，其余读现值；流程事实始终是现值
+    const read = await selectEmploymentRead(deps, ctx, id);
+    const frozen = read.frozen ? composeExit(detail, read.frozen.content, read.frozen.allowed) : null;
+    if (read.frozen && !frozen) throw new AppError('NOT_FOUND', '任职业务不存在');
+    const shown = (frozen ?? detail) as typeof detail;
+    return c.json({ ...trimRetirementDetail(shown, await viewableIn(deps, ctx)), contentView: read.contentView });
   });
 }

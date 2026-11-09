@@ -10,6 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import { loadEmploymentContent } from '../employment/approval-content.js';
 import { loadOrgContent } from '../org-adjustment/content.js';
 import type { BusinessSnapshot, BusinessType } from './adapters.js';
 import { approvalError, rowsOf, type ApprovalContext } from './context.js';
@@ -40,7 +41,7 @@ const SNAPSHOT_ONLY: ContentProvider = { kind: 'snapshot-only' };
  */
 export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> = {
   org_adjustment: { kind: 'extended', ext: (tx, tenantId, id) => loadOrgContent(tx, tenantId, id) },
-  employment: SNAPSHOT_ONLY,
+  employment: { kind: 'extended', ext: (tx, tenantId, id) => loadEmploymentContent(tx, tenantId, id) },
   personnel_change: SNAPSHOT_ONLY,
   contract: SNAPSHOT_ONLY,
   idp: SNAPSHOT_ONLY,

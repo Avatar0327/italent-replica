@@ -1,3 +1,4 @@
+import { composeBusiness, selectEmploymentRead } from './approval-content.js';
 import { registerEmploymentFormRoutes } from './employment-form-routes.js';
 import { registerEmploymentTypeRoutes } from './employment-type-routes.js';
 import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
@@ -418,7 +419,10 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     );
     if (!value) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: value.employeeId });
-    return c.json(await trimEmploymentResponse(deps, ctx, value));
+    // F-476 P4：已办审批人读办理时冻结的业务内容，其余读现值；流程事实始终是现值
+    const read = await selectEmploymentRead(deps, ctx, id);
+    const shown = read.frozen ? composeBusiness(value, read.frozen.content, read.frozen.allowed) : value;
+    return c.json({ ...((await trimEmploymentResponse(deps, ctx, shown)) as object), contentView: read.contentView });
   });
   router.get('/records/:id', async (c) => {
     const id = uuidParam(c);

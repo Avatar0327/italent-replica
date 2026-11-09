@@ -700,13 +700,21 @@ export function trimExit<T extends ExitItem>(item: T, show: ExitViewable): Parti
 /** 详情裁剪前的完整输出：补上原定 / 最终日期块（测试的“裁剪前路径”守卫读它）。 */
 export type ExitDetailPayload = ReturnType<typeof exitDetailPayload>;
 export function exitDetailPayload(detail: ExitDetail) {
-  const planned = new Date(`${detail.plannedLastWorkDate}T00:00:00Z`);
-  planned.setUTCDate(planned.getUTCDate() + 1);
+  // 已办审批人读冻结内容时，不在其披露范围的日期缺席（F-476 P4）：缺席的日期给 null，不推算也不退回现值
+  const plannedDay = (value: string | undefined) => {
+    if (!value) return null;
+    const planned = new Date(`${value}T00:00:00Z`);
+    planned.setUTCDate(planned.getUTCDate() + 1);
+    return planned.toISOString().slice(0, 10);
+  };
   return {
     ...detail,
     dates: {
-      planned: { lastWorkDate: detail.plannedLastWorkDate, effectiveDate: planned.toISOString().slice(0, 10) },
-      final: { lastWorkDate: detail.lastWorkDate, effectiveDate: detail.effectiveDate },
+      planned: {
+        lastWorkDate: detail.plannedLastWorkDate ?? null,
+        effectiveDate: plannedDay(detail.plannedLastWorkDate),
+      },
+      final: { lastWorkDate: detail.lastWorkDate ?? null, effectiveDate: detail.effectiveDate ?? null },
     },
   };
 }
