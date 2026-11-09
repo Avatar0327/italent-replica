@@ -1,7 +1,7 @@
 import { slotKey } from '../foundation/forms/slot.js';
 import { canButton, fieldAccess, type FieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
 import { orgImportRequired } from './import-model.js';
-import { detailText, listText, pageText as m } from './messages.js';
+import { chartText, detailText, listText, pageText as m } from './messages.js';
 export interface OrgRow {
   id: string;
   revision: number;
@@ -25,34 +25,50 @@ export interface OrgNode {
   title: string;
   children: OrgNode[];
 }
-export function organizationTree(rows: OrgRow[], dimension: Dimension): OrgNode[] {
-  const nodes = new Map(
-    rows.map((row) => [
-      row.id,
-      {
-        key: row.id,
-        value: row.id,
-        title: row.name ?? m.unavailable,
-        children: [] as OrgNode[],
-      },
-    ]),
-  );
-  const parents = new Map(rows.map((row) => [row.id, row.parents?.[dimension]?.parentId]));
-  const roots: OrgNode[] = [];
-  for (const row of rows) {
-    const node = nodes.get(row.id)!;
-    const parent = parents.get(row.id);
-    const seen = new Set([row.id]);
-    let cursor = parent;
-    while (cursor && !seen.has(cursor)) {
-      seen.add(cursor);
-      cursor = parents.get(cursor);
-    }
-    if (parent && nodes.has(parent) && !cursor) nodes.get(parent)!.children.push(node);
-    else roots.push(node);
-  }
-  return roots;
+/** 服务端按查看人范围组装的树节点（GET organizations/tree、chart）；字段按字段权限裁剪，缺省即无权查看。 */
+export interface ServerOrgNode {
+  id: string;
+  name?: string;
+  code?: string;
+  enabled?: boolean;
+  headcount?: number;
+  establishment?: number | null;
+  /** 仅 chart：有「负责人」查看权才有此键；范围外负责人也只给姓名，无姓名为 null。 */
+  personInChargeName?: string | null;
+  children: ServerOrgNode[];
 }
+export interface ServerOrgTree {
+  roots: ServerOrgNode[];
+  total: number;
+  hasDataPermission: boolean;
+}
+/** 服务端树 → 左侧树控件数据；层级由服务端决定，前端不再自行拼接（范围外上级不伪造）。 */
+export function serverTreeData(roots: readonly ServerOrgNode[]): OrgNode[] {
+  return roots.map((node) => ({
+    key: node.id,
+    value: node.id,
+    title: node.name ?? m.unavailable,
+    children: serverTreeData(node.children),
+  }));
+}
+/** 树 / 架构图的查询串：与列表同一组筛选，不带分页（完整树）；无名称查看权不带名称（同 orgCatalogQuery）。 */
+export function orgTreeQuery(filters: Omit<OrgCatalogFilters, 'page' | 'pageSize'>, nameVisible: boolean) {
+  return new URLSearchParams({
+    asOf: filters.asOf,
+    dimension: filters.dimension,
+    includeDisabled: String(filters.includeDisabled),
+    ...(nameVisible && filters.name ? { name: filters.name } : {}),
+  }).toString();
+}
+/** 卡片上的在岗 / 编制：与原站卡片同写法「在岗2/编制4」；无查看权的项不出，编制未设置显示占位（R1a §2.3）。 */
+export function chartFigures(node: Pick<ServerOrgNode, 'headcount' | 'establishment'>) {
+  const parts = [
+    node.headcount === undefined ? null : `${chartText.onDuty}${node.headcount}`,
+    node.establishment === undefined ? null : `${chartText.establishment}${node.establishment ?? chartText.none}`,
+  ];
+  return parts.filter((part) => part !== null).join('/');
+}
+
 export function orgChangeBody(original: OrgRow, values: Record<string, unknown>, effectiveDate: string) {
   const { addEmployment, adminParent, businessParent, productParent, ...fields } = values;
   const body: Record<string, unknown> = { effectiveDate };
@@ -102,6 +118,8 @@ export const listFields = [
   'establishedOn',
   'startDate',
   'stopDate',
+  // 原站在岗人数排在人员列之后（未在本表出现的列之间），本表没有负责人等列，故排在末尾（位置按原站相对顺序，未验证绝对位置）。
+  'headcount',
 ];
 // 原站组织单元详情：组织全称排在基本信息最后。
 const detailFields = [

@@ -253,7 +253,7 @@ export const MODULE_OBJECTS = {
       button('validate', 'detail'),
       button('import', 'list'),
     ],
-    ['fullName', 'level', 'resource', 'dimension', 'status', 'reason', 'orgId'],
+    ['fullName', 'level', 'resource', 'dimension', 'status', 'reason', 'orgId', 'headcount', 'establishment'],
   ),
   jobLayer: job('JobLayer', ['layerLevel']),
   jobGrade: job('JobGrade', ['grade', 'scoreLow', 'scoreHigh', 'layerId']),
