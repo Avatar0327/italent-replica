@@ -557,7 +557,10 @@ function registerFailures(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
       const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, CONTRACT_OBJECT, tx);
       if (content?.frozen)
-        return { ...projectRequestView(content.frozen.ext, viewable, content.fields), contentView: content.contentView };
+        return {
+          ...projectRequestView(content.frozen.ext, viewable, content.fields),
+          contentView: content.contentView,
+        };
       const { submittedFields, ...request } = await loadRequest(tx, ctx.tenantId, id);
       await checkScope(tx, ctx, request.employeeId, request.createdBy);
       // 申请元数据沿用现读 trim；提交载荷容器不在字段目录里，按同一投影契约在容器内部裁

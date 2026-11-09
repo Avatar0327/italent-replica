@@ -109,9 +109,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/contracts/frozen.ts#loadContractContent': [
     'apps/api/src/modules/contracts/service.ts#loadRequest',
   ],
-  'apps/api/src/modules/contracts/frozen.ts#projectFrozenRequest': [
+  'apps/api/src/modules/contracts/frozen.ts#projectRequestView': ['#BUSINESS_KEYS', '#customOf', '#submittedView'],
+  'apps/api/src/modules/contracts/frozen.ts#submittedView': [
     'apps/api/src/modules/approval/frozen-read.ts#pickDisclosed',
-    '#BUSINESS_KEYS',
     '#customOf',
   ],
   'apps/api/src/modules/contracts/imports.ts#applyRows': [
@@ -379,11 +379,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/frozen-read.ts#LIVE_VIEW',
     'apps/api/src/modules/approval/frozen-read.ts#openContentRead',
     'apps/api/src/modules/contracts/context.ts#checkScope',
-    'apps/api/src/modules/contracts/frozen.ts#projectFrozenRequest',
+    'apps/api/src/modules/contracts/frozen.ts#projectRequestView',
+    'apps/api/src/modules/contracts/frozen.ts#submittedView',
     '#routeContext',
     '#trim',
     'apps/api/src/modules/contracts/service.ts#loadRequest',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
   ],

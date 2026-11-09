@@ -80,10 +80,10 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/disclosure.ts': {
     assertCanOpen: 'd0a07eb26026',
-    readDetail: '58279a582a46',
+    readDetail: '31bc71ca48fd',
   },
   'apps/api/src/modules/approval/frozen-read.ts': {
-    openApprovalDetail: '52f17db5b520',
+    openApprovalDetail: '53784ffc9491',
   },
   'apps/api/src/modules/approval/my-applications.ts': {
     listMyApplications: 'ace0fe7e3d49',
@@ -189,7 +189,7 @@ export const DIGESTS: Digests = {
     'route:GET /employees/:id/revision': '9a1ba0e862a9',
     'route:GET /failures': '03931955cf2b',
     'route:GET /records/:id': '73e55ffefb6a',
-    'route:GET /requests/:id': 'e9d4a44c5fae',
+    'route:GET /requests/:id': 'b8298229c5e2',
     'route:GET /rules': '1747de734162',
     'route:GET /settings': '430f5083cecf',
     'route:POST /batch': 'c30e6dfb9f44',
@@ -490,7 +490,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employment/part-time/request-actions.ts': {
     REQUEST_ACTION_ACCESS: '7b184e282a82',
-    availableRequestActions: 'b3432a59d32b',
+    availableRequestActions: '420393057766',
   },
   'apps/api/src/modules/employment/part-time/request-routes.ts': {
     DATE_BUTTONS: 'd9c91010381e',
@@ -498,7 +498,7 @@ export const DIGESTS: Digests = {
     createRequestSchema: '52a7b52bd676',
     isDateRequestBody: 'c4858943b546',
     'route:DELETE /part-time-requests/:id': '61b879bdece3',
-    'route:GET /part-time-requests/:id': '10697a84af82',
+    'route:GET /part-time-requests/:id': '48f44d51a2ab',
     'route:PATCH /part-time-requests/:id': '49eb5c5d724e',
     'route:POST /part-time-requests': 'd8fa0373eeb1',
     'route:POST /part-time-requests/:id/revoke': 'f79d589acb03',
@@ -1111,7 +1111,7 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/personnel/order-code/settings': '5d57aee1fb93',
   },
   'apps/api/src/modules/personnel/request-routes.ts': {
-    'route:GET /api/tenant/personnel/change-requests/:id': '1756cf048118',
+    'route:GET /api/tenant/personnel/change-requests/:id': '6de99e650eba',
     'route:POST /api/tenant/personnel/change-requests': '9ed96f8f6519',
   },
   'apps/api/src/modules/personnel/routes.ts': {
@@ -1964,8 +1964,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/adapters.ts#ADAPTERS': 'edfc3d82549e',
   'apps/api/src/modules/approval/adapters.ts#personnelAdapter': 'f47bdaecd336',
   'apps/api/src/modules/approval/disclosure.ts#assertCanOpen': '457412422a98',
-  'apps/api/src/modules/approval/disclosure.ts#readDetail': '42c4a092f86f',
-  'apps/api/src/modules/approval/frozen-read.ts#openApprovalDetail': '7c33ed4a3b44',
+  'apps/api/src/modules/approval/disclosure.ts#readDetail': '244f4715cee7',
+  'apps/api/src/modules/approval/frozen-read.ts#openApprovalDetail': '754be4c67e9a',
   'apps/api/src/modules/approval/my-applications.ts#listMyApplications': '12801cc6782a',
   'apps/api/src/modules/approval/node-actions.ts#retrieveTask': '0e8b7aab9710',
   'apps/api/src/modules/approval/queries.ts#listNotifications': '9a92904d5be3',
@@ -2040,7 +2040,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/contracts/routes.ts#route:GET /employees/:id/revision': '6f1e1527e1ed',
   'apps/api/src/modules/contracts/routes.ts#route:GET /failures': 'c5422f075229',
   'apps/api/src/modules/contracts/routes.ts#route:GET /records/:id': '9473e7a402cc',
-  'apps/api/src/modules/contracts/routes.ts#route:GET /requests/:id': 'ade58ab06df4',
+  'apps/api/src/modules/contracts/routes.ts#route:GET /requests/:id': '8abfcc731dde',
   'apps/api/src/modules/contracts/routes.ts#route:GET /rules': '4ef96fe0fccb',
   'apps/api/src/modules/contracts/routes.ts#route:GET /settings': '50ddd44142c6',
   'apps/api/src/modules/contracts/routes.ts#route:POST /batch': '7fd7eb177ca2',
@@ -2260,13 +2260,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeWriteAccess': 'd7303ef58b71',
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requireWriteButtons': '3f9a791d22ff',
   'apps/api/src/modules/employment/part-time/request-actions.ts#REQUEST_ACTION_ACCESS': 'e51a99965c56',
-  'apps/api/src/modules/employment/part-time/request-actions.ts#availableRequestActions': '2c0917dd0fc6',
+  'apps/api/src/modules/employment/part-time/request-actions.ts#availableRequestActions': '4a3ae54b02b5',
   'apps/api/src/modules/employment/part-time/request-routes.ts#DATE_BUTTONS': '7692f890d8f1',
   'apps/api/src/modules/employment/part-time/request-routes.ts#createDateRequestRoute': '74d13185ae66',
   'apps/api/src/modules/employment/part-time/request-routes.ts#createRequestSchema': '8190a0548af5',
   'apps/api/src/modules/employment/part-time/request-routes.ts#isDateRequestBody': '33b9a70ec0bc',
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:DELETE /part-time-requests/:id': 'cbb0342b952d',
-  'apps/api/src/modules/employment/part-time/request-routes.ts#route:GET /part-time-requests/:id': 'd2ecade09d52',
+  'apps/api/src/modules/employment/part-time/request-routes.ts#route:GET /part-time-requests/:id': '2cbf973cd584',
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:PATCH /part-time-requests/:id': 'f8ac8cef4aad',
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:POST /part-time-requests': '38d8a979570b',
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:POST /part-time-requests/:id/revoke':
@@ -2737,7 +2737,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/personnel/order-code-routes.ts#route:GET /api/tenant/personnel/order-code/settings':
     'd98507a5a644',
   'apps/api/src/modules/personnel/request-routes.ts#route:GET /api/tenant/personnel/change-requests/:id':
-    '3d9f491d9fdc',
+    '0af34ddc3e88',
   'apps/api/src/modules/personnel/request-routes.ts#route:POST /api/tenant/personnel/change-requests': '4322865d1474',
   'apps/api/src/modules/personnel/routes.ts#nestedSubsets': 'e84939c40cbe',
   'apps/api/src/modules/personnel/routes.ts#route:GET /api/tenant/personnel/employees': '032728e6b253',

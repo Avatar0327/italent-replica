@@ -158,7 +158,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/change-requests.ts#loadChange',
     '#changeOriginals',
   ],
-  'apps/api/src/modules/personnel/frozen.ts#projectPersonnelRequest': [
+  'apps/api/src/modules/personnel/frozen.ts#personnelContainers': [
     'apps/api/src/modules/approval/frozen-read.ts#pickDisclosed',
   ],
   'apps/api/src/modules/personnel/frozen.ts#subsetVersion': [
@@ -269,6 +269,7 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/personnel/request-routes.ts#route:GET /api/tenant/personnel/change-requests/:id': [
+    'apps/api/src/modules/approval/disclosure.ts#showOriginalsOf',
     'apps/api/src/modules/approval/frozen-read.ts#LIVE_VIEW',
     'apps/api/src/modules/approval/frozen-read.ts#openContentRead',
     'apps/api/src/modules/job/context.ts#uuidParam',
@@ -280,7 +281,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/change-requests.ts#loadChange',
     'apps/api/src/modules/personnel/change-requests.ts#requireSelf',
     'apps/api/src/modules/personnel/frozen.ts#loadPersonnelContent',
-    'apps/api/src/modules/personnel/frozen.ts#projectPersonnelRequest',
+    'apps/api/src/modules/personnel/frozen.ts#personnelContainers',
+    'apps/api/src/modules/personnel/frozen.ts#personnelMetadata',
     'apps/api/src/modules/personnel/http.ts#safe',
     '#base',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_REQUEST_OBJECT',

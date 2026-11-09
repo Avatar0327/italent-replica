@@ -71,7 +71,12 @@ export function registerChangeRequestRoutes(router: Hono<TenantEnv>, deps: Tenan
         const content = await openContentRead<PersonnelContent>(tx, deps, ctx, 'personnel_change', id, objectCode);
         if (content?.frozen) {
           const { ext } = content.frozen;
-          return { content: ext, nested: content.fields, view: content.contentView, originals: content.data.showOriginals };
+          return {
+            content: ext,
+            nested: content.fields,
+            view: content.contentView,
+            originals: content.data.showOriginals,
+          };
         }
         await requireSelf(tx, ctx, String(row.employeeId));
         const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };

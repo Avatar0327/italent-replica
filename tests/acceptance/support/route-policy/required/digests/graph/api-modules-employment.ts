@@ -4803,11 +4803,20 @@ export const GRAPH: Graph = {
     '#requestActionTarget',
     'apps/api/src/modules/employment/part-time/request-service.ts#isRequestInitiator',
     'apps/api/src/modules/employment/part-time/request-store.ts#loadPartTimeRequest',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'packages/domain/src/employment/part-time-request.ts#nextPartTimeRequestState',
   ],
   'apps/api/src/modules/employment/part-time/request-actions.ts#requestActionTarget': ['#REQUEST_ACTION_ACCESS'],
   'apps/api/src/modules/employment/part-time/request-read.ts#landedRecordId': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeContent': [
+    'apps/api/src/modules/approval/adapter-support.ts#employeeHeader',
+    '#landedRecordId',
+    '#requestDto',
+    'apps/api/src/modules/employment/part-time/request-store.ts#loadPartTimeRequest',
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeRequestDetail': [
     'apps/api/src/modules/approval/adapter-support.ts#employeeHeader',
@@ -4817,11 +4826,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/employment/visibility.ts#isEmploymentRecordVisible',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
-  ],
-  'apps/api/src/modules/employment/part-time/request-read.ts#loadRequestContent': [
-    '#landedRecordId',
-    '#requestDto',
-    'apps/api/src/modules/employment/part-time/request-store.ts#loadPartTimeRequest',
   ],
   'apps/api/src/modules/employment/part-time/request-read.ts#loadRequestReceipt': [
     '#requestDto',
@@ -4838,6 +4842,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/request-routes.ts#approvalFields': [
     'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+  ],
+  'apps/api/src/modules/employment/part-time/request-routes.ts#capByDisclosed': [
+    '#FORM_TOP_KEYS',
+    '#formCode',
+    '#keepIn',
   ],
   'apps/api/src/modules/employment/part-time/request-routes.ts#createBusiness': [
     'apps/api/src/modules/employment/part-time/routes.ts#writeBusiness',
@@ -4908,7 +4917,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     'apps/api/src/modules/employment/part-time/request-actions.ts#availableRequestActions',
     'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeRequestDetail',
-    '#capByCeiling',
+    '#capByDisclosed',
+    '#keepIn',
     'apps/api/src/modules/employment/part-time/request-service.ts#notFound',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
