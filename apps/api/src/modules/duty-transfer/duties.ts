@@ -57,7 +57,7 @@ function dutiesSql(tenantId: string, asOf: string, holder: (column: SQL) => SQL)
   `;
 }
 
-type DutyRow = Omit<Duty, 'key' | 'description'> & { readonly name: string; readonly sort: string };
+type DutyRow = Omit<Duty, 'key' | 'description'> & { readonly name: string; readonly sort: string | null };
 
 /** 某人在 asOf 当日承担的职责：组织角色在前、下属在后，各按编码排序。 */
 export async function currentDuties(tx: Tx, tenantId: string, employeeId: string, asOf: string): Promise<Duty[]> {

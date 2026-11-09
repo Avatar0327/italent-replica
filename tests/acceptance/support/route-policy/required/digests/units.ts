@@ -215,7 +215,7 @@ export const DIGESTS: Digests = {
     submitMenuTransfer: 'bc90fc106a1d',
   },
   'apps/api/src/modules/employee-self-service/access.ts': {
-    boundEmployee: 'cde7cba2052a',
+    boundEmployee: 'b8e9da14ecca',
     grantedSelfServiceButtons: '65e3a8a52e48',
     requireSelfServiceButtons: '7f698f21231d',
     selfAccess: 'b01b7eb6a4ad',
@@ -687,7 +687,7 @@ export const DIGESTS: Digests = {
     registerActivityStateRoutes: '602a8f075658',
   },
   'apps/api/src/modules/evaluation/candidates.ts': {
-    registerCandidates: 'ac543713e8c2',
+    registerCandidates: '8da2f14cda9b',
   },
   'apps/api/src/modules/evaluation/flow-access.ts': {
     activityPersonSql: 'ff380c097110',
@@ -1753,7 +1753,7 @@ export const DIGESTS: Digests = {
     'route:GET /transfers/catalog': '538aa31bbdf5',
     'route:GET /transfers/departments': '293f11653294',
     'route:GET /transfers/employees/:id/draft': 'dc1dbefa2747',
-    'route:GET /transfers/self': '3c531c0ac228',
+    'route:GET /transfers/self': '8e3a0f39db70',
     'route:GET /transfers/settings': 'db9300878c3d',
     'route:POST /transfers/employees/:id': '42e0af8458b1',
     'route:POST /transfers/employees/:id/preview': '3bb3080d0e09',

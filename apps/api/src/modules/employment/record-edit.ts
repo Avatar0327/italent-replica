@@ -80,9 +80,10 @@ export async function editEmploymentRecord(
   if (record.kind === 'transfer' && patch.fields && Object.hasOwn(patch.fields, 'addedSubordinateIds'))
     await validateTransferSubordinates(tx, ctx, record.employeeId, after.fields, record.effectiveDate);
   assertRequiredTransferFields(record.kind, business.payload.formSnapshot, after.fields);
+  // F-493 S1：员工主档无工号时，任职工号只能为空
   if (
     after.fields.jobNumber !== null &&
-    after.fields.jobNumber.toLowerCase() !== business.employee.code.toLowerCase()
+    (business.employee.code === null || after.fields.jobNumber.toLowerCase() !== business.employee.code.toLowerCase())
   ) {
     throw new AppError('VALIDATION_FAILED', '任职工号必须等于员工主档工号');
   }

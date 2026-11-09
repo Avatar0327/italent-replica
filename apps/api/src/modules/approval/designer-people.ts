@@ -10,7 +10,7 @@ import { canonicalId, rowsOf } from './context.js';
 export interface DesignerPerson {
   userId: string;
   name: string;
-  code: string;
+  code: string | null;
   departmentId: string | null;
   departmentName: string | null;
 }
