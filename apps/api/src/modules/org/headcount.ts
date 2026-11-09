@@ -4,7 +4,9 @@
  * 口径照北森「组织架构图 - 在岗人数」：只算主职、人员状态为试用 / 正式、数据日期当天有效的任职记录，含下级。
  * 租户级“在岗人数统计范围”设置（雇佣关系 / 用工形式等筛选）尚未做，按不过滤处理（见任务结果“未决/假设”）。
  * 范围：按查看人的组织范围计数（与组织列表同一份 ModuleScope，SQL 侧谓词，只按任职部门判定：不传人员列，
- * 否则管理范围项会再叠一道人员范围条件，与组织列表的口径不一致），范围外的人不计入——
+ * 否则管理范围项会再叠一道人员范围条件，与组织列表的口径不一致）。使用人范围（using_user）看的是组织的创建人，
+ * 所以另传“任职部门这个组织的创建人”列，口径与组织列表同为组织对象 org.create 的创建人；
+ * 不改成按人员的创建人过滤。范围外的人不计入——
  * 可见节点的人数只含范围内人员，范围外节点不出现，不留计数侧信道。
  * 不读继任统计缓存 succession_org_stats（DEC-778②）：每次现算。
  * 一个人同一时点只有一条主职任职，所以按部门直接计数后沿层级累加不会重复计人。
@@ -13,6 +15,7 @@ import { sql, type Tx } from '@italent/db';
 import type { OrgDimension } from '@italent/domain';
 import { EMPLOYEE_STATUS } from '@italent/domain';
 import { scopeSql, type ModuleScope } from '../permission/module-access.js';
+import { creatorSql } from '../permission/scope-audit.js';
 import { rowsOf } from './read-model.js';
 
 /** 北森口径：试用或正式。 */
@@ -50,6 +53,7 @@ export async function loadDimensionEdges(
 /** 范围内人员按任职部门直接计数（不含下级）。 */
 async function directCounts(tx: Tx, tenantId: string, asOf: string, scope: ModuleScope) {
   const department = sql`(CASE WHEN latest.id IS NULL THEN r.department_id ELSE latest.department_id END)`;
+  const creator = creatorSql(tenantId, department, 'org.create', 'organization');
   const rows = rowsOf<{ orgId: string; n: number }>(
     await tx.execute(sql`
       SELECT ${department} AS "orgId", count(DISTINCT t.employee_id)::int AS n
@@ -61,7 +65,7 @@ async function directCounts(tx: Tx, tenantId: string, asOf: string, scope: Modul
       JOIN LATERAL employment_record_status(t.tenant_id, r.id) s ON true
       WHERE t.tenant_id = ${tenantId}::uuid AND t.valid_during @> ${asOf}::date
         AND r.service_type = 'primary' AND s.employee_status IN (${sql.join(COUNTED_STATUSES, sql`, `)})
-        AND ${scopeSql(scope, { org: department })}
+        AND ${scopeSql(scope, { org: department, creator })}
       GROUP BY 1`),
   );
   return new Map(rows.filter((row) => row.orgId).map((row) => [row.orgId, Number(row.n)]));

@@ -38,19 +38,26 @@ export async function orgWorld(db: Db) {
   const world = await seedPermissionWorld(db);
   const api = tenantApi(db, { authorize: undefined, clock });
   const setup = tenantApi(db, { clock });
-  const post = async (path: string, body: object, revision = 0) => {
-    const response = await setup.request('POST', `/api/tenant/${path}`, { ...world.asAdmin, ifMatch: revision, body });
+  type Actor = { user: string; tenant: string };
+  /** as 缺省为管理员；传查看人则该组织 / 人员的创建人记为查看人（using_user 范围用例）。 */
+  const post = async (path: string, body: object, revision = 0, as: Actor = world.asAdmin) => {
+    const response = await setup.request('POST', `/api/tenant/${path}`, {
+      ...world.asAdmin,
+      ...as,
+      ifMatch: revision,
+      body,
+    });
     expect(response.status, await response.clone().text()).toBe(201);
     return (await response.json()) as { id: string; revision: number; employeeRevision: number };
   };
   const suffix = uniqueSuffix();
-  const org = (name: string, parentId: string, extra: Record<string, unknown> = {}) =>
-    post('org/organizations', {
-      name: `${name}${suffix}`,
-      establishedOn: '2000-01-01',
-      parents: { admin: { parentId } },
-      ...extra,
-    });
+  const org = (name: string, parentId: string, extra: Record<string, unknown> = {}, as?: Actor) =>
+    post(
+      'org/organizations',
+      { name: `${name}${suffix}`, establishedOn: '2000-01-01', parents: { admin: { parentId } }, ...extra },
+      0,
+      as,
+    );
   const a = await org('甲部', world.tenant.id);
   const a1 = await org('甲一组', a.id);
   const b = await org('乙部', world.tenant.id);
@@ -150,7 +157,7 @@ export async function orgWorld(db: Db) {
   }
   /** 全部放行的管理视角（allowAll），用于对照“范围内外”。 */
   const full = (path: string) => setup.request('GET', `/api/tenant/org/${path}`, world.asAdmin);
-  return { world, a, a1, b, regular, viewer, full, suffix };
+  return { world, a, a1, b, regular, viewer, full, suffix, org, hire, post };
 }
 
 export type OrgWorld = Awaited<ReturnType<typeof orgWorld>>;
