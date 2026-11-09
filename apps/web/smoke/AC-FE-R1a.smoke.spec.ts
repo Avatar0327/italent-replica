@@ -340,7 +340,7 @@ test('AC-FE-F474-2b 列表有在岗人数列，架构卡片图显示负责人与
 });
 
 /** 返工 P2-2：停用（保存）成功后，列表、完整树、架构卡片三个数据源一起刷新；旧请求迟到不回写。 */
-async function orgWithMutableViews(page: Page, baseURL: string | undefined, view: 'tree' | 'chart') {
+async function orgWithMutableViews(page: Page, baseURL: string | undefined, view: 'tree' | 'chart', holdFirst = false) {
   await page.context().addCookies([
     { name: 'italent_demo_tenant', value: '10000000-0000-4000-8000-000000000001', url: baseURL! },
     { name: 'italent_demo_user', value: user, url: baseURL! },
@@ -370,7 +370,7 @@ async function orgWithMutableViews(page: Page, baseURL: string | undefined, view
   const gate = new Promise<void>((resolve) => (release.fn = resolve));
   await page.route(`**/api/tenant/org/organizations/${view}**`, async (route) => {
     state.requests += 1;
-    const stale = state.requests === 1 && view === 'tree';
+    const stale = holdFirst && state.requests === 1; // 只有迟到响应用例显式开启，其他用例不依赖请求次数
     const body = { roots: [node(state.saved && !stale)], total: 1, hasDataPermission: true };
     if (stale) await gate; // 第一次树请求被拦住，模拟迟到的旧响应
     return route.fulfill({ json: body });
@@ -396,7 +396,7 @@ async function stopFromList(page: Page) {
 }
 
 test('AC-FE-F474-2b-P2-2 树页保存成功后完整树刷新，迟到的旧请求不回写', async ({ page, baseURL }) => {
-  const views = await orgWithMutableViews(page, baseURL, 'tree');
+  const views = await orgWithMutableViews(page, baseURL, 'tree', true);
   await page.goto('/org?tab=tree');
   await stopFromList(page); // 树的第一次请求仍被拦住，列表已可操作
   const panel = page.locator('.r1-tree-panel');
