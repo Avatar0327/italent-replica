@@ -589,12 +589,15 @@ const RULES: readonly Rule[] = [
       (SELECT c.created_by FROM contract_records c WHERE c.tenant_id = ${viewer.tenantId} AND c.id = ${id}),
       (SELECT r.created_by FROM contract_requests r WHERE r.tenant_id = ${viewer.tenantId} AND r.id = ${id}))`;
   }),
-  // F-489（DEC-830③）：F-482 统计报表导出日志（behavior=export，对象类型 = 报表所属的人事分析对象，对象编号 = 报表编码）。
-  // 导出日志没有人员 / 组织归属也没有逐行明细，沿用上面 personRule 的任务行口径（第四轮 N2）：看全部可见；
-  // 否则归属为空时按“使用用户”维度判断，创建人回退为执行人——本人导出的对本人可见，其余范围一律 fail-closed。
-  // 前提与导出接口一致：先要有该报表对象的查看权（resolveRule 的 object.view）。不新增授权项、不新增口径。
-  personRule([HR_MOVEMENT_REPORT_OBJECT], HR_MOVEMENT_REPORT_OBJECT, () => sql`NULL::uuid`),
-  personRule([HR_STRUCTURE_REPORT_OBJECT], HR_STRUCTURE_REPORT_OBJECT, () => sql`NULL::uuid`),
+  // F-489（DEC-830③）+ F-509（DEC-853 / DEC-855 口径 A）：F-482 统计报表导出日志（behavior=export，对象类型 = 报表所属的
+  // 人事分析对象，对象编号 = 报表编码）。导出日志没有人员 / 组织归属也没有逐行明细：有日志审计能力（入口门禁）又有该报表对象
+  // 查看权（resolveRule 的 object.view）的人看全部人的导出，不再按数据范围或“本人导出”过滤；没有查看权、别的租户仍看不到。
+  // 不新增授权项、不新增口径；失败导出不写审计（DEC-846①）。
+  ...[HR_MOVEMENT_REPORT_OBJECT, HR_STRUCTURE_REPORT_OBJECT].map((code): Rule => ({
+    types: [code],
+    objectCode: code,
+    visible: () => sql`true`,
+  })),
   // R2 BE-14a：Offer 审计归属录用部门，创建人取审计的首条 offer.create（删除后仍可判断）
   orgRule(['offer'], OFFER_OBJECT, (row, viewer) => creatorSql(viewer.tenantId, row.objectId, 'offer.create', 'offer')),
   // R2 BE-14a3：批量审批单归属审批主体组织，按 Offer 对象的组织范围查看
