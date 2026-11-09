@@ -1,5 +1,5 @@
 import { APP_ROUTES } from './page-registry.js';
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 
 export const tenant = '10000000-0000-4000-8000-000000000001';
 export const user = '20000000-0000-4000-8000-000000000001';
@@ -85,3 +85,29 @@ export const test = base.extend({
   },
 });
 export { expect };
+
+/**
+ * 在 /staff 切换到合成演示用户，并等切换引起的整页刷新完成（F-311）。
+ * 选人后页面自己 location.assign(entry) 整页刷新；紧接着 page.goto 会和这次刷新互相打断
+ * （“navigation to … interrupted by another navigation to /staff”）。刷新后演示条才会回显当前身份，
+ * 所以以下拉回显为完成信号：既不依赖 URL（本来就在 /staff，URL 等待会立即成立），也不靠睡眠。
+ */
+export async function switchDemoUser(page: Page) {
+  await page.goto('/staff');
+  const switcher = page.getByLabel('切换演示身份');
+  await switcher.selectOption(user);
+  await expect(switcher).toHaveValue(user);
+}
+
+/**
+ * 直接写入演示身份 Cookie，省掉“先进 /staff 再选人再刷新”的两次整页加载（F-311）。
+ * 开发代理按 Cookie 签名、/__demo/personas 的 current 也只看 Cookie，所以与点选切换条等价；
+ * 切换条本身的交互由 AC-FE-0 与 AC-FE-R3a 的 switchDemoUser 覆盖。
+ */
+export async function seedDemoUser(page: Page) {
+  const url = base.info().project.use.baseURL!;
+  await page.context().addCookies([
+    { name: 'italent_demo_tenant', value: tenant, url },
+    { name: 'italent_demo_user', value: user, url },
+  ]);
+}

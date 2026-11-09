@@ -8,6 +8,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/establishment/capacity-exists.ts#hasCapacityFrom': [
     'apps/api/src/modules/establishment/store.ts#rowsOf',
   ],
+  'apps/api/src/modules/establishment/capacity-overlap.ts#assertNoCapacityOverlap': [
+    '#CapacityOverlapError',
+    '#findCapacityOverlap',
+    '#overlapMessage',
+  ],
+  'apps/api/src/modules/establishment/capacity-overlap.ts#genericOverlapMessage': [
+    '#GENERIC_EXISTS',
+    '#GENERIC_OVERLAP',
+  ],
+  'apps/api/src/modules/establishment/capacity-overlap.ts#overlapMessage': ['#genericOverlapMessage'],
   'apps/api/src/modules/establishment/capacity-read.ts#batchLocalSums': [
     'apps/api/src/modules/establishment/store.ts#rowsOf',
   ],
@@ -43,6 +53,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/establishment/store.ts#today',
   ],
   'apps/api/src/modules/establishment/capacity-service.ts#createCapacity': [
+    'apps/api/src/modules/establishment/capacity-overlap.ts#assertNoCapacityOverlap',
+    'apps/api/src/modules/establishment/capacity-overlap.ts#findCapacityOverlap',
     '#append',
     '#createCapacity',
     '#syncAncestors',
@@ -166,6 +178,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/establishment/org-reader.ts#parentOrg',
     'apps/api/src/modules/establishment/store.ts#invalid',
   ],
+  'apps/api/src/modules/establishment/copy-service.ts#classifyBusinessFailure': [
+    'apps/api/src/modules/establishment/capacity-overlap.ts#CapacityOverlapError',
+    'apps/api/src/modules/establishment/capacity-overlap.ts#genericOverlapMessage',
+  ],
   'apps/api/src/modules/establishment/copy-service.ts#copyCapacity': [
     'apps/api/src/modules/establishment/capacity-service.ts#createCapacity',
     'apps/api/src/modules/establishment/schemes.ts#nextPeriod',
@@ -201,7 +217,13 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/establishment/copy-service.ts#readCopyJob': [
     'apps/api/src/modules/establishment/store.ts#invalid',
   ],
-  'apps/api/src/modules/establishment/copy-service.ts#readCopyJobReport': ['#readCopyJob'],
+  'apps/api/src/modules/establishment/copy-service.ts#readCopyJobReport': ['#readCopyJob', '#renderFailureText'],
+  'apps/api/src/modules/establishment/copy-service.ts#renderCopyJob': ['#renderFailureText'],
+  'apps/api/src/modules/establishment/copy-service.ts#renderExecutedFailure': ['#renderFailureText'],
+  'apps/api/src/modules/establishment/copy-service.ts#renderFailureText': [
+    'apps/api/src/modules/establishment/capacity-overlap.ts#overlapMessage',
+  ],
+  'apps/api/src/modules/establishment/copy-service.ts#renderNotifications': ['#renderFailureText'],
   'apps/api/src/modules/establishment/copy-service.ts#validateCapacityIds': [
     'apps/api/src/modules/establishment/store.ts#invalid',
   ],
@@ -394,6 +416,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/scope-audit.ts#hasCreatorScope',
   ],
   'apps/api/src/modules/establishment/routes.ts#date': ['apps/api/src/modules/org/read-model.ts#validIsoDate'],
+  'apps/api/src/modules/establishment/routes.ts#renderExecuteResponse': [
+    'apps/api/src/modules/establishment/copy-service.ts#renderExecutedFailure',
+    'apps/api/src/modules/permission/module-capacity-authorization.ts#capacityContext',
+  ],
   'apps/api/src/modules/establishment/routes.ts#route:DELETE /api/tenant/establishment/schemes/:id': [
     '#BASE',
     '#OBJECT',
@@ -430,12 +456,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#requestScope',
   ],
   'apps/api/src/modules/establishment/routes.ts#route:GET /api/tenant/establishment/copy-jobs/:id': [
+    'apps/api/src/modules/establishment/copy-service.ts#renderCopyJob',
     '#BASE',
     '#OBJECT',
     '#visibleCopyJob',
     'apps/api/src/modules/job/context.ts#queryDate',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
+    'apps/api/src/modules/permission/module-capacity-authorization.ts#capacityContext',
     'apps/api/src/modules/permission/module-route-access.ts#objectContext',
     'apps/api/src/modules/permission/module-route-access.ts#requestScope',
   ],
@@ -447,16 +475,19 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#queryDate',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/permission/module-capacity-authorization.ts#capacityContext',
     'apps/api/src/modules/permission/module-route-access.ts#button',
     'apps/api/src/modules/permission/module-route-access.ts#objectContext',
     'apps/api/src/modules/permission/module-route-access.ts#requestScope',
   ],
   'apps/api/src/modules/establishment/routes.ts#route:GET /api/tenant/establishment/notifications': [
     'apps/api/src/modules/establishment/copy-service.ts#listNotifications',
+    'apps/api/src/modules/establishment/copy-service.ts#renderNotifications',
     '#BASE',
     '#OBJECT',
     'apps/api/src/modules/job/context.ts#pageQuery',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
+    'apps/api/src/modules/permission/module-capacity-authorization.ts#capacityContext',
     'apps/api/src/modules/permission/module-route-access.ts#objectContext',
     'apps/api/src/modules/permission/module-route-access.ts#requestScope',
   ],
@@ -554,6 +585,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/establishment/copy-service.ts#executeCopyJob',
     '#BASE',
     '#OBJECT',
+    '#renderExecuteResponse',
     '#visibleCopyJob',
     'apps/api/src/modules/job/context.ts#parseBody',
     'apps/api/src/modules/job/context.ts#queryDate',

@@ -239,9 +239,9 @@ interface SchemeKey {
  *   不存在“同期多方案取哪个”的业务情形。
  * - 北森停用被当前 / 未来周期编制引用的方案会被直接拒绝；复刻同口径（schemes.ts 的 SCHEME_IN_USE，提示照北森原文），
  *   所以生效日所在周期的编制不会指向已停用方案；组织没有编制时显示“--”，与北森一致。
- * 复刻写入侧目前只有 unique(组织, 方案, 周期起始)（capacity-service.ts 的 CAPACITY_EXISTS），
- * 跨方案重叠周期的拦截（DEC-279① / DEC-295①，F-037）尚未落地，所以同期多方案在复刻里理论上仍可能出现，
- * 这里保留确定性兜底（防御用）：先排除已停用方案；启用方案里预置默认方案（DEFAULT_SCHEME_CODE）优先；
+ * 复刻写入侧已按同口径拦截（F-484，DEC-279① / DEC-295①，capacity-overlap.ts）：同一组织任一方案的编制与新周期
+ * 按月份区间重叠即拒绝，所以新数据里同期多方案不会出现；这里保留确定性兜底（防御用）：先排除已停用方案；
+ * 启用方案里预置默认方案（DEFAULT_SCHEME_CODE）优先；
  * 其余按方案编码升序取第一个。结果与录入顺序无关。
  */
 export function pickScheme<T extends SchemeKey>(candidates: readonly T[]): T | null {

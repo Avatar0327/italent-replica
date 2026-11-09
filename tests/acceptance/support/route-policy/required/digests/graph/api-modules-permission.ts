@@ -362,11 +362,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/module-access.ts#trimModuleResponse': ['#getModuleViewableFields'],
   'apps/api/src/modules/permission/module-capacity-authorization.ts#capacityContext': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
     'apps/api/src/modules/permission/module-route-access.ts#visible',
     'apps/api/src/modules/permission/module-route-access.ts#writeFields',
     'apps/api/src/modules/permission/scope-audit.ts#creatorOf',
     'apps/api/src/modules/permission/scope-audit.ts#hasCreatorScope',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    'packages/domain/src/platform/standard-presets.ts#ESTABLISHMENT_SCHEME_DATASOURCE',
   ],
   'apps/api/src/modules/permission/module-capacity-authorization.ts#employmentCapacityContext': [
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',

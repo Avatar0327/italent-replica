@@ -1443,6 +1443,13 @@
       "when": 1794208249639,
       "tag": "0205_f326_s1_approval_variables",
       "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1794239661732,
+      "tag": "0206_f484_conflict_detail",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { actionButton } from './action-button.js';
-import { test, expect, user, snapshotFixture } from './fixtures.js';
+import { test, expect, snapshotFixture, switchDemoUser } from './fixtures.js';
 
 const rows = [
   {
@@ -104,8 +104,7 @@ for (const [path, title] of [
     page.on('console', (message) => {
       if (message.type() === 'error') errors.push(message.text());
     });
-    await page.goto('/staff');
-    await page.getByLabel('切换演示身份').selectOption(user);
+    await switchDemoUser(page);
     await page.goto(path!);
     await expect(page.getByRole('heading', { name: title!, exact: true })).toBeVisible();
     await expect(page.locator('.ant-breadcrumb')).toHaveCount(0);
@@ -138,8 +137,7 @@ for (const [path, title] of [
 }
 
 test('AC-FE-R3a 员工发展通道空态，无资格不伪造路径', async ({ page }) => {
-  await page.goto('/staff');
-  await page.getByLabel('切换演示身份').selectOption(user);
+  await switchDemoUser(page);
   await page.goto('/qualification?view=channels');
   await expect(page.getByRole('heading', { name: '员工发展通道', exact: true })).toBeVisible();
   await expect(page.getByText('选择员工后查看当前任职资格与发展路径')).toBeVisible();
@@ -159,8 +157,7 @@ test('AC-FE-R3a 编辑按当前详情 revision 提交，仅发送改动字段', 
     }
     return route.fulfill({ json: rows[0] });
   });
-  await page.goto('/staff');
-  await page.getByLabel('切换演示身份').selectOption(user);
+  await switchDemoUser(page);
   await page.goto('/qualification?view=categories');
   await actionButton(page, '编辑').click();
   await page.getByRole('dialog').getByLabel('名称', { exact: true }).fill('更新后的合成类别');
@@ -181,8 +178,7 @@ test('AC-FE-R3a 无按钮权限隐藏新建和编辑，隐藏字段不生成列�
       },
     }),
   );
-  await page.goto('/staff');
-  await page.getByLabel('切换演示身份').selectOption(user);
+  await switchDemoUser(page);
   await page.goto('/qualification?view=levels');
   await expect(page.getByRole('heading', { name: '任职级别', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /^新\s*建$/ })).toHaveCount(0);
@@ -217,8 +213,7 @@ test('AC-FE-R3a 员工当前级别与标准详情来自接口', async ({ page })
           },
     }),
   );
-  await page.goto('/staff');
-  await page.getByLabel('切换演示身份').selectOption(user);
+  await switchDemoUser(page);
   await page.goto('/qualification?view=channels');
   await page.getByRole('combobox', { name: '选择人员', exact: true }).click();
   await page.getByText('合成员工', { exact: true }).click();
@@ -235,8 +230,7 @@ test('AC-FE-R3a 新建标准提交选定级别与指标网格，不发送空白�
     expect(route.request().headers()['if-match']).toBe('0');
     return route.fulfill({ status: 201, json: rows[0] });
   });
-  await page.goto('/staff');
-  await page.getByLabel('切换演示身份').selectOption(user);
+  await switchDemoUser(page);
   await page.goto('/qualification?view=standards');
   await page.getByRole('button', { name: /^新\s*建$/ }).click();
   await page.getByRole('dialog').getByLabel('名称', { exact: true }).fill('合成任职标准');
@@ -260,8 +254,7 @@ test('AC-FE-R3a 新建标准提交选定级别与指标网格，不发送空白�
 test('AC-FE-R3a 更多配置保留既有六组维护入口', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/staff');
-  await page.getByLabel('切换演示身份').selectOption(user);
+  await switchDemoUser(page);
   await page.goto('/talent?view=maintenance');
   for (const title of ['指标库', '指标', '人才标准', '人才标准分类', '指标库分类', '发展建议类型']) {
     await page.getByRole('tab', { name: title, exact: true }).click();
@@ -279,8 +272,7 @@ test('AC-FE-R3a 人才标准引用潜力指标时不提供权重与目标输入'
     body = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: rows[0] });
   });
-  await page.goto('/staff');
-  await page.getByLabel('切换演示身份').selectOption(user);
+  await switchDemoUser(page);
   await page.goto('/talent?view=maintenance');
   await page.getByRole('tab', { name: '人才标准', exact: true }).click();
   await page.getByRole('button', { name: /^新\s*建$/ }).click();
@@ -298,8 +290,7 @@ test('AC-FE-R3a 已选员工无当前资格时显示真实空态', async ({ page
   await page.route('**/api/tenant/personnel/employees?*', (route) =>
     route.fulfill({ json: { items: [{ id: rows[0]!.id, name: '合成员工' }] } }),
   );
-  await page.goto('/staff');
-  await page.getByLabel('切换演示身份').selectOption(user);
+  await switchDemoUser(page);
   await page.goto('/qualification?view=channels');
   await page.getByRole('combobox', { name: '选择人员', exact: true }).click();
   await page.getByText('合成员工', { exact: true }).click();
@@ -318,8 +309,7 @@ for (const changeName of [false, true]) {
       }
       return route.fulfill({ json: saved });
     });
-    await page.goto('/staff');
-    await page.getByLabel('切换演示身份').selectOption(user);
+    await switchDemoUser(page);
     await page.goto('/qualification?view=levels');
     await actionButton(page, '编辑').click();
     const layer = page.getByLabel('层级', { exact: true });
@@ -371,8 +361,7 @@ for (const channel of [false, true]) {
             },
       }),
     );
-    await page.goto('/staff');
-    await page.getByLabel('切换演示身份').selectOption(user);
+    await switchDemoUser(page);
     await page.goto(`/qualification?view=${channel ? 'channels' : 'standards'}`);
     if (channel) {
       await page.getByRole('combobox', { name: '选择人员', exact: true }).click();
@@ -423,8 +412,7 @@ test('AC-FE-R3a P2-4 仅人才标准有权时可进入完整维护，未授权�
     if (/\/talent\/(libraries|dimensions|dimension-categories|description-types)(\?|$)/.test(request.url()))
       denied.push(request.url());
   });
-  await page.goto('/staff');
-  await page.getByLabel('切换演示身份').selectOption(user);
+  await switchDemoUser(page);
   await page.goto('/talent?view=criteria');
   await expect(page.getByRole('menuitem', { name: '更多配置', exact: true })).toBeVisible();
   await page.getByRole('menuitem', { name: '更多配置', exact: true }).click();
