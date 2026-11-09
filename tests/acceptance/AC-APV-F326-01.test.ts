@@ -8,7 +8,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { resultRows } from './AC-ORG-people-support.js';
-import { cmd, seedTenantWithMember } from './support/tenant-api.js';
+import { seedTenantWithMember } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
@@ -38,9 +38,8 @@ async function insert(tx: Tx, table: string, tenantId: string, row: Row) {
     columns.map((c) => sql`${row[c]}`),
     sql`, `,
   );
-  await tx.execute(
-    sql`INSERT INTO ${sql.identifier(table)}(tenant_id, ${sql.raw(columns.join(', '))}) VALUES (${tenantId}, ${values})`,
-  );
+  const names = sql.raw(columns.join(', '));
+  await tx.execute(sql`INSERT INTO ${sql.identifier(table)}(tenant_id, ${names}) VALUES (${tenantId}, ${values})`);
   return row;
 }
 
@@ -116,7 +115,11 @@ describe('五张表 FORCE RLS', () => {
         name: '审批人',
         seq: 1,
       });
-      const row = await insert(tx, 'approval_matrix_rows', a.tenantId, { id: randomUUID(), matrix_id: head.id, seq: 1 });
+      const row = await insert(tx, 'approval_matrix_rows', a.tenantId, {
+        id: randomUUID(),
+        matrix_id: head.id,
+        seq: 1,
+      });
       await insert(tx, 'approval_matrix_cells', a.tenantId, {
         row_id: row.id,
         column_id: column.id,
@@ -136,14 +139,14 @@ describe('五张表 FORCE RLS', () => {
     }
     // 在 B 的租户事务里写 A 的 tenant_id：策略 WITH CHECK 拒绝
     const rlsMessage = /row-level security|violates/i;
-    expect(await rejects(b, (tx) => insert(tx, 'approval_variables', a.tenantId, publicVariable(b)))).toMatch(rlsMessage);
+    expect(await rejects(b, (tx) => insert(tx, 'approval_variables', a.tenantId, publicVariable(b)))).toMatch(
+      rlsMessage,
+    );
     expect(await rejects(b, (tx) => insert(tx, 'approval_matrices', a.tenantId, matrix(b)))).toMatch(rlsMessage);
     // 他租户改不到、删不到 A 的行：UPDATE 命中 0 行
     const touched = await withTenant(testDb().db, b.tenantId, async (tx) =>
       resultRows(
-        await tx.execute(
-          sql`UPDATE approval_matrices SET name = '被篡改' WHERE id = ${seeded.head.id} RETURNING id`,
-        ),
+        await tx.execute(sql`UPDATE approval_matrices SET name = '被篡改' WHERE id = ${seeded.head.id} RETURNING id`),
       ),
     );
     expect(touched).toEqual([]);
@@ -203,8 +206,10 @@ describe('变量表约束（设计 §2.1 / §2.2）', () => {
     await ok(publicVariable(w, { code: `Global.B.HTCtoTind0${uniqueSuffix()}` }));
     await ok(applicationVariable(w, { code: `B.${Date.now()}${uniqueSuffix()}`.slice(0, 20) }));
     for (const code of ['Global.B.2x', 'Global.B.a-b', 'B.a', 'Global.B.', 'Global.B.' + 'a'.repeat(65)]) {
-      expect(await rejects(w, (tx) => insert(tx, 'approval_variables', w.tenantId, publicVariable(w, { code }))), code).not
-        .toBeNull();
+      expect(
+        await rejects(w, (tx) => insert(tx, 'approval_variables', w.tenantId, publicVariable(w, { code }))),
+        code,
+      ).not.toBeNull();
     }
     for (const code of ['Global.B.x', 'B.', 'B.a-b', 'B.' + 'a'.repeat(65), 'X.1']) {
       expect(
@@ -225,7 +230,10 @@ describe('变量表约束（设计 §2.1 / §2.2）', () => {
       applicationVariable(w, { description: '应用变量没有描述' }),
     ];
     for (const row of bad) {
-      expect(await rejects(w, (tx) => insert(tx, 'approval_variables', w.tenantId, row)), JSON.stringify(row)).not.toBeNull();
+      expect(
+        await rejects(w, (tx) => insert(tx, 'approval_variables', w.tenantId, row)),
+        JSON.stringify(row),
+      ).not.toBeNull();
     }
     await withTenant(testDb().db, w.tenantId, async (tx) => {
       await insert(
@@ -278,10 +286,18 @@ describe('矩阵子表约束（设计 §2.1）', () => {
     const w = await world('f326s1-columns');
     const matrixId = await seedMatrix(w);
     const insertColumn = (over: Row) =>
-      withTenant(testDb().db, w.tenantId, (tx) => insert(tx, 'approval_matrix_columns', w.tenantId, column(matrixId, over)));
+      withTenant(testDb().db, w.tenantId, (tx) =>
+        insert(tx, 'approval_matrix_columns', w.tenantId, column(matrixId, over)),
+      );
     await insertColumn({ seq: 1 });
     await insertColumn({ seq: 2, dimension: 'position', name: `职位${uniqueSuffix()}` });
-    await insertColumn({ seq: 3, kind: 'role', dimension: null, name: `审批人${uniqueSuffix()}`, allow_multiple: true });
+    await insertColumn({
+      seq: 3,
+      kind: 'role',
+      dimension: null,
+      name: `审批人${uniqueSuffix()}`,
+      allow_multiple: true,
+    });
     const bad: Row[] = [
       { dimension: null },
       { dimension: 'grade' },
@@ -311,7 +327,11 @@ describe('矩阵子表约束（设计 §2.1）', () => {
     const matrixId = await seedMatrix(w);
     const ids = await withTenant(testDb().db, w.tenantId, async (tx) => {
       const col = await insert(tx, 'approval_matrix_columns', w.tenantId, column(matrixId));
-      const row = await insert(tx, 'approval_matrix_rows', w.tenantId, { id: randomUUID(), matrix_id: matrixId, seq: 1 });
+      const row = await insert(tx, 'approval_matrix_rows', w.tenantId, {
+        id: randomUUID(),
+        matrix_id: matrixId,
+        seq: 1,
+      });
       return { col: col.id as string, row: row.id as string };
     });
     expect(
@@ -360,14 +380,20 @@ describe('应用角色权限（无删除）', () => {
     const ids = await withTenant(testDb().db, w.tenantId, async (tx) => {
       const variable = await insert(tx, 'approval_variables', w.tenantId, publicVariable(w));
       const head = await insert(tx, 'approval_matrices', w.tenantId, matrix(w));
-      const row = await insert(tx, 'approval_matrix_rows', w.tenantId, { id: randomUUID(), matrix_id: head.id, seq: 1 });
+      const row = await insert(tx, 'approval_matrix_rows', w.tenantId, {
+        id: randomUUID(),
+        matrix_id: head.id,
+        seq: 1,
+      });
       return { variable: variable.id as string, head: head.id as string, row: row.id as string };
     });
     const denied = /permission denied/i;
-    expect(await rejects(w, (tx) => tx.execute(sql`DELETE FROM approval_variables WHERE id = ${ids.variable}`))).toMatch(
+    expect(
+      await rejects(w, (tx) => tx.execute(sql`DELETE FROM approval_variables WHERE id = ${ids.variable}`)),
+    ).toMatch(denied);
+    expect(await rejects(w, (tx) => tx.execute(sql`DELETE FROM approval_matrices WHERE id = ${ids.head}`))).toMatch(
       denied,
     );
-    expect(await rejects(w, (tx) => tx.execute(sql`DELETE FROM approval_matrices WHERE id = ${ids.head}`))).toMatch(denied);
     await withTenant(testDb().db, w.tenantId, async (tx) => {
       await tx.execute(sql`DELETE FROM approval_matrix_rows WHERE id = ${ids.row}`);
     });

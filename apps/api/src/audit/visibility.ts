@@ -866,6 +866,11 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   retirement_identity_type: { code: 'TenantBase.EmploymentSettings' },
   employment_custom_field: { code: 'TenantBase.EmploymentCustomField' },
   'approval-process': { code: 'TenantBase.ApprovalProcess' },
+  // F-326：变量与矩阵的审计键含动态的 column:<id> / row:<id>，fixed 无法枚举；按审批流程对象裁剪（fail-closed）
+  'approval-public-variable': { code: 'TenantBase.ApprovalProcess' },
+  'approval-application-variable': { code: 'TenantBase.ApprovalProcess' },
+  'approval-matrix': { code: 'TenantBase.ApprovalProcess' },
+  'approval-matrix-row': { code: 'TenantBase.ApprovalProcess' },
   transfer_form: {
     code: EMPLOYMENT,
     presets: true,

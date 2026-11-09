@@ -47,7 +47,10 @@ describe('APPROVAL_TYPE_APPS', () => {
   it('类型的对象在其映射应用的目录内（不从目录反推：同一对象可出现在多个应用里）', () => {
     const missing = Object.entries(APPROVAL_TYPE_APPS)
       .filter(([code]) => !APPROVAL_TYPES_OUTSIDE_APP_DIRECTORY.includes(code as never))
-      .filter(([code, app]) => !APP_OBJECT_DIRECTORY[app].includes(APPROVAL_TYPES[code as keyof typeof APPROVAL_TYPES].objectCode))
+      .filter(
+        ([code, app]) =>
+          !APP_OBJECT_DIRECTORY[app].includes(APPROVAL_TYPES[code as keyof typeof APPROVAL_TYPES].objectCode),
+      )
       .map(([code, app]) => `${code}→${app}`);
     expect(missing).toEqual([]);
   });
