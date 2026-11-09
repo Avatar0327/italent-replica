@@ -6,8 +6,10 @@
  * - 路径条按接口 path 显示已经过 / 当前 / 不经过（及待办）。
  * 合成数据；租户数据读写都经 approvalWorld 的接口调用（DEC-568）。
  */
+import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
+import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { Window } from 'happy-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +17,7 @@ import { APV, approveCurrent, approveTo, otherwise, pendingOf, routeScene, when 
 import { publishRouted, type RouteScene } from './AC-APV-F478-support.js';
 import { detailOf, type DetailWithExits } from './AC-APV-F478-s2-support.js';
 import type { NodeInput } from './AC-APV-support.js';
+import { revokeBySystem } from '../../apps/api/src/modules/approval/actions.js';
 
 // API / PGlite 保留 Node 的 URL、Request、Response、fetch；antd 渲染所需的其余 DOM 全局取自 happy-dom，只补 Node 没有的。
 const domWindow = new Window({ url: 'http://localhost' });
@@ -95,7 +98,12 @@ async function settleUntil(condition: () => boolean, message = () => host.textCo
 }
 const wait = (ms: number) => act(async () => new Promise((done) => setTimeout(done, ms)));
 
-async function openDetail(s: RouteScene, instanceId: string, taskId: string) {
+async function openDetail(
+  s: RouteScene,
+  instanceId: string,
+  taskId: string,
+  mode: { todo?: boolean; applications?: boolean } = { todo: true },
+) {
   const session = {
     tenantId: s.w.tenant.id,
     identityKey: `synthetic-${taskId}`,
@@ -105,7 +113,7 @@ async function openDetail(s: RouteScene, instanceId: string, taskId: string) {
     source: 'server',
   };
   const row = { id: instanceId, title: '合成调动申请', approvalType: 'transfer', status: 'pending', taskId };
-  const page = h(ApprovalDetail, { row, layout: 'page', todo: true, onClose() {}, onChanged() {} });
+  const page = h(ApprovalDetail, { row, layout: 'page', ...mode, onClose() {}, onChanged() {} });
   await act(async () => root.render(h(SessionProvider, { session }, page)));
   await settleUntil(() => !!host.querySelector('.approval-progress'));
 }
@@ -200,6 +208,41 @@ describe('AC-APV-F478-25 办理页按接口 exits 渲染并提交 exit（真实�
       ['节点n2', '不经过'],
       ['节点n3', '当前'],
       ['结束', ''],
+    ]);
+  });
+});
+
+const stepStatuses = () =>
+  Array.from(host.querySelectorAll('.approval-progress .ant-steps-item')).map((item) => [
+    squash(item.querySelector('.ant-steps-item-title')?.textContent),
+    ['finish', 'process', 'wait', 'error'].find((state) => item.classList.contains(`ant-steps-item-${state}`)),
+  ]);
+
+describe('AC-APV-F478-25 系统终止后发起人从“我的申请”打开：终止节点与结尾置灰（第 1 轮返工 P2-1，真实后端）', () => {
+  it('N1 已同意、N2 审批中时离职生效系统撤销：路径条 N1 绿，N2（后端报 passed）与“已终止”灰', async () => {
+    const { s, view } = await scene('f478-25-terminated');
+    const atJoint = await approveCurrent(s, view);
+    expect(atJoint.currentNodeKey).toBe('n3');
+    const ctx = {
+      tenantId: s.w.tenant.id,
+      userId: s.w.hr.id,
+      timezone: 'Asia/Shanghai',
+      now: new Date('2026-10-01T01:00:00.000Z'),
+      commandId: randomUUID(),
+      expectedRevision: 0,
+    };
+    await withTenant(s.w.db, s.w.tenant.id, (tx) => revokeBySystem(tx, ctx, view.id, '离职业务终止在途审批流程'));
+    const calls = forward(s, s.w.hr.id);
+    await openDetail(s, view.id, atJoint.tasks[0]!.id, { applications: true });
+    const read = calls.find((call) => call.method === 'GET' && call.path === `${APV}/instances/${view.id}`)!;
+    const path = read.result.path as { nodeKey: string; state: string }[];
+    expect(path.find((step) => step.nodeKey === 'n3')?.state).toBe('passed');
+    expect(stepStatuses()).toEqual([
+      ['开始', 'finish'],
+      ['节点n1', 'finish'],
+      ['节点n2', 'wait'],
+      ['节点n3', 'wait'],
+      ['已终止', 'wait'],
     ]);
   });
 });

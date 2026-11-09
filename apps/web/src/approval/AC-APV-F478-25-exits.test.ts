@@ -61,7 +61,7 @@ const conflict =
   () =>
     Response.json({ error: { code: 'CONFLICT', message, details: { reason, ...extra } } }, { status: 409 });
 
-async function render(detail: Record<string, unknown>) {
+async function render(detail: Record<string, unknown>, props: { applications?: boolean } = {}) {
   current = detail;
   vi.stubGlobal(
     'fetch',
@@ -93,7 +93,7 @@ async function render(detail: Record<string, unknown>) {
           displayName: '合成用户',
           source: 'server',
         },
-        children: h(ApprovalDetail, { row: row as Detail, layout: 'page', onClose() {}, onChanged() {} }),
+        children: h(ApprovalDetail, { row: row as Detail, layout: 'page', onClose() {}, onChanged() {}, ...props }),
       }),
     );
   });
@@ -284,5 +284,41 @@ describe('AC-APV-F478-25 路径条按 path[].state 显示', () => {
     await render(fixture({ path: [], recordsHidden: true }));
     expect(steps().map(({ title }) => title)).toEqual(['开始', '合成节点甲', '合成节点乙', '结束']);
     expect(steps().every(({ state }) => state === undefined)).toBe(true);
+  });
+});
+
+describe('AC-APV-F478-25 我的申请里已终止的流程：带 path 时终止节点与结尾仍置灰（第 1 轮返工 P2-1）', () => {
+  const terminated = (overrides: Record<string, unknown> = {}) =>
+    fixture({
+      status: 'cancelled',
+      actions: [],
+      exits: [],
+      path: [
+        { nodeKey: 'n1', name: '合成节点甲', state: 'passed', exit: 'approve' },
+        // 后端把已激活的 N2 报为 passed（detail-path.ts activated），终止时它的任务被置 cancelled
+        { nodeKey: 'n2', name: '合成节点乙', state: 'passed' },
+        { nodeKey: 'n3', name: '合成节点丙', state: 'not_on_path' },
+      ],
+      tasks: [
+        { id: 'task-0', nodeName: '合成节点甲', status: 'approved' },
+        { id: TASK, nodeName: '合成节点乙', status: 'cancelled' },
+      ],
+      ...overrides,
+    });
+
+  it('以 applications=true 打开：已同意的节点保持绿，被终止的节点与“已终止”结尾置灰，节点说明仍取接口 state', async () => {
+    await render(terminated(), { applications: true });
+    expect(steps()).toEqual([
+      { title: '开始', state: undefined, status: 'finish' },
+      { title: '合成节点甲', state: '已经过', status: 'finish' },
+      { title: '合成节点乙', state: '已经过', status: 'wait' },
+      { title: '合成节点丙', state: '不经过', status: 'wait' },
+      { title: '已终止', state: undefined, status: 'wait' },
+    ]);
+  });
+
+  it('不是“我的申请”入口（未传 applications）：保持原呈现，被取消的任务节点不置灰', async () => {
+    await render(terminated());
+    expect(steps().find((step) => step.title === '合成节点乙')?.status).toBe('finish');
   });
 });
