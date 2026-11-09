@@ -1,5 +1,5 @@
 import { actionButton } from './action-button.js';
-import { test, expect, user, employee, snapshotFixture } from './fixtures.js';
+import { test, expect, user, employee, seedDemoUser, snapshotFixture } from './fixtures.js';
 import type { Page } from '@playwright/test';
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -638,9 +638,8 @@ async function transferFixtures(page: Page) {
 }
 
 async function switchIdentity(page: Page, path: string) {
-  await page.goto(path);
-  await page.getByLabel('切换演示身份').selectOption(user);
-  await page.waitForURL('**/staff');
+  // 重负载下每次整页加载要数秒，原先 3 次（进页面、选人后跳 /staff、再进页面）合起来占了用例耗时的大半（F-311）。
+  await seedDemoUser(page);
   await page.goto(path);
   // 列表标题行按原站隐藏（标题位是横向视图 / 分类栏），改等页面根节点。
   await expect(page.locator('.hr-transfer-page, .approval-page').first()).toBeVisible({ timeout: 15_000 });

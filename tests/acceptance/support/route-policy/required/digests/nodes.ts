@@ -1256,7 +1256,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/duty-transfer/service.ts#emptyTransfer': ['e96369500c07', '583ee92c250c'],
   'apps/api/src/modules/duty-transfer/service.ts#leavingPeople': ['a9e25a4e6f17', '7d6bd9c73944'],
   'apps/api/src/modules/duty-transfer/service.ts#personNames': ['5f89cd8709b2', '538b09901a66'],
-  'apps/api/src/modules/duty-transfer/service.ts#saveRecord': ['cbe9fd0872eb', '75e6870cd819'],
+  'apps/api/src/modules/duty-transfer/service.ts#saveRecord': ['2c7116fd2446', '75e6870cd819'],
   'apps/api/src/modules/duty-transfer/service.ts#submitMenuTransfer': ['bc90fc106a1d', 'aee8a9ded615'],
   'apps/api/src/modules/duty-transfer/service.ts#transferDateOf': ['65e1509b626d', '4f1d6c58fb74'],
   'apps/api/src/modules/duty-transfer/service.ts#uuidArray': ['d4eff94fcae0', '7a645dc8391f'],

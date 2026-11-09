@@ -73,6 +73,7 @@ describe('DT-R7 / AC-DT-04 菜单下属转交的版本链边界（F-448，第 2 
       before.at(-1),
     ]);
     expect(await x.managerOf(subordinate.id, '2026-10-19')).toBe(x.employee.id);
+    expect(await x.managerOf(subordinate.id, LATER)).toBe(receiver.id); // 转交日当天起生效（F-454，P3-5）
     expect(await x.managerOf(subordinate.id, FUTURE)).toBe(receiver.id);
   });
 
@@ -88,6 +89,7 @@ describe('DT-R7 / AC-DT-04 菜单下属转交的版本链边界（F-448，第 2 
 
     const after = await x.segments(subordinate.id);
     expect(after).toEqual([...before, { start: MENU_TODAY, kind: 'org_adjustment', changeType: 'data_adjustment' }]);
+    expect(await x.managerOf(subordinate.id, '2026-10-05')).toBe(x.employee.id); // 转交日前一天不变（F-454，P3-5）
     expect(await x.managerOf(subordinate.id, MENU_TODAY)).toBe(receiver.id);
   });
 
