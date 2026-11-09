@@ -18,13 +18,20 @@ import { loadItems } from './items-store.js';
 interface FailureRow {
   readonly itemId: string;
   readonly employeeId: string;
-  readonly employeeCode: string;
+  /** F-493 S1：历史离职人员可无工号。 */
+  readonly employeeCode: string | null;
   readonly employeeName: string;
   readonly reason: string;
   readonly message: string;
 }
 
 type Deps = Pick<TenantRouteDeps, 'authorize' | 'clock'>;
+
+/** 有工号在前、空工号排最后（与 SQL 升序 NULLS LAST 同向）。 */
+function compareCodeNullsLast(a: string | null, b: string | null): number {
+  if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
+  return a.localeCompare(b);
+}
 
 export async function readEmploymentFailures(
   tx: Tx,
@@ -58,5 +65,10 @@ export async function readEmploymentFailures(
   const visible = await visibleEmploymentRecords(tx, ctx.tenantId, scope, targets);
   return rows
     .filter((_, index) => visible[index])
-    .sort((a, b) => seqOf.get(a.itemId)! - seqOf.get(b.itemId)! || a.employeeCode.localeCompare(b.employeeCode));
+    .sort(
+      (a, b) =>
+        seqOf.get(a.itemId)! - seqOf.get(b.itemId)! ||
+        compareCodeNullsLast(a.employeeCode, b.employeeCode) ||
+        a.employeeId.localeCompare(b.employeeId),
+    );
 }

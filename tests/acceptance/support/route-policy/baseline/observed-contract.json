@@ -5708,10 +5708,13 @@
           "trimEmploymentResponse"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
-          "readPageContext"
+          "checkScope",
+          "readPageContext",
+          "visible()"
         ]
       }
     },
@@ -5916,13 +5919,16 @@
           "trimEmploymentResponse"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
+          "checkScope",
           "employment visibility",
           "readPageContext",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -6683,8 +6689,10 @@
           "TenantBase.OrganizationEstablishment:view"
         ],
         "scope": [
+          "creator scope",
           "establishment visible*/check*",
-          "requestScope"
+          "requestScope",
+          "visible()"
         ]
       }
     },
@@ -6715,8 +6723,10 @@
           "TenantBase.OrganizationEstablishment:view"
         ],
         "scope": [
+          "creator scope",
           "establishment visible*/check*",
-          "requestScope"
+          "requestScope",
+          "visible()"
         ]
       }
     },
@@ -6750,8 +6760,10 @@
           "listTodos / listNotifications / listInstances"
         ],
         "scope": [
+          "creator scope",
           "requestScope",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -8539,6 +8551,64 @@
           "requestScope",
           "scopeSql",
           "visible()"
+        ]
+      }
+    },
+    "GET /api/tenant/org/organizations/chart": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org",
+      "primitives": {
+        "object": [
+          "org context(read|create|update|delete)"
+        ],
+        "objectOp": [
+          "TenantBase.Organization:view"
+        ],
+        "scope": [
+          "requestScope"
+        ]
+      }
+    },
+    "GET /api/tenant/org/organizations/tree": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org",
+      "primitives": {
+        "object": [
+          "org context(read|create|update|delete)"
+        ],
+        "objectOp": [
+          "TenantBase.Organization:view"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scopeSql"
         ]
       }
     },
@@ -17518,6 +17588,12 @@
           "assertRevision",
           "write() / command()"
         ],
+        "domain": [
+          "approval.taskObject"
+        ],
+        "fieldsIn": [
+          "fieldRights"
+        ],
         "fieldsOut": [
           "approval views"
         ],
@@ -17679,6 +17755,12 @@
         "command": [
           "assertRevision",
           "write() / command()"
+        ],
+        "domain": [
+          "approval.taskObject"
+        ],
+        "fieldsIn": [
+          "fieldRights"
         ],
         "fieldsOut": [
           "approval views"

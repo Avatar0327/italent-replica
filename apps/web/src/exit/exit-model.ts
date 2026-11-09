@@ -10,6 +10,7 @@ import {
   HANDOVER_RESUBMIT_BUTTON as RESUBMIT,
   HANDOVER_ROW_SUBMIT_BUTTON as ROW_SUBMIT,
   HANDOVER_SUBMIT_BUTTON as SUBMIT,
+  type AttachmentPurpose,
 } from '@italent/domain';
 import { ApiError } from '../foundation/client.js';
 import { isBlank, projectFields, sameValue, type Values } from '../foundation/forms/values.js';
@@ -89,11 +90,15 @@ export function cellValue(row: Row, key: string): string {
 }
 
 /** F-393：加黑三项逐项按响应键展示，不从可能被裁剪的 addToBlacklist 推导查看权。 */
+/** 本人离职的手写申请附件（F-479 用途表，packages/domain/src/attachments/purposes.ts）。 */
+export const EXIT_ATTACHMENT: AttachmentPurpose = 'exit.handwritten_application';
 export const detailKeys = (row: Row): string[] => [
   ...columns.all,
   'whereaboutsCode',
   'addToBlacklist',
   ...blacklistFields.filter((field) => Object.hasOwn(row, field)),
+  // 附件随字段权出现：无权时后端整键缺席，详情不留空行（F-479 设计 §5.3）
+  ...(Object.hasOwn(row, 'attachmentRefs') ? ['attachmentRefs'] : []),
 ];
 
 const validObject = (id: unknown, revision: unknown) =>

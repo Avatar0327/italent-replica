@@ -11,7 +11,7 @@ export const replayChanges = (listener: () => void) => {
 export const pendingReplay = (key: string) => pending.get(key);
 export function recoverSelfRequest<T>(key: string, send: () => Promise<T>): Promise<T> {
   return new Promise((resolve, reject) => {
-    const attempt = async (replay = false) => {
+    const attempt = async () => {
       try {
         const result = await send();
         pending.delete(key);
@@ -19,13 +19,14 @@ export function recoverSelfRequest<T>(key: string, send: () => Promise<T>): Prom
         resolve(result);
       } catch (error) {
         const status = (error as { status?: number })?.status;
-        // 确定的 409 交还 F-123 重读/核对；原重放槽不能覆盖 conflict 状态。
-        if (status === 409 || (!replay && status && status >= 400 && status < 500)) {
+        // 确定的 4xx（409 走重读/核对，其余如回放时临时附件过期 400 ATTACHMENT_INVALID 走可修改的拒绝态）
+        // 首次与回放同一口径交还 F-123；只有网络失败 / 5xx 等仍未知的结果留在重放槽（F-479 S5 审查 P2-1）。
+        if (status && status >= 400 && status < 500) {
           pending.delete(key);
           notify();
           return reject(error);
         }
-        pending.set(key, { busy: false, retry: () => attempt(true) });
+        pending.set(key, { busy: false, retry: () => attempt() });
         notify();
       }
     };

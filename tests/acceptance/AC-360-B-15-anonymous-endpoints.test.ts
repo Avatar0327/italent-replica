@@ -35,6 +35,14 @@ import { employeeAvatar } from './AC-EMP-F058-avatar-support.js';
 const testDb = useTestDb();
 afterEach(resetCredentialConfig);
 
+/**
+ * F-507：枚举三例各自先 `answered()`（建场景、四份答卷、停用、生成并转发报告）再逐个调用约 30 个出口，是本文件最重的用例。
+ * 本机 load 约 9 实测最慢 11.9 秒、整文件 54 秒；预检 #620（load 约 98）整文件 151 秒（约 2.8 倍），两例越过全局 30 秒。
+ * 取值依据：11.9 秒 × 2.8 ≈ 33 秒，再按 CI 分片再慢 2～3 倍预留，取 90 秒。只放宽这三例；它们各自改动活动的授权 /
+ * 创建者，不能安全共享场景，所以不改准备工作；不动全局上限与断言。
+ */
+const ENUMERATION_TIMEOUT_MS = 90_000;
+
 const SURVEY = '/api/tenant/survey360';
 const ACT = `${SURVEY}/activities/:id`;
 const TODO = `${SURVEY}/my/todos/:todoId`;
@@ -422,45 +430,59 @@ describe('DEC-364② 匿名活动的答卷出口枚举', () => {
     expect(Object.keys(EXPECTED_STATUS).sort(), '每个答卷出口都有逐端点预期状态').toEqual([...ANSWER_ENDPOINTS].sort());
   });
 
-  it('一般活动管理员（被授权、非创建者）与兼任被评价人的“全部活动”持有人：所有出口都拿不到逐份答案', async () => {
-    const { s, target } = await answered('enum-a');
-    expect(target.auditIds.length).toBeGreaterThan(0);
-    const general = await s.w.member('一般活动管理员');
-    await s.w.appoint(general, 'general');
-    await grantActivity(s, general);
-    await expectNoAnswers(s, general, target, '一般活动管理员');
-    await s.w.appoint(s.user.T, 'system');
-    await expectNoAnswers(s, s.user.T, target, '兼任被评价人的全部活动持有人');
-  });
+  it(
+    '一般活动管理员（被授权、非创建者）与兼任被评价人的“全部活动”持有人：所有出口都拿不到逐份答案',
+    async () => {
+      const { s, target } = await answered('enum-a');
+      expect(target.auditIds.length).toBeGreaterThan(0);
+      const general = await s.w.member('一般活动管理员');
+      await s.w.appoint(general, 'general');
+      await grantActivity(s, general);
+      await expectNoAnswers(s, general, target, '一般活动管理员');
+      await s.w.appoint(s.user.T, 'system');
+      await expectNoAnswers(s, s.user.T, target, '兼任被评价人的全部活动持有人');
+    },
+    ENUMERATION_TIMEOUT_MS,
+  );
 
-  it('兼任评价者的活动创建者：自己创建的活动里所有出口都拿不到逐份答案', async () => {
-    const { s, target } = await answered('enum-b');
-    // 活动创建者记为 M（M 同时是该活动的上级评价者）
-    await s.w.appoint(s.user.M, 'general');
-    await createdBy(s, s.user.M);
-    await expectNoAnswers(s, s.user.M, target, '兼任评价者的创建者');
-  });
+  it(
+    '兼任评价者的活动创建者：自己创建的活动里所有出口都拿不到逐份答案',
+    async () => {
+      const { s, target } = await answered('enum-b');
+      // 活动创建者记为 M（M 同时是该活动的上级评价者）
+      await s.w.appoint(s.user.M, 'general');
+      await createdBy(s, s.user.M);
+      await expectNoAnswers(s, s.user.M, target, '兼任评价者的创建者');
+    },
+    ENUMERATION_TIMEOUT_MS,
+  );
 
-  it('有资格身份拿得到：不兼任的“全部活动”持有人与不兼任的活动创建者看卡片与答卷日志里的答案', async () => {
-    const { s, target } = await answered('enum-c');
-    const creator = await s.w.member('不兼任的创建者');
-    await s.w.appoint(creator, 'general');
-    await createdBy(s, creator);
-    for (const [user, who] of [
-      [s.w.admin, '全部活动持有人'],
-      [creator, '活动创建者'],
-    ] as const) {
-      const cards = await callAs(s, user, `GET ${ACT}/sheets`, target);
-      expect(cards.status, who).toBe(200);
-      expect(await cards.text(), who).toContain('"optionLabel"');
-      const details = await Promise.all(
-        target.auditIds.map(async (id) => (await callAs(s, user, `GET ${AUDIT}/data-changes/:id`, target, id)).text()),
-      );
-      const joined = details.join('');
-      expect(joined, who).toContain('"optionId"');
-      for (const text of target.texts) expect(joined, `${who} ${text}`).toContain(text);
-    }
-  });
+  it(
+    '有资格身份拿得到：不兼任的“全部活动”持有人与不兼任的活动创建者看卡片与答卷日志里的答案',
+    async () => {
+      const { s, target } = await answered('enum-c');
+      const creator = await s.w.member('不兼任的创建者');
+      await s.w.appoint(creator, 'general');
+      await createdBy(s, creator);
+      for (const [user, who] of [
+        [s.w.admin, '全部活动持有人'],
+        [creator, '活动创建者'],
+      ] as const) {
+        const cards = await callAs(s, user, `GET ${ACT}/sheets`, target);
+        expect(cards.status, who).toBe(200);
+        expect(await cards.text(), who).toContain('"optionLabel"');
+        const details = await Promise.all(
+          target.auditIds.map(async (id) =>
+            (await callAs(s, user, `GET ${AUDIT}/data-changes/:id`, target, id)).text(),
+          ),
+        );
+        const joined = details.join('');
+        expect(joined, who).toContain('"optionId"');
+        for (const text of target.texts) expect(joined, `${who} ${text}`).toContain(text);
+      }
+    },
+    ENUMERATION_TIMEOUT_MS,
+  );
 });
 
 /** F-060（#125 第 5 轮 P3-1）：进入有效读取 / 成功分支后的本人 / 他人边界。 */

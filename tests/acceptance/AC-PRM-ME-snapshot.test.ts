@@ -69,7 +69,9 @@ describe('当前用户权限快照（演示租户）', () => {
       cmd(),
     );
     people.set('nobody', { user: nobody.id, tenant: manifest.tenantId, name: nobody.displayName });
-  }, 180_000);
+    // F-492：seedDemo 建整个演示租户，CI PGlite 分片实测整文件 223.9 秒、钩子越过原 180 秒上限；
+    // 单设 360 秒 = 已知最大 223.9 秒 × 1.5 取整（本机 load 约 10 时约 77 秒）。只放宽本钩子，不动全局上限与断言。
+  }, 360_000);
 
   /** 旧前端做法：逐应用逐对象探测 /me/objects 与专用接口，推出每个应用的可见性与入口对象。 */
   async function probed(who: Who) {

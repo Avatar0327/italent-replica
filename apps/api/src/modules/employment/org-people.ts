@@ -14,7 +14,7 @@ import { checkPage, rowsOf } from './read-model.js';
 export interface OrgPersonCandidate {
   readonly id: string;
   readonly name: string;
-  readonly code: string;
+  readonly code: string | null;
   readonly departmentId: string | null;
   readonly departmentName: string | null;
 }

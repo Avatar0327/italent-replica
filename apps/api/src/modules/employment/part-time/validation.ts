@@ -113,7 +113,7 @@ export function normalizeNewPartTime(input: NewPartTimeInput): NormalizedPartTim
 /** 兼职记录的完整预置字段组：表单字段 + 系统派生的 job_number（员工工号）与 employ_type（所属周期雇佣关系）。 */
 export function partTimePresetFields(
   normalized: NormalizedPartTime,
-  derived: { readonly jobNumber: string; readonly employType: PresetFields['employType'] },
+  derived: { readonly jobNumber: string | null; readonly employType: PresetFields['employType'] },
 ): PresetFields {
   return { ...emptyPresetFields(), ...normalized.fields, ...derived };
 }

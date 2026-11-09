@@ -113,9 +113,13 @@ describe('写入审计的对象类型都已登记查看规则（PR #75 第三轮
   ]
     .map((code) => `TenantBase.${code}`)
     .concat([
+      'approval-application-variable',
       'approval-exception-admin',
       'approval-instance',
+      'approval-matrix',
+      'approval-matrix-row',
       'approval-process',
+      'approval-public-variable',
       'approval-task',
       'audit_retention',
       'duty-transfer-record',

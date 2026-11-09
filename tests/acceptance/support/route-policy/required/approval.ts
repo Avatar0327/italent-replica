@@ -392,10 +392,12 @@ export const APPROVAL: RequiredTable = {
   'POST /api/tenant/approval/tasks/:id/reject': decision('/tasks/:id/reject'),
   'POST /api/tenant/approval/tasks/:id/reject-previous': decision('/tasks/:id/reject-previous'),
   'POST /api/tenant/approval/tasks/:id/jump': [
-    assignee(route('POST', '/tasks/:id/jump', 'jumpTask(tx, context, request)')),
+    assignee(route('POST', '/tasks/:id/jump', 'jumpTask(tx, context, request, viewable)')),
+    blindReview(route('POST', '/tasks/:id/jump', 'const viewable = await fieldRights(c, deps, taskId, undefined)')),
   ],
   'POST /api/tenant/approval/tasks/:id/transfer': [
-    assignee(route('POST', '/tasks/:id/transfer', 'transferTask(tx, context, request)')),
+    assignee(route('POST', '/tasks/:id/transfer', 'transferTask(tx, context, request, viewable)')),
+    blindReview(route('POST', '/tasks/:id/transfer', 'const viewable = await fieldRights(c, deps, taskId, undefined)')),
   ],
   'POST /api/tenant/approval/tasks/:id/add-sign': [
     assignee(route('POST', '/tasks/:id/add-sign', 'addSign(tx, context, request, viewable)')),

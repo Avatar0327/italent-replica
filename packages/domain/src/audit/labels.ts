@@ -104,6 +104,10 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'approval-instance': { label: '审批单', app: APPROVAL },
   'approval-task': { label: '审批任务', app: APPROVAL },
   'approval-process': { label: '审批流程', app: APPROVAL },
+  'approval-public-variable': { label: '公共变量', app: APPROVAL },
+  'approval-application-variable': { label: '应用变量', app: APPROVAL },
+  'approval-matrix': { label: '审批矩阵', app: APPROVAL },
+  'approval-matrix-row': { label: '审批矩阵规则行', app: APPROVAL },
   'approval-exception-admin': { label: '异常管理员', app: APPROVAL },
   tenant: { label: '租户', app: ENTERPRISE },
   tenant_setting: { label: '租户配置', app: ENTERPRISE },
@@ -279,6 +283,12 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   name: '名称',
   shortName: '简称',
   code: '编码',
+  // F-326 变量字段（设计 §4.5）：编码、名称、状态已在上方
+  dataType: '数据类型',
+  defaultValue: '默认值',
+  usageScopes: '适用范围',
+  description: '描述',
+  appId: '应用',
   establishedOn: '成立日期',
   personInChargeId: '负责人',
   hrbpId: 'HRBP',
@@ -472,6 +482,11 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'approval-exception-admin',
   'esign-template',
   'esign-scene-settings',
+  // F-326：变量与矩阵是租户级配置，没有人员 / 组织归属（设计 §4.5）
+  'approval-public-variable',
+  'approval-application-variable',
+  'approval-matrix',
+  'approval-matrix-row',
 ]);
 
 /**

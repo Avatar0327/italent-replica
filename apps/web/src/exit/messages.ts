@@ -51,7 +51,10 @@ export const x = {
     blacklistExpiryDate: '有效截止日期',
     blacklistReason: '加黑原因',
     blacklistNote: '加黑说明',
+    attachmentRefs: '手写离职申请附件',
   } as Record<string, string>,
+  // 规格 30 第 20 行：本人离职表单附件字段的说明
+  attachmentHint: '请拍照上传手写离职申请',
   statuses: {
     draft: '草稿',
     in_review: '审批中',
