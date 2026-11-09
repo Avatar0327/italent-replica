@@ -122,6 +122,35 @@ describe('默认值校验（设计 §2.3，纯形态；存在性与在职由 S2 
     }
   });
 
+  it('时间：不存在的日历日期一律拒绝（不能靠 Date.parse 归一到别的日子），闰日与时区偏移正例通过', () => {
+    for (const bad of [
+      '2026-02-30T00:00:00Z',
+      '2026-02-29T00:00:00Z', // 2026 不是闰年
+      '2026-04-31T12:00:00+08:00',
+      '2100-02-29T00:00:00Z', // 世纪年非 400 倍数
+      '2026-00-10T00:00:00Z',
+      '2026-01-00T00:00:00Z',
+      '2026-01-32T00:00:00Z',
+      '2026-11-01T24:00:00Z',
+      '2026-11-01T23:60:00Z',
+      '2026-11-01T23:59:60Z',
+      '2026-11-01T08:30:00+24:00',
+      '2026-11-01T08:30:00+08:60',
+    ]) {
+      expect(defaultValueViolation('datetime', bad), bad).toBe('DEFAULT_VALUE_TYPE');
+    }
+    for (const ok of [
+      '2028-02-29T00:00:00Z', // 闰日
+      '2000-02-29T23:59:59Z', // 400 倍数的世纪年
+      '2026-02-28T23:59:59-05:00',
+      '2026-04-30T08:30:00+08:00',
+      '2026-12-31T00:00:00.123+14:00',
+      '2026-01-31T00:00Z',
+    ]) {
+      expect(defaultValueViolation('datetime', ok), ok).toBeNull();
+    }
+  });
+
   it('人员：1 个 UUID；多人：1～100 个 UUID 且去重', () => {
     expect(defaultValueViolation('person', UUID_A)).toBeNull();
     expect(defaultValueViolation('person', 'not-a-uuid')).toBe('DEFAULT_VALUE_TYPE');

@@ -99,7 +99,7 @@ export type DefaultValueViolation = 'DEFAULT_VALUE_TYPE' | TextViolation;
 
 const USER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DECIMAL = /^-?\d+(\.\d+)?$/;
-const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
+const ISO_DATETIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(?:Z|[+-](\d{2}):(\d{2}))$/;
 export const PERSONS_DEFAULT_MAX = 100;
 const DECIMAL_MAX_DIGITS = 18;
 
@@ -115,8 +115,36 @@ function decimalOk(value: unknown): boolean {
   );
 }
 
+const isLeapYear = (year: number) => (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+const daysInMonth = (year: number, month: number) =>
+  month === 2 ? (isLeapYear(year) ? 29 : 28) : [4, 6, 9, 11].includes(month) ? 30 : 31;
+
+/** 逐段核对日历与时钟：Date.parse 会把 2026-02-30 悄悄归一到 3 月 2 日，不能当校验用。 */
 function datetimeOk(value: unknown): boolean {
-  return typeof value === 'string' && ISO_DATETIME.test(value) && !Number.isNaN(Date.parse(value));
+  if (typeof value !== 'string') return false;
+  const m = ISO_DATETIME.exec(value);
+  if (!m) return false;
+  const [year, month, day, hour, minute] = [m[1], m[2], m[3], m[4], m[5]].map(Number) as [
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  const second = m[6] === undefined ? 0 : Number(m[6]);
+  const offsetHour = m[7] === undefined ? 0 : Number(m[7]);
+  const offsetMinute = m[8] === undefined ? 0 : Number(m[8]);
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= daysInMonth(year, month) &&
+    hour <= 23 &&
+    minute <= 59 &&
+    second <= 59 &&
+    offsetHour <= 23 &&
+    offsetMinute <= 59
+  );
 }
 
 function personsOk(value: unknown): boolean {
