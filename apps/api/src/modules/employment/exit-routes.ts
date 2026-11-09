@@ -637,8 +637,8 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const frozen = read.frozen ? composeExit(detail, read.frozen.content, read.frozen.allowed) : null;
     if (read.frozen && !frozen) throw new AppError('NOT_FOUND', '任职业务不存在');
     const shown = (frozen ?? detail) as typeof detail;
-    // 动作随“状态”字段权裁剪（依赖表登记 actions）：无状态查看权的人拿不到，也就无法由动作反推状态
-    const actions = (await exitActions(deps, ctx, [shown], { withHandle: false })).get(shown.id) ?? [];
+    // 动作随“状态”字段权裁剪（依赖表登记 actions）：无状态查看权的人拿不到，也就无法由动作反推状态；动作是流程事实，取现值
+    const actions = (await exitActions(deps, ctx, [detail], { withHandle: false })).get(detail.id) ?? [];
     if (shown.activation?.details) {
       const details = await withTenant(deps.db, ctx.tenantId, (tx) =>
         projectExitFailureDetails(tx, ctx, shown.activation!.details!, { has: show.employment }),

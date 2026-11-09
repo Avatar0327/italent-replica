@@ -430,7 +430,7 @@ export const DIGESTS: Digests = {
     requirePreviewButton: '2e3cd7610bb0',
     requireViewableExitFilters: '7f5780b0aeb9',
     'route:GET /exits': 'f2b2c5c183d7',
-    'route:GET /exits/:id': 'cd14940b1ccd',
+    'route:GET /exits/:id': '33b824baea78',
     'route:GET /exits/:id/attachments/:fileId/content': 'a5eb43b12436',
     'route:GET /exits/dictionaries/:dict': '3433254b32bc',
     'route:PATCH /exits/:id': '17f3b1aad9dc',
@@ -967,7 +967,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/org-adjustment/disclosure.ts': {
     OBJECT: 'b007f3f6067a',
     hrDisclosure: 'e95fadfbd629',
-    openDetail: '178088343130',
+    openDetail: '73a3c2535515',
     orgAdjustmentDisclosure: '124cff9b77a6',
   },
   'apps/api/src/modules/org-adjustment/queries.ts': {

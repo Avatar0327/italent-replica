@@ -176,7 +176,7 @@ export function orgInScope(disclosure: Pick<Disclosure, 'orgScope' | 'orgCreator
  * 审批中心同一判定（参与人或范围内的流程管理员）与同一份详情数据（含业务快照、查看人任务与抄送）；打不开返回 null。
  * 管理员范围在本事务内解析（PGlite 单连接）。
  */
-export async function openDetail(
+async function openDetail(
   tx: Tx,
   bound: Deps,
   ctx: TenantContext,

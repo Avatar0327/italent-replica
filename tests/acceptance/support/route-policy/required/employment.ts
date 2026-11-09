@@ -2178,7 +2178,11 @@ export const EMPLOYMENT: RequiredTable = {
     ),
   ],
   'GET /api/tenant/employment/businesses/:id': [
-    recordView(at(EMP, 'GET', '/businesses/:id', "let ctx = await readPageContext(c, deps, 'detail')")),
+    // F-476 P4：已办审批人的内容取舍要按当前字段查看权裁剪（getModuleViewableFields → object.view），同一对象查看权
+    recordView(at(EMP, 'GET', '/businesses/:id', "let ctx = await readPageContext(c, deps, 'detail')"), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
     INITIATOR_BUTTON(at(EMP, 'GET', '/businesses/:id', 'transferBusinessContext(tx, ctx, id)')),
     ob(
       'guard:transfer.source',
@@ -3870,7 +3874,10 @@ export const EMPLOYMENT: RequiredTable = {
     recordView(at(EXIT, 'GET', '/exits/:id/attachments/:fileId/content', 'await readExitDetail(c)')),
   ],
   'GET /api/tenant/employment/exits/:id': [
-    recordView(at(EXIT, 'GET', '/exits/:id', 'const { ctx, detail, show } = await readExitDetail(c)')),
+    recordView(at(EXIT, 'GET', '/exits/:id', 'const { ctx, detail, show } = await readExitDetail(c)'), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
     exitActionsIntervene(
       at(EXIT, 'GET', '/exits/:id', 'await exitActions(deps, ctx, [detail], { withHandle: false })'),
     ),
@@ -4039,7 +4046,10 @@ export const EMPLOYMENT: RequiredTable = {
     ),
   ],
   'GET /api/tenant/employment/retirements/:id': [
-    recordView(at(RETIRE_VIEWS, 'GET', '/retirements/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+    recordView(at(RETIRE_VIEWS, 'GET', '/retirements/:id', "const ctx = await readPageContext(c, deps, 'detail')"), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
   ],
   'GET /api/tenant/employment/exits/dictionaries/:dict': [
     ob(

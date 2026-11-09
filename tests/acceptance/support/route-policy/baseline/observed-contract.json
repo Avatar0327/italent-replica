@@ -4811,8 +4811,6 @@
       "module": "employment",
       "primitives": {
         "button": [
-          "buttonResource",
-          "object.button",
           "requireTransferButton"
         ],
         "domain": [
@@ -4829,10 +4827,8 @@
           "readPageContext"
         ],
         "scope": [
-          "adminScope",
           "checkScope",
           "employment visibility",
-          "instanceScopeSql",
           "readPageContext",
           "scope.all",
           "scopeSql",
@@ -5395,10 +5391,8 @@
           "readPageContext"
         ],
         "scope": [
-          "adminScope",
           "checkScope",
           "employment visibility",
-          "instanceScopeSql",
           "readPageContext",
           "scope.all",
           "scopeSql",
@@ -6012,10 +6006,6 @@
       },
       "module": "employment",
       "primitives": {
-        "button": [
-          "buttonResource",
-          "object.button"
-        ],
         "domain": [
           "transfer.initiator"
         ],
@@ -6024,10 +6014,8 @@
           "readPageContext"
         ],
         "scope": [
-          "adminScope",
           "checkScope",
           "employment visibility",
-          "instanceScopeSql",
           "readPageContext",
           "scope.all",
           "scopeSql",
@@ -6052,10 +6040,6 @@
       },
       "module": "employment",
       "primitives": {
-        "button": [
-          "buttonResource",
-          "object.button"
-        ],
         "domain": [
           "transfer.initiator"
         ],
@@ -6067,10 +6051,8 @@
           "TenantBase.EmploymentRecord:view"
         ],
         "scope": [
-          "adminScope",
           "checkScope",
           "employment visibility",
-          "instanceScopeSql",
           "readContext（非配置对象）",
           "scope.all",
           "scopeSql",

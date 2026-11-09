@@ -155,6 +155,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'apps/api/src/modules/employment/retirement-views.ts#loadRetirementDetail',
   ],
+  'apps/api/src/modules/employment/approval-content.ts#openAsParticipant': [
+    'apps/api/src/modules/approval/disclosure.ts#readDetail',
+  ],
   'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
@@ -162,7 +165,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/foreign-fields.ts#viewableWithForeign',
     'apps/api/src/modules/approval/handling-content.ts#contentViewOf',
     'apps/api/src/modules/approval/store.ts#latestInstanceOf',
-    'apps/api/src/modules/org-adjustment/disclosure.ts#openDetail',
+    '#openAsParticipant',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],

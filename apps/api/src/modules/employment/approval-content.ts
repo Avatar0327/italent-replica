@@ -8,14 +8,14 @@
  *   不属于审批表单的键（试用期、加黑原因等）没有编码，已办读取不披露。
  */
 import { withTenant, type Tx } from '@italent/db';
+import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { approvalError } from '../approval/context.js';
-import { disclosedFields } from '../approval/disclosure.js';
+import { disclosedFields, readDetail, type DetailData } from '../approval/disclosure.js';
 import { foreignVisibility, viewableWithForeign } from '../approval/foreign-fields.js';
 import { contentViewOf, type ContentSelection } from '../approval/handling-content.js';
 import { latestInstanceOf } from '../approval/store.js';
-import { openDetail } from '../org-adjustment/disclosure.js';
 import { authorizeInTransaction, getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { loadExitDetail } from './exit-queries.js';
 import { loadEmploymentBusiness } from './read-model.js';
@@ -130,6 +130,25 @@ export const composeBusiness = (live: object, content: EmploymentContent, allowe
 export const composeExit = (live: object, content: EmploymentContent, allowed: ReadonlySet<string>): Row | null =>
   content.exit ? compose(live as Row, content.exit, EXIT_FACTS, (key) => EXIT_CODE_OF[key] ?? key, allowed) : null;
 
+/**
+ * 以参与人身份打开最新审批实例，只为决定内容来源：不带管理员范围——纯管理员没有办理记录，本来就读现值，
+ * 不必为此再判审批中心的管理按钮；打不开（不是参与人）返回 null。
+ */
+async function openAsParticipant(
+  tx: Tx,
+  ctx: TenantContext,
+  now: Date,
+  instanceId: string,
+): Promise<DetailData | null> {
+  const viewer = { userId: ctx.userId, transferScope: null, interveneScope: null };
+  try {
+    return await readDetail(tx, { ...ctx, now, commandId: '', expectedRevision: 0 }, instanceId, viewer, false);
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
+    throw error;
+  }
+}
+
 export interface EmploymentRead {
   readonly contentView: ReturnType<typeof contentViewOf> | { mode: 'live'; instanceId: null };
   /** 已办读取：冻结内容与披露集合；现值读取为 null。 */
@@ -149,7 +168,7 @@ export async function selectEmploymentRead(
     const instance = await latestInstanceOf(tx, ctx.tenantId, 'employment', businessId);
     if (!instance) return { contentView: { mode: 'live', instanceId: null }, frozen: null } as const;
     const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
-    const data = await openDetail(tx, bound, ctx, instance, false);
+    const data = await openAsParticipant(tx, ctx, deps.clock(), instance.id);
     const selection: ContentSelection = data?.content ?? { mode: 'live' };
     const contentView = contentViewOf(instance.id, selection);
     if (!data || selection.mode === 'live') return { contentView, frozen: null };
