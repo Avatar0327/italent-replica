@@ -10,6 +10,7 @@ import { MODULE_OBJECTS } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { requirePermission } from '../../authorization.js';
 import { runCommand, type CommandGuard } from '../../commands.js';
+import type { BodyLimitOverride } from '../../middleware.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
@@ -29,6 +30,16 @@ import {
 } from './service.js';
 
 export const ESIGN_BASE = '/api/tenant/esign';
+/**
+ * 模板正文 ≤20000 字（UTF-16 单元），中文按 3 字节、JSON 控制字符转义最多 6 字节，最坏约 120KB，
+ * 加编码 / 名称（各 ≤100 字）与键名约 1.5KB；放宽到 128KB，仍是有界上限。只对模板新建 / 编辑生效，
+ * 场景设置等其余接口仍为默认 32KB。
+ */
+export const ESIGN_TEMPLATE_BODY_LIMIT = 128 * 1024;
+export const ESIGN_BODY_LIMITS: readonly BodyLimitOverride[] = [
+  { method: 'POST', path: /^\/api\/tenant\/esign\/templates$/, maxSize: ESIGN_TEMPLATE_BODY_LIMIT },
+  { method: 'PATCH', path: /^\/api\/tenant\/esign\/templates\/[^/]+$/, maxSize: ESIGN_TEMPLATE_BODY_LIMIT },
+];
 const OBJECT = MODULE_OBJECTS.eSignSettings.code;
 const TRANSFER_HR_BUTTON = 'Transfer.Hr';
 type C = Context<TenantEnv>;

@@ -1,5 +1,5 @@
 import { registerContractRoutes } from './modules/contracts/routes.js';
-import { registerESignRoutes } from './modules/esign/routes.js';
+import { ESIGN_BODY_LIMITS, registerESignRoutes } from './modules/esign/routes.js';
 import { registerHrAnalysisRoutes } from './modules/hr-analysis/routes.js';
 import { registerOfferRoutes } from './modules/offer/routes.js';
 import { registerEmployeeSelfServiceRoutes } from './modules/employee-self-service/routes.js';
@@ -122,6 +122,7 @@ export function createApp(deps: AppDeps = {}): Hono {
     '*',
     limitBody(DEFAULT_BODY_LIMIT, [
       ...PERMISSION_BODY_LIMITS,
+      ...ESIGN_BODY_LIMITS, // F-481：模板正文 ≤20000 字，上限 128KB
       // DEC-422：继任规则保存放宽到 64KB；B2b 等级复用同一例外，其余接口仍为 32KB。
       { method: 'POST', path: /^\/api\/tenant\/succession\/populations$/, maxSize: 64 * 1024 },
       { method: 'PUT', path: /^\/api\/tenant\/succession\/populations\/[^/]+$/, maxSize: 64 * 1024 },
