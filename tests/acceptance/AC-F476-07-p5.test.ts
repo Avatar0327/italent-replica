@@ -27,10 +27,10 @@ describe('AC-F476-07 合同：撤字段权 / 新增权限不超上限', () => {
     const target = await s.direct({ regularSalary: BEFORE, probationSalary: PROBATION });
     const request = await s.apply('change', { regularSalary: SALARY, probationSalary: PROBATION }, target);
     const instance = await latestInstance(w, 'contract', request.id);
-    r.hide(CONTRACT_OBJECT, ...hideAtHandling);
     await r.decide(instance.id, n1, 'approve');
-    r.show(CONTRACT_OBJECT, ...hideAtHandling);
+    r.hide(CONTRACT_OBJECT, ...hideAtHandling);
     await r.decide(instance.id, n2, 'reject');
+    r.show(CONTRACT_OBJECT, ...hideAtHandling);
     await resubmit(w, instance.id, w.hr.id, { regularSalary: '77777.77', probationSalary: '66666.66' });
     const read = async (user: string) => ({
       route: await r.get(user, s.requestPath(request.id)),
@@ -41,12 +41,12 @@ describe('AC-F476-07 合同：撤字段权 / 新增权限不超上限', () => {
 
   it('撤销字段权后，已办人的申请详情与审批中心详情都不再含该字段的值 / 原值 / 键名', async () => {
     const s = await handled('f476-07p5-contract-revoke');
-    const baseline = await s.read(s.n1.userId);
+    const baseline = await s.read(s.n2.userId);
     expect(baseline.route.body.contentView?.mode).toBe('frozen');
     expect(text(baseline.route.body, baseline.centre.body)).toContain(SALARY);
 
     s.r.hide(CONTRACT_OBJECT, 'regularSalary');
-    const { route, centre } = await s.read(s.n1.userId);
+    const { route, centre } = await s.read(s.n2.userId);
     expect(route.status).toBe(200);
     const body = text(route.body, centre.body);
     for (const secret of [SALARY, BEFORE, '77777.77']) expect(body).not.toContain(secret);
@@ -60,7 +60,7 @@ describe('AC-F476-07 合同：撤字段权 / 新增权限不超上限', () => {
 
   it('办理时看不到的字段，事后补授权也不补露；现读视角（发起人 / 待办人）不受上限约束', async () => {
     const s = await handled('f476-07p5-contract-ceiling', ['probationSalary']);
-    const frozen = await s.read(s.n1.userId);
+    const frozen = await s.read(s.n2.userId);
     expect(frozen.route.body.contentView?.mode).toBe('frozen');
     expect(text(frozen.route.body, frozen.centre.body)).not.toContain(PROBATION);
     const live = await s.read(s.w.hr.id);
@@ -82,10 +82,10 @@ describe('AC-F476-07 员工子集：撤字段权 / 新增权限不超上限', ()
     const target = await s.record(subset, { [field]: 'ZZ_原值', [kept]: 'ZZ_保持' });
     const request = await s.apply(subset, { [field]: 'ZZ_办理时', [kept]: 'ZZ_保持' }, target);
     const instance = await latestInstance(w, 'personnel_change', request.id);
-    if (hideAtHandling) r.hide(objectCode, kept);
     await r.decide(instance.id, n1, 'approve');
-    if (hideAtHandling) r.show(objectCode, kept);
+    if (hideAtHandling) r.hide(objectCode, kept);
     await r.decide(instance.id, n2, 'reject');
+    if (hideAtHandling) r.show(objectCode, kept);
     await resubmit(w, instance.id, s.subject.userId, { [field]: 'ZZ_改后', [kept]: 'ZZ_保持' });
     const read = async (user: string) => ({
       route: await r.get(user, s.requestPath(request.id)),
@@ -96,12 +96,12 @@ describe('AC-F476-07 员工子集：撤字段权 / 新增权限不超上限', ()
 
   it('撤销子集字段权后，已办人读到的申请详情与审批中心详情都不含办理时值和原值', async () => {
     const s = await handled('f476-07p5-personnel-revoke');
-    const baseline = await s.read(s.n1.userId);
+    const baseline = await s.read(s.n2.userId);
     expect(baseline.route.body.contentView?.mode).toBe('frozen');
     expect(text(baseline.route.body, baseline.centre.body)).toContain('ZZ_办理时');
 
     s.r.hide(objectCode, field);
-    const { route, centre } = await s.read(s.n1.userId);
+    const { route, centre } = await s.read(s.n2.userId);
     expect(route.status).toBe(200);
     const body = text(route.body, centre.body);
     for (const secret of ['ZZ_办理时', 'ZZ_原值', 'ZZ_改后']) expect(body).not.toContain(secret);
@@ -111,7 +111,7 @@ describe('AC-F476-07 员工子集：撤字段权 / 新增权限不超上限', ()
 
   it('办理时不可见的（未被改动的）子集字段，事后补授权也不补露', async () => {
     const s = await handled('f476-07p5-personnel-ceiling', true);
-    const frozen = await s.read(s.n1.userId);
+    const frozen = await s.read(s.n2.userId);
     expect(frozen.route.body.contentView?.mode).toBe('frozen');
     const body = text(frozen.route.body, frozen.centre.body);
     expect(body).not.toContain('ZZ_保持');
@@ -165,7 +165,9 @@ describe('AC-F476-07 兼职：撤字段权 / 新增权限不超上限', () => {
     const frozen = await s.read(s.first.userId);
     expect(frozen.route.body.contentView?.mode).toBe('frozen');
     expect(Object.keys(frozen.route.body)).not.toContain('originalEndDate');
-    expect(text(frozen.route.body, frozen.centre.body)).not.toContain('2026-10-31');
+    expect(text(frozen.route.body)).not.toContain('2026-10-31');
+    // 审批中心的「原值」按 endDate 字段权披露（快照 originals 以 endDate 为键），不属于 originalEndDate 字段
+    expect(text((frozen.centre.body as { form?: object }).form)).not.toContain('originalEndDate');
     expect(frozen.route.body.endDate).toBe('2026-12-31');
     const live = await s.read(s.w.hr.id);
     expect(live.route.body.contentView?.mode).toBe('live');

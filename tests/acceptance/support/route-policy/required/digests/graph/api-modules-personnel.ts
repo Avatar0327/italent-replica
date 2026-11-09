@@ -152,6 +152,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/store.ts#camel',
     'apps/api/src/modules/personnel/store.ts#rows',
   ],
+  'apps/api/src/modules/personnel/frozen.ts#changeOriginals': ['#subsetVersion'],
+  'apps/api/src/modules/personnel/frozen.ts#loadPersonnelContent': [
+    'apps/api/src/modules/personnel/change-requests.ts#currentChangeValues',
+    'apps/api/src/modules/personnel/change-requests.ts#loadChange',
+    '#changeOriginals',
+  ],
+  'apps/api/src/modules/personnel/frozen.ts#projectPersonnelRequest': [
+    'apps/api/src/modules/approval/frozen-read.ts#pickDisclosed',
+  ],
+  'apps/api/src/modules/personnel/frozen.ts#subsetVersion': [
+    'apps/api/src/modules/personnel/store.ts#camel',
+    'apps/api/src/modules/personnel/store.ts#rows',
+    'packages/domain/src/personnel/fields.ts#SUBSETS',
+  ],
   'apps/api/src/modules/personnel/http.ts#write': [
     'apps/api/src/modules/avatar/references.ts#employeeAvatars',
     'apps/api/src/modules/personnel/access.ts#authorizeTx',
@@ -255,15 +269,22 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/personnel/request-routes.ts#route:GET /api/tenant/personnel/change-requests/:id': [
+    'apps/api/src/modules/approval/frozen-read.ts#LIVE_VIEW',
+    'apps/api/src/modules/approval/frozen-read.ts#openContentRead',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/personnel/access.ts#access',
     'apps/api/src/modules/personnel/access.ts#preflight',
     'apps/api/src/modules/personnel/access.ts#trim',
     'apps/api/src/modules/personnel/change-requests.ts#loadChange',
     'apps/api/src/modules/personnel/change-requests.ts#requireSelf',
+    'apps/api/src/modules/personnel/frozen.ts#loadPersonnelContent',
+    'apps/api/src/modules/personnel/frozen.ts#projectPersonnelRequest',
     'apps/api/src/modules/personnel/http.ts#safe',
     '#base',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_REQUEST_OBJECT',
+    'packages/domain/src/personnel/fields.ts#SUBSETS',
   ],
   'apps/api/src/modules/personnel/request-routes.ts#route:POST /api/tenant/personnel/change-requests': [
     'apps/api/src/authorization.ts#requirePermission',

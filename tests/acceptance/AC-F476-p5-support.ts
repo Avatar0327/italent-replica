@@ -183,17 +183,30 @@ export async function handledThenResubmitted(
 
 export const PERSONNEL = '/api/tenant/personnel';
 
-/** 子集里前两个文本字段（自助可改）：第一个做「被改的」，第二个做「不变的」（披露上限用例用）。 */
+/** 子集里前两个自助可改的字段（文本优先，没有文本字段的子集退到日期字段）：第一个做「被改的」，第二个做「不变的」。 */
 export function textFieldsOf(subset: SubsetKind): string[] {
-  return SUBSETS[subset].fields
-    .filter((f) => f.kind === 'text')
+  const writable = SUBSETS[subset].fields.filter((f) => !('system' in f && f.system));
+  const plain = writable.filter((f) => f.kind === 'text');
+  return (plain.length >= 2 ? plain : [...plain, ...writable.filter((f) => f.kind === 'date')])
     .slice(0, 2)
     .map((f) => f.code);
 }
 
-/** 员工子集注册项里第一个文本字段（自助可改、不依赖字典），用来区分办理时与事后的内容。 */
+/** 区分办理时与事后内容的字段（自助可改、不依赖字典）；见 textFieldsOf。 */
 export function textFieldOf(subset: SubsetKind): string {
-  return SUBSETS[subset].fields.find((f) => f.kind === 'text')!.code;
+  return textFieldsOf(subset)[0]!;
+}
+
+const DATES: Readonly<Record<string, string>> = {
+  原值: '2024-01-01',
+  办理时: '2024-02-01',
+  改后: '2024-03-01',
+  第二次: '2024-04-01',
+};
+/** 该子集的区分字段在某个阶段的取值：文本字段 `ZZ_<阶段>`，日期字段取固定日期。 */
+export function val(subset: SubsetKind, stage: '原值' | '办理时' | '改后' | '第二次'): string {
+  const kind = SUBSETS[subset].fields.find((f) => f.code === textFieldOf(subset))!.kind;
+  return kind === 'date' ? DATES[stage]! : `ZZ_${stage}`;
 }
 
 /** 员工信息变更世界：每个子集开放自助字段，个人信息变更流程为 n1 → n2（兜底流程）。 */
@@ -254,9 +267,13 @@ export async function personnelScene(db: Parameters<typeof approvalWorld>[0], la
  * extras：详情响应里的容器键（如 submittedFields / values）不在对象目录里，登记后才不被顶层裁掉；
  * 容器内部各字段仍按业务字段权逐个判，不靠容器键放行。
  */
-export function rights(w: ApprovalWorld, extras: Readonly<Record<string, readonly string[]>> = {}) {
+export function rights(
+  w: ApprovalWorld,
+  extras: Readonly<Record<string, readonly string[]>> = {},
+  deny: (request: Parameters<Authorizer>[0]) => boolean = () => false,
+) {
   const hidden = new Map<string, Set<string>>();
-  const authorize: Authorizer = () => true;
+  const authorize: Authorizer = (request) => !deny(request);
   const viewable = async (_tenantId: string, _userId: string, objectCode: string) => {
     const base = objectCatalog.get(objectCode)?.fields.map((f) => f.code) ?? [];
     return new Set([...base, ...(extras[objectCode] ?? [])].filter((f) => !hidden.get(objectCode)?.has(f)));

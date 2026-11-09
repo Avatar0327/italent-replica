@@ -599,7 +599,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/adapter-support.ts#employeeHeader',
     '#personnelChange',
     '#same',
-    '#subsetVersion',
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/personnel/change-requests.ts#applyApprovedChangeInTransaction',
@@ -607,6 +606,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/change-requests.ts#disapproveChangeInTransaction',
     'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction',
     'apps/api/src/modules/personnel/change-requests.ts#withdrawChangeInTransaction',
+    'apps/api/src/modules/personnel/frozen.ts#changeOriginals',
     'apps/api/src/modules/personnel/store.ts#lockPerson',
     'apps/api/src/modules/personnel/subsets.ts#loadSubset',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
@@ -626,11 +626,6 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/adapters.ts#splitExitEdit': [
     'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS',
-  ],
-  'apps/api/src/modules/approval/adapters.ts#subsetVersion': [
-    '#camelRow',
-    'apps/api/src/modules/approval/context.ts#rowsOf',
-    'packages/domain/src/personnel/fields.ts#SUBSETS',
   ],
   'apps/api/src/modules/approval/adapters.ts#transferMetadata': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/adapters.ts#transferProcessCode': [
@@ -1438,9 +1433,28 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
   ],
+  'apps/api/src/modules/approval/frozen-read.ts#contentViewFor': [
+    'apps/api/src/modules/approval/handling-content.ts#contentViewOf',
+  ],
+  'apps/api/src/modules/approval/frozen-read.ts#openApprovalDetail': [
+    'apps/api/src/modules/approval/access.ts#memberInstanceScope',
+    'apps/api/src/modules/approval/disclosure.ts#readDetail',
+    'packages/domain/src/approval/catalog.ts#APPROVAL_INSTANCE_OBJECT',
+    'packages/domain/src/permission/decide.ts#buttonResource',
+  ],
+  'apps/api/src/modules/approval/frozen-read.ts#openContentRead': [
+    'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
+    '#contentViewFor',
+    '#openApprovalDetail',
+    'apps/api/src/modules/approval/store.ts#latestInstanceOf',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+  ],
   'apps/api/src/modules/approval/handling-content.ts#CONTENT_PROVIDERS': [
     '#SNAPSHOT_ONLY',
+    'apps/api/src/modules/contracts/frozen.ts#loadContractContent',
+    'apps/api/src/modules/employment/part-time/request-read.ts#loadRequestContent',
     'apps/api/src/modules/org-adjustment/content.ts#loadOrgContent',
+    'apps/api/src/modules/personnel/frozen.ts#loadPersonnelContent',
   ],
   'apps/api/src/modules/approval/handling-content.ts#prepareHandlingContent': [
     'apps/api/src/modules/approval/context.ts#approvalError',

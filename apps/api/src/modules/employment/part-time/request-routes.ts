@@ -16,11 +16,13 @@ import { requirePermission } from '../../../authorization.js';
 import { AppError } from '../../../errors.js';
 import type { TenantRouteDeps } from '../../../routes.js';
 import type { TenantEnv } from '../../../tenant-context.js';
+import { LIVE_VIEW, openContentRead } from '../../approval/frozen-read.js';
 import { foreignVisibility } from '../../approval/foreign-fields.js';
 import type { FieldAccess } from '../../approval/context.js';
 import { getModuleViewableFieldsInTransaction, trimModuleResponse } from '../../permission/module-access.js';
 import {
   EMPLOYEE_OBJECT,
+  EMPLOYMENT_OBJECT,
   jsonBody,
   readContext,
   readPageContext,
@@ -43,7 +45,7 @@ import {
   type PartTimeWriteTarget,
 } from './replay-guard.js';
 import { availableRequestActions, REQUEST_ACTION_ACCESS, requestActionTarget } from './request-actions.js';
-import { loadPartTimeRequestDetail, loadRequestReceipt } from './request-read.js';
+import { loadPartTimeRequestDetail, loadRequestReceipt, type PartTimeRequestDto } from './request-read.js';
 import {
   createAddRequest,
   deleteRequest,
@@ -304,11 +306,23 @@ function registerRequestChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
 
 function registerRequestRead(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // 申请详情（含主职信息 / 员工信息分组，读员工当前主职）：DEC-177 可见（申请部门 ∪ 员工当前主职部门）；范围外与不存在同一个 404；
-  // 主职分组只在操作人看得到该主职记录时给出；三组各按所属对象的字段查看权逐层裁剪
+  // 主职分组只在操作人看得到该主职记录时给出；三组各按所属对象的字段查看权逐层裁剪。
+  // F-476 P5：已办人读办理时冻结的申请内容（不套数据范围，DEC-834④；主职 / 员工分组读员工当前数据，不入办理份，给 null；
+  // 先按办理时披露上限截、再走现行字段权限裁，两道都过才出）；其余人读现值，行为不变，只多带 contentView。
   router.get('/part-time-requests/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
-    const detail = await withTenant(deps.db, ctx.tenantId, (tx) => loadPartTimeRequestDetail(tx, ctx, id));
+    const read = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const content = await openContentRead<PartTimeRequestDto>(tx, deps, ctx, 'part_time', id, EMPLOYMENT_OBJECT);
+      if (content?.frozen) return { frozen: content.frozen.ext, ceiling: content.ceiling, view: content.contentView };
+      return { detail: await loadPartTimeRequestDetail(tx, ctx, id), view: content?.contentView ?? LIVE_VIEW };
+    });
+    if (read.frozen) {
+      const capped = capByCeiling(read.frozen, read.ceiling);
+      const trimmed = (await trimEmploymentResponse(deps, ctx, capped)) as object;
+      return c.json({ ...trimmed, availableActions: [], primary: null, employee: null, contentView: read.view });
+    }
+    const detail = read.detail;
     if (!detail) throw notFound();
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
     const { primary, employee, ...request } = detail;
@@ -319,6 +333,20 @@ function registerRequestRead(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       availableActions: 'status' in trimmed ? await availableRequestActions(c, deps, ctx.tenantId, id) : [],
       primary: primary ? await trimEmploymentResponse(deps, ctx, primary) : null,
       employee: await trimModuleResponse(deps, ctx, EMPLOYEE_OBJECT, employee),
+      contentView: read.view,
     });
   });
+}
+
+/** 办理时披露上限对申请内容逐层截：顶层键、`fields` 内字段、`customFields` 内 `custom:<id>`（与 trimEmploymentResponse 同口径）。 */
+function capByCeiling(dto: PartTimeRequestDto, ceiling: ReadonlySet<string> | null): PartTimeRequestDto {
+  if (!ceiling) return dto;
+  const keep = <T extends object>(source: T, name: (key: string) => string): T =>
+    Object.fromEntries(Object.entries(source).filter(([key]) => ceiling.has(name(key)))) as T;
+  const top = keep(dto, (key) => key);
+  return {
+    ...top,
+    fields: keep(dto.fields, (key) => key),
+    customFields: keep(dto.customFields, (id) => `custom:${id}`),
+  };
 }

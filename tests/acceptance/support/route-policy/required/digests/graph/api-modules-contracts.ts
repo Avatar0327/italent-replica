@@ -105,6 +105,15 @@ export const GRAPH: Graph = {
     '#c',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
+  'apps/api/src/modules/contracts/frozen.ts#BUSINESS_KEYS': ['packages/domain/src/contracts/rules.ts#CONTRACT_FIELDS'],
+  'apps/api/src/modules/contracts/frozen.ts#loadContractContent': [
+    'apps/api/src/modules/contracts/service.ts#loadRequest',
+  ],
+  'apps/api/src/modules/contracts/frozen.ts#projectFrozenRequest': [
+    'apps/api/src/modules/approval/frozen-read.ts#pickDisclosed',
+    '#BUSINESS_KEYS',
+    '#customOf',
+  ],
   'apps/api/src/modules/contracts/imports.ts#applyRows': [
     'apps/api/src/modules/contracts/configuration.ts#settings',
     'apps/api/src/modules/contracts/context.ts#lockEmployee',
@@ -367,11 +376,15 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
   ],
   'apps/api/src/modules/contracts/routes.ts#route:GET /requests/:id': [
+    'apps/api/src/modules/approval/frozen-read.ts#LIVE_VIEW',
+    'apps/api/src/modules/approval/frozen-read.ts#openContentRead',
     'apps/api/src/modules/contracts/context.ts#checkScope',
+    'apps/api/src/modules/contracts/frozen.ts#projectFrozenRequest',
     '#routeContext',
     '#trim',
     'apps/api/src/modules/contracts/service.ts#loadRequest',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
   ],
   'apps/api/src/modules/contracts/routes.ts#route:GET /rules': [

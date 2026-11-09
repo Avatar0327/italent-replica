@@ -6,6 +6,7 @@
  */
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate, type PartTimeRequestState, type PartTimeRequestType } from '@italent/domain';
+import { AppError } from '../../../errors.js';
 import { rowsOf } from '../record-store.js';
 import { employeeHeader } from '../../approval/adapter-support.js';
 import { findCurrentRecord } from '../read-model.js';
@@ -106,6 +107,13 @@ async function landedRecordId(tx: Tx, tenantId: string, requestId: string): Prom
       ORDER BY event_no DESC LIMIT 1`),
   );
   return row?.recordId ?? null;
+}
+
+/** 办理份内容 / 冻结读的来源：申请头 + 最新版本（含落地记录），不带主职 / 员工分组（那两组读员工当前数据，不入办理份）。 */
+export async function loadRequestContent(tx: Tx, tenantId: string, id: string): Promise<PartTimeRequestDto> {
+  const request = await loadPartTimeRequest(tx, tenantId, id);
+  if (!request) throw new AppError('NOT_FOUND', '兼职申请不存在');
+  return requestDto(request, { recordId: await landedRecordId(tx, tenantId, id) });
 }
 
 /**

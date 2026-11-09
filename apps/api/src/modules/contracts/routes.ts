@@ -20,7 +20,16 @@ import { requireObjectWrite } from '../permission/object-write.js';
 import { checkFields, checkOperationScope, checkScope, rowsOf, type ContractContext } from './context.js';
 import { deleteRule, rulesPage, saveMaster, saveRule, saveSettings, settings } from './configuration.js';
 import { commandSchema, parse } from './input.js';
-import { batchCommands, createCommand, loadContract, loadRequest, portfolioRevision } from './service.js';
+import {
+  batchCommands,
+  createCommand,
+  loadContract,
+  loadRequest,
+  portfolioRevision,
+  type ContractRequest,
+} from './service.js';
+import { LIVE_VIEW, openContentRead } from '../approval/frozen-read.js';
+import { projectFrozenRequest } from './frozen.js';
 import { listContracts } from './queries.js';
 import { assertSortViewable, parseListQuery } from './list-query.js';
 import { contractDetail, employeeContracts } from './detail.js';
@@ -539,13 +548,22 @@ function registerFailures(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
     );
     return c.json({ items: rowsOf(items) });
   });
+  // F-476 P5：已办人读办理时冻结的申请内容（不套用现数据范围，DEC-834④；字段取三重交集）；其余读现值
   module.get('/requests/:id', async (c) => {
     const ctx = await routeContext(c, deps);
-    const value = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const request = await loadRequest(tx, ctx.tenantId, uuidParam(c));
+    const id = uuidParam(c);
+    const read = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const content = await openContentRead<ContractRequest>(tx, deps, ctx, 'contract', id, CONTRACT_OBJECT);
+      if (content?.frozen) {
+        const viewable = await getModuleViewableFieldsInTransaction(deps, ctx, CONTRACT_OBJECT, tx);
+        const body = projectFrozenRequest(content.frozen.ext, viewable, content.fields);
+        return { value: body, contentView: content.contentView, projected: true };
+      }
+      const request = await loadRequest(tx, ctx.tenantId, id);
       await checkScope(tx, ctx, request.employeeId, request.createdBy);
-      return request;
+      return { value: request, contentView: content?.contentView ?? LIVE_VIEW, projected: false };
     });
-    return c.json(await trim(deps, ctx, CONTRACT_OBJECT, value));
+    const body = read.projected ? read.value : await trim(deps, ctx, CONTRACT_OBJECT, read.value);
+    return c.json({ ...(body as object), contentView: read.contentView });
   });
 }

@@ -4818,6 +4818,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/visibility.ts#isEmploymentRecordVisible',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/part-time/request-read.ts#loadRequestContent': [
+    '#landedRecordId',
+    '#requestDto',
+    'apps/api/src/modules/employment/part-time/request-store.ts#loadPartTimeRequest',
+  ],
   'apps/api/src/modules/employment/part-time/request-read.ts#loadRequestReceipt': [
     '#requestDto',
     'apps/api/src/modules/employment/part-time/request-store.ts#loadPartTimeRequest',
@@ -4895,11 +4900,15 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:GET /part-time-requests/:id': [
     'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/approval/frozen-read.ts#LIVE_VIEW',
+    'apps/api/src/modules/approval/frozen-read.ts#openContentRead',
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     'apps/api/src/modules/employment/part-time/request-actions.ts#availableRequestActions',
     'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeRequestDetail',
+    '#capByCeiling',
     'apps/api/src/modules/employment/part-time/request-service.ts#notFound',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',

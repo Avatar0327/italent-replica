@@ -9102,6 +9102,9 @@
       },
       "module": "personnel",
       "primitives": {
+        "domain": [
+          "personnel.subset"
+        ],
         "fieldsOut": [
           "trim()"
         ],
