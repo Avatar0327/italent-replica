@@ -1,9 +1,11 @@
 /**
  * F-474-2a #6：职级「所属资源集合」与「薪资上限 / 中位 / 下限」（R1a §2.8、§3.6；DEC-778④ 沿用 DEC-339①）。
  * - 资源集合 = 创建人在职务体系应用（TenantBase）里的授权管理单元：一个自动填，多个由新建请求选一个，列表只读；
+ *   没有授权管理单元时拒绝新建（与人才标准 / 任职资格同口径，403 NO_MANAGEMENT_UNIT），不落对象 / 版本 / 成功审计；
  * - 薪资三值按版本链保存，规格未验证数值关系，因此不校验 下限 ≤ 中位 ≤ 上限；
  * - 字段权限：无查看权的薪资字段列表与详情都不返回，无编辑权的整单拒绝。
  */
+import { sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -17,6 +19,7 @@ import {
   setObjectPermission,
   type PermissionWorld,
 } from './AC-PRM-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -61,6 +64,15 @@ describe('AC-JOB-F474-2a-03 职级资源集合 / 薪资区间', () => {
     });
   const read = async (id: string) =>
     (await (await w.api.request('GET', `${LEVELS}/${id}${ASOF}`, w.as)).json()) as Level;
+  /** 职级对象、版本、成功审计的行数（拒绝新建时三者都不得增加）。 */
+  const levelRows = () =>
+    withTenant(testDb().db, w.tenant.id, async (tx) => {
+      const result = await tx.execute(sql`SELECT
+        (SELECT count(*)::int FROM job_level_objects) AS objects,
+        (SELECT count(*)::int FROM job_level_versions) AS versions,
+        (SELECT count(*)::int FROM audit_events WHERE action = 'job.create' AND object_type = 'levels') AS audits`);
+      return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows)[0];
+    });
 
   beforeAll(async () => {
     w = await talentWorld(testDb().db, 'f4742lvl');
@@ -105,12 +117,24 @@ describe('AC-JOB-F474-2a-03 职级资源集合 / 薪资区间', () => {
       expect(await candidates()).toEqual([]);
     });
 
-    it('没有授权管理单元：资源集合留空，不挡新建；硬塞一个单元 404', async () => {
+    it('没有授权管理单元：拒绝新建（403 NO_MANAGEMENT_UNIT），对象 / 版本 / 成功审计都不落库；硬塞一个单元 404', async () => {
       await setUnits(null);
-      const created = await createLevel();
-      expect(created.status, await created.clone().text()).toBe(201);
-      expect((await read(((await created.json()) as Level).id)).ownerOrgId).toBeNull();
+      const before = await levelRows();
+      const denied = await createLevel();
+      expect(denied.status, await denied.clone().text()).toBe(403);
+      expect(JSON.stringify(await denied.json())).toContain('NO_MANAGEMENT_UNIT');
+      expect(await levelRows()).toEqual(before);
       expect((await createLevel({ ownerOrgId: orgA })).status).toBe(404);
+      expect(await levelRows()).toEqual(before);
+    });
+
+    it('授权单元 ID 大小写不敏感：大写形式照样保存为同一个单元；真正范围外的仍 404', async () => {
+      await setUnits([orgA, orgB]);
+      const upper = await createLevel({ ownerOrgId: orgB.toUpperCase() });
+      expect(upper.status, await upper.clone().text()).toBe(201);
+      expect((await read(((await upper.json()) as Level).id)).ownerOrgId).toBe(orgB);
+      const foreign = '00000000-0000-4000-8000-0000000000CC';
+      expect((await createLevel({ ownerOrgId: foreign })).status).toBe(404);
     });
 
     it('列表只读：修改请求不接受 ownerOrgId；改其他字段后新版本沿用原资源集合', async () => {
@@ -126,6 +150,56 @@ describe('AC-JOB-F474-2a-03 职级资源集合 / 薪资区间', () => {
       const renamed = await send({ name: `改名${uniqueSuffix()}` });
       expect(renamed.status, await renamed.clone().text()).toBe(200);
       expect((await read(level.id)).ownerOrgId).toBe(orgA);
+    });
+  });
+
+  describe('导入（原站编码映射）', () => {
+    interface Receipt {
+      status: string;
+      reason?: string;
+      objectId?: string;
+    }
+    const importRow = async (row: Record<string, unknown>): Promise<Receipt> => {
+      const response = await w.api.request('POST', '/api/tenant/job/import', {
+        ...w.as,
+        ifMatch: 0,
+        body: { kind: 'levels', rows: [{ name: `导入${uniqueSuffix()}`, level: 1, startDate: '2026-01-01', ...row }] },
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+      return ((await response.json()) as { results: Receipt[] }).results[0]!;
+    };
+
+    it('多单元用户首次创建 → 同归属（含大写写法）重导更新成功 → 改归属逐行拒绝且不改资源集合', async () => {
+      await setUnits([orgA, orgB]);
+      const source = `LV${uniqueSuffix()}`;
+      const code = `IC${uniqueSuffix()}`;
+      const created = await importRow({ sourceCode: source, code, ownerOrgId: orgB });
+      expect(created.status).toBe('created');
+      const same = await importRow({ sourceCode: source, code, ownerOrgId: orgB, expectedRevision: 1, level: 2 });
+      expect(same.status, JSON.stringify(same)).toBe('updated');
+      const upper = await importRow({
+        sourceCode: source,
+        code,
+        ownerOrgId: orgB.toUpperCase(),
+        expectedRevision: 2,
+        level: 3,
+      });
+      expect(upper.status, JSON.stringify(upper)).toBe('updated');
+      const moved = await importRow({ sourceCode: source, code, ownerOrgId: orgA, expectedRevision: 3, level: 4 });
+      expect(moved.status).toBe('conflict');
+      const level = await read(created.objectId!);
+      expect(level).toMatchObject({ ownerOrgId: orgB, level: 3 });
+    });
+
+    it('缺归属的多单元用户首次创建仍须选择（不取消必选校验）；更新不带归属照常成功', async () => {
+      await setUnits([orgA, orgB]);
+      const source = `LV${uniqueSuffix()}`;
+      const code = `IC${uniqueSuffix()}`;
+      expect((await importRow({ sourceCode: source, code })).status).toBe('conflict');
+      const created = await importRow({ sourceCode: source, code, ownerOrgId: orgA });
+      expect(created.status).toBe('created');
+      const updated = await importRow({ sourceCode: source, code, expectedRevision: 1, level: 5 });
+      expect(updated.status, JSON.stringify(updated)).toBe('updated');
     });
   });
 
@@ -208,6 +282,12 @@ describe('AC-JOB-F474-2a-04 职级薪资字段权限', () => {
     const clock = () => new Date(`${TODAY}T12:00:00Z`);
     const admin = tenantApi(world.db, { clock });
     world = { ...world, api: tenantApi(world.db, { authorize: undefined, clock }) };
+    // 新建职级需要创建人有职务体系授权管理单元（没有则 403 NO_MANAGEMENT_UNIT）
+    await grantJobUnit(
+      (method, path, init) => admin.request(method, path, { ...world.asAdmin, ...init }),
+      world.asAdmin.user,
+      world.tenant.id,
+    );
     const created = await admin.request('POST', LEVELS, {
       ...world.asAdmin,
       ifMatch: 0,

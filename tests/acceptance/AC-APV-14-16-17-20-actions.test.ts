@@ -292,6 +292,7 @@ async function blindScene(db: Db, label: string) {
     }),
     201,
   );
+  await w.grantHrJobUnit();
   const level = await w.json<{ id: string }>(
     await w.request(w.hr.id, 'POST', '/api/tenant/job/levels', {
       ifMatch: 0,

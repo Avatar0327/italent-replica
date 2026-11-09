@@ -101,6 +101,8 @@ export function referencePath(kind: string) {
   if (kind === 'org') return '/api/tenant/org/organizations';
   return external[kind]?.path ?? `/api/tenant/job/${kind}`;
 }
+/** 列表里也要读名称的引用列：列表接口只返回 ID，直接展示会露出 UUID（职级的资源集合、职务的胜任力模型）。 */
+export const listReferenceFields = ['ownerOrgId', 'competencyModelId'];
 /** 引用字段指向的对象；parentId 指向同类对象。'org' 为组织。 */
 export function referenceKind(kind: JobKind, field: string): string | undefined {
   return field === 'parentId' ? kind : references[field];
@@ -108,7 +110,7 @@ export function referenceKind(kind: JobKind, field: string): string | undefined 
 interface FieldGate {
   field(name: string): FieldAccess;
 }
-// 原站各视图列（F-132 对照表）；职层、专业条线未截到，保持原列。在岗人数、胜任力等接口未返回的列不展示。
+// 原站各视图列（F-132 对照表）；职层、专业条线未截到，保持原列。职务的胜任力模型（R1a §2.9）按引用读名称；在岗人数接口未返回，不展示。
 const listFields: Partial<Record<JobKind, string[]>> = {
   sequences: ['name', 'parentId', 'levelTypeId', 'displayOrder', 'startDate'],
   'level-types': ['name', 'displayOrder', 'startDate'],
@@ -125,7 +127,7 @@ const listFields: Partial<Record<JobKind, string[]>> = {
     'salaryLower',
     'startDate',
   ],
-  posts: ['code', 'name', 'sequenceId', 'levelTypeId', 'minLevelId', 'maxLevelId'],
+  posts: ['code', 'name', 'sequenceId', 'levelTypeId', 'minLevelId', 'maxLevelId', 'competencyModelId'],
   positions: [
     'code',
     'name',
@@ -144,7 +146,7 @@ const listWidths: Partial<Record<JobKind, number[]>> = {
   'level-types': [404, 384, 369],
   grades: [171, 191, 191, 223, 223, 156],
   levels: [140, 140, 140, 172, 140, 140, 172, 172, 172, 105],
-  posts: [153, 153, 153, 153, 101, 101],
+  posts: [153, 153, 153, 153, 101, 101, 153],
   positions: [128, 128, 128, 128, 128, 128, 76, 76, 76],
 };
 export function jobColumnWidth(kind: JobKind, field: string) {

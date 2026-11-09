@@ -114,6 +114,83 @@ describe('AC-ORG / AC-JOB F-474 已有接口字段的页面对齐', () => {
       expect(labels()).not.toContain('资源集合');
     });
   });
+  describe('列表的引用列显示名称（F-474-2a 第 1 轮返工 P2-3 / P2-4）', () => {
+    const POSTS = '/api/tenant/job/posts';
+    const LEVELS = '/api/tenant/job/levels';
+    const CRITERION = 'c0000000-0000-4000-8000-000000000001';
+    const ORG = 'a0000000-0000-4000-8000-000000000001';
+    const page = (items: object[]) => ({ items, total: items.length, page: 1, pageSize: 15, today: '2026-11-03' });
+    const post = {
+      id: 'b0000000-0000-4000-8000-000000000001',
+      revision: 1,
+      name: '合成职务',
+      competencyModelId: CRITERION,
+    };
+    const level = { id: 'b0000000-0000-4000-8000-000000000002', revision: 1, name: '合成职级', ownerOrgId: ORG };
+    const cells = () => Array.from(ui.host.querySelectorAll('tbody td')).map((cell) => cell.textContent?.trim());
+    const withModel = [...allFields, 'competencyModelId'];
+
+    it('职务列表末列是「胜任力模型」（宽 153），单元格显示按当前权限读到的人才标准名称', async () => {
+      await ui.render(h(JobWorkspace), '/job?kind=posts', withModel, {
+        [POSTS]: page([post]),
+        [`/api/tenant/talent/criteria/${CRITERION}`]: { id: CRITERION, name: '合成胜任力模型', enabled: true },
+      });
+      expect(ui.headers().at(-1)).toBe('胜任力模型');
+      expect(ui.widths().at(-1)).toBe('153px');
+      expect(cells()).toContain('合成胜任力模型');
+      expect(cells()).not.toContain(CRITERION);
+    });
+    it('职务的胜任力模型被事后停用：列表保留引用并标注已停用', async () => {
+      await ui.render(h(JobWorkspace), '/job?kind=posts', withModel, {
+        [POSTS]: page([post]),
+        [`/api/tenant/talent/criteria/${CRITERION}`]: { id: CRITERION, name: '合成胜任力模型', enabled: false },
+      });
+      expect(cells().some((text) => text?.startsWith('合成胜任力模型') && text.length > '合成胜任力模型'.length)).toBe(
+        true,
+      );
+    });
+    it('读不到被引用人才标准的名称：显示不在可见范围，不露 ID', async () => {
+      await ui.render(h(JobWorkspace), '/job?kind=posts', withModel, {
+        [POSTS]: page([post]),
+        [`/api/tenant/talent/criteria/${CRITERION}`]: {},
+      });
+      expect(cells()).toContain('（不在可见范围）');
+      expect(cells()).not.toContain(CRITERION);
+    });
+    it('没有胜任力模型字段查看权：整列隐藏，也不去读人才标准', async () => {
+      await ui.render(h(JobWorkspace), '/job?kind=posts', allFields, {
+        [POSTS]: page([post]),
+        [`/api/tenant/talent/criteria/${CRITERION}`]: { id: CRITERION, name: '合成胜任力模型' },
+      });
+      expect(ui.headers()).not.toContain('胜任力模型');
+      expect(cells()).not.toContain('合成胜任力模型');
+    });
+    it('职级列表的「资源集合」显示组织名称，不显示 UUID', async () => {
+      await ui.render(h(JobWorkspace), '/job?kind=levels', allFields, {
+        [LEVELS]: page([level]),
+        [`/api/tenant/org/organizations/${ORG}`]: { id: ORG, name: '合成资源集合组织' },
+      });
+      expect(cells()).toContain('合成资源集合组织');
+      expect(cells()).not.toContain(ORG);
+    });
+    it('读不到组织名称（无组织名称查看权 / 范围外）：显示不在可见范围，不露 UUID', async () => {
+      await ui.render(h(JobWorkspace), '/job?kind=levels', allFields, {
+        [LEVELS]: page([level]),
+        [`/api/tenant/org/organizations/${ORG}`]: {},
+      });
+      expect(cells()).toContain('（不在可见范围）');
+      expect(cells()).not.toContain(ORG);
+    });
+    it('没有资源集合字段查看权：该列隐藏', async () => {
+      await ui.render(
+        h(JobWorkspace),
+        '/job?kind=levels',
+        allFields.filter((field) => field !== 'ownerOrgId'),
+        { [LEVELS]: page([level]) },
+      );
+      expect(ui.headers()).not.toContain('资源集合');
+    });
+  });
   it('职等新建按名称、等级、职层、上限、下限顺序，生效日期在状态之前', async () => {
     await ui.render(
       h(JobEditor, {

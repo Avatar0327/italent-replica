@@ -94,6 +94,7 @@ describe('AC-FE-R1a-21 职务体系各类列表列按原站', () => {
       'levelTypeId',
       'minLevelId',
       'maxLevelId',
+      'competencyModelId',
     ]);
     expect(jobListFields('positions', access)).toEqual([
       'code',

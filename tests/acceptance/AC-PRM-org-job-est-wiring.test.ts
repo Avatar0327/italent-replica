@@ -13,6 +13,7 @@ import {
   setObjectPermission,
   type PermissionWorld,
 } from './AC-PRM-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -803,11 +804,27 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     const as = await actor('jobPost', { buttons: [{ buttonCode: 'validate', level: 'detail' }] });
     await addObjectView(as, key);
     await objectAll(as, 'jobPost');
+    // 职级新建需要创建人有职务体系授权管理单元（DEC-339①）：建完把管理员的范围还原成缺省，不影响后续用例
+    if (kind === 'levels') {
+      await grantJobUnit(
+        (method, path, init) => fixture.request(method, path, { ...world.asAdmin, ...init }),
+        world.asAdmin.user,
+        world.tenant.id,
+      );
+    }
     const reference = await fixtureCreate(`/api/tenant/job/${kind}`, {
       name: '隐藏的关联对象',
       startDate: '2026-01-01',
       [kind === 'levels' ? 'level' : 'grade']: 1,
     });
+    if (kind === 'levels') {
+      const restore = await fixture.request('PUT', `/api/tenant/permission/scopes/${world.asAdmin.user}/TenantBase`, {
+        ...world.asAdmin,
+        ifMatch: 1,
+        body: { kind: 'default' },
+      });
+      expect(restore.status, await restore.clone().text()).toBe(200);
+    }
     expect(
       (
         await world.api.request('POST', '/api/tenant/job/validate-assignment', {

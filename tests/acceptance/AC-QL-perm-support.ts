@@ -26,6 +26,7 @@ import {
   type StandardView,
 } from './AC-QL-support.js';
 import { createMou, createOrg } from './AC-TC-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { type RequestOptions, tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -128,6 +129,8 @@ export async function seed(world: PermissionWorld): Promise<Data> {
     gradeSchemeId: scheme.id,
     publicDown: true,
   });
+  // 职级新建需要创建人有职务体系（TenantBase）授权管理单元（DEC-339①）；与 Qualification 的授权互不影响
+  await grantJobUnit((method, path, init) => admin(method, path, init), world.asAdmin.user, world.asAdmin.tenant);
   const job = async (path: string, body: Record<string, unknown>) => {
     const response = await admin('POST', `/api/tenant/job/${path}`, {
       ifMatch: 0,

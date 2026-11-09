@@ -218,8 +218,14 @@ async function updateMapped(
   expectedRevision: number,
   sequenceAccess?: EmploymentWriteAccess,
 ) {
-  if (!(await latestJobObject(tx, ctx.tenantId, kind, id))) throw new AppError('NOT_FOUND', '映射对象不存在');
-  const { startDate, ...patch } = input;
+  const current = await latestJobObject(tx, ctx.tenantId, kind, id);
+  if (!current) throw new AppError('NOT_FOUND', '映射对象不存在');
+  const { startDate, ownerOrgId, ...patch } = input;
+  // 职级的所属资源集合只在新建时定（修改请求不接受）：重导带同一归属（大小写不计）视为未改动，从载荷移除；
+  // 归属不同逐行拒绝，不静默改归属，也不取消新建时的必选校验。
+  if (kind === 'levels' && ownerOrgId && String(ownerOrgId).toLowerCase() !== String(current.ownerOrgId ?? '')) {
+    throw new AppError('VALIDATION_FAILED', '职级所属资源集合创建后不可修改', { reason: 'RESOURCE_SET_IMMUTABLE' });
+  }
   return updateJobObject(
     tx,
     { ...ctx, expectedRevision },
