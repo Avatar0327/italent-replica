@@ -1,0 +1,57 @@
+/* 架构卡片图：自上而下的嵌套列表；横向可滚动。无动画与缩放（原站缩放行为未验证）。 */
+.org-chart {
+  overflow: auto;
+  padding: 16px 0;
+}
+.org-chart ul {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 0;
+  padding: 16px 0 0;
+  list-style: none;
+  position: relative;
+}
+.org-chart > ul {
+  padding-top: 0;
+  justify-content: flex-start;
+}
+.org-chart li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+.org-chart li > ul::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 16px;
+  border-left: 1px solid var(--shell-border);
+}
+.org-chart-card {
+  min-width: 160px;
+  max-width: 220px;
+  padding: 8px 12px;
+  border: 1px solid var(--shell-border);
+  border-radius: 4px;
+  background: #fff;
+  font-size: 12px;
+}
+.org-chart-card[data-enabled='false'] {
+  color: var(--shell-muted);
+}
+.org-chart-name {
+  padding: 0;
+  height: auto;
+  font-weight: 600;
+}
+.org-chart-line {
+  color: var(--shell-muted);
+}
+.org-chart-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--shell-muted);
+}

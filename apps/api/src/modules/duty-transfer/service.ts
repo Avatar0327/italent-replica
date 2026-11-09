@@ -257,10 +257,12 @@ async function saveRecord(
     failureRule: null,
     updatedAt: ctx.now,
   };
+  // 覆盖 = 一次新提交，开启新的重试预算（F-454；无原站反证，取保守）：记次 / 上次尝试时间随之清零，
+  // 否则被覆盖前已累计的非业务异常次数会让新提交的第一次瞬时异常就永久失败。
   const [row] = args.existing
     ? await tx
         .update(dutyTransferRecords)
-        .set({ ...values, revision: args.existing.revision + 1 })
+        .set({ ...values, attemptCount: 0, lastAttemptAt: null, revision: args.existing.revision + 1 })
         .where(sql`tenant_id=${ctx.tenantId} AND id=${args.existing.id}::uuid`)
         .returning()
     : await tx

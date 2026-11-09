@@ -43,6 +43,7 @@ import {
   type SingleApprovalNode,
 } from '@italent/domain';
 import { ADAPTERS, type BusinessSnapshot, type BusinessType } from './adapters.js';
+import { prepareHandlingContent, recordHandlingContent } from './handling-content.js';
 import {
   predecessorOf,
   recordActivation,
@@ -833,9 +834,15 @@ async function autoProcess(
       ? { mechanism, handler: '系统', candidateUserId: decision.userId, reason: decision.reason }
       : { mechanism, userId: decision.userId, reason: decision.reason };
   const event = skip ? 'skip' : 'auto_approve';
-  await appendLog(tx, run.ctx, run.instance, { event, nodeKey: node.key, taskId, actorUserId: null, detail });
+  const logId = await appendLog(tx, run.ctx, run.instance, {
+    event,
+    nodeKey: node.key,
+    taskId,
+    actorUserId: null,
+    detail,
+  });
   if (!skip) await applyMessageRules(tx, run.ctx, run.instance, node, 'approve', { id: taskId, assigneeUserId });
-  return {
+  const task: TaskRow = {
     id: taskId,
     seq: (tasks.at(-1)?.seq ?? 0) + 1,
     round,
@@ -852,6 +859,11 @@ async function autoProcess(
     comment: null,
     actedAt: run.ctx.now.toISOString(),
   };
+  // F-476 P3：自动处理也留一份系统办理份（actor 为空，不增加候选人的访问资格）；内容取自动处理发生时的业务值，
+  // 与任务 / 日志同事务，写不进去整笔回滚（DEC-807）
+  const prepared = await prepareHandlingContent(tx, run, undefined);
+  await recordHandlingContent(tx, run, prepared, { logId, task, action: event, system: true });
+  return task;
 }
 
 /**
