@@ -12,3 +12,5 @@ export * from './recusal.js';
 export * from './application-status.js';
 
 export * from './sources.js';
+export * from './variables.js';
+export * from './type-apps.js';

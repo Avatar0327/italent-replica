@@ -7,6 +7,7 @@ export * from './employment.js';
 export * from './permission-data-scope.js';
 export * from './personnel.js';
 export * from './approval.js';
+export * from './approval-variables.js';
 
 export * from './contracts.js';
 export * from './transfer.js';
