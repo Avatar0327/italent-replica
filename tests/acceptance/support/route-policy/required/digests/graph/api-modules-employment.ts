@@ -144,9 +144,19 @@ export const GRAPH: Graph = {
     'packages/domain/src/hr-analysis/all-people.ts#ALL_PEOPLE_DEFAULT_STATUSES',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/employment/approval-content.ts#compose': ['#pickCodes'],
-  'apps/api/src/modules/employment/approval-content.ts#composeBusiness': ['#BUSINESS_FACTS', '#compose'],
-  'apps/api/src/modules/employment/approval-content.ts#composeExit': ['#EXIT_CODE_OF', '#EXIT_FACTS', '#compose'],
+  'apps/api/src/modules/employment/approval-content.ts#composeBusiness': [
+    '#BUSINESS_FACTS',
+    '#pickCodes',
+    '#pickCustom',
+    '#pickFacts',
+    '#pickRecord',
+  ],
+  'apps/api/src/modules/employment/approval-content.ts#composeExit': ['#EXIT_FACTS', '#pickFacts'],
+  'apps/api/src/modules/employment/approval-content.ts#disclosing': ['#FACT_FIELDS', '#approvalCodeOf'],
+  'apps/api/src/modules/employment/approval-content.ts#hasRequiredContent': ['#EXIT_KINDS', '#isRow'],
+  'apps/api/src/modules/employment/approval-content.ts#liveKindOf': [
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/approval-content.ts#loadEmploymentContent': [
     '#BUSINESS_FACTS',
     '#EXIT_FACTS',
@@ -158,6 +168,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/approval-content.ts#openAsParticipant': [
     'apps/api/src/modules/approval/disclosure.ts#readDetail',
   ],
+  'apps/api/src/modules/employment/approval-content.ts#pickCodes': ['#approvalCodeOf', '#isRow'],
+  'apps/api/src/modules/employment/approval-content.ts#pickCustom': ['#isRow'],
+  'apps/api/src/modules/employment/approval-content.ts#pickRecord': [
+    '#RECORD_STRUCTURE',
+    '#approvalCodeOf',
+    '#isRow',
+    '#pickCodes',
+    '#pickCustom',
+  ],
   'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
@@ -165,6 +184,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/foreign-fields.ts#viewableWithForeign',
     'apps/api/src/modules/approval/handling-content.ts#contentViewOf',
     'apps/api/src/modules/approval/store.ts#latestInstanceOf',
+    '#LIVE_READ',
+    '#hasRequiredContent',
+    '#liveKindOf',
     '#openAsParticipant',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
@@ -1160,6 +1182,10 @@ export const GRAPH: Graph = {
     'apps/api/src/audit/record.ts#recordAudit',
     'apps/api/src/system-actor.ts#auditActor',
   ],
+  'apps/api/src/modules/employment/context.ts#bindEmployeeResource': [
+    'apps/api/src/authorization.ts#requirePermission',
+    '#requireEmployeeInScope',
+  ],
   'apps/api/src/modules/employment/context.ts#commandContext': [
     '#EMPLOYMENT_OBJECT',
     '#commandContexts',
@@ -1189,7 +1215,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/context.ts#readContext': [
     'apps/api/src/authorization.ts#requirePermission',
     '#EMPLOYMENT_OBJECT',
-    '#requireEmployeeInScope',
+    '#bindEmployeeResource',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
     'apps/api/src/tenant-context.ts#tenantOf',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -3533,7 +3559,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/:id': [
     'apps/api/src/modules/employment/approval-content.ts#composeExit',
-    'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead',
+    'apps/api/src/modules/employment/approval-content.ts#disclosing',
     'apps/api/src/modules/employment/exit-actions.ts#exitActions',
     'apps/api/src/modules/employment/exit-later-records.ts#projectExitFailureDetails',
     'apps/api/src/modules/employment/exit-queries.ts#trimExitDetail',
@@ -7167,6 +7193,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements/:id': [
     'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/exit-routes.ts#viewableIn',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
@@ -7178,6 +7205,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements/employees/:id/in-flight': [
     'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead',
+    'apps/api/src/modules/employment/context.ts#bindEmployeeResource',
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
     'apps/api/src/modules/employment/exit-routes.ts#viewableIn',
@@ -7189,7 +7218,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/retirement-view-routes.ts#shownRetirement': [
     'apps/api/src/modules/employment/approval-content.ts#composeExit',
-    'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead',
+    'apps/api/src/modules/employment/approval-content.ts#disclosing',
   ],
   'apps/api/src/modules/employment/retirement-view-routes.ts#upcomingDaysOf': ['#FALLBACK_UPCOMING_DAYS'],
   'apps/api/src/modules/employment/retirement-view-routes.ts#viewQuery': [
@@ -7365,12 +7394,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/routes.ts#route:GET /businesses/:id': [
     'apps/api/src/authorization.ts#requirePermission',
-    'apps/api/src/modules/employment/approval-content.ts#composeBusiness',
     'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead',
     'apps/api/src/modules/employment/context.ts#queryDate',
     'apps/api/src/modules/employment/context.ts#readPageContext',
-    'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
+    '#shownBusiness',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
@@ -7609,6 +7637,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-cancel.ts#isCancellableState',
     'apps/api/src/modules/employment/exit-gate.ts#businessState',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
+  ],
+  'apps/api/src/modules/employment/routes.ts#shownBusiness': [
+    'apps/api/src/modules/employment/approval-content.ts#composeBusiness',
+    'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
   ],
   'apps/api/src/modules/employment/routes.ts#splitLoginEmail': ['#loginEmail', '#parse'],
   'apps/api/src/modules/employment/routes.ts#submitBody': [

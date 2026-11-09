@@ -2629,7 +2629,11 @@ export const EMPLOYMENT: RequiredTable = {
           '/employees/:id/part-times',
           "const ctx = await readContext(c, deps, 'object.create', 0, id)",
         ),
-        { role: 'impl', unit: `${CTX}#readContext`, anchor: '(tx) => requireEmployeeInScope(tx, result, resource)' },
+        {
+          role: 'impl',
+          unit: `${CTX}#bindEmployeeResource`,
+          anchor: '(tx) => requireEmployeeInScope(tx, context, resource)',
+        },
         EMPLOYEE_IN_SCOPE,
       ],
     ),
@@ -3244,8 +3248,8 @@ export const EMPLOYMENT: RequiredTable = {
         ),
         {
           role: 'impl',
-          unit: `${CTX}#readContext`,
-          anchor: '(tx) => requireEmployeeInScope(tx, result, resource)',
+          unit: `${CTX}#bindEmployeeResource`,
+          anchor: '(tx) => requireEmployeeInScope(tx, context, resource)',
         },
         EMPLOYEE_IN_SCOPE,
       ],
@@ -3289,8 +3293,8 @@ export const EMPLOYMENT: RequiredTable = {
               call,
               {
                 role: 'impl',
-                unit: `${CTX}#readContext`,
-                anchor: '(tx) => requireEmployeeInScope(tx, result, resource)',
+                unit: `${CTX}#bindEmployeeResource`,
+                anchor: '(tx) => requireEmployeeInScope(tx, context, resource)',
               },
               EMPLOYEE_IN_SCOPE,
             ],
@@ -3871,10 +3875,13 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   // F-479 S2 HR 载体下载：与详情同一个取值（readExitDetail → readPageContext('detail')），再叠 attachmentRefs 字段权
   'GET /api/tenant/employment/exits/:id/attachments/:fileId/content': [
-    recordView(at(EXIT, 'GET', '/exits/:id/attachments/:fileId/content', 'await readExitDetail(c)')),
+    recordView(at(EXIT, 'GET', '/exits/:id/attachments/:fileId/content', 'await readExitDetail(c)'), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
   ],
   'GET /api/tenant/employment/exits/:id': [
-    recordView(at(EXIT, 'GET', '/exits/:id', 'const { ctx, detail, show } = await readExitDetail(c)'), [
+    recordView(at(EXIT, 'GET', '/exits/:id', 'await readExitDetail(c, true)'), [
       'object:readPageContext',
       'object:object.* 动作',
     ]),
@@ -4038,7 +4045,7 @@ export const EMPLOYMENT: RequiredTable = {
           RETIRE_VIEWS,
           'GET',
           '/retirements/employees/:id/in-flight',
-          "const ctx = await readContext(c, deps, 'object.view', 0, id)",
+          "const base = await readContext(c, deps, 'object.view', 0)",
         ),
         READ,
         RECORD_CONST,
