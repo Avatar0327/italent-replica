@@ -119,7 +119,7 @@ ALTER TABLE "approval_variables" ADD CONSTRAINT "approval_variables_creator" FOR
 ALTER TABLE "approval_variables" ADD CONSTRAINT "approval_variables_updater" FOREIGN KEY ("tenant_id","updated_by") REFERENCES "public"."tenant_memberships"("tenant_id","user_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "approval_matrices_list" ON "approval_matrices" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX "approval_variables_list" ON "approval_variables" USING btree ("tenant_id","scope","status");--> statement-breakpoint
-CREATE UNIQUE INDEX "approval_variables_origin_slot" ON "approval_variables" USING btree ("tenant_id","origin_version_id","origin_node_key","origin_slot") WHERE "approval_variables"."origin" = 'auto';--> statement-breakpoint
+CREATE UNIQUE INDEX "approval_variables_origin_slot" ON "approval_variables" USING btree ("tenant_id","origin_version_id","origin_node_key","origin_slot") WHERE "approval_variables"."origin" = 'auto' AND "approval_variables"."status" <> 'disabled';--> statement-breakpoint
 CREATE INDEX "approval_variables_origin_process" ON "approval_variables" USING btree ("tenant_id","origin_process_id") WHERE "approval_variables"."origin" = 'auto';--> statement-breakpoint
 -- F-326 S1：五张表 FORCE RLS（租户隔离，F-212）；变量与矩阵头只启停不删除，故不授 DELETE（设计 §2.5）。
 SELECT enable_tenant_isolation('approval_variables');--> statement-breakpoint

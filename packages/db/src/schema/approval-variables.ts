@@ -81,10 +81,11 @@ export const approvalVariables = pgTable(
     unique('approval_variables_tenant_id').on(t.tenantId, t.id),
     unique('approval_variables_code').on(t.tenantId, t.code),
     index('approval_variables_list').on(t.tenantId, t.scope, t.status),
-    // 一个版本的一个位置最多归属一条自动变量，也兜住并发重复生成（DEC-858）
+    // 一个版本的一个位置最多归属一条未停用（草稿 / 启用）的自动变量，也兜住并发重复生成（DEC-858）；
+    // 停用的旧变量保留作历史，不占位，否则节点改回“指定人员”或停用后重存都无法生成新变量
     uniqueIndex('approval_variables_origin_slot')
       .on(t.tenantId, t.originVersionId, t.originNodeKey, t.originSlot)
-      .where(sql`${t.origin} = 'auto'`),
+      .where(sql`${t.origin} = 'auto' AND ${t.status} <> 'disabled'`),
     // 供模拟与候选过滤按来源流程取自动变量集合
     index('approval_variables_origin_process')
       .on(t.tenantId, t.originProcessId)

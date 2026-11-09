@@ -26813,7 +26813,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"approval_variables\".\"origin\" = 'auto'",
+          "where": "\"approval_variables\".\"origin\" = 'auto' AND \"approval_variables\".\"status\" <> 'disabled'",
           "concurrently": false,
           "method": "btree",
           "with": {}

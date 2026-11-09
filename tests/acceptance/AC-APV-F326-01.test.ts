@@ -529,6 +529,43 @@ describe('自动变量来源列（DEC-858，设计 §5.5 ⑤）', () => {
     });
   });
 
+  it('唯一索引只约束未停用的自动变量：停用的旧变量不占位，草稿与启用都占位，改回未停用时仍受约束', async () => {
+    const w = await world('f326s1-origin-slot-disabled');
+    const ids = await seedProcess(w);
+    const old = await withTenant(testDb().db, w.tenantId, (tx) =>
+      insert(tx, 'approval_variables', w.tenantId, autoVariable(w, ids, { status: 'disabled' })),
+    );
+    // 同一（版本, 节点, 位置）已有停用的，可再插入未停用的（草稿、启用各一次要分开位置验证）
+    const fresh = await withTenant(testDb().db, w.tenantId, (tx) =>
+      insert(tx, 'approval_variables', w.tenantId, autoVariable(w, ids, { status: 'draft' })),
+    );
+    // 停用记录可以有多条（历史）
+    await withTenant(testDb().db, w.tenantId, (tx) =>
+      insert(tx, 'approval_variables', w.tenantId, autoVariable(w, ids, { status: 'disabled' })),
+    );
+    // 两条未停用的（草稿 / 启用任意组合）被拒
+    for (const status of ['draft', 'enabled']) {
+      expect(
+        await rejects(w, (tx) => insert(tx, 'approval_variables', w.tenantId, autoVariable(w, ids, { status }))),
+        status,
+      ).toMatch(/unique|duplicate/i);
+    }
+    // 把停用的改回未停用，而位置已被占用：被拒
+    for (const status of ['draft', 'enabled']) {
+      expect(
+        await rejects(w, (tx) =>
+          tx.execute(sql`UPDATE approval_variables SET status = ${status} WHERE id = ${old.id}`),
+        ),
+        status,
+      ).toMatch(/unique|duplicate/i);
+    }
+    // 占位的那条停用后，旧的才能改回未停用
+    await withTenant(testDb().db, w.tenantId, async (tx) => {
+      await tx.execute(sql`UPDATE approval_variables SET status = 'disabled' WHERE id = ${fresh.id}`);
+      await tx.execute(sql`UPDATE approval_variables SET status = 'enabled' WHERE id = ${old.id}`);
+    });
+  });
+
   it('索引：按来源流程过滤的部分索引存在（供模拟与候选过滤）', async () => {
     const rows = resultRows<{ indexdef: string }>(
       await testDb().db.execute(sql`SELECT indexdef FROM pg_indexes
