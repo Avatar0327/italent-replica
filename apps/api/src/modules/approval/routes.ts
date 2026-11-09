@@ -114,6 +114,7 @@ import {
 } from './store.js';
 import { policedSub } from '../../route-policy/index.js';
 import { APPROVAL_POLICIES } from './policy.js';
+import { typedContentOf } from './typed-content.js';
 
 type C = Context<TenantEnv>;
 
@@ -222,12 +223,14 @@ async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, wit
     const facts = await loadPathFacts(tx, ctx, instance, version.nodes, conditionValues, allTasks);
     return { data: detail, pathFacts: facts };
   });
-  return { ctx, view: detailView(data, ctx.userId, await detailViewable(deps, ctx, data), pathFacts) };
+  return { ctx, data, view: detailView(data, ctx.userId, await detailViewable(deps, ctx, data), pathFacts) };
 }
 
 async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
-  const { ctx, view } = await detailViewOf(c, deps, instanceId, true);
-  return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view)));
+  const { ctx, data, view } = await detailViewOf(c, deps, instanceId, true);
+  const named = await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view));
+  // F-476 P8：业务内容不在表单里的类型，已办读冻结份时附类型化内容（缺份 503）
+  return c.json({ ...named, ...(await typedContentOf(deps, ctx, data)) });
 }
 
 /**

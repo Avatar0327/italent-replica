@@ -93,7 +93,7 @@ export const DIGESTS: Digests = {
     listTodos: '6b64f79dcefe',
   },
   'apps/api/src/modules/approval/routes.ts': {
-    detailViewOf: '9b945d825113',
+    detailViewOf: 'f46388010187',
     fieldRights: '4ae7ecb6ac72',
     registerInstanceRoutes: '42f2d6e8987e',
     registerProcessRoutes: 'dfdd774363ae',
@@ -827,7 +827,7 @@ export const DIGESTS: Digests = {
     'route:PUT /api/tenant/idp/plans/:id/goals/:goalId/review': '80906406fef7',
     'route:PUT /api/tenant/idp/plans/:id/modules/:moduleId/content': '3f755da1323f',
     runExecutorWrite: '43da5c6d94ee',
-    showPlan: 'b3219dd54978',
+    showPlan: '4dc06a2dd727',
     templateCheck: '4bcd7934ada4',
     tutorNames: 'c8ddfb1dc798',
   },
@@ -2509,7 +2509,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/idp/plan-routes.ts#route:PUT /api/tenant/idp/plans/:id/modules/:moduleId/content':
     'b960eb8ebb30',
   'apps/api/src/modules/idp/plan-routes.ts#runExecutorWrite': '2ecc578d0b1e',
-  'apps/api/src/modules/idp/plan-routes.ts#showPlan': 'c72012abf56a',
+  'apps/api/src/modules/idp/plan-routes.ts#showPlan': 'd2cee739a89c',
   'apps/api/src/modules/idp/plan-routes.ts#templateCheck': '41b60e98bd6f',
   'apps/api/src/modules/idp/plan-routes.ts#tutorNames': '3734b1f5f0ec',
   'apps/api/src/modules/idp/plan-service.ts#deletePlan': 'ad3599809d93',

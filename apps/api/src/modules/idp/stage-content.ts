@@ -12,7 +12,17 @@ import type { Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { approvalError } from '../approval/context.js';
 import { loadPlanRow, loadStage } from './plan-store.js';
-import { type GoalView, type KeyInfo, loadPlanContent, type PlanContent, type PlanDetail } from './plan-view.js';
+import {
+  type GoalView,
+  type KeyInfo,
+  loadKeyInfo,
+  loadPlanContent,
+  type PlanContent,
+  type PlanDetail,
+  presentPlan,
+  type Projections,
+} from './plan-view.js';
+import type { PlanViewer } from './plan-access.js';
 
 /** 办理份里的披露段（设计 §5.2 的“真实详情的 module / section 映射”）。 */
 export const SECTIONS = ['goals', 'tasks', 'goalReviews', 'analyses', 'reviews', 'keyInfo'] as const;
@@ -50,13 +60,19 @@ export function sectionsOf(modules: PlanContent['modules']): Section[] {
 
 /**
  * 办理份扩展内容加载器（经 provider 注册，在办理人办理、业务状态还没被推进之前调用）。
- * 调用方已持有计划行锁（适配器 lock 先锁计划再锁实例，与所有计划内容写入同序），内容与修订号因此一致。
+ * 调用方已持有计划行锁（适配器 lock 先锁计划再锁实例，与所有计划内容写入同序）：模板、目标、综述、回顾与修订号因此一致。
+ * 关键信息（带教 / 职业发展 / 轮岗）的维护只锁源记录、不取计划锁，三类各自一条 SELECT 可能读到不同时刻的状态
+ * （带教 A + 职业发展 B 从未同时存在）。这里不加新锁（设计 §4.3 禁止新增先实例锁再员工 / 组织锁的路径），改为
+ * 读两遍比对：两遍每一类都相同 → 三类在第一遍末与第二遍首之间同时不变，保存的是一个真实存在过的完整状态；
+ * 不同 → 409 且不落份，任务保持待办，办理人重试。（SELECT 不带修订号，A→B→A 的往返读不出，该往返的终态与首态
+ * 相同，保存的仍是真实存在过的状态。）
  */
 export async function loadIdpStageContent(tx: Tx, tenantId: string, stageId: string): Promise<IdpStageContent> {
   const stage = await loadStage(tx, tenantId, stageId);
   const plan = stage ? await loadPlanRow(tx, tenantId, stage.planId) : undefined;
   if (!stage || !plan) throw new AppError('NOT_FOUND', '发展计划阶段不存在');
   const content = await loadPlanContent(tx, plan);
+  if (JSON.stringify(await loadKeyInfo(tx, plan)) !== JSON.stringify(content.keyInfo)) throw changing();
   return {
     stage: { id: stage.id, seq: stage.seq, name: stage.name, subProcessId: stage.subProcessId },
     planRevision: plan.revision,
@@ -74,6 +90,9 @@ export async function loadIdpStageContent(tx: Tx, tenantId: string, stageId: str
 
 const missing = () =>
   approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_HANDLING_CONTENT_MISSING', '办理记录暂不可读取，请稍后重试');
+
+const changing = () =>
+  approvalError('CONFLICT', 'IDP_KEY_INFO_CHANGING', '关键信息正在被修改，办理内容未能一致读取，请稍后重试');
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -119,4 +138,22 @@ export function frozenDetail(live: PlanDetail, content: IdpStageContent): PlanDe
     reviews: allowed.has('reviews') ? content.reviews : [],
     keyInfo: allowed.has('keyInfo') ? content.keyInfo : NO_KEY_INFO,
   };
+}
+
+/** 已办读取只给只读呈现：参与人字段集，节点按钮为空。 */
+const READ_ONLY: PlanViewer = { kind: 'participant', at: { participant: true, stage: null, nodeKey: null } };
+
+/**
+ * 计划详情与审批中心详情共用的办理份呈现（P2-3：两个入口读到同一份内容）。
+ * 已办的 HR 也按办理份读（办理人的权限不因另有管理员身份放宽，DEC-801 D2），关键信息仍按当前权限裁剪。
+ */
+export function presentFrozen(
+  tx: Tx,
+  tenantId: string,
+  live: PlanDetail,
+  ext: unknown,
+  stageId: string,
+  projections: Projections,
+) {
+  return presentPlan(tx, tenantId, frozenDetail(live, parseIdpStageContent(ext, stageId)), READ_ONLY, projections);
 }

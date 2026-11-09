@@ -1923,6 +1923,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/routes.ts#respondDetail': [
     'apps/api/src/modules/approval/disclosure.ts#namedForm',
     '#detailViewOf',
+    'apps/api/src/modules/approval/typed-content.ts#typedContentOf',
   ],
   'apps/api/src/modules/approval/routes.ts#respondHistory': [
     'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
@@ -2498,6 +2499,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/approval/typed-content.ts#typedContentOf': [
+    'apps/api/src/modules/idp/approval-content.ts#idpFrozenContent',
   ],
   'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure': [
     'apps/api/src/modules/approval/context.ts#approvalError',

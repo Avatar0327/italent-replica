@@ -36,8 +36,8 @@ import { type HrScope, hrSees, type PlanViewer, requireViewer, requireVisibleMod
 import * as input from './plan-input.js';
 import { mentorSourcesOf } from './plan-mentor.js';
 import * as plans from './plan-service.js';
-import { loadPlanRow, loadStages, type PlanRow, requirePlanRow, type StageRow } from './plan-store.js';
-import { frozenDetail, parseIdpStageContent } from './stage-content.js';
+import { loadPlanRow, loadStageInstances, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
+import { presentFrozen } from './stage-content.js';
 import type { WriteContext } from './write-support.js';
 import {
   currentStageShown,
@@ -104,34 +104,27 @@ async function showPlan(
     if (!opening)
       return { revision: plan.revision, body: await presentPlan(tx, ctx.tenantId, detail, viewer, projections) };
     // 打开详情才区分现值 / 办理份（F-476 P8）：写入后的回显永远是现值
-    const read = await selectAmong(tx, ctx, stageInstances(stages), ctx.userId, requestedInstance);
-    const body = await presentRead(tx, ctx, { detail, viewer, projections }, stages, read);
+    const byInstance = await loadStageInstances(tx, ctx.tenantId, stages);
+    const read = await selectAmong(tx, ctx, [...byInstance.keys()], ctx.userId, requestedInstance);
+    const body = await presentRead(tx, ctx, { detail, viewer, projections }, byInstance, read);
     return { revision: plan.revision, body: { ...body, contentView: contentViewOfRead(read) } };
   });
 }
 
-const stageInstances = (stages: readonly StageRow[]) =>
-  stages.flatMap((stage) => (stage.approvalInstanceId ? [stage.approvalInstanceId] : []));
-
-/**
- * 按选择结果呈现：现值走原呈现；办理份还原办理时内容，只读（参与人字段集、节点按钮为空）。
- * 已办的 HR 也按办理份读（办理人的权限不因另有管理员身份放宽，DEC-801 D2），关键信息仍按当前权限裁剪。
- */
+/** 按选择结果呈现：现值走原呈现；办理份还原办理时内容，只读（共用呈现见 stage-content.presentFrozen）。 */
 async function presentRead(
   tx: Tx,
   ctx: IdpContext,
   shown: { detail: PlanDetail; viewer: PlanViewer; projections: Projections },
-  stages: readonly StageRow[],
+  byInstance: ReadonlyMap<string, string>,
   read: StableRead,
 ) {
   const { selection } = read;
   if (selection.mode === 'live') {
     return presentPlan(tx, ctx.tenantId, shown.detail, shown.viewer, shown.projections);
   }
-  const stage = stages.find((s) => s.approvalInstanceId === read.instanceId)!;
-  const content = parseIdpStageContent(selection.frozen.content.ext, stage.id);
-  const readOnly: PlanViewer = { kind: 'participant', at: { participant: true, stage: null, nodeKey: null } };
-  return presentPlan(tx, ctx.tenantId, frozenDetail(shown.detail, content), readOnly, shown.projections);
+  const stageId = byInstance.get(read.instanceId!)!;
+  return presentFrozen(tx, ctx.tenantId, shown.detail, selection.frozen.content.ext, stageId, shown.projections);
 }
 
 async function respondPlan(

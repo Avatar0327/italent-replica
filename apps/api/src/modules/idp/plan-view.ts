@@ -284,7 +284,7 @@ async function loadContents(tx: Tx, tenantId: string, planId: string) {
 }
 
 /** 关键信息（IDP-R7）：与计划起止有交集的记录；储备人才信息待 R3-T06（K-16）。 */
-async function loadKeyInfo(tx: Tx, plan: PlanRow): Promise<KeyInfo> {
+export async function loadKeyInfo(tx: Tx, plan: PlanRow): Promise<KeyInfo> {
   const period = { startDate: plan.startDate, endDate: plan.endDate };
   const span = sql`start_date <= ${plan.endDate}::date AND (end_date IS NULL OR end_date >= ${plan.startDate}::date)`;
   const select = (columns: ReturnType<typeof sql>, table: string, person: string) =>
