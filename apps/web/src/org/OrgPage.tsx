@@ -71,7 +71,7 @@ export function OrgPage() {
     </FormCommands>
   );
 }
-function useCatalog(access: PageAccess) {
+function useCatalog(access: PageAccess, tab: string) {
   const session = useSession();
   const [date, setDate] = useState(() => tenantDate(new Date(), session.timezone));
   const [dimension, setDimension] = useState<Dimension>('admin');
@@ -90,7 +90,15 @@ function useCatalog(access: PageAccess) {
   const query = orgCatalogQuery(filters, access.field('name').visible);
   const remote = useRemote<PageResult<OrgRow>>(`/api/tenant/org/organizations?${query}`);
   const treeQuery = orgTreeQuery(filters, access.field('name').visible);
+  // 树 / 卡片只在对应页签取数；它们与列表是同一份组织数据的三个视图，写入成功后一起刷新（refreshAll）。
+  const tree = useRemote<ServerOrgTree>(tab === 'tree' ? `/api/tenant/org/organizations/tree?${treeQuery}` : null);
+  const chart = useRemote<ServerOrgTree>(tab === 'chart' ? `/api/tenant/org/organizations/chart?${treeQuery}` : null);
   const detail = useRemote<OrgRow>(selected ? `/api/tenant/org/organizations/${selected}?asOf=${date}` : null);
+  const refreshAll = () => {
+    remote.refresh();
+    tree.refresh();
+    chart.refresh();
+  };
   const reset = () => {
     setPage({ ...page, page: 1 });
     setSelected(undefined);
@@ -123,7 +131,9 @@ function useCatalog(access: PageAccess) {
     imported,
     setImported,
     remote,
-    treeQuery,
+    tree,
+    chart,
+    refreshAll,
     detail,
     reset,
   };
@@ -131,7 +141,7 @@ function useCatalog(access: PageAccess) {
 type Catalog = ReturnType<typeof useCatalog>;
 function OrgCatalog({ tab, access, view }: { tab: string; access: PageAccess; view: ListView }) {
   const { message } = App.useApp();
-  const s = useCatalog(access);
+  const s = useCatalog(access, tab);
   return (
     <>
       <DecisionNote id={tab === 'changes' ? 'org-change' : 'org'} />
@@ -163,7 +173,7 @@ function OrgCatalog({ tab, access, view }: { tab: string; access: PageAccess; vi
           access={access}
           onClose={() => s.setEditor(undefined)}
           onSaved={() => {
-            s.remote.refresh();
+            s.refreshAll();
             void message.success(m.saved);
           }}
         />
@@ -175,7 +185,7 @@ function OrgCatalog({ tab, access, view }: { tab: string; access: PageAccess; vi
           access={access}
           onClose={() => s.setCreating(undefined)}
           onSaved={() => {
-            s.remote.refresh();
+            s.refreshAll();
             void message.success(m.saved);
           }}
         />
@@ -202,7 +212,7 @@ function CatalogDialogs({ s, access }: { s: Catalog; access: PageAccess }) {
           onClose={() => s.setImporting(false)}
           onImported={(results) => {
             s.setImported(results);
-            s.remote.refresh();
+            s.refreshAll();
             void message.success(importText.saved);
           }}
         />
@@ -213,7 +223,7 @@ function CatalogDialogs({ s, access }: { s: Catalog; access: PageAccess }) {
 }
 function OrgTree({ s }: { s: Catalog }) {
   // 完整树由服务端按查看人范围组装（F-474-2b #1）；与列表分页无关，翻页不改变树。
-  const tree = useRemote<ServerOrgTree>(`/api/tenant/org/organizations/tree?${s.treeQuery}`);
+  const tree = s.tree;
   return (
     <aside className="r1-tree-panel" aria-label={m.tree}>
       <h2>{m[s.dimension]}</h2>
@@ -244,7 +254,7 @@ function OrgChartTab({ s, access, view }: { s: Catalog; access: PageAccess; view
           <Alert type="info" showIcon closable message={m.chartHint} />
           <OrgFilters s={s} access={access} />
         </div>
-        <OrgChart query={s.treeQuery} onOpen={s.setSelected} />
+        <OrgChart chart={s.chart} onOpen={s.setSelected} />
       </div>
     </section>
   );

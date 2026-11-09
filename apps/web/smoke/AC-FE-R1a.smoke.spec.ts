@@ -1,4 +1,5 @@
 import { actionButton } from './action-button.js';
+import type { Page } from '@playwright/test';
 import { test, expect, user } from './fixtures.js';
 
 const id = '40000000-0000-4000-8000-000000000001';
@@ -336,6 +337,103 @@ test('AC-FE-F474-2b 列表有在岗人数列，架构卡片图显示负责人与
   await card.getByRole('button', { name: '合成组织', exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('tab', { name: '组织单元', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+/** 返工 P2-2：停用（保存）成功后，列表、完整树、架构卡片三个数据源一起刷新；旧请求迟到不回写。 */
+async function orgWithMutableViews(page: Page, baseURL: string | undefined, view: 'tree' | 'chart') {
+  await page.context().addCookies([
+    { name: 'italent_demo_tenant', value: '10000000-0000-4000-8000-000000000001', url: baseURL! },
+    { name: 'italent_demo_user', value: user, url: baseURL! },
+  ]);
+  const state = { saved: false, requests: 0 };
+  const node = (saved: boolean) => ({
+    id,
+    code: 'ORG-001',
+    name: saved ? '改名后组织' : '合成组织',
+    enabled: !saved,
+    headcount: 2,
+    ...(view === 'chart' ? { establishment: 4, personInChargeName: saved ? '新负责人' : '合成负责人' } : {}),
+    children: saved
+      ? [
+          {
+            id: `${id.slice(0, -1)}2`,
+            code: 'ORG-002',
+            name: '新建下级组织',
+            enabled: true,
+            headcount: 0,
+            children: [],
+          },
+        ]
+      : [],
+  });
+  const release: { fn?: () => void } = {};
+  const gate = new Promise<void>((resolve) => (release.fn = resolve));
+  await page.route(`**/api/tenant/org/organizations/${view}**`, async (route) => {
+    state.requests += 1;
+    const stale = state.requests === 1 && view === 'tree';
+    const body = { roots: [node(state.saved && !stale)], total: 1, hasDataPermission: true };
+    if (stale) await gate; // 第一次树请求被拦住，模拟迟到的旧响应
+    return route.fulfill({ json: body });
+  });
+  await page.route('**/api/tenant/org/organizations', (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    state.saved = true;
+    return route.fulfill({ status: 201, json: { id: `${id.slice(0, -1)}2`, revision: 1 } });
+  });
+  await page.route(`**/api/tenant/org/organizations/${id}`, (route) => {
+    if (route.request().method() === 'GET') return route.fallback();
+    state.saved = true;
+    return route.fulfill({ json: { id, revision: 2, enabled: false } });
+  });
+  return { state, release: () => release.fn?.() };
+}
+async function stopFromList(page: Page) {
+  await page.getByRole('button', { name: '合成组织', exact: true }).first().click();
+  await page.getByRole('dialog').getByRole('button', { name: '更多操作' }).click();
+  await page.getByRole('menuitem', { name: '停用' }).click();
+  await page.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+
+test('AC-FE-F474-2b-P2-2 树页保存成功后完整树刷新，迟到的旧请求不回写', async ({ page, baseURL }) => {
+  const views = await orgWithMutableViews(page, baseURL, 'tree');
+  await page.goto('/org?tab=tree');
+  await stopFromList(page); // 树的第一次请求仍被拦住，列表已可操作
+  const panel = page.locator('.r1-tree-panel');
+  await expect(panel).toContainText('改名后组织');
+  await expect(panel).toContainText('新建下级组织');
+  views.release(); // 旧请求（未保存时的数据）现在才返回
+  await page.evaluate(() => new Promise((done) => setTimeout(done, 300)));
+  await expect(panel).toContainText('改名后组织');
+  await expect(panel).not.toContainText('合成组织');
+});
+
+test('AC-FE-F474-2b-P2-2 树页新建下级成功后完整树出现新节点', async ({ page, baseURL }) => {
+  await orgWithMutableViews(page, baseURL, 'tree');
+  await page.goto('/org?tab=tree');
+  const panel = page.locator('.r1-tree-panel');
+  await expect(panel).toContainText('合成组织');
+  await expect(panel).not.toContainText('新建下级组织');
+  await page.getByRole('button', { name: '新建下级' }).first().click(); // 上级预填为当前行
+  await page.getByRole('dialog').getByLabel('名称', { exact: true }).fill('新建下级组织');
+  await page.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(panel).toContainText('新建下级组织');
+});
+
+test('AC-FE-F474-2b-P2-2 卡片页保存成功后卡片的名称与负责人刷新', async ({ page, baseURL }) => {
+  await orgWithMutableViews(page, baseURL, 'chart');
+  await page.goto('/org?tab=chart');
+  const card = page.locator('.org-chart-card').first();
+  await expect(card.getByText('负责人：合成负责人', { exact: true })).toBeVisible();
+  await card.getByRole('button', { name: '合成组织', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '更多操作' }).click();
+  await page.getByRole('menuitem', { name: '停用' }).click();
+  await page.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.org-chart-card').first().getByText('负责人：新负责人', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '改名后组织', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '新建下级组织', exact: true })).toBeVisible();
 });
 
 for (const route of ['/org', '/job?kind=positions']) {

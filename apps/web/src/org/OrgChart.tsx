@@ -1,5 +1,5 @@
 import { Button } from 'antd';
-import { RemoteContent, useRemote } from './page-support.js';
+import { RemoteContent, type RemoteState } from './page-support.js';
 import { chartText as t, pageText as m } from './messages.js';
 import { chartFigures, type ServerOrgNode, type ServerOrgTree } from './page-model.js';
 import './chart.css';
@@ -39,8 +39,7 @@ function Branch({ node, onOpen }: { node: ServerOrgNode; onOpen(id: string): voi
 }
 
 /** 架构卡片图（R1a §2.3）：服务端按查看人范围组装的树，自上而下。缩放 / 全屏 / 导出原站行为未验证，不做。 */
-export function OrgChart({ query, onOpen }: { query: string; onOpen(id: string): void }) {
-  const chart = useRemote<ServerOrgTree>(`/api/tenant/org/organizations/chart?${query}`);
+export function OrgChart({ chart, onOpen }: { chart: RemoteState<ServerOrgTree>; onOpen(id: string): void }) {
   return (
     <RemoteContent state={chart}>
       {chart.data?.roots.length ? (
