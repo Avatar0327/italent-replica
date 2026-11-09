@@ -92,6 +92,7 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/job/import-service.ts#importRow': [
+    '#rowReason',
     '#updateMapped',
     'apps/api/src/modules/job/metadata.ts#jobTables',
     'apps/api/src/modules/job/store.ts#auditJob',
@@ -105,7 +106,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/store.ts#snakeCase',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/job/import-service.ts#rowReason': ['#ROW_REASONS'],
   'apps/api/src/modules/job/import-service.ts#updateMapped': [
+    '#sameResourceSet',
     'apps/api/src/modules/job/read-model.ts#latestJobObject',
     'apps/api/src/modules/job/write-service.ts#updateJobObject',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',

@@ -32,6 +32,7 @@ type World = Awaited<ReturnType<typeof talentWorld>>;
 interface Level {
   id: string;
   revision: number;
+  level?: number;
   ownerOrgId?: string | null;
   salaryUpper?: number | null;
   salaryMid?: number | null;
@@ -187,8 +188,57 @@ describe('AC-JOB-F474-2a-03 职级资源集合 / 薪资区间', () => {
       expect(upper.status, JSON.stringify(upper)).toBe('updated');
       const moved = await importRow({ sourceCode: source, code, ownerOrgId: orgA, expectedRevision: 3, level: 4 });
       expect(moved.status).toBe('conflict');
+      expect(moved.reason).toBe('RESOURCE_SET_IMMUTABLE');
       const level = await read(created.objectId!);
       expect(level).toMatchObject({ ownerOrgId: orgB, level: 3 });
+    });
+
+    // 归属创建后不可改：显式清空（null）与改成别的归属一样整行拒绝，不得只改业务字段（审查 P2-2 第 2 轮）。
+    it.each([
+      ['清空为 null', null],
+      ['改成另一归属', 'ORG_B'],
+    ])(
+      '导入更新%s → 该行 conflict 且原因 RESOURCE_SET_IMMUTABLE，revision、业务值、版本数都不变',
+      async (_name, value) => {
+        await setUnits([orgA, orgB]);
+        const source = `LV${uniqueSuffix()}`;
+        const code = `IC${uniqueSuffix()}`;
+        const created = await importRow({ sourceCode: source, code, ownerOrgId: orgA, level: 7 });
+        expect(created.status).toBe('created');
+        const before = await read(created.objectId!);
+        const versionsBefore = await levelRows();
+        const attempt = await importRow({
+          sourceCode: source,
+          code,
+          ownerOrgId: value === 'ORG_B' ? orgB : value,
+          expectedRevision: before.revision,
+          level: 99,
+        });
+        expect(attempt).toMatchObject({ status: 'conflict', reason: 'RESOURCE_SET_IMMUTABLE' });
+        const after = await read(created.objectId!);
+        expect(after).toMatchObject({ revision: before.revision, level: 7, ownerOrgId: orgA });
+        expect(await levelRows()).toEqual(versionsBefore);
+      },
+    );
+
+    it('更新时归属写成空串 → 请求校验整体 400，revision、业务值、版本数都不变', async () => {
+      await setUnits([orgA, orgB]);
+      const source = `LV${uniqueSuffix()}`;
+      const code = `IC${uniqueSuffix()}`;
+      const created = await importRow({ sourceCode: source, code, ownerOrgId: orgA, level: 7 });
+      const before = await read(created.objectId!);
+      const versionsBefore = await levelRows();
+      const response = await w.api.request('POST', '/api/tenant/job/import', {
+        ...w.as,
+        ifMatch: 0,
+        body: {
+          kind: 'levels',
+          rows: [{ sourceCode: source, code, name: '空串', ownerOrgId: '', expectedRevision: 1, level: 99 }],
+        },
+      });
+      expect(response.status).toBe(400);
+      expect(await read(created.objectId!)).toMatchObject({ revision: before.revision, level: 7, ownerOrgId: orgA });
+      expect(await levelRows()).toEqual(versionsBefore);
     });
 
     it('缺归属的多单元用户首次创建仍须选择（不取消必选校验）；更新不带归属照常成功', async () => {

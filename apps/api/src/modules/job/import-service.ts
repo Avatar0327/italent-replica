@@ -202,11 +202,22 @@ async function importRow(
     });
   } catch (error) {
     if (error instanceof AppError || pgErrorCode(error) === '23505') {
-      const reason = error instanceof AppError ? error.code : 'CODE_CONFLICT';
+      const reason = error instanceof AppError ? rowReason(error) : 'CODE_CONFLICT';
       return { sourceCode: row.sourceCode, code: row.code, status: 'conflict', reason };
     }
     throw error;
   }
+}
+
+function sameResourceSet(requested: unknown, current: unknown): boolean {
+  return typeof requested === 'string' && requested.toLowerCase() === String(current ?? '').toLowerCase();
+}
+
+/** 逐行回执的原因码：默认取错误码；只有登记在册的业务原因（目前仅归属不可变）才取 details.reason，其余原因码保持原样。 */
+const ROW_REASONS = new Set(['RESOURCE_SET_IMMUTABLE']);
+function rowReason(error: AppError): string {
+  const reason = (error.details as { reason?: unknown } | undefined)?.reason;
+  return typeof reason === 'string' && ROW_REASONS.has(reason) ? reason : error.code;
 }
 
 async function updateMapped(
@@ -221,9 +232,10 @@ async function updateMapped(
   const current = await latestJobObject(tx, ctx.tenantId, kind, id);
   if (!current) throw new AppError('NOT_FOUND', '映射对象不存在');
   const { startDate, ownerOrgId, ...patch } = input;
-  // 职级的所属资源集合只在新建时定（修改请求不接受）：重导带同一归属（大小写不计）视为未改动，从载荷移除；
-  // 归属不同逐行拒绝，不静默改归属，也不取消新建时的必选校验。
-  if (kind === 'levels' && ownerOrgId && String(ownerOrgId).toLowerCase() !== String(current.ownerOrgId ?? '')) {
+  // 职级的所属资源集合只在新建时定（修改请求不接受）。区分“未提供”与“显式提供”：
+  // 未提供，或提供值与现有归属一致（大小写不计）→ 视为未改动，不进修改载荷；
+  // 显式清空（null）或改成别的归属 → 整行拒绝，不做任何部分更新；不取消新建时的必选校验。
+  if (kind === 'levels' && ownerOrgId !== undefined && !sameResourceSet(ownerOrgId, current.ownerOrgId)) {
     throw new AppError('VALIDATION_FAILED', '职级所属资源集合创建后不可修改', { reason: 'RESOURCE_SET_IMMUTABLE' });
   }
   return updateJobObject(
