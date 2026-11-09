@@ -41,13 +41,9 @@ describe('AC-F476-13 考核：批准不等于生效，办理份捕获办理那�
     const master = await s.w.probationDetail(s.person.employeeId, '2026-10-01');
     expect(master.regularizationBusinessId).toBe(s.before.regularizationBusinessId);
     expect(master.regularizationDate).toBe('2026-10-15');
-    // 批准不等于生效：10-01 时点人员仍是试用，10-15 起才转正
-    const before = master.records.find((record) => record.kind === 'regularization');
-    const after = (await s.w.probationDetail(s.person.employeeId, '2026-10-15')).records.find(
-      (record) => record.kind === 'regularization',
-    );
-    expect(after?.effectiveDate).toBe('2026-10-15');
-    expect(before === undefined || before.employeeStatus !== after?.employeeStatus).toBe(true);
+    // 批准不等于生效：转正任职记录的生效日是审批通过时按当时意见定的 10-15，HR 事后改的 10-20 不生成新记录
+    const dates = master.records.filter((record) => record.kind === 'regularization').map((r) => r.effectiveDate);
+    expect(dates).toEqual(['2026-10-15']);
   });
 
   it('办理份在审批通过回调之前捕获：不含回调才生成的转正业务编号（自动生成业务不覆盖已办内容）', async () => {

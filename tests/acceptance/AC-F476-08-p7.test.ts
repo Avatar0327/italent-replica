@@ -76,14 +76,16 @@ describe('AC-F476-08 考核（试用中 / 转正）办理 → 修改 → 两路�
     expect((await ownRead(s.w, s.person.userId, s.path)).mode).toBe('frozen');
   });
 
-  it('缺扩展内容（旧份没有考核专用内容）：自有详情与审批中心同样 503，不拿通用快照 / 现值顶替', async () => {
+  it('缺扩展内容（旧份没有考核专用内容）：自有详情 503；审批中心只读份里的通用快照，仍是办理时的值，绝不读现值', async () => {
     const s = await handledAssessment(testDb().db, 'f476p7-08-noext', 'probation', PROBATION, {
       managerRating: 'below',
       regularizationDate: '2026-10-20',
     });
     await sabotageCopies(s.w, s.w.manager.userId, 'null-ext');
     expect((await ownRead(s.w, s.w.manager.userId, s.path)).status).toBe(503);
-    expect((await centerRead(s.w, s.w.manager.userId, s.instanceId)).status).toBe(503);
+    const center = await centerRead(s.w, s.w.manager.userId, s.instanceId);
+    expect(center.mode).toBe('frozen');
+    expect(center.values).toMatchObject({ selfEvaluation: SELF_A, managerRating: 'exceeds' });
   });
 });
 
@@ -125,12 +127,15 @@ describe('AC-F476-08 意向退休申请办理 → 修改 → 两路径', () => {
     expect((await ownRead(w, w.hr.id, path)).mode).toBe('live');
   });
 
-  it('缺份与缺扩展：自有详情与审批中心都 503', async () => {
+  it('缺份：自有详情与审批中心都 503；缺扩展：自有详情 503，审批中心不读现值', async () => {
     for (const mode of ['delete', 'null-ext'] as const) {
       const s = await rejectedIntention(testDb().db, `f476p7-08-int-${mode}`);
       await sabotageCopies(s.w, s.w.manager.userId, mode);
       expect((await ownRead(s.w, s.w.manager.userId, s.path)).status, mode).toBe(503);
-      expect((await centerRead(s.w, s.w.manager.userId, s.instanceId)).status, mode).toBe(503);
+      const center = await centerRead(s.w, s.w.manager.userId, s.instanceId);
+      // 缺份：审批中心同样 503；缺扩展：只读份内通用快照（办理时的值），不读现值
+      if (mode === 'delete') expect(center.status).toBe(503);
+      else expect(center.values).toMatchObject({ reason: REASON_A });
     }
   });
 });
