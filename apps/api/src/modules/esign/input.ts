@@ -2,7 +2,8 @@
 import { ESIGN_VALIDITY_DAYS_MAX, ESIGN_VALIDITY_DAYS_MIN } from '@italent/domain';
 import { z } from 'zod';
 
-const name = z.string().min(1).max(100);
+/** 与表约束同口径：去首尾空白后非空（全空白名称在输入边界 400，不落到数据库 CHECK 变 500）。 */
+const name = z.string().trim().min(1).max(100);
 const body = z.string().max(20000);
 const sortOrder = z.number().int().min(-1_000_000).max(1_000_000);
 
