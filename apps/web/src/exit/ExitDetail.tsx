@@ -7,6 +7,7 @@ import { slotKey } from '../foundation/forms/slot.js';
 import type { Latest } from '../foundation/forms/store.js';
 import type { Values } from '../foundation/forms/values.js';
 import { PageState } from '../foundation/PageState.js';
+import { attachmentViews, CarrierAttachments } from '../foundation/attachments/index.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { refPaths } from '../part-time/references.js';
 import { CancelForm, EditForm, SubmitForm } from './EditForm.js';
@@ -20,6 +21,7 @@ import {
   cellValue,
   detailEntries,
   detailKeys,
+  EXIT_ATTACHMENT,
   exits,
   handoverEntries,
   handoverRequests,
@@ -34,7 +36,14 @@ const references: Record<string, string | undefined> = {
   positionId: refPaths.positionId,
 };
 export const fieldValue = (row: Row, key: string) =>
-  references[key] && typeof row[key] === 'string' ? (
+  key === 'attachmentRefs' ? (
+    <CarrierAttachments
+      purpose={EXIT_ATTACHMENT}
+      carrier="hrExit"
+      ownerId={String(row.id)}
+      items={attachmentViews(row.attachments)}
+    />
+  ) : references[key] && typeof row[key] === 'string' ? (
     <NameOf path={references[key]} id={row[key]} />
   ) : (
     cellValue(row, key)
@@ -65,7 +74,7 @@ export function ExitDetail({ id, onClose, refresh }: { id: string; onClose(): vo
           {notice && <Alert type="error" showIcon message={notice} />}
           <Descriptions size="small" column={2} bordered>
             {detailKeys(row).map((key) => (
-              <Descriptions.Item key={key} label={x.fields[key]}>
+              <Descriptions.Item key={key} label={x.fields[key]} span={key === 'attachmentRefs' ? 2 : undefined}>
                 {fieldValue(row, key)}
               </Descriptions.Item>
             ))}

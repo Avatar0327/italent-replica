@@ -19,6 +19,14 @@ const MGR = `${SRC}/transfer/manager-routes.ts`;
 const LNK = `${SRC}/transfer/linkage/routes.ts`;
 const EXIT = `${SRC}/employment/exit-routes.ts`;
 const RECORD_LIST = `${SRC}/employment/record-list.ts`;
+const ALL_PEOPLE = `${SRC}/employment/all-people.ts`;
+const ROSTER_ACCESS = `${SRC}/hr-analysis/roster-access.ts`;
+const CONTRACT = 'TenantBase.EmploymentContract';
+const allPeopleImpl = (anchor: string): Evidence => ({
+  role: 'impl',
+  unit: `${ROSTER_ACCESS}#allPeopleAccess`,
+  anchor,
+});
 const RETIRE = `${SRC}/employment/retirement-routes.ts`;
 const RETIRE_VIEWS = `${SRC}/employment/retirement-view-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
@@ -177,6 +185,12 @@ const fn = (file: string, name: string, anchor: string): Evidence => ({
   unit: `${file}#${name}`,
   anchor,
 });
+const ALL_PEOPLE_CALL = at(
+  ALL_PEOPLE,
+  'GET',
+  '/all-people',
+  'const rights = await allPeopleAccess(c, deps, ALL_PEOPLE_COLUMNS)',
+);
 const ob = (perm: string, facts: readonly string[], evidence: readonly Evidence[], note?: string): Obligation => ({
   perm,
   facts,
@@ -2104,6 +2118,46 @@ export const EMPLOYMENT: RequiredTable = {
       ],
     ),
   ],
+  // ---- F-474-4c 全部人员列表（all-people.ts registerAllPeople，只读；DEC-836）-----------------------------------------
+  // allPeopleAccess：入口 = 任职记录对象的查看权（不要求员工档案对象查看权，不依赖人事分析对象，DEC-836）→ 准入后
+  // 数据范围按员工档案列表页解析（resolveModuleScope，personScope 先于分页）→ 合同对象查看权只决定合同列是否出现
+  // （披露，不拒绝）；筛选字段无查看权 403。
+  'GET /api/tenant/employment/all-people': withNeeds(
+    [
+      ob(
+        `obj:${RECORD}:view`,
+        ['object:object.* 动作'],
+        [
+          ALL_PEOPLE_CALL,
+          allPeopleImpl(
+            "await requirePermission(deps.authorize, { ...base, action: 'object.view', resource: RECORD_OBJECT })",
+          ),
+          { role: 'const', unit: `${ROSTER_ACCESS}#RECORD_OBJECT`, anchor: 'MODULE_OBJECTS.employmentRecord.code' },
+        ],
+      ),
+      {
+        ...ob(
+          `obj:${CONTRACT}:view`,
+          ['object:object.* 动作'],
+          [
+            ALL_PEOPLE_CALL,
+            allPeopleImpl(
+              "contract: await deps.authorize({ ...ctx, action: 'object.view', resource: CONTRACT_OBJECT })",
+            ),
+            { role: 'const', unit: `${ROSTER_ACCESS}#CONTRACT_OBJECT`, anchor: 'MODULE_OBJECTS.contract.code' },
+            { role: 'scope', unit: `${SRC}/hr-analysis/roster-query.ts#population`, anchor: 'personScope(ctx),' },
+          ],
+        ),
+        purpose: 'disclosure:contractColumns',
+      },
+    ],
+    {
+      [`obj:${RECORD}:view`]: bound(list('personnel.personScope'), [
+        { role: 'scope', unit: `${SRC}/hr-analysis/roster-query.ts#population`, anchor: 'personScope(ctx),' },
+      ]),
+      [`obj:${CONTRACT}:view|disclosure:contractColumns`]: bound(list('personnel.personScope')),
+    },
+  ),
   'POST /api/tenant/employment/employees/:id/preview': [
     recordView(at(EMP, 'POST', '/employees/:id/preview', "const ctx = await readPageContext(c, deps, 'detail', id)"), [
       'object:readPageContext',

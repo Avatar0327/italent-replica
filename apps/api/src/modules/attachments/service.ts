@@ -11,6 +11,7 @@ import {
   sanitizeAttachmentFilename,
   type AttachmentPurposeConfig,
 } from '@italent/domain';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { AppError } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import type { SelfAccess } from '../employee-self-service/access.js';
@@ -80,17 +81,17 @@ function unsupportedType(): never {
 }
 
 /**
- * 登记串行锁的键。请求头里的租户 UUID 保留原始大小写，用户 UUID 同理，而库按 UUID 值比较；
- * 键里不统一成小写，大小写不同的两个请求会拿到两把锁，并发登记就能突破临时文件上限。
+ * 登记串行锁：（租户 × 所有人）。请求头里的租户 UUID 保留原始大小写，用户 UUID 同理，而库按 UUID 值比较；
+ * 键经公共函数把两个 UUID 转规范小写文本再哈希（F-491），大小写不同的两个请求拿到同一把锁，并发登记才突破不了临时文件上限。
+ * 键文本 = `租户:用户:attachments`，哈希算法不变，与 F-479 S1 的旧键完全一致（新旧进程混跑仍是同一把锁）。
  */
-function ownerLockKey(ctx: AttachmentContext): string {
-  return `${ctx.tenantId.toLowerCase()}:${ctx.userId.toLowerCase()}:attachments`;
-}
+const lockOwnerRegistration = (tx: Tx, ctx: Pick<AttachmentContext, 'tenantId' | 'userId'>) =>
+  advisoryLock(tx, asUuid(ctx.tenantId), ':', asUuid(ctx.userId), ':attachments');
 
 export async function registerFile(tx: Tx, self: SelfAccess, ctx: AttachmentContext, input: RegisterInput) {
   const { config, filename } = checkRegistration(input);
   // 同一所有人串行登记，临时文件数上限才不会被并发突破
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ownerLockKey(ctx)}, 0))`);
+  await lockOwnerRegistration(tx, ctx);
   const [counted] = await tx
     .select({ count: sql<number>`count(*)::int` })
     .from(F)

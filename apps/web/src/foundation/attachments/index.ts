@@ -14,3 +14,10 @@ export {
   type AttachmentCarrier,
 } from './blob.js';
 export { attachmentText } from './messages.js';
+export {
+  AttachmentRefsInput,
+  CarrierAttachments,
+  attachmentViews,
+  type AttachmentRefsInputProps,
+  type CarrierAttachmentsProps,
+} from './CarrierAttachments.js';
