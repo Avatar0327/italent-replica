@@ -504,6 +504,9 @@
       "status": 400
     },
     "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "e1791b540be9",
@@ -570,6 +573,9 @@
       "status": 400
     },
     "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "0918b13a16bc",

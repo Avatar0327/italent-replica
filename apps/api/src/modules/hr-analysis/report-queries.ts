@@ -85,7 +85,7 @@ export async function listLedger(tx: Tx, ctx: AccessContext, asOf: string, filte
         k.term_months, k.signing_date::text AS signing_date, k.effective_date::text AS effective_date,
         k.end_date::text AS end_date, k.actual_termination_date::text AS actual_termination_date
       ${ledgerFrom(ctx, asOf, filter)}
-      ORDER BY e.code COLLATE "C", k.effective_date, k.version_no, k.id
+      ORDER BY e.code COLLATE "C", e.id, k.effective_date, k.version_no, k.id
       LIMIT ${page.limit} OFFSET ${page.offset}`),
   );
   return data.map((row): Row => ({

@@ -20,7 +20,7 @@ export interface EntryViewItem {
   /** 入职类业务 / 任职记录 ID（同一个 ID）；改期后是新记录的 ID。 */
   readonly id: string;
   readonly employeeId: string;
-  readonly code: string;
+  readonly code: string | null;
   readonly name: string;
   readonly kind: BusinessKind;
   readonly effectiveDate: string;

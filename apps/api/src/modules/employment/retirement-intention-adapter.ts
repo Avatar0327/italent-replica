@@ -23,7 +23,7 @@ const asEmployment = (ctx: ApprovalContext) => ctx as unknown as EmploymentConte
 
 async function snapshot(tx: Tx, ctx: ApprovalContext, id: string): Promise<BusinessSnapshot> {
   const row = await loadIntention(tx, ctx.tenantId, id);
-  const [employee] = rowsOf<{ code: string; name: string }>(
+  const [employee] = rowsOf<{ code: string | null; name: string }>(
     await tx.execute(sql`SELECT code, name FROM employment_employees
       WHERE tenant_id=${ctx.tenantId} AND id=${row.employeeId}::uuid`),
   );

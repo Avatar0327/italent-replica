@@ -30,6 +30,7 @@ import { mergeSeat, mergesSeat, resettle, settleCountersign } from './countersig
 import type { TargetScope } from './access.js';
 import { ADAPTERS } from './adapters.js';
 import { editableKeys, editBlocker, isBlank } from './edit-surface.js';
+import { prepareHandlingContent, recordHandlingContent, type HandlingAction } from './handling-content.js';
 import {
   approvalError,
   assertRevision,
@@ -276,6 +277,21 @@ async function auditTask(tx: Tx, run: Run, action: string, before: Row, after: R
   });
 }
 
+/**
+ * 办理份（F-476）：在业务状态被本次办理推进之前准备内容，办理日志写下之后落一份，锚定该日志；任一步失败整笔办理回滚。
+ * 管理员事件、引擎系统日志、并加签 / 编辑 / 抄送 / 撤回 / 催办都不走这里。
+ */
+async function captured(
+  tx: Tx,
+  run: Run,
+  task: TaskRow,
+  action: HandlingAction,
+  viewable: ReadonlySet<string> | undefined,
+) {
+  const prepared = await prepareHandlingContent(tx, run, viewable);
+  return (logId: string) => recordHandlingContent(tx, run, prepared, { logId, task, action });
+}
+
 export interface DecisionInput {
   readonly exitReschedule?: ApprovalContext['exitReschedule'];
   readonly taskId: string;
@@ -310,14 +326,17 @@ export async function approveTask(
   // 【编辑并同意】＝先编辑、再按编辑后的单据同意：同意前提放在编辑之后，校验对象是最终候选态而非编辑前的库内状态
   // （BE-10c 第 3 轮）；同一事务内任一步失败整体回滚。
   await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'approve');
+  const record = await captured(tx, run, task, 'approve', viewable);
   await closeTask(tx, ctx, task.id, 'approved', input.comment, 'approve');
-  await appendLog(tx, ctx, run.instance, {
-    event: 'approve',
-    nodeKey: task.nodeKey,
-    taskId: task.id,
-    adminSelfTransfer: task.adminSelfTransfer,
-    detail: { comment: input.comment },
-  });
+  await record(
+    await appendLog(tx, ctx, run.instance, {
+      event: 'approve',
+      nodeKey: task.nodeKey,
+      taskId: task.id,
+      adminSelfTransfer: task.adminSelfTransfer,
+      detail: { comment: input.comment },
+    }),
+  );
   await auditTask(
     tx,
     run,
@@ -370,14 +389,17 @@ export async function disagreeTask(
   if (blocked) return blocked;
   const { run, task, node } = scene;
   await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'disagree');
+  const record = await captured(tx, run, task, 'disagree', viewable);
   await closeTask(tx, ctx, task.id, 'disagreed', input.comment, 'disagree');
-  await appendLog(tx, ctx, run.instance, {
-    event: 'disagree',
-    nodeKey: task.nodeKey,
-    taskId: task.id,
-    adminSelfTransfer: task.adminSelfTransfer,
-    detail: { comment: input.comment },
-  });
+  await record(
+    await appendLog(tx, ctx, run.instance, {
+      event: 'disagree',
+      nodeKey: task.nodeKey,
+      taskId: task.id,
+      adminSelfTransfer: task.adminSelfTransfer,
+      detail: { comment: input.comment },
+    }),
+  );
   await auditTask(
     tx,
     run,
@@ -410,16 +432,20 @@ export async function rejectTask(
   if (node.rejectCommentRequired && !input.comment?.trim()) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_COMMENT_REQUIRED', '本节点驳回时必须填写意见');
   }
+  // 驳回会把业务单退回（改变业务状态），办理份必须先取
+  const record = await captured(tx, run, task, 'reject', viewable);
   await closeTask(tx, ctx, task.id, 'rejected', input.comment);
   // DEC-144：驳回不进流转规则，会签节点任一人驳回即整单驳回，其余在办任务取消（与单人节点相同）。
   await returnInstance(tx, run, node.key);
-  await appendLog(tx, ctx, run.instance, {
-    event: 'reject',
-    nodeKey: node.key,
-    taskId: task.id,
-    adminSelfTransfer: task.adminSelfTransfer,
-    detail: { comment: input.comment, resubmit: node.rejectResubmit },
-  });
+  await record(
+    await appendLog(tx, ctx, run.instance, {
+      event: 'reject',
+      nodeKey: node.key,
+      taskId: task.id,
+      adminSelfTransfer: task.adminSelfTransfer,
+      detail: { comment: input.comment, resubmit: node.rejectResubmit },
+    }),
+  );
   await auditTask(
     tx,
     run,
@@ -458,16 +484,19 @@ export async function rejectToPreviousTask(
   if (node.rejectCommentRequired && !input.comment?.trim()) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_COMMENT_REQUIRED', '本节点驳回时必须填写意见');
   }
+  const record = await captured(tx, run, task, 'reject_previous', viewable);
   await closeTask(tx, ctx, task.id, 'rejected', input.comment);
   await cancelPending(tx, ctx, run.instance.id);
   // DEC-124：与跳转一样重置有效历史边界，上一步的办理人重新办理，不沿用驳回前的同意（第 3 轮 R2-6）
   startHistoryAfter(run, tasks);
-  await appendLog(tx, ctx, run.instance, {
-    event: 'reject_previous',
-    nodeKey: node.key,
-    taskId: task.id,
-    detail: { comment: input.comment, toNodeKey: previousKey },
-  });
+  await record(
+    await appendLog(tx, ctx, run.instance, {
+      event: 'reject_previous',
+      nodeKey: node.key,
+      taskId: task.id,
+      detail: { comment: input.comment, toNodeKey: previousKey },
+    }),
+  );
   await auditTask(
     tx,
     run,
@@ -493,7 +522,12 @@ export interface JumpInput {
  * （IDP：员工节点只能跳到指导人节点，指导人节点只能跳到员工节点——两节点流程里即“其他节点”）。本节点在办任务取消，
  * 从目标节点重新路由；审批历史从此重新计算（同管理员跳转）。
  */
-export async function jumpTask(tx: Tx, ctx: ApprovalContext, input: JumpInput): Promise<Outcome> {
+export async function jumpTask(
+  tx: Tx,
+  ctx: ApprovalContext,
+  input: JumpInput,
+  viewable: ReadonlySet<string> | undefined,
+): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
   assertOpen(scene, ctx);
   const { run, task, node } = scene;
@@ -504,15 +538,18 @@ export async function jumpTask(tx: Tx, ctx: ApprovalContext, input: JumpInput): 
   nodeIndex(run, input.toNodeKey); // 目标不在本版本里时报 APPROVAL_NODE_UNKNOWN
   const tasks = await loadTasks(tx, ctx.tenantId, run.instance.id);
   assertNotAddSigner(tasks, task);
+  const record = await captured(tx, run, task, 'jump', viewable);
   await closeTask(tx, ctx, task.id, 'cancelled', input.comment);
   await cancelPending(tx, ctx, run.instance.id);
   startHistoryAfter(run, tasks);
-  await appendLog(tx, ctx, run.instance, {
-    event: 'jump',
-    nodeKey: node.key,
-    taskId: task.id,
-    detail: { comment: input.comment, toNodeKey: input.toNodeKey },
-  });
+  await record(
+    await appendLog(tx, ctx, run.instance, {
+      event: 'jump',
+      nodeKey: node.key,
+      taskId: task.id,
+      detail: { comment: input.comment, toNodeKey: input.toNodeKey },
+    }),
+  );
   await auditTask(
     tx,
     run,
@@ -543,7 +580,12 @@ export interface DelegateInput {
   readonly comment: string | null;
 }
 
-export async function transferTask(tx: Tx, ctx: ApprovalContext, input: DelegateInput): Promise<Outcome> {
+export async function transferTask(
+  tx: Tx,
+  ctx: ApprovalContext,
+  input: DelegateInput,
+  viewable: ReadonlySet<string> | undefined,
+): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
   assertOpen(scene, ctx);
   const { run, task, node } = scene;
@@ -554,8 +596,10 @@ export async function transferTask(tx: Tx, ctx: ApprovalContext, input: Delegate
   if (input.userId === ctx.userId) throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '不能转交给自己');
   await assertReviewer(tx, run, input.userId, node);
   await assertNotNodeAssignee(tx, run, node, task, [input.userId]);
+  // 转交日志是锚点：转出人的办理份在转出时冻结（接手人办理前没有份）
+  const record = await captured(tx, run, task, 'transfer', viewable);
   await closeTask(tx, ctx, task.id, 'transferred', input.comment);
-  const next = await delegate(tx, run, task, input.userId, 'transfer', { comment: input.comment });
+  const next = await delegate(tx, run, task, input.userId, 'transfer', { comment: input.comment }, false, record);
   await auditDelegation(tx, run, 'approval.task.transfer', task, next, input, 'transferred');
   await applyMessageRules(tx, ctx, run.instance, node, 'transfer', { id: task.id, assigneeUserId: input.userId });
   await persistRun(tx, run, 'approval.instance.transfer');
@@ -621,22 +665,28 @@ export async function addSign(
     if (blocked) return blocked;
   }
   const status = input.type === 'after' ? 'approved' : 'add_signed';
+  const record = await captured(tx, run, task, input.type === 'after' ? 'add_sign_after' : 'add_sign_before', viewable);
   // 后加签 = 本人同意（设计 §3.2）：任务完成要记同意出口；前加签只是挂起，不算办理，出口留空。
   await closeTask(tx, ctx, task.id, status, input.comment, input.type === 'after' ? 'approve' : null);
   if (input.type === 'after') {
-    await appendLog(tx, ctx, run.instance, {
-      event: 'approve',
-      nodeKey: task.nodeKey,
-      taskId: task.id,
-      adminSelfTransfer: task.adminSelfTransfer,
-      detail: { comment: input.comment, addSign: 'after' },
-    });
+    // 后加签：同意日志是唯一锚点，下面的 delegate 不再捕获
+    await record(
+      await appendLog(tx, ctx, run.instance, {
+        event: 'approve',
+        nodeKey: task.nodeKey,
+        taskId: task.id,
+        adminSelfTransfer: task.adminSelfTransfer,
+        detail: { comment: input.comment, addSign: 'after' },
+      }),
+    );
     await applyMessageRules(tx, ctx, run.instance, node, 'approve', task);
   }
   const origin = input.type === 'after' ? 'add_sign_after' : 'add_sign_before';
   const [first, ...queued] = input.userIds as [string, ...string[]];
   const detail = { comment: input.comment, type: input.type, signers: input.userIds };
-  const next = await delegate(tx, run, task, first, origin, detail);
+  // 前加签：加签（delegate）日志是锚点
+  const anchor = input.type === 'before' ? record : undefined;
+  const next = await delegate(tx, run, task, first, origin, detail, false, anchor);
   for (const userId of queued) {
     await insertTask(tx, ctx, run.instance.id, {
       round: run.instance.round,
@@ -711,6 +761,8 @@ async function delegate(
   origin: keyof typeof DELEGATION_EVENTS,
   detail: Row,
   adminSelfTransfer = false,
+  /** 办理份落库（F-476）：转交 / 前加签的日志就是办理锚点；其余改派不传。 */
+  record?: (logId: string) => Promise<void>,
 ): Promise<string> {
   const next = await insertTask(tx, run.ctx, run.instance.id, {
     round: run.instance.round,
@@ -723,13 +775,14 @@ async function delegate(
     parentTaskId: from.id,
     activationId: from.activationId,
   });
-  await appendLog(tx, run.ctx, run.instance, {
+  const logId = await appendLog(tx, run.ctx, run.instance, {
     event: origin,
     nodeKey: from.nodeKey,
     taskId: next,
     adminSelfTransfer,
     detail: { fromUserId: from.assigneeUserId, toUserId: userId, ...detail },
   });
+  await record?.(logId);
   await notifyTodo(tx, run.ctx, run.instance, next, userId);
   run.events.push(DELEGATION_EVENTS[origin]);
   return next;
