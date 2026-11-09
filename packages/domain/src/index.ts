@@ -36,6 +36,7 @@ export * from './employment/exit.js';
 export * from './employment/exit-notice-templates.js';
 export * from './employment/exit-termination.js';
 export * from './employment/exit-import.js';
+export * from './employment/exit-import-contract.js';
 export * from './employment/retirement.js';
 export * from './employment/retirement-intention.js';
 export * from './employment/part-time-constants.js';

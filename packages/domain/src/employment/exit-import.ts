@@ -75,6 +75,11 @@ export function duplicateEmployeeNoRows(rows: readonly { rowNo: number; employee
   return duplicated;
 }
 
+/** 先红桩：真实实现在下一提交。 */
+export function duplicateEmailRows(_rows: readonly { rowNo: number; email: string | null }[]): Set<number> {
+  return new Set();
+}
+
 /** 加黑三项：只有勾选加黑才校验；原因必填，截止日（可空）不得早于离职生效日。 */
 export function validateExitImportBlacklist(
   row: { addToBlacklist?: boolean; blacklistReason?: string; blacklistExpiryDate?: string },
