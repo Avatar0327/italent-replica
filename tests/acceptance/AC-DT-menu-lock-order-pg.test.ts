@@ -41,6 +41,8 @@ function gate(): Gate & { arrive: () => Promise<void> } {
 const hooks = vi.hoisted(() => ({
   /** 被转交人 ID：到期执行时它的转交抛非业务异常，走“整人回滚 → 记次”。 */
   faulty: null as string | null,
+  /** 为真时，到期执行取参与人锁就抛非业务异常（整人级步骤出错，定位不到具体记录）。 */
+  failRunLock: false,
   /** 记次（调度身份的第 2 次取参与人锁）在真正取锁之前停下。 */
   beforeCountLock: null as null | (() => Promise<void>),
   /** 记次取到参与人锁之后、锁记录行之前停下。 */
@@ -72,6 +74,7 @@ vi.mock('../../apps/api/src/modules/employment/transfer-locks.js', async (import
       // 调度身份对该人的第 1 次取锁 = 到期执行，第 2 次 = 记次（F-454：记次也先取参与人锁）。
       const calls = (hooks.schedulerLockCalls.get(employeeId) ?? 0) + 1;
       hooks.schedulerLockCalls.set(employeeId, calls);
+      if (calls === 1 && hooks.failRunLock) throw new Error('合成故障：取参与人锁失败');
       if (calls === 2) await hooks.beforeCountLock?.();
       const result = await original.lockTransferParticipants(...args);
       if (calls === 2) await hooks.afterCountLock?.();
@@ -96,18 +99,37 @@ const database = useTestDb();
 const LATER = '2026-10-20';
 const ERROR_ATTEMPTS = 5;
 
-/** 等到真的有事务在 PG 里等锁（超时即失败，不无限挂住）。 */
+/**
+ * 轮询 PG 里是否真有事务在等锁（超时即失败，不无限挂住）。可取消：竞速结束后调用 stop() 并等轮询退出，
+ * 不让它跨入后续用例或数据库清理阶段（第 1 轮审查 P3-2）。seen 为 false 表示被取消。
+ */
+function pollLockWait(db: Db) {
+  let cancelled = false;
+  const seen = (async () => {
+    const deadline = Date.now() + 8000;
+    while (!cancelled && Date.now() < deadline) {
+      const [waiting] = rowsOf<{ n: number }>(
+        await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE datname=current_database() AND wait_event_type='Lock'`),
+      );
+      if (waiting!.n > 0) return true;
+      await new Promise((done) => setTimeout(done, 10));
+    }
+    if (cancelled) return false;
+    throw new Error('未观测到真实锁等待');
+  })();
+  return {
+    seen,
+    stop: async () => {
+      cancelled = true;
+      await seen.catch(() => undefined);
+    },
+  };
+}
+
+/** 等到真的有事务在 PG 里等锁。 */
 async function waitForLockWait(db: Db) {
-  const deadline = Date.now() + 8000;
-  while (Date.now() < deadline) {
-    const [waiting] = rowsOf<{ n: number }>(
-      await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
-        WHERE datname=current_database() AND wait_event_type='Lock'`),
-    );
-    if (waiting!.n > 0) return;
-    await new Promise((done) => setTimeout(done, 10));
-  }
-  throw new Error('未观测到真实锁等待');
+  await pollLockWait(db).seen;
 }
 
 /** 屏障到不了（比如被测代码没有按预期取锁）时，用确定的断言失败代替整个文件挂住。 */
@@ -143,8 +165,43 @@ async function atFifthAttempt(label: string) {
   return { x, subordinate, receiver, other, recordId, revision, override };
 }
 
+type World = Awaited<ReturnType<typeof atFifthAttempt>>;
+
+/**
+ * 旧执行在 revision=旧值时抛非业务异常回滚 → 补记事务取锁前停下 → 菜单覆盖（跨日请求，转交日期仍已到）完整提交
+ * → 放行补记。覆盖是新提交：新 revision 的 attempt_count / last_attempt_at 必须保持清零，旧异常不能算到它头上。
+ */
+async function expectStaleFailureNotCounted(
+  x: World['x'],
+  recordId: string,
+  revision: number,
+  override: World['override'],
+  arm: () => void,
+) {
+  const counting = gate();
+  arm();
+  hooks.beforeCountLock = counting.arrive;
+  try {
+    const scheduler = x.runScheduler(`${LATER}T02:00:00Z`);
+    await reachedWithin(counting.reached, '补记取参与人锁之前（旧执行已回滚）');
+    const response = await override(revision);
+    expect(response.status, await response.clone().text()).toBe(200);
+    counting.release();
+    await scheduler;
+  } finally {
+    counting.release();
+    reset();
+  }
+  const [row] = await x.sqlRows<{ revision: number; attempts: number; lastAttemptAt: string | null }>(sql`
+    SELECT revision, attempt_count AS attempts, last_attempt_at::text AS "lastAttemptAt"
+    FROM duty_transfer_records WHERE tenant_id=${x.session.tenant.id} AND id=${recordId}::uuid`);
+  expect(row).toEqual({ revision: revision + 1, attempts: 0, lastAttemptAt: null });
+  expect(await x.ledger(recordId)).toEqual({ attempts: 0, failure: null, status: 0 });
+}
+
 function reset() {
   hooks.faulty = null;
+  hooks.failRunLock = false;
   hooks.beforeCountLock = null;
   hooks.afterCountLock = null;
   hooks.onReschedule = null;
@@ -176,10 +233,16 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('F-454 真 PG：菜单覆盖 vs 
       );
       // 3. 放行记次：它要先取参与人锁，被覆盖占着，skipLocked 让路（不阻塞在记录行锁上）
       counting.release();
-      const outcome = await Promise.race([
-        scheduler.then(() => 'finished' as const),
-        waitForLockWait(database().db).then(() => 'blocked' as const),
-      ]);
+      const lockWait = pollLockWait(database().db);
+      let outcome: 'finished' | 'blocked' | 'cancelled';
+      try {
+        outcome = await Promise.race([
+          scheduler.then(() => 'finished' as const),
+          lockWait.seen.then((seen) => (seen ? ('blocked' as const) : ('cancelled' as const))),
+        ]);
+      } finally {
+        await lockWait.stop(); // 竞速结束（无论谁赢、是否抛错）就停掉轮询并等它退出
+      }
       expect(outcome, '记次应在参与人锁上让路，而不是阻塞等覆盖的记录行锁').toBe('finished');
       // 4. 放行覆盖
       rescheduling.release();
@@ -238,5 +301,20 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('F-454 真 PG：菜单覆盖 vs 
     expect(retry.status, await retry.clone().text()).toBe(200);
     expect(await x.ledger(recordId)).toEqual({ attempts: 0, failure: null, status: 0 });
     expect((await x.records('tab=pending')).items[0]).toMatchObject({ receiverId: other.id, failure: null });
+  });
+
+  it('旧执行回滚 → 跨日覆盖完整提交 → 放行补记：旧异常不得扣新提交的预算（P2-1）', async () => {
+    const { x, recordId, revision, override } = await atFifthAttempt('barrier-stale-failure');
+    await expectStaleFailureNotCounted(x, recordId, revision, override, () => {
+      hooks.faulty = x.employee.id;
+    });
+  });
+
+  it('整人口径同理：取锁出错后、补记前被跨日覆盖，只给锁后仍是出错时 revision 的记录记次', async () => {
+    const { x, recordId, revision, override } = await atFifthAttempt('barrier-stale-person');
+    await expectStaleFailureNotCounted(x, recordId, revision, override, () => {
+      hooks.faulty = x.employee.id;
+      hooks.failRunLock = true;
+    });
   });
 });

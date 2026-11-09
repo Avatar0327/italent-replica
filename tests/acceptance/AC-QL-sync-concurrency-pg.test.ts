@@ -327,8 +327,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
        * 崩溃落在之后的 setImmediate 里，只看当下会漏掉。
        */
       async stop() {
-        await new Promise((done) => setTimeout(done, 800));
-        process.off('uncaughtException', listener);
+        try {
+          await new Promise((done) => setTimeout(done, 800));
+        } finally {
+          process.off('uncaughtException', listener);
+        }
         return seen;
       },
     };
@@ -346,6 +349,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
     const recordId = await w.transferWith('2026-10-05', fields);
     qualificationSyncProbe.afterRecheck = (tx) => killOwnBackend(w.db, tx);
     const uncaught = watchUncaught();
+    let seen: Error[] = [];
     try {
       const first = await withKillablePool(w.db, (killable) =>
         runQualificationSync(killable, w.tenantId, { clock: () => new Date('2026-10-10T05:00:00Z') }),
@@ -353,8 +357,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
       expect(first).toMatchObject({ failed: 1, done: 0 });
     } finally {
       qualificationSyncProbe.afterRecheck = undefined;
+      seen = await uncaught.stop(); // 失败路径也要移除进程级监听，再对收集结果断言
     }
-    expect(await uncaught.stop(), '被杀连接不得留下进程级未捕获异常（F-383）').toEqual([]);
+    expect(seen, '被杀连接不得留下进程级未捕获异常（F-383）').toEqual([]);
     const [row] = await w.queue(recordId);
     expect(row).toMatchObject({ state: 'failed', attempts: 1 });
     expect(row!.reason).toBeTruthy();
@@ -372,6 +377,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
     const recordId = await w.transferWith('2026-10-05', fields);
     qualificationSyncProbe.afterSettle = (tx) => killOwnBackend(w.db, tx);
     const uncaught = watchUncaught();
+    let seen: Error[] = [];
     try {
       const first = await withKillablePool(w.db, (killable) =>
         runQualificationSync(killable, w.tenantId, { clock: () => new Date('2026-10-10T05:00:00Z') }),
@@ -379,8 +385,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
       expect(first).toMatchObject({ failed: 1, done: 0 });
     } finally {
       qualificationSyncProbe.afterSettle = undefined;
+      seen = await uncaught.stop();
     }
-    expect(await uncaught.stop(), '被杀连接不得留下进程级未捕获异常（F-383）').toEqual([]);
+    expect(seen, '被杀连接不得留下进程级未捕获异常（F-383）').toEqual([]);
     expect(await w.queue(recordId)).toMatchObject([{ state: 'failed', attempts: 1 }]);
     expect(await failureAudits(w)).toMatchObject([{ outcome: 'unknown' }]);
     expect(await w.subsets()).toEqual([]);
@@ -393,15 +400,20 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
     const { w } = await configured('qlsync-pg-conn-orphan');
     let resumed = false;
     const uncaught = watchUncaught();
-    await expect(
-      withKillablePool(w.db, (killable) =>
-        withTenant(killable, w.tenantId, async (tx) => {
-          await killOwnBackend(w.db, tx);
-          resumed = true; // 走到这里 = 孤儿 scope 复活，接着就会对已置空 socket 的连接写 commit
-        }),
-      ),
-    ).rejects.toMatchObject({ code: 'CONNECTION_CLOSED' });
-    expect(await uncaught.stop(), '被杀连接不得留下进程级未捕获异常（F-383）').toEqual([]);
+    let seen: Error[] = [];
+    try {
+      await expect(
+        withKillablePool(w.db, (killable) =>
+          withTenant(killable, w.tenantId, async (tx) => {
+            await killOwnBackend(w.db, tx);
+            resumed = true; // 走到这里 = 孤儿 scope 复活，接着就会对已置空 socket 的连接写 commit
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'CONNECTION_CLOSED' });
+    } finally {
+      seen = await uncaught.stop();
+    }
+    expect(seen, '被杀连接不得留下进程级未捕获异常（F-383）').toEqual([]);
     expect(resumed, '被终止连接上的事务体不得继续往下走').toBe(false);
   });
 });
