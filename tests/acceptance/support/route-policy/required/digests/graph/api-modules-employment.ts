@@ -2385,14 +2385,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/linkage/duty-execution.ts#executeDutyItem',
   ],
   'apps/api/src/modules/employment/exit-duty-clear.ts#clearUncoveredDuties': [
-    'apps/api/src/modules/duty-transfer/duties.ts#currentDuties',
-    'apps/api/src/modules/duty-transfer/duties.ts#dutyKey',
-    'apps/api/src/modules/duty-transfer/uncovered.ts#plannedDutyKeys',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     '#attempt',
     '#toItem',
+    'apps/api/src/modules/employment/exit-duty-participants.ts#exitDutiesToClear',
     'apps/api/src/modules/employment/transfer-locks.ts#assertEmployeeLocksHeld',
-    'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_SOURCE',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
   ],
@@ -2400,10 +2397,14 @@ export const GRAPH: Graph = {
     '#clearUncoveredDuties',
     'apps/api/src/modules/employment/exit-duty-transfer.ts#runExitDutyTransfer',
   ],
-  'apps/api/src/modules/employment/exit-duty-participants.ts#pendingClearSubordinates': [
+  'apps/api/src/modules/employment/exit-duty-participants.ts#exitDutiesToClear': [
     'apps/api/src/modules/duty-transfer/uncovered.ts#uncoveredDuties',
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
+  ],
+  'apps/api/src/modules/employment/exit-duty-participants.ts#pendingClearSubordinates': [
+    '#exitDutiesToClear',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-duty-timing.ts#chooseDutyTransferTiming': ['#invalid'],

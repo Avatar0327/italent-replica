@@ -6,8 +6,9 @@ import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
   'apps/api/src/modules/duty-transfer/duties.ts#clearedDuty': ['#dutyKey'],
-  'apps/api/src/modules/duty-transfer/duties.ts#clearedRecords': [
-    '#dutyKey',
+  'apps/api/src/modules/duty-transfer/duties.ts#clearedRecords': ['#clearedWhere', '#dutyKey'],
+  'apps/api/src/modules/duty-transfer/duties.ts#clearedWhere': [
+    '#stillVacant',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_SOURCE',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
   ],
@@ -19,13 +20,12 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/duty-transfer/duties.ts#departedTotal': ['#departedWithDuties'],
   'apps/api/src/modules/duty-transfer/duties.ts#departedWithDuties': [
+    '#clearedWhere',
     '#departedTotal',
     '#dutiesSql',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     'packages/domain/src/employment/duty-transfer-menu.ts#DEPARTED_LOOKBACK_MONTHS',
-    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_SOURCE',
-    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
   ],
   'apps/api/src/modules/duty-transfer/duties.ts#dutiesSql': [
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
@@ -37,6 +37,9 @@ export const GRAPH: Graph = {
     '#dutyKey',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_SOURCE',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
+  ],
+  'apps/api/src/modules/duty-transfer/duties.ts#stillVacant': [
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TYPE',
   ],
   'apps/api/src/modules/duty-transfer/records.ts#TAB_STATUS': [
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',

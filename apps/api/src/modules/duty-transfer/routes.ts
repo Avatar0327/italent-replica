@@ -128,7 +128,7 @@ async function trimRecords(deps: TenantRouteDeps, ctx: ScopeBusinessContext, row
  * 菜单回填：被转交人当前职责，逐条带上未完成的转交（再次选同一被转交人时回填接收人与日期）。
  * 回填的接收人 / 转交日期是本对象字段，按字段权限裁剪；看不到转交日期时提示文案也不给（文案里带日期）。
  * 另列被离职 / 退休落地清空、待补转交的职责（DT-R5，cleared 带清空记录的 recordId / revision / source，补转交时带回 revision）；
- * 已不再空缺（又被同一人持有）的不重复列。
+ * 已不再空缺（另有承担人或又被同一人持有）的不列。
  */
 interface ClearedView {
   readonly recordId: string;
@@ -149,11 +149,11 @@ async function dutyMenu(tx: Tx, tenantId: string, employeeId: string, today: str
     };
     return { ...duty, pending: fill ?? null, cleared: null as ClearedView | null };
   });
-  const held = new Set(duties.map((duty) => duty.key));
-  const waiting = [...(await clearedRecords(tx, tenantId, employeeId)).values()].flatMap((row) => {
+  // 只列当日仍空缺的（已被别人或本人重新承担的不列，与检查离职退休人员同一条件，第 2 轮 P2-2）
+  const waiting = [...(await clearedRecords(tx, tenantId, employeeId, { vacantOn: today })).values()].map((row) => {
     const { holderId: _holder, ...duty } = clearedDuty(row);
     const cleared: ClearedView = { recordId: row.id, revision: row.revision, source: row.source };
-    return held.has(duty.key) ? [] : [{ ...duty, pending: null as null, cleared: cleared as ClearedView | null }];
+    return { ...duty, pending: null as null, cleared: cleared as ClearedView | null };
   });
   items.push(...waiting);
   const dates = duties.flatMap((duty) => pending.get(duty.key)?.transferDate ?? []);

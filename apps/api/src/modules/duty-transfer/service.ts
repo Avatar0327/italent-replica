@@ -193,7 +193,7 @@ export async function submitMenuTransfer(
     throw new AppError('NOT_FOUND', '员工不存在');
   const duties = new Map((await currentDuties(tx, ctx.tenantId, employeeId, today)).map((d) => [d.key, d]));
   const pending = await pendingRecords(tx, ctx.tenantId, employeeId, true);
-  const cleared = await clearedRecords(tx, ctx.tenantId, employeeId, true);
+  const cleared = await clearedRecords(tx, ctx.tenantId, employeeId, { lock: true });
   const batchId = randomUUID();
   const saved: DutyRecordRow[] = [];
   for (const item of input.items) {

@@ -212,7 +212,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/duty-transfer/service.ts': {
     authorizeDuty: '67161ee474f6',
-    submitMenuTransfer: 'c78ffdbf7ff5',
+    submitMenuTransfer: '2abaf46744ec',
   },
   'apps/api/src/modules/employee-self-service/access.ts': {
     boundEmployee: 'b8e9da14ecca',

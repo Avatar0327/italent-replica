@@ -9,16 +9,15 @@
  */
 import { dutyTransferRecords, type Tx } from '@italent/db';
 import { DUTY_TRANSFER_SOURCE, DUTY_TRANSFER_STATUS } from '@italent/domain';
-import { currentDuties, dutyKey, type Duty } from '../duty-transfer/duties.js';
-import { plannedDutyKeys } from '../duty-transfer/uncovered.js';
+import type { Duty } from '../duty-transfer/duties.js';
 import {
   dutyItemFailure,
   executeDutyItem,
   type DutyItem,
   type DutyItemFailure,
 } from '../transfer/linkage/duty-execution.js';
-import { latestLinkage } from '../transfer/linkage/store.js';
 import { auditEmployment } from './context.js';
+import { exitDutiesToClear } from './exit-duty-participants.js';
 import { assertEmployeeLocksHeld } from './transfer-locks.js';
 import { runExitDutyTransfer, type ExitTimingRow } from './exit-duty-transfer.js';
 import type { EmploymentContext } from './types.js';
@@ -52,9 +51,7 @@ export async function settleExitDuties(
   rehired = false,
 ) {
   await runExitDutyTransfer(tx, ctx, exit, 'effective', effectiveDate);
-  // 退休同时返聘：账号不关闭，未转交的管理角色保留（RT-R3，DEC-863①），不清空也不写清空记录
-  if (rehired && payloadKind === 'retirement') return;
-  await clearUncoveredDuties(tx, ctx, exit, payloadKind, effectiveDate);
+  await clearUncoveredDuties(tx, ctx, exit, payloadKind, effectiveDate, rehired);
 }
 
 async function clearUncoveredDuties(
@@ -63,14 +60,13 @@ async function clearUncoveredDuties(
   exit: { readonly businessId: string; readonly employeeId: string },
   payloadKind: string,
   effectiveDate: string,
+  rehired: boolean,
 ): Promise<number> {
-  const plan = (await latestLinkage(tx, ctx.tenantId, exit.businessId))?.options.dutyTransfer ?? null;
-  const planned = plannedDutyKeys(plan);
-  const left = (await currentDuties(tx, ctx.tenantId, exit.employeeId, effectiveDate)).filter(
-    (duty) => !planned.has(dutyKey(duty)),
-  );
+  // 与入口预锁同一取数（exit-duty-participants.ts，DEC-385③）；退休同时返聘的取到空集，不清空也不写清空记录
+  const target = { ...exit, kind: payloadKind, reEmployed: rehired };
+  const left = await exitDutiesToClear(tx, ctx.tenantId, target, effectiveDate);
   if (!left.length) return 0;
-  // 被清空上级的下属已由入口的统一预锁计划取齐（transfer-locks.ts participants 并入，P2-2）：这里只重入复核，不新取锁
+  // 被清空上级的下属已由入口按同一取数并入预锁（transfer-locks.ts participants）：这里只复核，不新取锁
   await assertEmployeeLocksHeld(
     tx,
     left.flatMap((duty) => (duty.subordinateId ? [duty.subordinateId] : [])),
