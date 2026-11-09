@@ -7,7 +7,7 @@ import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { sql } from '@italent/db';
-import { dutyExitWorld, TODAY, type ExitKind } from './AC-DT-exit-support.js';
+import { dutyExitWorld, smallerSubordinateWorld, TODAY, type ExitKind } from './AC-DT-exit-support.js';
 
 const database = useTestDb();
 const world = (label: string) => dutyExitWorld(database().db, label, TODAY);
@@ -97,21 +97,7 @@ describe('DT-R5 已有接收人的职责不被清空', () => {
   });
 });
 
-/**
- * 固定“下属先于经理”的锁序场景：UUID 是随机生成的，所以先换世界直到经理的 UUID 落在上半区，再逐个造下属直到有一个更小的
- * （经理在上半区时每次命中概率 ≥ 1/2，30 次内未命中的概率约 1e-9，不会随机红）。
- */
-async function worldWithSmallerSubordinate(label: string) {
-  for (let attempt = 0; attempt < 12; attempt++) {
-    const x = await world(`${label}-${attempt}`);
-    if (x.employee.id.toLowerCase() < '80000000') continue;
-    for (let index = 0; index < 30; index++) {
-      const candidate = await x.subordinateOf(x.employee.id, `合成小号下属${index}`);
-      if (candidate.id.toLowerCase() < x.employee.id.toLowerCase()) return { x, subordinate: candidate };
-    }
-  }
-  throw new Error('未取得 UUID 小于经理的下属');
-}
+const worldWithSmallerSubordinate = (label: string) => smallerSubordinateWorld(world, label);
 
 describe('P2-2 清空下属不得因预锁计划变化失败', () => {
   it('下属当前任职来自已生效调动、UUID 小于经理：上级被清空，清空记录无锁计划失败', async () => {

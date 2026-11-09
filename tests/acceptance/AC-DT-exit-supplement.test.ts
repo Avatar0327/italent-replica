@@ -150,6 +150,53 @@ describe('DT-R5 补转交的边界', () => {
   });
 });
 
+describe('DT-R5 待补项按当前空缺过滤（第 2 轮 P2-2）', () => {
+  it('清空后经组织接口指定新负责人、经调动安排新直线上级：菜单与检查列表都不再列出这两项，仍空缺的照常列出', async () => {
+    const x = await world('supplement-vacancy');
+    const org = await x.headedOrg('合成负责人组织');
+    const taken = await x.subordinateOf(x.employee.id, '合成已接手下属');
+    const vacant = await x.subordinateOf(x.employee.id, '合成仍空缺下属');
+    const exit = await x.approvedApplication('leave', '2026-10-20', TODAY);
+    await x.activate(exit.id, EFFECTIVE);
+    x.setNow(`${EFFECTIVE}T02:00:00Z`);
+    expect((await x.duties(x.employee.id)).total).toBe(3);
+    expect((await x.departed()).items).toEqual([expect.objectContaining({ employeeId: x.employee.id, dutyCount: 3 })]);
+
+    const head = await x.peer('合成新负责人');
+    const manager = await x.peer('合成新上级');
+    await assignHead(x, org.id, head.id);
+    await assignManager(x, taken.id, manager.id);
+    expect(await x.headAt(org.id, EFFECTIVE)).toBe(head.id);
+    expect(await x.managerOf(taken.id, EFFECTIVE)).toBe(manager.id);
+
+    const view = await x.duties(x.employee.id);
+    expect(view.items.map((item) => [item.dutyType, item.subordinateId, item.cleared?.source])).toEqual([
+      [2, vacant.id, 2],
+    ]);
+    expect(view.total).toBe(1);
+    expect((await x.departed()).items).toEqual([expect.objectContaining({ employeeId: x.employee.id, dutyCount: 1 })]);
+  });
+
+  it('全部待补项都已由别人接手：菜单为空，检查离职退休人员不再列出此人', async () => {
+    const { x, org, subordinate } = await clearedWorld('leave');
+    const other = await x.peer('合成接手人');
+    await assignHead(x, org.id, other.id);
+    await assignManager(x, subordinate.id, other.id);
+    expect((await x.duties(x.employee.id)).items).toEqual([]);
+    expect((await x.departed()).items).toEqual([]);
+  });
+});
+
+/** 调动接口从落地日起给下属安排新的直线上级（模拟别人已接手）。 */
+async function assignManager(x: DutyExitWorld, employeeId: string, managerId: string) {
+  const fresh = await x.session.getEmployee(employeeId);
+  await x.session.business(
+    employeeId,
+    { kind: 'transfer', mode: 'direct', effectiveDate: EFFECTIVE, fields: { directManagerId: managerId } },
+    fresh.revision,
+  );
+}
+
 /** 组织接口从落地日起指定新的负责人（模拟别人已接手）。 */
 async function assignHead(x: DutyExitWorld, orgId: string, personId: string) {
   const api = tenantApi(database().db, { clock: () => new Date(`${EFFECTIVE}T02:00:00Z`) });
