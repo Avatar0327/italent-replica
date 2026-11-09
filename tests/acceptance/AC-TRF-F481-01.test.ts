@@ -2,7 +2,7 @@
  * AC-TRF-F481-01 模板维护（设计 §3.2、§12）：新建、编码 / 名称唯一、变量检查、启停与 revision、权限、没有删除路由。
  * 真库 + 真 HTTP；PGlite 与 PG16 app_owner 两套都跑。
  */
-import { auditEvents, eq, withTenant } from '@italent/db';
+import { auditEvents, eq, esignTemplates, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { denySettings, esignWorld, type TemplateView } from './AC-TRF-F481-support.js';
@@ -11,8 +11,8 @@ import { uniqueSuffix } from './support/unique.js';
 const db = useTestDb();
 
 async function errorOf(response: Response) {
-  const body = (await response.json()) as { error: { code: string; details?: { reason?: string } } };
-  return { status: response.status, code: body.error.code, reason: body.error.details?.reason };
+  const body = (await response.json()) as { error?: { code: string; details?: { reason?: string } } };
+  return { status: response.status, code: body.error?.code, reason: body.error?.details?.reason };
 }
 
 describe('AC-TRF-F481-01 模板维护', () => {
@@ -133,5 +133,92 @@ describe('AC-TRF-F481-01 模板维护', () => {
     );
     expect(rows.map((r) => r.action)).toEqual(['esign.template.create', 'esign.template.update']);
     expect(new Set(rows.map((r) => r.objectType))).toEqual(new Set(['esign-template']));
+  });
+});
+
+/** 第 1 轮审查返工（P2-1 ～ P2-3）：中文边界正文、全空白名称、租户模板总量上限。 */
+describe('AC-TRF-F481-01 返工：边界输入与总量', () => {
+  it('正文 20000 个中文字：创建 201、编辑 200（请求体上限覆盖 UTF-8 与转义）；20001 个仍 400', async () => {
+    const w = await esignWorld(db().db, 'cn');
+    const created = await w.call('POST', '/templates', { body: w.template('cn', { body: '中'.repeat(20000) }) });
+    expect(created.status, await created.clone().text()).toBe(201);
+    const a = (await created.json()) as TemplateView;
+    const edited = await w.call('PATCH', `/templates/${a.id}`, {
+      ifMatch: a.revision,
+      body: { body: '文'.repeat(20000) },
+    });
+    expect(edited.status, await edited.clone().text()).toBe(200);
+    expect(((await edited.json()) as TemplateView).body).toHaveLength(20000);
+    const over = await w.call('POST', '/templates', { body: w.template('cn2', { body: '中'.repeat(20001) }) });
+    expect(over.status).toBe(400);
+    const overEdit = await w.call('PATCH', `/templates/${a.id}`, {
+      ifMatch: a.revision + 1,
+      body: { body: '中'.repeat(20001) },
+    });
+    expect(overEdit.status).toBe(400);
+  });
+
+  it('请求体上限仍有界：远超正文上限的请求在其他接口与模板接口都是 413', async () => {
+    const w = await esignWorld(db().db, 'huge');
+    const huge = await w.call('POST', '/templates', { body: w.template('huge', { body: 'x'.repeat(200 * 1024) }) });
+    expect(huge.status).toBe(413);
+    const scene = await w.call('PUT', '/scenes/transfer', {
+      ifMatch: 0,
+      body: { validityDays: 2, remindBeforeExpiry: false, pad: 'x'.repeat(40 * 1024) },
+    });
+    expect(scene.status).toBe(413);
+  });
+
+  it('全空白名称：新建与编辑都 400，模板内容与 revision 不变', async () => {
+    const w = await esignWorld(db().db, 'blank');
+    const a = await w.create('a');
+    const created = await w.call('POST', '/templates', { body: w.template('b', { name: ' \u3000 ' }) });
+    expect(await errorOf(created)).toMatchObject({ status: 400, code: 'VALIDATION_FAILED' });
+    const blankCode = await w.call('POST', '/templates', { body: w.template('c', { code: '   ' }) });
+    expect(blankCode.status).toBe(400);
+    const edited = await w.call('PATCH', `/templates/${a.id}`, { ifMatch: a.revision, body: { name: '   ' } });
+    expect(await errorOf(edited)).toMatchObject({ status: 400, code: 'VALIDATION_FAILED' });
+    const list = (await (await w.call('GET', '/templates')).json()) as { items: TemplateView[] };
+    expect(list.items).toEqual([a]);
+  });
+
+  it('租户模板总量上限 1000：达到后写入口 409 ESIGN_TEMPLATE_LIMIT_REACHED；维护列表与启用选项都全量可用', async () => {
+    const w = await esignWorld(db().db, 'limit');
+    const tenantId = w.session.tenant.id;
+    await w.create('first');
+    const bulk = Array.from({ length: 998 }, (_, i) => ({
+      tenantId,
+      code: `syn.esign.bulk_${i}`,
+      name: `ZZ_F481_批量_${String(i).padStart(4, '0')}`,
+      body: '正文',
+      sortOrder: i + 1,
+    }));
+    await withTenant(db().db, tenantId, (tx) => tx.insert(esignTemplates).values(bulk));
+    const last = await w.call('POST', '/templates', { body: w.template('last') });
+    expect(last.status, await last.clone().text()).toBe(201);
+    const over = await w.call('POST', '/templates', { body: w.template('over') });
+    expect(await errorOf(over)).toMatchObject({
+      status: 409,
+      code: 'CONFLICT',
+      reason: 'ESIGN_TEMPLATE_LIMIT_REACHED',
+    });
+    const list = await w.call('GET', '/templates');
+    expect(list.status).toBe(200);
+    expect(((await list.json()) as { items: unknown[] }).items).toHaveLength(1000);
+    const options = await w.call('GET', '/template-options/transfer-form');
+    expect(options.status).toBe(200);
+    expect(((await options.json()) as { items: unknown[] }).items).toHaveLength(1000);
+    // 达到上限后仍可编辑既有模板（不占新名额），唯一性按精确查询判定
+    const target = ((await (await w.call('GET', '/templates')).json()) as { items: TemplateView[] }).items.at(-1)!;
+    const dup = await w.call('PATCH', `/templates/${target.id}`, {
+      ifMatch: target.revision,
+      body: { name: 'ZZ_F481_批量_0000' },
+    });
+    expect(await errorOf(dup)).toMatchObject({ status: 409, reason: 'ESIGN_TEMPLATE_NAME_DUPLICATE' });
+    const ok = await w.call('PATCH', `/templates/${target.id}`, {
+      ifMatch: target.revision,
+      body: { status: 'disabled' },
+    });
+    expect(ok.status).toBe(200);
   });
 });
