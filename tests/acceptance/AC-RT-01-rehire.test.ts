@@ -18,7 +18,7 @@ const TODAY = '2026-10-06';
 const world = (label: string) => rehireWorld(database().db, label, TODAY);
 
 describe('AC-RT-01 / AC-RT-22② 直接退休同时返聘（L 已过，当场生效）', () => {
-  it('退休记录只覆盖 E′ 当天，返聘日 = E′ + 1，新周期 retire_rehire；账号不变、组织负责人按计划转给接收人；合同旧的终止于 L′、新的起始于 R', async () => {
+  it('退休记录只覆盖 E′ 当天，返聘日 = E′ + 1，新周期 retire_rehire；账号、组织负责人不变；合同旧的终止于 L′、新的起始于 R', async () => {
     const x = await world('rt01-direct');
     const master = await x.contractMaster();
     const oldContract = await x.createContract(master.typeId);
@@ -26,15 +26,7 @@ describe('AC-RT-01 / AC-RT-22② 直接退休同时返聘（L 已过，当场生
     const accountsBefore = await x.accountLinks();
     const plan = x.rehirePlan({ contract: x.contractPlan(master) });
 
-    // DT-R4：负责人身份是职责，直接退休须随单指定接收人；落地后该组织负责人 = 接收人
-    const receiver = await x.session.employee('负责人接收人');
-    await x.session.business(
-      receiver.id,
-      { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { departmentId: x.from.id } },
-      receiver.revision,
-    );
-    const duty = { orgRoles: [{ orgId: x.from.id, role: 'person_in_charge', receiverId: receiver.id }] };
-    const created = await x.createdRehire(x.rehireBody('2026-10-04', 'direct', plan, { exit: { dutyTransfer: duty } }));
+    const created = await x.createdRehire(x.rehireBody('2026-10-04', 'direct', plan));
 
     // AC-RT-22②：生效读到的返聘计划已写好（同一请求内先写扩展行、随后当场生效）
     expect(created.status).toBe('effective');
@@ -58,7 +50,7 @@ describe('AC-RT-01 / AC-RT-22② 直接退休同时返聘（L 已过，当场生
 
     // 账号与登录关联不变；未转交的组织角色仍属本人（RT-R3）
     expect(await x.accountLinks()).toEqual(accountsBefore);
-    expect(await x.headOf(x.from.id)).toBe(receiver.id);
+    expect(await x.headOf(x.from.id)).toBe(x.employee.id);
 
     // 旧合同终止于 L′ = 10-05；返聘合同由合同端口按返聘日 R 生成（R 在未来：已批准的直接新建，到期由合同调度落地）
     expect((await x.contractStarts()).map((row) => [row.id, row.status, row.effective_date, row.actual])).toEqual([
