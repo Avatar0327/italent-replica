@@ -75,7 +75,10 @@ export const pageText = {
   unavailable: '无权限查看',
   empty: '暂无可见组织',
   changeHint: '选择生效日期，再打开组织发起变更。改名或调整行政上级时，须选择是否新增任职。',
-  treeHint: '架构树仅展示当前页返回的可见组织；翻页查看更多，不补全范围外上级。',
+  treeHint: '左侧架构树展示当前查看范围内的全部可见组织；范围外的上级不补全，其下的可见组织挂到最近的可见上级。',
+  chartHint: '架构图展示当前查看范围内的全部可见组织；在岗人数只统计查看范围内的人员。',
+  headcount: '在岗人数',
+  chart: '架构卡片图',
   editHint: '编辑用于更正设立日期；名称、上级与其他字段请使用「变更」。',
   disableHint: '停用会由服务端校验并级联停用下级组织。有人员、职位或在途业务占用时拒绝保存。',
   choice: '是否新增任职',
@@ -176,6 +179,15 @@ export const listText = {
   establishedOn: '建立日期',
   stopDate: '禁用日期',
   enabled: '状态',
+};
+/** 架构图卡片（R1a §2.3）：在岗 / 编制写法与原站卡片一致；缺失用占位。 */
+export const chartText = {
+  head: '负责人',
+  onDuty: '在岗',
+  establishment: '编制',
+  none: '--',
+  empty: '暂无可见组织',
+  disabled: '已停用',
 };
 /** 原站组织单元详情的字段名与上级组织分区。 */
 export const detailText = {
