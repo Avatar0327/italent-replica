@@ -132,7 +132,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/audit/visibility.ts#GLOBAL_JOB_KINDS': ['1da2fef3d739', 'e3b0c44298fc'],
   'apps/api/src/audit/visibility.ts#OBJECT_FIELDS': ['1494b27c29cd', '3b8684652133'],
   'apps/api/src/audit/visibility.ts#ORG': ['4a82b87568d7', '962a8dd9a03e'],
-  'apps/api/src/audit/visibility.ts#RULES': ['be84d6bc6057', '29d77cf0966d'],
+  'apps/api/src/audit/visibility.ts#RULES': ['ae4404d64d6f', '0c7fef1fb487'],
   'apps/api/src/audit/visibility.ts#RULE_BY_TYPE': ['5c23946675c5', '850d73295a7a'],
   'apps/api/src/audit/visibility.ts#S360': ['5dbe501241e4', '9704168941bc'],
   'apps/api/src/audit/visibility.ts#SURVEY360_SHEET_DESENSITIZE': ['d37f24ba7958', '7b6607ce0322'],
