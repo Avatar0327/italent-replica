@@ -3977,6 +3977,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#approvalError',
   ],
   'apps/api/src/modules/employment/handled-read.ts#selectHandledRead': [
+    'apps/api/src/modules/approval/context.ts#canonicalId',
     'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
     'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
     'apps/api/src/modules/approval/foreign-fields.ts#viewableWithForeign',

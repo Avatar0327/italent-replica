@@ -10,7 +10,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import type { BusinessType } from '../approval/adapters.js';
-import { approvalError, rowsOf } from '../approval/context.js';
+import { approvalError, canonicalId, rowsOf } from '../approval/context.js';
 import { disclosedFields, readDetail, type DetailData } from '../approval/disclosure.js';
 import { foreignVisibility, viewableWithForeign } from '../approval/foreign-fields.js';
 import { contentViewOf } from '../approval/handling-content.js';
@@ -64,10 +64,13 @@ const pendingFor = (data: DetailData, userId: string): boolean =>
  */
 export async function selectHandledRead(
   deps: TenantRouteDeps,
-  ctx: TenantContext,
+  rawCtx: TenantContext,
   type: BusinessType,
   businessId: string,
 ): Promise<HandledRead> {
+  // 租户中间件保留 UUID 原写法，库里读回的是小写：与审批中心 tenantCtx 同口径先规范化，
+  // 否则大写写法的本人待办 / 发起人判断全部漏认，会读到旧办理份。
+  const ctx = { ...rawCtx, tenantId: canonicalId(rawCtx.tenantId), userId: canonicalId(rawCtx.userId) };
   return withTenant(deps.db, ctx.tenantId, async (tx) => {
     for (const instanceId of await instancesOf(tx, ctx.tenantId, type, businessId)) {
       const data = await openAsParticipant(tx, ctx, deps.clock(), instanceId);

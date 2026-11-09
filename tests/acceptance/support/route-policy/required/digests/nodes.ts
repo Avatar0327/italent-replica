@@ -2415,7 +2415,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/handled-read.ts#pendingFor': ['d560f59860f1', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/handled-read.ts#pickContent': ['c57d8165c08e', '2d713894d128'],
   'apps/api/src/modules/employment/handled-read.ts#requireExt': ['0e7e44974833', '3811474cd736'],
-  'apps/api/src/modules/employment/handled-read.ts#selectHandledRead': ['8022790b0537', 'f98f4beac95a'],
+  'apps/api/src/modules/employment/handled-read.ts#selectHandledRead': ['8a4056c7f6b1', '01704aa908da'],
   'apps/api/src/modules/employment/import-audit.ts#MAX_LOOKUP_ROWS': ['fb433f012076', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/import-audit.ts#failedImportAnchors': ['a4596ff4089a', '29b0f0e7ee87'],
   'apps/api/src/modules/employment/import-audit.ts#importedItems': ['6e3bf9f44cb4', 'e3b0c44298fc'],
