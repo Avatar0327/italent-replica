@@ -26,6 +26,7 @@ async function twoStagesHandled(w: PlanWorld) {
   const { plan, goalId } = await handledThenModified(w);
   await w.submit(plan, 1, w.manager.userId);
   let current = await w.readPlan(plan.id);
+  w.setNow('2026-03-02T04:00:00.000Z'); // 阶段 2 的办理晚于阶段 1，跨阶段选择按办理时间比较
   await w.ok(await w.intervene('start-next', { items: items(current), runningMode: 'skipRunning' }));
   current = await w.readPlan(plan.id);
   await w.ok(

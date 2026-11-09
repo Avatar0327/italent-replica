@@ -1440,6 +1440,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/handling-content.ts#CONTENT_PROVIDERS': [
     '#SNAPSHOT_ONLY',
+    'apps/api/src/modules/idp/stage-content.ts#loadIdpStageContent',
     'apps/api/src/modules/org-adjustment/content.ts#loadOrgContent',
   ],
   'apps/api/src/modules/approval/handling-content.ts#prepareHandlingContent': [
@@ -1453,6 +1454,29 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/approval/definitions.ts#loadVersion',
     '#HANDLING_EVENTS',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#contentViewOfRead': [
+    'apps/api/src/modules/approval/handling-content.ts#contentViewOf',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#inInstance': [
+    'apps/api/src/modules/approval/handling-content.ts#selectContent',
+    'apps/api/src/modules/approval/store.ts#loadInstance',
+    'apps/api/src/modules/approval/store.ts#loadTasks',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#latestHandledInstance': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/handling-content.ts#HANDLING_EVENTS',
+    '#uuidArray',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#pendingInstance': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#uuidArray',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#selectAmong': [
+    '#LIVE',
+    '#inInstance',
+    '#latestHandledInstance',
+    '#pendingInstance',
   ],
   'apps/api/src/modules/approval/handover-empty.ts#decideHandoverApprovers': [
     'packages/domain/src/approval/sources.ts#expressionValue',

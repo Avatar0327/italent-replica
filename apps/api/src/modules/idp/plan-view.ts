@@ -336,6 +336,24 @@ async function templateModules(tx: Tx, tenantId: string, templateId: string) {
   return rows.map((m) => moduleView(m, nodes.get(m.id) ?? []));
 }
 
+/** 计划的内容部分（模板模块结构 + 目标 / 综述 / 回顾 / 关键信息）：现值读取与办理份冻结共用同一份读法（F-476 P8）。 */
+export interface PlanContent {
+  readonly modules: ModuleView[];
+  readonly goals: GoalView[];
+  readonly analyses: Record<string, unknown>[];
+  readonly reviews: Record<string, unknown>[];
+  readonly keyInfo: KeyInfo;
+}
+
+export async function loadPlanContent(tx: Tx, plan: PlanRow): Promise<PlanContent> {
+  return {
+    modules: await templateModules(tx, plan.tenantId, plan.templateId),
+    goals: await loadGoals(tx, plan.tenantId, plan.id),
+    ...(await loadContents(tx, plan.tenantId, plan.id)),
+    keyInfo: await loadKeyInfo(tx, plan),
+  };
+}
+
 export async function loadPlanDetail(tx: Tx, plan: PlanRow, asOf: string): Promise<PlanDetail> {
   const stages = await loadStages(tx, plan.tenantId, [plan.id]);
   const running = stages.find((s) => s.status === 'running' && s.approvalInstanceId);
@@ -351,10 +369,7 @@ export async function loadPlanDetail(tx: Tx, plan: PlanRow, asOf: string): Promi
     currentStageName: currentStageName(plan.status as Parameters<typeof currentStageName>[0], stages),
     currentNodeName: node?.status === 'running' ? node.nodeName : null,
     stages: await stageViews(tx, plan, stages, asOf),
-    modules: await templateModules(tx, plan.tenantId, plan.templateId),
-    goals: await loadGoals(tx, plan.tenantId, plan.id),
-    ...(await loadContents(tx, plan.tenantId, plan.id)),
-    keyInfo: await loadKeyInfo(tx, plan),
+    ...(await loadPlanContent(tx, plan)),
   };
 }
 

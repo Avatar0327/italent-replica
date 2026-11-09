@@ -10,6 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import { loadIdpStageContent } from '../idp/stage-content.js';
 import { loadOrgContent } from '../org-adjustment/content.js';
 import type { BusinessSnapshot, BusinessType } from './adapters.js';
 import { approvalError, rowsOf, type ApprovalContext } from './context.js';
@@ -43,7 +44,7 @@ export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> 
   employment: SNAPSHOT_ONLY,
   personnel_change: SNAPSHOT_ONLY,
   contract: SNAPSHOT_ONLY,
-  idp: SNAPSHOT_ONLY,
+  idp: { kind: 'extended', ext: (tx, tenantId, stageId) => loadIdpStageContent(tx, tenantId, stageId) },
   part_time: SNAPSHOT_ONLY,
   offer: SNAPSHOT_ONLY,
   offer_batch: SNAPSHOT_ONLY,
