@@ -38,13 +38,27 @@ describe('AC-FE-R1a-01 组织变更与多维树', () => {
     });
     expect(orgChangeBody({ id: original.id, revision: 1 }, { remarks: '' }, '2026-10-12')).not.toHaveProperty('name');
   });
-  it('树按所选维度连接，范围外父级不伪造；坏环不会无限递归', async () => {
-    const { organizationTree } = await org();
-    const rows = [original, { id: original.parents.admin.parentId, revision: 1, name: '合成集团' }];
-    expect(organizationTree(rows, 'admin')[0].children[0].key).toBe(original.id);
-    expect(organizationTree(rows, 'business')).toHaveLength(2);
-    expect(organizationTree([original], 'admin')[0].key).toBe(original.id);
-    expect(organizationTree([{ ...original, parents: { admin: { parentId: original.id } } }], 'admin')).toHaveLength(1);
+  it('树由服务端组装：节点照搬服务端层级，无名称权的节点显示占位，查询串不带分页', async () => {
+    const { serverTreeData, orgTreeQuery } = await org();
+    const roots = [
+      { id: 'a', name: '合成集团', children: [{ id: 'b', children: [] }] },
+      { id: 'c', name: '合成乙部', children: [] },
+    ];
+    const data = serverTreeData(roots);
+    expect(data.map((node: { key: string }) => node.key)).toEqual(['a', 'c']);
+    expect(data[0].children[0]).toMatchObject({ key: 'b', title: '无权限查看', children: [] });
+    const filters = { asOf: '2026-10-01', dimension: 'admin', includeDisabled: false, name: '甲' };
+    expect(orgTreeQuery(filters, true)).toBe('asOf=2026-10-01&dimension=admin&includeDisabled=false&name=%E7%94%B2');
+    expect(orgTreeQuery(filters, false)).not.toContain('name=');
+    expect(orgTreeQuery(filters, true)).not.toContain('page');
+  });
+  it('架构图卡片的在岗 / 编制写法：无查看权的项不出，编制未设置显示占位', async () => {
+    const { chartFigures } = await org();
+    expect(chartFigures({ headcount: 2, establishment: 4 })).toBe('在岗2/编制4');
+    expect(chartFigures({ headcount: 2, establishment: null })).toBe('在岗2/编制--');
+    expect(chartFigures({ headcount: 0 })).toBe('在岗0');
+    expect(chartFigures({ establishment: 4 })).toBe('编制4');
+    expect(chartFigures({})).toBe('');
   });
 });
 describe('AC-FE-R1a-02 职务表单', () => {

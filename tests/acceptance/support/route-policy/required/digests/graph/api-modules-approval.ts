@@ -1206,6 +1206,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/engine.ts#autoProcess': [
     '#MECHANISMS',
+    'apps/api/src/modules/approval/handling-content.ts#prepareHandlingContent',
+    'apps/api/src/modules/approval/handling-content.ts#recordHandlingContent',
     'apps/api/src/modules/approval/notifications.ts#applyMessageRules',
     'apps/api/src/modules/approval/store.ts#appendLog',
     'apps/api/src/modules/approval/store.ts#insertTask',
