@@ -12,8 +12,8 @@ async function dateForm(page: Page, kind = '延长') {
   return page.getByRole('dialog', named(`${kind}兼职申请`));
 }
 /**
- * 切到“审批中的兼职”后打开申请详情。BrowserRouter 以 transition 切视图：新视图提交前旧视图的行仍可点，
- * 点中的选中态挂在旧视图上、提交时随视图重置丢掉，抽屉不出现（list-state.ts）。先等新视图提交再点行。
+ * 切到“审批中的兼职”后打开申请详情。BrowserRouter 以 transition 切视图，新视图提交前页面让旧列表不可交互
+ * （list-state.ts useViewSwitching）；这里显式等新视图提交，再点新视图的行。
  */
 async function openRequestDetail(page: Page) {
   await page.getByRole('button', named('审批中的兼职')).click();
