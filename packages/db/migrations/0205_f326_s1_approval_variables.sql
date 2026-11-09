@@ -68,6 +68,11 @@ CREATE TABLE "approval_variables" (
 	"usage_scopes" text[] DEFAULT '{}'::text[] NOT NULL,
 	"description" text,
 	"status" text DEFAULT 'draft' NOT NULL,
+	"origin" text DEFAULT 'manual' NOT NULL,
+	"origin_process_id" uuid,
+	"origin_version_id" uuid,
+	"origin_node_key" text,
+	"origin_slot" text,
 	"revision" integer DEFAULT 1 NOT NULL,
 	"created_by" uuid NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -86,7 +91,15 @@ CREATE TABLE "approval_variables" (
           AND cardinality("approval_variables"."usage_scopes") >= 1
           AND "approval_variables"."usage_scopes" <@ ARRAY['process','business_rule','message_template']::text[])
         OR ("approval_variables"."scope" = 'application' AND "approval_variables"."app_id" IS NOT NULL
-          AND cardinality("approval_variables"."usage_scopes") = 0 AND "approval_variables"."description" IS NULL))
+          AND cardinality("approval_variables"."usage_scopes") = 0 AND "approval_variables"."description" IS NULL)),
+	CONSTRAINT "approval_variables_origin" CHECK ("approval_variables"."origin" IN ('manual','auto')),
+	CONSTRAINT "approval_variables_origin_slot_value" CHECK ("approval_variables"."origin_slot" IN ('approver','empty_approver')),
+	CONSTRAINT "approval_variables_origin_columns" CHECK (("approval_variables"."origin" = 'manual' AND "approval_variables"."origin_process_id" IS NULL AND "approval_variables"."origin_version_id" IS NULL
+          AND "approval_variables"."origin_node_key" IS NULL AND "approval_variables"."origin_slot" IS NULL)
+        OR ("approval_variables"."origin" = 'auto' AND "approval_variables"."origin_process_id" IS NOT NULL AND "approval_variables"."origin_version_id" IS NOT NULL
+          AND "approval_variables"."origin_node_key" IS NOT NULL AND "approval_variables"."origin_slot" IS NOT NULL
+          AND "approval_variables"."scope" = 'public' AND "approval_variables"."data_type" IN ('person','persons')
+          AND "approval_variables"."usage_scopes" = ARRAY['process']::text[]))
 );
 --> statement-breakpoint
 ALTER TABLE "approval_matrices" ADD CONSTRAINT "approval_matrices_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -100,10 +113,14 @@ ALTER TABLE "approval_matrix_columns" ADD CONSTRAINT "approval_matrix_columns_ma
 ALTER TABLE "approval_matrix_rows" ADD CONSTRAINT "approval_matrix_rows_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "approval_matrix_rows" ADD CONSTRAINT "approval_matrix_rows_matrix" FOREIGN KEY ("tenant_id","matrix_id") REFERENCES "public"."approval_matrices"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "approval_variables" ADD CONSTRAINT "approval_variables_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "approval_variables" ADD CONSTRAINT "approval_variables_origin_process_fk" FOREIGN KEY ("tenant_id","origin_process_id") REFERENCES "public"."approval_processes"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "approval_variables" ADD CONSTRAINT "approval_variables_origin_version_fk" FOREIGN KEY ("tenant_id","origin_version_id") REFERENCES "public"."approval_process_versions"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "approval_variables" ADD CONSTRAINT "approval_variables_creator" FOREIGN KEY ("tenant_id","created_by") REFERENCES "public"."tenant_memberships"("tenant_id","user_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "approval_variables" ADD CONSTRAINT "approval_variables_updater" FOREIGN KEY ("tenant_id","updated_by") REFERENCES "public"."tenant_memberships"("tenant_id","user_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "approval_matrices_list" ON "approval_matrices" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX "approval_variables_list" ON "approval_variables" USING btree ("tenant_id","scope","status");--> statement-breakpoint
+CREATE UNIQUE INDEX "approval_variables_origin_slot" ON "approval_variables" USING btree ("tenant_id","origin_version_id","origin_node_key","origin_slot") WHERE "approval_variables"."origin" = 'auto';--> statement-breakpoint
+CREATE INDEX "approval_variables_origin_process" ON "approval_variables" USING btree ("tenant_id","origin_process_id") WHERE "approval_variables"."origin" = 'auto';--> statement-breakpoint
 -- F-326 S1：五张表 FORCE RLS（租户隔离，F-212）；变量与矩阵头只启停不删除，故不授 DELETE（设计 §2.5）。
 SELECT enable_tenant_isolation('approval_variables');--> statement-breakpoint
 SELECT enable_tenant_isolation('approval_matrices');--> statement-breakpoint

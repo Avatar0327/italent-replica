@@ -1,5 +1,5 @@
 {
-  "id": "68c30e96-b239-4e70-8ebd-11e636810fec",
+  "id": "a8fc036b-b598-4914-b571-0b5267b69dcf",
   "prevId": "10606fd1-bcd6-44ba-923f-df4630fe9bec",
   "version": "7",
   "dialect": "postgresql",
@@ -26691,6 +26691,37 @@
           "notNull": true,
           "default": "'draft'"
         },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
+        "origin_process_id": {
+          "name": "origin_process_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin_version_id": {
+          "name": "origin_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin_node_key": {
+          "name": "origin_node_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin_slot": {
+          "name": "origin_slot",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "revision": {
           "name": "revision",
           "type": "integer",
@@ -26752,6 +26783,62 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "approval_variables_origin_slot": {
+          "name": "approval_variables_origin_slot",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "origin_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "origin_node_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "origin_slot",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"approval_variables\".\"origin\" = 'auto'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "approval_variables_origin_process": {
+          "name": "approval_variables_origin_process",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "origin_process_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"approval_variables\".\"origin\" = 'auto'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -26763,6 +26850,36 @@
             "tenant_id"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_variables_origin_process_fk": {
+          "name": "approval_variables_origin_process_fk",
+          "tableFrom": "approval_variables",
+          "tableTo": "approval_processes",
+          "columnsFrom": [
+            "tenant_id",
+            "origin_process_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_variables_origin_version_fk": {
+          "name": "approval_variables_origin_version_fk",
+          "tableFrom": "approval_variables",
+          "tableTo": "approval_process_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "origin_version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -26847,6 +26964,18 @@
         "approval_variables_scope_columns": {
           "name": "approval_variables_scope_columns",
           "value": "(\"approval_variables\".\"scope\" = 'public' AND \"approval_variables\".\"app_id\" IS NULL\n          AND cardinality(\"approval_variables\".\"usage_scopes\") >= 1\n          AND \"approval_variables\".\"usage_scopes\" <@ ARRAY['process','business_rule','message_template']::text[])\n        OR (\"approval_variables\".\"scope\" = 'application' AND \"approval_variables\".\"app_id\" IS NOT NULL\n          AND cardinality(\"approval_variables\".\"usage_scopes\") = 0 AND \"approval_variables\".\"description\" IS NULL)"
+        },
+        "approval_variables_origin": {
+          "name": "approval_variables_origin",
+          "value": "\"approval_variables\".\"origin\" IN ('manual','auto')"
+        },
+        "approval_variables_origin_slot_value": {
+          "name": "approval_variables_origin_slot_value",
+          "value": "\"approval_variables\".\"origin_slot\" IN ('approver','empty_approver')"
+        },
+        "approval_variables_origin_columns": {
+          "name": "approval_variables_origin_columns",
+          "value": "(\"approval_variables\".\"origin\" = 'manual' AND \"approval_variables\".\"origin_process_id\" IS NULL AND \"approval_variables\".\"origin_version_id\" IS NULL\n          AND \"approval_variables\".\"origin_node_key\" IS NULL AND \"approval_variables\".\"origin_slot\" IS NULL)\n        OR (\"approval_variables\".\"origin\" = 'auto' AND \"approval_variables\".\"origin_process_id\" IS NOT NULL AND \"approval_variables\".\"origin_version_id\" IS NOT NULL\n          AND \"approval_variables\".\"origin_node_key\" IS NOT NULL AND \"approval_variables\".\"origin_slot\" IS NOT NULL\n          AND \"approval_variables\".\"scope\" = 'public' AND \"approval_variables\".\"data_type\" IN ('person','persons')\n          AND \"approval_variables\".\"usage_scopes\" = ARRAY['process']::text[])"
         }
       },
       "isRLSEnabled": false

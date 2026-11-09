@@ -399,3 +399,165 @@ describe('应用角色权限（无删除）', () => {
     });
   });
 });
+
+describe('自动变量来源列（DEC-858，设计 §5.5 ⑤）', () => {
+  async function seedProcess(w: World) {
+    return withTenant(testDb().db, w.tenantId, async (tx) => {
+      const process = await insert(tx, 'approval_processes', w.tenantId, {
+        id: randomUUID(),
+        code: `P${uniqueSuffix()}`,
+        approval_type: 'transfer',
+        object_code: 'TenantBase.ApprovalProcess',
+        created_by: w.userId,
+      });
+      const version = await insert(tx, 'approval_process_versions', w.tenantId, {
+        id: randomUUID(),
+        process_id: process.id,
+        version_no: 1,
+        name: '合成流程',
+        created_by: w.userId,
+      });
+      return { process: process.id as string, version: version.id as string };
+    });
+  }
+  const origin = (ids: { process: string; version: string }, over: Row = {}): Row => ({
+    origin: 'auto',
+    origin_process_id: ids.process,
+    origin_version_id: ids.version,
+    origin_node_key: 'n1',
+    origin_slot: 'approver',
+    ...over,
+  });
+  const autoVariable = (w: World, ids: { process: string; version: string }, over: Row = {}) =>
+    publicVariable(w, { ...origin(ids), ...over });
+
+  it('人工变量默认 origin=manual、来源列全空；人工变量带任一来源列被拒', async () => {
+    const w = await world('f326s1-origin-manual');
+    const ids = await seedProcess(w);
+    await withTenant(testDb().db, w.tenantId, (tx) => insert(tx, 'approval_variables', w.tenantId, publicVariable(w)));
+    const read = await withTenant(testDb().db, w.tenantId, async (tx) =>
+      resultRows(
+        await tx.execute(sql`SELECT origin, origin_process_id, origin_version_id, origin_node_key, origin_slot
+        FROM approval_variables`),
+      ),
+    );
+    expect(read).toEqual([
+      { origin: 'manual', origin_process_id: null, origin_version_id: null, origin_node_key: null, origin_slot: null },
+    ]);
+    const columns: Row[] = [
+      { origin_process_id: ids.process },
+      { origin_version_id: ids.version },
+      { origin_node_key: 'n1' },
+      { origin_slot: 'approver' },
+    ];
+    for (const over of columns) {
+      expect(
+        await rejects(w, (tx) => insert(tx, 'approval_variables', w.tenantId, publicVariable(w, over))),
+        JSON.stringify(over),
+      ).not.toBeNull();
+    }
+  });
+
+  it('自动变量：4 个来源列必须全非空，且限公共、人员类、适用范围恰为 {process}', async () => {
+    const w = await world('f326s1-origin-auto');
+    const ids = await seedProcess(w);
+    await withTenant(testDb().db, w.tenantId, async (tx) => {
+      await insert(tx, 'approval_variables', w.tenantId, autoVariable(w, ids, { origin_node_key: 'ok-person' }));
+      await insert(
+        tx,
+        'approval_variables',
+        w.tenantId,
+        autoVariable(w, ids, { origin_node_key: 'ok-persons', data_type: 'persons', origin_slot: 'empty_approver' }),
+      );
+    });
+    const bad: Row[] = [
+      { origin_process_id: null },
+      { origin_version_id: null },
+      { origin_node_key: null },
+      { origin_slot: null },
+      { origin_slot: 'other' },
+      { origin: 'imported' },
+      { data_type: 'string' },
+      { data_type: 'integer' },
+      { usage_scopes: sql`ARRAY['process','business_rule']::text[]` },
+      { usage_scopes: sql`ARRAY['business_rule']::text[]` },
+    ];
+    for (const [index, over] of bad.entries()) {
+      expect(
+        await rejects(w, (tx) =>
+          insert(
+            tx,
+            'approval_variables',
+            w.tenantId,
+            autoVariable(w, ids, { origin_node_key: `bad-${index}`, ...over }),
+          ),
+        ),
+        JSON.stringify(over),
+      ).not.toBeNull();
+    }
+    // 应用变量不能是自动变量
+    expect(
+      await rejects(w, (tx) =>
+        insert(tx, 'approval_variables', w.tenantId, applicationVariable(w, origin(ids, { origin_node_key: 'app' }))),
+      ),
+    ).not.toBeNull();
+  });
+
+  it('同一版本、节点、位置只能有一条自动变量（部分唯一索引）；不同位置或不同版本可共存', async () => {
+    const w = await world('f326s1-origin-unique');
+    const ids = await seedProcess(w);
+    const other = await withTenant(testDb().db, w.tenantId, async (tx) => {
+      const version = await insert(tx, 'approval_process_versions', w.tenantId, {
+        id: randomUUID(),
+        process_id: ids.process,
+        version_no: 2,
+        name: '合成流程 v2',
+        created_by: w.userId,
+      });
+      return version.id as string;
+    });
+    await withTenant(testDb().db, w.tenantId, (tx) =>
+      insert(tx, 'approval_variables', w.tenantId, autoVariable(w, ids)),
+    );
+    expect(await rejects(w, (tx) => insert(tx, 'approval_variables', w.tenantId, autoVariable(w, ids)))).toMatch(
+      /unique|duplicate/i,
+    );
+    await withTenant(testDb().db, w.tenantId, async (tx) => {
+      await insert(tx, 'approval_variables', w.tenantId, autoVariable(w, ids, { origin_slot: 'empty_approver' }));
+      await insert(tx, 'approval_variables', w.tenantId, autoVariable(w, ids, { origin_version_id: other }));
+      await insert(tx, 'approval_variables', w.tenantId, autoVariable(w, ids, { origin_node_key: 'n2' }));
+    });
+  });
+
+  it('索引：按来源流程过滤的部分索引存在（供模拟与候选过滤）', async () => {
+    const rows = resultRows<{ indexdef: string }>(
+      await testDb().db.execute(sql`SELECT indexdef FROM pg_indexes
+        WHERE tablename = 'approval_variables' AND indexdef LIKE '%origin_process_id%'`),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.indexdef).toMatch(/tenant_id, origin_process_id/);
+    expect(rows[0]!.indexdef).toMatch(/WHERE/i);
+  });
+
+  it('来源流程 / 版本是复合外键：不能指向他租户的流程或版本', async () => {
+    const a = await world('f326s1-origin-fk-a');
+    const b = await world('f326s1-origin-fk-b');
+    const idsOfA = await seedProcess(a);
+    const idsOfB = await seedProcess(b);
+    const fk = /foreign key|violates/i;
+    expect(await rejects(b, (tx) => insert(tx, 'approval_variables', b.tenantId, autoVariable(b, idsOfA)))).toMatch(fk);
+    expect(
+      await rejects(b, (tx) =>
+        insert(tx, 'approval_variables', b.tenantId, autoVariable(b, idsOfB, { origin_version_id: idsOfA.version })),
+      ),
+    ).toMatch(fk);
+    expect(
+      await rejects(b, (tx) =>
+        insert(tx, 'approval_variables', b.tenantId, autoVariable(b, idsOfB, { origin_process_id: idsOfA.process })),
+      ),
+    ).toMatch(fk);
+    await withTenant(testDb().db, b.tenantId, (tx) =>
+      insert(tx, 'approval_variables', b.tenantId, autoVariable(b, idsOfB)),
+    );
+  });
+});

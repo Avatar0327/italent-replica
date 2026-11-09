@@ -17,8 +17,10 @@ import {
   timestamp,
   unique,
   uuid,
+  uniqueIndex,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
+import { approvalProcessVersions, approvalProcesses } from './approval.js';
 import { tenantMemberships, tenants } from './tenancy.js';
 
 const id = () =>
@@ -65,12 +67,38 @@ export const approvalVariables = pgTable(
       .default(sql`'{}'::text[]`),
     description: text('description'),
     status: text('status').notNull().default('draft'),
+    /** manual 人工创建 / auto 由流程设计器的“指定人员”自动生成（DEC-858，设计 §5.5 ⑤）；创建后不可改。 */
+    origin: text('origin').notNull().default('manual'),
+    /** 以下 4 列仅自动变量有值；版本属于该流程的一致性由 S7a 写入时保证，不加触发器。 */
+    originProcessId: uuid('origin_process_id'),
+    originVersionId: uuid('origin_version_id'),
+    originNodeKey: text('origin_node_key'),
+    /** approver 审批人位置 / empty_approver 审批人为空时的指定人员。 */
+    originSlot: text('origin_slot'),
     ...auditColumns(),
   },
   (t) => [
     unique('approval_variables_tenant_id').on(t.tenantId, t.id),
     unique('approval_variables_code').on(t.tenantId, t.code),
     index('approval_variables_list').on(t.tenantId, t.scope, t.status),
+    // 一个版本的一个位置最多归属一条自动变量，也兜住并发重复生成（DEC-858）
+    uniqueIndex('approval_variables_origin_slot')
+      .on(t.tenantId, t.originVersionId, t.originNodeKey, t.originSlot)
+      .where(sql`${t.origin} = 'auto'`),
+    // 供模拟与候选过滤按来源流程取自动变量集合
+    index('approval_variables_origin_process')
+      .on(t.tenantId, t.originProcessId)
+      .where(sql`${t.origin} = 'auto'`),
+    foreignKey({
+      name: 'approval_variables_origin_process_fk',
+      columns: [t.tenantId, t.originProcessId],
+      foreignColumns: [approvalProcesses.tenantId, approvalProcesses.id],
+    }),
+    foreignKey({
+      name: 'approval_variables_origin_version_fk',
+      columns: [t.tenantId, t.originVersionId],
+      foreignColumns: [approvalProcessVersions.tenantId, approvalProcessVersions.id],
+    }),
     memberFk('approval_variables_creator', t.tenantId, t.createdBy),
     memberFk('approval_variables_updater', t.tenantId, t.updatedBy),
     check('approval_variables_scope', sql`${t.scope} IN ('public','application')`),
@@ -95,6 +123,18 @@ export const approvalVariables = pgTable(
           AND ${t.usageScopes} <@ ARRAY['process','business_rule','message_template']::text[])
         OR (${t.scope} = 'application' AND ${t.appId} IS NOT NULL
           AND cardinality(${t.usageScopes}) = 0 AND ${t.description} IS NULL)`,
+    ),
+    check('approval_variables_origin', sql`${t.origin} IN ('manual','auto')`),
+    check('approval_variables_origin_slot_value', sql`${t.originSlot} IN ('approver','empty_approver')`),
+    // 人工变量没有来源；自动变量 4 列全非空，且只能是适用范围恰为流程的公共人员类变量
+    check(
+      'approval_variables_origin_columns',
+      sql`(${t.origin} = 'manual' AND ${t.originProcessId} IS NULL AND ${t.originVersionId} IS NULL
+          AND ${t.originNodeKey} IS NULL AND ${t.originSlot} IS NULL)
+        OR (${t.origin} = 'auto' AND ${t.originProcessId} IS NOT NULL AND ${t.originVersionId} IS NOT NULL
+          AND ${t.originNodeKey} IS NOT NULL AND ${t.originSlot} IS NOT NULL
+          AND ${t.scope} = 'public' AND ${t.dataType} IN ('person','persons')
+          AND ${t.usageScopes} = ARRAY['process']::text[])`,
     ),
   ],
 );
