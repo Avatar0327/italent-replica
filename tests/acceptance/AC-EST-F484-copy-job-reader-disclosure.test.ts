@@ -65,14 +65,15 @@ async function world(label: string, access: { creator: boolean; executor: boolea
   const api = tenantApi(testDb().db, { authorize, clock: () => EST_NOW });
   const as =
     (userId: string) =>
-    (method: string, path: string, options: { ifMatch?: number; body?: unknown } = {}) =>
+    (method: string, path: string, options: { ifMatch?: number; body?: unknown; idempotencyKey?: string } = {}) =>
       api.request(method, `/api/tenant/establishment${path}`, { ...options, user: userId, tenant: session.tenant.id });
   return { session, org, orgName, annual, monthly, creator: as(creatorId), executor: as(executorId) };
 }
 
 type World = Awaited<ReturnType<typeof world>>;
 const names = (w: World) => [w.orgName, w.annual.name, w.monthly.name];
-const original = (w: World) => `${w.orgName}已设有3月编制，编制方案为${w.monthly.name}，不可新建，请检查`;
+const original = (w: World, month = 3) =>
+  `${w.orgName}已设有${month}月编制，编制方案为${w.monthly.name}，不可新建，请检查`;
 
 /** 创建人入队、执行人执行；执行因同组织 3 月已有月度编制而业务失败。 */
 async function failedByExecutor(w: World): Promise<CopyJob> {
@@ -131,5 +132,67 @@ describe('F-484 复制失败文案按读取人 / 接收人权限生成（DEC-121
     expect(JSON.parse(seen.detail).failureReason).toBe(`CAPACITY_PERIOD_OVERLAP: ${original(w)}`);
     expect(seen.report).toContain(original(w));
     expect(seen.notices).toContain(original(w));
+  });
+});
+
+/**
+ * 第 3 轮 P2-2：旧命令重放按原回执的 versionId 读对应的不可变失败版本，不能混用任务最新版本的冲突信息。
+ * 第一次因下一年 3 月已有编制失败（revision 2, attempts 1），补建 2 月后新命令再失败（revision 3, attempts 2）。
+ */
+async function failedTwice(w: World) {
+  const source = (await w.session.capacities({ orgId: w.org.id })).find((c) => c.schemeId === w.annual.id)!;
+  const enqueued = await w.creator('POST', '/copy-jobs', { ifMatch: 0, body: { capacityIds: [source.id] } });
+  const pending = (await enqueued.json()) as CopyJob;
+  const firstKey = randomUUID();
+  const first = await w.executor('POST', `/copy-jobs/${pending.id}/execute`, {
+    ifMatch: pending.revision,
+    body: {},
+    idempotencyKey: firstKey,
+  });
+  expect(first.status, await first.clone().text()).toBe(200);
+  const firstJob = (await first.json()) as CopyJob;
+  expect([firstJob.revision, firstJob.attempts]).toEqual([2, 1]);
+  await w.session.capacity(w.org.id, w.monthly.id, { periodStart: '2027-02-01' });
+  const second = await w.executor('POST', `/copy-jobs/${pending.id}/execute`, { ifMatch: firstJob.revision, body: {} });
+  expect(second.status, await second.clone().text()).toBe(200);
+  const secondJob = (await second.json()) as CopyJob;
+  expect([secondJob.revision, secondJob.attempts, secondJob.status]).toEqual([3, 2, 'failed']);
+  const replay = () =>
+    w.executor('POST', `/copy-jobs/${pending.id}/execute`, {
+      ifMatch: pending.revision,
+      body: {},
+      idempotencyKey: firstKey,
+    });
+  return { pending, firstJob, secondJob, replay };
+}
+
+describe('F-484 旧命令重放按原回执版本渲染冲突（第 3 轮 P2-2）', () => {
+  it('有权读取人：重放第一次命令仍得到“3 月”冲突，任务详情与通知各用自己的版本', async () => {
+    const w = await world('f484-r3-replay-allowed', { creator: true, executor: true });
+    const { pending, firstJob, secondJob, replay } = await failedTwice(w);
+    expect(secondJob.failureReason).toBe(`CAPACITY_PERIOD_OVERLAP: ${original(w, 2)}`);
+    const replayed = await replay();
+    expect(replayed.status, await replayed.clone().text()).toBe(200);
+    const body = (await replayed.json()) as CopyJob;
+    expect([body.revision, body.attempts]).toEqual([2, 1]);
+    expect(body.failureReason).toBe(`CAPACITY_PERIOD_OVERLAP: ${original(w, 3)}`);
+    // 任务详情是最新版本（2 月）；两条通知各自保留当时的冲突（3 月 / 2 月）
+    const detail = await w.creator('GET', `/copy-jobs/${pending.id}`);
+    expect(((await detail.json()) as CopyJob).failureReason).toBe(`CAPACITY_PERIOD_OVERLAP: ${original(w, 2)}`);
+    const notices = await (await w.creator('GET', '/notifications')).text();
+    expect(notices).toContain(original(w, 3));
+    expect(notices).toContain(original(w, 2));
+    expect(firstJob.revision).toBe(2);
+  });
+
+  it('无权读取人：重放第一次命令只得到通用句，不含方案名与组织名', async () => {
+    const w = await world('f484-r3-replay-hidden', { creator: true, executor: false });
+    const { replay } = await failedTwice(w);
+    const replayed = await replay();
+    expect(replayed.status, await replayed.clone().text()).toBe(200);
+    const text = await replayed.text();
+    for (const name of names(w)) expect(text).not.toContain(name);
+    const body = JSON.parse(text) as CopyJob;
+    expect([body.revision, body.attempts, body.failureReason]).toEqual([2, 1, GENERIC]);
   });
 });
