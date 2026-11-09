@@ -6605,8 +6605,10 @@
           "TenantBase.OrganizationEstablishment:view"
         ],
         "scope": [
+          "creator scope",
           "establishment visible*/check*",
-          "requestScope"
+          "requestScope",
+          "visible()"
         ]
       }
     },
@@ -6637,8 +6639,10 @@
           "TenantBase.OrganizationEstablishment:view"
         ],
         "scope": [
+          "creator scope",
           "establishment visible*/check*",
-          "requestScope"
+          "requestScope",
+          "visible()"
         ]
       }
     },
@@ -6672,8 +6676,10 @@
           "listTodos / listNotifications / listInstances"
         ],
         "scope": [
+          "creator scope",
           "requestScope",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },

@@ -26,6 +26,9 @@ export const messages = {
   perPage: '条/页',
   allTypes: '全部类型',
   refresh: '重新读取',
+  /** F-478 S5：他人先办理、出口已不可用等业务冲突；只提示，不自动重提。 */
+  handlingChanged: (reason?: string) =>
+    `${reason ? `${reason.replace(/[。.]$/, '')}。` : ''}办理状态已变化，请关闭操作框，点“重新读取”后按最新详情办理。`,
   comment: '审批意见',
   target: '转交给（账号编号）',
   targetHint: '填写接收人的账号编号，可联系管理员获取。',
@@ -232,6 +235,8 @@ export const detailText = {
   communicate: '沟通',
   communicateGap: '沟通接口待补齐。',
   progressGap: '仅显示已产生的节点；后续节点需流程预测接口。',
+  /** F-478 S5：路径条 path[].state 的显示文案（设计 §4），状态由接口给出，前端不推算。 */
+  pathStates: { passed: '已经过', current: '当前', pending: '待办', not_on_path: '不经过' },
   original: (value: string) => `原：${value}`,
   transferInfo: '调动信息',
   transferAdjust: '任职调整',
