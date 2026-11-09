@@ -143,15 +143,24 @@ function existingDraft(org: OrgRecord, visible: boolean): Draft {
 }
 
 /** 负责人姓名与组织详情、人员档案同口径：人员版本链的最新姓名（任职头表的姓名不随改名更新）；一次批量查询。 */
-async function fillHeads(tx: Tx, tenantId: string, drafts: readonly Draft[]) {
-  const ids = [...new Set(drafts.flatMap((draft) => (draft.head ? [draft.head] : [])))];
-  if (!ids.length) return;
+export async function headNames(tx: Tx, tenantId: string, ids: readonly string[]) {
+  const names = new Map<string, string>();
+  if (!ids.length) return names;
   const name = currentPersonName(tenantId, sql`${employmentEmployees.id}`, sql`${employmentEmployees.name}`);
   const rows = await tx
     .select({ id: employmentEmployees.id, name: sql<string>`${name}` })
     .from(employmentEmployees)
-    .where(and(eq(employmentEmployees.tenantId, tenantId), inArray(employmentEmployees.id, ids)));
-  const names = new Map(rows.map((row) => [row.id, row.name]));
+    .where(and(eq(employmentEmployees.tenantId, tenantId), inArray(employmentEmployees.id, [...new Set(ids)])));
+  for (const row of rows) names.set(row.id, row.name);
+  return names;
+}
+
+async function fillHeads(tx: Tx, tenantId: string, drafts: readonly Draft[]) {
+  const names = await headNames(
+    tx,
+    tenantId,
+    drafts.flatMap((draft) => (draft.head ? [draft.head] : [])),
+  );
   for (const draft of drafts) draft.node.personInChargeName = draft.head ? (names.get(draft.head) ?? null) : null;
 }
 
@@ -168,8 +177,19 @@ interface CapacityRow {
  * “仅本级”方案的含下级直接用编制详情的 `batchLocalSums`（同一汇总类型与子树预算）。
  */
 async function fillEstablishment(tx: Tx, tenantId: string, date: string, nodes: readonly PreviewNode[]) {
-  const ids = nodes.map((n) => n.orgId!);
-  if (!ids.length) return;
+  const values = await establishmentByOrg(
+    tx,
+    tenantId,
+    date,
+    nodes.map((n) => n.orgId!),
+  );
+  for (const n of nodes) n.establishment = values.get(n.orgId!) ?? null;
+}
+
+/** 组织在 date 当天的编制（含下级）；没有编制的组织不在结果里。架构图卡片（F-474-2b）与调整预览共用。 */
+export async function establishmentByOrg(tx: Tx, tenantId: string, date: string, ids: readonly string[]) {
+  const result = new Map<string, number | null>();
+  if (!ids.length) return result;
   const rows = rowsOf<CapacityRow>(
     await tx.execute(sql`SELECT o.id::text AS "objectId", o.org_id::text AS "orgId", o.scheme_id::text AS "schemeId",
         o.period_start::text AS "periodStart", v.inclusive_capacity AS inclusive
@@ -203,10 +223,8 @@ async function fillEstablishment(tx: Tx, tenantId: string, date: string, nodes: 
     local.map((row) => ({ ...row, id: row.objectId })),
     date,
   );
-  for (const n of nodes) {
-    const row = chosen.get(n.orgId!);
-    n.establishment = row ? (sums.get(row.objectId) ?? row.inclusive) : null;
-  }
+  for (const [orgId, row] of chosen) result.set(orgId, sums.get(row.objectId) ?? row.inclusive);
+  return result;
 }
 
 interface SchemeKey {
