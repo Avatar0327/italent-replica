@@ -233,17 +233,38 @@ export async function renderFailureText(
 
 /**
  * 执行响应 / 幂等重放的出口：命令台账与响应体只存通用句（fail-closed），这里按当前操作人权限换成原文。
- * 只在任务当前持久化的失败原因与响应里的一致时才替换，对不上（任务已再次执行等）保持通用句。
+ * 按回执里的版本（versionId，被字段读权裁掉时用 revision = 版本号）读对应的不可变失败版本，而不是任务最新版本，
+ * 旧命令重放时才不会混入后续失败的冲突；回执里没有可定位版本的信息时保持通用句。
  */
 export async function renderExecutedFailure(
   tx: Tx,
   ctx: EstablishmentContext,
   jobId: string,
+  receipt: { readonly versionId?: unknown; readonly revision?: unknown },
   shown: string,
 ): Promise<string> {
-  const job = await readCopyJob(tx, ctx.tenantId, jobId);
-  if (job.failureReason !== shown) return shown;
-  return (await renderFailureText(tx, ctx, job.failureReason, job.failureDetail)) ?? shown;
+  const { versionId, revision } = receipt;
+  const byId = typeof versionId === 'string' && isUuid(versionId);
+  const byNo = typeof revision === 'number' && Number.isSafeInteger(revision);
+  if (!byId && !byNo) return shown;
+  const [version] = await tx
+    .select({
+      failureReason: establishmentCopyJobVersions.failureReason,
+      failureDetail: establishmentCopyJobVersions.failureDetail,
+    })
+    .from(establishmentCopyJobVersions)
+    .where(
+      and(
+        eq(establishmentCopyJobVersions.tenantId, ctx.tenantId),
+        eq(establishmentCopyJobVersions.jobId, jobId),
+        byId
+          ? eq(establishmentCopyJobVersions.id, versionId)
+          : eq(establishmentCopyJobVersions.versionNo, revision as number),
+      ),
+    )
+    .limit(1);
+  if (!version || version.failureReason !== shown) return shown;
+  return (await renderFailureText(tx, ctx, version.failureReason, version.failureDetail)) ?? shown;
 }
 
 /** 任务读取出口：失败原因按读取人权限渲染，结构化冲突信息（组织 / 方案 ID）不外露。 */

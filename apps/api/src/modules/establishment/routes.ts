@@ -414,6 +414,8 @@ async function renderExecuteResponse(
   const { failureDetail, ...body } = (await response.clone().json()) as {
     failureReason?: unknown;
     failureDetail?: unknown;
+    versionId?: unknown;
+    revision?: unknown;
   };
   if (failureDetail === undefined && typeof body.failureReason !== 'string') return response;
   const shown = typeof body.failureReason === 'string' ? body.failureReason : undefined;
@@ -421,7 +423,7 @@ async function renderExecuteResponse(
     shown === undefined
       ? undefined
       : await withTenant(deps.db, ctx.tenantId, (tx) =>
-          renderExecutedFailure(tx, capacityContext(deps, ctx, scope), id, shown),
+          renderExecutedFailure(tx, capacityContext(deps, ctx, scope), id, body, shown),
         );
   const etag = response.headers.get('ETag');
   if (etag) c.header('ETag', etag);
