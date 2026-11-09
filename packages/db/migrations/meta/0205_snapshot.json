@@ -9772,7 +9772,7 @@
         },
         "employment_cycles_trainee_start": {
           "name": "employment_cycles_trainee_start",
-          "value": "\"employment_cycles\".\"trainee_start_date\" IS NULL OR\n        (\"employment_cycles\".\"entry_type\" = 'intern_regularization' AND \"employment_cycles\".\"trainee_start_date\" <= \"employment_cycles\".\"entry_date\")"
+          "value": "\"employment_cycles\".\"trainee_start_date\" IS NULL OR (\"employment_cycles\".\"entry_type\" = 'intern_regularization' AND \"employment_cycles\".\"trainee_start_date\" <= \"employment_cycles\".\"entry_date\")"
         },
         "employment_cycles_employ_type": {
           "name": "employment_cycles_employ_type",
