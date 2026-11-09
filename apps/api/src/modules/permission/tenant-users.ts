@@ -28,7 +28,10 @@ import { userAvatars, type AvatarReference } from '../avatar/references.js';
 export interface TenantUserView {
   readonly avatar?: AvatarReference | null;
   readonly userId: string;
+  /** 账号登录名；账号无登录名（导入的历史离职人员）时为空串，仅作显示，不得回传给账号函数。 */
   readonly email: string;
+  /** 绑定人员档案最新版本的电子邮件（联系邮箱）；无绑定档案（外部用户）或档案未填为 null。 */
+  readonly contactEmail: string | null;
   readonly displayName: string;
   readonly userType: UserType | null;
   readonly businessIdentity: string | null;
@@ -42,7 +45,8 @@ export interface TenantUserView {
 export type UserTypeFilter = UserType | 'all';
 
 interface Account {
-  readonly email: string;
+  /** 登录名；NULL = 账号没有登录名（F-493 S1）。 */
+  readonly email: string | null;
   readonly displayName: string;
   readonly status: 'active' | 'disabled';
   readonly revision: number;
@@ -73,9 +77,13 @@ async function accountsOf(tx: Tx, userIds: readonly string[]): Promise<Map<strin
     userIds.map((id) => sql`${id}::uuid`),
     sql`, `,
   );
-  const rows = scopeRows<{ account_id: string; email: string; display_name: string; status: string; revision: number }>(
-    await tx.execute(sql`SELECT * FROM tenant_member_accounts(ARRAY[${ids}]::uuid[])`),
-  );
+  const rows = scopeRows<{
+    account_id: string;
+    email: string | null;
+    display_name: string;
+    status: string;
+    revision: number;
+  }>(await tx.execute(sql`SELECT * FROM tenant_member_accounts(ARRAY[${ids}]::uuid[])`));
   return new Map(
     rows.map((r) => [
       r.account_id,
@@ -87,6 +95,26 @@ async function accountsOf(tx: Tx, userIds: readonly string[]): Promise<Map<strin
       },
     ]),
   );
+}
+
+/** 账号的登录名（本租户成员）；账号没有登录名或不是本租户成员返回 null（F-493 S1：内部值，区别于显示用的空串）。 */
+export async function accountLogin(tx: Tx, userId: string): Promise<string | null> {
+  return (await accountsOf(tx, [userId])).get(userId)?.email ?? null;
+}
+
+/** 绑定人员档案最新版本的电子邮件（一次批量查询，条数 = 本页成员数，有界）。 */
+async function contactEmails(tx: Tx, employeeIds: readonly string[]): Promise<Map<string, string | null>> {
+  if (employeeIds.length === 0) return new Map();
+  const ids = sql.join(
+    employeeIds.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const rows = scopeRows<{ employee_id: string; email: string | null }>(
+    await tx.execute(sql`SELECT DISTINCT ON (v.employee_id) v.employee_id, v.email
+      FROM personnel_employee_versions v WHERE v.employee_id = ANY(ARRAY[${ids}]::uuid[])
+      ORDER BY v.employee_id, v.revision DESC`),
+  );
+  return new Map(rows.map((r) => [r.employee_id, r.email]));
 }
 
 /** 内部员工 = 已绑定人员档案（或已登记为内部员工）；外部用户 = 登记为外部用户。 */
@@ -126,12 +154,17 @@ async function viewsOf(tx: Tx, rows: readonly MemberRow[]): Promise<TenantUserVi
         rows.map((r) => r.membership.userId),
       )
     : new Map();
+  const contacts = await contactEmails(
+    tx,
+    rows.flatMap((r) => (r.employeeId ? [r.employeeId] : [])),
+  );
   return rows.map(({ membership: m, employeeId }) => {
     const account = accounts.get(m.userId);
     return {
       userId: m.userId,
       avatar: avatars.get(m.userId) ?? null,
       email: account?.email ?? '',
+      contactEmail: (employeeId ? contacts.get(employeeId) : null) ?? null,
       displayName: account?.displayName ?? '',
       // 档案绑定由早期夹具 / 导入直接写入时尚未登记类型，按绑定视为内部员工
       userType: employeeId ? 'internal' : m.userType,

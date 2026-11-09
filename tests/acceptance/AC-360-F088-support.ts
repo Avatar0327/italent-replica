@@ -26,7 +26,8 @@ export function useBoundedDb(): () => DbHandle {
   };
 }
 
-export async function boundedScene(db: Db, label: string, size: number) {
+/** nullCodeFrom：克隆序号大于它的员工工号为 NULL（F-493 S1：键集分页跨过空工号）；默认全部有工号。 */
+export async function boundedScene(db: Db, label: string, size: number, options: { nullCodeFrom?: number } = {}) {
   const observations: Observation[] = [];
   const observed = new Proxy(db, {
     get(target, key, receiver) {
@@ -69,6 +70,7 @@ export async function boundedScene(db: Db, label: string, size: number) {
   const seedPerson = people.find((p) => p.employeeId === seed.id)!;
   // UUID 首段，格式固定 8 位十六进制；不是唯一约束后缀（见 guard-unique-suffix 白名单）
   const prefix = randomUUID().slice(0, 8);
+  const nullFrom = sql.raw(String(options.nullCodeFrom ?? size));
   const id = (n: number) => `${prefix}-0000-4000-8000-${String(n).padStart(12, '0')}`;
   await withTenant(db, w.tenantId, async (tx) => {
     for (const [table, idPrefix] of [
@@ -88,7 +90,8 @@ export async function boundedScene(db: Db, label: string, size: number) {
         'business_id',md5(${w.tenantId}||'business'||g)::uuid,
         'record_id',md5(${w.tenantId}||'business'||g)::uuid,
         'payload_version_id',md5(${w.tenantId}||'payload'||g)::uuid,
-        'staff_id',md5(${w.tenantId}||'staff'||g)::uuid,'code','A'||lpad(g::text,8,'0'))`;
+        'staff_id',md5(${w.tenantId}||'staff'||g)::uuid,
+        'code',CASE WHEN g > ${nullFrom} THEN NULL ELSE 'A'||lpad(g::text,8,'0') END)`;
       await tx.execute(sql`INSERT INTO ${name}
         SELECT (jsonb_populate_record(NULL::${name},to_jsonb(sample)||${patch})).*
         FROM (SELECT * FROM ${name} WHERE tenant_id=${w.tenantId}::uuid

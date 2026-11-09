@@ -55,7 +55,7 @@ export interface ExitViewFilter {
 export interface ExitRow {
   id: string;
   employeeId: string;
-  code: string;
+  code: string | null;
   name: string;
   departmentId: string | null;
   positionId: string | null;
@@ -95,7 +95,7 @@ export type ExitActionCode = 'submit' | 'edit' | 'cancel' | 'handle';
 export interface ExitItem {
   readonly id: string;
   readonly employeeId: string;
-  readonly code: string;
+  readonly code: string | null;
   readonly name: string;
   readonly departmentId: string | null;
   readonly positionId: string | null;

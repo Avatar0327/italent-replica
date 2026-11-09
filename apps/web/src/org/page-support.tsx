@@ -50,6 +50,7 @@ export function useRemote<T>(path: string | null) {
     refresh: () => setGeneration((value) => value + 1),
   };
 }
+export type RemoteState<T> = ReturnType<typeof useRemote<T>>;
 export type PageAccess = ReturnType<ReturnType<typeof usePagePermissions>['access']>;
 
 /** 结果未知或冲突后冻结本次编辑；必须关闭、回查并显式重开，禁止盲重试。 */

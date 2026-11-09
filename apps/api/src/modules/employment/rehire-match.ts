@@ -20,7 +20,7 @@ export type RehireMatchInput = z.infer<typeof rehireMatchInput>;
 export interface RehireCandidate {
   readonly employeeId: string;
   readonly name: string;
-  readonly code: string;
+  readonly code: string | null;
   /** 个人邮箱（人员信息 email）。 */
   readonly email: string | null;
   readonly endKind: 'leave' | 'retirement';
