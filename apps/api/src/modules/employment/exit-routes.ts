@@ -631,21 +631,21 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     return respondAttachment(c, row, bytes);
   });
   router.get('/exits/:id', async (c) => {
-    const { ctx, detail: live, show } = await readExitDetail(c);
+    const { ctx, detail, show } = await readExitDetail(c);
     // F-476 P4：已办审批人读办理时冻结的离职内容，其余读现值；流程事实（状态、动作、生效结果）始终是现值
-    const read = await selectEmploymentRead(deps, ctx, live.id);
-    const frozen = read.frozen ? composeExit(live, read.frozen.content, read.frozen.allowed) : null;
+    const read = await selectEmploymentRead(deps, ctx, detail.id);
+    const frozen = read.frozen ? composeExit(detail, read.frozen.content, read.frozen.allowed) : null;
     if (read.frozen && !frozen) throw new AppError('NOT_FOUND', '任职业务不存在');
-    const detail = (frozen ?? live) as typeof live;
+    const shown = (frozen ?? detail) as typeof detail;
     // 动作随“状态”字段权裁剪（依赖表登记 actions）：无状态查看权的人拿不到，也就无法由动作反推状态
-    const actions = (await exitActions(deps, ctx, [detail], { withHandle: false })).get(detail.id) ?? [];
-    if (detail.activation?.details) {
+    const actions = (await exitActions(deps, ctx, [shown], { withHandle: false })).get(shown.id) ?? [];
+    if (shown.activation?.details) {
       const details = await withTenant(deps.db, ctx.tenantId, (tx) =>
-        projectExitFailureDetails(tx, ctx, detail.activation!.details!, { has: show.employment }),
+        projectExitFailureDetails(tx, ctx, shown.activation!.details!, { has: show.employment }),
       );
-      const body = trimExitDetail({ ...detail, actions, activation: { ...detail.activation, details } }, show);
+      const body = trimExitDetail({ ...shown, actions, activation: { ...shown.activation, details } }, show);
       return c.json({ ...body, contentView: read.contentView });
     }
-    return c.json({ ...trimExitDetail({ ...detail, actions }, show), contentView: read.contentView });
+    return c.json({ ...trimExitDetail({ ...shown, actions }, show), contentView: read.contentView });
   });
 }

@@ -8,12 +8,14 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import {
+  EMP,
   changeAfterHandled,
   entriesOf,
   expectedMarker,
   handledScene,
   markerOf,
   readsBy,
+  type Body,
   type ScenarioKind,
 } from './AC-F476-p4-support.js';
 
@@ -38,5 +40,25 @@ describe.each(KINDS)('AC-F476-08 P4 %s：办理后改单', (kind) => {
     expect(markerOf(kind, initiator)).toBe(expectedMarker(scene, 'after'));
     for (const entry of entriesOf(kind))
       expect(initiator[entry].body.contentView?.mode, `${kind}/${entry}`).toBe('live');
+  });
+});
+
+// 员工在途退休单（F-410）与退休详情是同一份内容的两个入口：已办审批人从在途入口也不能读到现值
+describe('AC-F476-08 P4 retirement：员工在途退休单入口', () => {
+  it('已办审批人读办理时的值（frozen），发起人读现值（live）', async () => {
+    const scene = await handledScene(testDb().db, 'f476-p4-08-in-flight', 'retirement');
+    await changeAfterHandled(scene);
+    const path = `${EMP}/retirements/employees/${scene.subjectId}/in-flight`;
+    const itemOf = async (user: string) => {
+      const response = await scene.w.request(user, 'GET', path);
+      expect(response.status, await response.clone().text()).toBe(200);
+      return ((await response.json()) as { item: Body }).item;
+    };
+    const approver = await itemOf(scene.approver.userId);
+    expect(approver.handoverEmployeeId).toBe(scene.handover.before);
+    expect(approver.contentView?.mode).toBe('frozen');
+    const initiator = await itemOf(scene.w.hr.id);
+    expect(initiator.handoverEmployeeId).toBe(scene.handover.after);
+    expect(initiator.contentView?.mode).toBe('live');
   });
 });

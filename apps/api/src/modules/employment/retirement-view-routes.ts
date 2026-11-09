@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
-import type { TenantEnv } from '../../tenant-context.js';
+import type { TenantContext, TenantEnv } from '../../tenant-context.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { composeExit, selectEmploymentRead } from './approval-content.js';
 import { pageQuery, readContext, readPageContext, uuidParam } from './context.js';
@@ -56,6 +56,18 @@ async function upcomingDaysOf(requested: number | undefined, read: () => Promise
   return typeof configured === 'number' ? configured : FALLBACK_UPCOMING_DAYS;
 }
 
+/**
+ * F-476 P4：退休单内容的读取来源——已办审批人读办理时冻结的内容，其余读现值；流程事实始终是现值。
+ * 详情与“员工在途退休单”是同一份内容的两个入口，必须共用这一处，否则已办审批人能从在途入口读到现值。
+ */
+async function shownRetirement<D extends object>(deps: TenantRouteDeps, ctx: TenantContext, detail: D, id: string) {
+  const read = await selectEmploymentRead(deps, ctx, id);
+  if (!read.frozen) return { shown: detail, contentView: read.contentView };
+  const frozen = composeExit(detail, read.frozen.content, read.frozen.allowed);
+  if (!frozen) throw new AppError('NOT_FOUND', '任职业务不存在');
+  return { shown: frozen as D, contentView: read.contentView };
+}
+
 function registerRetirementInFlight(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // F-410：员工当前在途的退休单（草稿 / 审批中 / 已批准 / 已驳回，与互斥门禁同一集合）；没有则 item 为 null。
   // 入口以此接续草稿，不再只信页面缓存（DEC-727）。员工范围外与不存在同一个 404；单据内容走详情同一裁剪。
@@ -68,7 +80,8 @@ function registerRetirementInFlight(router: Hono<TenantEnv>, deps: TenantRouteDe
     });
     if (!detail) return c.json({ item: null });
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
-    return c.json({ item: trimRetirementDetail(detail, await viewableIn(deps, ctx)) });
+    const { shown, contentView } = await shownRetirement(deps, ctx, detail, detail.id);
+    return c.json({ item: { ...trimRetirementDetail(shown, await viewableIn(deps, ctx)), contentView } });
   });
 }
 
@@ -144,11 +157,7 @@ export function registerRetirementViews(router: Hono<TenantEnv>, deps: TenantRou
     );
     if (!detail) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
-    // F-476 P4：已办审批人读办理时冻结的退休内容，其余读现值；流程事实始终是现值
-    const read = await selectEmploymentRead(deps, ctx, id);
-    const frozen = read.frozen ? composeExit(detail, read.frozen.content, read.frozen.allowed) : null;
-    if (read.frozen && !frozen) throw new AppError('NOT_FOUND', '任职业务不存在');
-    const shown = (frozen ?? detail) as typeof detail;
-    return c.json({ ...trimRetirementDetail(shown, await viewableIn(deps, ctx)), contentView: read.contentView });
+    const { shown, contentView } = await shownRetirement(deps, ctx, detail, id);
+    return c.json({ ...trimRetirementDetail(shown, await viewableIn(deps, ctx)), contentView });
   });
 }
