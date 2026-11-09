@@ -8,9 +8,9 @@ import { revision, uuidParam } from '../job/context.js';
 import { access, preflight, trim } from './access.js';
 import { assertSelfServiceFields, createChange, loadChange, requireSelf } from './change-requests.js';
 import { LIVE_VIEW, openContentRead } from '../approval/frozen-read.js';
-import { AppError } from '../../errors.js';
 import { authorizeInTransaction, getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
-import { loadPersonnelContent, projectPersonnelRequest, type PersonnelContent } from './frozen.js';
+import { showOriginalsOf } from '../approval/disclosure.js';
+import { loadPersonnelContent, personnelContainers, personnelMetadata, type PersonnelContent } from './frozen.js';
 import { personnelApprovalHooks } from './approval-hooks.js';
 import { body, safe } from './http.js';
 import { parse, subsetInput, subsetKind } from './validation.js';
@@ -59,35 +59,35 @@ export function registerChangeRequestRoutes(router: Hono<TenantEnv>, deps: Tenan
       return c.json(result.body, 201);
     }),
   );
-  // F-476 P5：已办人读办理时冻结的申请内容与原值，审批参与人读现值（均按节点表单 ∩ 字段权限披露，不套本人 / 人员范围）；
-  // 本人读现值保持原样。无关人员与不存在同为 404（DEC-834④）。
+  // F-476 P5：只有「本人已办」的审批人读办理时冻结份（按节点表单 ∩ 字段权限披露，不套数据范围，DEC-834④）；
+  // 其余人（本人、待办未办、被抄送、任务被取消、无关人员）一律走基线守卫：本人 + 人员范围，否则 404。
   router.get(`${base}/:id`, (c) =>
     safe(async () => {
       const ctx = await access(c, deps, PERSONNEL_REQUEST_OBJECT, 'view');
       const id = uuidParam(c);
       const read = await withTenant(deps.db, ctx.tenantId, async (tx) => {
         const row = await loadChange(tx, ctx, id);
-        const subset = String(row.subset) as SubsetKind;
-        const objectCode = SUBSETS[subset].objectCode;
+        const objectCode = SUBSETS[String(row.subset) as SubsetKind].objectCode;
         const content = await openContentRead<PersonnelContent>(tx, deps, ctx, 'personnel_change', id, objectCode);
-        if (content?.frozen) return { content: content.frozen.ext, nested: content.fields, view: content.contentView };
-        const bound = authorizeInTransaction(deps.authorize, tx);
-        const self = await requireSelf(tx, ctx, String(row.employeeId)).then(
-          () => true,
-          (error: unknown) => {
-            if (content && error instanceof AppError && error.code === 'NOT_FOUND') return false;
-            throw error;
-          },
-        );
-        const live = await loadPersonnelContent(tx, ctx.tenantId, id);
-        if (!self) return { content: live, nested: content!.fields, view: content!.contentView, approver: true };
-        const nested = await getModuleViewableFieldsInTransaction({ ...deps, authorize: bound }, ctx, objectCode, tx);
-        return { content: live, nested, view: content?.contentView ?? LIVE_VIEW, self: true };
+        if (content?.frozen) {
+          const { ext } = content.frozen;
+          return { content: ext, nested: content.fields, view: content.contentView, originals: content.data.showOriginals };
+        }
+        await requireSelf(tx, ctx, String(row.employeeId));
+        const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+        return {
+          content: await loadPersonnelContent(tx, ctx.tenantId, id),
+          nested: await getModuleViewableFieldsInTransaction(bound, ctx, objectCode, tx),
+          view: content?.contentView ?? LIVE_VIEW,
+          originals: content?.data.showOriginals ?? (await showOriginalsOf(tx, ctx.tenantId)),
+          self: true,
+        };
       });
       if (read.self) await preflight(deps, ctx, String(read.content.request.employeeId));
-      const body = projectPersonnelRequest(read.content, read.nested, !read.self);
-      // 审批节点披露见审批中心（R1-T07）；申请元数据接口不暴露未裁剪的变更内容。
-      return c.json({ ...(await trim(deps, ctx, PERSONNEL_REQUEST_OBJECT, body)), contentView: read.view });
+      // 审批节点披露见审批中心（R1-T07）；申请元数据按申请对象字段权裁，容器按子集字段权在内部裁。
+      const metadata = await trim(deps, ctx, PERSONNEL_REQUEST_OBJECT, personnelMetadata(read.content));
+      const containers = personnelContainers(read.content, read.nested, read.originals);
+      return c.json({ ...metadata, ...containers, contentView: read.view });
     }),
   );
 }

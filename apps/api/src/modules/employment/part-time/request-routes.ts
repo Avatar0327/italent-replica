@@ -45,7 +45,12 @@ import {
   type PartTimeWriteTarget,
 } from './replay-guard.js';
 import { availableRequestActions, REQUEST_ACTION_ACCESS, requestActionTarget } from './request-actions.js';
-import { loadPartTimeRequestDetail, loadRequestReceipt, type PartTimeRequestDto } from './request-read.js';
+import {
+  loadPartTimeRequestDetail,
+  loadRequestReceipt,
+  type PartTimeContent,
+  type PartTimeRequestDto,
+} from './request-read.js';
 import {
   createAddRequest,
   deleteRequest,
@@ -307,20 +312,38 @@ function registerRequestChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
 function registerRequestRead(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // 申请详情（含主职信息 / 员工信息分组，读员工当前主职）：DEC-177 可见（申请部门 ∪ 员工当前主职部门）；范围外与不存在同一个 404；
   // 主职分组只在操作人看得到该主职记录时给出；三组各按所属对象的字段查看权逐层裁剪。
-  // F-476 P5：已办人读办理时冻结的申请内容（不套数据范围，DEC-834④；主职 / 员工分组读员工当前数据，不入办理份，给 null；
-  // 先按办理时披露上限截、再走现行字段权限裁，两道都过才出）；其余人读现值，行为不变，只多带 contentView。
+  // F-476 P5：已办人读办理时冻结的申请内容（不套数据范围，DEC-834④）：申请内容按完整披露集（办理上限 ∩ 办理节点表单 ∩
+  // 当前字段权）逐层裁；主职 / 员工分组是办理时冻结的展示材料，按办理上限与当前字段权裁（R1 P2-3）；其余人读现值。
   router.get('/part-time-requests/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
     const read = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const content = await openContentRead<PartTimeRequestDto>(tx, deps, ctx, 'part_time', id, EMPLOYMENT_OBJECT);
-      if (content?.frozen) return { frozen: content.frozen.ext, ceiling: content.ceiling, view: content.contentView };
+      const content = await openContentRead<PartTimeContent>(tx, deps, ctx, 'part_time', id, EMPLOYMENT_OBJECT);
+      if (content?.frozen) {
+        return {
+          frozen: content.frozen.ext,
+          ceiling: content.ceiling,
+          fields: content.fields,
+          view: content.contentView,
+        };
+      }
       return { detail: await loadPartTimeRequestDetail(tx, ctx, id), view: content?.contentView ?? LIVE_VIEW };
     });
     if (read.frozen) {
-      const capped = capByCeiling(read.frozen, read.ceiling);
-      const trimmed = (await trimEmploymentResponse(deps, ctx, capped)) as object;
-      return c.json({ ...trimmed, availableActions: [], primary: null, employee: null, contentView: read.view });
+      const { primary, employee, ...request } = read.frozen;
+      const trimmed = (await trimEmploymentResponse(
+        deps,
+        ctx,
+        capByDisclosed(request, read.ceiling, read.fields),
+      )) as object;
+      const cappedPrimary = primary && { ...primary, fields: keepIn(primary.fields, read.ceiling) };
+      return c.json({
+        ...trimmed,
+        availableActions: [],
+        primary: cappedPrimary ? await trimEmploymentResponse(deps, ctx, cappedPrimary) : null,
+        employee: await trimModuleResponse(deps, ctx, EMPLOYEE_OBJECT, employee),
+        contentView: read.view,
+      });
     }
     const detail = read.detail;
     if (!detail) throw notFound();
@@ -338,15 +361,34 @@ function registerRequestRead(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 }
 
-/** 办理时披露上限对申请内容逐层截：顶层键、`fields` 内字段、`customFields` 内 `custom:<id>`（与 trimEmploymentResponse 同口径）。 */
-function capByCeiling(dto: PartTimeRequestDto, ceiling: ReadonlySet<string> | null): PartTimeRequestDto {
-  if (!ceiling) return dto;
-  const keep = <T extends object>(source: T, name: (key: string) => string): T =>
-    Object.fromEntries(Object.entries(source).filter(([key]) => ceiling.has(name(key)))) as T;
-  const top = keep(dto, (key) => key);
+/** 申请 DTO 里属于「申请表单业务字段」的顶层键；其余顶层键（id、状态、版本号等）只受办理上限约束。 */
+const FORM_TOP_KEYS = new Set(['serviceType', 'effectiveDate', 'endDate', 'originalEndDate', 'requestRemark']);
+/** DTO 键 → 字段权限 / 节点表单编码（服务类型在权限里叫 partTimeType，开始日期的 DTO 键已是 effectiveDate）。 */
+const formCode = (key: string) => (key === 'serviceType' ? 'partTimeType' : key);
+
+const keepIn = <T extends object>(
+  source: T,
+  allowed: ReadonlySet<string> | null | undefined,
+  name = (k: string) => k,
+): T => (allowed ? Object.fromEntries(Object.entries(source).filter(([key]) => allowed.has(name(key)))) : source) as T;
+
+/**
+ * 办理份申请内容按披露集逐层截（F-476 P5 R1 P1-1）：顶层表单键、`fields`、`customFields` 用完整披露集
+ * （办理上限 ∩ 节点表单 ∩ 当前字段权），非表单顶层键只按办理上限；披露集 undefined = 不受字段权限约束。
+ */
+function capByDisclosed(
+  dto: PartTimeRequestDto,
+  ceiling: ReadonlySet<string> | null,
+  disclosed: ReadonlySet<string> | undefined,
+): PartTimeRequestDto {
+  const top = Object.fromEntries(
+    Object.entries(dto).filter(([key]) =>
+      FORM_TOP_KEYS.has(key) ? !disclosed || disclosed.has(formCode(key)) : !ceiling || ceiling.has(key),
+    ),
+  );
   return {
     ...top,
-    fields: keep(dto.fields, (key) => key),
-    customFields: keep(dto.customFields, (id) => `custom:${id}`),
-  };
+    fields: keepIn(dto.fields, disclosed),
+    customFields: keepIn(dto.customFields, disclosed, (id) => `custom:${id}`),
+  } as PartTimeRequestDto;
 }

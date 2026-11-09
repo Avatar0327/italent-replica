@@ -39,14 +39,15 @@ describe('AC-F476-08 员工子集（逐 SUBSETS 注册项）：已办经申请�
     expect(handled.body.currentValues).toEqual({ [field]: val(subset, '办理时') });
     expect(handled.body.originals).toEqual({ [field]: val(subset, '原值') });
     expect(handled.body.contentView?.mode).toBe('frozen');
-    for (const viewer of [n1.userId, s.subject.userId]) {
-      const live = await get(w, viewer, s.requestPath(request.id));
-      expect([live.status, live.body.currentValues, live.body.contentView?.mode]).toEqual([
-        200,
-        { [field]: val(subset, '改后') },
-        'live',
-      ]);
-    }
+    const live = await get(w, s.subject.userId, s.requestPath(request.id));
+    expect([live.status, live.body.currentValues, live.body.contentView?.mode]).toEqual([
+      200,
+      { [field]: val(subset, '改后') },
+      'live',
+    ]);
+    // 重提后待办的审批人不是本人：申请详情走基线 requireSelf / preflight（R1 P1-2），不因参与审批而放宽；他在审批中心读
+    const pending = await get(w, n1.userId, s.requestPath(request.id));
+    expect(pending.status).toBe(404);
   });
 });
 

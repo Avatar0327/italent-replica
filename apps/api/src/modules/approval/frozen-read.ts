@@ -12,7 +12,7 @@ import { APPROVAL_INSTANCE_OBJECT, buttonResource } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
-import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
+import { authorizeInTransaction, getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { memberInstanceScope } from './access.js';
 import type { BusinessSnapshot, BusinessType } from './adapters.js';
 import { disclosedFields, readDetail, type DetailData } from './disclosure.js';
@@ -43,10 +43,12 @@ export async function openApprovalDetail(
   instance: InstanceRow,
   live = false,
 ): Promise<DetailData | null> {
+  // 授权器在自己的租户事务里判断：这里已占着 withTenant 的连接，必须绑到当前事务，否则管理员按钮判断会重入根事务而卡死
+  const authorizer = authorizeInTransaction(bound.authorize, tx);
   const adminScope = async (button: 'adminTransfer' | 'adminIntervene') => {
     const resource = buttonResource(APPROVAL_INSTANCE_OBJECT, button, 'detail');
-    if (!(await bound.authorize({ ...ctx, action: 'object.button', resource }))) return null;
-    return memberInstanceScope(bound as TenantRouteDeps, ctx, tx);
+    if (!(await authorizer({ ...ctx, action: 'object.button', resource }))) return null;
+    return memberInstanceScope({ ...bound, authorize: authorizer } as TenantRouteDeps, ctx, tx);
   };
   const viewer = {
     userId: ctx.userId,
@@ -96,7 +98,8 @@ export async function openContentRead<Ext>(
   if (!instance) return null;
   const data = await openApprovalDetail(tx, deps, ctx, instance);
   if (!data) return null;
-  const viewable = await getModuleViewableFieldsInTransaction(deps as TenantRouteDeps, ctx, objectCode, tx);
+  const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) } as TenantRouteDeps;
+  const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, objectCode, tx);
   const fields = disclosedFields(data, ctx.userId, viewable);
   const contentView = contentViewFor(instance, data);
   if (data.content.mode === 'live') return { instance, data, fields, ceiling: null, frozen: null, contentView };

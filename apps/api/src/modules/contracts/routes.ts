@@ -29,7 +29,7 @@ import {
   type ContractRequest,
 } from './service.js';
 import { LIVE_VIEW, openContentRead } from '../approval/frozen-read.js';
-import { projectFrozenRequest } from './frozen.js';
+import { projectRequestView, submittedView } from './frozen.js';
 import { listContracts } from './queries.js';
 import { assertSortViewable, parseListQuery } from './list-query.js';
 import { contractDetail, employeeContracts } from './detail.js';
@@ -552,18 +552,21 @@ function registerFailures(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   module.get('/requests/:id', async (c) => {
     const ctx = await routeContext(c, deps);
     const id = uuidParam(c);
-    const read = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const body = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const content = await openContentRead<ContractRequest>(tx, deps, ctx, 'contract', id, CONTRACT_OBJECT);
-      if (content?.frozen) {
-        const viewable = await getModuleViewableFieldsInTransaction(deps, ctx, CONTRACT_OBJECT, tx);
-        const body = projectFrozenRequest(content.frozen.ext, viewable, content.fields);
-        return { value: body, contentView: content.contentView, projected: true };
-      }
-      const request = await loadRequest(tx, ctx.tenantId, id);
+      const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+      const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, CONTRACT_OBJECT, tx);
+      if (content?.frozen)
+        return { ...projectRequestView(content.frozen.ext, viewable, content.fields), contentView: content.contentView };
+      const { submittedFields, ...request } = await loadRequest(tx, ctx.tenantId, id);
       await checkScope(tx, ctx, request.employeeId, request.createdBy);
-      return { value: request, contentView: content?.contentView ?? LIVE_VIEW, projected: false };
+      // 申请元数据沿用现读 trim；提交载荷容器不在字段目录里，按同一投影契约在容器内部裁
+      return {
+        ...((await trim(deps, ctx, CONTRACT_OBJECT, request)) as object),
+        ...(submittedFields ? { submittedFields: submittedView(submittedFields, viewable) } : {}),
+        contentView: content?.contentView ?? LIVE_VIEW,
+      };
     });
-    const body = read.projected ? read.value : await trim(deps, ctx, CONTRACT_OBJECT, read.value);
-    return c.json({ ...(body as object), contentView: read.contentView });
+    return c.json(body);
   });
 }

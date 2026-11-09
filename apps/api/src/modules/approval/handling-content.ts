@@ -11,7 +11,7 @@
 import { createHash } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { loadContractContent } from '../contracts/frozen.js';
-import { loadRequestContent } from '../employment/part-time/request-read.js';
+import { loadPartTimeContent } from '../employment/part-time/request-read.js';
 import { loadPersonnelContent } from '../personnel/frozen.js';
 import { loadOrgContent } from '../org-adjustment/content.js';
 import type { BusinessSnapshot, BusinessType } from './adapters.js';
@@ -29,7 +29,8 @@ export interface HandlingContent {
   readonly ext: unknown;
 }
 
-type ExtLoader = (tx: Tx, tenantId: string, businessId: string) => Promise<unknown>;
+/** 第 4 个参数是办理上下文（办理人、办理时刻、租户时区）：个别业务要把「办理当时」的关联材料（如兼职的主职）一并冻结。 */
+type ExtLoader = (tx: Tx, tenantId: string, businessId: string, ctx: ApprovalContext) => Promise<unknown>;
 type ContentProvider =
   | { readonly kind: 'snapshot-only' }
   | { readonly kind: 'extended'; readonly ext: ExtLoader }
@@ -47,7 +48,7 @@ export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> 
   personnel_change: { kind: 'extended', ext: loadPersonnelContent },
   contract: { kind: 'extended', ext: loadContractContent },
   idp: SNAPSHOT_ONLY,
-  part_time: { kind: 'extended', ext: loadRequestContent },
+  part_time: { kind: 'extended', ext: loadPartTimeContent },
   offer: SNAPSHOT_ONLY,
   offer_batch: SNAPSHOT_ONLY,
   probation_assessment: SNAPSHOT_ONLY,
@@ -106,7 +107,7 @@ export async function prepareHandlingContent(
       businessType: instance.businessType,
     });
   }
-  const ext = provider.kind === 'extended' ? await provider.ext(tx, ctx.tenantId, instance.businessId) : null;
+  const ext = provider.kind === 'extended' ? await provider.ext(tx, ctx.tenantId, instance.businessId, ctx) : null;
   const json = JSON.stringify({ snapshot, ext } satisfies HandlingContent);
   const bytes = Buffer.byteLength(json, 'utf8');
   if (bytes > MAX_PAYLOAD_BYTES) {

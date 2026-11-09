@@ -15,10 +15,11 @@ export const loadContractContent = (tx: Tx, tenantId: string, id: string): Promi
 const BUSINESS_KEYS = new Set<string>([...CONTRACT_FIELDS, 'customFields', 'submittedFields']);
 
 /**
- * `viewable`：当前合同对象字段权限（与现读 trim 同口径，决定非业务键与容器键是否保留）；`disclosed`：三重交集后的业务字段。
- * 业务字段只看披露集；非业务键（id、状态、版本号等）沿用现读 trim：当前权限里有才给。
+ * 申请详情响应的投影契约（F-476 P5 R1 P2-2）。`viewable`：当前合同对象字段权限，决定非业务键（id、状态、版本号等）；
+ * `disclosed`：业务字段披露集（已办 = 办理上限 ∩ 节点表单 ∩ 当前字段权，现读 = 当前字段权）。
+ * 容器键 `submittedFields` / `customFields` 不在字段目录里，不按 viewable 整个放行或整个丢弃：永远出现，内部按披露集逐键裁。
  */
-export function projectFrozenRequest(
+export function projectRequestView(
   request: ContractRequest,
   viewable: ReadonlySet<string> | undefined,
   disclosed: ReadonlySet<string> | undefined,
@@ -28,19 +29,7 @@ export function projectFrozenRequest(
     Object.entries(request).flatMap(([key, value]): [string, unknown][] => {
       if (!BUSINESS_KEYS.has(key)) return canSee(key) ? [[key, value]] : [];
       if (key === 'customFields') return [[key, customOf(value, disclosed)]];
-      if (key === 'submittedFields') {
-        if (!canSee(key) || !value) return [];
-        const { customFields, ...rest } = value as Record<string, unknown>;
-        return [
-          [
-            key,
-            {
-              ...pickDisclosed(rest, disclosed),
-              ...(customFields ? { customFields: customOf(customFields, disclosed) } : {}),
-            },
-          ],
-        ];
-      }
+      if (key === 'submittedFields') return value ? [[key, submittedView(value, disclosed)]] : [];
       return disclosed === undefined || disclosed.has(key) ? [[key, value]] : [];
     }),
   );
@@ -51,4 +40,13 @@ function customOf(value: unknown, disclosed: ReadonlySet<string> | undefined) {
   return Object.fromEntries(
     disclosed === undefined ? entries : entries.filter(([id]) => disclosed.has(`custom:${id}`)),
   );
+}
+
+/** 提交载荷容器：业务字段按披露集逐键裁，自定义字段按 custom:<id> 裁。 */
+export function submittedView(value: unknown, disclosed: ReadonlySet<string> | undefined) {
+  const { customFields, ...rest } = value as Record<string, unknown>;
+  return {
+    ...pickDisclosed(rest, disclosed),
+    ...(customFields ? { customFields: customOf(customFields, disclosed) } : {}),
+  };
 }

@@ -63,19 +63,25 @@ export async function loadPersonnelContent(tx: Tx, tenantId: string, id: string)
 }
 
 /**
- * 申请详情响应的内容部分（顶层键的字段权裁剪由路由的 trim 做，沿用现行口径）。`nested` 是子集对象上的字段披露集，
- * 用来裁容器键里的字段名：currentValues / originals 一律裁；`values`（申请行上最初提交的载荷）只在已办 / 审批人路径裁，
- * 本人读现值保持原样。
+ * 申请详情响应的容器投影契约（F-476 P5 R1 P2-2）：`values`（申请行上最初提交的载荷）、`currentValues`（办理 / 现时载荷）、
+ * `originals`（原值）三个容器键不在申请对象的字段目录里，不能按申请对象的顶层字段权裁掉整个容器；
+ * 改为在容器内部按子集字段披露集逐键裁（`nested`：已办 = 上限 ∩ 节点表单 ∩ 当前字段权，本人读现值 = 子集对象当前字段权）。
+ * `originals` 另受「审批原值显示」开关控制，关闭时整个键不出现。申请自身的元数据（状态、修订号等）由路由按申请对象字段权裁。
  */
-export function projectPersonnelRequest(
+export function personnelContainers(
   content: PersonnelContent,
   nested: ReadonlySet<string> | undefined,
-  filterValues: boolean,
+  showOriginals: boolean,
 ): Row {
   return {
-    ...content.request,
-    ...(filterValues ? { values: pickDisclosed(content.request.values as Row, nested) } : {}),
+    values: pickDisclosed(content.request.values as Row, nested),
     currentValues: pickDisclosed(content.currentValues, nested),
-    originals: content.originals && pickDisclosed(content.originals, nested),
+    ...(showOriginals ? { originals: content.originals && pickDisclosed(content.originals, nested) } : {}),
   };
+}
+
+/** 申请元数据：去掉容器键（容器走 personnelContainers），其余交路由按申请对象字段权裁。 */
+export function personnelMetadata(content: PersonnelContent): Row {
+  const { values: _values, ...metadata } = content.request;
+  return metadata;
 }
