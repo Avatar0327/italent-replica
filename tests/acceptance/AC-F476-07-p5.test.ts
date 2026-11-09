@@ -23,7 +23,7 @@ describe('AC-F476-07 合同：撤字段权 / 新增权限不超上限', () => {
   async function handled(label: string, hideAtHandling: readonly string[] = []) {
     const s = await contractScene(testDb().db, label);
     const { w, n1, n2 } = s;
-    const r = rights(w, { [CONTRACT_OBJECT]: ['submittedFields'] });
+    const r = rights(w);
     const target = await s.direct({ regularSalary: BEFORE, probationSalary: PROBATION });
     const request = await s.apply('change', { regularSalary: SALARY, probationSalary: PROBATION }, target);
     const instance = await latestInstance(w, 'contract', request.id);
@@ -73,12 +73,11 @@ describe('AC-F476-07 员工子集：撤字段权 / 新增权限不超上限', ()
   const subset: SubsetKind = 'education';
   const [field, kept] = textFieldsOf(subset) as [string, string];
   const objectCode = SUBSETS[subset].objectCode;
-  const extras = { 'TenantBase.PersonalInformationChange': ['values', 'currentValues', 'originals'] };
 
   async function handled(label: string, hideAtHandling = false) {
     const s = await personnelScene(testDb().db, label);
     const { w, n1, n2 } = s;
-    const r = rights(w, extras);
+    const r = rights(w);
     const target = await s.record(subset, { [field]: 'ZZ_原值', [kept]: 'ZZ_保持' });
     const request = await s.apply(subset, { [field]: 'ZZ_办理时', [kept]: 'ZZ_保持' }, target);
     const instance = await latestInstance(w, 'personnel_change', request.id);

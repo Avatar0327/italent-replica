@@ -5,7 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
-import { PRESET_PROCESSES, SUBSETS, type SubsetKind } from '@italent/domain';
+import { APPROVAL_INSTANCE_OBJECT, PRESET_PROCESSES, SUBSETS, type SubsetKind } from '@italent/domain';
 import { expect } from 'vitest';
 import { approvalWorld, type ApprovalWorld, type InstanceView, type Person } from './AC-APV-support.js';
 import type { Authorizer } from '../../apps/api/src/authorization.js';
@@ -216,6 +216,7 @@ export async function personnelScene(db: Parameters<typeof approvalWorld>[0], la
   const [n1, n2] = [await w.person('ZZ_审批一', dept), await w.person('ZZ_审批二', dept)];
   const subject = await w.person('ZZ_子集员工', dept);
   const stranger = await w.person('ZZ_无关同事', dept);
+  const cc = await w.person('ZZ_抄送同事', dept);
   const open = Object.fromEntries((Object.keys(SUBSETS) as SubsetKind[]).map((k) => [k, textFieldsOf(k)]));
   const setting = await w.request(w.hr.id, 'PUT', '/api/tenant/settings/personnel.self_service_fields', {
     ifMatch: 0,
@@ -226,6 +227,7 @@ export async function personnelScene(db: Parameters<typeof approvalWorld>[0], la
     key,
     approver: { type: 'specified' as const, value: person.userId },
     formFields: Object.values(open).flat(),
+    actions: { copySend: true },
     exits: ['approve', 'disagree'] as ('approve' | 'disagree')[],
   });
   await w.publishedProcess({
@@ -258,25 +260,21 @@ export async function personnelScene(db: Parameters<typeof approvalWorld>[0], la
     return (await res.json()) as { id: string };
   }
   const requestPath = (id: string) => `${PERSONNEL}/change-requests/${id}`;
-  return { w, dept, n1, n2, subject, stranger, record, apply, requestPath };
+  return { w, dept, n1, n2, subject, stranger, cc, record, apply, requestPath };
 }
 
 /**
  * 可撤销的字段权（AC-F476-07）：与审批世界同租户、另起一个带权限提供方的应用。
  * 办理动作与读取都经它，办理时的披露上限才反映「当时」可见的字段；之后 hide/show 立即影响读取时的当前权限。
- * extras：详情响应里的容器键（如 submittedFields / values）不在对象目录里，登记后才不被顶层裁掉；
- * 容器内部各字段仍按业务字段权逐个判，不靠容器键放行。
+ * 可见字段取各对象的真实字段目录（不注入目录外的键）：容器键（submittedFields / values 等）能否出现在响应里，
+ * 由生产代码的投影契约决定，夹具不替它放行（F-476 P5 第 1 轮 P2-2）。
  */
-export function rights(
-  w: ApprovalWorld,
-  extras: Readonly<Record<string, readonly string[]>> = {},
-  deny: (request: Parameters<Authorizer>[0]) => boolean = () => false,
-) {
+export function rights(w: ApprovalWorld, deny: (request: Parameters<Authorizer>[0]) => boolean = () => false) {
   const hidden = new Map<string, Set<string>>();
   const authorize: Authorizer = (request) => !deny(request);
   const viewable = async (_tenantId: string, _userId: string, objectCode: string) => {
     const base = objectCatalog.get(objectCode)?.fields.map((f) => f.code) ?? [];
-    return new Set([...base, ...(extras[objectCode] ?? [])].filter((f) => !hidden.get(objectCode)?.has(f)));
+    return new Set(base.filter((f) => !hidden.get(objectCode)?.has(f)));
   };
   registerScopeProvider(authorize, {
     scope: async () => ({ ...EMPTY_SCOPE, all: true, hasDataPermission: true }),
@@ -320,3 +318,41 @@ export function rights(
     },
   };
 }
+
+/**
+ * 与生产授权器同事务形状的放行授权器（P2-1）：直接调用时自己开一个租户事务（PGlite 单连接下，若调用方已占着
+ * withTenant 的连接就会永久等待）；经 authorizeInTransaction 绑到调用方事务后只在该事务内判定。
+ * 不是「同步放行」的替身：入口漏绑事务时它会和生产授权器一样卡死，用来守住三个详情入口。
+ */
+export function transactionalRights(w: ApprovalWorld) {
+  const authorize: Authorizer = async (request) =>
+    withTenant(w.db, request.tenantId, async (tx) => {
+      await tx.execute(sql`SELECT 1`);
+      return true;
+    });
+  registerScopeProvider(authorize, {
+    scope: async (_query, tx) => {
+      if (tx) await tx.execute(sql`SELECT 1`);
+      return { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
+    },
+    authorize: async (_request, tx) => {
+      await tx.execute(sql`SELECT 1`);
+      return true;
+    },
+    fields: async (_tenantId, _userId, objectCode, tx) => {
+      if (tx) await tx.execute(sql`SELECT 1`);
+      return new Set(objectCatalog.get(objectCode)?.fields.map((f) => f.code) ?? []);
+    },
+  });
+  const api = tenantApi(w.db, { authorize, clock: w.clock });
+  return {
+    get: async (user: string, path: string): Promise<Reply> => {
+      const res = await api.request('GET', path, { user, tenant: w.tenant.id });
+      return { status: res.status, body: (await res.json()) as Reply['body'] };
+    },
+  };
+}
+
+/** 去掉流程管理员按钮的权限：让读者只剩「普通参与人」身份（审批中心 adminTransfer / adminIntervene 都不放行）。 */
+export const noAdmin = (r: { action: string; resource?: string }) =>
+  r.action === 'object.button' && (r.resource ?? '').startsWith(APPROVAL_INSTANCE_OBJECT);

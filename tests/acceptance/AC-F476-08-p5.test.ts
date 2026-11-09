@@ -60,7 +60,7 @@ describe('AC-F476-08 员工子集：无关人员不因办理视图而多读', ()
     await act(w, (await latestInstance(w, 'personnel_change', request.id)).id, n1, 'approve');
     const noAdmin = (r: { action: string; resource?: string }) =>
       r.action === 'object.button' && (r.resource ?? '').startsWith(APPROVAL_INSTANCE_OBJECT);
-    const r = rights(w, {}, noAdmin);
+    const r = rights(w, noAdmin);
     expect((await r.get(s.stranger.userId, s.requestPath(request.id))).status).toBe(404);
     expect((await r.get(n1.userId, s.requestPath(request.id))).status).toBe(200);
   });
