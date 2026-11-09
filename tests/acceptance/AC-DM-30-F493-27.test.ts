@@ -43,10 +43,10 @@ describe('AC-DM-30-F493-27 ① 员工工号可空', () => {
         VALUES (${randomUUID()}::uuid, ${w.tenant.id}, '   ', '空白工号')`),
     ).then(
       () => null,
-      (error: { cause?: { message?: string; constraint_name?: string } }) => error.cause ?? {},
+      (error: { cause?: { message?: string; constraint?: string; constraint_name?: string } }) => error.cause ?? {},
     );
-    // 约束名在驱动错误的 cause 上；外层只有“Failed query”
-    expect(rejected?.constraint_name).toBe('employment_employees_code_nonempty');
+    // 约束名在驱动错误的 cause 上；外层只有“Failed query”。postgres.js 用 constraint_name，PGlite 用 constraint
+    expect(rejected?.constraint_name ?? rejected?.constraint).toBe('employment_employees_code_nonempty');
     const response = await w.request('POST', '/employees', { ifMatch: 0, body: { name: '空白', code: '   ' } });
     expect(response.status).toBe(400);
   });
