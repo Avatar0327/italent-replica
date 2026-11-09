@@ -247,6 +247,40 @@ describe('AC-APV-F478-25 系统终止后发起人从“我的申请”打开：�
   });
 });
 
+describe('AC-APV-F478-25 同名节点系统终止后从“我的申请”打开：按 nodeKey 置灰（第 2 轮返工，真实后端）', () => {
+  it('n1、n2 同名“合成审批”：n1 同意后在 n2 被系统撤销；n1 绿，n2 与“已终止”灰', async () => {
+    const s = await routeScene(testDb().db, 'f478-25-same-name');
+    const [n1, n2] = s.nodes({ n1: { name: '合成审批' }, n2: { name: '合成审批' } });
+    await publishRouted(s.w, [n1!, n2!], {});
+    const view = await s.start(null);
+    const atN2 = await approveCurrent(s, view);
+    expect(atN2.currentNodeKey).toBe('n2');
+    const ctx = {
+      tenantId: s.w.tenant.id,
+      userId: s.w.hr.id,
+      timezone: 'Asia/Shanghai',
+      now: new Date('2026-10-01T01:00:00.000Z'),
+      commandId: randomUUID(),
+      expectedRevision: 0,
+    };
+    await withTenant(s.w.db, s.w.tenant.id, (tx) => revokeBySystem(tx, ctx, view.id, '离职业务终止在途审批流程'));
+    const calls = forward(s, s.w.hr.id);
+    await openDetail(s, view.id, atN2.tasks[0]!.id, { applications: true });
+    const read = calls.find((call) => call.method === 'GET' && call.path === `${APV}/instances/${view.id}`)!;
+    const tasks = read.result.tasks as { nodeKey: string; status: string }[];
+    expect(tasks.map((task) => [task.nodeKey, task.status])).toEqual([
+      ['n1', 'approved'],
+      ['n2', 'cancelled'],
+    ]);
+    expect(stepStatuses()).toEqual([
+      ['开始', 'finish'],
+      ['合成审批', 'finish'],
+      ['合成审批', 'wait'],
+      ['已终止', 'wait'],
+    ]);
+  });
+});
+
 describe('AC-APV-F478-25 他人先办理造成 409：提示重读，不自动重提（真实后端）', () => {
   it('会签任一人同意：n4 打开页面后 n3 先同意；n4 提交得 409，提示重读，等待与重读后都只有一次 POST', async () => {
     const { s, view } = await scene('f478-25-race');

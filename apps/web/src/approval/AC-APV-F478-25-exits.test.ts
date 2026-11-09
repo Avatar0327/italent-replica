@@ -299,9 +299,10 @@ describe('AC-APV-F478-25 我的申请里已终止的流程：带 path 时终止�
         { nodeKey: 'n2', name: '合成节点乙', state: 'passed' },
         { nodeKey: 'n3', name: '合成节点丙', state: 'not_on_path' },
       ],
+      // 任务形状照后端 detailView：TaskRow 原样展开，带 nodeKey
       tasks: [
-        { id: 'task-0', nodeName: '合成节点甲', status: 'approved' },
-        { id: TASK, nodeName: '合成节点乙', status: 'cancelled' },
+        { id: 'task-0', nodeKey: 'n1', nodeName: '合成节点甲', status: 'approved' },
+        { id: TASK, nodeKey: 'n2', nodeName: '合成节点乙', status: 'cancelled' },
       ],
       ...overrides,
     });
@@ -320,5 +321,51 @@ describe('AC-APV-F478-25 我的申请里已终止的流程：带 path 时终止�
   it('不是“我的申请”入口（未传 applications）：保持原呈现，被取消的任务节点不置灰', async () => {
     await render(terminated());
     expect(steps().find((step) => step.title === '合成节点乙')?.status).toBe('finish');
+  });
+
+  it('第 2 轮返工：两节点同名、nodeKey 不同，n1 同意后在 n2 被终止：按 nodeKey 关联，n1 绿，只有 n2 与结尾灰', async () => {
+    const same = '合成审批';
+    await render(
+      terminated({
+        path: [
+          { nodeKey: 'n1', name: same, state: 'passed', exit: 'approve' },
+          { nodeKey: 'n2', name: same, state: 'passed' },
+        ],
+        tasks: [
+          { id: 'task-0', nodeKey: 'n1', nodeName: same, status: 'approved' },
+          { id: TASK, nodeKey: 'n2', nodeName: same, status: 'cancelled' },
+        ],
+      }),
+      { applications: true },
+    );
+    expect(steps().map(({ title, status }) => [title, status])).toEqual([
+      ['开始', 'finish'],
+      [same, 'finish'],
+      [same, 'wait'],
+      ['已终止', 'wait'],
+    ]);
+  });
+
+  it('第 2 轮返工：同一节点先取消、后重入并同意（最近任务为准），终止后该节点仍为绿', async () => {
+    await render(
+      terminated({
+        path: [
+          { nodeKey: 'n1', name: '合成节点甲', state: 'passed', exit: 'approve' },
+          { nodeKey: 'n2', name: '合成节点乙', state: 'passed' },
+        ],
+        tasks: [
+          { id: 'task-0', nodeKey: 'n1', nodeName: '合成节点甲', status: 'cancelled' },
+          { id: 'task-1', nodeKey: 'n1', nodeName: '合成节点甲', status: 'approved' },
+          { id: TASK, nodeKey: 'n2', nodeName: '合成节点乙', status: 'cancelled' },
+        ],
+      }),
+      { applications: true },
+    );
+    expect(steps().map(({ title, status }) => [title, status])).toEqual([
+      ['开始', 'finish'],
+      ['合成节点甲', 'finish'],
+      ['合成节点乙', 'wait'],
+      ['已终止', 'wait'],
+    ]);
   });
 });
