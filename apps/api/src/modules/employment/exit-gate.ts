@@ -88,6 +88,8 @@ export interface ExitGateTarget {
   /** 创建时写入的任职载荷（字段权限按键校验）。 */
   readonly payload?: object;
   readonly exit?: ExitOptions;
+  /** 退休同时返聘（创建时已知）：账号不关闭、管理角色保留，DT-R4 强校验不适用（RT-R3，DEC-863①）。 */
+  readonly reEmployed?: boolean;
   /** 变动类型“实习结束”的直接离职是免审批直接生效（DEC-593），门禁据此放行转正在途（regularizationBlocker）。 */
   readonly changeType?: ChangeType;
   readonly business?: LockedEmploymentBusiness;
@@ -680,9 +682,11 @@ export async function assertLastWorkDateNotBeforeEntry(
 /**
  * DT-R4 强校验：直接离职 / 直接退休时，人员还有职责没指定接收人就拒绝（409，首个写之前）。
  * 申请办理不查（审批节点另有转交计划）；直接转交也不查。表单随带的转交计划已覆盖的职责不算“未指定”。
+ * 退休同时返聘不查：本人仍在职，管理角色保留（RT-R3，DEC-863①）。
  */
 async function assertDutiesAssigned(tx: Tx, ctx: EmploymentContext, target: ExitGateTarget) {
   if (target.mode !== 'direct') return;
+  if (target.reEmployed && kindOfTarget(target) === 'retirement') return;
   const plan = normalizeLinkage({ dutyTransfer: target.exit?.dutyTransfer }).dutyTransfer;
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const left = await uncoveredDuties(tx, ctx.tenantId, target.employeeId, today, plan);

@@ -171,6 +171,7 @@ export async function createExitApplication(
     lastWorkDate: normalized.lastWorkDate!,
     exit: gateExit(input.bindAttachments, exit, requestedRefs),
     payload: { fields: normalized.fields, customFields: normalized.customFields },
+    ...(input.retirement?.rehire !== undefined ? { reEmployed: true } : {}),
     ...typed,
   });
   const business = await createEmploymentBusiness(tx, ctx, employeeId, normalized, {

@@ -55,7 +55,10 @@ describe('RT-R3 / DT-R5 退休同时返聘落地不清空', () => {
     expect(await x.activate(draft.id, EFFECTIVE)).toMatchObject({ outcome: 'effective' });
 
     expect(await x.headOf(org.id)).toBe(x.employee.id);
-    expect((await x.orgVersions(org.id)).map((row) => row.head)).not.toContain(null);
+    // 组织建立时的首个版本本来就没有负责人；清空会在生效日起另写一个空负责人版本
+    const versions = await x.orgVersions(org.id);
+    expect(versions.filter((row) => row.start >= EFFECTIVE).map((row) => row.head)).not.toContain(null);
+    expect(versions.at(-1)?.head).toBe(x.employee.id);
     expect(await x.managerOf(subordinate.id, EFFECTIVE)).toBe(x.employee.id);
     expect(await x.exitRecords()).toEqual([]);
     x.setNow(`${EFFECTIVE}T02:00:00Z`);

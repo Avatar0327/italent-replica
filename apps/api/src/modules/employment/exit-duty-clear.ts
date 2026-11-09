@@ -5,6 +5,7 @@
  * （来源 2 离职 / 4 退休），菜单“检查离职退休人员”据此继续列出这个人，供 HR 事后补办。
  * 计划里的职责不在这里处理：成功的已转给接收人，失败的维持“失败可重试”（B-16），不被清空。
  * 重复调用幂等：落地只发生一次，清空后当日不再持有职责，第二次取不到。
+ * 退休同时返聘不清空（RT-R3，DEC-863①）：计划里的转交照做，计划之外的职责保留在本人名下。
  */
 import { dutyTransferRecords, type Tx } from '@italent/db';
 import { DUTY_TRANSFER_SOURCE, DUTY_TRANSFER_STATUS } from '@italent/domain';
@@ -48,8 +49,11 @@ export async function settleExitDuties(
   exit: ExitTimingRow,
   payloadKind: string,
   effectiveDate: string,
+  rehired = false,
 ) {
   await runExitDutyTransfer(tx, ctx, exit, 'effective', effectiveDate);
+  // 退休同时返聘：账号不关闭，未转交的管理角色保留（RT-R3，DEC-863①），不清空也不写清空记录
+  if (rehired && payloadKind === 'retirement') return;
   await clearUncoveredDuties(tx, ctx, exit, payloadKind, effectiveDate);
 }
 

@@ -11,7 +11,7 @@ import {
   DUTY_TRANSFER_STATUS,
   DUTY_TYPE,
 } from '@italent/domain';
-import { and, eq, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNull, type SQL } from 'drizzle-orm';
 import { personnelHooks } from '../employment/personnel-hooks.js';
 import { rowsOf } from '../employment/read-model.js';
 
@@ -98,6 +98,40 @@ export async function pendingRecords(tx: Tx, tenantId: string, employeeId: strin
   return new Map(rows.map((row) => [dutyKey(row as DutyTarget & DutyRecordRow), row]));
 }
 
+/** 被离职 / 退休落地清空、待补转交的职责记录（DT-R5：来源 2 / 4、接收人为空、未完成）；检查离职退休人员与菜单补转交共用。 */
+export async function clearedRecords(tx: Tx, tenantId: string, employeeId: string, lock = false) {
+  const query = tx
+    .select()
+    .from(dutyTransferRecords)
+    .where(
+      and(
+        eq(dutyTransferRecords.tenantId, tenantId),
+        eq(dutyTransferRecords.employeeId, employeeId),
+        inArray(dutyTransferRecords.source, [DUTY_TRANSFER_SOURCE.leave, DUTY_TRANSFER_SOURCE.retirement]),
+        eq(dutyTransferRecords.status, DUTY_TRANSFER_STATUS.unfinished),
+        isNull(dutyTransferRecords.receiverId),
+      ),
+    )
+    .orderBy(dutyTransferRecords.dutyType, dutyTransferRecords.dutyDetails, dutyTransferRecords.id);
+  const rows = lock ? await query.for('update') : await query;
+  return new Map(rows.map((row) => [dutyKey(row as DutyTarget & DutyRecordRow), row]));
+}
+
+/** 清空记录还原成职责（菜单列出 / 补转交执行用；描述沿用清空当时写下的）。 */
+export function clearedDuty(row: DutyRecordRow): Duty {
+  const target = row as DutyTarget & DutyRecordRow;
+  return {
+    key: dutyKey(target),
+    holderId: row.employeeId,
+    dutyType: row.dutyType as 1 | 2,
+    orgId: row.orgId,
+    orgRole: row.orgRole,
+    subordinateId: row.subordinateId,
+    relation: row.relation,
+    description: row.dutyDetails,
+  };
+}
+
 export interface DepartedPerson {
   readonly employeeId: string;
   readonly name: string;
@@ -108,7 +142,7 @@ export interface DepartedPerson {
 
 /**
  * 检查离职退休人员（DEC-726）：当日任职为离职 / 退休、生效日在最近 3 个月内，且仍承担职责（离职生效不清空职责）
- * 或有落地时被清空、尚未补办的职责记录（来源 2 / 4，DT-R5）。
+ * 或有落地时被清空、尚未补办的职责记录（来源 2 / 4，DT-R5）。退休同时返聘的不列（账号不关闭、职责保留，RT-R3，DEC-863①）。
  * visible 为调用方的数据范围谓词（列 t.employee_id）。“仍承担职责”在分页前过滤，total 按完整过滤集计（第 2 轮 P2-6）；
  * 排序稳定：生效日倒序、员工 ID 升序。
  */
@@ -133,6 +167,8 @@ export async function departedWithDuties(
         JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
         WHERE t.tenant_id=${tenantId} AND t.valid_during @> ${today}::date AND r.kind IN ('leave','retirement')
           AND r.service_type='primary'
+          AND NOT EXISTS (SELECT 1 FROM retirement_requests rr
+            WHERE rr.tenant_id=r.tenant_id AND rr.business_id=r.id AND rr.re_employed)
           AND lower(t.valid_during) >= ${today}::date - ${`${DEPARTED_LOOKBACK_MONTHS} months`}::interval
           AND ${visible}
       ),

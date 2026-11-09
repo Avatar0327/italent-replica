@@ -19,7 +19,14 @@ import { createEmploymentBusiness } from '../../employment/write-service.js';
 import { createTxOrgHierarchyReader } from '../../establishment/org-reader.js';
 import { assignTransferOrganizationPeople } from '../../org/write-service.js';
 import type { DutyRelation, OrgRole } from './input.js';
-import { RELATION_FIELDS, ROLE_FIELDS, requireReportingSubordinate, requireRoleHolder } from './validation.js';
+import {
+  RELATION_FIELDS,
+  ROLE_FIELDS,
+  requireReportingSubordinate,
+  requireRoleHolder,
+  requireRoleVacant,
+  requireVacantSubordinate,
+} from './validation.js';
 
 export type DutyItem =
   | {
@@ -45,6 +52,8 @@ export interface DutyExecutionMode {
   readonly caller: 'menu' | 'linkage';
   /** 接收人在职资格的另一判定日（菜单到期执行 = 执行当日，P2-4）；生效日始终要判。 */
   readonly eligibleOn?: string;
+  /** 补转交（DT-R5 清空后，仅 menu）：职责已无承担人，校验改为“仍空缺”，不要求原承担人持有。 */
+  readonly supplement?: true;
 }
 
 export interface DutyItemFailure {
@@ -72,7 +81,8 @@ export async function executeDutyItem(tx: Tx, ctx: EmploymentContext, item: Duty
       throw new AppError('VALIDATION_FAILED', '接收人不是在职员工', { reason: 'TRANSFER_PERSON_NOT_ELIGIBLE' });
   if (item.kind === 'org_role') {
     if (mode.caller === 'menu') await requireEnabledOrg(tx, ctx.tenantId, item.orgId, days);
-    await requireRoleHolder(tx, ctx, item.employeeId, item.orgId, item.orgRole, item.effectiveDate);
+    if (mode.supplement) await requireRoleVacant(tx, ctx, item.orgId, item.orgRole, item.effectiveDate);
+    else await requireRoleHolder(tx, ctx, item.employeeId, item.orgId, item.orgRole, item.effectiveDate);
     // DT-R7：组织变更记录取转交生效日（业务内 = 业务生效日；菜单 = 当天或指定日期，W-607 / F-408）。
     const people: Partial<Record<(typeof ROLE_FIELDS)[OrgRole], string | null>> = {
       [ROLE_FIELDS[item.orgRole]]: receiverId,
@@ -80,12 +90,14 @@ export async function executeDutyItem(tx: Tx, ctx: EmploymentContext, item: Duty
     await assignTransferOrganizationPeople(tx, ctx, item.orgId, item.effectiveDate, people);
     return;
   }
-  const record = await requireReportingSubordinate(tx, ctx, item.employeeId, item.subordinateId, item.relation);
   const fields = { [RELATION_FIELDS[item.relation]]: receiverId };
   if (mode.caller === 'menu') {
+    if (mode.supplement) await requireVacantSubordinate(tx, ctx, item.subordinateId, item.relation);
+    else await requireReportingSubordinate(tx, ctx, item.employeeId, item.subordinateId, item.relation);
     await appendDataAdjustment(tx, ctx, item.subordinateId, item.effectiveDate, fields);
     return;
   }
+  const record = await requireReportingSubordinate(tx, ctx, item.employeeId, item.subordinateId, item.relation);
   // 离职 / 调动内转交：与新增下属同一口径（`08` 附表 W-013），原地改写下属当前任职的上级；汇报线循环在此报错。
   await editEmploymentRecord(
     tx,

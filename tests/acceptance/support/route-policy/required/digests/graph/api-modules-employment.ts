@@ -2450,6 +2450,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-gate.ts#assertDutiesAssigned': [
     'apps/api/src/modules/duty-transfer/uncovered.ts#uncoveredDuties',
     '#conflict',
+    '#kindOfTarget',
     'apps/api/src/modules/transfer/linkage/input.ts#normalizeLinkage',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_REQUIRED_MESSAGE',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',

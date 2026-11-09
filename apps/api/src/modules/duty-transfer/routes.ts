@@ -36,7 +36,7 @@ import {
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { button, objectContext, requestScope, writeFields } from '../permission/module-route-access.js';
 import { registerPersonScopedObject } from '../permission/scope-resolver.js';
-import { currentDuties, departedWithDuties, pendingRecords } from './duties.js';
+import { clearedDuty, clearedRecords, currentDuties, departedWithDuties, pendingRecords } from './duties.js';
 import { listDutyRecords, type DutyRecordView, type RecordTab } from './records.js';
 import { checkMenuTransfer, submitMenuTransfer, type MenuSubmitInput } from './service.js';
 
@@ -127,7 +127,15 @@ async function trimRecords(deps: TenantRouteDeps, ctx: ScopeBusinessContext, row
 /**
  * 菜单回填：被转交人当前职责，逐条带上未完成的转交（再次选同一被转交人时回填接收人与日期）。
  * 回填的接收人 / 转交日期是本对象字段，按字段权限裁剪；看不到转交日期时提示文案也不给（文案里带日期）。
+ * 另列被离职 / 退休落地清空、待补转交的职责（DT-R5，cleared 带清空记录的 recordId / revision / source，补转交时带回 revision）；
+ * 已不再空缺（又被同一人持有）的不重复列。
  */
+interface ClearedView {
+  readonly recordId: string;
+  readonly revision: number;
+  readonly source: number;
+}
+
 async function dutyMenu(tx: Tx, tenantId: string, employeeId: string, today: string, hidden: ReadonlySet<string>) {
   const duties = await currentDuties(tx, tenantId, employeeId, today);
   const pending = await pendingRecords(tx, tenantId, employeeId);
@@ -139,8 +147,15 @@ async function dutyMenu(tx: Tx, tenantId: string, employeeId: string, today: str
       ...(hidden.has('receiverId') ? {} : { receiverId: record.receiverId }),
       ...(hidden.has('transferDate') ? {} : { transferDate: record.transferDate }),
     };
-    return { ...duty, pending: fill ?? null };
+    return { ...duty, pending: fill ?? null, cleared: null as ClearedView | null };
   });
+  const held = new Set(duties.map((duty) => duty.key));
+  const waiting = [...(await clearedRecords(tx, tenantId, employeeId)).values()].flatMap((row) => {
+    const { holderId: _holder, ...duty } = clearedDuty(row);
+    const cleared: ClearedView = { recordId: row.id, revision: row.revision, source: row.source };
+    return held.has(duty.key) ? [] : [{ ...duty, pending: null as null, cleared: cleared as ClearedView | null }];
+  });
+  items.push(...waiting);
   const dates = duties.flatMap((duty) => pending.get(duty.key)?.transferDate ?? []);
   const hint = hidden.has('transferDate') ? null : dutyPendingHint(items.length, dates);
   return { employeeId, total: items.length, pendingCount: dates.length, hint, items };

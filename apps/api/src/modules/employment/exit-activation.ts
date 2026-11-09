@@ -458,7 +458,7 @@ async function runSteps(
   // 步骤 4：合同端口（生效时终止，Q-M0-100 取“生效时”，§19 B-8）；步骤 6：职责转交，子项失败只记 duty_failed
   await handleContractsOnExitEffective(tx, ctx, business, late.lastWorkDate);
   const retirement = await createRehireIfPlanned(tx, ctx, business, late.effectiveDate);
-  await settleExitDuties(tx, ctx, exit, business.payload.kind, late.effectiveDate);
+  await settleExitDuties(tx, ctx, exit, business.payload.kind, late.effectiveDate, retirement?.reEmployed === true);
   await appendEmploymentState(tx, ctx, business, 'effective');
   await auditEmployment(
     tx,

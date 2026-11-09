@@ -14,6 +14,7 @@ import type { EmploymentContext } from './types.js';
 
 /**
  * 给定员工中，名下有尚未落地（含直接生效单落地前一刻）、尚未执行转交的离职 / 退休的，其计划之外仍承担的下属。
+ * 退休同时返聘的不清空（RT-R3，DEC-863①），不在此列。
  * 按计划生效日与今天（迟到落地取实际执行日）两个日期取并集，偏多不偏少。
  */
 export async function pendingClearSubordinates(
@@ -31,7 +32,9 @@ export async function pendingClearSubordinates(
         WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY event_no DESC LIMIT 1) s ON true
       WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=ANY(${`{${employeeIds.join(',')}}`}::uuid[])
         AND p.kind IN ('leave','retirement') AND s.state NOT IN ('deleted','disapproved','voided','effective')
-        AND NOT EXISTS (SELECT 1 FROM transfer_linkage_runs r WHERE r.tenant_id=b.tenant_id AND r.business_id=b.id)`),
+        AND NOT EXISTS (SELECT 1 FROM transfer_linkage_runs r WHERE r.tenant_id=b.tenant_id AND r.business_id=b.id)
+        AND NOT EXISTS (SELECT 1 FROM retirement_requests rr
+          WHERE rr.tenant_id=b.tenant_id AND rr.business_id=b.id AND rr.re_employed)`),
   );
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const found = new Set<string>();

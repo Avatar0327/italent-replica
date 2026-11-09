@@ -66964,7 +66964,7 @@
         },
         "duty_transfer_records_party": {
           "name": "duty_transfer_records_party",
-          "value": "(\"duty_transfer_records\".\"source\" = 1 AND \"duty_transfer_records\".\"receiver_id\" IS NOT NULL AND \"duty_transfer_records\".\"operator_id\" IS NOT NULL)\n        OR (\"duty_transfer_records\".\"source\" IN (2, 4) AND \"duty_transfer_records\".\"receiver_id\" IS NULL AND \"duty_transfer_records\".\"status\" = 0)"
+          "value": "(\"duty_transfer_records\".\"source\" = 1 AND \"duty_transfer_records\".\"receiver_id\" IS NOT NULL AND \"duty_transfer_records\".\"operator_id\" IS NOT NULL)\n        OR (\"duty_transfer_records\".\"source\" IN (2, 4) AND \"duty_transfer_records\".\"receiver_id\" IS NULL AND \"duty_transfer_records\".\"status\" = 0)\n        OR (\"duty_transfer_records\".\"source\" IN (2, 4) AND \"duty_transfer_records\".\"receiver_id\" IS NOT NULL AND \"duty_transfer_records\".\"operator_id\" IS NOT NULL AND \"duty_transfer_records\".\"status\" = 1)"
         },
         "duty_transfer_records_target": {
           "name": "duty_transfer_records_target",

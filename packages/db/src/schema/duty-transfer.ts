@@ -106,11 +106,13 @@ export const dutyTransferRecords = pgTable(
     index('duty_transfer_records_employee').on(t.tenantId, t.employeeId, t.createdAt),
     check('duty_transfer_records_status', sql`${t.status} IN (0, 1, 2, 3)`),
     check('duty_transfer_records_source', sql`${t.source} IN (1, 2, 4)`),
-    // 菜单记录必须有接收人和操作人；系统清空记录（来源 2 / 4）必须没有接收人，且只能是未完成
+    // 菜单记录必须有接收人和操作人；系统清空记录（来源 2 / 4）清空时没有接收人且未完成，补转交后（DEC-863②）
+    // 在原记录上补接收人和操作人并转为已完成
     check(
       'duty_transfer_records_party',
       sql`(${t.source} = 1 AND ${t.receiverId} IS NOT NULL AND ${t.operatorId} IS NOT NULL)
-        OR (${t.source} IN (2, 4) AND ${t.receiverId} IS NULL AND ${t.status} = 0)`,
+        OR (${t.source} IN (2, 4) AND ${t.receiverId} IS NULL AND ${t.status} = 0)
+        OR (${t.source} IN (2, 4) AND ${t.receiverId} IS NOT NULL AND ${t.operatorId} IS NOT NULL AND ${t.status} = 1)`,
     ),
     check(
       'duty_transfer_records_target',
