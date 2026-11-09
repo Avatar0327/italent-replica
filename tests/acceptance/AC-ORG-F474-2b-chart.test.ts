@@ -75,6 +75,18 @@ describe('AC-ORG-F474-2b 架构图卡片负责人与在岗 / 编制', () => {
     expect(numberCard.personInChargeName).toBe(w.regular.name);
   });
 
+  it('2b-2f 仅撤销组织 id 查看权、负责人字段仍可见：姓名保留，响应不返回 id（返工 P2-3）', async () => {
+    const viewer = await w.viewer('图撤标识', [{ orgId: w.a.id, includeDescendants: true }], ['id']);
+    const { roots } = await chartOf(viewer.get);
+    const card = named(roots, '甲部')!;
+    expect(card).not.toHaveProperty('id');
+    expect(card).not.toHaveProperty('personInChargeId');
+    expect(card.personInChargeName).toBe(w.regular.name);
+    // 没有负责人的节点仍是 null，嵌套关系不依赖 id
+    expect(card.children).toHaveLength(1);
+    expect(card.children![0]).toMatchObject({ personInChargeName: null, headcount: 2 });
+  });
+
   it('2b-2e 未配置组织范围时（fail-closed）不出卡片，也不暴露编制与人数', async () => {
     const viewer = await w.viewer('图无范围', null);
     expect(await chartOf(viewer.get)).toMatchObject({ roots: [], total: 0 });

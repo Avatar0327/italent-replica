@@ -141,11 +141,14 @@ function registerOrgViews(router: Hono<TenantEnv>, deps: TenantRouteDeps): void 
         return { cards: [], parents: [], headNameOf: new Map<string, string | null>() };
       return readOrgChartNodes(tx, { ...view, fullNameStartLevel: config.fullNameStartLevel });
     });
-    // 负责人姓名跟随「负责人」字段的查看权：personInChargeId 被裁掉时姓名一并去掉；ID 本身不返回
+    // 负责人姓名跟随「负责人」字段的查看权：personInChargeId 被裁掉时姓名一并去掉；ID 本身不返回。
+    // 姓名按裁剪前的内部 id 取好：trimModuleResponse 逐项 map、保持顺序，id 字段权限被撤时 id 会被裁掉，
+    // 不能再用裁剪后的 id 查姓名；响应仍按字段权限裁剪，不返回 id。
+    const names = chart.cards.map((card) => chart.headNameOf.get(card.id) ?? null);
     const trimmed = await trimModuleResponse<(typeof chart.cards)[number]>(deps, ctx, OBJECT, chart.cards);
-    const cards = trimmed.map(({ personInChargeId, ...card }) => ({
+    const cards = trimmed.map(({ personInChargeId, ...card }, index) => ({
       ...card,
-      ...(personInChargeId !== undefined ? { personInChargeName: chart.headNameOf.get(card.id!) ?? null } : {}),
+      ...(personInChargeId !== undefined ? { personInChargeName: names[index] ?? null } : {}),
     }));
     return c.json({
       roots: nestTree(cards, chart.parents),
