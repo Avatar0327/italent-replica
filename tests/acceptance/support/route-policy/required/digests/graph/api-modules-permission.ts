@@ -362,11 +362,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/module-access.ts#trimModuleResponse': ['#getModuleViewableFields'],
   'apps/api/src/modules/permission/module-capacity-authorization.ts#capacityContext': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
     'apps/api/src/modules/permission/module-route-access.ts#visible',
     'apps/api/src/modules/permission/module-route-access.ts#writeFields',
     'apps/api/src/modules/permission/scope-audit.ts#creatorOf',
     'apps/api/src/modules/permission/scope-audit.ts#hasCreatorScope',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    'packages/domain/src/platform/standard-presets.ts#ESTABLISHMENT_SCHEME_DATASOURCE',
   ],
   'apps/api/src/modules/permission/module-capacity-authorization.ts#employmentCapacityContext': [
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
@@ -752,7 +755,11 @@ export const GRAPH: Graph = {
     '#sources',
     'packages/domain/src/permission/object-permission.ts#ObjectCatalog',
   ],
+  'apps/api/src/modules/permission/tenant-users.ts#accountLogin': ['#accountsOf'],
   'apps/api/src/modules/permission/tenant-users.ts#accountsOf': [
+    'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
+  ],
+  'apps/api/src/modules/permission/tenant-users.ts#contactEmails': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#getTenantUser': ['#memberQuery', '#notFound', '#viewsOf'],
@@ -784,9 +791,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/tenant-users.ts#viewsOf': [
     'apps/api/src/modules/avatar/references.ts#userAvatars',
     '#accountsOf',
+    '#contactEmails',
   ],
   'apps/api/src/modules/permission/user-provisioning.ts#keepBinding': [
     'apps/api/src/modules/permission/audit.ts#audit',
+    'apps/api/src/modules/permission/tenant-users.ts#accountLogin',
     'apps/api/src/modules/permission/tenant-users.ts#getTenantUser',
     'apps/api/src/modules/permission/tenant-users.ts#memberSnapshot',
     'apps/api/src/modules/permission/tenant-users.ts#provisionAccount',

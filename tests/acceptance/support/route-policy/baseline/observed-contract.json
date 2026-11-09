@@ -4647,6 +4647,31 @@
         ]
       }
     },
+    "GET /api/tenant/employment/all-people": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope"
+        ]
+      }
+    },
     "GET /api/tenant/employment/auto-assessment-rules": {
       "edge": {
         "anonymous": {
@@ -6574,8 +6599,10 @@
           "TenantBase.OrganizationEstablishment:view"
         ],
         "scope": [
+          "creator scope",
           "establishment visible*/check*",
-          "requestScope"
+          "requestScope",
+          "visible()"
         ]
       }
     },
@@ -6606,8 +6633,10 @@
           "TenantBase.OrganizationEstablishment:view"
         ],
         "scope": [
+          "creator scope",
           "establishment visible*/check*",
-          "requestScope"
+          "requestScope",
+          "visible()"
         ]
       }
     },
@@ -6641,8 +6670,10 @@
           "listTodos / listNotifications / listInstances"
         ],
         "scope": [
+          "creator scope",
           "requestScope",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -17373,6 +17404,12 @@
           "assertRevision",
           "write() / command()"
         ],
+        "domain": [
+          "approval.taskObject"
+        ],
+        "fieldsIn": [
+          "fieldRights"
+        ],
         "fieldsOut": [
           "approval views"
         ],
@@ -17534,6 +17571,12 @@
         "command": [
           "assertRevision",
           "write() / command()"
+        ],
+        "domain": [
+          "approval.taskObject"
+        ],
+        "fieldsIn": [
+          "fieldRights"
         ],
         "fieldsOut": [
           "approval views"

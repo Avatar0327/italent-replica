@@ -12,7 +12,11 @@ import { join } from 'node:path';
 import { migrationsFolder, sql, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { type DrizzleSnapshotJSON, generateDrizzleJson, generateMigration } from 'drizzle-kit/api';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// F-501：本文件每条库结构比对要在事务里重建整套影子 schema，PGlite 在高负载 / CI 分片下越过全局 30 秒；
+// 文件级放宽到 120 秒（已知最大 30.5 秒 × 4，只作用于本文件，不动全局上限）。
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 const testDb = useTestDb();
 const metaDir = join(migrationsFolder, 'meta');
@@ -87,9 +91,15 @@ async function structureOf(tx: Tx, schema: string): Promise<string[]> {
   return rows.map((r) => r.o).sort();
 }
 
+let expected: Promise<string[]> | undefined;
+/** 最新快照对应的建表语句（F-501：快照文件在进程内不变，几条用例共用一份，不重复生成）。 */
+function expectedStatements(): Promise<string[]> {
+  return (expected ??= generateMigration(generateDrizzleJson({}), latestSnapshot()).then(deferredUniqueStatements));
+}
+
 /** 在一个事务里比对后整体回滚；mutate 用于证明守卫本身有效。 */
 async function structureDiff(mutate?: (tx: Tx) => Promise<void>) {
-  const statements = deferredUniqueStatements(await generateMigration(generateDrizzleJson({}), latestSnapshot()));
+  const statements = await expectedStatements();
   return testDb()
     .db.transaction(async (tx) => {
       await mutate?.(tx);

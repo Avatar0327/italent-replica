@@ -232,7 +232,7 @@ describe('F-328 / DEC-707 重聘（合并人员）沿用原账号', () => {
   it('联系邮箱已是别人的登录名：409 EMAIL_TAKEN，整单回滚，不改别人的账号，原账号仍停用', async () => {
     const { x, userId } = await world('taken');
     const other = await x.otherUser();
-    await setContactEmail(x, other.email.toUpperCase());
+    await setContactEmail(x, other.email!.toUpperCase());
     await leave(x);
     const disabled = (await getUser(x.db, userId))!;
     const timeline = await x.timeline();

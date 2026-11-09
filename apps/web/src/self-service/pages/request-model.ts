@@ -14,7 +14,8 @@ export const requestPaths = {
   partTime: '/api/tenant/self-service/part-time-requests',
 };
 export const requestFields = {
-  exit: ['lastWorkDate', 'reasonCode', 'whereaboutsCode'],
+  // attachmentRefs：手写离职申请附件的 ID 数组（F-479 设计 §2.2、§5.2）
+  exit: ['lastWorkDate', 'reasonCode', 'whereaboutsCode', 'attachmentRefs'],
   partTime: [
     'serviceType',
     'effectiveDate',
@@ -61,6 +62,8 @@ export function selfRequestBody(kind: RequestKind, values: Values, editable: rea
   );
   if (kind === 'exit') {
     if ('whereaboutsCode' in body) body.whereaboutsCode ??= '';
+    // 后端只收 ID 数组（null 判 400）；清空即 []（F-479 设计 §2.2）
+    if ('attachmentRefs' in body) body.attachmentRefs ??= [];
     return body;
   }
   const fields = projectFields(

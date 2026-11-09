@@ -40,7 +40,7 @@ export function registerCandidates(router: Hono<TenantEnv>, deps: TenantRouteDep
     // 在职口径与写入口一致，过滤先于搜索、分页（DEC-416⑦）。
     const asOf = tenantLocalDate(deps.clock(), ctx.timezone);
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) =>
-      rowsOf<{ id: string; name: string; code: string }>(
+      rowsOf<{ id: string; name: string; code: string | null }>(
         await tx.execute(sql`SELECT id, name, code FROM (
             SELECT e.id, COALESCE(v.name, e.name) AS name, e.code
             FROM employment_employees e
