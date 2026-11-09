@@ -44,6 +44,12 @@ describe('AC-F476-13 考核：批准不等于生效，办理份捕获办理那�
     // 批准不等于生效：转正任职记录的生效日是审批通过时按当时意见定的 10-15，HR 事后改的 10-20 不生成新记录
     const dates = master.records.filter((record) => record.kind === 'regularization').map((r) => r.effectiveDate);
     expect(dates).toEqual(['2026-10-15']);
+    // 未来生效日（10-15）之前：任职状态时间线上，10-01 的当前状态仍是试用（2）；10-15 当天才变为正式（3）
+    const statusAt = (date: string) => master.records.filter((record) => record.effectiveDate <= date).at(-1);
+    expect(statusAt('2026-10-01')).toMatchObject({ kind: 'hire', employeeStatus: 2 });
+    expect(statusAt('2026-10-15')).toMatchObject({ kind: 'regularization', employeeStatus: 3 });
+    // 转正业务的生效日就是 10-15，不是批准当天（2026-10-01）
+    expect(master.records.filter((record) => record.kind === 'regularization')).toHaveLength(1);
   });
 
   it('办理份在审批通过回调之前捕获：不含回调才生成的转正业务编号（自动生成业务不覆盖已办内容）', async () => {

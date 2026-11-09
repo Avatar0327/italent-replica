@@ -139,3 +139,66 @@ describe('AC-F476-08 意向退休申请办理 → 修改 → 两路径', () => {
     }
   });
 });
+
+describe('AC-F476-08 意向退休：多轮 / 多实例下的选份与身份写法', () => {
+  const REASON_C = 'ZZ_意向原因C';
+
+  it('驳回后重提（同一实例两轮办理）：重提后上级再有待办读现值 B；二轮再驳回后读二轮的份，不读首轮的份', async () => {
+    const s = await rejectedIntention(testDb().db, 'f476p7-08-resubmit');
+    const manager = s.w.manager.userId;
+    // 重提前：上级只有首轮的份 → 冻结 A
+    expect(await ownRead(s.w, manager, s.path)).toMatchObject({ mode: 'frozen' });
+    await s.w.act(s.id, 'submit');
+    // 重提后：上级重新有待办（同一实例），自有详情与审批中心都读现值 B
+    const own = await ownRead(s.w, manager, s.path);
+    expect(own.mode).toBe('live');
+    expect(own.body).toMatchObject({ reason: REASON_B, intendedDate: '2030-04-01' });
+    expect((await centerRead(s.w, manager, s.instanceId)).mode).toBe('live');
+    // 二轮再驳回，HR 再改为 C：上级读二轮办理时的 B，而不是首轮的 A
+    await s.w.decide(s.id, 'reject');
+    const current = await s.w.get(s.id);
+    const patched = await s.w.patchRaw(s.id, current.revision, { reason: REASON_C });
+    expect(patched.status, await patched.clone().text()).toBe(200);
+    const second = await ownRead(s.w, manager, s.path);
+    expect(second.mode).toBe('frozen');
+    expect(second.body).toMatchObject({ reason: REASON_B, intendedDate: '2030-04-01' });
+    expect((await centerRead(s.w, manager, s.instanceId)).values).toMatchObject({ reason: REASON_B });
+  });
+
+  it('不同意后重开（同一申请对象两个实例）：上级读最近一个实例办理时的值，不读首个实例的份', async () => {
+    const w = await intentionWorld(testDb().db, 'f476p7-08-reopen');
+    const first = await w.create({ intendedDate: '2030-05-01', reason: REASON_A });
+    await w.act(first.id, 'submit');
+    await w.decide(first.id, 'disagree');
+    const reopened = await w.create({ intendedDate: '2030-06-01', reason: REASON_B });
+    await w.act(reopened.id, 'submit');
+    await w.decide(reopened.id, 'reject');
+    const current = await w.get(reopened.id);
+    const patched = await w.patchRaw(reopened.id, current.revision, { reason: REASON_C });
+    expect(patched.status, await patched.clone().text()).toBe(200);
+    const own = await ownRead(w, w.manager.userId, `${EMPLOYMENT}/retirement-intentions/${reopened.id}`);
+    expect(own.mode).toBe('frozen');
+    expect(own.body).toMatchObject({ reason: REASON_B, intendedDate: '2030-06-01' });
+    // 首个实例（终态）仍读自己那一份
+    const old = await ownRead(w, w.manager.userId, `${EMPLOYMENT}/retirement-intentions/${first.id}`);
+    expect(old.body).toMatchObject({ reason: REASON_A });
+  });
+
+  it('同一账号的 UUID 大小写写法不影响读取：重提后的待办本人在两个 GET 都读现值 B', async () => {
+    const s = await rejectedIntention(testDb().db, 'f476p7-08-case');
+    await s.w.act(s.id, 'submit');
+    const manager = s.w.manager.userId;
+    for (const [label, user] of [
+      ['小写', manager.toLowerCase()],
+      ['大写', manager.toUpperCase()],
+    ] as const) {
+      const own = await ownRead(s.w, user, s.path);
+      expect(own.status, `${label}自有详情`).toBe(200);
+      expect(own.mode, `${label}自有详情`).toBe('live');
+      expect(own.body, `${label}自有详情`).toMatchObject({ reason: REASON_B });
+      const center = await centerRead(s.w, user, s.instanceId);
+      expect(center.mode, `${label}审批中心`).toBe('live');
+      expect(center.values, `${label}审批中心`).toMatchObject({ reason: REASON_B });
+    }
+  });
+});
