@@ -4,7 +4,7 @@
  * 所有租户数据读写都在 withTenant 内，app_owner（FORCE RLS）下同样成立。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { sql, withTenant, type Tx } from '@italent/db';
 import { APPROVAL_INSTANCE_OBJECT, PRESET_PROCESSES, SUBSETS, type SubsetKind } from '@italent/domain';
 import { expect } from 'vitest';
 import { approvalWorld, type ApprovalWorld, type InstanceView, type Person } from './AC-APV-support.js';
@@ -322,27 +322,23 @@ export function rights(w: ApprovalWorld, deny: (request: Parameters<Authorizer>[
 /**
  * 与生产授权器同事务形状的放行授权器（P2-1）：直接调用时自己开一个租户事务（PGlite 单连接下，若调用方已占着
  * withTenant 的连接就会永久等待）；经 authorizeInTransaction 绑到调用方事务后只在该事务内判定。
- * 不是「同步放行」的替身：入口漏绑事务时它会和生产授权器一样卡死，用来守住三个详情入口。
+ * 范围 / 字段提供方同生产（permission/authorizer.ts）：传了 Tx 沿用，未传 Tx 自开租户事务（第 2 轮 P2-2）。
+ * 不是「同步放行」的替身：入口漏绑事务时它会和生产授权器一样卡死，用来守住各详情入口。
  */
 export function transactionalRights(w: ApprovalWorld) {
-  const authorize: Authorizer = async (request) =>
-    withTenant(w.db, request.tenantId, async (tx) => {
-      await tx.execute(sql`SELECT 1`);
-      return true;
-    });
+  const inTenant = <T>(tenantId: string, tx: Tx | undefined, run: () => T) =>
+    tx
+      ? tx.execute(sql`SELECT 1`).then(run)
+      : withTenant(w.db, tenantId, async (own) => {
+          await own.execute(sql`SELECT 1`);
+          return run();
+        });
+  const authorize: Authorizer = async (request) => inTenant(request.tenantId, undefined, () => true);
   registerScopeProvider(authorize, {
-    scope: async (_query, tx) => {
-      if (tx) await tx.execute(sql`SELECT 1`);
-      return { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
-    },
-    authorize: async (_request, tx) => {
-      await tx.execute(sql`SELECT 1`);
-      return true;
-    },
-    fields: async (_tenantId, _userId, objectCode, tx) => {
-      if (tx) await tx.execute(sql`SELECT 1`);
-      return new Set(objectCatalog.get(objectCode)?.fields.map((f) => f.code) ?? []);
-    },
+    scope: (query, tx) => inTenant(query.tenantId, tx, () => ({ ...EMPTY_SCOPE, all: true, hasDataPermission: true })),
+    authorize: (request, tx) => inTenant(request.tenantId, tx, () => true),
+    fields: (tenantId, _userId, objectCode, tx) =>
+      inTenant(tenantId, tx, () => new Set(objectCatalog.get(objectCode)?.fields.map((f) => f.code) ?? [])),
   });
   const api = tenantApi(w.db, { authorize, clock: w.clock });
   return {
