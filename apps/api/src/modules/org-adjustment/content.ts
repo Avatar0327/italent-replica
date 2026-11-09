@@ -8,7 +8,7 @@
 import { sql, type Tx } from '@italent/db';
 import { rowsOf } from '../org/read-model.js';
 import { loadItems, type OrgItem } from './items-store.js';
-import { loadPreviewInput, type PreviewInput } from './preview-input.js';
+import { loadPreviewInput, type PreviewInput, type PreviewLoad } from './preview-input.js';
 import { loadHead, memberNames, orgNamesAt, rangesOf, type HeadRow, type RangeOrg } from './queries.js';
 
 export interface ExecutionResult {
@@ -36,8 +36,11 @@ export interface OrgContent {
 }
 
 export interface LoadOptions {
-  /** 是否一并读预览输入：办理时冻结与现值预览 / 导出读 true（缺省），现值详情 / 明细读 false，省掉组织与编制查询。 */
-  readonly preview?: boolean;
+  /**
+   * 预览输入的读法：缺省 freeze（办理时冻结，体积有界）；现值预览 / 导出读 live（读全）；
+   * 现值详情 / 明细读 none，省掉组织与编制查询。
+   */
+  readonly preview?: PreviewLoad | 'none';
 }
 
 async function executionResults(tx: Tx, tenantId: string, adjustmentId: string) {
@@ -88,7 +91,7 @@ export async function loadOrgContent(
     parents,
     names: Object.fromEntries(names),
     preview:
-      options.preview === false
+      options.preview === 'none'
         ? null
         : await loadPreviewInput(
             tx,
@@ -96,6 +99,7 @@ export async function loadOrgContent(
             head.effectiveDate,
             ranges.map((range) => range.orgId),
             items,
+            options.preview ?? 'freeze',
           ),
   };
 }

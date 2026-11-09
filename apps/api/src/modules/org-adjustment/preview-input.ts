@@ -6,6 +6,7 @@
  * 这里是未按查看人裁剪的完整输入；披露裁剪（范围、字段）在投影时做，与现值读同一套代码。
  */
 import { and, employmentEmployees, eq, inArray, sql, type Tx } from '@italent/db';
+import { AppError } from '../../errors.js';
 import { batchLocalSums } from '../establishment/capacity-read.js';
 import { DEFAULT_SCHEME_CODE } from '../establishment/default-scheme.js';
 import { loadSchemeBatch } from '../establishment/schemes.js';
@@ -26,7 +27,35 @@ export interface PreviewOrg {
   readonly establishment: number | null;
 }
 
-export interface PreviewInput {
+/** 与组织明细分区同量级的防御上限：超过时 413，不返回截断的树（截断会误导为“没有调整”）。DEC-728。 */
+export const PREVIEW_NODE_LIMIT = 2000;
+
+/** 预览预算的唯一判断：现值读（previewOf 的结果树）与办理时冻结（loadPreviewInput）共用，口径不会分叉。 */
+export const exceedsPreviewLimit = (nodes: number): boolean => nodes > PREVIEW_NODE_LIMIT;
+
+export const previewTooLarge = () =>
+  new AppError('PAYLOAD_TOO_LARGE', `预览节点超过 ${PREVIEW_NODE_LIMIT} 个，请缩小调整范围`);
+
+/**
+ * 读预览输入的方式：
+ * - live：现值读（发起人 / HR 等在办读者），读全子树；读者受范围裁剪时看到的可能不足 2000 个节点，所以不能提前拒绝。
+ * - freeze：办理时冻结（审批人按办理时视角无范围裁剪，预览节点数就是子树大小）。超限的子树读它只会得到 413，
+ *   整棵树存进办理份既没人读得到，又会让原本合法的大范围单据在办理时撞 16 MiB 上限或编制汇总预算而失败
+ *   （设计 §3.5），所以只记“读它会得到什么错误”，体积有界。
+ */
+export type PreviewLoad = 'live' | 'freeze';
+
+/** 冻结时就已确定读不出来的预览：读取时按记下的错误原样返回，与现值读同码同文案。 */
+export interface PreviewRefused {
+  readonly kind: 'refused';
+  readonly code: 'PAYLOAD_TOO_LARGE' | 'SERVICE_UNAVAILABLE';
+  readonly message: string;
+}
+
+export type PreviewInput = PreviewTree | PreviewRefused;
+
+export interface PreviewTree {
+  readonly kind: 'tree';
   /** 调整范围所选组织及其全部在用下级（生效日行政树）。 */
   readonly orgs: readonly PreviewOrg[];
   /** 员工 ID → 人员版本链最新姓名（子树组织的负责人与明细指定的负责人）。 */
@@ -52,22 +81,30 @@ function rangeSubtree(orgs: ReadonlyMap<string, OrgRecord>, range: readonly stri
   return [...result].map((id) => orgs.get(id)!);
 }
 
-/** 读全预览输入；`effectiveDate` 是单据生效日，`range` 是调整范围组织（按选择顺序）。 */
+/** 读预览输入；`effectiveDate` 是单据生效日，`range` 是调整范围组织（按选择顺序）。 */
 export async function loadPreviewInput(
   tx: Tx,
   tenantId: string,
   effectiveDate: string,
   range: readonly string[],
   items: readonly OrgItem[],
+  load: PreviewLoad,
 ): Promise<PreviewInput> {
   const snapshot = await loadOrgSnapshot(tx, tenantId, effectiveDate);
   const subtree = rangeSubtree(new Map(snapshot.map((org) => [org.id, org])), range);
-  const establishment = await establishmentOf(
-    tx,
-    tenantId,
-    effectiveDate,
-    subtree.map((org) => org.id),
-  );
+  if (load === 'freeze' && exceedsPreviewLimit(subtree.length)) {
+    const error = previewTooLarge();
+    return { kind: 'refused', code: error.code as PreviewRefused['code'], message: error.message };
+  }
+  const subtreeIds = subtree.map((org) => org.id);
+  let establishment: Map<string, number | null>;
+  try {
+    establishment = await establishmentOf(tx, tenantId, effectiveDate, subtreeIds);
+  } catch (error) {
+    // 编制汇总范围（含已停用 / 未启用但未到期的下级）超预算时现值读是 503；冻结时同样记下，不让办理因此失败
+    if (load !== 'freeze' || !(error instanceof AppError) || error.code !== 'SERVICE_UNAVAILABLE') throw error;
+    return { kind: 'refused', code: 'SERVICE_UNAVAILABLE', message: error.message };
+  }
   const orgs = subtree.map((org) => ({
     id: org.id,
     code: org.code,
@@ -78,7 +115,7 @@ export async function loadPreviewInput(
     establishment: establishment.get(org.id) ?? null,
   }));
   const headIds = [...orgs.map((org) => org.personInChargeId), ...items.map((item) => item.personInChargeId)];
-  return { orgs, heads: await headNames(tx, tenantId, headIds) };
+  return { kind: 'tree', orgs, heads: await headNames(tx, tenantId, headIds) };
 }
 
 /** 负责人姓名与组织详情、人员档案同口径：人员版本链的最新姓名（任职头表的姓名不随改名更新）；一次批量查询。 */

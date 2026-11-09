@@ -140,6 +140,7 @@ export async function seedChildren(
   count: number,
   options: { nameLength?: number; keep?: number; enabled?: boolean } = {},
 ): Promise<string[]> {
+  const nameLength = options.nameLength ?? 12;
   const tag = `ZZ_BIG_${uniqueSuffix().replaceAll('-', '_')}_`;
   return withTenant(w.db, w.tenant.id, async (tx) => {
     await tx.execute(sql`WITH n AS (
@@ -150,7 +151,8 @@ export async function seedChildren(
         INSERT INTO org_versions
           (id, tenant_id, org_id, version_no, start_date, code, name, full_name, established_on, enabled)
         SELECT version_id, ${w.tenant.id}::uuid, org_id, 1, '2020-01-01', ${tag} || g,
-          repeat('名', ${options.nameLength ?? 12}::int), repeat('名', ${options.nameLength ?? 12}::int), '2020-01-01', ${options.enabled ?? true} FROM n
+          repeat('名', ${nameLength}::int), repeat('名', ${nameLength}::int), '2020-01-01', ${options.enabled ?? true}
+        FROM n
       )
       INSERT INTO org_hierarchy_links (tenant_id, version_id, dimension, parent_org_id, sequence)
       SELECT ${w.tenant.id}::uuid, version_id, 'admin', ${parentId}::uuid, g FROM n`);

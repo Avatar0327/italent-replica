@@ -24,12 +24,9 @@ import type { OrgContent } from './content.js';
 import { sourceOf } from './detail.js';
 import { canSee, orgInScope, visibleItems, type Disclosure } from './disclosure.js';
 import type { OrgItem } from './items-store.js';
-import { type PreviewInput, type PreviewOrg } from './preview-input.js';
+import { exceedsPreviewLimit, type PreviewOrg, previewTooLarge, type PreviewTree } from './preview-input.js';
 
 export { pickScheme } from './preview-input.js';
-
-/** 与组织明细分区同量级的防御上限：超过时 413，不返回截断的树（截断会误导为“没有调整”）。 */
-export const PREVIEW_NODE_LIMIT = 2000;
 
 type Mark = 'added' | 'changed' | 'deactivated';
 
@@ -79,14 +76,16 @@ export async function readPreview(tx: Tx, tenantId: string, disclosure: Disclosu
 
 export interface PreviewSource {
   readonly content: OrgContent;
-  readonly input: PreviewInput;
+  readonly input: PreviewTree;
 }
 
 /** 预览 / 导出共用的内容源：现值读一并读预览输入；冻结份必须带预览输入。 */
 export async function previewSourceOf(tx: Tx, tenantId: string, disclosure: Disclosure): Promise<PreviewSource> {
-  const content = await sourceOf(tx, tenantId, disclosure, { preview: true });
+  const content = await sourceOf(tx, tenantId, disclosure, { preview: 'live' });
   // 旧办理份（无预览输入）不得用现值补：宁可 503 也不让办理后的改动混进已办读到的树
   if (!content.preview) throw new AppError('SERVICE_UNAVAILABLE', '办理记录暂不可读取，请稍后重试');
+  // 办理时已确定读不出来（子树超限 / 编制汇总超预算）：与现值读同码同文案，不退回现值
+  if (content.preview.kind === 'refused') throw new AppError(content.preview.code, content.preview.message);
   return { content, input: content.preview };
 }
 
@@ -111,9 +110,7 @@ export function previewOf({ content, input }: PreviewSource, disclosure: Disclos
   for (const item of items) overlay(item, drafts, see);
   throughStaged(drafts, stagedParents(visible, see));
 
-  if (drafts.size > PREVIEW_NODE_LIMIT) {
-    throw new AppError('PAYLOAD_TOO_LARGE', `预览节点超过 ${PREVIEW_NODE_LIMIT} 个，请缩小调整范围`);
-  }
+  if (exceedsPreviewLimit(drafts.size)) throw previewTooLarge();
   // 负责人姓名取输入里的最新姓名；查不到为 null
   for (const draft of drafts.values())
     draft.node.personInChargeName = draft.head ? (input.heads[draft.head] ?? null) : null;
