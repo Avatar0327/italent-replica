@@ -223,6 +223,62 @@ describe('F-474-5 #26 身份对象权限弹窗：数据操作 / 字段', () => {
     expect(stale.status).toBe(409);
   });
 
+  // 冲突恢复（AGENTS.md §10 并发）：409 后客户端重读、显式改回原值、带新 revision 重提，不盲重试
+  const CONFLICT_CASES = [
+    {
+      entry: '数据操作',
+      tail: '/data-operations',
+      original: { dataOperations: { create: true, update: true, delete: false } },
+      theirs: { dataOperations: { create: false, update: false, delete: true } },
+      read: (body: Json) => ({ dataOperations: body.dataOperations }),
+    },
+    {
+      entry: '字段',
+      tail: '/fields',
+      original: { fields: [{ fieldCode: 'Name', view: true, edit: true }] },
+      theirs: { fields: [{ fieldCode: 'Name', view: false, edit: false }] },
+      read: (body: Json) => ({
+        fields: (body.items as Json[])
+          .filter((i) => i.fieldCode === 'Name')
+          .map((i) => ({ fieldCode: i.fieldCode, view: i.view, edit: i.edit })),
+      }),
+    },
+  ] as const;
+
+  it.each(CONFLICT_CASES)(
+    '$entry 弹窗：409 → 重读到他人改动 → 改回原值 → 带新 revision 保存成功',
+    async ({ tail, original, theirs, read }) => {
+      const target = await createProfile(world, `CONFLICT-${tail.slice(1, 5)}-${tag}`);
+      const seeded = await setObjectPermission(world, target, {
+        dataOperations: FULL,
+        fields: [{ fieldCode: 'Name', view: true, edit: true }],
+        buttons: [],
+      });
+      expect(seeded.status, await seeded.clone().text()).toBe(200);
+      const endpoint = url(target, DEMO_OBJECT.code, tail);
+      const first = await get(endpoint);
+      const staleRevision = first.body.revision as number;
+      expect(read(first.body)).toEqual(original);
+
+      // 另一位管理员先保存了别的值，本端手里的 revision 过期
+      expect((await put(target, tail, theirs, staleRevision)).status).toBe(200);
+      const rejected = await put(target, tail, original, staleRevision);
+      expect(rejected.status).toBe(409);
+
+      // 重读：看到的是他人的值与新 revision；原值没有被盲重试写回
+      const reread = await get(endpoint);
+      const freshRevision = reread.body.revision as number;
+      expect(freshRevision).toBeGreaterThan(staleRevision);
+      expect(read(reread.body)).toEqual(theirs);
+
+      // 用户显式选择改回原值，带新 revision 提交
+      const restored = await put(target, tail, original, freshRevision);
+      expect(restored.status, JSON.stringify(restored.body)).toBe(200);
+      expect(restored.body.revision).toBeGreaterThan(freshRevision);
+      expect(read((await get(endpoint)).body)).toEqual(original);
+    },
+  );
+
   it('对象没有配置进该身份时：四个入口都 404，不顺手新建对象权限', async () => {
     for (const tail of ['/data-operations', '/fields']) {
       expect((await get(url(bare, DEMO_OBJECT.code, tail))).status).toBe(404);
