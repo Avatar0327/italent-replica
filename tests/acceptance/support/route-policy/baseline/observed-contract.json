@@ -9003,6 +9003,29 @@
         ]
       }
     },
+    "GET /api/tenant/permission/mous/tree": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "permission",
+      "primitives": {
+        "admin": [
+          "admin.*",
+          "adminGuard"
+        ]
+      }
+    },
     "GET /api/tenant/permission/person-links/:userId": {
       "edge": {
         "anonymous": {
@@ -9089,6 +9112,50 @@
       "primitives": {
         "admin": [
           "admin.*",
+          "adminGuard"
+        ]
+      }
+    },
+    "GET /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "permission",
+      "primitives": {
+        "admin": [
+          "adminGuard"
+        ]
+      }
+    },
+    "GET /api/tenant/permission/profiles/:id/objects/:objectCode/fields": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "permission",
+      "primitives": {
+        "admin": [
           "adminGuard"
         ]
       }
@@ -30068,6 +30135,58 @@
       }
     },
     "PUT /api/tenant/permission/profiles/:id/objects/:objectCode": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "permission",
+      "primitives": {
+        "admin": [
+          "adminGuard"
+        ],
+        "command": [
+          "ifMatch / meta",
+          "write() / command()"
+        ]
+      }
+    },
+    "PUT /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "permission",
+      "primitives": {
+        "admin": [
+          "adminGuard"
+        ],
+        "command": [
+          "ifMatch / meta",
+          "write() / command()"
+        ]
+      }
+    },
+    "PUT /api/tenant/permission/profiles/:id/objects/:objectCode/fields": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
