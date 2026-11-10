@@ -1499,7 +1499,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/handling-content.ts#latestHandlingCopy': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/approval/definitions.ts#loadVersion',
-    '#CONTENT_PROVIDERS',
     '#HANDLING_EVENTS',
     '#missingCopy',
   ],

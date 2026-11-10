@@ -235,13 +235,13 @@ const missingCopy = () =>
   approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_HANDLING_CONTENT_MISSING', '办理记录暂不可读取，请稍后重试');
 
 /**
- * 查看人在某实例上最近一次人工办理的办理份；没有办理日志返回 null，有日志缺份（或带扩展的类型缺扩展）503。
- * 扩展缺失按类型登记判定：extended provider 的份里 ext 必须有内容，不拿 snapshot 单独冒充完整份（设计 §5.3）。
+ * 查看人在某实例上最近一次人工办理的办理份；没有办理日志返回 null，有日志缺份 503。
+ * 份里缺扩展内容由各业务的投影 / 自有详情判定（Offer 见 offer/frozen-view.ts），这里不按类型统一拒绝。
  */
 async function latestHandlingCopy(
   tx: Tx,
   ctx: Pick<ApprovalContext, 'tenantId'>,
-  instance: Pick<InstanceRow, 'id' | 'businessType'>,
+  instance: Pick<InstanceRow, 'id'>,
   userId: string,
 ): Promise<FrozenContent | null> {
   const [row] = rowsOf<HandlingRow>(
@@ -256,7 +256,6 @@ async function latestHandlingCopy(
   );
   if (!row) return null;
   if (!row.copyId || !row.content || !row.processVersionId) throw missingCopy();
-  if (CONTENT_PROVIDERS[instance.businessType].kind === 'extended' && row.content.ext == null) throw missingCopy();
   return {
     id: row.copyId,
     instanceId: instance.id,
@@ -319,7 +318,7 @@ export async function selectBusinessContent(
           ORDER BY latest.acted_at DESC, inst.created_at DESC, inst.id DESC, latest.seq DESC LIMIT 1) AS "instanceId"`),
   );
   if (!row || row.live || !row.instanceId) return { mode: 'live' };
-  const frozen = await latestHandlingCopy(tx, ctx, { id: row.instanceId, businessType }, userId);
+  const frozen = await latestHandlingCopy(tx, ctx, { id: row.instanceId }, userId);
   return frozen ? { mode: 'frozen', frozen } : { mode: 'live' };
 }
 
