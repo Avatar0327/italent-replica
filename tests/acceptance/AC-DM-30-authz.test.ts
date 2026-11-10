@@ -52,7 +52,7 @@ async function operator(x: ImportWorld, revoke: Revoke = {}) {
           edit: !f.system && !(revoke.field?.[0] === definition.code && revoke.field[1] === f.code),
         })),
         buttons: definition.buttons
-          .filter((b) => !(revoke.noButton && b.code === BUTTON.split('.')[1]))
+          .filter((b) => !(revoke.noButton && b.code === BUTTON))
           .map((b) => ({ buttonCode: b.code, level: b.level })),
       },
       definition.code,
@@ -60,11 +60,15 @@ async function operator(x: ImportWorld, revoke: Revoke = {}) {
     expect(response.status, `${definition.code} ${await response.clone().text()}`).toBe(200);
   }
   for (const target of [RECORD, EMPLOYEE, PERSONNEL_OBJECT].filter((t) => t !== revoke.noScope)) {
-    const response = await pw.api.request('PUT', `/api/tenant/permission/profiles/${profile.id}/data-scopes/TenantBase`, {
-      ...pw.asAdmin,
-      ifMatch: 0,
-      body: { targetKind: 'entity', targetCode: target, seeAll: true },
-    });
+    const response = await pw.api.request(
+      'PUT',
+      `/api/tenant/permission/profiles/${profile.id}/data-scopes/TenantBase`,
+      {
+        ...pw.asAdmin,
+        ifMatch: 0,
+        body: { targetKind: 'entity', targetCode: target, seeAll: true },
+      },
+    );
     expect(response.status, await response.clone().text()).toBe(200);
   }
   await makeGrantable(pw, [profile.id]);
@@ -117,10 +121,13 @@ describe('AC-DM-30-F493-23 真实授权器下的提交', () => {
     expect(await x.employeeCount()).toBe(1);
   });
 
-  it('② 收回任职 lastWorkDate 写权 → 403；③ 收回人员 code 写权 → 403；均不落批次', async () => {
-    const x = await importWorld(database().db, '23-23');
-    await denied(x, { field: [RECORD, 'lastWorkDate'] }, (code) => [x.row(1, code)]);
-    await denied(x, { field: [EMPLOYEE, 'code'] }, (code) => [x.row(1, code)]);
+  it.each([
+    ['② 收回任职 lastWorkDate 写权', RECORD, 'lastWorkDate'],
+    ['③ 收回人员 code 写权', EMPLOYEE, 'code'],
+  ])('%s → 403；不落批次', async (_name, object, field) => {
+    // 每个身份配一次租户管理员，同一世界只能配一次，所以两个场景各开一个世界
+    const x = await importWorld(database().db, `23-${field}`);
+    await denied(x, { field: [object, field] }, (code) => [x.row(1, code)]);
   });
 });
 

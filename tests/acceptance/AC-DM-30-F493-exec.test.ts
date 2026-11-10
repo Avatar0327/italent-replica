@@ -47,7 +47,11 @@ describe('AC-DM-30-F493-07 部分成功', () => {
       WHERE tenant_id=${x.tenantId} AND employee_id=${ok!.employee_id}::uuid ORDER BY start_date DESC LIMIT 1`);
     expect(status?.status).toBe(8);
     expect(await x.statesOf(ok!.exit_business_id!)).toEqual(['approved', 'effective']);
-    expect(await x.exitRowOf(ok!.exit_business_id!)).toMatchObject({ mode: 'import', initiator: 'hr', preReleaseDate: E });
+    expect(await x.exitRowOf(ok!.exit_business_id!)).toMatchObject({
+      mode: 'import',
+      initiator: 'hr',
+      preReleaseDate: E,
+    });
     expect(await x.employeeCount()).toBe(1);
     expect(await accountsOf(x.tenantId)).toHaveLength(1);
     expect(await x.batchOf(batchId)).toMatchObject({ created_count: 1, error_row_count: 1, error_count: 1 });
@@ -78,7 +82,7 @@ describe('AC-DM-30-F493-04 停用账号与虚拟登录名', () => {
         AND business_id=${row!.exit_business_id}::uuid`,
     );
     expect(task).toMatchObject({ status: 'disabled', auto_revision: account!.revision, user_id: link!.user_id });
-    const grants = await x.q(x.sql`SELECT 1 FROM tenant_user_grants WHERE tenant_id=${x.tenantId}
+    const grants = await x.q(x.sql`SELECT 1 FROM permission_grants WHERE tenant_id=${x.tenantId}
       AND user_id=${link!.user_id}::uuid`);
     expect(grants).toHaveLength(0);
     const login = await tenantApi(db, { authorize: undefined }).request('GET', '/api/tenant/employment/exits', {
@@ -104,7 +108,10 @@ describe('AC-DM-30-F493-29 虚拟登录名唯一 + 27② 工号为空', () => {
     const d = await x.dept('唯一部门');
     const batchId = await x.imported(Array.from({ length: 50 }, (_, i) => x.row(i + 1, d.code)));
     expect(await x.batchOf(batchId)).toMatchObject({ status: 'completed', created_count: 50, error_count: 0 });
-    const accounts = await readUsers(db, (await accountsOf(x.tenantId)).map((l) => l.user_id));
+    const accounts = await readUsers(
+      db,
+      (await accountsOf(x.tenantId)).map((l) => l.user_id),
+    );
     expect(new Set(accounts.map((a) => a.email)).size).toBe(50);
     for (const a of accounts) expect(a.email).toBe(`va-${a.id.replaceAll('-', '')}@virtualaccount.invalid`);
     const [nulls] = await x.q<{ codes: string; jobs: string }>(x.sql`SELECT
@@ -126,7 +133,12 @@ describe('AC-DM-30-F493-30 a 类拦截覆盖全部未删除人员', () => {
       x.row(3, d.code, { email: 'syn.a3@example.com' }),
       x.row(4, d.code, { email: 'syn.keep@example.com', personalEmail: 'syn.b@example.com' }),
     ]);
-    expect((await x.rowsOfBatch(seeded)).map((r) => r.status)).toEqual(['succeeded', 'succeeded', 'succeeded', 'succeeded']);
+    expect((await x.rowsOfBatch(seeded)).map((r) => r.status)).toEqual([
+      'succeeded',
+      'succeeded',
+      'succeeded',
+      'succeeded',
+    ]);
     const before = await x.employeeCount();
     const second = await x.imported([
       x.row(1, d.code, { email: ' Syn.A1@Example.com ' }),
@@ -218,7 +230,8 @@ async function enableFrom(x: ImportWorld, orgId: string, from: string) {
       ORDER BY start_date DESC, version_no DESC LIMIT 1`);
     await tx.execute(sql`INSERT INTO org_hierarchy_links (tenant_id, version_id, dimension, parent_org_id, sequence)
       SELECT l.tenant_id, ${id}::uuid, l.dimension, l.parent_org_id, l.sequence FROM org_hierarchy_links l
-      WHERE l.tenant_id=${x.tenantId} AND l.version_id=(SELECT previous_version_id FROM org_versions WHERE id=${id}::uuid)`);
+      WHERE l.tenant_id=${x.tenantId}
+        AND l.version_id=(SELECT previous_version_id FROM org_versions WHERE id=${id}::uuid)`);
     await tx.execute(sql`UPDATE org_objects SET revision = revision + 1 WHERE tenant_id=${x.tenantId}
       AND id=${orgId}::uuid`);
   });
@@ -265,7 +278,7 @@ describe('AC-DM-30-F493-18 已停用部门放行与撤销被拦（U3，DEC-839�
     };
     const audits = await x.auditCount('employment.exit.cancelled');
     const blocked = await cancel();
-    expect(blocked.status).toBe(409);
+    expect(blocked.status, await blocked.clone().text()).toBe(409);
     expect((await x.errorOf(blocked)).details?.reason).toBe('EMPLOYMENT_DEPARTMENT_DISABLED');
     expect(await x.statesOf(row.exit_business_id!)).toEqual(['approved', 'effective']);
     expect(await x.businessesOf(row.employee_id!)).toHaveLength(2);
@@ -344,7 +357,7 @@ describe('AC-DM-30-F493-07 行内容错误收齐（设计 §3.3）', () => {
     const view = rows.map((r) => [r.status, r.errors.map((e) => `${e.column}:${e.reason}`)]);
     expect(view).toEqual([
       ['failed', ['B:REQUIRED', 'C:REQUIRED']],
-      ['failed', ['C:INVALID_FORMAT', 'E:INVALID_FORMAT']],
+      ['failed', ['C:INVALID_EMAIL', 'E:INVALID_DATE']],
       ['failed', ['V:RANGE_INVERTED']],
       ['failed', ['V:NOT_HISTORICAL']],
       ['failed', ['D:REQUIRED']],

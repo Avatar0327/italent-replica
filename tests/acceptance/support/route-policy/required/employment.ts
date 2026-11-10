@@ -199,9 +199,9 @@ const ob = (perm: string, facts: readonly string[], evidence: readonly Evidence[
 });
 
 const EXIT_IMPORT = `${SRC}/employment/exit-import.ts`;
-/** F-139a：历史离职导入的入口权限链（预览与导入共用 requireExitImportAccess，设计 §7）。 */
-function exitImportObligations(path: '/exits/import' | '/exits/import/preview'): Obligation[] {
-  const entry = at(EXIT, 'POST', path, "const ctx = await readContext(c, deps, 'object.create')");
+/** F-493：历史离职导入的入口权限链（requireExitImportAccess，设计 §6.1）。 */
+function exitImportObligations(): Obligation[] {
+  const entry = at(EXIT, 'POST', '/exits/import', "const ctx = await readContext(c, deps, 'object.create')");
   const access = (anchor: string) => fn(EXIT_IMPORT, 'requireExitImportAccess', anchor);
   const seeAll = bound({ scope: 'see-all' }, [
     {
@@ -3572,16 +3572,59 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     linkage(at(EXIT, 'POST', '/exits/batch', 'body: await createExitBatch(tx, context, items, guard.failures())')),
   ],
-  // F-139a 历史离职人员导入（设计 §7）：预览与导入共用入口权限链 requireExitImportAccess；导入命令内另由 exitImportGuard 复核
-  'POST /api/tenant/employment/exits/import/preview': exitImportObligations('/exits/import/preview'),
+  // F-493 历史离职人员导入（设计 §6.1）：入口权限链 requireExitImportAccess；命令内由 exitImportGuard 复核，
+  // 并按档案更新权 / 教育新增权复核本批要写的档案字段（requireExitImportProfileAccess，与 POST /interns 同口径）
   'POST /api/tenant/employment/exits/import': [
-    ...exitImportObligations('/exits/import'),
+    ...exitImportObligations(),
+    ob(
+      'guard:employment.exitImportProfile',
+      [],
+      [
+        fn(REPLAY, 'exitImportGuard', 'await requireExitImportProfileAccess(tx, deps, scoped, rows)'),
+        fn(
+          EXIT_IMPORT,
+          'requireExitImportProfileAccess',
+          'await authorize(authorizer, access, operation, payload, operation)',
+        ),
+        fn(EXIT_IMPORT, 'requireExitImportProfileAccess', 'scope = await personnelCreationScope('),
+        fn(
+          `${SRC}/permission/scope-resolver.ts`,
+          'personnelCreationScope',
+          "current.terms.map((term) => (term.dimension === 'using_user' ? managed : term))",
+        ),
+      ],
+      '条件准入：档案字段校验档案更新权；有学校 / 专业时再校验教育新增权（DEC-082 创建范围转换）；两者都要求显式“看全部”',
+    ),
+    ...[
+      'obj:TenantBase.EmployeeInformation:update',
+      'btn:TenantBase.EmployeeInformation#update@detail',
+      'obj:TenantBase.Education:create',
+      'btn:TenantBase.Education#create@list',
+    ].map((perm) => ({
+      ...ob(
+        perm,
+        ['object:object.* 动作', 'button:buttonResource', 'button:object.button'],
+        [
+          fn(
+            EXIT_IMPORT,
+            'requireExitImportProfileAccess',
+            'await authorize(authorizer, access, operation, payload, operation)',
+          ),
+          fn(
+            `${SRC}/personnel/access.ts`,
+            'authorize',
+            'await requireObjectWrite(authorizer, ctx, { objectCode: ctx.objectCode, operation, payload })',
+          ),
+        ],
+      ),
+      purpose: 'when:employment.exitImportProfile' as const,
+    })),
     linkage(
       at(
         EXIT,
         'POST',
         '/exits/import',
-        'async (tx, context) => ({ status: 201, body: await importExits(tx, context, body) })',
+        'submitExitImport(tx, context, body, (db) => wakeExitImports(db, context.tenantId, deps.clock))',
       ),
     ),
   ],

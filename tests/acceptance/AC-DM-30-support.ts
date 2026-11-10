@@ -8,6 +8,7 @@ import { sql, withTenant } from '@italent/db';
 import { expect } from 'vitest';
 import { forceDisableOrg } from './AC-EST-support.js';
 import { gateWorld } from './AC-EXIT-gate-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { exitImportIdle } from '../../apps/api/src/modules/employment/exit-import-worker.js';
 import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -82,7 +83,11 @@ export async function importWorld(db: Db, label: string) {
     }) as ImportRow;
 
   let keyNo = 0;
-  const submit = (rows: readonly unknown[], over: Record<string, unknown> = {}, options: Record<string, unknown> = {}) =>
+  const submit = (
+    rows: readonly unknown[],
+    over: Record<string, unknown> = {},
+    options: Record<string, unknown> = {},
+  ) =>
     w.session.request('POST', '/exits/import', {
       body: { fileName: '合成导入.xlsx', rows, ...over },
       idempotencyKey: `dm30-${label}-${keyNo++}-${uniqueSuffix()}`,
@@ -119,9 +124,13 @@ export async function importWorld(db: Db, label: string) {
       exit_business_id::text AS exit_business_id FROM exit_import_rows
       WHERE tenant_id=${tenantId} AND batch_id=${batchId}::uuid ORDER BY row_no`);
   const batchCount = async () =>
-    Number((await q<{ n: string }>(sql`SELECT count(*) AS n FROM exit_import_batches WHERE tenant_id=${tenantId}`))[0]!.n);
+    Number(
+      (await q<{ n: string }>(sql`SELECT count(*) AS n FROM exit_import_batches WHERE tenant_id=${tenantId}`))[0]!.n,
+    );
   const employeeCount = async () =>
-    Number((await q<{ n: string }>(sql`SELECT count(*) AS n FROM employment_employees WHERE tenant_id=${tenantId}`))[0]!.n);
+    Number(
+      (await q<{ n: string }>(sql`SELECT count(*) AS n FROM employment_employees WHERE tenant_id=${tenantId}`))[0]!.n,
+    );
   const businessesOf = (employeeId: string) =>
     q<{ id: string; kind: string; state: string; effectiveDate: string; mode: string }>(sql`
       SELECT b.id, p.kind, p.mode, p.effective_date::text AS "effectiveDate",
@@ -180,25 +189,49 @@ export async function importWorld(db: Db, label: string) {
     expect(response.status, `${path} ${await response.clone().text()}`).toBe(201);
     return (await response.json()) as { id: string };
   };
+  let unit: Promise<string> | undefined;
   async function jobs(orgId: string) {
-    const post = await jobPost('posts', { name: '合成岗位', code: `P${uniqueSuffix(10)}` });
+    // 职级新建需要创建人有职务体系授权管理单元（DEC-339①）；每个世界只补一次
+    unit ??= grantJobUnit(
+      (method, path, init) => jobApi.request(method, path, { ...init, user: w.session.user.id, tenant: tenantId }),
+      w.session.user.id,
+      tenantId,
+    );
+    await unit;
+    const post = await jobPost('posts', { name: '合成岗位', code: `P${uniqueSuffix(12)}` });
     const position = await jobPost('positions', {
       name: '合成职位',
-      code: `S${uniqueSuffix(10)}`,
+      code: `S${uniqueSuffix(12)}`,
       orgId,
       postId: post.id,
+      startDate: '2022-01-01', // 部门设立日起（部门 2022-01-01 设立，早于它的职位建不出来）
     });
-    const type = await jobPost('level-types', { name: '合成职级体系', code: `T${uniqueSuffix(10)}` });
+    const type = await jobPost('level-types', { name: '合成职级体系', code: `T${uniqueSuffix(12)}` });
     const level = await jobPost('levels', {
       name: '合成职级',
-      code: `L${uniqueSuffix(10)}`,
+      code: `L${uniqueSuffix(12)}`,
       level: 3,
       levelTypeId: type.id,
     });
     return { post, position, level };
   }
-  const duplicatePosition = (orgId: string, postId: string) =>
-    jobPost('positions', { name: '合成职位', code: `S${uniqueSuffix(10)}`, orgId, postId });
+  /** 租户级“允许职位重名”打开后，同部门再建一个同名职位（job 模块默认拒绝重名）。 */
+  const duplicatePosition = async (orgId: string, postId: string) => {
+    const settings = await jobApi.request('PUT', '/api/tenant/job/settings', {
+      user: w.session.user.id,
+      tenant: tenantId,
+      ifMatch: 0,
+      body: { allowDuplicatePositionNames: true, adjustEmployeeDirectManager: false, startDate: '2020-01-01' },
+    });
+    expect(settings.status, await settings.clone().text()).toBe(200);
+    return jobPost('positions', {
+      name: '合成职位',
+      code: `S${uniqueSuffix(12)}`,
+      orgId,
+      postId,
+      startDate: '2022-01-01',
+    });
+  };
   const disable = (orgId: string, from: string) => forceDisableOrg(db, tenantId, orgId, from);
   const errorOf = async (response: Response) =>
     ((await response.json()) as { error: { code: string; details?: { reason?: string } } }).error;
