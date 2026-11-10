@@ -186,6 +186,10 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
         } satisfies LinkageOptions,
       ),
     );
+  /** 请求体里的转交计划（exit.dutyTransfer，DT-R4：有职责的人直接离职必须随单带计划）。 */
+  const dutyPlan = (subordinates: { employeeId: string; receiverId: string }[]) => ({
+    dutyTransfer: { subordinates: subordinates.map((s) => ({ ...s, relation: 'direct' as const })), orgRoles: [] },
+  });
   /** 租户配置项 exit.duty_transfer_timing（§2.2）；须在创建离职前设置，离职单创建时固化。 */
   async function useTiming(value: 'business_effective' | 'approval_passed') {
     const response = await api.request('PUT', '/api/tenant/settings/exit.duty_transfer_timing', {
@@ -282,6 +286,7 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
     peer,
     managerOf,
     planDuties,
+    dutyPlan,
     useTiming,
     confirm,
     items,

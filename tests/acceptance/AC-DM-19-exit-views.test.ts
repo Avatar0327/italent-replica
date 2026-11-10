@@ -464,7 +464,7 @@ describe('AC-DM-19 离职详情（B13）与原定日期（§5.0A，D-14）', () 
       { phase: 'confirmed', kind: 'duty_transferred', count: 2 },
       { phase: 'confirmed', kind: 'establishment_pre_released', count: 1 },
     ]);
-    expect(detail.dutyTransfer).toEqual({ timing: 'business_effective', transferred: 2, failed: 1 });
+    expect(detail.dutyTransfer).toEqual({ timing: 'business_effective', date: null, transferred: 2, failed: 1 });
     expect(JSON.stringify(detail)).not.toMatch(/targetId|target_id/);
     expect(detail.cancellation).toMatchObject({ reason: '细节', case: 'approved_voided' });
   });
@@ -477,7 +477,14 @@ const CATALOG = MODULE_OBJECTS.employmentRecord.fields.map((field) => field.code
 const FULL = [...CATALOG, 'name', 'code'];
 /** 响应键与字段目录的对应：派生的显示名跟随编码；这些结构 / 汇总键没有自己的字段编码，行可见即可见。 */
 // F-479：attachments 是 attachmentRefs 的展开摘要，跟随该字段权（R-4 契约变更）
-const DERIVED = ['plannedLastWorkDate', 'exitTypeName', 'reasonName', 'whereaboutsName', 'attachments'];
+const DERIVED = [
+  'plannedLastWorkDate',
+  'exitTypeName',
+  'reasonName',
+  'whereaboutsName',
+  'attachments',
+  'dutyTransferDate',
+];
 // F-317：rowActions 是服务端按对象 / 行按钮 / 当前写范围判定的控制项，行为另由 F-317 验收守卫。
 // F-352①：actions 是逐单动作（状态 × 按钮权 × 写范围），依赖状态字段权，行为另由 AC-EXIT-F352-actions 守卫。
 const STRUCTURES = [
@@ -524,7 +531,7 @@ describe('AC-DM-19 系统字段按各自字段权裁剪（第 2 轮 P2-1，设�
       ['initiator', ['initiator']],
       ['batchId', ['batchId']],
       ['preReleaseDate', ['preReleaseDate']],
-      ['dutyTransferTiming', ['dutyTransferTiming']],
+      ['dutyTransferTiming', ['dutyTransferTiming', 'dutyTransferDate']],
       ['createdAt', ['createdAt']],
       ['activation', ['activation']],
       ['revision', ['revision']],
@@ -697,6 +704,7 @@ const NESTED: [string, string][] = [
   ['cancellation.revision', 'revision'],
   ['cancellation.createdAt', 'createdAt'],
   ['dutyTransfer.timing', 'dutyTransferTiming'],
+  ['dutyTransfer.date', 'dutyTransferTiming'],
   ['dates.planned.lastWorkDate', 'lastWorkDate'],
   ['dates.final.lastWorkDate', 'lastWorkDate'],
   ['dates.planned.effectiveDate', 'effectiveDate'],
@@ -931,12 +939,13 @@ const DETAIL_SAMPLE = {
   employerName: null,
   actualLeaveDate: null,
   dutyTransferTiming: '',
+  dutyTransferDate: null,
   preReleaseDate: null,
   versions: [{ versionNo: 1, effectiveDate: '', plannedEffectiveDate: '', lastWorkDate: null, createdAt: '' }],
   events: [{ eventNo: 1, state: '', createdAt: '' }],
   approvalInstanceId: null,
   effects: [{ phase: '', kind: '', count: 1 }],
-  dutyTransfer: { timing: '', transferred: 0, failed: 0 },
+  dutyTransfer: { timing: '', date: null, transferred: 0, failed: 0 },
   dates: {
     planned: { lastWorkDate: '', effectiveDate: '' },
     final: { lastWorkDate: '', effectiveDate: '' },
