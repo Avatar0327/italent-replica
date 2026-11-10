@@ -147,7 +147,12 @@ function readCtx(c: C, deps: TenantRouteDeps): ApprovalContext {
 }
 
 function writeCtx(c: C, deps: TenantRouteDeps): ApprovalContext {
-  return { ...readCtx(c, deps), expectedRevision: revision(c), exitEditAuthorize: deps.authorize };
+  return {
+    ...readCtx(c, deps),
+    expectedRevision: revision(c),
+    exitEditAuthorize: deps.authorize,
+    handlingAuthorize: deps.authorize,
+  };
 }
 
 /** 锁冲突（死锁、序列化失败、锁超时）返回可识别的 409，由客户端刷新后显式重提，不自动盲重试（清单 11）。 */

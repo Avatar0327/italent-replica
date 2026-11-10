@@ -27,7 +27,8 @@ export interface HandlingContent {
   readonly ext: unknown;
 }
 
-type ExtLoader = (tx: Tx, tenantId: string, businessId: string) => Promise<unknown>;
+/** ctx 是本次办理的命令上下文：需要按办理人裁剪源对象的 provider（IDP 关键信息，P2-1）从中取办理人与授权器。 */
+type ExtLoader = (tx: Tx, tenantId: string, businessId: string, ctx: ApprovalContext) => Promise<unknown>;
 type ContentProvider =
   | { readonly kind: 'snapshot-only' }
   | { readonly kind: 'extended'; readonly ext: ExtLoader }
@@ -44,7 +45,7 @@ export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> 
   employment: SNAPSHOT_ONLY,
   personnel_change: SNAPSHOT_ONLY,
   contract: SNAPSHOT_ONLY,
-  idp: { kind: 'extended', ext: (tx, tenantId, stageId) => loadIdpStageContent(tx, tenantId, stageId) },
+  idp: { kind: 'extended', ext: (tx, tenantId, stageId, ctx) => loadIdpStageContent(tx, tenantId, stageId, ctx) },
   part_time: SNAPSHOT_ONLY,
   offer: SNAPSHOT_ONLY,
   offer_batch: SNAPSHOT_ONLY,
@@ -104,7 +105,7 @@ export async function prepareHandlingContent(
       businessType: instance.businessType,
     });
   }
-  const ext = provider.kind === 'extended' ? await provider.ext(tx, ctx.tenantId, instance.businessId) : null;
+  const ext = provider.kind === 'extended' ? await provider.ext(tx, ctx.tenantId, instance.businessId, ctx) : null;
   const json = JSON.stringify({ snapshot, ext } satisfies HandlingContent);
   const bytes = Buffer.byteLength(json, 'utf8');
   if (bytes > MAX_PAYLOAD_BYTES) {

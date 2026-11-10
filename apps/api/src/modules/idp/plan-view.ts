@@ -621,15 +621,19 @@ function configuredBlocks(modules: readonly ModuleView[]): Map<KeyInfoKind, Set<
   return configured;
 }
 
+/** 关键信息裁剪用到的投影：三个源对象的字段投影与范围。 */
+export type KeyInfoProjections = Pick<Projections, KeyInfoKind | 'keyInfoScopes'>;
+
 /**
  * 关键信息（DEC-318 K-35 补充）：只返回模板配置的区块，每条只带配置的展示字段（另带 id）；记录涉及的全部员工 / 组织
  * 都在查看人范围内才列出（与直接读取一致，P2-1），再按源对象字段权裁剪（E6）。
+ * IDP 办理份捕获时也用它按办理人裁剪（F-476 P8 第 5 轮 P2-1，stage-content.ts）。
  */
-async function keyInfoShown(
+export async function keyInfoShown(
   tx: Tx,
   info: KeyInfo,
   modules: readonly ModuleView[],
-  p: Projections,
+  p: KeyInfoProjections,
 ): Promise<Partial<KeyInfo>> {
   const shown: Partial<Record<(typeof KIND_KEYS)[KeyInfoKind], Record<string, unknown>[]>> = {};
   for (const [kind, fields] of configuredBlocks(modules)) {
