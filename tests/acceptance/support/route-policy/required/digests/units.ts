@@ -1111,7 +1111,7 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/personnel/order-code/settings': '5d57aee1fb93',
   },
   'apps/api/src/modules/personnel/request-routes.ts': {
-    'route:GET /api/tenant/personnel/change-requests/:id': '6de99e650eba',
+    'route:GET /api/tenant/personnel/change-requests/:id': '7b4a0cf33035',
     'route:POST /api/tenant/personnel/change-requests': '9ed96f8f6519',
   },
   'apps/api/src/modules/personnel/routes.ts': {
@@ -2737,7 +2737,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/personnel/order-code-routes.ts#route:GET /api/tenant/personnel/order-code/settings':
     'd98507a5a644',
   'apps/api/src/modules/personnel/request-routes.ts#route:GET /api/tenant/personnel/change-requests/:id':
-    '0af34ddc3e88',
+    'eebd89a9a129',
   'apps/api/src/modules/personnel/request-routes.ts#route:POST /api/tenant/personnel/change-requests': '4322865d1474',
   'apps/api/src/modules/personnel/routes.ts#nestedSubsets': 'e84939c40cbe',
   'apps/api/src/modules/personnel/routes.ts#route:GET /api/tenant/personnel/employees': '032728e6b253',

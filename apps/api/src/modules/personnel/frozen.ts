@@ -4,8 +4,10 @@
  * 申请所针对的那一版子集记录上的原值（固定 targetRevision，之后源记录被改 / 被删都不漂移，设计清单 9）。
  */
 import { sql, type Tx } from '@italent/db';
-import { SUBSETS, type SubsetKind } from '@italent/domain';
+import { PERSONNEL_REQUEST_OBJECT, SUBSETS, type SubsetKind } from '@italent/domain';
+import type { ApprovalContext } from '../approval/context.js';
 import { pickDisclosed } from '../approval/frozen-read.js';
+import { handlingCeilingOf } from '../approval/object-ceiling.js';
 import { currentChangeValues, loadChange } from './change-requests.js';
 import { camel, rows, type PersonnelContext, type Row } from './store.js';
 
@@ -14,6 +16,16 @@ export interface PersonnelContent {
   readonly currentValues: Row;
   /** 针对既有记录的申请：目标版本上同键的原值；新增记录为 null。 */
   readonly originals: Row | null;
+}
+
+/**
+ * 办理份 ext：在 PersonnelContent 之外另存办理人当时对申请对象（PERSONNEL_REQUEST_OBJECT，字段目录见
+ * domain personnel/catalog.ts）的可见字段。引擎的 disclosure_ceiling 只覆盖子集对象（snapshot.fieldObjectCode），
+ * 申请元数据（employeeId、recordId 等）属于另一个字段对象，须自带上限（F-476 P5 第 3 轮 P2，设计 §5.2）。
+ */
+export interface PersonnelHandlingContent extends PersonnelContent {
+  /** null = 办理时不受字段权限约束；未注入字段权解析时为空集（fail-closed）。 */
+  readonly requestCeiling: readonly string[] | null;
 }
 
 /** 子集历史版本（含已删除记录的版本链），按记录 ID 与 revision 定位。 */
@@ -53,13 +65,26 @@ export async function changeOriginals(
   return record ? Object.fromEntries(Object.keys(values).map((key) => [key, record[key] ?? null])) : null;
 }
 
-/** 办理份 provider，同时是申请详情读现值的来源。 */
-export async function loadPersonnelContent(tx: Tx, tenantId: string, id: string): Promise<PersonnelContent> {
+/** 申请详情读现值的来源（本人现读）。 */
+export async function readPersonnelContent(tx: Tx, tenantId: string, id: string): Promise<PersonnelContent> {
   const ctx = { tenantId } as PersonnelContext;
   const request = await loadChange(tx, ctx, id);
   const currentValues = await currentChangeValues(tx, ctx, id);
   const originals = await changeOriginals(tx, tenantId, request, String(request.subset) as SubsetKind, currentValues);
   return { request, currentValues, originals };
+}
+
+/** 办理份 provider：现值内容 + 办理人对申请对象的办理时上限。 */
+export async function loadPersonnelContent(
+  tx: Tx,
+  tenantId: string,
+  id: string,
+  ctx: Pick<ApprovalContext, 'userId' | 'fields'>,
+): Promise<PersonnelHandlingContent> {
+  return {
+    ...(await readPersonnelContent(tx, tenantId, id)),
+    requestCeiling: await handlingCeilingOf(tx, ctx, PERSONNEL_REQUEST_OBJECT),
+  };
 }
 
 /**
@@ -80,8 +105,11 @@ export function personnelContainers(
   };
 }
 
-/** 申请元数据：去掉容器键（容器走 personnelContainers），其余交路由按申请对象字段权裁。 */
-export function personnelMetadata(content: PersonnelContent): Row {
+/**
+ * 申请元数据：去掉容器键（容器走 personnelContainers），按办理时申请对象上限截（`ceiling` null = 不截，现读传 null），
+ * 其余交路由按当前申请对象字段权裁。
+ */
+export function personnelMetadata(content: PersonnelContent, ceiling: ReadonlySet<string> | null): Row {
   const { values: _values, ...metadata } = content.request;
-  return metadata;
+  return ceiling ? Object.fromEntries(Object.entries(metadata).filter(([key]) => ceiling.has(key))) : metadata;
 }
