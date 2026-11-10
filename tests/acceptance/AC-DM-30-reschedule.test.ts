@@ -40,9 +40,9 @@ async function oneImported(label: string, disableFrom?: string) {
   const x = await importWorld(database().db, `12-${label}`);
   const d = await x.dept('改期部门');
   if (disableFrom) await x.disable(d.id, disableFrom);
-  const body = await x.created([x.row(1, d.code)]);
-  const item = body.rows[0]!;
-  return { x, d, ...item };
+  const [item] = await x.rowsOfBatch(await x.imported([x.row(1, d.code)]));
+  expect(item!.status).toBe('succeeded');
+  return { x, d, exitBusinessId: item!.exit_business_id!, employeeId: item!.employee_id! };
 }
 
 describe('AC-DM-30-12 列表与详情', () => {
@@ -156,24 +156,23 @@ describe('AC-DM-30-12 改期', () => {
 });
 
 describe('AC-DM-30-12 撤销', () => {
-  it('撤销已生效导入离职：人员恢复在职，onCancelled 照常运行，手动名单回收，不排账号停用任务', async () => {
+  it('撤销已生效导入离职：人员恢复在职，onCancelled 照常运行，不产生名单', async () => {
     const x = await importWorld(database().db, '12-cancel');
     const d = await x.dept('撤销部门');
-    const { rows } = await x.created([x.row(1, d.code, { addToBlacklist: true, blacklistReason: 'instability' })]);
-    const item = rows[0]!;
+    const [item] = await x.rowsOfBatch(await x.imported([x.row(1, d.code)]));
     const cancelled: string[] = [];
     exitPostEffectHooks.onCancelled(async (_tx, _ctx, event) => void cancelled.push(event.businessId));
-    const detail = await x.session.request('GET', `/exits/${item.exitBusinessId}`);
+    const detail = await x.session.request('GET', `/exits/${item!.exit_business_id}`);
     const { revision } = (await detail.json()) as { revision: number };
-    const response = await x.session.request('POST', `/exits/${item.exitBusinessId}/cancel`, {
+    const response = await x.session.request('POST', `/exits/${item!.exit_business_id}/cancel`, {
       ifMatch: revision,
       body: { reason: '合成撤销', confirmed: true },
     });
     expect(response.status, await response.clone().text()).toBe(200);
-    expect(cancelled).toEqual([item.exitBusinessId]);
-    expect((await x.timelineOf(item.employeeId)).map((t) => t.startDate)).toEqual([H]);
-    const active = await x.q(x.sql`SELECT 1 FROM employment_blacklist WHERE tenant_id=${x.tenantId}
-      AND employee_id=${item.employeeId}::uuid AND status='active'`);
-    expect(active).toHaveLength(0);
+    expect(cancelled).toEqual([item!.exit_business_id]);
+    expect((await x.timelineOf(item!.employee_id!)).map((t) => t.startDate)).toEqual([H]);
+    const listed = await x.q(x.sql`SELECT 1 FROM employment_blacklist WHERE tenant_id=${x.tenantId}
+      AND employee_id=${item!.employee_id!}::uuid`);
+    expect(listed).toHaveLength(0);
   });
 });

@@ -1,263 +1,150 @@
 /**
- * AC-DM-30-13～15：历史离职导入权限链的返工回归（F-139a 第 2 轮，设计 §5.1）。
- * 13 = 字段写权逐项（P1-1）；14 = 人员对象“看全部”范围（P1-2）；15 = 命令内 exitImportGuard 的撤权竞态（P2-4）。
- * 竞态用可控屏障模拟：入口授权器调用放行并记下“入口已过”，之后（armed）命令事务内的授权 / 范围才收窄。
+ * AC-DM-30-F493-16①②/23①②③/37：历史离职导入提交的权限链（S3a，设计 §6.1）。
+ * 真实授权器（不注入 authorize 替身）：按身份逐对象配置字段写权、按钮、看全部范围，再用该身份提交。
+ * 提交权限在入口与命令事务内各复核一次；任一不满足 403，且不落批次、不写人员。
  */
 import './support/exit-gate-enforced.js';
-import { bootstrapTenantAdmin, type Authorizer } from '@italent/api';
-import { MODULE_OBJECTS } from '@italent/domain';
+import { bootstrapTenantAdmin } from '@italent/api';
+import { MODULE_OBJECTS, PERSONNEL_OBJECT, PERSONNEL_OBJECTS, SUBSETS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
-import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
-import { H, importWorld, type ImportWorld } from './AC-DM-30-support.js';
+import { importWorld, type ImportWorld } from './AC-DM-30-support.js';
 import { addMember, createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
-import { isButton, orgScope, type Request } from './support/revocable-rights.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const BUTTON = 'Employment.DimissionImport';
 const EMPLOYEE = MODULE_OBJECTS.employee.code;
 const RECORD = MODULE_OBJECTS.employmentRecord.code;
-const FIELDS = [
-  ...MODULE_OBJECTS.employmentRecord.fields.map((field) => field.code),
-  ...MODULE_OBJECTS.employee.fields.map((field) => field.code),
-  'id',
-  'revision',
-];
-const ALL: ModuleScope = { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
+const EDUCATION = SUBSETS.education.objectCode;
+const OBJECTS = [...Object.values(MODULE_OBJECTS), ...PERSONNEL_OBJECTS];
 
-/** 一行把所有可选字段都用上：字典三项、加黑三项（逐项撤权时每一项都在本批实际写入的字段里）。 */
-const fullRow = (x: ImportWorld, deptCode: string, n = 1) =>
-  x.row(n, deptCode, {
-    exitReasonCode: 'personal',
-    exitDestinationCode: 'startup',
-    addToBlacklist: true,
-    blacklistReason: 'instability',
-    blacklistExpiryDate: '2030-01-01',
-    blacklistNote: '合成备注',
-  });
+/** 本身份缺的权限：某对象的某字段写权 / 新增权 / 看全部范围 / 导入按钮。 */
+interface Revoke {
+  field?: [object: string, field: string];
+  noCreate?: string;
+  noScope?: string;
+  noButton?: boolean;
+}
 
-const key = () => ({ idempotencyKey: `dm30-${uniqueSuffix()}` });
-
-/** preview 与 import 都 403，且不带逐行结果（否则工号存在性可被探测）。 */
-async function expectDenied(call: Caller, rows: ReturnType<typeof fullRow>[]) {
-  for (const path of ['/exits/import/preview', '/exits/import']) {
-    const response = await call(path, { body: { rows }, ...key() });
-    expect(response.status, `${path} ${await response.clone().text()}`).toBe(403);
-    expect(JSON.stringify(await response.json())).not.toContain('EMPLOYEE_NO_EXISTS');
+/** 配一个除 `revoke` 外什么都有的身份，返回用它提交的函数。 */
+async function operator(x: ImportWorld, revoke: Revoke = {}) {
+  const { tenant, user } = x.session;
+  const pw = {
+    db: x.db,
+    tenant,
+    admin: user,
+    adminRecord: await bootstrapTenantAdmin(x.db, { tenantId: tenant.id, userId: user.id }, cmd()),
+    api: tenantApi(x.db, { authorize: undefined, clock: () => new Date('2026-11-05T01:00:00Z') }),
+    asAdmin: { user: user.id, tenant: tenant.id },
+  };
+  const profile = await createProfile(pw, `imp-${uniqueSuffix()}`, { apps: ['TenantBase'] });
+  for (const definition of OBJECTS) {
+    const response = await setObjectPermission(
+      pw,
+      profile,
+      {
+        dataOperations: { create: revoke.noCreate !== definition.code, update: true, delete: true },
+        fields: definition.fields.map((f) => ({
+          fieldCode: f.code,
+          view: true,
+          edit: !f.system && !(revoke.field?.[0] === definition.code && revoke.field[1] === f.code),
+        })),
+        buttons: definition.buttons
+          .filter((b) => !(revoke.noButton && b.code === BUTTON.split('.')[1]))
+          .map((b) => ({ buttonCode: b.code, level: b.level })),
+      },
+      definition.code,
+    );
+    expect(response.status, `${definition.code} ${await response.clone().text()}`).toBe(200);
   }
+  for (const target of [RECORD, EMPLOYEE, PERSONNEL_OBJECT].filter((t) => t !== revoke.noScope)) {
+    const response = await pw.api.request('PUT', `/api/tenant/permission/profiles/${profile.id}/data-scopes/TenantBase`, {
+      ...pw.asAdmin,
+      ifMatch: 0,
+      body: { targetKind: 'entity', targetCode: target, seeAll: true },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+  }
+  await makeGrantable(pw, [profile.id]);
+  const member = await addMember(pw, `imp-op-${uniqueSuffix()}`);
+  expect((await grant(pw, member.id, profile.id)).status).toBe(201);
+  return (rows: readonly unknown[]) =>
+    pw.api.request('POST', '/api/tenant/employment/exits/import', {
+      user: member.id,
+      tenant: tenant.id,
+      body: { fileName: '合成导入.xlsx', rows },
+      idempotencyKey: `dm30-authz-${uniqueSuffix()}`,
+    });
 }
 
-type Caller = (path: string, init?: Record<string, unknown>) => Promise<Response>;
+const denied = async (x: ImportWorld, revoke: Revoke, rows: (d: string) => unknown[]) => {
+  const d = await x.dept('权限部门');
+  const submit = await operator(x, revoke);
+  const before = await x.writeCounts();
+  const response = await submit(rows(d.code));
+  expect(response.status, await response.clone().text()).toBe(403);
+  expect(await x.writeCounts()).toEqual(before);
+};
 
-interface Rights {
-  /** 命令事务内才应用下面的收窄（入口已过之后）。 */
-  armed: boolean;
-  denyInTx?: (request: Request) => boolean;
-  /** 入口与事务内都生效的人员对象范围。 */
-  employeeScope?: ModuleScope;
-  /** 仅命令事务内的人员对象范围。 */
-  txEmployeeScope?: ModuleScope;
-}
-
-/**
- * 可控屏障授权器：入口（无事务）授权器调用一律放行并记下“入口按钮复核已过”；
- * 事务内（命令守卫 / 事务内解析的范围）在 armed 且入口已过之后应用 rights。
- */
-function gated(x: ImportWorld) {
-  const rights: Rights = { armed: false };
-  let entryPassed = false;
-  const authorize: Authorizer = (request) => {
-    if (isButton(BUTTON)(request)) entryPassed = true;
-    return true;
-  };
-  const request = x.restricted(authorize, undefined, FIELDS);
-  const late = () => rights.armed && entryPassed;
-  registerScopeProvider(authorize, {
-    scope: async (query, tx) => {
-      if (query.objectCode !== EMPLOYEE) return ALL;
-      if (tx && late() && rights.txEmployeeScope) return rights.txEmployeeScope;
-      return rights.employeeScope ?? ALL;
-    },
-    authorize: async (req, tx) => !(tx && late() && rights.denyInTx?.(req)),
-    fields: async () => new Set(FIELDS),
-  });
-  const call: Caller = (path, init = {}) => {
-    entryPassed = false;
-    return request('POST', path, init);
-  };
-  return { call, rights };
-}
-
-describe('AC-DM-30-13 字段写权逐项（P1-1）', () => {
-  const fieldCases = [
-    'lastWorkDate',
-    'exitTypeCode',
-    'reasonCode',
-    'whereaboutsCode',
-    'addToBlacklist',
-    'blacklistReason',
-    'blacklistExpiryDate',
-    'blacklistNote',
-  ] as const;
-
-  it.each(fieldCases)('撤掉 %s 的创建写权：preview 与 import 都 403，零写入', async (field) => {
-    const x = await importWorld(database().db, `13-${field}`);
-    const d = await x.dept('字段权部门');
-    const authorize: Authorizer = (request) =>
-      !(request.action === 'object.create' && request.resource === RECORD && (request.fields ?? []).includes(field));
-    const before = await x.writeCounts();
-    const request = x.restricted(authorize, undefined, FIELDS);
-    await expectDenied((path, init) => request('POST', path, init), [fullRow(x, d.code)]);
-    expect(await x.writeCounts()).toEqual(before);
+describe('AC-DM-30-F493-16 ①② 提交权限', () => {
+  it('① 没有导入按钮 → 403，不落批次', async () => {
+    const x = await importWorld(database().db, '16-1');
+    await denied(x, { noButton: true }, (code) => [x.row(1, code)]);
   });
 
-  it('对照：全部字段写权都在时同一行可以导入', async () => {
-    const x = await importWorld(database().db, '13-control');
-    const d = await x.dept('字段权对照部门');
-    const request = x.restricted(() => true, undefined, FIELDS);
-    const response = await request('POST', '/exits/import', { body: { rows: [fullRow(x, d.code)] }, ...key() });
-    expect(response.status, await response.clone().text()).toBe(201);
-  });
-
-  it('第一次成功后撤掉 reasonCode 写权：同键重放 403，不回放旧回执', async () => {
-    const x = await importWorld(database().db, '13-replay');
-    const d = await x.dept('字段权重放部门');
-    let revoked = false;
-    const authorize: Authorizer = (request) =>
-      !(revoked && request.action === 'object.create' && (request.fields ?? []).includes('reasonCode'));
-    const request = x.restricted(authorize, undefined, FIELDS);
-    const options = { body: { rows: [fullRow(x, d.code)] }, ...key() };
-    expect((await request('POST', '/exits/import', options)).status).toBe(201);
-    revoked = true;
-    expect((await request('POST', '/exits/import', options)).status).toBe(403);
-  });
-
-  it('入口放行之后、命令事务内撤掉 whereaboutsCode 写权：命令守卫拒绝，零写入', async () => {
-    const x = await importWorld(database().db, '13-guard');
-    const d = await x.dept('字段权竞态部门');
-    const { call, rights } = gated(x);
-    rights.armed = true;
-    rights.denyInTx = (request) =>
-      request.action === 'object.create' && (request.fields ?? []).includes('whereaboutsCode');
-    const before = await x.writeCounts();
-    const response = await call('/exits/import', { body: { rows: [fullRow(x, d.code)] }, ...key() });
-    expect(response.status, await response.clone().text()).toBe(403);
-    expect(await x.writeCounts()).toEqual(before);
+  it.each([
+    ['任职记录', RECORD],
+    ['人员', EMPLOYEE],
+    ['人员档案', PERSONNEL_OBJECT],
+  ])('② 没有%s对象的显式看全部范围 → 403，不落批次', async (_name, target) => {
+    const x = await importWorld(database().db, `16-2-${target}`);
+    await denied(x, { noScope: target }, (code) => [x.row(1, code)]);
   });
 });
 
-describe('AC-DM-30-14 人员对象看全部范围（P1-2）', () => {
-  it('任职记录看全部、人员对象只有部门范围：preview 与 import 都 403，零写入（与 POST /employees 同口径）', async () => {
-    const x = await importWorld(database().db, '14-partial');
-    const d = await x.dept('人员范围部门');
-    const { call, rights } = gated(x);
-    rights.employeeScope = orgScope(x.tenantId, H, d.id);
-    const before = await x.writeCounts();
-    await expectDenied(call, [fullRow(x, d.code)]);
-    expect(await x.writeCounts()).toEqual(before);
-  });
-
-  it('第一次成功后，人员对象看全部在入口放行后被撤：同键重放 403，不回放旧回执', async () => {
-    const x = await importWorld(database().db, '14-replay');
-    const d = await x.dept('人员范围重放部门');
-    const { call, rights } = gated(x);
-    const options = { body: { rows: [fullRow(x, d.code)] }, ...key() };
-    expect((await call('/exits/import', options)).status).toBe(201);
-    rights.armed = true;
-    rights.txEmployeeScope = orgScope(x.tenantId, H, d.id);
-    const replay = await call('/exits/import', options);
-    expect(replay.status, await replay.clone().text()).toBe(403);
+describe('AC-DM-30-F493-23 真实授权器下的提交', () => {
+  it('① 权限齐全 → 202，执行后建人、建账号', async () => {
+    const x = await importWorld(database().db, '23-1');
+    const d = await x.dept('齐权部门');
+    const submit = await operator(x);
+    const response = await submit([x.row(1, d.code)]);
+    expect(response.status, await response.clone().text()).toBe(202);
+    const { batchId } = (await response.json()) as { batchId: string };
+    await x.settle();
+    expect((await x.rowsOfBatch(batchId))[0]!.status).toBe('succeeded');
     expect(await x.employeeCount()).toBe(1);
   });
 
-  it('真实授权配置：只配了任职记录“看全部”的身份 403；再配上人员对象“看全部”后同一请求 201', async () => {
-    const x = await importWorld(database().db, '14-real');
-    const d = await x.dept('真实配置部门');
-    const { tenant, user } = x.session;
-    const pw = {
-      db: x.db,
-      tenant,
-      admin: user,
-      adminRecord: await bootstrapTenantAdmin(x.db, { tenantId: tenant.id, userId: user.id }, cmd()),
-      api: tenantApi(x.db, { authorize: undefined, clock: () => new Date('2026-11-05T01:00:00Z') }),
-      asAdmin: { user: user.id, tenant: tenant.id },
-    };
-    const profile = await createProfile(pw, `imp-${uniqueSuffix()}`, { apps: ['TenantBase'] });
-    for (const definition of Object.values(MODULE_OBJECTS)) {
-      const response = await setObjectPermission(
-        pw,
-        profile,
-        {
-          dataOperations: { create: true, update: true, delete: true },
-          fields: definition.fields.map((f) => ({ fieldCode: f.code, view: true, edit: !f.system })),
-          buttons: definition.buttons.map((b) => ({ buttonCode: b.code, level: b.level })),
-        },
-        definition.code,
-      );
-      expect(response.status, `${definition.code} ${await response.clone().text()}`).toBe(200);
-    }
-    const seeAll = async (target: string, value: boolean, ifMatch: number) => {
-      const response = await pw.api.request(
-        'PUT',
-        `/api/tenant/permission/profiles/${profile.id}/data-scopes/TenantBase`,
-        {
-          ...pw.asAdmin,
-          ifMatch,
-          body: { targetKind: 'entity', targetCode: target, seeAll: value },
-        },
-      );
-      expect(response.status, await response.clone().text()).toBe(200);
-    };
-    await seeAll(RECORD, true, 0);
-    await makeGrantable(pw, [profile.id]);
-    const operator = await addMember(pw, `imp-op-${uniqueSuffix()}`);
-    expect((await grant(pw, operator.id, profile.id)).status).toBe(201);
-    const call = (path: string) =>
-      pw.api.request('POST', `/api/tenant/employment${path}`, {
-        user: operator.id,
-        tenant: tenant.id,
-        body: { rows: [x.row(1, d.code)] },
-        ...key(),
-      });
-    const before = await x.writeCounts();
-    for (const path of ['/exits/import/preview', '/exits/import']) expect((await call(path)).status, path).toBe(403);
-    expect(await x.writeCounts()).toEqual(before);
-    await seeAll(EMPLOYEE, true, 0);
-    const preview = await call('/exits/import/preview');
-    expect(preview.status, await preview.clone().text()).toBe(200);
-    const imported = await call('/exits/import');
-    expect(imported.status, await imported.clone().text()).toBe(201);
+  it('② 收回任职 lastWorkDate 写权 → 403；③ 收回人员 code 写权 → 403；均不落批次', async () => {
+    const x = await importWorld(database().db, '23-23');
+    await denied(x, { field: [RECORD, 'lastWorkDate'] }, (code) => [x.row(1, code)]);
+    await denied(x, { field: [EMPLOYEE, 'code'] }, (code) => [x.row(1, code)]);
   });
 });
 
-describe('AC-DM-30-15 命令内 exitImportGuard 的撤权竞态（P2-4）', () => {
-  it('入口按钮复核通过后、命令执行前撤掉导入按钮：命令守卫拒绝 403，零写入，无审计', async () => {
-    const x = await importWorld(database().db, '15-first');
-    const d = await x.dept('竞态部门');
-    const { call, rights } = gated(x);
-    rights.armed = true;
-    rights.denyInTx = isButton(BUTTON);
-    const before = await x.writeCounts();
-    const audits = await x.auditCount('employment.exit.imported');
-    const response = await call('/exits/import', { body: { rows: [x.row(1, d.code)] }, ...key() });
-    expect(response.status, await response.clone().text()).toBe(403);
-    expect(await x.writeCounts()).toEqual(before);
-    expect(await x.auditCount('employment.exit.imported')).toBe(audits);
+describe('AC-DM-30-F493-37 档案字段写权（真实授权器）', () => {
+  it('收回档案 email 写权 → 403，不落批次', async () => {
+    const x = await importWorld(database().db, '37-email');
+    await denied(x, { field: [PERSONNEL_OBJECT, 'email'] }, (code) => [x.row(1, code)]);
   });
 
-  it('第一次成功后，入口放行但命令内按钮被撤：同键重放 403，不回放旧回执', async () => {
-    const x = await importWorld(database().db, '15-replay');
-    const d = await x.dept('竞态重放部门');
-    const { call, rights } = gated(x);
-    const options = { body: { rows: [x.row(1, d.code)] }, ...key() };
-    expect((await call('/exits/import', options)).status).toBe(201);
-    rights.armed = true;
-    rights.denyInTx = isButton(BUTTON);
-    const replay = await call('/exits/import', options);
-    expect(replay.status, await replay.clone().text()).toBe(403);
-    expect(await x.employeeCount()).toBe(1);
+  it('只收回 mobilePhone 写权：L 列全空时 202；任一行 L 有值时 403', async () => {
+    const x = await importWorld(database().db, '37-phone');
+    const d = await x.dept('手机号部门');
+    const submit = await operator(x, { field: [PERSONNEL_OBJECT, 'mobilePhone'] });
+    const empty = await submit([x.row(1, d.code)]);
+    expect(empty.status, await empty.clone().text()).toBe(202);
+    await x.settle();
+    const before = await x.writeCounts();
+    const filled = await submit([x.row(2, d.code), x.row(3, d.code, { mobilePhone: '13800000002' })]);
+    expect(filled.status).toBe(403);
+    expect(await x.writeCounts()).toEqual(before);
+  });
+
+  it('T 列有值但没有教育经历新增权 → 403，不落批次', async () => {
+    const x = await importWorld(database().db, '37-edu');
+    await denied(x, { noCreate: EDUCATION }, (code) => [x.row(1, code, { school: '合成大学' })]);
   });
 });
