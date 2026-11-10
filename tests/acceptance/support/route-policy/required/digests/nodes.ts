@@ -4603,7 +4603,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/offer/frozen-view.ts#isRecord': ['19e667014394', 'd8399dcaac04'],
   'apps/api/src/modules/offer/frozen-view.ts#labelsOf': ['35aa3c16162c', '6ad0a56f0627'],
   'apps/api/src/modules/offer/frozen-view.ts#malformed': ['09deab0bf3ea', '26885aecd9b7'],
-  'apps/api/src/modules/offer/frozen-view.ts#projectBatchValues': ['de12ddfc64be', '999b67e8e0c2'],
+  'apps/api/src/modules/offer/frozen-view.ts#projectBatchValues': ['2ca7523b99be', '9a2b6d55d197'],
   'apps/api/src/modules/offer/frozen-view.ts#projectOfferValues': ['7175244f5bdc', '7c3ce7a2f4df'],
   'apps/api/src/modules/offer/frozen-view.ts#sourceOf': ['296fd9231f43', 'bbb07601514c'],
   'apps/api/src/modules/offer/identity.ts#ENDED_FIELDS': ['ca6d9a513b86', 'e3b0c44298fc'],
