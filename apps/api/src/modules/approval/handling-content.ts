@@ -97,8 +97,11 @@ export async function prepareHandlingContent(
   tx: Tx,
   run: Run,
   viewable: ReadonlySet<string> | undefined,
+  system = false,
 ): Promise<PreparedContent> {
-  const { instance, snapshot, ctx } = run;
+  const { instance, snapshot } = run;
+  // 系统处理按与写份同口径的空办理人采集，不按触发本次推进的人工操作人裁剪（F-476 P8 第 6 轮）
+  const ctx = system ? { ...run.ctx, actorUserId: null } : run.ctx;
   const provider = CONTENT_PROVIDERS[instance.businessType];
   if (provider.kind === 'not-wired') {
     throw approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_CONTENT_NOT_WIRED', '该类审批暂不能办理', {
