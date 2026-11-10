@@ -2349,6 +2349,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
   ],
+  'apps/api/src/modules/employment/exit-dependencies.ts#CONTAINER': ['#independent'],
+  'apps/api/src/modules/employment/exit-dependencies.ts#EXIT_RESPONSE_DEPENDENCIES': [
+    '#CONTAINER',
+    '#OWN_FIELDS',
+    '#independent',
+    '#on',
+  ],
+  'apps/api/src/modules/employment/exit-dependencies.ts#EXIT_SORT_DEPENDENCIES': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
+  ],
   'apps/api/src/modules/employment/exit-dictionaries.ts#assertBelowLimit': ['#EXIT_DICTIONARY_LIMIT', '#atLimit'],
   'apps/api/src/modules/employment/exit-dictionaries.ts#assertExitDictionaryEnabled': ['#findByCode'],
   'apps/api/src/modules/employment/exit-dictionaries.ts#atLimit': ['#EXIT_DICTIONARY_LIMIT', '#TABLES'],
@@ -3402,16 +3412,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-projection.ts#loadTimelineSegments': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/exit-queries.ts#CONTAINER': ['#independent'],
-  'apps/api/src/modules/employment/exit-queries.ts#EXIT_RESPONSE_DEPENDENCIES': [
-    '#CONTAINER',
-    '#OWN_FIELDS',
-    '#independent',
-    '#on',
-  ],
-  'apps/api/src/modules/employment/exit-queries.ts#EXIT_SORT_DEPENDENCIES': [
-    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
-  ],
   'apps/api/src/modules/employment/exit-queries.ts#candidates': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     '#LEAVE_SOURCE',
@@ -3461,15 +3461,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-queries.ts#trimExit': ['#trimNode'],
   'apps/api/src/modules/employment/exit-queries.ts#trimExitDetail': ['#exitDetailPayload', '#trimNode'],
   'apps/api/src/modules/employment/exit-queries.ts#trimNode': [
+    'apps/api/src/modules/employment/exit-dependencies.ts#EXIT_RESPONSE_DEPENDENCIES',
     '#DROPPED',
-    '#EXIT_RESPONSE_DEPENDENCIES',
     '#allows',
     '#trimNode',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#trimWith': ['#trimNode'],
   'apps/api/src/modules/employment/exit-queries.ts#viewOrder': [
+    'apps/api/src/modules/employment/exit-dependencies.ts#EXIT_SORT_DEPENDENCIES',
     'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
-    '#EXIT_SORT_DEPENDENCIES',
   ],
   'apps/api/src/modules/employment/exit-replacement-plan.ts#remainingExitDuties': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -7369,15 +7369,15 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/retirement-views.ts#RETIREMENT_VIEWS',
   ],
   'apps/api/src/modules/employment/retirement-views.ts#BILL_SORT': [
-    'apps/api/src/modules/employment/exit-queries.ts#EXIT_SORT_DEPENDENCIES',
+    'apps/api/src/modules/employment/exit-dependencies.ts#EXIT_SORT_DEPENDENCIES',
   ],
   'apps/api/src/modules/employment/retirement-views.ts#RETIREMENT_PERSON_DEPENDENCIES': [
-    'apps/api/src/modules/employment/exit-queries.ts#on',
+    'apps/api/src/modules/employment/exit-dependencies.ts#on',
     '#PERSON_FIELD',
   ],
   'apps/api/src/modules/employment/retirement-views.ts#RETIREMENT_RESPONSE_DEPENDENCIES': [
-    'apps/api/src/modules/employment/exit-queries.ts#EXIT_RESPONSE_DEPENDENCIES',
-    'apps/api/src/modules/employment/exit-queries.ts#on',
+    'apps/api/src/modules/employment/exit-dependencies.ts#EXIT_RESPONSE_DEPENDENCIES',
+    'apps/api/src/modules/employment/exit-dependencies.ts#on',
   ],
   'apps/api/src/modules/employment/retirement-views.ts#RETIREMENT_SOURCE': ['#SUBMITTED_AT_JOIN'],
   'apps/api/src/modules/employment/retirement-views.ts#billPredicate': [
