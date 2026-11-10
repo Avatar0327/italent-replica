@@ -39,7 +39,7 @@ import { inScope } from './key-info-service.js';
 import type { PlanViewer } from './plan-access.js';
 import { nodeButtons } from './plan-access.js';
 import { currentNodes, loadStages, type PlanRow, type StageRow } from './plan-store.js';
-import { loadModuleRows, loadNodeSettings, moduleView, type ModuleView } from './read-model.js';
+import { type ModuleSource, moduleView, type ModuleView, type NodeSettingView } from './read-model.js';
 
 export interface StageView {
   readonly id: string;
@@ -316,39 +316,77 @@ const KEY_INFO_COLUMNS = {
   },
 } as const;
 
-/**
- * 关键信息（IDP-R7）：与计划起止有交集的记录；储备人才信息待 R3-T06（K-16）。
- * 三类在同一条 SELECT 里读出（F-476 P8 第 2 轮返工 P2-4）：关键信息维护只锁源记录、不取计划锁，分开的几条 SELECT
- * 在 READ COMMITTED 下各取各的快照，可能拼出从未同时存在的组合（带教 A + 职业发展 B）；一条语句只用一个快照，
- * 读到的就是某一提交时刻的完整状态。不加新锁（设计 §4.3）。
- */
-export async function loadKeyInfo(tx: Tx, plan: PlanRow): Promise<KeyInfo> {
-  const period = { startDate: plan.startDate, endDate: plan.endDate };
-  const span = sql`start_date <= ${plan.endDate}::date AND (end_date IS NULL OR end_date >= ${plan.startDate}::date)`;
-  const block = ({ table, person, columns }: (typeof KEY_INFO_COLUMNS)[keyof KeyInfo]) => {
-    const fields = Object.entries(columns).map(([key, column]) => `'${key}', ${column}`);
-    return sql`(SELECT COALESCE(json_agg(json_build_object(${sql.raw(fields.join(', '))},
-        'startDate', start_date::text, 'endDate', end_date::text) ORDER BY start_date, id), '[]'::json)
-      FROM ${sql.raw(table)} WHERE tenant_id = ${plan.tenantId} AND ${sql.raw(person)} = ${plan.employeeId}::uuid
-        AND ${span})`;
-  };
-  const [row] = rowsOf<Record<keyof KeyInfo, Record<string, unknown>[]>>(
-    await tx.execute(sql`SELECT ${block(KEY_INFO_COLUMNS.tutorships)} AS tutorships,
-      ${block(KEY_INFO_COLUMNS.careers)} AS careers, ${block(KEY_INFO_COLUMNS.workShifts)} AS "workShifts"`),
-  );
-  const keep = (rows: Record<string, unknown>[]) =>
-    rows.filter((r) => periodsIntersect(period, r as { startDate: string; endDate: string | null }));
-  return { tutorships: keep(row!.tutorships), careers: keep(row!.careers), workShifts: keep(row!.workShifts) };
+/** 模板模块的输出列（与 ModuleSource 一一对应）与节点设置列。 */
+const MODULE_COLUMNS: Record<keyof ModuleSource, string> = {
+  id: 'm.id',
+  moduleType: 'm.module_type',
+  name: 'm.name',
+  description: 'm.description',
+  displayOrder: 'm.display_order',
+  allowCustomGoal: 'm.allow_custom_goal',
+  allowLibraryGoal: 'm.allow_library_goal',
+  competencySource: 'm.competency_source',
+  goalReviewEnabled: 'm.goal_review_enabled',
+  taskEnabled: 'm.task_enabled',
+  checkNoneGoal: 'm.check_none_goal',
+  keyInfoSources: 'm.key_info_sources',
+  keyInfoFields: 'm.key_info_fields',
+  reviewTimeBasis: 'm.review_time_basis',
+  planTimeBasis: 'm.plan_time_basis',
+  reviewCategoryIds: 'm.review_category_ids',
+};
+const NODE_COLUMNS: Record<keyof NodeSettingView, string> = {
+  subProcessId: 'n.sub_process_id',
+  nodeKey: 'n.node_key',
+  enabled: 'n.enabled',
+  buttons: 'n.buttons',
+};
+
+const pairs = (columns: Readonly<Record<string, string>>) =>
+  Object.entries(columns)
+    .map(([key, column]) => `'${key}', ${column}`)
+    .join(', ');
+
+/** 模板模块（含各模块的节点设置），作为一个 json 数组读出。 */
+function modulesBlock(plan: PlanRow) {
+  return sql`(SELECT COALESCE(json_agg(json_build_object(${sql.raw(pairs(MODULE_COLUMNS))}, 'nodeSettings',
+      (SELECT COALESCE(json_agg(json_build_object(${sql.raw(pairs(NODE_COLUMNS))}) ORDER BY n.seq), '[]'::json)
+        FROM idp_template_node_settings n WHERE n.tenant_id = m.tenant_id AND n.module_id = m.id))
+      ORDER BY m.display_order, m.created_at, m.id), '[]'::json)
+    FROM idp_template_modules m WHERE m.tenant_id = ${plan.tenantId} AND m.template_id = ${plan.templateId}::uuid)`;
 }
 
-async function templateModules(tx: Tx, tenantId: string, templateId: string) {
-  const rows = await loadModuleRows(tx, tenantId, templateId);
-  const nodes = await loadNodeSettings(
-    tx,
-    tenantId,
-    rows.map((m) => m.id),
+/** 关键信息一类：与计划起止有交集的记录（日期交集另在内存复核）。 */
+function keyInfoBlock(plan: PlanRow, { table, person, columns }: (typeof KEY_INFO_COLUMNS)[keyof KeyInfo]) {
+  const span = sql`start_date <= ${plan.endDate}::date AND (end_date IS NULL OR end_date >= ${plan.startDate}::date)`;
+  return sql`(SELECT COALESCE(json_agg(json_build_object(${sql.raw(pairs(columns))},
+      'startDate', start_date::text, 'endDate', end_date::text) ORDER BY start_date, id), '[]'::json)
+    FROM ${sql.raw(table)} WHERE tenant_id = ${plan.tenantId} AND ${sql.raw(person)} = ${plan.employeeId}::uuid
+      AND ${span})`;
+}
+
+type ModuleJson = ModuleSource & { readonly nodeSettings: NodeSettingView[] };
+
+/**
+ * 不受计划行锁保护的内容：模板模块（含节点设置）与关键信息（IDP-R7；储备人才信息待 R3-T06，K-16）。
+ * 模板维护只锁模板，关键信息维护只锁源记录，都不取计划锁；分开的几条 SELECT 在 READ COMMITTED 下各取各的快照，
+ * 会拼出从未同时存在的组合（模块名 A + 优势 B，F-476 P8 第 3 轮返工 P2-4）。这里五块放进同一条 SELECT 的标量子查询，
+ * 共用一个语句快照，读到的就是某一提交时刻的完整状态（含模块 / 记录的增删）；不加新锁（设计 §4.3）。
+ */
+async function loadUnlockedContent(tx: Tx, plan: PlanRow): Promise<Pick<PlanContent, 'modules' | 'keyInfo'>> {
+  const [row] = rowsOf<{ modules: ModuleJson[] } & Record<keyof KeyInfo, Record<string, unknown>[]>>(
+    await tx.execute(sql`SELECT ${modulesBlock(plan)} AS modules,
+      ${keyInfoBlock(plan, KEY_INFO_COLUMNS.tutorships)} AS tutorships,
+      ${keyInfoBlock(plan, KEY_INFO_COLUMNS.careers)} AS careers,
+      ${keyInfoBlock(plan, KEY_INFO_COLUMNS.workShifts)} AS "workShifts"`),
   );
-  return rows.map((m) => moduleView(m, nodes.get(m.id) ?? []));
+  const period = { startDate: plan.startDate, endDate: plan.endDate };
+  const keep = (rows: Record<string, unknown>[]) =>
+    rows.filter((r) => periodsIntersect(period, r as { startDate: string; endDate: string | null }));
+  return {
+    modules: row!.modules.map(({ nodeSettings, ...module }) => moduleView(module, nodeSettings)),
+    keyInfo: { tutorships: keep(row!.tutorships), careers: keep(row!.careers), workShifts: keep(row!.workShifts) },
+  };
 }
 
 /** 计划的内容部分（模板模块结构 + 目标 / 综述 / 回顾 / 关键信息）：现值读取与办理份冻结共用同一份读法（F-476 P8）。 */
@@ -360,12 +398,17 @@ export interface PlanContent {
   readonly keyInfo: KeyInfo;
 }
 
+/**
+ * 目标 / 任务 / 目标回顾 / 综述 / 回顾的写入都先锁计划行（execution-service executorFor），办理捕获持有计划锁时不变；
+ * 不受计划锁保护的模板模块与关键信息在 loadUnlockedContent 的同一条语句里读出。两部分组合因此是真实存在过的状态。
+ */
 export async function loadPlanContent(tx: Tx, plan: PlanRow): Promise<PlanContent> {
+  const { modules, keyInfo } = await loadUnlockedContent(tx, plan);
   return {
-    modules: await templateModules(tx, plan.tenantId, plan.templateId),
+    modules,
     goals: await loadGoals(tx, plan.tenantId, plan.id),
     ...(await loadContents(tx, plan.tenantId, plan.id)),
-    keyInfo: await loadKeyInfo(tx, plan),
+    keyInfo,
   };
 }
 

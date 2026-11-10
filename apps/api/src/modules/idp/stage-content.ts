@@ -63,9 +63,9 @@ export function sectionsOf(modules: PlanContent['modules']): Section[] {
 
 /**
  * 办理份扩展内容加载器（经 provider 注册，在办理人办理、业务状态还没被推进之前调用）。
- * 调用方已持有计划行锁（适配器 lock 先锁计划再锁实例，与所有计划内容写入同序）：模板、目标、综述、回顾与修订号因此一致。
- * 关键信息的维护只锁源记录、不取计划锁：三类在 loadKeyInfo 的同一条 SELECT 里读出，共用一个语句快照，
- * 是某一提交时刻的完整状态（不加新锁，设计 §4.3）。计划内容在计划锁下不变，与该时刻组合仍是真实存在过的状态。
+ * 调用方已持有计划行锁（适配器 lock 先锁计划再锁实例，与所有计划内容写入同序）：目标、任务、综述、回顾与修订号因此不变。
+ * 模板模块（只锁模板）与关键信息（只锁源记录）不受计划锁保护，由 loadPlanContent 在同一条 SELECT 里读出、共用一个
+ * 语句快照（第 3 轮返工）；两部分组合是某一提交时刻真实存在过的状态。不加新锁（设计 §4.3）。
  */
 export async function loadIdpStageContent(tx: Tx, tenantId: string, stageId: string): Promise<IdpStageContent> {
   const stage = await loadStage(tx, tenantId, stageId);

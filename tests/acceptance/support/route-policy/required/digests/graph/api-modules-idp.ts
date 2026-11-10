@@ -1029,6 +1029,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/idp/employment-source.ts#sourceRecordVisible',
     '#sees',
   ],
+  'apps/api/src/modules/idp/plan-view.ts#keyInfoBlock': ['#pairs'],
   'apps/api/src/modules/idp/plan-view.ts#keyInfoShown': [
     'apps/api/src/modules/idp/key-info-scope.ts#KEY_INFO',
     'apps/api/src/modules/idp/key-info-service.ts#inScope',
@@ -1039,17 +1040,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/idp/plan-view.ts#listOf': ['apps/api/src/modules/idp/access.ts#project'],
   'apps/api/src/modules/idp/plan-view.ts#loadContents': ['apps/api/src/modules/idp/access.ts#rowsOf'],
   'apps/api/src/modules/idp/plan-view.ts#loadGoals': ['apps/api/src/modules/idp/access.ts#rowsOf'],
-  'apps/api/src/modules/idp/plan-view.ts#loadKeyInfo': [
-    'apps/api/src/modules/idp/access.ts#rowsOf',
-    '#KEY_INFO_COLUMNS',
-    'packages/domain/src/idp/plan-rules.ts#periodsIntersect',
-  ],
-  'apps/api/src/modules/idp/plan-view.ts#loadPlanContent': [
-    '#loadContents',
-    '#loadGoals',
-    '#loadKeyInfo',
-    '#templateModules',
-  ],
+  'apps/api/src/modules/idp/plan-view.ts#loadPlanContent': ['#loadContents', '#loadGoals', '#loadUnlockedContent'],
   'apps/api/src/modules/idp/plan-view.ts#loadPlanDetail': [
     'apps/api/src/modules/idp/plan-store.ts#currentNodes',
     'apps/api/src/modules/idp/plan-store.ts#loadStages',
@@ -1058,6 +1049,15 @@ export const GRAPH: Graph = {
     '#stageViews',
     'packages/domain/src/idp/plan-rules.ts#currentStageName',
   ],
+  'apps/api/src/modules/idp/plan-view.ts#loadUnlockedContent': [
+    'apps/api/src/modules/idp/access.ts#rowsOf',
+    '#KEY_INFO_COLUMNS',
+    '#keyInfoBlock',
+    '#modulesBlock',
+    'apps/api/src/modules/idp/read-model.ts#moduleView',
+    'packages/domain/src/idp/plan-rules.ts#periodsIntersect',
+  ],
+  'apps/api/src/modules/idp/plan-view.ts#modulesBlock': ['#MODULE_COLUMNS', '#NODE_COLUMNS', '#pairs'],
   'apps/api/src/modules/idp/plan-view.ts#planListProjections': [
     'apps/api/src/modules/idp/access.ts#projectionOf',
     '#configScopes',
@@ -1102,11 +1102,6 @@ export const GRAPH: Graph = {
     '#employmentVisible',
     '#sees',
     'packages/domain/src/idp/catalog.ts#RULE_TEXT_SOURCES',
-  ],
-  'apps/api/src/modules/idp/plan-view.ts#templateModules': [
-    'apps/api/src/modules/idp/read-model.ts#loadModuleRows',
-    'apps/api/src/modules/idp/read-model.ts#loadNodeSettings',
-    'apps/api/src/modules/idp/read-model.ts#moduleView',
   ],
   'apps/api/src/modules/idp/process-service.ts#applySubProcessChanges': [
     '#SEQ_SHIFT',
