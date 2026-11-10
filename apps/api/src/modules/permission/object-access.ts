@@ -20,6 +20,7 @@ export const CONFIG_OBJECTS: ReadonlySet<string> = new Set<string>([
   MODULE_OBJECTS.employmentCustomField.code,
   MODULE_OBJECTS.contractSettings.code,
   MODULE_OBJECTS.contractRules.code,
+  MODULE_OBJECTS.eSignSettings.code,
 ]);
 const CONTRACT_CONFIG_OBJECTS: ReadonlySet<string> = new Set<string>([
   MODULE_OBJECTS.contractSettings.code,

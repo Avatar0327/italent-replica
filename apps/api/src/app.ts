@@ -1,4 +1,5 @@
 import { registerContractRoutes } from './modules/contracts/routes.js';
+import { ESIGN_BODY_LIMITS, registerESignRoutes } from './modules/esign/routes.js';
 import { registerHrAnalysisRoutes } from './modules/hr-analysis/routes.js';
 import { registerOfferRoutes } from './modules/offer/routes.js';
 import { registerEmployeeSelfServiceRoutes } from './modules/employee-self-service/routes.js';
@@ -11,6 +12,7 @@ import { registerTeamDashboardRoutes } from './modules/analytics/team-dashboard-
 import { registerOrgAdjustmentRoutes } from './modules/org-adjustment/routes.js';
 import { registerDutyTransferRoutes } from './modules/duty-transfer/routes.js';
 import type { Db } from '@italent/db';
+import { EXIT_IMPORT_BODY_LIMIT } from '@italent/domain';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import type { Authorizer } from './authorization.js';
@@ -82,6 +84,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerTeamDashboardRoutes, // F-467 团队人事看板（负责部门 + 汇报关系，DEC-763③）
   registerOrgAdjustmentRoutes, // R2-T08 组织调整审批（BE-10b1 头字段与调整范围）
   registerDutyTransferRoutes, // R2-T09a 职责转交菜单
+  registerESignRoutes, // F-481 调动电子签署（S1：模板库、场景设置）
 ];
 
 export interface AppDeps {
@@ -120,6 +123,7 @@ export function createApp(deps: AppDeps = {}): Hono {
     '*',
     limitBody(DEFAULT_BODY_LIMIT, [
       ...PERMISSION_BODY_LIMITS,
+      ...ESIGN_BODY_LIMITS, // F-481：模板正文 ≤20000 字，上限 128KB
       // DEC-422：继任规则保存放宽到 64KB；B2b 等级复用同一例外，其余接口仍为 32KB。
       { method: 'POST', path: /^\/api\/tenant\/succession\/populations$/, maxSize: 64 * 1024 },
       { method: 'PUT', path: /^\/api\/tenant\/succession\/populations\/[^/]+$/, maxSize: 64 * 1024 },
@@ -147,6 +151,8 @@ export function createApp(deps: AppDeps = {}): Hono {
         maxSize: 16 * 1024 * 1024,
       },
       { method: 'POST', path: /^\/api\/tenant\/contracts\/batch$/, maxSize: 1024 * 1024 },
+      // F-493 §5：历史离职导入最多 1000 行 JSON，放宽到 1 MiB；预览与其他导入接口仍为 32KB
+      { method: 'POST', path: /^\/api\/tenant\/employment\/exits\/import$/, maxSize: EXIT_IMPORT_BODY_LIMIT },
     ]),
     'limitBody',
   );

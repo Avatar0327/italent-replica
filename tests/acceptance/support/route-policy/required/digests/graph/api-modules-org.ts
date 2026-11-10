@@ -182,7 +182,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
     'apps/api/src/modules/permission/scope-audit.ts#creatorSql',
   ],
-  'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot': ['#orgSnapshotQuery', '#resolveOrgPaths'],
+  'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot': [
+    '#assembleOrgRecords',
+    '#orgSnapshotQuery',
+    '#resolveOrgPaths',
+  ],
   'apps/api/src/modules/org/read-model.ts#orgSnapshotQuery': ['#currentOrgVersions', '#snapshotConditions'],
   'apps/api/src/modules/org/read-model.ts#resolveOrgPaths': ['#MAX_PATH_DEPTH', '#rowsOf'],
   'apps/api/src/modules/org/read-views.ts#readOrgChartNodes': [
