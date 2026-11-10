@@ -1900,7 +1900,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // → Employment.DimissionImport@list → 字段写权 → 显式“看全部”范围（DEC-121，范围不足 403，与 POST /employees 的 404 不同：
   // 入口是批量按钮，不隐藏存在性）。必带 Idempotency-Key；命令内由 exitImportGuard 复核上述各项，并按档案更新权 / 教育新增权
   // 复核本批要写的档案字段（与 POST /interns 同口径）。提交只落批次与明细并返回 202，逐行写入在后台执行器里；
-  // 没有预览接口。
+  // 没有预览接口。不登记 employment.linkage：提交路径不写任职记录（只落批次与明细），执行器只新建人员与任职、
+  // 不触发生效联动（设计 §5、§6），新人员没有被联动的旧记录可越权。
   'POST /exits/import': all(
     [
       IMPORT_EMPLOYEE_CREATE,
@@ -1913,7 +1914,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     projector('employment.exitImport', 'employment.exitImport'),
     {
-      guards: [LINKAGE, 'employment.exitImportProfile'],
+      guards: ['employment.exitImportProfile'],
       write: write(
         'body',
         none('命令内由 exitImportGuard 按当前授权复核按钮 / 人员新增权 / 字段 / 看全部范围，批次与明细同一事务'),

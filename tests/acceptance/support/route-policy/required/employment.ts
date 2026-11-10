@@ -3601,9 +3601,11 @@ export const EMPLOYMENT: RequiredTable = {
       'obj:TenantBase.Education:create',
       'btn:TenantBase.Education#create@list',
     ].map((perm) => ({
+      // 事务内调用经 replay-guard 的 exitImportGuard 进入，静态探测器不沿 guard 选项展开，观测不到这三类事实，
+      // 所以不登记 facts；对象写权与按钮权（object.button）由 personnel authorize 实际判定，证据见下
       ...ob(
         perm,
-        ['object:object.* 动作', 'button:buttonResource', 'button:object.button'],
+        [],
         [
           fn(
             EXIT_IMPORT,
@@ -3615,18 +3617,15 @@ export const EMPLOYMENT: RequiredTable = {
             'authorize',
             'await requireObjectWrite(authorizer, ctx, { objectCode: ctx.objectCode, operation, payload })',
           ),
+          fn(
+            `${SRC}/personnel/access.ts`,
+            'authorize',
+            "resource: buttonResource(ctx.objectCode, button, ['create', 'submit'].includes(button) ? 'list' : 'detail'),",
+          ),
         ],
       ),
       purpose: 'when:employment.exitImportProfile' as const,
     })),
-    linkage(
-      at(
-        EXIT,
-        'POST',
-        '/exits/import',
-        'submitExitImport(tx, context, body, (db) => wakeExitImports(db, context.tenantId, deps.clock))',
-      ),
-    ),
   ],
   'PATCH /api/tenant/employment/exits/:id': [
     ...exitBusinessCommand('/exits/:id', 'Employment.DimissionEdit', 'route'),
