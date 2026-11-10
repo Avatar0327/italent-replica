@@ -10,6 +10,7 @@ import { retireScene } from './AC-APV-F478-s4-support.js';
 
 const testDb = useTestDb();
 const PAST_LAST_WORK_DAY = '2026-09-20';
+const FUTURE_LAST_WORK_DAY = '2027-12-31';
 
 describe('AC-APV-F478-18 退休预置', () => {
   it('安装读回：4 节点、HRBP 节点业务出口与两条路由', async () => {
@@ -64,6 +65,21 @@ describe('AC-APV-F478-18 退休预置', () => {
     view = await s.advance(view, { comment: '办理', exit: 'approve_no_rehire' });
     expect(view.status).toBe('approved');
     const businessId = (view as unknown as { businessId: string }).businessId;
+    expect((await s.extension(businessId))!.rehire_business_id).toBeNull();
+  });
+  it('reEmployed=true 且最后工作日在未来：四节点通过后单据 approved，退休业务仍是已批准，尚未生成返聘业务', async () => {
+    const s = await retireScene(testDb().db, 'f478-18-future');
+    await publishPreset(s.w, 'standard_retirement');
+    let view = await s.retire(true, FUTURE_LAST_WORK_DAY);
+    for (let step = 0; step < 4; step++) {
+      const task = s.w.pending(view)[0]!;
+      const exit = task.nodeKey === 'hr_interview' ? { exit: 'approve_rehire' } : {};
+      view = await s.advance(view, { comment: '办理', ...exit });
+    }
+    expect(view.status).toBe('approved');
+    const businessId = (view as unknown as { businessId: string }).businessId;
+    // 审批通过 ≠ 生效：未来生效日由定时任务落地，返聘业务此时不存在。
+    expect(await s.businessStatus(businessId)).toBe('approved');
     expect((await s.extension(businessId))!.rehire_business_id).toBeNull();
   });
 });
