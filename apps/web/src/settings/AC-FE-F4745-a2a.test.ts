@@ -56,6 +56,36 @@ async function next() {
   });
 }
 describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
+  it.each([
+    { scenario: '联系邮箱为空', contactEmail: null, expected: '—' },
+    { scenario: '联系邮箱与登录邮箱不同', contactEmail: 'contact@example.com', expected: 'contact@example.com' },
+  ])('P2-1 $scenario：从列表点击姓名打开详情，不用登录邮箱填充联系邮箱', async ({ contactEmail, expected }) => {
+    const row = { ...user, contactEmail };
+    await ui.render(h(UsersPage, { ...props, code: 'users.all' }), '/', undefined, {
+      [`${base}/users`]: { items: [row], total: 1 },
+      [`${base}/users/${id}`]: row,
+    });
+    const cells = ui.host.querySelectorAll('tbody .ant-table-row td');
+    expect(cells[3]?.textContent).toBe(expected);
+    const name = Array.from(ui.host.querySelectorAll<HTMLButtonElement>('tbody button')).find(
+      (button) => button.textContent === user.displayName,
+    );
+    expect(name).toBeDefined();
+    await act(async () => {
+      name!.click();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(queries().some((query) => query.pathname === `${base}/users/${id}`)).toBe(true);
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    const label = Array.from(dialog!.querySelectorAll('.ant-descriptions-item-label')).find(
+      (item) => item.textContent === '联系邮箱',
+    );
+    expect(label).toBeDefined();
+    const value = label!.closest('.ant-descriptions-item')?.querySelector('.ant-descriptions-item-content');
+    expect(value?.textContent).toBe(expected);
+    expect(value?.textContent).not.toContain(user.email);
+  });
   it('全部用户按规格列序，联系邮箱不冒用登录邮箱，账号状态不冒用成员状态', async () => {
     await ui.render(h(UsersPage, { ...props, code: 'users.all' }), '/', undefined, {
       [`${base}/users`]: { items: [user], total: 31 },
