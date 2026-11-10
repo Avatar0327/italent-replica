@@ -153,7 +153,7 @@ export async function handledSingle(w: World, via: 'allow' | 'real' = 'allow') {
 
 /** 事后：申请人把地点 / 薪资 / 姓名 / 录用部门都改了。返回新部门 ID。 */
 export async function changeSingle(w: World, id: string) {
-  const other = await w.org(`ZZ_事后部门${Math.random().toString(36).slice(2, 6)}`);
+  const other = await w.org(`ZZ_事后部门${randomUUID().replace(/-/g, '').slice(0, 12)}`);
   await editOffer(w, id, { workPlace: PLACE_B, salaryAfterRegular: SALARY_B, name: NAME_B1, departmentId: other });
   return other;
 }
