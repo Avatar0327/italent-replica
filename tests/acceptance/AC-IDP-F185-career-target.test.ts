@@ -8,6 +8,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { auditApi } from './AC-AUD-support.js';
 import { idpOperator } from './AC-IDP-permission-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { permissionWorldOf, planWorld, PLAN_NOW, type PlanWorld } from './AC-IDP-plan-support.js';
 
 const testDb = useTestDb();
@@ -22,7 +23,17 @@ interface CareerView {
   [field: string]: unknown;
 }
 
+/** 职级新建需要创建人有职务体系授权管理单元（DEC-339①）：每个世界给 HR 补一次。 */
+const unitGranted = new WeakMap<PlanWorld, Promise<string>>();
+
 async function createJob(w: PlanWorld, path: string, body: Record<string, unknown>, user = w.hrUser) {
+  if (path === 'levels' && !unitGranted.has(w)) {
+    unitGranted.set(
+      w,
+      grantJobUnit((method, route, init) => w.http(w.hrUser, method, route, init), w.hrUser, w.tenant.id),
+    );
+  }
+  if (path === 'levels') await unitGranted.get(w);
   return w.ok<{ id: string; revision: number }>(
     await w.http(user, 'POST', `/api/tenant/job/${path}`, {
       ifMatch: 0,

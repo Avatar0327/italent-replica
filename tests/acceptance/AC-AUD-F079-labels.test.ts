@@ -38,6 +38,12 @@ describe('AC-AUD-F079 审计字段中文标签（DEC-374⑦）', () => {
     ['dutyType', '职责类型'],
     ['dutyDetails', '职责描述'],
     ['transferDate', '转交日期'],
+    // F-481 调动电子签署：签署模板与签署场景设置（esign-template / esign-scene-settings）的变更内容
+    ['body', '模板正文'],
+    ['sortOrder', '显示顺序'],
+    ['scene', '签署场景'],
+    ['validityDays', '签署有效期（天）'],
+    ['remindBeforeExpiry', '到期前自动提醒'],
   ])('%s 显示为「%s」', (field, label) => {
     expect(auditFieldLabel(field)).toBe(label);
   });

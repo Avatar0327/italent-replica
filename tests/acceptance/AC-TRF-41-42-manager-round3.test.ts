@@ -75,8 +75,9 @@ async function fixture() {
       }),
       201,
     );
-  const job = async (kind: string, body: object = {}) =>
-    (
+  const job = async (kind: string, body: object = {}) => {
+    if (kind === 'levels') await w.grantHrJobUnit();
+    return (
       await w.json<{ id: string }>(
         await w.request(w.hr.id, 'POST', `/api/tenant/job/${kind}`, {
           ifMatch: 0,
@@ -85,6 +86,7 @@ async function fixture() {
         201,
       )
     ).id;
+  };
   return { ...w, api, actor, admin, profile, a, b, outside, employee, manager, draft, revision, job };
 }
 

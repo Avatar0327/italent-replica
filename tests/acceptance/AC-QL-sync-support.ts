@@ -21,6 +21,7 @@ import type { Db } from '@italent/db';
 import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
 import { runQualificationSync } from '../../apps/api/src/modules/qualification/sync-worker.js';
 import { f055World, rowsOf, type F055World } from './AC-EMP-F055-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -75,8 +76,15 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
     return ((await response.json()) as { id: string }).id;
   }
 
+  let jobUnit: Promise<string> | undefined;
   /** 组织员工侧的职级（先建职级类别）；任职记录的 levelId 要能通过存在性校验。 */
   async function jobLevel(): Promise<string> {
+    // 职级新建需要创建人有职务体系授权管理单元（DEC-339①），首次建职级时补一个
+    await (jobUnit ??= grantJobUnit(
+      (method, path, init) => api.request(method, path, { ...as, ...init }),
+      as.user,
+      as.tenant,
+    ));
     const type = await api.request('POST', '/api/tenant/job/level-types', {
       ...as,
       ifMatch: 0,
