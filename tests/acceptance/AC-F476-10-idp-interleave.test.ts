@@ -6,6 +6,8 @@
  * （真实提交状态只有 AA、BA、BB，AB 从未完整存在）。PGlite 单连接无法并发，仅在设了 TEST_DATABASE_URL 时运行。
  * 第 2 轮返工：往返交错 AA→BA→BB→BA→AA→BA→BB。表锁只能在每张表第一次被读之前卡住捕获，卡不住第二次读，所以改在
  * 进程内拦截 drizzle 的 execute：捕获每条读职业发展 / 轮岗的 SELECT 执行前，测试在另一连接上真实提交下一步状态。
+ * 第 3 轮返工：模板模块的修改只锁模板、不锁计划。捕获读完模块名 A 后，依次提交“模块名 → B”“优势 → B”，再读关键信息：
+ * 真实状态只有 AA → BA → BB（模块名 × 优势），不得保存 AB。
  */
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -20,6 +22,8 @@ const TUTOR_A = 'ZZ_带教备注A';
 const TUTOR_B = 'ZZ_带教备注B';
 const CAREER_A = 'ZZ_优势A';
 const CAREER_B = 'ZZ_优势B';
+const MODULE_A = 'ZZ_关键信息模块A';
+const MODULE_B = 'ZZ_关键信息模块B';
 
 type World = Awaited<ReturnType<typeof planWorld>>;
 
@@ -55,6 +59,21 @@ const commit = (w: World, table: 'idp_tutorships' | 'idp_careers', value: string
       ? tx.execute(sql`UPDATE idp_tutorships SET remark = ${value} WHERE tenant_id = ${w.tenant.id}::uuid`)
       : tx.execute(sql`UPDATE idp_careers SET strengths = ${value} WHERE tenant_id = ${w.tenant.id}::uuid`),
   );
+
+/** 拦截捕获的关键信息 SELECT：每条执行前，按顺序跑完下一段真实提交；返回拦截次数的读取函数。 */
+function gateKeyInfoReads(owner: { execute: (query: unknown) => Promise<unknown> }, steps: (() => Promise<unknown>)[]) {
+  const original = owner.execute;
+  let gated = 0;
+  vi.spyOn(owner, 'execute').mockImplementation(async function (this: unknown, query: unknown) {
+    const text = (this as { dialect: { sqlToQuery: (q: unknown) => { sql: string } } }).dialect.sqlToQuery(query).sql;
+    if (/^\s*SELECT/i.test(text) && /idp_careers|idp_work_shifts/.test(text) && steps.length) {
+      gated += 1;
+      await steps.shift()!();
+    }
+    return original.call(this, query);
+  });
+  return () => gated;
+}
 
 /** drizzle 的 execute 定义在会话 / 事务共同的原型上；取一个真实事务对象沿原型链找到它。 */
 async function executeOwner(w: World): Promise<{ execute: (query: unknown) => Promise<unknown> }> {
@@ -98,22 +117,49 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-F476-10 IDP：捕获�
       for (const value of values)
         await commit(w, value.startsWith('ZZ_带教') ? 'idp_tutorships' : 'idp_careers', value);
     });
-    const owner = await executeOwner(w);
-    const original = owner.execute;
-    let gated = 0;
-    vi.spyOn(owner, 'execute').mockImplementation(async function (this: unknown, query: unknown) {
-      const text = (this as { dialect: { sqlToQuery: (q: unknown) => { sql: string } } }).dialect.sqlToQuery(query).sql;
-      if (/^\s*SELECT/i.test(text) && /idp_careers|idp_work_shifts/.test(text) && steps.length) {
-        gated += 1;
-        await steps.shift()!();
-      }
-      return original.call(this, query);
-    });
+    const gated = gateKeyInfoReads(await executeOwner(w), steps);
     const response = await w.taskAction(w.employee.userId, task.id, 'approve', instance.revision);
     vi.restoreAllMocks();
-    expect(gated, '捕获没有经过关键信息读取').toBeGreaterThan(0);
+    expect(gated(), '捕获没有经过关键信息读取').toBeGreaterThan(0);
     expect([200, 409], await response.clone().text()).toContain(response.status);
     const copies = await expectWholeCopies(w, plan.id);
+    if (response.status === 409) {
+      expect(await response.clone().text()).toContain('IDP_KEY_INFO_CHANGING');
+      expect(copies, '409 时不得留办理份').toHaveLength(0);
+    } else expect(copies.length, '200 时应留下办理份').toBeGreaterThan(0);
+  });
+
+  it('读完模块名 A 后依次提交“模块名 → B”“优势 → B”：不保存“模块名 A + 优势 B”（模板只锁模板）', async () => {
+    const { w, plan, instance, task } = await seeded('f476-idp-10-template');
+    const rename = (name: string) =>
+      withTenant(w.db, w.tenant.id, (tx) =>
+        tx.execute(sql`UPDATE idp_template_modules SET name = ${name} WHERE tenant_id = ${w.tenant.id}::uuid
+          AND template_id = ${plan.templateId}::uuid AND module_type = 'key_info'`),
+      );
+    await rename(MODULE_A);
+    // 捕获读关键信息之前：模块名 → B 提交，再优势 → B 提交（AA → BA → BB）
+    const gated = gateKeyInfoReads(await executeOwner(w), [
+      async () => {
+        await rename(MODULE_B);
+        await commit(w, 'idp_careers', CAREER_B);
+      },
+    ]);
+    const response = await w.taskAction(w.employee.userId, task.id, 'approve', instance.revision);
+    vi.restoreAllMocks();
+    expect(gated(), '捕获没有经过关键信息读取').toBe(1);
+    expect([200, 409], await response.clone().text()).toContain(response.status);
+    const copies = await copiesOfPlan(w, plan.id);
+    for (const copy of copies) {
+      const seen = { moduleA: copy.text.includes(MODULE_A), moduleB: copy.text.includes(MODULE_B) };
+      const career = { a: copy.text.includes(CAREER_A), b: copy.text.includes(CAREER_B) };
+      const existed = [
+        seen.moduleA && career.a, // AA
+        seen.moduleB && career.a, // BA
+        seen.moduleB && career.b, // BB
+      ].some(Boolean);
+      const exclusive = seen.moduleA !== seen.moduleB && career.a !== career.b;
+      expect(existed && exclusive, `办理份是未曾完整存在过的组合：${JSON.stringify({ seen, career })}`).toBe(true);
+    }
     if (response.status === 409) {
       expect(await response.clone().text()).toContain('IDP_KEY_INFO_CHANGING');
       expect(copies, '409 时不得留办理份').toHaveLength(0);
