@@ -8339,13 +8339,21 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'packages/domain/src/employment/exit-import.ts#normalizedNo': ['131fa1c700fe', 'e3b0c44298fc'],
   'packages/domain/src/employment/exit-import.ts#validateExitImportBlacklist': ['5c05d1e2b2a3', '122058c7a1b9'],
   'packages/domain/src/employment/exit-import.ts#validateExitImportDates': ['5b742f044e48', 'a9447a166e8d'],
-  'packages/domain/src/employment/exit-notice-templates.ts#EXIT_NOTICE_TEMPLATES': ['f98ea0f6aaea', 'a1da63e0374c'],
+  'packages/domain/src/employment/exit-notice-templates.ts#EXIT_IMPORT_FINISHED_CLEAN_TEMPLATE': [
+    '8fbc8f763727',
+    'e3b0c44298fc',
+  ],
+  'packages/domain/src/employment/exit-notice-templates.ts#EXIT_IMPORT_FINISHED_TEMPLATE': [
+    '3f8e24923bf9',
+    'e3b0c44298fc',
+  ],
+  'packages/domain/src/employment/exit-notice-templates.ts#EXIT_NOTICE_TEMPLATES': ['2b66803b319a', '59c1762f1424'],
   'packages/domain/src/employment/exit-notice-templates.ts#FLOW_TERMINATED_BY_EXIT_TEMPLATE': [
     '672be8238f3a',
     'e3b0c44298fc',
   ],
   'packages/domain/src/employment/exit-notice-templates.ts#fill': ['7b80dbdfad29', 'e3b0c44298fc'],
-  'packages/domain/src/employment/exit-notice-templates.ts#renderExitNotice': ['7f14f41e8000', '63f18e01f85d'],
+  'packages/domain/src/employment/exit-notice-templates.ts#renderExitNotice': ['c51497a8e057', '9bb854936033'],
   'packages/domain/src/employment/exit-occupancy.ts#NON_OCCUPYING_KINDS': ['6597fa8e66ec', '82583603a31b'],
   'packages/domain/src/employment/exit-occupancy.ts#OPEN': ['7e0016a7afa3', 'e3b0c44298fc'],
   'packages/domain/src/employment/exit-occupancy.ts#accumulate': ['0d18183e37b6', '0321163f6376'],

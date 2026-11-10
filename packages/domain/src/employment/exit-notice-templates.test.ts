@@ -26,6 +26,7 @@ describe('F-420 离职终止流程的消息模板', () => {
     expect(renderExitNotice(FLOW_TERMINATED_BY_EXIT_TEMPLATE, null)).toEqual({
       title: '因员工离职生效，流程已终止',
       body: null,
+      sender: null,
     });
     const { employeeName: _omitted, ...partial } = PAYLOAD;
     expect(renderExitNotice(FLOW_TERMINATED_BY_EXIT_TEMPLATE, partial)!.body).toBeNull();
