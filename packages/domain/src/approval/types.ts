@@ -508,7 +508,7 @@ const LEAVE_CONDITION_FIELDS: readonly ConditionField[] = [
 ];
 
 /** 退休多一个事实：是否同时返聘（'true' / 'false'）。业务出口守卫与仿真据此取出口（F-478 S4，设计 §3.3 / §3.4）。 */
-const RETIREMENT_CONDITION_FIELDS: readonly ConditionField[] = [
+const RETIREMENT_APPROVAL_CONDITION_FIELDS: readonly ConditionField[] = [
   ...LEAVE_CONDITION_FIELDS,
   { path: 'business.reEmployed', label: '是否同时返聘', kind: 'text' },
 ];
@@ -686,7 +686,7 @@ export const APPROVAL_TYPES = {
   hire: employmentType('hire', '入职', 'EntryProcessNew'),
   // R2-T04 §3.4：退休与离职同条件字段（含发起方式）；表单多带退休类型 / 是否返聘 / 预计退休日期（只读带出）
   retirement: {
-    ...employmentType('retirement', '退休', 'RetireProcess', RETIREMENT_CONDITION_FIELDS),
+    ...employmentType('retirement', '退休', 'RetireProcess', RETIREMENT_APPROVAL_CONDITION_FIELDS),
     formFields: [...employmentFormFields, ...RETIREMENT_REQUEST_FIELDS],
   },
   org_adjustment: ORG_ADJUSTMENT_TYPE,
