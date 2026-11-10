@@ -13,7 +13,7 @@ import {
   TALENT_REVIEW_APP,
   TALENT_REVIEW_OBJECTS,
 } from '@italent/domain';
-import { type Json, listAll } from './client.js';
+import { type Json, listAll, listAllByOffset } from './client.js';
 import { DEMO_ORGS } from './data.js';
 import { DEMO_R3, DEMO_R3_DATES, DEMO_R3_MOU } from './r3-data.js';
 import { DEMO_STAFF } from './scale-data.js';
@@ -80,7 +80,7 @@ const R3_ADMIN_PROFILES = [
  * 是 tenant_admin，所以按其“系统管理员”人设补一个 system_admin 管理员角色，经管理员接口授予（已持有则跳过）。
  */
 async function grantSystemAdminRole(world: DemoWorld): Promise<void> {
-  const admins = await listAll(world.call, world.admin, '/api/tenant/permission/admins');
+  const admins = await listAllByOffset(world.call, world.admin, '/api/tenant/permission/admins');
   if (admins.some((row) => row.userId === world.admin && row.role === 'system_admin')) return;
   const body = { userId: world.admin, role: 'system_admin', grantableAdminRoles: [], grantableProfileIds: [] };
   await world.as('permission/admins', 'POST', body);
