@@ -132,6 +132,17 @@ export const MODULE_OBJECTS = {
     'indefiniteTypeIds',
     'uniqueFields',
   ]),
+  /** F-481 调动电子签署的配置对象（设计 §10.1）：签署模板库与场景设置，按“其他设置”管理员能力控制。 */
+  eSignSettings: object('ESignSettings', [
+    'code',
+    'name',
+    'body',
+    'status',
+    'sortOrder',
+    'scene',
+    'validityDays',
+    'remindBeforeExpiry',
+  ]),
   contractRules: object('ContractRenewalRule', ['name', 'priority', 'orgIds', 'personIds', 'enabled', 'details']),
   contractType: object('ContractType', ['code', 'name', 'enabled']),
   contractCompany: object('ContractCompany', ['code', 'name', 'enabled']),
@@ -258,7 +269,16 @@ export const MODULE_OBJECTS = {
   jobLayer: job('JobLayer', ['layerLevel']),
   jobGrade: job('JobGrade', ['grade', 'scoreLow', 'scoreHigh', 'layerId']),
   jobLevelType: job('JobLevelType', []),
-  jobLevel: job('JobLevel', ['level', 'levelTypeId', 'minGradeId', 'maxGradeId']),
+  jobLevel: job('JobLevel', [
+    'level',
+    'levelTypeId',
+    'minGradeId',
+    'maxGradeId',
+    'ownerOrgId',
+    'salaryUpper',
+    'salaryMid',
+    'salaryLower',
+  ]),
   jobSequence: job(
     'JobSequence',
     ['parentId', 'levelTypeId', 'source', 'externalId'],
@@ -273,7 +293,16 @@ export const MODULE_OBJECTS = {
   jobPost: job('JobPost', [...assignment, 'competencyModelId', 'responsibilities', 'requirements', 'evaluationScore']),
   jobPosition: job(
     'Position',
-    [...assignment, 'orgId', 'postId', 'parents', 'workLocation', 'standardPositionId'],
+    [
+      ...assignment,
+      'orgId',
+      'postId',
+      'parents',
+      'workLocation',
+      'responsibilities',
+      'requirements',
+      'standardPositionId',
+    ],
     ['directParentId', 'dottedParentId', 'directSequence', 'dottedSequence'],
   ),
   establishment: object(

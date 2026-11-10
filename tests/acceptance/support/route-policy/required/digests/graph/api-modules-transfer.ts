@@ -236,6 +236,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/linkage/validation.ts#ROLE_FIELDS',
     'apps/api/src/modules/transfer/linkage/validation.ts#requireReportingSubordinate',
     'apps/api/src/modules/transfer/linkage/validation.ts#requireRoleHolder',
+    'apps/api/src/modules/transfer/linkage/validation.ts#requireRoleVacant',
+    'apps/api/src/modules/transfer/linkage/validation.ts#requireVacantSubordinate',
   ],
   'apps/api/src/modules/transfer/linkage/duty-execution.ts#requireEnabledOrg': [
     'apps/api/src/modules/establishment/org-reader.ts#createTxOrgHierarchyReader',
@@ -430,6 +432,20 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/linkage/validation.ts#requireRoleHolder': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#ROLE_COLUMNS',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/transfer/linkage/validation.ts#requireRoleVacant': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#ROLE_COLUMNS',
+    '#notVacant',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/transfer/linkage/validation.ts#requireVacantSubordinate': [
+    'apps/api/src/modules/employment/context.ts#requireLinkedEmploymentRecord',
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    '#RELATION_FIELDS',
+    '#notEligible',
+    '#notVacant',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/transfer/linkage/validation.ts#validateLinkage': [

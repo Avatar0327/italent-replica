@@ -43,10 +43,15 @@ const expected = {
   approval: APPROVAL_OBJECTS.map((object) => object.code),
   self: [PERSONNEL_REQUEST_OBJECT],
   manager: [],
-  // F-323（DEC-706）：设置 / 员工 / 人员类别字典与 app-directory 顺序一致。
-  settings: [M.employmentSettings, M.employmentCustomField, M.employmentType, M.contractSettings, M.contractRules].map(
-    (object) => object.code,
-  ),
+  // F-323（DEC-706）：设置 / 员工 / 人员类别字典与 app-directory 顺序一致；F-481 S1 加电子签署配置。
+  settings: [
+    M.employmentSettings,
+    M.employmentCustomField,
+    M.employmentType,
+    M.contractSettings,
+    M.contractRules,
+    M.eSignSettings,
+  ].map((object) => object.code),
   talent: Object.values(TALENT_OBJECTS).map((object) => object.code),
   qualification: [...Object.values(QUALIFICATION_OBJECTS), QUALIFICATION_PAGES].map((object) => object.code),
   evaluation: [...Object.values(EVALUATION_OBJECTS), ...Object.values(EVALUATION_FLOW_OBJECTS)].map(

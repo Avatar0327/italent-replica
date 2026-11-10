@@ -7,6 +7,7 @@ import { sql, type Tx } from '@italent/db';
 import {
   BLACKLIST_NOTE_MAX,
   BLACKLIST_REASON_CODES,
+  EXIT_FORM_DUTY_TRANSFER_TIMINGS,
   EXIT_MANAGER_INITIATION_KEY,
   EXIT_SELF_REASON_CODES,
   EXIT_SELF_WHEREABOUTS_CODES,
@@ -48,6 +49,9 @@ export const exitOptionsSchema = z.strictObject({
   taxYear: z.int().min(1900).max(9999).optional(),
   employerName: z.string().trim().min(1).max(200).optional(),
   actualLeaveDate: day.optional(),
+  /** 本单的职责转交时机（R2-T09b DT-R3）：不填取租户配置；指定日期必须带 dutyTransferDate。 */
+  dutyTransferTiming: z.enum(EXIT_FORM_DUTY_TRANSFER_TIMINGS).optional(),
+  dutyTransferDate: realDay.optional(),
   /** 职责转交计划（§5.7）：结构由 transfer/linkage/input.ts 的 normalizeLinkage 校验，只允许 dutyTransfer 区块。 */
   dutyTransfer: z.unknown().optional(),
   /** §8 在途调动确认令牌。 */
@@ -72,6 +76,8 @@ const HR_ONLY: readonly (keyof ExitOptions)[] = [
   'employerName',
   'actualLeaveDate',
   'dutyTransfer',
+  'dutyTransferTiming',
+  'dutyTransferDate',
 ];
 
 /** 路由用：从通用任职入口的请求体取出 exit 区块，其余交给任职字段校验。 */

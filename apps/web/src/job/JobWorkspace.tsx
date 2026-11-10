@@ -26,6 +26,7 @@ import {
   jobListFields,
   jobColumnWidth,
   jobObjects,
+  listReferenceFields,
   referenceKind,
   type JobKind,
   type JobRow,
@@ -112,6 +113,12 @@ function renderDetailValue(s: Catalog, field: string, value: unknown) {
   if (target && typeof value === 'string' && value) return <ReferenceName kind={target} id={value} date={s.date} />;
   return renderValue(field, value);
 }
+function renderListValue(kind: JobKind, field: string, value: unknown, date: string) {
+  const target = referenceKind(kind, field);
+  if (listReferenceFields.includes(field) && target && typeof value === 'string' && value)
+    return <ReferenceName kind={target} id={value} date={date} />;
+  return renderValue(field, value);
+}
 function JobFilters({ s, access }: { s: Catalog; access: PageAccess }) {
   return (
     <>
@@ -188,7 +195,7 @@ function JobCatalog({ kind, access, view }: { kind: JobKind; access: PageAccess;
   const { message } = App.useApp();
   const s = useCatalog(kind, access);
   const selection = useSequenceSelection(kind, s.remote.data, access, s.remote.refresh);
-  const columns = jobColumns(kind, access, s.setSelected);
+  const columns = jobColumns(kind, access, s.setSelected, s.date);
   return (
     <>
       <ListPage
@@ -288,7 +295,7 @@ function JobDetail({ s, access }: { s: Catalog; access: PageAccess }) {
   );
 }
 
-function jobColumns(kind: JobKind, access: PageAccess, select: (id: string) => void) {
+function jobColumns(kind: JobKind, access: PageAccess, select: (id: string) => void, date: string) {
   // 原站列表无操作列，点名称打开详情抽屉；名称被字段权限隐藏时保留「详情」兜底（AC-FE-R1a-19）。
   const fallback = access.field('name').visible
     ? []
@@ -303,9 +310,9 @@ function jobColumns(kind: JobKind, access: PageAccess, select: (id: string) => v
           ),
         },
       ];
-  return [...jobListFields(kind, access).map(listColumn(kind, select)), ...fallback];
+  return [...jobListFields(kind, access).map(listColumn(kind, select, date)), ...fallback];
 }
-function listColumn(kind: JobKind, select: (id: string) => void) {
+function listColumn(kind: JobKind, select: (id: string) => void, date: string) {
   return (field: string) => ({
     key: field,
     title: jobLabel(kind, field),
@@ -317,7 +324,7 @@ function listColumn(kind: JobKind, select: (id: string) => void) {
           {String(value ?? m.missing)}
         </Button>
       ) : (
-        renderValue(field, value)
+        renderListValue(kind, field, value, date)
       ),
   });
 }

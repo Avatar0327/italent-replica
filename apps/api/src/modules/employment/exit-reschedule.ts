@@ -14,6 +14,7 @@ import { activateExit } from './exit-activation.js';
 import { pendingActivations, recordActivationAttempt, type PendingActivation } from './activation-store.js';
 import { loadOccupancy, assertOccupancyChange } from './exit-cancel-intervals.js';
 import { runExitReplannedHooks } from './exit-confirmation.js';
+import { settleTimingOnReschedule } from './exit-duty-timing.js';
 import { effectiveRescheduleHints, probeRescheduleDownstream } from './exit-downstream.js';
 import {
   assertActualLeaveDate,
@@ -118,6 +119,8 @@ export async function rescheduleExit(
   const occupancy = await loadOccupancy(tx, ctx, business.employeeId);
   if (business.state === 'effective')
     return rescheduleEffectiveExit(tx, ctx, business, change, options, { queue, ack, today }, occupancy);
+  // 指定日期晚于新生效日的转交时机改为“生效时转交”：必须早于下面可能触发的落地（P2-3）
+  await settleTimingOnReschedule(tx, ctx, business, change.effectiveDate);
   const next = await writeManualExitPlan(tx, ctx, business, change);
   await saveAck(tx, ctx, business.id, ack);
   await assertOccupancyChange(tx, ctx, business.employeeId, business.id, occupancy, options.confirmed === true);

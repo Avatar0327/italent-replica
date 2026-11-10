@@ -2,30 +2,66 @@
  * 离职职责转交（R2-T03 设计 §5.7，DEC-213；原 BE-9 并入 B3-2）：执行复用 transfer/linkage 的 applyDutyTransfer
  * （只建职责子项，每个子项自己的保存点，失败只记 duty_failed、可重试），这里按时机配置决定在哪个阶段调用并写离职台账：
  * business_effective → 离职落地（activateExit 步骤 6，生效日 = 最终生效日 E′）；
- * approval_passed → confirmed 阶段（审批通过 / 直接离职保存，生效日 = 当天）。同一离职至多执行一次（联动执行行幂等）。
+ * approval_passed → confirmed 阶段（审批通过 / 直接离职保存，生效日 = 当天；确认阶段已过去的由落地阶段兜底）。
+ * 同一离职至多执行一次（联动执行行幂等）。
  */
 import { exitEffects, type Tx } from '@italent/db';
 import { applyDutyTransfer } from '../transfer/linkage/execute.js';
 import { auditEmployment } from './context.js';
 import type { EmploymentContext } from './types.js';
 
-/** 阶段与时机配置一一对应；配置的是另一个时机时本阶段什么也不做。 */
-const TIMING_OF = { confirmed: 'approval_passed', effective: 'business_effective' } as const;
+export interface ExitTimingRow {
+  readonly businessId: string;
+  readonly employeeId: string;
+  readonly dutyTransferTiming: string;
+  readonly dutyTransferDate?: string | null;
+}
+
+type Phase = 'confirmed' | 'effective';
+
+/**
+ * 本阶段是否执行转交，以及转交的业务生效日（R2-T09b DT-R3 / DT-R7）。执行时间与业务生效日是两件事：
+ * - approval_passed：confirmed 阶段，生效日 = 当天；若确认阶段已过去（已确认的单据后来改成此时机），落地阶段兜底，
+ *   生效日 = 落地日，不会永远不执行（联动执行行保证至多一次）；business_effective：effective 阶段，生效日 = 最终生效日；
+ * - specified_date：指定日期 ≤ 当天的，节点通过当场（confirmed 阶段）执行，但生效日仍是指定日期（DT-R7 允许过去日期，
+ *   不改成确认日）；晚于当天的由到期扫描（exit-duty-due.ts）在指定日期执行；effective 阶段作兜底，生效日同样取指定日期。
+ * confirmed 阶段的 effectiveDate 参数是当天（租户本地日），effective 阶段是落地日。
+ */
+function plan(exit: ExitTimingRow, phase: Phase, effectiveDate: string): { at: string } | null {
+  if (exit.dutyTransferTiming === 'approval_passed') return { at: effectiveDate };
+  if (exit.dutyTransferTiming === 'business_effective') return phase === 'effective' ? { at: effectiveDate } : null;
+  const date = exit.dutyTransferDate;
+  if (exit.dutyTransferTiming !== 'specified_date' || !date) return null;
+  if (phase === 'effective') return { at: date };
+  return date <= effectiveDate ? { at: date } : null;
+}
 
 export async function runExitDutyTransfer(
   tx: Tx,
   ctx: EmploymentContext,
-  exit: { readonly businessId: string; readonly employeeId: string; readonly dutyTransferTiming: string },
-  phase: keyof typeof TIMING_OF,
+  exit: ExitTimingRow,
+  phase: Phase,
   effectiveDate: string,
 ) {
-  if (exit.dutyTransferTiming !== TIMING_OF[phase]) return;
+  const planned = plan(exit, phase, effectiveDate);
+  if (!planned) return;
+  await executeExitDutyTransfer(tx, ctx, exit, phase, planned.at);
+}
+
+/** 指定日期到期扫描（exit-duty-due.ts）直接调用：生效日 = 指定日期，台账阶段记 confirmed（离职仍是已确认未落地）。 */
+export async function executeExitDutyTransfer(
+  tx: Tx,
+  ctx: EmploymentContext,
+  exit: ExitTimingRow,
+  phase: Phase,
+  effectiveDate: string,
+) {
   const items = await applyDutyTransfer(tx, ctx, {
     businessId: exit.businessId,
     employeeId: exit.employeeId,
     effectiveDate,
   });
-  if (!items.length) return;
+  if (!items.length) return items;
   await tx.insert(exitEffects).values(
     items.map((item) => ({
       tenantId: ctx.tenantId,
@@ -66,4 +102,5 @@ export async function runExitDutyTransfer(
     undefined,
     { employeeId: exit.employeeId },
   );
+  return items;
 }
