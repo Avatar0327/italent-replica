@@ -787,7 +787,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/handling-content.ts#SNAPSHOT_ONLY': ['de93e3b0d5c9', 'e3b0c44298fc'],
   'apps/api/src/modules/approval/handling-content.ts#capViewable': ['4accd144fc81', '82583603a31b'],
   'apps/api/src/modules/approval/handling-content.ts#contentViewOf': ['ea06ecb6b305', 'e3b0c44298fc'],
-  'apps/api/src/modules/approval/handling-content.ts#prepareHandlingContent': ['c740a9d9d4be', '0203ca827642'],
+  'apps/api/src/modules/approval/handling-content.ts#prepareHandlingContent': ['8921e411a16c', '41095e134c9c'],
   'apps/api/src/modules/approval/handling-content.ts#recordHandlingContent': ['263a44ebcd4d', '7087de11c270'],
   'apps/api/src/modules/approval/handling-content.ts#selectContent': ['76e50eb60220', '387b92cc6782'],
   'apps/api/src/modules/approval/handling-context.ts#LIVE': ['041c66f0cda7', 'e3b0c44298fc'],
