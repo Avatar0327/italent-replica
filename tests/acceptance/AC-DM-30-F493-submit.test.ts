@@ -4,6 +4,7 @@
  * 真 DB + HTTP；读写租户数据一律走 withTenant（app_owner 普通角色可过，DEC-568）。
  */
 import './support/exit-gate-enforced.js';
+import { sql } from '@italent/db';
 import { duplicateEmailRows } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -79,6 +80,8 @@ describe('AC-DM-30-F493-02 上限与请求体', () => {
     const big = Array.from({ length: 1000 }, (_, i) => typical(x, d.code, i + 1, 1200));
     expect((await x.submit(big)).status).toBe(413);
     expect(await x.batchCount()).toBe(1);
+    // 收尾：这批 1000 行本测试不需要执行；不置为终态的话，同文件后面的用例唤醒执行器时会顺带把它跑完，拖慢并拖超时
+    await x.q(sql`UPDATE exit_import_batches SET status='completed' WHERE tenant_id=${x.tenantId}`);
   });
 });
 
