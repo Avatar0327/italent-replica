@@ -18,6 +18,8 @@ import { setObjectPermission } from './AC-PRM-support.js';
 import { offerApprovalWorld } from './AC-OF-BE14a3-support.js';
 import {
   APPROVAL,
+  NAME_A1,
+  NAME_A2,
   OFFER_FIELD_CODES,
   PLACE_A,
   PLACE_B,

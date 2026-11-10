@@ -176,7 +176,7 @@ export async function offerViewer(
   view: readonly string[] = OFFER_FIELD_CODES,
   definition: ObjectDefinition = MODULE_OBJECTS.offer,
 ) {
-  const world = await permissionAdmin(w);
+  const world = await permissionAdmin(w.apv);
   const profile = await grantFieldAccess(world, userId, { view }, definition);
   return { world, profile };
 }
