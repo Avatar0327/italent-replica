@@ -7,7 +7,7 @@ import { resolveDataScope } from '../permission/scope-resolver.js';
 import { scopeAllows } from '../permission/module-access.js';
 import { loadJobObject } from '../job/read-model.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
-import { CalcBlocked, CalcObjectFailure, type CalcHandler } from './calc-contract.js';
+import { CalcBlocked, CalcObjectFailure, type CalcHandler } from './calc-contract-core.js';
 import { codeOf } from './access.js';
 import { rowsOf } from './read-sql.js';
 import { lockRisk, storeRisk } from './risk-store.js';

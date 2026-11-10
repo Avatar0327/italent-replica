@@ -3,6 +3,7 @@
  * 人才盘点、继任、IDP）都可见且有 ZZ 样例；HR 专员只拿到与其身份相符的入口；再跑一次种子不重复创建、不新增授权。
  * 种子只调公开租户接口（不绕过授权器、不直写表）。整个文件只种一次租户，再重跑一次核对幂等。
  */
+import { and, eq, permissionAdmins, permissionGrants, users, withPlatform, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { memoryProgress, seedDemo } from '../../apps/api/src/demo/seed.js';
@@ -27,6 +28,7 @@ const EXPECTED: Readonly<Record<'admin' | 'hr', readonly (typeof R3_APPS)[number
 };
 
 let user: Actors;
+let tenantId: string;
 const progress = memoryProgress();
 
 const snapshotOf = async (key: 'admin' | 'hr' | 'employeeA') => {
@@ -73,6 +75,7 @@ describe('AC-F198-demo-r3-seed 演示种子的 R3 权限与样例', () => {
   beforeAll(async () => {
     const created = await seedDemo(database().db, { ...options, progress });
     expect(created.created).toBe(true);
+    tenantId = created.manifest.tenantId;
     user = await actors(database().db);
   });
 
@@ -124,5 +127,58 @@ describe('AC-F198-demo-r3-seed 演示种子的 R3 权限与样例', () => {
     const again = await seedDemo(database().db, { ...options, progress });
     expect(again.created).toBe(false);
     expect(await census()).toEqual(before);
+  });
+
+  /**
+   * 审查第 1 轮 P2-1（F-474-5 #22/#23）：授权 / 管理员列表新增默认分页（50）后，演示种子的“先查后建”不能被截断——
+   * 同一用户同一身份累计 ≥50 条撤销记录（有效授权排在后面）、管理员记录 ≥50 条时再跑种子，仍成功且不新增授权。
+   */
+  it('撤销记录与管理员记录都超过一页后再跑种子：不报 409，不新增授权 / 管理员', async () => {
+    const old = new Date('2020-01-01T00:00:00.000Z');
+    const filler = 55;
+    const counts = () =>
+      withTenant(database().db, tenantId, async (tx) => ({
+        grants: (await tx.select().from(permissionGrants).where(eq(permissionGrants.status, 'active'))).length,
+        admins: (await tx.select().from(permissionAdmins).where(eq(permissionAdmins.status, 'active'))).length,
+      }));
+    const before = await counts();
+    await withTenant(database().db, tenantId, async (tx) => {
+      const active = await tx.select().from(permissionGrants).where(eq(permissionGrants.status, 'active'));
+      for (const grant of active) {
+        // 同一用户 × 同一身份的历史撤销记录，创建时间早于现有有效授权，排在列表前面
+        await tx.insert(permissionGrants).values(
+          Array.from({ length: filler }, () => ({
+            tenantId,
+            userId: grant.userId,
+            profileId: grant.profileId,
+            status: 'revoked' as const,
+            createdAt: old,
+            updatedAt: old,
+          })),
+        );
+      }
+    });
+    const candidates = await withPlatform(database().db, (tx) => tx.select({ id: users.id }).from(users).limit(200));
+    await withTenant(database().db, tenantId, async (tx) => {
+      const held = new Set(
+        (
+          await tx
+            .select()
+            .from(permissionAdmins)
+            .where(and(eq(permissionAdmins.role, 'audit_admin')))
+        ).map((a) => a.userId),
+      );
+      const fillers = candidates.filter((c) => !held.has(c.id)).slice(0, filler);
+      expect(fillers).toHaveLength(filler);
+      await tx
+        .insert(permissionAdmins)
+        .values(fillers.map((c) => ({ tenantId, userId: c.id, role: 'audit_admin', createdAt: old, updatedAt: old })));
+    });
+
+    const again = await seedDemo(database().db, { ...options, progress });
+    expect(again.created).toBe(false);
+    const after = await counts();
+    expect(after.grants).toBe(before.grants);
+    expect(after.admins).toBe(before.admins + filler);
   });
 });

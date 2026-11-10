@@ -12,6 +12,7 @@ import {
   type CountersignApprovalNode,
   type ExitRule,
   type ExitRules,
+  type AnyNodeExit,
   type NodeExit,
   type TransitionRule,
 } from './types.js';
@@ -25,10 +26,13 @@ export const MAX_EXIT_COUNT = 999;
  * 节点各出口动作的规则（原站保存时生成的 transitionRules）：任一人同意即可 = 每个动作“整数 1”；需所有人同意 =
  * 「同意」百分比 100%、其他动作“整数 1”；自定义审批方式按行取。
  */
-export function exitRulesOf(rule: TransitionRule, exits: readonly NodeExit[]): ExitRules {
+export function exitRulesOf(rule: TransitionRule, exits: readonly AnyNodeExit[]): ExitRules {
   if (rule.type === 'custom') return rule.rules ?? {};
+  // 业务出口只在单人节点出现，会签规则只认同意 / 不同意
   return Object.fromEntries(
-    exits.map((exit) => [exit, rule.type === 'all' && exit === 'approve' ? EVERYONE : ONE_PERSON]),
+    exits
+      .filter((exit) => (NODE_EXITS as readonly string[]).includes(exit))
+      .map((exit) => [exit, rule.type === 'all' && exit === 'approve' ? EVERYONE : ONE_PERSON]),
   );
 }
 
@@ -110,7 +114,8 @@ const sameRule = (left: ExitRule | undefined, right: ExitRule | undefined) =>
 export function transitionRuleViolations(node: CountersignApprovalNode): string[] {
   const { type, rules } = node.transitionRule;
   if (!TRANSITION_RULE_TYPES.includes(type)) return [`会签节点 ${node.key} 的流转规则不合法`];
-  const exits = nodeExits(node);
+  // 会签节点不得带业务出口（routes.exitGroupViolations 另行拒绝），这里只看同意 / 不同意
+  const exits = nodeExits(node).filter((exit): exit is NodeExit => (NODE_EXITS as readonly string[]).includes(exit));
   if (type !== 'custom') {
     const generated = exitRulesOf(node.transitionRule, exits);
     const same = !rules || NODE_EXITS.every((exit) => sameRule(rules[exit], generated[exit]));

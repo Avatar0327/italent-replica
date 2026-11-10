@@ -12,19 +12,23 @@ import {
   pgErrorCode,
   type PermissionGrant,
   permissionGrants,
+  permissionProfileApps,
   permissionProfiles,
+  sql,
   type Tx,
 } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { grantableSetsOf } from './admins.js';
 import { assertNotAutoHeld } from './auto-held.js';
 import { audit, type WriteContext } from './audit.js';
+import { accountMatch, hasMou, mousOfUsers, type UserMou } from './enterprise-lists.js';
 import { applyGrantScopes } from './data-scope-admin.js';
 import type { GrantScopeInput } from './data-scope-schemas.js';
 import { revisionConflict } from './http.js';
 import { consumeSeat, type LicenseOverage, lockLicenseType, releaseSeat } from './licenses.js';
 import { assertActiveMember } from './members.js';
 import { loadProfile, type ProfileView } from './profiles.js';
+import { userLabels } from './tenant-users.js';
 
 export interface GrantView {
   readonly id: string;
@@ -35,13 +39,77 @@ export interface GrantView {
   readonly revision: number;
 }
 
-export async function listGrants(tx: Tx, userId?: string): Promise<GrantView[]> {
+/** 授权列表行：授权本身 + 用户 / 身份 / 管理单元投影（F-474-5 #22）。 */
+export interface GrantListRow extends GrantView {
+  readonly userName: string;
+  readonly userEmail: string;
+  readonly profileCode: string;
+  readonly profileName: string;
+  readonly apps: string[];
+  readonly mous: UserMou[];
+  readonly grantedBy: { readonly userId: string; readonly displayName: string } | null;
+  readonly createdAt: string;
+}
+
+/** 原站授权列表有、本系统未记录的列：手机号码（账号无手机号）；产品用身份关联应用代替。 */
+export const GRANT_LIST_UNRECORDED = ['phone'] as const;
+
+export interface GrantListQuery {
+  readonly userId?: string;
+  readonly profileId?: string;
+  readonly mouId?: string;
+  readonly status?: 'active' | 'revoked';
+  readonly q?: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** 总数与当页同一个 where；撤销身份后行仍在（status=revoked），不连带动用户的管理单元（DEC-043）。 */
+export async function listGrants(tx: Tx, query: GrantListQuery): Promise<{ items: GrantListRow[]; total: number }> {
+  const where = and(
+    query.userId ? eq(permissionGrants.userId, query.userId) : undefined,
+    query.profileId ? eq(permissionGrants.profileId, query.profileId) : undefined,
+    query.status ? eq(permissionGrants.status, query.status) : undefined,
+    query.mouId ? hasMou(permissionGrants.userId, query.mouId) : undefined,
+    query.q ? accountMatch(permissionGrants.userId, query.q) : undefined,
+  );
   const rows = await tx
-    .select()
+    .select({ grant: permissionGrants, profile: permissionProfiles })
     .from(permissionGrants)
-    .where(userId === undefined ? undefined : eq(permissionGrants.userId, userId))
-    .orderBy(asc(permissionGrants.createdAt));
-  return rows.map(view);
+    .innerJoin(permissionProfiles, eq(permissionProfiles.id, permissionGrants.profileId))
+    .where(where)
+    .orderBy(asc(permissionGrants.createdAt), asc(permissionGrants.id))
+    .limit(query.limit)
+    .offset(query.offset);
+  const [count] = await tx
+    .select({ total: sql<number>`count(*)::int` })
+    .from(permissionGrants)
+    .where(where);
+  const userIds = rows.flatMap((r) => (r.grant.grantedBy ? [r.grant.userId, r.grant.grantedBy] : [r.grant.userId]));
+  const labels = await userLabels(tx, userIds);
+  const mous = await mousOfUsers(
+    tx,
+    rows.map((r) => r.grant.userId),
+  );
+  const apps = await tx
+    .select()
+    .from(permissionProfileApps)
+    .where(inArray(permissionProfileApps.profileId, [...new Set(rows.map((r) => r.profile.id))]));
+  const items = rows.map(({ grant: g, profile }) => ({
+    ...view(g),
+    userName: labels.get(g.userId)?.displayName ?? '',
+    userEmail: labels.get(g.userId)?.email ?? '',
+    profileCode: profile.code,
+    profileName: profile.name,
+    apps: apps
+      .filter((a) => a.profileId === profile.id)
+      .map((a) => a.appCode)
+      .sort(),
+    mous: mous.get(g.userId) ?? [],
+    grantedBy: g.grantedBy ? { userId: g.grantedBy, displayName: labels.get(g.grantedBy)?.displayName ?? '' } : null,
+    createdAt: g.createdAt.toISOString(),
+  }));
+  return { items, total: count?.total ?? 0 };
 }
 
 /**

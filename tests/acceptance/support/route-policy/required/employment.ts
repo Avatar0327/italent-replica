@@ -2200,7 +2200,11 @@ export const EMPLOYMENT: RequiredTable = {
     ),
   ],
   'GET /api/tenant/employment/businesses/:id': [
-    recordView(at(EMP, 'GET', '/businesses/:id', "let ctx = await readPageContext(c, deps, 'detail')")),
+    // F-476 P4：已办审批人的内容取舍要按当前字段查看权裁剪（getModuleViewableFields → object.view），同一对象查看权
+    recordView(at(EMP, 'GET', '/businesses/:id', "let ctx = await readPageContext(c, deps, 'detail')"), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
     INITIATOR_BUTTON(at(EMP, 'GET', '/businesses/:id', 'transferBusinessContext(tx, ctx, id)')),
     ob(
       'guard:transfer.source',
@@ -2647,7 +2651,11 @@ export const EMPLOYMENT: RequiredTable = {
           '/employees/:id/part-times',
           "const ctx = await readContext(c, deps, 'object.create', 0, id)",
         ),
-        { role: 'impl', unit: `${CTX}#readContext`, anchor: '(tx) => requireEmployeeInScope(tx, result, resource)' },
+        {
+          role: 'impl',
+          unit: `${CTX}#bindEmployeeResource`,
+          anchor: '(tx) => requireEmployeeInScope(tx, context, resource)',
+        },
         EMPLOYEE_IN_SCOPE,
       ],
     ),
@@ -3262,8 +3270,8 @@ export const EMPLOYMENT: RequiredTable = {
         ),
         {
           role: 'impl',
-          unit: `${CTX}#readContext`,
-          anchor: '(tx) => requireEmployeeInScope(tx, result, resource)',
+          unit: `${CTX}#bindEmployeeResource`,
+          anchor: '(tx) => requireEmployeeInScope(tx, context, resource)',
         },
         EMPLOYEE_IN_SCOPE,
       ],
@@ -3307,8 +3315,8 @@ export const EMPLOYMENT: RequiredTable = {
               call,
               {
                 role: 'impl',
-                unit: `${CTX}#readContext`,
-                anchor: '(tx) => requireEmployeeInScope(tx, result, resource)',
+                unit: `${CTX}#bindEmployeeResource`,
+                anchor: '(tx) => requireEmployeeInScope(tx, context, resource)',
               },
               EMPLOYEE_IN_SCOPE,
             ],
@@ -3932,10 +3940,16 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   // F-479 S2 HR 载体下载：与详情同一个取值（readExitDetail → readPageContext('detail')），再叠 attachmentRefs 字段权
   'GET /api/tenant/employment/exits/:id/attachments/:fileId/content': [
-    recordView(at(EXIT, 'GET', '/exits/:id/attachments/:fileId/content', 'await readExitDetail(c)')),
+    recordView(at(EXIT, 'GET', '/exits/:id/attachments/:fileId/content', 'await readExitDetail(c)'), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
   ],
   'GET /api/tenant/employment/exits/:id': [
-    recordView(at(EXIT, 'GET', '/exits/:id', 'const { ctx, detail, show } = await readExitDetail(c)')),
+    recordView(at(EXIT, 'GET', '/exits/:id', 'await readExitDetail(c, true)'), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
     exitActionsIntervene(
       at(EXIT, 'GET', '/exits/:id', 'await exitActions(deps, ctx, [detail], { withHandle: false })'),
     ),
@@ -4096,7 +4110,7 @@ export const EMPLOYMENT: RequiredTable = {
           RETIRE_VIEWS,
           'GET',
           '/retirements/employees/:id/in-flight',
-          "const ctx = await readContext(c, deps, 'object.view', 0, id)",
+          "const base = await readContext(c, deps, 'object.view', 0)",
         ),
         READ,
         RECORD_CONST,
@@ -4104,7 +4118,10 @@ export const EMPLOYMENT: RequiredTable = {
     ),
   ],
   'GET /api/tenant/employment/retirements/:id': [
-    recordView(at(RETIRE_VIEWS, 'GET', '/retirements/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+    recordView(at(RETIRE_VIEWS, 'GET', '/retirements/:id', "const ctx = await readPageContext(c, deps, 'detail')"), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
   ],
   'GET /api/tenant/employment/exits/dictionaries/:dict': [
     ob(

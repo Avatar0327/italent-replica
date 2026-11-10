@@ -64,6 +64,8 @@ export const permissionProfiles = pgTable(
     createdBy: uuid('created_by').references(() => users.id),
     createdAt: utc('created_at'),
     updatedAt: utc('updated_at'),
+    // 最近修改人（F-474-5 #25，DEC-778③）：新建与保存对象权限时写入；迁移前的旧行为空，不回填（DEC-402）
+    updatedBy: uuid('updated_by').references(() => users.id),
   },
   (t) => [
     unique('permission_profiles_tenant_code').on(t.tenantId, t.code),

@@ -21,6 +21,7 @@ import {
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { audit, type WriteContext } from './audit.js';
+import { accountMatch, likePattern } from './enterprise-lists.js';
 import { revisionConflict } from './http.js';
 import { scopeRows } from './scope-hierarchy.js';
 import { userAvatars, type AvatarReference } from '../avatar/references.js';
@@ -40,7 +41,12 @@ export interface TenantUserView {
   readonly membershipRevision: number;
   readonly accountStatus: 'active' | 'disabled';
   readonly accountRevision: number;
+  /** 成员关系建立时间（列表「创建时间」列）。 */
+  readonly createdAt: string;
 }
+
+/** 原站用户列表有、本系统未记录的列：不伪造，前端不显示或显示「--」（F-474-5 #21）。 */
+export const USER_LIST_UNRECORDED = ['loginPhone', 'source', 'createdBy', 'contactPhone', 'employeeStatus'] as const;
 
 export type UserTypeFilter = UserType | 'all';
 
@@ -71,7 +77,7 @@ export async function provisionAccount(
 }
 
 /** 本租户成员的账号信息（不是本租户成员的账号不返回，迁移 0032）。 */
-async function accountsOf(tx: Tx, userIds: readonly string[]): Promise<Map<string, Account>> {
+export async function accountsOf(tx: Tx, userIds: readonly string[]): Promise<Map<string, Account>> {
   if (userIds.length === 0) return new Map();
   const ids = sql.join(
     userIds.map((id) => sql`${id}::uuid`),
@@ -174,19 +180,55 @@ async function viewsOf(tx: Tx, rows: readonly MemberRow[]): Promise<TenantUserVi
       membershipRevision: m.revision,
       accountStatus: account?.status ?? 'disabled',
       accountRevision: account?.revision ?? 0,
+      createdAt: m.createdAt.toISOString(),
     };
   });
 }
 
+/** 姓名 / 登录邮箱（账号）或联系邮箱（绑定档案最新版本）包含 q。 */
+function textMatch(q: string): SQL {
+  const pattern = likePattern(q);
+  return sql`(${accountMatch(tenantMemberships.userId, q)} OR EXISTS (
+    SELECT 1 FROM personnel_employee_versions v
+    WHERE v.employee_id = ${permissionUserPersonLinks.employeeId}
+      AND v.revision = (SELECT max(m.revision) FROM personnel_employee_versions m WHERE m.employee_id = v.employee_id)
+      AND lower(coalesce(v.email, '')) LIKE ${pattern}))`;
+}
+
+export interface UserListQuery {
+  readonly type: UserTypeFilter;
+  readonly membershipStatus?: TenantMembership['status'];
+  readonly q?: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** 总数与当页同一个 where；排序稳定（成员建立时间 + id）。 */
 export async function listTenantUsers(
   tx: Tx,
-  query: { readonly type: UserTypeFilter; readonly limit: number; readonly offset: number },
-): Promise<TenantUserView[]> {
-  const rows = await memberQuery(tx, typeFilter(query.type))
+  query: UserListQuery,
+): Promise<{ items: TenantUserView[]; total: number }> {
+  const where = and(
+    typeFilter(query.type),
+    query.membershipStatus ? eq(tenantMemberships.status, query.membershipStatus) : undefined,
+    query.q ? textMatch(query.q) : undefined,
+  );
+  const rows = await memberQuery(tx, where)
     .orderBy(asc(tenantMemberships.createdAt), asc(tenantMemberships.id))
     .limit(query.limit)
     .offset(query.offset);
-  return viewsOf(tx, rows);
+  const [count] = await tx
+    .select({ total: sql<number>`count(*)::int` })
+    .from(tenantMemberships)
+    .leftJoin(
+      permissionUserPersonLinks,
+      and(
+        eq(permissionUserPersonLinks.tenantId, tenantMemberships.tenantId),
+        eq(permissionUserPersonLinks.userId, tenantMemberships.userId),
+      ),
+    )
+    .where(where);
+  return { items: await viewsOf(tx, rows), total: count?.total ?? 0 };
 }
 
 export async function getTenantUser(tx: Tx, userId: string): Promise<TenantUserView> {
@@ -308,4 +350,22 @@ export function memberSnapshot(m: TenantMembership) {
     businessIdentity: m.businessIdentity,
     revision: m.revision,
   };
+}
+
+export interface UserLabel {
+  readonly userId: string;
+  readonly displayName: string;
+  readonly email: string;
+}
+
+/** 姓名 / 登录邮箱；非本租户成员或账号无登录名时为空串（仅作显示）。 */
+export async function userLabels(tx: Tx, userIds: readonly string[]): Promise<Map<string, UserLabel>> {
+  const ids = [...new Set(userIds)];
+  const accounts = await accountsOf(tx, ids);
+  return new Map(
+    ids.map((userId) => [
+      userId,
+      { userId, displayName: accounts.get(userId)?.displayName ?? '', email: accounts.get(userId)?.email ?? '' },
+    ]),
+  );
 }

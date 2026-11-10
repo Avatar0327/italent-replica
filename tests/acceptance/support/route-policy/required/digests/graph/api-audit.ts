@@ -116,6 +116,8 @@ export const GRAPH: Graph = {
     '#recordFailedImport',
   ],
   'apps/api/src/audit/request-context.ts#currentAuditRequest': ['#storage'],
+  'apps/api/src/audit/routes.ts#appCondition': ['packages/domain/src/audit/labels.ts#auditAppScope'],
+  'apps/api/src/audit/routes.ts#appFilter': ['packages/domain/src/audit/labels.ts#AUDIT_APPS'],
   'apps/api/src/audit/routes.ts#auditContext': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/tenant-context.ts#tenantOf',
@@ -125,6 +127,9 @@ export const GRAPH: Graph = {
     'apps/api/src/audit/query.ts#optionalUuid',
     '#CODE',
     '#FIELD',
+    '#TRACE',
+    '#appCondition',
+    '#appFilter',
     '#normalizeObjectId',
     'packages/domain/src/audit/changes.ts#AUDIT_OPERATIONS',
   ],
@@ -198,6 +203,7 @@ export const GRAPH: Graph = {
     '#pageConditions',
     '#recounted',
     'apps/api/src/audit/visibility.ts#auditViewer',
+    'packages/domain/src/audit/labels.ts#AUDIT_APPS',
   ],
   'apps/api/src/audit/routes.ts#route:GET /api/tenant/audit/data-changes/:id': [
     'apps/api/src/audit/query.ts#notBefore',

@@ -53,6 +53,7 @@ import {
   resubmitChangeInTransaction,
   withdrawChangeInTransaction,
 } from '../personnel/change-requests.js';
+import { changeOriginals } from '../personnel/frozen.js';
 import { lockPerson } from '../personnel/store.js';
 import { loadSubset } from '../personnel/subsets.js';
 import { AppError } from '../../errors.js';
@@ -102,6 +103,8 @@ export interface BusinessSnapshot {
   readonly tutorEmployeeId?: string | null;
   /** 离职交接申请的工作交接人（离职申请的交接人，审批人表达式 handover_work_owner，R2 BE-8b2）；其他业务为空。 */
   readonly handoverEmployeeId?: string | null;
+  /** 退休申请里的返聘计划（审批人表达式 rehire_direct_manager / rehire_department_hrbp，F-478 S4）；其他业务与不返聘为空。 */
+  readonly rehirePlan?: RehirePlanRef | null;
   /**
    * 看板日期（规格 35 B51，人事流程看板判“业务已过期 / 晚提交 / 晚审批”）：Offer = 入职日期、离职 = 最后工作日，
    * 其余 = 生效日期；业务没有这类日期时不填。实例发起与重提时写入审批实例 business_date 列（DEC-402 不回填存量）。
@@ -117,6 +120,12 @@ export interface BusinessSnapshot {
    * 员工子集变更按子集取各自的编码。客户端提交参数不能覆盖这份绑定。
    */
   readonly processCode: string | null;
+}
+
+/** 返聘审批人来源只读返聘计划的两个字段：返聘部门与返聘后直线经理（员工 ID）。 */
+export interface RehirePlanRef {
+  readonly departmentId: string | null;
+  readonly directManagerId: string | null;
 }
 
 export interface BusinessAdapter {
@@ -233,6 +242,25 @@ async function exitInitiation(tx: Tx, tenantId: string, businessId: string): Pro
  * R2-T03 §9 exitMetadata：离职扩展行上的表单字段（离职类型 / 原因 / 去向等）；不是离职单返回空。
  * 退休（R2-T04 §3.4）只带交接人 / 加黑，另返回退休类型、是否同时返聘与创建时快照的预计退休日期（审批人只看本单字段，DEC-057）。
  */
+/**
+ * 离职 / 退休的流程匹配与出口守卫事实：发起方式（R2-T03 §4B）；退休再多「是否同时返聘」
+ * （F-478 S4，业务出口守卫的事实，办理人不能改变它，创建后不可改）。
+ */
+async function exitConditionValues(
+  tx: Tx,
+  tenantId: string,
+  businessId: string,
+  kind: string,
+  exit: Row,
+): Promise<Record<string, string>> {
+  if (kind !== 'leave' && kind !== 'retirement') return {};
+  return {
+    'business.initiation': await exitInitiation(tx, tenantId, businessId),
+    ...(kind === 'retirement' && typeof exit.reEmployed === 'boolean'
+      ? { 'business.reEmployed': String(exit.reEmployed) }
+      : {}),
+  };
+}
 async function exitMetadata(tx: Tx, tenantId: string, businessId: string, kind: string): Promise<Row> {
   const row = (await loadExitRequest(tx, tenantId, businessId)) as Row | undefined;
   if (!row) return {};
@@ -248,6 +276,13 @@ async function exitMetadata(tx: Tx, tenantId: string, businessId: string, kind: 
     reEmployed: retirement?.reEmployed ?? null,
     expectedRetirementDate: retirement?.expectedRetirementDate ?? null,
   };
+}
+
+/** 退休申请里的返聘计划（只取审批人来源要用的部门与直线经理）；不返聘或没有计划为 null。 */
+async function rehirePlanOf(tx: Tx, tenantId: string, businessId: string): Promise<RehirePlanRef | null> {
+  const plan = (await loadRetirementRequest(tx, tenantId, businessId))?.rehirePlan;
+  if (!plan) return null;
+  return { departmentId: plan.fields.departmentId ?? null, directManagerId: plan.fields.directManagerId ?? null };
 }
 
 /** 变更前原值：前一条任职的字段、自定义字段与业务日期；离职扩展字段没有前一版（为空）。 */
@@ -480,15 +515,13 @@ const employmentAdapter: BusinessAdapter = {
         'employee.code': employee.code,
         'employee.name': employee.name,
         'record.effectiveDate': business.effectiveDate,
-        // R2-T03 §4B：离职流程匹配多一个输入——发起方式（hr / self / manager）
-        ...(business.kind === 'leave' || business.kind === 'retirement'
-          ? { 'business.initiation': await exitInitiation(tx, ctx.tenantId, businessId) }
-          : {}),
+        ...(await exitConditionValues(tx, ctx.tenantId, businessId, business.kind, exit)),
         ...ref('before', before?.fields),
         ...ref('record', fields),
       },
       latestDepartmentId: current?.fields.departmentId ?? null,
       recordDepartmentId: fields.departmentId,
+      ...(business.kind === 'retirement' ? { rehirePlan: await rehirePlanOf(tx, ctx.tenantId, businessId) } : {}),
       ...(linkage.foreignFields.length ? { foreignFields: linkage.foreignFields } : {}),
       // 离职扩展字段不在任职载荷里：其指纹也进审批版本，HR 改了离职类型等内容，旧审批页面随即失效（#388 P2-1）
       version: [payload.version, linkage.version, exitVersion(exit)].filter(Boolean).join(':'),
@@ -548,28 +581,6 @@ async function personnelChange(tx: Tx, ctx: ApprovalContext, id: string) {
   return { change, subset };
 }
 
-/** 子集历史版本（含已删除记录的版本链），按记录 ID 与 revision 定位。 */
-async function subsetVersion(
-  tx: Tx,
-  tenantId: string,
-  employeeId: string,
-  subset: SubsetKind,
-  recordId: string,
-  revision: number,
-): Promise<Row | null> {
-  const [raw] = rowsOf<Row>(
-    await tx.execute(sql`SELECT * FROM ${sql.identifier(`${SUBSETS[subset].table}_versions`)}
-      WHERE tenant_id=${tenantId} AND employee_id=${employeeId}::uuid AND record_id=${recordId}::uuid
-        AND revision=${revision} LIMIT 1`),
-  );
-  return raw ? camelRow(raw) : null;
-}
-
-const camelRow = (row: Row): Row =>
-  Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()), value]),
-  );
-
 const personnelAdapter: BusinessAdapter = {
   async lock(tx, ctx, businessId) {
     const { change } = await personnelChange(tx, ctx, businessId);
@@ -579,18 +590,7 @@ const personnelAdapter: BusinessAdapter = {
     const { change, subset } = await personnelChange(tx, ctx, businessId);
     const employeeId = String(change.employeeId);
     const values = await currentChangeValues(tx, { ...ctx, expectedRevision: 0 }, businessId);
-    // 清单 9：原值取申请所针对的那一版（targetRevision），不随审批落地或源记录删除而漂移 / 失败。
-    const record = change.recordId
-      ? await subsetVersion(
-          tx,
-          ctx.tenantId,
-          employeeId,
-          subset,
-          String(change.recordId),
-          Number(change.targetRevision),
-        )
-      : null;
-    const originals = record ? Object.fromEntries(Object.keys(values).map((key) => [key, record[key] ?? null])) : null;
+    const originals = await changeOriginals(tx, ctx.tenantId, change, subset, values);
     const employee = await employeeHeader(tx, ctx.tenantId, employeeId);
     const current = await findCurrentRecord(tx, ctx.tenantId, employeeId, tenantLocalDate(ctx.now, ctx.timezone));
     const departmentId = current?.fields.departmentId ?? null;

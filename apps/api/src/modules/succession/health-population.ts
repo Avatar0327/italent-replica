@@ -18,7 +18,7 @@ import { loadSubject } from '../permission/subject.js';
 import { resolveDataScope } from '../permission/scope-resolver.js';
 import { objectCatalog } from '../permission/catalog.js';
 import { scopeAllows } from '../permission/module-access.js';
-import { CalcObjectFailure, CalcBlocked } from './calc-contract.js';
+import { CalcObjectFailure, CalcBlocked } from './calc-contract-core.js';
 import { INCUMBENT_EXCLUDED_STATUSES, rowsOf } from './read-sql.js';
 import { populationViews } from './config-store.js';
 export interface HealthPerson {

@@ -1,33 +1,34 @@
 import { Button, Input, Tabs } from 'antd';
 import { useState } from 'react';
-import { newCommand, type PageResult } from '../foundation/client.js';
+import { newCommand } from '../foundation/client.js';
 import { FormOverlay } from '../foundation/FormOverlay.js';
 import { useApiClient } from '../foundation/Session.js';
-import { ListPage } from '../foundation/templates.js';
-import { base, listPath, scopeInput, type Mou } from './model.js';
-import { Facts, Notice, RemoteDetail, Status } from './parts.js';
+import { MouTreeTable } from './MouTreeTable.js';
+import { base, scopeInput, type Mou, type MouTreeNode } from './model.js';
+import { Facts, Notice, RemoteDetail } from './parts.js';
 import { RangeInput, ScopeEditor } from './ScopeEditor.js';
 import type { SettingsProps } from './SettingsPage.js';
 import { useResource } from './useResource.js';
 import { useWrite } from './useWrite.js';
 import { m } from './messages.js';
-export function MousPage({ code, title, editable }: SettingsProps) {
-  const [page, setPage] = useState({ page: 1, pageSize: 15 });
-  const list = useResource<PageResult<Mou>>(listPath(code, page));
+export function MousPage({ title, editable }: SettingsProps) {
+  const [filters, setFilters] = useState({ status: 'active', q: '' });
+  const query = new URLSearchParams({ status: filters.status, ...(filters.q ? { q: filters.q } : {}) });
+  const list = useResource<{ items: MouTreeNode[]; total: number }>(`${base}/mous/tree?${query}`);
   const [detail, setDetail] = useState<string>();
   const [create, setCreate] = useState(false);
   const content = (
     <>
-      <Notice text={m.scopeNotice} />
-      <ListPage
+      <Notice text={m.mouNotice} />
+      <MouTreeTable
         title={title}
-        rowKey="id"
-        page={page}
-        onPageChange={setPage}
-        data={list.data ?? { items: [] }}
+        filters={filters}
+        setFilters={setFilters}
+        items={list.data?.items ?? []}
         loading={list.loading}
         error={list.error}
         retry={list.refresh}
+        detail={setDetail}
         actions={
           <>
             <Button onClick={list.refresh}>{m.refresh}</Button>
@@ -43,21 +44,6 @@ export function MousPage({ code, title, editable }: SettingsProps) {
             )}
           </>
         }
-        columns={[
-          {
-            title: m.name,
-            dataIndex: 'name',
-            render: (name: string, row: Mou) => (
-              <Button type="link" onClick={() => setDetail(row.id)}>
-                {name}
-              </Button>
-            ),
-          },
-          { title: m.code, dataIndex: 'code' },
-          { title: m.description, dataIndex: 'description' },
-          { title: m.parentId, dataIndex: 'parentId' },
-          { title: m.status, dataIndex: 'status', render: (value: string) => <Status value={value} /> },
-        ]}
       />
       {detail && <MouDetails detail={detail} close={() => setDetail(undefined)} />}
       {create && <MouForm close={() => setCreate(false)} refresh={list.refresh} editable={editable} />}
