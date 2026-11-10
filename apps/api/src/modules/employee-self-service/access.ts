@@ -29,7 +29,7 @@ const COMMAND_FIELDS = new Set(['initiator', 'transferTypeCode', 'formId', 'mode
 const SELF_BUTTONS = new Set(EMPLOYEE_SELF_SERVICE_BUTTONS.map((b) => b.buttonCode));
 
 export async function boundEmployee(tx: Tx, ctx: Pick<EmploymentContext, 'tenantId' | 'userId'>) {
-  const [employee] = rowsOf<{ id: string; name: string; code: string; revision: number }>(
+  const [employee] = rowsOf<{ id: string; name: string; code: string | null; revision: number }>(
     await tx.execute(sql`
     SELECT e.id,e.name,e.code,e.revision FROM permission_user_person_links l
     JOIN employment_employees e ON e.tenant_id=l.tenant_id AND e.id=l.employee_id

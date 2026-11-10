@@ -21,7 +21,13 @@ export function deriveRetireType(lastWorkDate: string, expectedDate: string | nu
  * 退休单可写的 exit 区块字段（§3.2）：交接人、职责转交计划；其余离职字段一律拒绝，在途调动确认令牌是门禁控制项。
  * 加黑五项不在其中（F-351，DEC-716：北森退休表单没有加黑字段，退休不自动也不手动加黑）。
  */
-export const RETIREMENT_EXIT_KEYS = ['handoverEmployeeId', 'dutyTransfer', 'pendingTransferAck'] as const;
+export const RETIREMENT_EXIT_KEYS = [
+  'handoverEmployeeId',
+  'dutyTransfer',
+  'dutyTransferTiming',
+  'dutyTransferDate',
+  'pendingTransferAck',
+] as const;
 
 /** 退休扩展字段（设计 §12.2）：退休类型、是否同时返聘、创建时快照的预计退休日期；都由系统写入，只可授查看。 */
 export const RETIREMENT_REQUEST_FIELDS = ['retireType', 'reEmployed', 'expectedRetirementDate'] as const;

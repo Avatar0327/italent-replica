@@ -234,6 +234,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
   ],
   'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#isConflict': ['#REASON'],
+  'apps/api/src/modules/employment/assessment-content.ts#CONTENT_KEYS': [
+    'packages/domain/src/employment/assessment.ts#ASSESSMENT_FORM_FIELDS',
+  ],
+  'apps/api/src/modules/employment/assessment-content.ts#composeAssessment': [
+    '#CONTENT_KEYS',
+    '#FACTS',
+    'apps/api/src/modules/employment/handled-read.ts#composeHandled',
+    'apps/api/src/modules/employment/handled-read.ts#requireExt',
+  ],
+  'apps/api/src/modules/employment/assessment-content.ts#loadAssessmentContent': [
+    '#CONTENT_KEYS',
+    'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
+    'apps/api/src/modules/employment/handled-read.ts#pickContent',
+  ],
   'apps/api/src/modules/employment/assessment-in-flight.ts#assessmentVoidNotice': [
     'packages/domain/src/employment/assessment.ts#ASSESSMENT_TYPES',
   ],
@@ -264,12 +278,14 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
   ],
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': [
+    'apps/api/src/modules/employment/assessment-content.ts#composeAssessment',
     'apps/api/src/modules/employment/assessment-store.ts#assessmentView',
     'apps/api/src/modules/employment/assessment-store.ts#loadAssessmentRead',
     'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
     'apps/api/src/modules/employment/assessment-store.ts#withTerminationFlag',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
+    'apps/api/src/modules/employment/handled-read.ts#selectHandledRead',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
   ],
@@ -2023,7 +2039,7 @@ export const GRAPH: Graph = {
     '#syncActualRetirementDate',
     'apps/api/src/modules/employment/exit-confirmation.ts#runExitEffectiveHooks',
     'apps/api/src/modules/employment/exit-contract-effects.ts#handleContractsOnExitEffective',
-    'apps/api/src/modules/employment/exit-duty-transfer.ts#runExitDutyTransfer',
+    'apps/api/src/modules/employment/exit-duty-clear.ts#settleExitDuties',
     'apps/api/src/modules/employment/exit-gate.ts#isOverLimitAck',
     'apps/api/src/modules/employment/exit-projection.ts#assertExtendedEmploymentAvailable',
     'apps/api/src/modules/employment/exit-projection.ts#assertNoNewEstablishmentOccupancy',
@@ -2046,16 +2062,19 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-application.ts#assertDictionaries': [
     'apps/api/src/modules/employment/exit-dictionaries.ts#assertExitDictionaryEnabled',
   ],
+  'apps/api/src/modules/employment/exit-application.ts#auditCreate': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+  ],
   'apps/api/src/modules/employment/exit-application.ts#auditExitUpdate': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
   ],
   'apps/api/src/modules/employment/exit-application.ts#createExitApplication': [
     'apps/api/src/modules/attachments/binding.ts#assertRefsUnchanged',
-    'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
     'apps/api/src/modules/employment/exit-activation.ts#activateIfDue',
+    '#auditCreate',
     '#columnValues',
-    '#dutyTransferTiming',
+    '#initialTimingChoice',
     '#saveDutyTransfer',
     '#selectedStaffOf',
     '#withBlacklist',
@@ -2086,6 +2105,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-application.ts#exitPatchSchema': [
     'apps/api/src/modules/employment/exit-initiation.ts#exitOptionsSchema',
   ],
+  'apps/api/src/modules/employment/exit-application.ts#initialTimingChoice': [
+    '#dutyTransferTiming',
+    'apps/api/src/modules/employment/exit-duty-timing.ts#chooseDutyTransferTiming',
+    'apps/api/src/modules/employment/exit-duty-timing.ts#settleChoice',
+  ],
   'apps/api/src/modules/employment/exit-application.ts#parseExitPatch': ['#exitPatchSchema'],
   'apps/api/src/modules/employment/exit-application.ts#saveDutyTransfer': [
     'apps/api/src/modules/transfer/linkage/access.ts#authorizeLinkageWrite',
@@ -2095,6 +2119,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-application.ts#selectedStaffOf': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-application.ts#timingValues': [
+    'apps/api/src/modules/employment/exit-duty-timing.ts#chooseDutyTransferTiming',
+    'apps/api/src/modules/employment/exit-duty-timing.ts#dutyTransferExecuted',
+    'apps/api/src/modules/employment/exit-duty-timing.ts#lockedError',
+    'apps/api/src/modules/employment/exit-duty-timing.ts#settleChoice',
+  ],
   'apps/api/src/modules/employment/exit-application.ts#updateExitFields': [
     'apps/api/src/modules/approval/engine.ts#refreshBusinessVersion',
     'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
@@ -2102,6 +2132,7 @@ export const GRAPH: Graph = {
     '#assertDictionaries',
     '#auditExitUpdate',
     '#columnValues',
+    '#timingValues',
     '#withBlacklist',
     '#withDates',
     'apps/api/src/modules/employment/exit-attachments.ts#writeRefs',
@@ -2365,11 +2396,51 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
-  'apps/api/src/modules/employment/exit-duty-transfer.ts#runExitDutyTransfer': [
+  'apps/api/src/modules/employment/exit-duty-clear.ts#attempt': [
+    'apps/api/src/modules/transfer/linkage/duty-execution.ts#dutyItemFailure',
+    'apps/api/src/modules/transfer/linkage/duty-execution.ts#executeDutyItem',
+  ],
+  'apps/api/src/modules/employment/exit-duty-clear.ts#clearUncoveredDuties': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
-    '#TIMING_OF',
+    '#attempt',
+    '#toItem',
+    'apps/api/src/modules/employment/exit-duty-participants.ts#exitDutiesToClear',
+    'apps/api/src/modules/employment/transfer-locks.ts#assertEmployeeLocksHeld',
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_SOURCE',
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
+  ],
+  'apps/api/src/modules/employment/exit-duty-clear.ts#settleExitDuties': [
+    '#clearUncoveredDuties',
+    'apps/api/src/modules/employment/exit-duty-transfer.ts#runExitDutyTransfer',
+  ],
+  'apps/api/src/modules/employment/exit-duty-participants.ts#exitDutiesToClear': [
+    'apps/api/src/modules/duty-transfer/uncovered.ts#uncoveredDuties',
+    'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
+  ],
+  'apps/api/src/modules/employment/exit-duty-participants.ts#pendingClearSubordinates': [
+    '#exitDutiesToClear',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/exit-duty-timing.ts#chooseDutyTransferTiming': ['#invalid'],
+  'apps/api/src/modules/employment/exit-duty-timing.ts#dutyTransferExecuted': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-duty-timing.ts#settleChoice': [
+    'packages/domain/src/employment/exit.ts#settleDutyTransferTiming',
+  ],
+  'apps/api/src/modules/employment/exit-duty-timing.ts#settleTimingOnReschedule': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#dutyTransferExecuted',
+    '#settleChoice',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-duty-transfer.ts#executeExitDutyTransfer': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/transfer/linkage/execute.ts#applyDutyTransfer',
   ],
+  'apps/api/src/modules/employment/exit-duty-transfer.ts#runExitDutyTransfer': ['#executeExitDutyTransfer', '#plan'],
   'apps/api/src/modules/employment/exit-flow-candidates.ts#discloseFlows': ['#visibleFlows'],
   'apps/api/src/modules/employment/exit-flow-candidates.ts#flowCoordinates': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -2392,6 +2463,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-gate.ts#assertDictionaries': [
     'apps/api/src/modules/employment/exit-dictionaries.ts#assertExitDictionaryEnabled',
     '#assertHandoverEmployee',
+  ],
+  'apps/api/src/modules/employment/exit-gate.ts#assertDutiesAssigned': [
+    'apps/api/src/modules/duty-transfer/uncovered.ts#uncoveredDuties',
+    '#conflict',
+    '#kindOfTarget',
+    'apps/api/src/modules/transfer/linkage/input.ts#normalizeLinkage',
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_REQUIRED_MESSAGE',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#assertHandoverEmployee': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
@@ -2439,6 +2518,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-gate.ts#createConditions': [
     '#assertActualLeaveDate',
     '#assertDictionaries',
+    '#assertDutiesAssigned',
     '#assertHandoverEmployee',
     '#assertLastWorkDateNotBeforeEntry',
     '#assertNoLeaveInProgress',
@@ -2489,7 +2569,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
     'packages/domain/src/employment/exit-termination.ts#assessmentTypeFlow',
   ],
-  'apps/api/src/modules/employment/exit-gate.ts#permissionSpec': ['#buttonsFor', '#createPayload', '#kindOfTarget'],
+  'apps/api/src/modules/employment/exit-gate.ts#permissionSpec': [
+    '#buttonsFor',
+    '#createPayload',
+    '#kindOfTarget',
+    '#updatePayload',
+  ],
   'apps/api/src/modules/employment/exit-gate.ts#regularizationBlocker': [
     '#REGULARIZATION_KINDS',
     '#disclose',
@@ -2509,6 +2594,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     '#permissionSpec',
+    '#updatePayload',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#submitConditions': [
     '#assertNoOverdueTransfer',
@@ -2521,11 +2607,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
     'apps/api/src/modules/employment/exit-termination-policy.ts#untickedFlows',
   ],
+  'apps/api/src/modules/employment/exit-gate.ts#updatePayload': ['#withoutControls'],
   'apps/api/src/modules/employment/exit-gate.ts#withAckWarnings': [
     '#VOID_LIMIT',
     '#isOverLimitAck',
     '#loadExitRequest',
   ],
+  'apps/api/src/modules/employment/exit-gate.ts#withoutControls': ['#EXIT_CONTROL_KEYS'],
   'apps/api/src/modules/employment/exit-handover-adapter.ts#HANDOVER_OBJECT': ['#TYPE'],
   'apps/api/src/modules/employment/exit-handover-adapter.ts#TYPE': [
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
@@ -3146,6 +3234,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#normalizedUuid',
     'packages/domain/src/employment/blacklist.ts#BLACKLIST_NOTE_MAX',
     'packages/domain/src/employment/blacklist.ts#BLACKLIST_REASON_CODES',
+    'packages/domain/src/employment/exit.ts#EXIT_FORM_DUTY_TRANSFER_TIMINGS',
   ],
   'apps/api/src/modules/employment/exit-initiation.ts#managerInitiationEnabled': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -3340,11 +3429,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#EXIT_GATE_PASS',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     '#copyRemainingDuties',
+    '#timingAfterReplan',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
+  ],
+  'apps/api/src/modules/employment/exit-replacement.ts#timingAfterReplan': [
+    'packages/domain/src/employment/exit.ts#settleDutyTransferTiming',
   ],
   'apps/api/src/modules/employment/exit-reposition.ts#repositionExit': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -3410,6 +3503,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-cancel-intervals.ts#loadOccupancy',
     'apps/api/src/modules/employment/exit-confirmation.ts#runExitReplannedHooks',
     'apps/api/src/modules/employment/exit-downstream.ts#probeRescheduleDownstream',
+    'apps/api/src/modules/employment/exit-duty-timing.ts#settleTimingOnReschedule',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
     'apps/api/src/modules/employment/exit-gate.ts#saveAck',
@@ -3952,6 +4046,26 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/forward-store.ts#appendForwardPayload',
     'apps/api/src/modules/employment/forward-store.ts#auditForwardTarget',
     'apps/api/src/modules/establishment/employment-check.ts#affectsEstablishmentOccupancy',
+  ],
+  'apps/api/src/modules/employment/handled-read.ts#instancesOf': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/employment/handled-read.ts#openAsParticipant': [
+    'apps/api/src/modules/approval/disclosure.ts#readDetail',
+  ],
+  'apps/api/src/modules/employment/handled-read.ts#requireExt': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+  ],
+  'apps/api/src/modules/employment/handled-read.ts#selectHandledRead': [
+    'apps/api/src/modules/approval/context.ts#canonicalId',
+    'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
+    'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
+    'apps/api/src/modules/approval/foreign-fields.ts#viewableWithForeign',
+    'apps/api/src/modules/approval/handling-content.ts#contentViewOf',
+    '#LIVE',
+    '#instancesOf',
+    '#openAsParticipant',
+    '#pendingFor',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],
   'apps/api/src/modules/employment/import-audit.ts#failedImportAnchors': [
     'apps/api/src/audit/record.ts#rawImportRows',
@@ -6588,6 +6702,20 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_FORM_FIELDS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/retirement-intention-content.ts#CONTENT_KEYS': [
+    'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_FORM_FIELDS',
+  ],
+  'apps/api/src/modules/employment/retirement-intention-content.ts#composeIntention': [
+    'apps/api/src/modules/employment/handled-read.ts#composeHandled',
+    'apps/api/src/modules/employment/handled-read.ts#requireExt',
+    '#CONTENT_KEYS',
+    '#FACTS',
+  ],
+  'apps/api/src/modules/employment/retirement-intention-content.ts#loadIntentionContent': [
+    'apps/api/src/modules/employment/handled-read.ts#pickContent',
+    '#CONTENT_KEYS',
+    'apps/api/src/modules/employment/retirement-intention-store.ts#loadIntention',
+  ],
   'apps/api/src/modules/employment/retirement-intention-routes.ts#approvalFields': [
     'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
@@ -6617,6 +6745,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions/:id': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
+    'apps/api/src/modules/employment/handled-read.ts#selectHandledRead',
+    'apps/api/src/modules/employment/retirement-intention-content.ts#composeIntention',
     'apps/api/src/modules/employment/retirement-intention-store.ts#intentionView',
     'apps/api/src/modules/employment/retirement-intention-store.ts#loadVisibleIntention',
     'apps/api/src/modules/job/context.ts#uuidParam',
@@ -7673,6 +7803,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants': ['#acquire'],
   'apps/api/src/modules/employment/transfer-locks.ts#participants': [
+    'apps/api/src/modules/employment/exit-duty-participants.ts#pendingClearSubordinates',
     'apps/api/src/modules/employment/exit-replacement-plan.ts#remainingExitDuties',
     'apps/api/src/modules/employment/part-time/linkage-participants.ts#partTimeLinkageParticipants',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',

@@ -57,7 +57,8 @@ function restrictedSave(w: World, person: Person, hidden: 'from' | 'to' | 'creat
     });
 }
 
-async function anotherScheme(w: World, orgId: string, periodType = 'annual') {
+/** F-484（DEC-295①）：同组织不同方案的期间不可重叠，范围外组织的“另一方案”只能落在不覆盖调动日的下一年。 */
+async function anotherScheme(w: World, orgId: string, periodType = 'annual', periodStart = '2027-01-01') {
   const created = await w.write('establishment/schemes', {
     name: '合成范围外方案',
     periodType,
@@ -66,13 +67,7 @@ async function anotherScheme(w: World, orgId: string, periodType = 'annual') {
   });
   expect(created.status).toBe(201);
   const scheme = (await created.json()) as { id: string };
-  const capacity = await w.write('establishment/capacities', {
-    orgId,
-    schemeId: scheme.id,
-    periodStart: periodType === 'annual' ? '2026-01-01' : '2026-10-01',
-    localCapacity: 5,
-  });
-  expect(capacity.status, await capacity.clone().text()).toBe(201);
+  return w.write('establishment/capacities', { orgId, schemeId: scheme.id, periodStart, localCapacity: 5 });
 }
 
 async function exclude(w: World, orgId: string) {
@@ -86,24 +81,27 @@ async function exclude(w: World, orgId: string) {
   expect(response.status, await response.clone().text()).toBe(200);
 }
 
-it.each(['from', 'to'] as const)('AC-EST-17 %s 范围外新增方案前后，同一调动返回相同 404', async (hidden) => {
-  const w = await carriedWorld(database().db, `scope-ambiguous-${hidden}`);
-  const person = await w.hired();
-  const save = restrictedSave(w, person, hidden);
-  const first = await save();
-  expect(first.status).toBe(404);
-  expect(await first.json()).toEqual(absent);
-  await anotherScheme(w, w[hidden].id);
-  const before = await w.capacities();
-  const control = await w.save(person);
-  expect(control.status).toBe(409);
-  expect(await control.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHMENT_SCHEME_AMBIGUOUS' } } });
-  const second = await save();
-  expect(second.status, await second.clone().text()).toBe(404);
-  expect(await second.json()).toEqual(absent);
-  expect(await w.capacities()).toEqual(before);
-  expect(await w.history()).toEqual([]);
-});
+it.each(['from', 'to'] as const)(
+  'AC-EST-17 %s 范围外新增方案被重叠校验拒绝，前后同一调动返回相同 404',
+  async (hidden) => {
+    const w = await carriedWorld(database().db, `scope-ambiguous-${hidden}`);
+    const person = await w.hired();
+    const save = restrictedSave(w, person, hidden);
+    const first = await save();
+    expect(first.status).toBe(404);
+    expect(await first.json()).toEqual(absent);
+    // 覆盖调动日的第二候选方案在写入侧不再可能出现（F-484，DEC-295①）
+    const second = await anotherScheme(w, w[hidden].id, 'annual', '2026-01-01');
+    expect(second.status, await second.clone().text()).toBe(409);
+    expect(await second.json()).toMatchObject({ error: { details: { reason: 'CAPACITY_PERIOD_OVERLAP' } } });
+    const before = await w.capacities();
+    const again = await save();
+    expect(again.status, await again.clone().text()).toBe(404);
+    expect(await again.json()).toEqual(absent);
+    expect(await w.capacities()).toEqual(before);
+    expect(await w.history()).toEqual([]);
+  },
+);
 
 it.each([
   { hidden: 'from', path: 'subdivision' },
@@ -120,8 +118,10 @@ it.each([
   const w = await carriedWorld(database().db, `scope-${hidden}-${path}`);
   const person = await w.hired();
   if (path !== 'subdivision' && path !== 'no-capacity') await exclude(w, w[hidden].id);
-  if (path === 'scheme' || path === 'period')
-    await anotherScheme(w, w[hidden].id, path === 'period' ? 'monthly' : 'annual');
+  if (path === 'scheme' || path === 'period') {
+    const other = await anotherScheme(w, w[hidden].id, path === 'period' ? 'monthly' : 'annual');
+    expect(other.status, await other.clone().text()).toBe(201);
+  }
   const extra =
     path === 'subdivision'
       ? { fields: { departmentId: w.to.id, positionId: null } }

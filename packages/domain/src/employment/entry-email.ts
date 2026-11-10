@@ -45,7 +45,7 @@ export interface EmailCandidate {
   /** 入职部门及其全部上级（行政维度，入职日当天）；没有部门为空。 */
   readonly orgChain: readonly string[];
   readonly employType: string | null;
-  readonly employeeCode: string;
+  readonly employeeCode: string | null;
   readonly namePinyin: string | null;
   readonly pinyinInitials: string | null;
 }

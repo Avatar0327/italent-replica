@@ -758,6 +758,17 @@ function candidateFilter(admin: Admin): SQL {
       AND ${scopeSql(admin.people!, { person: sql`e.id` })}))`;
 }
 
+/**
+ * 键集游标：顺序为 (工号 升序且空工号排最后, id)。行比较 (e.code,e.id) > (…) 遇 NULL 为未知会丢人，
+ * 所以显式分三段（F-493 S1，设计 §3.5）：游标有工号 → 更大的工号 / 同工号更大的 id / 全部空工号；
+ * 游标是空工号 → 只剩空工号里更大的 id。
+ */
+function afterCursor(after: { employee_id: string; code: string | null }): SQL {
+  if (after.code === null) return sql`AND e.code IS NULL AND e.id > ${after.employee_id}::uuid`;
+  return sql`AND (e.code > ${after.code} OR (e.code = ${after.code} AND e.id > ${after.employee_id}::uuid)
+    OR e.code IS NULL)`;
+}
+
 /** F-088：当前直线经理名下员工先按范围筛选，再按原（工号、ID）顺序分页；不截断总候选数。 */
 async function* reportsOf(
   tx: Tx,
@@ -768,9 +779,9 @@ async function* reportsOf(
   exclude?: string,
 ): AsyncGenerator<string> {
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
-  let after: { employee_id: string; code: string } | undefined;
+  let after: { employee_id: string; code: string | null } | undefined;
   while (true) {
-    const page: { employee_id: string; code: string }[] = rows(
+    const page: { employee_id: string; code: string | null }[] = rows(
       await tx.execute(sql`SELECT t.employee_id, e.code FROM employment_timeline t
       JOIN employment_records r ON r.tenant_id = t.tenant_id AND r.id = t.record_id
       JOIN employment_employees e ON e.tenant_id = t.tenant_id AND e.id = t.employee_id
@@ -787,8 +798,8 @@ async function* reportsOf(
           WHERE p.tenant_id = e.tenant_id AND p.employee_id = e.id
             AND rel.object_id = ${objectId}::uuid AND NOT rel.removed)
         ${exclude ? sql`AND e.id <> ${exclude}::uuid` : sql``}
-        ${after ? sql`AND (e.code,e.id) > (${after.code},${after.employee_id}::uuid)` : sql``}
-      ORDER BY e.code, e.id LIMIT ${AUTO_ADD_PAGE_SIZE}`),
+        ${after ? afterCursor(after) : sql``}
+      ORDER BY e.code NULLS LAST, e.id LIMIT ${AUTO_ADD_PAGE_SIZE}`),
     );
     for (const row of page) yield row.employee_id;
     if (page.length < AUTO_ADD_PAGE_SIZE) return;

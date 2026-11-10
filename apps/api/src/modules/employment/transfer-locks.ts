@@ -3,6 +3,7 @@
  * 事务本地设置跟随保存点回滚，不能用进程缓存替代数据库持锁事实。
  */
 import { isUuid, sql, type Tx } from '@italent/db';
+import { pendingClearSubordinates } from './exit-duty-participants.js';
 import { remainingExitDuties } from './exit-replacement-plan.js';
 import { AppError } from '../../errors.js';
 import { partTimeLinkageParticipants } from './part-time/linkage-participants.js';
@@ -48,8 +49,10 @@ async function participants(
     );
     // PT-7：兼职联动（待执行 + 审批中的新增申请）的下属也在闭包里，所有入口按同一 UUID 升序取锁（兼职设计 §4.8 / §7.1）
     const linkage = (await partTimeLinkageParticipants(tx, ctx.tenantId, [...ids])).map((list) => ({ ids: list }));
+    // R2-T09b DT-R5：落地时会被清空上级的下属也要在预锁集合里（见 exit-duty-participants.ts）
+    const cleared = { ids: await pendingClearSubordinates(tx, ctx, [...ids]) };
     const size = ids.size;
-    [...rows, ...linkage].forEach((row) => row.ids?.forEach((id) => ids.add(id)));
+    [...rows, ...linkage, cleared].forEach((row) => row.ids?.forEach((id) => ids.add(id)));
     if (ids.size > 1000) throw new AppError('PAYLOAD_TOO_LARGE', '调动联动参与人员超过处理上限');
     if (ids.size === size) return [...ids].sort();
   }

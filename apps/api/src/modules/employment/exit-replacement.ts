@@ -4,6 +4,7 @@ import { AppError } from '../../errors.js';
 import { inheritAttachments } from '../attachments/binding.js';
 import { auditEmployment } from './context.js';
 import { remainingExitDuties } from './exit-replacement-plan.js';
+import { settleDutyTransferTiming, type DutyTransferTimingChoice } from '@italent/domain';
 import { assertEmployeeLocksHeld } from './transfer-locks.js';
 import { cancelExit } from './exit-cancel.js';
 import { confirmExit } from './exit-confirmation.js';
@@ -68,6 +69,8 @@ export async function replaceExit(
     ...old,
     attachmentRefs,
     businessId: created.id,
+    // DT-R3：指定日期晚于改期后的生效日，转交改在生效时办（与创建 / 修改同一口径）
+    ...timingAfterReplan(old, change.effectiveDate),
     preReleaseDate: null,
     supersedesBusinessId: business.id,
     pendingTransferAck: ack,
@@ -131,4 +134,15 @@ async function copyRemainingDuties(tx: Tx, ctx: EmploymentContext, old: LockedEm
     { businessId: successorId, employeeId: old.employeeId },
     { ...linkage.options, dutyTransfer },
   );
+}
+
+function timingAfterReplan(
+  old: { dutyTransferTiming: string; dutyTransferDate: string | null },
+  plannedEffectiveDate: string,
+) {
+  const settled = settleDutyTransferTiming(
+    { timing: old.dutyTransferTiming as DutyTransferTimingChoice['timing'], date: old.dutyTransferDate },
+    plannedEffectiveDate,
+  );
+  return { dutyTransferTiming: settled.timing, dutyTransferDate: settled.date };
 }

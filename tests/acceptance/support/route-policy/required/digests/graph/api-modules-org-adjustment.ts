@@ -365,6 +365,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
     'apps/api/src/modules/org-adjustment/disclosure.ts#orgSectionDisclosed',
     'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
+    '#compareCodeNullsLast',
     'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
     'apps/api/src/modules/org/read-model.ts#rowsOf',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
@@ -606,7 +607,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/employment-linkage.ts#primaryDepartmentSql',
     'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
   ],
-  'apps/api/src/modules/org-adjustment/preview-input.ts#establishmentOf': [
+  'apps/api/src/modules/org-adjustment/preview-input.ts#establishmentByOrg': [
     'apps/api/src/modules/establishment/capacity-read.ts#batchLocalSums',
     'apps/api/src/modules/establishment/schemes.ts#loadSchemeBatch',
     '#pickScheme',
@@ -617,7 +618,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/employee-projection.ts#currentPersonName',
   ],
   'apps/api/src/modules/org-adjustment/preview-input.ts#loadPreviewInput': [
-    '#establishmentOf',
+    '#establishmentByOrg',
     '#exceedsPreviewLimit',
     '#headNames',
     '#previewTooLarge',

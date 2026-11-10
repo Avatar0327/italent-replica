@@ -72,6 +72,22 @@ export async function setEstablishment(w: OfferWorld, strictControl: boolean, lo
     strictControl,
   });
   expect(capacity.status, await capacity.clone().text()).toBe(201);
+  return (await capacity.json()) as { id: string; revision: number };
+}
+
+/** 改已有编制的本级编制数（同一组织同期不能再建第二个方案的编制，F-484）；从周期起点生效。 */
+export async function setLocalCapacity(
+  w: OfferWorld,
+  capacity: { id: string; revision: number },
+  localCapacity: number,
+) {
+  const patched = await w.seeder.request('PATCH', `/api/tenant/establishment/capacities/${capacity.id}`, {
+    user: w.user.id,
+    tenant: w.tenant.id,
+    ifMatch: capacity.revision,
+    body: { effectiveDate: '2026-01-01', localCapacity },
+  });
+  expect(patched.status, await patched.clone().text()).toBe(200);
 }
 
 export interface LeaverKeys {

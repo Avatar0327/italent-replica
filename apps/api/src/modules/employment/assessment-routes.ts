@@ -26,6 +26,7 @@ import {
   type AssessmentBatchInput,
 } from './assessment.js';
 import { requireAssessmentWrite } from './assessment-access.js';
+import { composeAssessment } from './assessment-content.js';
 import {
   assessmentView,
   listAssessments,
@@ -49,6 +50,7 @@ import {
   type EmploymentContext,
 } from './context.js';
 import { parse } from './entry-routes.js';
+import { selectHandledRead } from './handled-read.js';
 
 // 考核并行规则（PB-R9 例外）：两个开关各一个两层配置，经既有 /api/tenant/settings/:key 读写，这里只登记取值校验
 for (const blocker of Object.keys(PARALLEL_RULE_KEYS) as ParallelRuleBlocker[])
@@ -126,7 +128,12 @@ export function registerAssessmentRoutes(router: Hono<TenantEnv>, deps: TenantRo
       await requireAssessmentInScope(tx, ctx, found);
       return found;
     });
-    return c.json(withTerminationFlag(await trimEmploymentResponse(deps, ctx, assessmentView(row)), [row]));
+    // F-476 P7：已办审批人读办理时冻结的考核内容，流程事实（状态 / 版本号 / 转正业务）读现值
+    const read = await selectHandledRead(deps, ctx, 'probation_assessment', id);
+    const live = assessmentView(row);
+    const shown = read.frozen ? composeAssessment(live, read.frozen.ext, read.frozen.allowed) : live;
+    const trimmed = withTerminationFlag(await trimEmploymentResponse(deps, ctx, shown), [row]);
+    return c.json({ ...(trimmed as object), contentView: read.contentView });
   });
   router.patch('/probation-assessments/:id', async (c) => {
     const id = uuidParam(c);

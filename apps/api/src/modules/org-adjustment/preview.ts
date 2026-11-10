@@ -26,7 +26,7 @@ import { canSee, orgInScope, visibleItems, type Disclosure } from './disclosure.
 import type { OrgItem } from './items-store.js';
 import { exceedsPreviewLimit, type PreviewOrg, previewTooLarge, type PreviewTree } from './preview-input.js';
 
-export { pickScheme } from './preview-input.js';
+export { establishmentByOrg, headNames, pickScheme } from './preview-input.js';
 
 type Mark = 'added' | 'changed' | 'deactivated';
 

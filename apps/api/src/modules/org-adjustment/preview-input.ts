@@ -96,7 +96,7 @@ export async function loadPreviewInput(
   // 错误优先级与现值读一致：现值读先读编制（汇总预算 503），读完才在投影里数节点（413），所以冻结也先判编制。
   let establishment: Map<string, number | null>;
   try {
-    establishment = await establishmentOf(tx, tenantId, effectiveDate, subtreeIds);
+    establishment = await establishmentByOrg(tx, tenantId, effectiveDate, subtreeIds);
   } catch (error) {
     // 编制汇总范围（含已停用 / 未启用但未到期的下级）超预算时现值读是 503；冻结时同样记下，不让办理因此失败
     if (load !== 'freeze' || !(error instanceof AppError) || error.code !== 'SERVICE_UNAVAILABLE') throw error;
@@ -116,19 +116,21 @@ export async function loadPreviewInput(
     establishment: establishment.get(org.id) ?? null,
   }));
   const headIds = [...orgs.map((org) => org.personInChargeId), ...items.map((item) => item.personInChargeId)];
-  return { kind: 'tree', orgs, heads: await headNames(tx, tenantId, headIds) };
+  return { kind: 'tree', orgs, heads: Object.fromEntries(await headNames(tx, tenantId, headIds)) };
 }
 
 /** 负责人姓名与组织详情、人员档案同口径：人员版本链的最新姓名（任职头表的姓名不随改名更新）；一次批量查询。 */
-async function headNames(tx: Tx, tenantId: string, candidates: readonly (string | null)[]) {
+export async function headNames(tx: Tx, tenantId: string, candidates: readonly (string | null)[]) {
+  const names = new Map<string, string>();
   const ids = [...new Set(candidates.filter((id): id is string => !!id))];
-  if (!ids.length) return {};
+  if (!ids.length) return names;
   const name = currentPersonName(tenantId, sql`${employmentEmployees.id}`, sql`${employmentEmployees.name}`);
   const rows = await tx
     .select({ id: employmentEmployees.id, name: sql<string>`${name}` })
     .from(employmentEmployees)
     .where(and(eq(employmentEmployees.tenantId, tenantId), inArray(employmentEmployees.id, ids)));
-  return Object.fromEntries(rows.map((row) => [row.id, row.name]));
+  for (const row of rows) names.set(row.id, row.name);
+  return names;
 }
 
 interface CapacityRow {
@@ -142,8 +144,9 @@ interface CapacityRow {
 /**
  * 编制原值：生效日所在周期的编制；兜底场景下同一组织有多个方案时按 `pickScheme` 取一个。
  * “仅本级”方案的含下级直接用编制详情的 `batchLocalSums`（同一汇总类型与子树预算）。
+ * 没有编制的组织不在结果里。架构图卡片（F-474-2b）与调整预览共用。
  */
-async function establishmentOf(tx: Tx, tenantId: string, date: string, orgIds: readonly string[]) {
+export async function establishmentByOrg(tx: Tx, tenantId: string, date: string, orgIds: readonly string[]) {
   const result = new Map<string, number | null>();
   if (!orgIds.length) return result;
   const rows = rowsOf<CapacityRow>(
@@ -195,9 +198,9 @@ interface SchemeKey {
  *   不存在“同期多方案取哪个”的业务情形。
  * - 北森停用被当前 / 未来周期编制引用的方案会被直接拒绝；复刻同口径（schemes.ts 的 SCHEME_IN_USE，提示照北森原文），
  *   所以生效日所在周期的编制不会指向已停用方案；组织没有编制时显示“--”，与北森一致。
- * 复刻写入侧目前只有 unique(组织, 方案, 周期起始)（capacity-service.ts 的 CAPACITY_EXISTS），
- * 跨方案重叠周期的拦截（DEC-279① / DEC-295①，F-037）尚未落地，所以同期多方案在复刻里理论上仍可能出现，
- * 这里保留确定性兜底（防御用）：先排除已停用方案；启用方案里预置默认方案（DEFAULT_SCHEME_CODE）优先；
+ * 复刻写入侧已按同口径拦截（F-484，DEC-279① / DEC-295①，capacity-overlap.ts）：同一组织任一方案的编制与新周期
+ * 按月份区间重叠即拒绝，所以新数据里同期多方案不会出现；这里保留确定性兜底（防御用）：先排除已停用方案；
+ * 启用方案里预置默认方案（DEFAULT_SCHEME_CODE）优先；
  * 其余按方案编码升序取第一个。结果与录入顺序无关。
  */
 export function pickScheme<T extends SchemeKey>(candidates: readonly T[]): T | null {

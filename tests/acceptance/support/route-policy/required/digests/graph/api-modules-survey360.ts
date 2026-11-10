@@ -1976,6 +1976,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
     'apps/api/src/modules/survey360/context.ts#rows',
     '#AUTO_ADD_PAGE_SIZE',
+    '#afterCursor',
     '#candidateFilter',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],

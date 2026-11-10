@@ -29,7 +29,16 @@ import type { EmploymentContext, EmploymentScope } from '../employment/types.js'
 import { authorizeOrgRole, authorizeSubordinateField } from '../transfer/linkage/access.js';
 import { executeDutyItem, type DutyItem } from '../transfer/linkage/duty-execution.js';
 import type { DutyRelation, OrgRole } from '../transfer/linkage/input.js';
-import { currentDuties, dutyKey, pendingRecords, type Duty, type DutyRecordRow, type DutyTarget } from './duties.js';
+import {
+  clearedDuty,
+  clearedRecords,
+  currentDuties,
+  dutyKey,
+  pendingRecords,
+  type Duty,
+  type DutyRecordRow,
+  type DutyTarget,
+} from './duties.js';
 import { recordView, type DutyRecordView } from './records.js';
 
 export interface MenuItemInput extends DutyTarget {
@@ -184,25 +193,35 @@ export async function submitMenuTransfer(
     throw new AppError('NOT_FOUND', '员工不存在');
   const duties = new Map((await currentDuties(tx, ctx.tenantId, employeeId, today)).map((d) => [d.key, d]));
   const pending = await pendingRecords(tx, ctx.tenantId, employeeId, true);
+  const cleared = await clearedRecords(tx, ctx.tenantId, employeeId, { lock: true });
   const batchId = randomUUID();
   const saved: DutyRecordRow[] = [];
   for (const item of input.items) {
     const key = dutyKey(item);
-    const existing = pending.get(key);
+    // 补转交：已被 DT-R5 清空、现在没有承担人的职责（仍持有的走普通转交）；记录就是待补的“单”，转交后转为已完成
+    const supplement = duties.has(key) ? undefined : cleared.get(key);
+    const existing = supplement ?? pending.get(key);
     if ((existing?.revision ?? undefined) !== item.revision)
       throw new AppError('REVISION_CONFLICT', '待生效的转交已变化，请刷新后重新提交', {
         reason: 'DUTY_TRANSFER_STALE',
       });
     if (!item.receiverId) {
       // 无待生效记录 = 本条不设置，跳过；有 = 撤回（revision 已在上面核对）。
-      if (existing) saved.push(await voidRecord(tx, ctx, existing));
+      if (existing && !supplement) saved.push(await voidRecord(tx, ctx, existing));
       continue;
     }
-    const duty = duties.get(key);
+    const duty = duties.get(key) ?? (supplement && clearedDuty(supplement));
     if (!duty) throw new AppError('VALIDATION_FAILED', '被转交人当前未承担该职责', { reason: 'DUTY_NOT_HELD' });
+    if (supplement && input.timing !== 'immediate')
+      throw new AppError('VALIDATION_FAILED', '清空后的职责只能立即补转交', {
+        reason: 'DUTY_SUPPLEMENT_IMMEDIATE_ONLY',
+      });
     await authorizeDuty(tx, ctx, access, duty, today);
     if (input.timing === 'immediate')
-      await executeDutyItem(tx, ctx, dutyItemOf(duty, employeeId, item.receiverId, date), { caller: 'menu' });
+      await executeDutyItem(tx, ctx, dutyItemOf(duty, employeeId, item.receiverId, date), {
+        caller: 'menu',
+        ...(supplement ? { supplement: true as const } : {}),
+      });
     else if ((await ineligibleOrgPeople(tx, ctx.tenantId, [item.receiverId], today)).length)
       throw new AppError('VALIDATION_FAILED', '接收人不是在职员工', { reason: 'TRANSFER_PERSON_NOT_ELIGIBLE' });
     saved.push(await saveRecord(tx, ctx, { duty, existing, receiverId: item.receiverId, date, batchId, input }));
@@ -238,10 +257,12 @@ async function saveRecord(
     failureRule: null,
     updatedAt: ctx.now,
   };
+  // 覆盖 = 一次新提交，开启新的重试预算（F-454；无原站反证，取保守）：记次 / 上次尝试时间随之清零，
+  // 否则被覆盖前已累计的非业务异常次数会让新提交的第一次瞬时异常就永久失败。
   const [row] = args.existing
     ? await tx
         .update(dutyTransferRecords)
-        .set({ ...values, revision: args.existing.revision + 1 })
+        .set({ ...values, attemptCount: 0, lastAttemptAt: null, revision: args.existing.revision + 1 })
         .where(sql`tenant_id=${ctx.tenantId} AND id=${args.existing.id}::uuid`)
         .returning()
     : await tx
