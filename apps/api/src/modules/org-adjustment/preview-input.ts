@@ -92,11 +92,8 @@ export async function loadPreviewInput(
 ): Promise<PreviewInput> {
   const snapshot = await loadOrgSnapshot(tx, tenantId, effectiveDate);
   const subtree = rangeSubtree(new Map(snapshot.map((org) => [org.id, org])), range);
-  if (load === 'freeze' && exceedsPreviewLimit(subtree.length)) {
-    const error = previewTooLarge();
-    return { kind: 'refused', code: error.code as PreviewRefused['code'], message: error.message };
-  }
   const subtreeIds = subtree.map((org) => org.id);
+  // 错误优先级与现值读一致：现值读先读编制（汇总预算 503），读完才在投影里数节点（413），所以冻结也先判编制。
   let establishment: Map<string, number | null>;
   try {
     establishment = await establishmentOf(tx, tenantId, effectiveDate, subtreeIds);
@@ -104,6 +101,10 @@ export async function loadPreviewInput(
     // 编制汇总范围（含已停用 / 未启用但未到期的下级）超预算时现值读是 503；冻结时同样记下，不让办理因此失败
     if (load !== 'freeze' || !(error instanceof AppError) || error.code !== 'SERVICE_UNAVAILABLE') throw error;
     return { kind: 'refused', code: 'SERVICE_UNAVAILABLE', message: error.message };
+  }
+  if (load === 'freeze' && exceedsPreviewLimit(subtree.length)) {
+    const error = previewTooLarge();
+    return { kind: 'refused', code: error.code as PreviewRefused['code'], message: error.message };
   }
   const orgs = subtree.map((org) => ({
     id: org.id,
