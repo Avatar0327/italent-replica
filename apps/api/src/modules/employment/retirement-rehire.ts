@@ -23,7 +23,8 @@ import {
   type ScopedCommandGuard,
 } from './context.js';
 import { assertProbationTerms, probationTerms } from './entry-options.js';
-import { entryContractSchema, requireContractCreateAccess, type EntryContract } from './entry-contract.js';
+import { requireContractCreateAccess } from './entry-contract.js';
+import { entryContractSchema, type EntryContract } from './entry-contract-schema.js';
 import { parseEmploymentInput } from './fields.js';
 import { rowsOf, type LockedEmploymentBusiness } from './record-store.js';
 import type { CustomFields, EmploymentContext, PresetFields } from './types.js';

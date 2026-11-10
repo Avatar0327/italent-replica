@@ -13,7 +13,7 @@ import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { appendEmployee, employeeSnapshot } from '../personnel/employee-write.js';
 import { auditEmployment } from './context.js';
-import { exitPostEffectHooks, type ExitCancelledEvent } from './exit-confirmation.js';
+import { exitPostEffectHooks, type ExitCancelledEvent } from './exit-post-effect-hooks.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 

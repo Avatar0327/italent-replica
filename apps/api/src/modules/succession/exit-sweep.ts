@@ -17,10 +17,16 @@ import { lockEmploymentEmployee } from '../employment/record-store.js';
 import { recheckRecordEvent } from '../employment/record-events.js';
 import { applyExit, lockExitTargets } from './exit-store.js';
 import { rowsOf } from './read-sql.js';
-import { CalcBlocked, type CalcContext, type CalcObject, type CalcHandler, type CalcInput } from './calc-contract.js';
+import {
+  CalcBlocked,
+  type CalcContext,
+  type CalcObject,
+  type CalcHandler,
+  type CalcInput,
+} from './calc-contract-core.js';
 import type { CalcProducer } from './calc-jobs.js';
 import { calcScheduleSlot } from './calc-time.js';
-import { enqueueCalcRun } from './calc-worker.js';
+import { enqueueCalcRun } from './calc-enqueue.js';
 
 async function principal(tx: Tx, tenantId: string, today: string) {
   const setting = await readEffectiveSetting(tx, tenantId, 'succession.system_principal_user_id');

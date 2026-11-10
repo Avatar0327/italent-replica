@@ -3,7 +3,7 @@ import { AppError } from '../../errors.js';
 import { RULE_COMPILER_VERSION, evaluateHealthLevels } from '@italent/domain';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { scopeAllows } from '../permission/module-access.js';
-import { CalcBlocked, CalcObjectFailure, type CalcHandler } from './calc-contract.js';
+import { CalcBlocked, CalcObjectFailure, type CalcHandler } from './calc-contract-core.js';
 import { healthPrincipal } from './health-principal.js';
 import { healthMetricReader, type HealthReads } from './health-metrics.js';
 import { lockHealthTarget, requireHealthOrg, storeHealth } from './health-results.js';

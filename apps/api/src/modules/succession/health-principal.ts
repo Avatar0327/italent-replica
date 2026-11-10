@@ -5,7 +5,7 @@ import { loadSubject } from '../permission/subject.js';
 import { objectCatalog } from '../permission/catalog.js';
 import { resolveDataScope } from '../permission/scope-resolver.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
-import { CalcBlocked } from './calc-contract.js';
+import { CalcBlocked } from './calc-contract-core.js';
 import { codeOf } from './access.js';
 import { rowsOf } from './read-sql.js';
 export async function healthPrincipal(tx: Tx, tenantId: string, reset: boolean) {
