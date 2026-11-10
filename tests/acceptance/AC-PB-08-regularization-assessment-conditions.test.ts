@@ -4,8 +4,9 @@
  * - 转正考核：草稿 / 驳回 / 审批中 / 不通过 / 作废，或审批通过但意见 ≠ 正常转正；
  * - 试用中考核：审批中；
  * 任一存在，自动转正失败（台账记 failed、原因 ASSESSMENT_BLOCKS_REGULARIZATION），不发起转正。
- * 例外（F-500，DEC-841①，照北森 F-485 实测）：试用中考核审批通过且意见 = 提前转正，自动转正静默跳过——
- * 不记失败台账、不进回执失败列、不重试排队；员工仍试用中，同批其他员工照常处理。
+ * 例外（F-500，DEC-841①，照北森 F-485 实测，仅“自动发起转正申请”类 application）：试用中考核审批通过且意见 = 提前转正，
+ * 自动转正静默跳过——不记失败台账、不进回执失败列、不重试排队；员工仍试用中，同批其他员工照常处理。
+ * “直接自动转正”类 direct 口径待定（F-485 未触发），保持原行为：仍按失败处理、记 failed 台账。
  * 上一周期（别的 anchor）的考核、不阻断的状态组合不影响。
  */
 import { randomUUID } from 'node:crypto';
@@ -17,7 +18,7 @@ import { autoAssessmentWorld, AUTO_REGULARIZATION_SWITCH, rowsOf } from './AC-PB
 
 const testDb = useTestDb();
 
-async function regularizationWorld(label: string) {
+async function regularizationWorld(label: string, mode: 'direct' | 'application' = 'direct') {
   const w = await autoAssessmentWorld(testDb().db, label);
   const response = await w.emp('POST', '/auto-regularization-rules', {
     ifMatch: 0,
@@ -25,7 +26,7 @@ async function regularizationWorld(label: string) {
       name: '到期当天自动转正',
       priority: 1,
       orgIds: [w.department],
-      mode: 'direct',
+      mode,
       daysBefore: 0,
       initiatorType: 'rule_operator',
     },
@@ -112,11 +113,11 @@ describe('AC-PB-08 考核类失败条件阻断自动转正（PB-R21）', () => {
   });
 });
 
-describe('AC-PB-08 试用中考核已生效且意见 = 提前转正：静默跳过（F-500，DEC-841①）', () => {
+describe('AC-PB-08 试用中考核已生效且意见 = 提前转正：申请类静默跳过（F-500，DEC-841①）', () => {
   const earlyApproved = { type: 'probation', status: 'approved', opinion: 'early' } as const;
 
-  const world = async (label: string) => {
-    const w = await regularizationWorld(label);
+  const world = async (label: string, mode: 'direct' | 'application' = 'application') => {
+    const w = await regularizationWorld(label, mode);
     const ledgerRows = async (employeeId: string) =>
       w.asTenant(async (tx) =>
         rowsOf<{ state: string }>(
@@ -139,7 +140,7 @@ describe('AC-PB-08 试用中考核已生效且意见 = 提前转正：静默跳�
     return { ...w, ledgerRows, stillProbation };
   };
 
-  it('静默跳过：回执无失败也无发起，无失败台账（不重试排队），员工仍试用中、无新转正记录', async () => {
+  it('申请类静默跳过：回执无失败也无发起，无失败台账（不重试排队），员工仍试用中、无新转正记录', async () => {
     const w = await world(`skip-${randomUUID()}`);
     const person = await w.dueEmployee('提前转正已生效员工');
     await w.seedAssessment(person.employeeId, earlyApproved);
@@ -198,5 +199,23 @@ describe('AC-PB-08 试用中考核已生效且意见 = 提前转正：静默跳�
     expect(receipt.failed).toEqual([
       expect.objectContaining({ employeeId: person.employeeId, reason: 'ASSESSMENT_BLOCKS_REGULARIZATION' }),
     ]);
+  });
+
+  it('直接类（口径待定）保持原行为：同一考核条件仍失败，回执带原因，记 failed 台账，再跑累计次数，不发起转正', async () => {
+    const w = await world(`direct-${randomUUID()}`, 'direct');
+    const person = await w.dueEmployee('直接类提前转正已生效员工');
+    await w.seedAssessment(person.employeeId, earlyApproved);
+    const first = await w.run();
+    expect(first.launched).toEqual([]);
+    expect(first.failed).toEqual([
+      expect.objectContaining({ employeeId: person.employeeId, reason: 'ASSESSMENT_BLOCKS_REGULARIZATION' }),
+    ]);
+    expect(await w.ledgerRows(person.employeeId)).toEqual([expect.objectContaining({ state: 'failed' })]);
+    const again = await w.run();
+    expect(again.failed).toEqual([
+      expect.objectContaining({ employeeId: person.employeeId, reason: 'ASSESSMENT_BLOCKS_REGULARIZATION' }),
+    ]);
+    expect(await w.regularizations(person.employeeId)).toEqual([]);
+    expect(await w.stillProbation(person.employeeId)).toBe(true);
   });
 });
