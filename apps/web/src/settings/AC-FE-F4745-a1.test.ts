@@ -126,4 +126,13 @@ describe('AC-FE-F4745-A1 日志与完整管理单元树', () => {
     expect(ui.headers()).not.toContain('上级管理单元编号');
     expect(ui.host.querySelector('.ant-pagination')).toBeNull();
   });
+  it('完整树超过旧页大小仍可见，特殊字符名称按文本显示', async () => {
+    const items = Array.from({ length: 36 }, (_, index) => node(`unit-${index}`));
+    items[35]!.name = '<合成&单元>';
+    await ui.render(page(), '/', undefined, { [treePath]: { items, total: 36 } });
+    expect(ui.host.querySelectorAll('tbody tr[data-row-key]')).toHaveLength(36);
+    expect(ui.host.textContent).toContain('<合成&单元>');
+    expect(ui.host.querySelector('合成')).toBeNull();
+    expect(ui.host.querySelector('input[aria-label="名称 / 编码"]')?.getAttribute('maxlength')).toBe('100');
+  });
 });
