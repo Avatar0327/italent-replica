@@ -48,7 +48,16 @@ const specific = {
   layers: { layerLevel: order },
   grades: { grade: order, layerId: reference, scoreLow: number, scoreHigh: number },
   'level-types': {},
-  levels: { level: order, levelTypeId: reference, minGradeId: reference, maxGradeId: reference },
+  levels: {
+    level: order,
+    levelTypeId: reference,
+    minGradeId: reference,
+    maxGradeId: reference,
+    ownerOrgId: reference,
+    salaryUpper: number,
+    salaryMid: number,
+    salaryLower: number,
+  },
   sequences: { parentId: reference, levelTypeId: reference, source: text, externalId: text },
   'professional-lines': { parentId: reference },
   posts: {
@@ -68,6 +77,8 @@ const specific = {
     postId: z.uuid(),
     parents: z.strictObject({ admin: parent.optional(), dotted: parent.optional() }).optional(),
     workLocation: text,
+    responsibilities: text,
+    requirements: text,
     standardPositionId: reference,
   },
 } satisfies Record<JobKind, z.ZodRawShape>;
@@ -78,6 +89,9 @@ export function jobCreationSchema(kind: JobKind) {
 
 export function jobPatchSchema(kind: JobKind) {
   const patch = jobCreationSchema(kind).omit({ startDate: true }).partial().extend({ effectiveDate: businessDate });
+  // 职级的所属资源集合只在新建时按授权管理单元定，修改请求不接受（DEC-778④：列表只读）
+  // 类型上仍沿用 patch：按 kind 泛型取到的是各对象表单的并集，omit 的键不在所有成员里。
+  if (kind === 'levels') return patch.omit({ ownerOrgId: true } as never) as typeof patch;
   return kind === 'positions' ? patch.extend({ adjustEmployeeDirectManager: z.boolean().optional() }) : patch;
 }
 
@@ -103,8 +117,10 @@ export function normalizeFields(ctx: JobWriteContext, kind: JobKind, input: JobI
 }
 
 function rejectUnsupported(data: Record<string, unknown>): void {
-  // TODO(需取证 Q-M0-17): 接入真实任职资格与胜任力模型后验证引用对象、租户与可用状态。
-  if (data.qualificationId || data.competencyModelId) {
-    throw new AppError('SERVICE_UNAVAILABLE', '任职资格或胜任力模型的租户引用验证尚未接入');
+  // Q-M0-17：关联任职资格只读，由任职类别关联带出，不接受手选；胜任力模型的引用校验在 validateJobFields。
+  if (data.qualificationId) {
+    throw new AppError('VALIDATION_FAILED', '关联任职资格由任职类别关联带出，不能手动选择', {
+      field: 'qualificationId',
+    });
   }
 }

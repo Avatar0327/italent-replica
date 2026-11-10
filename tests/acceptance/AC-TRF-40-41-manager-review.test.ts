@@ -44,6 +44,7 @@ describe('AC-TRF-40/41 astra 第二轮回归', () => {
           201,
         )
       ).id;
+    await w.grantHrJobUnit();
     level = await createJob('levels', { level: 2 });
     sequence = await createJob('sequences', {});
     post = await createJob('posts', { minLevelId: level, maxLevelId: level, sequenceId: sequence });

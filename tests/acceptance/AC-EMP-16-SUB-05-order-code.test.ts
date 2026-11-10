@@ -4,6 +4,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { employmentSession } from './AC-EMP-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { tenantApi } from './support/tenant-api.js';
 import { rows } from '../../apps/api/src/modules/personnel/store.js';
 
@@ -206,6 +207,8 @@ describe('AC-EMP-16 / AC-SUB-05 人员组合排序编码', () => {
     const post = await w.post('P');
     const org = await w.org('合成部门', { establishedOn: '2020-01-01' });
     const extra = kind === 'positions' ? { orgId: org.id, postId: post.id } : {};
+    if (kind === 'levels')
+      await grantJobUnit((m, p, i) => w.api.request(m, p, { ...w.as, ...i }), w.as.user, w.as.tenant);
     const job = async (code: string, value: number) =>
       w.ok<{ id: string; revision: number }>(
         await w.api.request('POST', `/api/tenant/job/${kind}`, {

@@ -10,6 +10,7 @@ import { expect } from 'vitest';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 import { EMP_TODAY, employmentSession, type Employee } from './AC-EMP-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -162,7 +163,10 @@ export async function structureWorld(db: Db, label: string) {
       ...(broadType ? { broadType } : {}),
     });
   }
+  // 职级新建需要创建人有职务体系授权管理单元（DEC-339①），首次建职级时补一个
+  let unit: Promise<string> | undefined;
   async function job(kind: 'sequences' | 'levels', name: string, extra: Record<string, unknown> = {}) {
+    if (kind === 'levels') await (unit ??= grantJobUnit(call, who.user, who.tenant));
     const response = await call('POST', `/api/tenant/job/${kind}`, {
       ifMatch: 0,
       body: { name, code: `HA13A_${randomUUID().replaceAll('-', '')}`, startDate: LONG_AGO, ...extra },
