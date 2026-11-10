@@ -10,9 +10,10 @@
  */
 import { createHash } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import { loadOfferBatchContent, loadOfferContent } from '../offer/content.js';
 import { loadOrgContent } from '../org-adjustment/content.js';
 import type { BusinessSnapshot, BusinessType } from './adapters.js';
-import { approvalError, rowsOf, type ApprovalContext } from './context.js';
+import { actorOf, approvalError, rowsOf, type ApprovalContext } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import type { Run } from './engine.js';
 import type { InstanceRow, TaskRow } from './store.js';
@@ -26,7 +27,18 @@ export interface HandlingContent {
   readonly ext: unknown;
 }
 
-type ExtLoader = (tx: Tx, tenantId: string, businessId: string) => Promise<unknown>;
+/**
+ * 办理人事实（F-476 P6）：扩展内容里按办理人披露的部分（显示标签、批行内列上限）要用到。
+ * viewable = 办理人对本单对象的可见字段（即披露上限；undefined = 不受约束）；viewableOf = 对其它对象的可见字段，
+ * 没有办理人（系统份）或未注入字段权限时一律空集（失败闭合，不多捕获）。
+ */
+export interface HandlerFacts {
+  readonly viewable: ReadonlySet<string> | undefined;
+  viewableOf(objectCode: string): Promise<ReadonlySet<string> | undefined>;
+}
+
+/** run / handler 追加在末尾：只按业务单取内容的 provider 仍可只声明前三个参数（与 P1 契约兼容）。 */
+type ExtLoader = (tx: Tx, tenantId: string, businessId: string, run: Run, handler: HandlerFacts) => Promise<unknown>;
 type ContentProvider =
   | { readonly kind: 'snapshot-only' }
   | { readonly kind: 'extended'; readonly ext: ExtLoader }
@@ -45,8 +57,8 @@ export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> 
   contract: SNAPSHOT_ONLY,
   idp: SNAPSHOT_ONLY,
   part_time: SNAPSHOT_ONLY,
-  offer: SNAPSHOT_ONLY,
-  offer_batch: SNAPSHOT_ONLY,
+  offer: { kind: 'extended', ext: loadOfferContent },
+  offer_batch: { kind: 'extended', ext: loadOfferBatchContent },
   probation_assessment: SNAPSHOT_ONLY,
   retirement_intention: SNAPSHOT_ONLY,
   exit_handover: SNAPSHOT_ONLY,
@@ -87,6 +99,16 @@ export interface PreparedContent {
   readonly businessVersion: string;
 }
 
+function handlerFacts(tx: Tx, run: Run, viewable: ReadonlySet<string> | undefined): HandlerFacts {
+  const { ctx } = run;
+  const userId = actorOf(ctx);
+  return {
+    viewable,
+    viewableOf: async (objectCode) =>
+      userId && ctx.fields ? ctx.fields.viewable(tx, userId, objectCode) : new Set<string>(),
+  };
+}
+
 /**
  * 准备办理份（必须在本次办理推进业务状态之前调用）：读取业务内容、序列化、计算大小与摘要。
  * 编辑并同意时，run.snapshot 已是编辑后的候选态（applyEdit 重取）。
@@ -96,14 +118,17 @@ export async function prepareHandlingContent(
   run: Run,
   viewable: ReadonlySet<string> | undefined,
 ): Promise<PreparedContent> {
-  const { instance, snapshot, ctx } = run;
+  const { instance, snapshot } = run;
   const provider = CONTENT_PROVIDERS[instance.businessType];
   if (provider.kind === 'not-wired') {
     throw approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_CONTENT_NOT_WIRED', '该类审批暂不能办理', {
       businessType: instance.businessType,
     });
   }
-  const ext = provider.kind === 'extended' ? await provider.ext(tx, ctx.tenantId, instance.businessId) : null;
+  const ext =
+    provider.kind === 'extended'
+      ? await provider.ext(tx, run.ctx.tenantId, instance.businessId, run, handlerFacts(tx, run, viewable))
+      : null;
   const json = JSON.stringify({ snapshot, ext } satisfies HandlingContent);
   const bytes = Buffer.byteLength(json, 'utf8');
   if (bytes > MAX_PAYLOAD_BYTES) {
@@ -156,6 +181,7 @@ export async function recordHandlingContent(
 /** 已办读取选中的办理份。 */
 export interface FrozenContent {
   readonly id: string;
+  readonly instanceId: string;
   readonly taskId: string;
   readonly round: number;
   readonly nodeKey: string;
@@ -180,6 +206,55 @@ interface HandlingRow {
   readonly ceiling: string[] | null;
 }
 
+const hasPendingTask = (allTasks: readonly TaskRow[], userId: string) =>
+  allTasks.some(
+    (task) =>
+      task.assigneeUserId === userId &&
+      task.status === 'pending' &&
+      task.origin !== 'self_skip' &&
+      task.origin !== 'subject_skip',
+  );
+
+const missingCopy = () =>
+  // DEC-807：已办缺份即失败闭合，不退回现值，也不拿更早的份顶替
+  approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_HANDLING_CONTENT_MISSING', '办理记录暂不可读取，请稍后重试');
+
+/**
+ * 查看人在某实例上最近一次人工办理的办理份；没有办理日志返回 null，有日志缺份（或带扩展的类型缺扩展）503。
+ * 扩展缺失按类型登记判定：extended provider 的份里 ext 必须有内容，不拿 snapshot 单独冒充完整份（设计 §5.3）。
+ */
+async function latestHandlingCopy(
+  tx: Tx,
+  ctx: Pick<ApprovalContext, 'tenantId'>,
+  instance: InstanceRow,
+  userId: string,
+): Promise<FrozenContent | null> {
+  const [row] = rowsOf<HandlingRow>(
+    await tx.execute(sql`SELECT l.id AS "logId", c.id AS "copyId", c.task_id AS "taskId", c.round,
+        c.node_key AS "nodeKey", c.process_version_id AS "processVersionId", to_char(c.acted_at AT TIME ZONE 'UTC',
+          'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "actedAt", c.content, c.disclosure_ceiling AS ceiling
+      FROM approval_instance_logs l
+      LEFT JOIN approval_handling_contents c ON c.tenant_id = l.tenant_id AND c.handling_log_id = l.id
+      WHERE l.tenant_id = ${ctx.tenantId} AND l.instance_id = ${instance.id}::uuid
+        AND l.actor_user_id = ${userId}::uuid AND l.event = ANY(${`{${HANDLING_EVENTS.join(',')}}`}::text[])
+      ORDER BY l.seq DESC LIMIT 1`),
+  );
+  if (!row) return null;
+  if (!row.copyId || !row.content || !row.processVersionId) throw missingCopy();
+  if (CONTENT_PROVIDERS[instance.businessType].kind === 'extended' && row.content.ext == null) throw missingCopy();
+  return {
+    id: row.copyId,
+    instanceId: instance.id,
+    taskId: row.taskId!,
+    round: row.round!,
+    nodeKey: row.nodeKey!,
+    actedAt: row.actedAt!,
+    content: row.content,
+    ceiling: row.ceiling ? new Set(row.ceiling) : null,
+    version: await loadVersion(tx, ctx.tenantId, row.processVersionId),
+  };
+}
+
 /**
  * 内容选择（设计 §5.3）：本人有待办 → 现值；发起人 → 现值；本人最近一次办理 → 该次的办理份（缺份 503）；
  * 其余（普通参与 / 抄送 / 管理员）→ 现值。被自审 / 主体跳过的留痕不算办理（日志事件不在办理集合内）。
@@ -191,43 +266,33 @@ export async function selectContent(
   allTasks: readonly TaskRow[],
   userId: string,
 ): Promise<ContentSelection> {
-  if (instance.initiatorUserId === userId) return { mode: 'live' };
-  const pending = allTasks.some(
-    (task) =>
-      task.assigneeUserId === userId &&
-      task.status === 'pending' &&
-      task.origin !== 'self_skip' &&
-      task.origin !== 'subject_skip',
-  );
-  if (pending) return { mode: 'live' };
-  const [row] = rowsOf<HandlingRow>(
-    await tx.execute(sql`SELECT l.id AS "logId", c.id AS "copyId", c.task_id AS "taskId", c.round,
-        c.node_key AS "nodeKey", c.process_version_id AS "processVersionId", to_char(c.acted_at AT TIME ZONE 'UTC',
-          'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "actedAt", c.content, c.disclosure_ceiling AS ceiling
-      FROM approval_instance_logs l
-      LEFT JOIN approval_handling_contents c ON c.tenant_id = l.tenant_id AND c.handling_log_id = l.id
-      WHERE l.tenant_id = ${ctx.tenantId} AND l.instance_id = ${instance.id}::uuid
-        AND l.actor_user_id = ${userId}::uuid AND l.event = ANY(${`{${HANDLING_EVENTS.join(',')}}`}::text[])
-      ORDER BY l.seq DESC LIMIT 1`),
-  );
-  if (!row) return { mode: 'live' };
-  if (!row.copyId || !row.content || !row.processVersionId) {
-    // DEC-807：已办缺份即失败闭合，不退回现值，也不拿更早的份顶替
-    throw approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_HANDLING_CONTENT_MISSING', '办理记录暂不可读取，请稍后重试');
+  if (instance.initiatorUserId === userId || hasPendingTask(allTasks, userId)) return { mode: 'live' };
+  const frozen = await latestHandlingCopy(tx, ctx, instance, userId);
+  return frozen ? { mode: 'frozen', frozen } : { mode: 'live' };
+}
+
+/**
+ * 业务单读取（设计 §5.3，单 Offer 详情等「按业务单读」的入口）：候选来自该业务单的**全部**审批实例，
+ * 驳回 / 不同意后重开、新建实例都不让旧份丢失。任一实例上本人是发起人或有待办 → 现值；否则取本人所有办理份里
+ * 办理时间最晚的一份；一份都没有 → 现值。
+ */
+export async function selectContentAcross(
+  tx: Tx,
+  ctx: Pick<ApprovalContext, 'tenantId'>,
+  instances: readonly InstanceRow[],
+  tasksOf: (instance: InstanceRow) => Promise<readonly TaskRow[]>,
+  userId: string,
+): Promise<ContentSelection> {
+  const copies: FrozenContent[] = [];
+  for (const instance of instances) {
+    if (instance.initiatorUserId === userId || hasPendingTask(await tasksOf(instance), userId)) {
+      return { mode: 'live' };
+    }
+    const copy = await latestHandlingCopy(tx, ctx, instance, userId);
+    if (copy) copies.push(copy);
   }
-  return {
-    mode: 'frozen',
-    frozen: {
-      id: row.copyId,
-      taskId: row.taskId!,
-      round: row.round!,
-      nodeKey: row.nodeKey!,
-      actedAt: row.actedAt!,
-      content: row.content,
-      ceiling: row.ceiling ? new Set(row.ceiling) : null,
-      version: await loadVersion(tx, ctx.tenantId, row.processVersionId),
-    },
-  };
+  const latest = copies.sort((a, b) => b.actedAt.localeCompare(a.actedAt))[0];
+  return latest ? { mode: 'frozen', frozen: latest } : { mode: 'live' };
 }
 
 /** 响应里的“内容来源”说明（设计 §5.5）：前端据此区分办理时快照与现值。 */

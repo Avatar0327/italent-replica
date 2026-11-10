@@ -90,7 +90,9 @@ export async function referenceNames<T extends { form: FormShape }>(
     const result = { ...record };
     const attach = (key: string, names: ReadonlyMap<string, string>) => {
       const value = record[key];
-      if (typeof value === 'string' && value) result[`${key}Name`] = names.get(value) ?? null;
+      // 已带名称的不覆盖：已办读取里的名称是办理时冻结的标签，不能被当前名称顶掉（F-476 P6）
+      if (typeof value === 'string' && value && !Object.hasOwn(record, `${key}Name`))
+        result[`${key}Name`] = names.get(value) ?? null;
     };
     for (const key of DEPARTMENT_KEYS) attach(key, departments);
     for (const key of PERSON_KEYS) attach(key, people);

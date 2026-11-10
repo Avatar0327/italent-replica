@@ -211,6 +211,23 @@ export async function latestInstanceOf(
   return row ? instanceOf(row) : null;
 }
 
+/**
+ * 业务单的全部审批实例（任何状态，最新在前）：已办读取要在「所有实例」里找本人的办理份，驳回 / 不同意后重开、
+ * 新建实例都不能让旧份找不到（F-476 P6，P8 评审 P2-2）；只读不加锁，上限 200 个实例（有界）。
+ */
+export async function instancesOfBusiness(
+  tx: Tx,
+  tenantId: string,
+  businessType: BusinessType,
+  businessId: string,
+): Promise<InstanceRow[]> {
+  return rowsOf(
+    await tx.execute(sql`SELECT * FROM approval_instances WHERE tenant_id=${tenantId}
+      AND business_type=${businessType} AND business_id=${businessId}::uuid
+      ORDER BY created_at DESC,id DESC LIMIT 200`),
+  ).map(instanceOf);
+}
+
 export async function instanceOfTask(tx: Tx, tenantId: string, taskId: string): Promise<string> {
   const [row] = rowsOf<{ instance_id: string }>(
     await tx.execute(sql`SELECT instance_id FROM approval_tasks WHERE tenant_id=${tenantId} AND id=${taskId}::uuid`),

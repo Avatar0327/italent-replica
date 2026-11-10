@@ -1101,7 +1101,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/detail-path.ts#pathView',
     '#COMMENT_NOTICE',
     '#actionsFor',
-    '#disclosedFields',
+    '#formFields',
+    '#formValuesView',
     '#pick',
     '#projectLog',
     '#recordsHidden',
@@ -1115,6 +1116,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/foreign-fields.ts#formFieldsWithForeign',
     'apps/api/src/modules/approval/handling-content.ts#capViewable',
     'packages/domain/src/approval/policies.ts#disclosedFieldNames',
+  ],
+  'apps/api/src/modules/approval/disclosure.ts#formFields': ['#disclosedFields'],
+  'apps/api/src/modules/approval/disclosure.ts#formValuesView': ['#formFields', '#frozenValues', '#pick'],
+  'apps/api/src/modules/approval/disclosure.ts#frozenValues': [
+    'apps/api/src/modules/offer/frozen-view.ts#projectBatchValues',
+    'apps/api/src/modules/offer/frozen-view.ts#projectOfferValues',
   ],
   'apps/api/src/modules/approval/disclosure.ts#initiatorActions': [
     'apps/api/src/modules/approval/rules.ts#urgeOpen',
@@ -1440,20 +1447,32 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/handling-content.ts#CONTENT_PROVIDERS': [
     '#SNAPSHOT_ONLY',
+    'apps/api/src/modules/offer/content.ts#loadOfferBatchContent',
+    'apps/api/src/modules/offer/content.ts#loadOfferContent',
     'apps/api/src/modules/org-adjustment/content.ts#loadOrgContent',
+  ],
+  'apps/api/src/modules/approval/handling-content.ts#handlerFacts': [
+    'apps/api/src/modules/approval/context.ts#actorOf',
+  ],
+  'apps/api/src/modules/approval/handling-content.ts#latestHandlingCopy': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/definitions.ts#loadVersion',
+    '#CONTENT_PROVIDERS',
+    '#HANDLING_EVENTS',
+    '#missingCopy',
+  ],
+  'apps/api/src/modules/approval/handling-content.ts#missingCopy': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
   ],
   'apps/api/src/modules/approval/handling-content.ts#prepareHandlingContent': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     '#CONTENT_PROVIDERS',
     '#MAX_PAYLOAD_BYTES',
+    '#handlerFacts',
   ],
   'apps/api/src/modules/approval/handling-content.ts#recordHandlingContent': ['#CONTENT_SCHEMA_VERSION'],
-  'apps/api/src/modules/approval/handling-content.ts#selectContent': [
-    'apps/api/src/modules/approval/context.ts#approvalError',
-    'apps/api/src/modules/approval/context.ts#rowsOf',
-    'apps/api/src/modules/approval/definitions.ts#loadVersion',
-    '#HANDLING_EVENTS',
-  ],
+  'apps/api/src/modules/approval/handling-content.ts#selectContent': ['#hasPendingTask', '#latestHandlingCopy'],
+  'apps/api/src/modules/approval/handling-content.ts#selectContentAcross': ['#hasPendingTask', '#latestHandlingCopy'],
   'apps/api/src/modules/approval/handover-empty.ts#decideHandoverApprovers': [
     'packages/domain/src/approval/sources.ts#expressionValue',
     'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
@@ -1779,6 +1798,8 @@ export const GRAPH: Graph = {
     '#detailViewable',
     '#readCtx',
     '#viewerOf',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
   ],
   'apps/api/src/modules/approval/routes.ts#detailViewable': [
     'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
@@ -2390,6 +2411,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/store.ts#instanceOf': ['#iso'],
   'apps/api/src/modules/approval/store.ts#instanceOfTask': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/store.ts#instancesOfBusiness': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#instanceOf',
+  ],
   'apps/api/src/modules/approval/store.ts#latestInstanceOf': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#instanceOf',

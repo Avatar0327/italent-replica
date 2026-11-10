@@ -31,6 +31,7 @@ import {
   parseOfferDictionaryInput,
   saveOfferDictionaryEntry,
 } from './dictionaries.js';
+import { frozenOfferDetail } from './frozen-detail.js';
 import { withRehireHint } from './identity.js';
 import { frozenPerTransaction, offerCopyCheck, offerCreateCheck } from './checks.js';
 import { offerApprovalFields, submitOfferApproval, submitOfferBatch } from './approval.js';
@@ -231,6 +232,9 @@ export const registerOfferRoutes: TenantRouteModule = (router, deps) => {
   module.get('/:id', async (c) => {
     const ctx = await offerReadContext(c, deps);
     const id = uuidParam(c);
+    // 已办读者读办理时冻结的那一份（F-476 P6）；发起人 / 有待办 / 没办理过的人走下面的现值读取
+    const frozen = await frozenOfferDetail(deps, ctx, id);
+    if (frozen) return c.json(frozen);
     const { allowed } = await offerActionAccess(deps, ctx);
     const body = await withTenant(deps.db, ctx.tenantId, (tx) => offerDetail(tx, ctx, id, allowed));
     return c.json(await trimOffer(deps, ctx, body));
