@@ -135,7 +135,9 @@
       "error": "2edd6b793cb5",
       "status": 404
     },
-    "fieldQueries": [],
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentContract"
+    ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",

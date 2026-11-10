@@ -254,11 +254,13 @@ const DISCLOSURE_ENTRY: Evidence = {
   unit: `${DISC}#orgAdjustmentDisclosure`,
   anchor: 'const hr = await hrDisclosure(tx, bound, ctx, view)',
 };
+// F-476 P5：openDetail 提到审批共用的 frozen-read.ts（改名 openApprovalDetail），实现不变
+const OPEN_DETAIL = 'apps/api/src/modules/approval/frozen-read.ts#openApprovalDetail';
 const DISC_OBJECT: Evidence = { role: 'const', unit: `${DISC}#OBJECT`, anchor: 'ORG_ADJUSTMENT_OBJECT_CODE' };
 const CAN_OPEN_CALL: Evidence = {
   role: 'impl',
   unit: `${DISC}#orgAdjustmentDisclosure`,
-  anchor: 'const data = instance ? await openDetail(tx, bound, ctx, instance, live) : null;',
+  anchor: 'const data = instance ? await openApprovalDetail(tx, bound, ctx, instance, live) : null;',
 };
 /**
  * 路由 13～15 共用 orgAdjustmentDisclosure：HR（对象查看权 + 主体组织在 OrganizationApproval 范围），或可打开最新审批实例
@@ -308,7 +310,7 @@ function reader(path: string, anchor: string): Obligation[] {
         CAN_OPEN_CALL,
         {
           role: 'impl',
-          unit: `${DISC}#openDetail`,
+          unit: OPEN_DETAIL,
           anchor: 'return await readDetail(tx, command, instance.id, viewer, false, live)',
         },
         {
@@ -329,7 +331,7 @@ function reader(path: string, anchor: string): Obligation[] {
         CAN_OPEN_CALL,
         {
           role: 'impl',
-          unit: `${DISC}#openDetail`,
+          unit: OPEN_DETAIL,
           anchor: "if (!(await bound.authorize({ ...ctx, action: 'object.button', resource }))) return null;",
         },
       ],
