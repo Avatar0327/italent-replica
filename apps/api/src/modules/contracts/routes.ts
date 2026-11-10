@@ -20,7 +20,17 @@ import { requireObjectWrite } from '../permission/object-write.js';
 import { checkFields, checkOperationScope, checkScope, rowsOf, type ContractContext } from './context.js';
 import { deleteRule, rulesPage, saveMaster, saveRule, saveSettings, settings } from './configuration.js';
 import { commandSchema, parse } from './input.js';
-import { batchCommands, createCommand, loadContract, loadRequest, portfolioRevision } from './service.js';
+import {
+  batchCommands,
+  createCommand,
+  loadContract,
+  loadRequest,
+  portfolioRevision,
+  type ContractRequest,
+} from './service.js';
+import { LIVE_VIEW, openContentRead } from '../approval/frozen-read.js';
+import { capViewable } from '../approval/handling-content.js';
+import { projectRequestView, submittedView } from './frozen.js';
 import { listContracts } from './queries.js';
 import { assertSortViewable, parseListQuery } from './list-query.js';
 import { contractDetail, employeeContracts } from './detail.js';
@@ -72,7 +82,10 @@ function isReceipt(value: unknown): boolean {
   );
 }
 async function trim(deps: TenantRouteDeps, ctx: ContractContext, object: string, value: unknown): Promise<unknown> {
-  const fields = await getModuleViewableFields(deps, ctx, object);
+  return trimWithFields(value, await getModuleViewableFields(deps, ctx, object));
+}
+/** trim 的纯投影部分：调用方已在事务内查出可见字段时直接用它，不在 withTenant 里再经授权器取字段（会重入根事务）。 */
+function trimWithFields(value: unknown, fields: ReadonlySet<string> | undefined): unknown {
   if (fields === undefined || isReceipt(value)) return value;
   function project(value: unknown): unknown {
     if (Array.isArray(value)) return value.map(project);
@@ -539,13 +552,29 @@ function registerFailures(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
     );
     return c.json({ items: rowsOf(items) });
   });
+  // F-476 P5：已办人读办理时冻结的申请内容（不套用现数据范围，DEC-834④；业务字段取三重交集，非业务键取办理上限 ∩
+  // 当前字段权）；其余读现值。事务内只用本事务查出的 viewable 投影，不再经授权器取字段（R2 P2-2）。
   module.get('/requests/:id', async (c) => {
     const ctx = await routeContext(c, deps);
-    const value = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const request = await loadRequest(tx, ctx.tenantId, uuidParam(c));
+    const id = uuidParam(c);
+    const body = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const content = await openContentRead<ContractRequest>(tx, deps, ctx, 'contract', id, CONTRACT_OBJECT);
+      const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+      const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, CONTRACT_OBJECT, tx);
+      if (content?.frozen)
+        return {
+          ...projectRequestView(content.frozen.ext, capViewable(viewable, content.ceiling), content.fields),
+          contentView: content.contentView,
+        };
+      const { submittedFields, ...request } = await loadRequest(tx, ctx.tenantId, id);
       await checkScope(tx, ctx, request.employeeId, request.createdBy);
-      return request;
+      // 申请元数据沿用现读 trim；提交载荷容器不在字段目录里，按同一投影契约在容器内部裁
+      return {
+        ...(trimWithFields(request, viewable) as object),
+        ...(submittedFields ? { submittedFields: submittedView(submittedFields, viewable) } : {}),
+        contentView: content?.contentView ?? LIVE_VIEW,
+      };
     });
-    return c.json(await trim(deps, ctx, CONTRACT_OBJECT, value));
+    return c.json(body);
   });
 }

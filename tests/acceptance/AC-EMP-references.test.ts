@@ -3,6 +3,7 @@ import type { Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { employmentSession, type EmploymentSession } from './AC-EMP-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -21,9 +22,18 @@ function jobApi(db: Db, session: EmploymentSession) {
       ifMatch: revision,
       body,
     });
+  // 职级新建需要创建人有职务体系授权管理单元（DEC-339①），首次建职级时补一个
+  let granted: Promise<string> | undefined;
+  const unit = () =>
+    (granted ??= grantJobUnit(
+      (method, path, init) => api.request(method, path, { ...init, user: session.user.id, tenant: session.tenant.id }),
+      session.user.id,
+      session.tenant.id,
+    ));
   return {
     request,
     async create(kind: string, name: string, extra: Record<string, unknown> = {}): Promise<JobReference> {
+      if (kind === 'levels') await unit();
       const response = await request(
         'POST',
         `/${kind}`,

@@ -105,6 +105,15 @@ export const GRAPH: Graph = {
     '#c',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
+  'apps/api/src/modules/contracts/frozen.ts#BUSINESS_KEYS': ['packages/domain/src/contracts/rules.ts#CONTRACT_FIELDS'],
+  'apps/api/src/modules/contracts/frozen.ts#loadContractContent': [
+    'apps/api/src/modules/contracts/service.ts#loadRequest',
+  ],
+  'apps/api/src/modules/contracts/frozen.ts#projectRequestView': ['#BUSINESS_KEYS', '#customOf', '#submittedView'],
+  'apps/api/src/modules/contracts/frozen.ts#submittedView': [
+    'apps/api/src/modules/approval/frozen-read.ts#pickDisclosed',
+    '#customOf',
+  ],
   'apps/api/src/modules/contracts/imports.ts#applyRows': [
     'apps/api/src/modules/contracts/configuration.ts#settings',
     'apps/api/src/modules/contracts/context.ts#lockEmployee',
@@ -367,11 +376,18 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
   ],
   'apps/api/src/modules/contracts/routes.ts#route:GET /requests/:id': [
+    'apps/api/src/modules/approval/frozen-read.ts#LIVE_VIEW',
+    'apps/api/src/modules/approval/frozen-read.ts#openContentRead',
+    'apps/api/src/modules/approval/handling-content.ts#capViewable',
     'apps/api/src/modules/contracts/context.ts#checkScope',
+    'apps/api/src/modules/contracts/frozen.ts#projectRequestView',
+    'apps/api/src/modules/contracts/frozen.ts#submittedView',
     '#routeContext',
-    '#trim',
+    '#trimWithFields',
     'apps/api/src/modules/contracts/service.ts#loadRequest',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
   ],
   'apps/api/src/modules/contracts/routes.ts#route:GET /rules': [
@@ -487,13 +503,14 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
   ],
   'apps/api/src/modules/contracts/routes.ts#trim': [
-    '#isReceipt',
+    '#trimWithFields',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
   'apps/api/src/modules/contracts/routes.ts#trimEmployment': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
+  'apps/api/src/modules/contracts/routes.ts#trimWithFields': ['#isReceipt'],
   'apps/api/src/modules/contracts/routes.ts#write': [
     'apps/api/src/modules/contracts/context.ts#checkScope',
     '#requireMasterScope',

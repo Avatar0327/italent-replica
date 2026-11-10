@@ -871,6 +871,8 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   retirement_rule: { code: 'TenantBase.EmploymentSettings' },
   retirement_identity_type: { code: 'TenantBase.EmploymentSettings' },
   employment_custom_field: { code: 'TenantBase.EmploymentCustomField' },
+  'esign-template': { code: MODULE_OBJECTS.eSignSettings.code },
+  'esign-scene-settings': { code: MODULE_OBJECTS.eSignSettings.code },
   'approval-process': { code: 'TenantBase.ApprovalProcess' },
   // F-326：变量与矩阵的审计键（dataType / defaultValue、动态的 row:<id> / column:<id>、删除快照）不在审批流程字段目录
   // 里，由审批流程权限推出精确键与受控动态路径（controlled-fields.ts），没有权限时 fail-closed

@@ -53,6 +53,7 @@ import {
   resubmitChangeInTransaction,
   withdrawChangeInTransaction,
 } from '../personnel/change-requests.js';
+import { changeOriginals } from '../personnel/frozen.js';
 import { lockPerson } from '../personnel/store.js';
 import { loadSubset } from '../personnel/subsets.js';
 import { AppError } from '../../errors.js';
@@ -580,28 +581,6 @@ async function personnelChange(tx: Tx, ctx: ApprovalContext, id: string) {
   return { change, subset };
 }
 
-/** 子集历史版本（含已删除记录的版本链），按记录 ID 与 revision 定位。 */
-async function subsetVersion(
-  tx: Tx,
-  tenantId: string,
-  employeeId: string,
-  subset: SubsetKind,
-  recordId: string,
-  revision: number,
-): Promise<Row | null> {
-  const [raw] = rowsOf<Row>(
-    await tx.execute(sql`SELECT * FROM ${sql.identifier(`${SUBSETS[subset].table}_versions`)}
-      WHERE tenant_id=${tenantId} AND employee_id=${employeeId}::uuid AND record_id=${recordId}::uuid
-        AND revision=${revision} LIMIT 1`),
-  );
-  return raw ? camelRow(raw) : null;
-}
-
-const camelRow = (row: Row): Row =>
-  Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()), value]),
-  );
-
 const personnelAdapter: BusinessAdapter = {
   async lock(tx, ctx, businessId) {
     const { change } = await personnelChange(tx, ctx, businessId);
@@ -611,18 +590,7 @@ const personnelAdapter: BusinessAdapter = {
     const { change, subset } = await personnelChange(tx, ctx, businessId);
     const employeeId = String(change.employeeId);
     const values = await currentChangeValues(tx, { ...ctx, expectedRevision: 0 }, businessId);
-    // 清单 9：原值取申请所针对的那一版（targetRevision），不随审批落地或源记录删除而漂移 / 失败。
-    const record = change.recordId
-      ? await subsetVersion(
-          tx,
-          ctx.tenantId,
-          employeeId,
-          subset,
-          String(change.recordId),
-          Number(change.targetRevision),
-        )
-      : null;
-    const originals = record ? Object.fromEntries(Object.keys(values).map((key) => [key, record[key] ?? null])) : null;
+    const originals = await changeOriginals(tx, ctx.tenantId, change, subset, values);
     const employee = await employeeHeader(tx, ctx.tenantId, employeeId);
     const current = await findCurrentRecord(tx, ctx.tenantId, employeeId, tenantLocalDate(ctx.now, ctx.timezone));
     const departmentId = current?.fields.departmentId ?? null;

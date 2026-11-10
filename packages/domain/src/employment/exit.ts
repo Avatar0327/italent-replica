@@ -40,6 +40,31 @@ export const EXIT_SELF_WHEREABOUTS_CODES = ['other_industry', 'same_industry', '
 export const EXIT_DUTY_TRANSFER_TIMINGS = ['business_effective', 'approval_passed'] as const;
 export type ExitDutyTransferTiming = (typeof EXIT_DUTY_TRANSFER_TIMINGS)[number];
 
+/**
+ * 单张离职 / 退休单可选的转交时机（R2-T09b DT-R3）：在租户配置两值之外多一个“指定日期”。
+ * 租户配置项仍只取前两值（EXIT_SETTINGS）；指定日期是表单级选择，不下发为租户默认。
+ */
+export const EXIT_FORM_DUTY_TRANSFER_TIMINGS = [...EXIT_DUTY_TRANSFER_TIMINGS, 'specified_date'] as const;
+export type ExitFormDutyTransferTiming = (typeof EXIT_FORM_DUTY_TRANSFER_TIMINGS)[number];
+
+export interface DutyTransferTimingChoice {
+  readonly timing: ExitFormDutyTransferTiming;
+  readonly date: string | null;
+}
+
+/**
+ * DT-R3 指定日期与业务生效日的关系：指定日期晚于业务生效日 → 生效时转交，时机改为 business_effective（日期清空）；
+ * 其余保持 specified_date。≤ 今天的在节点通过当场转交、之间的到日由定时任务转交，由执行方按“今天”判断，不在这里改写。
+ */
+export function settleDutyTransferTiming(
+  choice: DutyTransferTimingChoice,
+  plannedEffectiveDate: string,
+): DutyTransferTimingChoice {
+  if (choice.timing !== 'specified_date') return { timing: choice.timing, date: null };
+  if (choice.date !== null && choice.date > plannedEffectiveDate) return { timing: 'business_effective', date: null };
+  return choice;
+}
+
 /** 租户配置项（两层配置，系统值随迁移下发；§2.2）。 */
 export const EXIT_SETTINGS = {
   'exit.duty_transfer_timing': {

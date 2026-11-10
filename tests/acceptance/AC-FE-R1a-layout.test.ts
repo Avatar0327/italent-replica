@@ -36,6 +36,10 @@ const ALL = [
   'sequenceId',
   'professionalLineId',
   'orgId',
+  'ownerOrgId',
+  'salaryUpper',
+  'salaryMid',
+  'salaryLower',
   'postId',
   'workLocation',
   'standardPositionId',
@@ -44,6 +48,8 @@ const ALL = [
   'responsibilities',
   'requirements',
   'evaluationScore',
+  'competencyModelId',
+  'qualificationId',
 ];
 function permission(viewable: string[], editable = viewable, update = true) {
   return {
@@ -70,11 +76,15 @@ describe('AC-FE-R1a-21 职务体系各类列表列按原站', () => {
     expect(jobListFields('level-types', access)).toEqual(['name', 'displayOrder', 'startDate']);
     expect(jobListFields('grades', access)).toEqual(['grade', 'name', 'layerId', 'scoreHigh', 'scoreLow', 'startDate']);
     expect(jobListFields('levels', access)).toEqual([
+      'ownerOrgId',
       'levelTypeId',
       'name',
       'level',
       'minGradeId',
       'maxGradeId',
+      'salaryUpper',
+      'salaryMid',
+      'salaryLower',
       'startDate',
     ]);
     expect(jobListFields('posts', access)).toEqual([
@@ -84,6 +94,7 @@ describe('AC-FE-R1a-21 职务体系各类列表列按原站', () => {
       'levelTypeId',
       'minLevelId',
       'maxLevelId',
+      'competencyModelId',
     ]);
     expect(jobListFields('positions', access)).toEqual([
       'code',
@@ -97,6 +108,46 @@ describe('AC-FE-R1a-21 职务体系各类列表列按原站', () => {
       'displayOrder',
     ]);
     expect(jobListFields('layers', access)).toEqual(['code', 'name', 'layerLevel', 'enabled', 'startDate', 'stopDate']);
+  });
+  it('职级薪资三列随字段查看权隐藏，其余列照常（R1a §3.6）', async () => {
+    const { jobListFields, jobColumnWidth } = await job();
+    const { pageAccess } = await org();
+    const hidden = ALL.filter((field) => !field.startsWith('salary'));
+    expect(jobListFields('levels', pageAccess(permission(hidden)))).toEqual([
+      'ownerOrgId',
+      'levelTypeId',
+      'name',
+      'level',
+      'minGradeId',
+      'maxGradeId',
+      'startDate',
+    ]);
+    // 宽度按列键匹配：隐藏薪资列后生效日期仍取自己的宽度
+    expect(jobColumnWidth('levels', 'startDate')).toBe(105);
+    expect(jobColumnWidth('levels', 'salaryMid')).toBe(172);
+  });
+  it('职级新建表单按原站顺序（资源集合在首、薪资三值在职等之后）；编辑不再出资源集合', async () => {
+    const { jobFormGroups, jobLabel } = await job();
+    expect(jobFormGroups('levels', false)[0]?.fields).toEqual([
+      'ownerOrgId',
+      'name',
+      'levelTypeId',
+      'level',
+      'minGradeId',
+      'maxGradeId',
+      'salaryUpper',
+      'salaryMid',
+      'salaryLower',
+      'startDate',
+      'enabled',
+    ]);
+    expect(jobFormGroups('levels', true)[0]?.fields).not.toContain('ownerOrgId');
+    expect(jobLabel('levels', 'ownerOrgId')).toBe('资源集合');
+    expect([
+      jobLabel('levels', 'salaryUpper'),
+      jobLabel('levels', 'salaryMid'),
+      jobLabel('levels', 'salaryLower'),
+    ]).toEqual(['薪资上限值', '薪资中位值', '薪资下限制']);
   });
   it('无查看权的字段不出列（反向）', async () => {
     const { jobListFields } = await job();
@@ -158,13 +209,17 @@ describe('AC-FE-R1a-23 职务、职位表单按原站分组与排序', () => {
           'enabled',
         ],
       },
+      // F-474-2a #5：胜任力模型（人才标准引用）在职位说明之前；关联任职资格由类别关联带出，表单不出控件（R1a §3.7）。
+      { key: 'competency', fields: ['competencyModelId'] },
       { key: 'duty', fields: ['responsibilities', 'requirements'] },
     ]);
   });
   it('职位表单：上级职位、虚线上级排在基本信息里，汇报关系只在详情分区；未截到表单的对象保持原顺序', async () => {
     const { jobFormGroups, jobLabel } = await job();
     const groups = jobFormGroups('positions');
-    expect(groups.map((group: { key: string }) => group.key)).toEqual(['basic']);
+    expect(groups.map((group: { key: string }) => group.key)).toEqual(['basic', 'positionDuty']);
+    // F-474-2a #4：原站职位新建弹窗末尾的「职责说明」分区（R1a §3.8）。
+    expect(groups[1]).toEqual({ key: 'positionDuty', fields: ['responsibilities', 'requirements'] });
     expect(groups[0].fields.slice(0, 15)).toEqual([
       'code',
       'name',
@@ -225,7 +280,7 @@ describe('AC-FE-R1a-24 职务、职位详情按原站分区', () => {
     const { jobDetailSections } = await job();
     const { pageAccess } = await org();
     const sections = jobDetailSections('positions', pageAccess(permission(ALL)), values);
-    expect(sections.map((section: { key: string }) => section.key)).toEqual(['basic', 'reporting']);
+    expect(sections.map((section: { key: string }) => section.key)).toEqual(['basic', 'reporting', 'positionDuty']);
     expect(sections[0].fields.slice(0, 15)).toEqual([
       'code',
       'name',
@@ -244,6 +299,18 @@ describe('AC-FE-R1a-24 职务、职位详情按原站分区', () => {
       'startDate',
     ]);
     expect(sections[1].fields).toEqual(['adminParent', 'adminSequence', 'dottedParent', 'dottedSequence']);
+    expect(sections[2]).toEqual({ key: 'positionDuty', fields: ['responsibilities', 'requirements'] });
+  });
+  it('职位「职责说明」分区：标题取原站叫法；无查看权或接口未返回时不出现', async () => {
+    const { pageText } = await import(resolve('apps/web/src/job/messages.ts'));
+    expect(pageText.positionDuty).toBe('职责说明');
+    const { jobDetailSections } = await job();
+    const { pageAccess } = await org();
+    const hidden = ALL.filter((field) => !['responsibilities', 'requirements'].includes(field));
+    const trimmed = jobDetailSections('positions', pageAccess(permission(hidden)), values);
+    expect(trimmed.map((section: { key: string }) => section.key)).toEqual(['basic', 'reporting']);
+    const absent = jobDetailSections('positions', pageAccess(permission(ALL)), { name: '合成职位' });
+    expect(absent).toEqual([{ key: 'basic', fields: ['name'] }]);
   });
   it('无上级查看权时不出汇报关系分区；接口未返回的字段不展示（反向）', async () => {
     const { jobDetailSections } = await job();
@@ -258,7 +325,24 @@ describe('AC-FE-R1a-24 职务、职位详情按原站分区', () => {
     const { jobDetailSections } = await job();
     const { pageAccess } = await org();
     const sections = jobDetailSections('posts', pageAccess(permission(ALL)), position);
-    expect(sections[1]).toEqual({ key: 'duty', fields: ['responsibilities', 'requirements'] });
+    expect(sections.find((section: { key: string }) => section.key === 'duty')).toEqual({
+      key: 'duty',
+      fields: ['responsibilities', 'requirements'],
+    });
+  });
+  it('职务详情：胜任力模型与只读的关联任职资格排在职位说明之前；无查看权的字段不出', async () => {
+    const { jobDetailSections } = await job();
+    const { pageAccess } = await org();
+    const values = { name: '合成职务', competencyModelId: null, qualificationId: null, responsibilities: '职责' };
+    const sections = jobDetailSections('posts', pageAccess(permission(ALL)), values);
+    expect(sections.map((section: { key: string }) => section.key)).toEqual(['basic', 'competency', 'duty']);
+    expect(sections[1].fields).toEqual(['competencyModelId', 'qualificationId']);
+    const hidden = jobDetailSections(
+      'posts',
+      pageAccess(permission(ALL.filter((field) => field !== 'qualificationId'))),
+      values,
+    );
+    expect(hidden[1].fields).toEqual(['competencyModelId']);
   });
 });
 

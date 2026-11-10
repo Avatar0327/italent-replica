@@ -42,6 +42,11 @@ import { displayWindow, loadInstance, loadLogs, loadTasks, type InstanceRow, typ
 
 export const SHOW_ORIGINALS_SETTING = 'approval.show_original_values';
 
+/** 「审批原值显示」开关（租户设置，缺省显示）：申请详情与审批中心共用。 */
+export async function showOriginalsOf(tx: Tx, tenantId: string): Promise<boolean> {
+  return (await readEffectiveSetting(tx, tenantId, SHOW_ORIGINALS_SETTING)).value === true;
+}
+
 export interface Viewer {
   readonly userId: string;
   /**
@@ -105,7 +110,6 @@ export async function readDetail(
     transfer: await adminCovers(tx, ctx.tenantId, instanceId, viewer.transferScope),
     intervene: await adminCovers(tx, ctx.tenantId, instanceId, viewer.interveneScope),
   };
-  const setting = await readEffectiveSetting(tx, ctx.tenantId, SHOW_ORIGINALS_SETTING);
   // F-476：先选内容来源（缺份 503，DEC-807），已办读冻结份里的快照，其余读现值
   const content: ContentSelection = forceLive
     ? { mode: 'live' }
@@ -121,7 +125,7 @@ export async function readDetail(
     tasks: displayWindow(allTasks),
     allTasks,
     logs: withLogs ? await loadLogs(tx, ctx.tenantId, instanceId) : [],
-    showOriginals: setting.value === true,
+    showOriginals: await showOriginalsOf(tx, ctx.tenantId),
     admin,
     recusal: await loadRecusalFacts(tx, ctx.tenantId, instance),
     ccNodeKey,

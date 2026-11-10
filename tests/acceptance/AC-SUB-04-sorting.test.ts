@@ -3,6 +3,7 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { personnelSession } from './AC-SUB-support.js';
 import { loginEmailOf } from './AC-EMP-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 const database = useTestDb();
 it('AC-SUB-04 职级来自当前任职及职级版本的关联查询，变更后排序不陈旧', async () => {
   const s = await personnelSession(database().db);
@@ -12,6 +13,7 @@ it('AC-SUB-04 职级来自当前任职及职级版本的关联查询，变更后
     return (await response.json()) as { id: string; revision: number; employeeRevision: number };
   };
   const type = await create('job/level-types', { name: '合成体系', code: 'TYPE', startDate: '2020-01-01' });
+  await grantJobUnit((m, p, i) => s.api.request(m, p, { ...s.as, ...i }), s.as.user, s.as.tenant);
   const level = (number: number) =>
     create('job/levels', {
       name: `合成职级${number}`,

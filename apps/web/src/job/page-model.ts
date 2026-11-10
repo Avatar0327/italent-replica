@@ -33,7 +33,7 @@ export const jobFields: Record<JobKind, string[]> = {
   layers: ['layerLevel'],
   grades: ['grade', 'scoreLow', 'scoreHigh', 'layerId'],
   'level-types': [],
-  levels: ['level', 'levelTypeId', 'minGradeId', 'maxGradeId'],
+  levels: ['level', 'levelTypeId', 'minGradeId', 'maxGradeId', 'ownerOrgId', 'salaryUpper', 'salaryMid', 'salaryLower'],
   sequences: ['parentId', 'levelTypeId', 'source', 'externalId'],
   'professional-lines': ['parentId'],
   posts: [
@@ -44,6 +44,7 @@ export const jobFields: Record<JobKind, string[]> = {
     'maxLevelId',
     'minGradeId',
     'maxGradeId',
+    'competencyModelId',
     'responsibilities',
     'requirements',
     'evaluationScore',
@@ -59,6 +60,8 @@ export const jobFields: Record<JobKind, string[]> = {
     'minGradeId',
     'maxGradeId',
     'workLocation',
+    'responsibilities',
+    'requirements',
     'standardPositionId',
     'adminParent',
     'adminSequence',
@@ -76,11 +79,30 @@ const references: Record<string, string> = {
   sequenceId: 'sequences',
   professionalLineId: 'professional-lines',
   orgId: 'org',
+  ownerOrgId: 'org',
   postId: 'posts',
   adminParent: 'positions',
   dottedParent: 'positions',
   standardPositionId: 'positions',
+  competencyModelId: 'criteria',
+  qualificationId: 'qualification-categories',
 };
+/** 跨模块引用目标：路径与权限对象各自独立，且不按职务体系的业务日期取值（Q-M0-17：人才标准、任职类别）。 */
+const external: Record<string, { path: string; object: string }> = {
+  criteria: { path: '/api/tenant/talent/criteria', object: 'TalentCenter.TalentCriterion' },
+  'qualification-categories': {
+    path: '/api/tenant/qualification/categories',
+    object: 'Qualification.EmploymentCategory',
+  },
+};
+export const isExternalReference = (kind: string) => kind in external;
+/** 候选列表与按 ID 读取的接口前缀。 */
+export function referencePath(kind: string) {
+  if (kind === 'org') return '/api/tenant/org/organizations';
+  return external[kind]?.path ?? `/api/tenant/job/${kind}`;
+}
+/** 列表里也要读名称的引用列：列表接口只返回 ID，直接展示会露出 UUID（职级的资源集合、职务的胜任力模型）。 */
+export const listReferenceFields = ['ownerOrgId', 'competencyModelId'];
 /** 引用字段指向的对象；parentId 指向同类对象。'org' 为组织。 */
 export function referenceKind(kind: JobKind, field: string): string | undefined {
   return field === 'parentId' ? kind : references[field];
@@ -88,13 +110,24 @@ export function referenceKind(kind: JobKind, field: string): string | undefined 
 interface FieldGate {
   field(name: string): FieldAccess;
 }
-// 原站各视图列（F-132 对照表）；职层、专业条线未截到，保持原列。在岗人数、胜任力等接口未返回的列不展示。
+// 原站各视图列（F-132 对照表）；职层、专业条线未截到，保持原列。职务的胜任力模型（R1a §2.9）按引用读名称；在岗人数接口未返回，不展示。
 const listFields: Partial<Record<JobKind, string[]>> = {
   sequences: ['name', 'parentId', 'levelTypeId', 'displayOrder', 'startDate'],
   'level-types': ['name', 'displayOrder', 'startDate'],
   grades: ['grade', 'name', 'layerId', 'scoreHigh', 'scoreLow', 'startDate'],
-  levels: ['levelTypeId', 'name', 'level', 'minGradeId', 'maxGradeId', 'startDate'],
-  posts: ['code', 'name', 'sequenceId', 'levelTypeId', 'minLevelId', 'maxLevelId'],
+  levels: [
+    'ownerOrgId',
+    'levelTypeId',
+    'name',
+    'level',
+    'minGradeId',
+    'maxGradeId',
+    'salaryUpper',
+    'salaryMid',
+    'salaryLower',
+    'startDate',
+  ],
+  posts: ['code', 'name', 'sequenceId', 'levelTypeId', 'minLevelId', 'maxLevelId', 'competencyModelId'],
   positions: [
     'code',
     'name',
@@ -112,8 +145,8 @@ const listWidths: Partial<Record<JobKind, number[]>> = {
   sequences: [202, 202, 202, 182, 167],
   'level-types': [404, 384, 369],
   grades: [171, 191, 191, 223, 223, 156],
-  levels: [140, 140, 172, 140, 140, 105],
-  posts: [153, 153, 153, 153, 101, 101],
+  levels: [140, 140, 140, 172, 140, 140, 172, 172, 172, 105],
+  posts: [153, 153, 153, 153, 101, 101, 153],
   positions: [128, 128, 128, 128, 128, 128, 76, 76, 76],
 };
 export function jobColumnWidth(kind: JobKind, field: string) {
@@ -123,7 +156,19 @@ const baseForms: Partial<Record<JobKind, string[]>> = {
   sequences: ['name', 'parentId', 'levelTypeId', 'displayOrder', 'startDate', 'enabled'],
   'level-types': ['name', 'displayOrder', 'startDate', 'enabled'],
   grades: ['name', 'grade', 'layerId', 'scoreHigh', 'scoreLow', 'startDate', 'enabled'],
-  levels: ['name', 'levelTypeId', 'level', 'minGradeId', 'maxGradeId', 'startDate', 'enabled'],
+  levels: [
+    'ownerOrgId',
+    'name',
+    'levelTypeId',
+    'level',
+    'minGradeId',
+    'maxGradeId',
+    'salaryUpper',
+    'salaryMid',
+    'salaryLower',
+    'startDate',
+    'enabled',
+  ],
 };
 // 原站职务新建弹窗与职位详情的字段顺序：head、traits 为原站所见顺序；others 是原站未出现的已有字段，排在后面不删。
 interface JobLayout {
@@ -131,12 +176,17 @@ interface JobLayout {
   traits: string[];
   others: string[];
   extra: { key: string; fields: string[] };
+  // 职务在职位说明之前另有「胜任力模型」分区（R1a §3.7）；其中派生字段只在详情只读展示。
+  mid?: { key: string; fields: string[] };
+  // 职位另有末尾的「职责说明」分区（R1a §3.8）：表单与详情都排在汇报关系之后。
+  tail?: { key: string; fields: string[] };
 }
 const layouts: Partial<Record<JobKind, JobLayout>> = {
   posts: {
     head: ['code', 'name', 'establishedOn', 'sequenceId', 'levelTypeId', 'minLevelId', 'maxLevelId'],
     traits: ['evaluationScore', 'isKey', 'isConfidential', 'displayOrder'],
     others: ['professionalLineId', 'minGradeId', 'maxGradeId'],
+    mid: { key: 'competency', fields: ['competencyModelId', 'qualificationId'] },
     extra: { key: 'duty', fields: ['responsibilities', 'requirements'] },
   },
   positions: {
@@ -155,8 +205,11 @@ const layouts: Partial<Record<JobKind, JobLayout>> = {
     traits: ['isKey', 'isConfidential', 'displayOrder'],
     others: ['professionalLineId', 'minGradeId', 'maxGradeId', 'standardPositionId'],
     extra: { key: 'reporting', fields: ['adminParent', 'adminSequence', 'dottedParent', 'dottedSequence'] },
+    tail: { key: 'positionDuty', fields: ['responsibilities', 'requirements'] },
   },
 };
+// 由别的模块的关联带出的只读字段：详情展示，表单不出控件（关联任职资格由任职类别关联，Q-M0-17）。
+const derivedFields = new Set(['qualificationId']);
 // 原站职位表单：上级职位、虚线上级穿插在基本信息里；职位汇报关系只是详情分区。
 const positionForm = ['adminParent', 'isKey', 'dottedParent', 'isConfidential', 'displayOrder'];
 export function jobLabel(kind: JobKind, field: string, place?: 'form') {
@@ -186,14 +239,23 @@ export function jobFormGroups(kind: JobKind, editing = false) {
       'stopDate',
       'enabled',
     ];
-    return [{ key: 'basic', fields }];
+    // 资源集合只在新建时选择，保存后列表只读（DEC-778④）。
+    return [{ key: 'basic', fields: editing ? fields.filter((field) => field !== 'ownerOrgId') : fields }];
   }
   const { head, traits, others, extra } = layout;
   if (kind === 'positions') {
     const tail = ['adminSequence', 'dottedSequence', 'stopDate', 'enabled'];
-    return [{ key: 'basic', fields: [...head, ...positionForm, ...others, ...tail] }];
+    return [
+      { key: 'basic', fields: [...head, ...positionForm, ...others, ...tail] },
+      ...(layout.tail ? [layout.tail] : []),
+    ];
   }
-  return [{ key: 'basic', fields: [...head, ...traits, ...others, 'stopDate', 'enabled'] }, extra];
+  const mid = layout.mid && { ...layout.mid, fields: layout.mid.fields.filter((f) => !derivedFields.has(f)) };
+  return [
+    { key: 'basic', fields: [...head, ...traits, ...others, 'stopDate', 'enabled'] },
+    ...(mid ? [mid] : []),
+    extra,
+  ];
 }
 export function jobDetailSections(kind: JobKind, access: FieldGate, values: Record<string, unknown>) {
   const layout = layouts[kind];
@@ -203,7 +265,9 @@ export function jobDetailSections(kind: JobKind, access: FieldGate, values: Reco
           key: 'basic',
           fields: [...layout.head, ...layout.traits, 'enabled', 'startDate', ...layout.others, 'stopDate'],
         },
+        ...(layout.mid ? [layout.mid] : []),
         layout.extra,
+        ...(layout.tail ? [layout.tail] : []),
       ]
     : [
         {
@@ -250,7 +314,7 @@ export function jobCatalogQuery(kind: JobKind, filters: JobCatalogFilters, nameV
 }
 /** 候选目标对象的权限对象：名称搜索按目标对象（而非当前表单对象）的名称查看权裁剪。 */
 export function referenceObject(kind: string) {
-  return kind === 'org' ? orgObject : jobObjects[kind as JobKind];
+  return kind === 'org' ? orgObject : (external[kind]?.object ?? jobObjects[kind as JobKind]);
 }
 /** 无名称查看权时不发 name：否则可按匹配结果推断被裁剪的名称；接口无按编码搜索，故不提供搜索。 */
 export function referenceQuery(date: string, name: string, nameSearchable: boolean) {

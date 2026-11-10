@@ -36,6 +36,7 @@ import {
   listScope,
   noButton,
   noFields,
+  noScope,
   none,
   NOT_FOUND,
   object,
@@ -148,6 +149,14 @@ export const JOB_POLICIES = defineTable('job', {
   // ---- registerCandidates：候选与任职校验（引用对象逐个授权，不能用自身看全部放行另一个对象）---------------------
   [`GET ${BASE}/candidates/levels`]: candidates(MODULE_OBJECTS.jobLevel.code),
   [`GET ${BASE}/candidates/grades`]: candidates(MODULE_OBJECTS.jobGrade.code),
+  // 新建职级的所属资源集合候选：JobLevel 新建数据操作权；只返回本人在职务体系的授权管理单元 ID（DEC-339①），有界 200
+  [`GET ${BASE}/candidates/resource-sets`]: object({
+    object: MODULE_OBJECTS.jobLevel.code,
+    operation: 'create',
+    button: dataOperationOnly,
+    scope: noScope('只返回本人的授权管理单元（DEC-339①），不按职务体系的数据范围放大或缩小'),
+    fields: projector('job.resourceSets', 'job.resourceSet'),
+  }),
   // 只读校验：JobPost view + validate(detail)；postId / levelId / gradeId 逐对象 view + visibleJob；信封不裁剪、不进台账
   [`POST ${BASE}/validate-assignment`]: object({
     object: MODULE_OBJECTS.jobPost.code,

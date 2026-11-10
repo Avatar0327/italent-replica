@@ -78,6 +78,7 @@ export const APP_OBJECT_DIRECTORY: Readonly<Record<AppId, readonly string[]>> = 
     MODULE_OBJECTS.employmentType,
     MODULE_OBJECTS.contractSettings,
     MODULE_OBJECTS.contractRules,
+    MODULE_OBJECTS.eSignSettings,
   ]),
   talent: withPrimary('TalentCenter.DimensionLibrary', Object.values(TALENT_OBJECTS)),
   qualification: withPrimary('Qualification.EmploymentCategory', [
