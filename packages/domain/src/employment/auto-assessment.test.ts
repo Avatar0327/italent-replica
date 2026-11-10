@@ -54,11 +54,9 @@ describe('PB-R21 考核类失败条件', () => {
         );
   });
 
-  it('试用中考核：审批中，或审批通过且意见 = 提前转正才阻断', () => {
+  it('试用中考核：只有审批中才阻断（审批通过且意见 = 提前转正改为静默跳过，F-500）', () => {
     for (const status of statuses)
       for (const opinion of [...ASSESSMENT_OPINION_CODES, null])
-        expect(assessmentBlocksAutoRegularization({ type: 'probation', status, opinion })).toBe(
-          status === 'in_review' || (status === 'approved' && opinion === 'early'),
-        );
+        expect(assessmentBlocksAutoRegularization({ type: 'probation', status, opinion })).toBe(status === 'in_review');
   });
 });
