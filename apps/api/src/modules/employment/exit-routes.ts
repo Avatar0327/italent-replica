@@ -644,7 +644,7 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const contentView = read?.contentView;
     if (shown.activation?.details) {
       const details = await withTenant(deps.db, ctx.tenantId, (tx) =>
-        projectExitFailureDetails(tx, ctx, shown.activation!.details!, { has: show.employment }),
+        projectExitFailureDetails(tx, ctx, shown.activation!.details!, { has: show.employment }, frozen !== null),
       );
       const body = trimExitDetail({ ...shown, actions, activation: { ...shown.activation, details } }, show);
       return c.json({ ...body, contentView });

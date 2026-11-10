@@ -1,4 +1,4 @@
-import { composeBusiness, selectEmploymentRead, type EmploymentRead } from './approval-content.js';
+import { composeBusiness, disclosedBy, selectEmploymentRead, type EmploymentRead } from './approval-content.js';
 import { registerEmploymentFormRoutes } from './employment-form-routes.js';
 import { registerEmploymentTypeRoutes } from './employment-type-routes.js';
 import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
@@ -410,6 +410,8 @@ function requireResultApplicable(result: string | undefined, kind: string) {
 }
 
 // 已办读取：业务内容全取冻结份（含生效后的记录），流程事实取现值；字段仍叠当前字段权，范围不再参与裁剪。
+// 生效状态是现值流程事实，但它的失败详情里有业务值（后续记录的生效日、嵌日期的提示）：再叠披露集合，
+// 后续记录不是本人办理的内容，仍按读取人的当前范围判（第 2 轮审查 P1-1）。
 async function shownBusiness(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
@@ -418,7 +420,8 @@ async function shownBusiness(
 ) {
   const frozen = read.frozen;
   const shown = frozen ? composeBusiness(value, frozen.content, frozen.allowed) : value;
-  const body = await trimEmploymentResponse(deps, frozen ? { ...ctx, scope: undefined } : ctx, shown);
+  const failures = frozen ? { discloses: disclosedBy(frozen.allowed), scope: ctx.scope } : undefined;
+  const body = await trimEmploymentResponse(deps, frozen ? { ...ctx, scope: undefined } : ctx, shown, failures);
   return { ...(body as object), contentView: read.contentView };
 }
 

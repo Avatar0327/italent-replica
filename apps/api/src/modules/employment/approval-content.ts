@@ -133,14 +133,43 @@ export async function loadEmploymentContent(
   };
 }
 
+/** 办理份里的业务日期：YYYY-MM-DD 且是真实存在的日子（投影会做日期运算，非法值会在投影里抛错）。 */
+function isIsoDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const day = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(day.getTime()) && day.toISOString().slice(0, 10) === value;
+}
+
+/** 业务部分投影会读的键：composeBusiness 的字段对象、自定义字段、生效后的记录（未生效为 null）、生效日。 */
+function hasBusinessContent(business: unknown): boolean {
+  return (
+    isRow(business) &&
+    isRow(business.fields) &&
+    isRow(business.customFields) &&
+    (business.record === null || isRow(business.record)) &&
+    isIsoDate(business.effectiveDate)
+  );
+}
+
+/** 离退部分投影会读的键：exitDetailPayload 的原定 / 最终日期块（含 +1 天运算）与版本列表。 */
+function hasExitContent(exit: unknown): boolean {
+  return (
+    isRow(exit) &&
+    Array.isArray(exit.versions) &&
+    exit.versions.every(isRow) &&
+    isIsoDate(exit.plannedLastWorkDate) &&
+    isIsoDate(exit.lastWorkDate) &&
+    isIsoDate(exit.effectiveDate)
+  );
+}
+
 /**
- * 按可信的业务类型（现值里的 kind，不取自办理份）核对办理份的必备结构；缺损一律视为办理份不可读（503）。
- * 这是新写办理份的结构自检，不是旧数据兼容（DEC-402）。
+ * 按可信的业务类型（现值里的 kind，不取自办理份）核对办理份里投影实际会读的必需键；缺失、null 或非法一律视为
+ * 办理份不可读（503），不让投影在日期运算里抛 500。这是新写办理份的结构自检，不是旧数据兼容（DEC-402）。
  */
 function hasRequiredContent(ext: unknown, kind: string): ext is EmploymentContent {
-  if (!isRow(ext) || !isRow(ext.business) || !isRow(ext.business.fields)) return false;
-  if (!EXIT_KINDS.has(kind)) return true;
-  return isRow(ext.exit) && Array.isArray(ext.exit.versions);
+  if (!isRow(ext) || !hasBusinessContent(ext.business)) return false;
+  return !EXIT_KINDS.has(kind) || hasExitContent(ext.exit);
 }
 
 const pickCodes = (source: unknown, allowed: ReadonlySet<string>): Row =>
@@ -199,10 +228,13 @@ export function composeExit(live: object, content: EmploymentContent): Row {
  * 不在表里的业务字段一律缺席（fail-closed）。
  */
 export function disclosing(show: ExitViewable, allowed: ReadonlySet<string>): ExitViewable {
-  return {
-    employee: show.employee,
-    employment: (field) => show.employment(field) && (FACT_FIELDS.has(field) || allowed.has(approvalCodeOf(field))),
-  };
+  const discloses = disclosedBy(allowed);
+  return { employee: show.employee, employment: (field) => show.employment(field) && discloses(field) };
+}
+
+/** 办理披露集合对单个响应字段的判定（流程事实字段始终放行）；失败详情等嵌套内容的投影共用这一处。 */
+export function disclosedBy(allowed: ReadonlySet<string>): (field: string) => boolean {
+  return (field) => FACT_FIELDS.has(field) || allowed.has(approvalCodeOf(field));
 }
 
 /**
