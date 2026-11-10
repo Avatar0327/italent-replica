@@ -760,6 +760,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/auto-regularization.ts#assertNoCycleAssessments': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'packages/domain/src/employment/auto-assessment.ts#assessmentBlocksAutoRegularization',
+    'packages/domain/src/employment/auto-assessment.ts#assessmentSkipsAutoRegularization',
   ],
   'apps/api/src/modules/employment/auto-regularization.ts#assertNoCycleRegularization': [
     '#findCycleRegularization',
