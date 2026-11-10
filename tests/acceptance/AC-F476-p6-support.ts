@@ -197,11 +197,17 @@ export async function rewriteBatchMembers(w: World, batchId: string, offerIds: r
 }
 
 /**
- * 夹具直写：去掉办理份里的扩展（模拟缺份），或只去掉批扩展的第一行标签（模拟份残缺）；
- * 触发器放行仅限本事务，不属于业务路径。
+ * 夹具直写：破坏办理份，模拟缺份 / 份残缺。ext = 去掉整个扩展；firstBatchRow = 只去掉批扩展第一行的标签条目；
+ * badCeiling = 批扩展的行内列上限改成非数组。触发器放行仅限本事务，不属于业务路径。
  */
-export async function stripExt(w: World, actorUserId: string, part: 'ext' | 'firstBatchRow' = 'ext') {
-  const content = part === 'ext' ? sql`content - 'ext'` : sql`content #- '{ext,rows,0}'`;
+export type CopyDamage = 'ext' | 'firstBatchRow' | 'badCeiling';
+const DAMAGE = {
+  ext: sql`content - 'ext'`,
+  firstBatchRow: sql`content #- '{ext,rows,0}'`,
+  badCeiling: sql`jsonb_set(content, '{ext,rowCeiling}', '"departmentId"'::jsonb)`,
+} as const;
+export async function stripExt(w: World, actorUserId: string, part: CopyDamage = 'ext') {
+  const content = DAMAGE[part];
   await w.db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
     await tx.execute(sql`ALTER TABLE approval_handling_contents DISABLE TRIGGER USER`);

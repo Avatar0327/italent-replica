@@ -157,27 +157,35 @@ describe('AC-F476-07 offer_batch：撤批表单字段权与子表列', () => {
     expect(revoked.text).not.toContain('合成实习生');
   });
 
-  it('撤掉批的 offers 字段后办理份缺扩展：仍 503，不因 offers 被裁掉就跳过份的完整性校验（R2 P2-3）', async () => {
-    const w = await offerApprovalWorld(testDb().db, 'p6-07-batch-revoke-missing');
-    const batchFields = BATCH.fields.map((field) => field.code);
-    const viewer = await offerViewer(w, w.manager.userId, batchFields, BATCH);
-    const s = await handledBatch(w, 'real');
-    await setView(
-      viewer,
-      batchFields.filter((code) => code !== 'offers'),
-      BATCH.code,
-      batchFields,
-    );
-    await stripExt(w, w.manager.userId);
-    const viaCenter = await center(w, s.instanceId, w.manager.userId, true);
-    expect(viaCenter.status, viaCenter.text).toBe(503);
-    expect(viaCenter.body.error).toMatchObject({
-      code: 'SERVICE_UNAVAILABLE',
-      details: { reason: 'APPROVAL_HANDLING_CONTENT_MISSING' },
+  // 撤掉 offers 后字段裁剪先去掉整个子表：份的完整性（形状 + 逐行标签条目）仍须在任何裁剪 / 提前返回之前校验
+  // （R2 / R3 P2-3）。offers 可见 × 三种缺份方式见 AC-F476-08-p6。
+  const DAMAGES = [
+    ['ext', '缺整个扩展'],
+    ['firstBatchRow', '缺一行标签条目'],
+    ['badCeiling', '行内列上限形状错'],
+  ] as const;
+  for (const [damage, label] of DAMAGES)
+    it(`撤掉批的 offers 字段 × 办理份${label}：仍 503，错误信封不含行姓名、备注、部门名（P2-3）`, async () => {
+      const w = await offerApprovalWorld(testDb().db, `p6-07-batch-revoke-${damage}`);
+      const batchFields = BATCH.fields.map((field) => field.code);
+      const viewer = await offerViewer(w, w.manager.userId, batchFields, BATCH);
+      const s = await handledBatch(w, 'real');
+      await setView(
+        viewer,
+        batchFields.filter((code) => code !== 'offers'),
+        BATCH.code,
+        batchFields,
+      );
+      await stripExt(w, w.manager.userId, damage);
+      const viaCenter = await center(w, s.instanceId, w.manager.userId, true);
+      expect(viaCenter.status, viaCenter.text).toBe(503);
+      expect(viaCenter.body.error).toMatchObject({
+        code: 'SERVICE_UNAVAILABLE',
+        details: { reason: 'APPROVAL_HANDLING_CONTENT_MISSING' },
+      });
+      for (const leaked of [NAME_A1, NAME_A2, 'ZZ_批备注', s.atHandling[0]!.departmentName as string])
+        expect(viaCenter.text, leaked).not.toContain(leaked);
     });
-    for (const leaked of [NAME_A1, NAME_A2, 'ZZ_批备注', s.atHandling[0]!.departmentName as string])
-      expect(viaCenter.text, leaked).not.toContain(leaked);
-  });
 
   it('办理时看不到行内「录用部门」（Offer 对象字段权），事后授权也补不进旧批份的行', async () => {
     const w = await offerApprovalWorld(testDb().db, 'p6-07-batch-expand');

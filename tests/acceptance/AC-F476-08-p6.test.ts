@@ -212,4 +212,14 @@ describe('AC-F476-08 offer_batch（Offer 批）：办理 → 修改 → 两路�
     expect(viaCenter.text).not.toContain(NAME_A1);
     expect(viaCenter.text).not.toContain(s.atHandling[1]!.departmentName as string);
   });
+
+  it('份残缺（批扩展的行内列上限不是数组）：503，不按“无上限”放开行内列', async () => {
+    const w = await offerApprovalWorld(testDb().db, 'p6-08-batch-ceiling-bad');
+    const s = await handledBatch(w);
+    await stripExt(w, w.manager.userId, 'badCeiling');
+    const viaCenter = await center(w, s.instanceId, w.manager.userId);
+    expect(viaCenter.status, viaCenter.text).toBe(503);
+    expect(viaCenter.text).not.toContain(NAME_A1);
+    expect(viaCenter.text).not.toContain('ZZ_批备注');
+  });
 });
