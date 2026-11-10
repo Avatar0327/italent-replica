@@ -3617,11 +3617,7 @@ export const EMPLOYMENT: RequiredTable = {
             'authorize',
             'await requireObjectWrite(authorizer, ctx, { objectCode: ctx.objectCode, operation, payload })',
           ),
-          fn(
-            `${SRC}/personnel/access.ts`,
-            'authorize',
-            "resource: buttonResource(ctx.objectCode, button, ['create', 'submit'].includes(button) ? 'list' : 'detail'),",
-          ),
+          fn(`${SRC}/personnel/access.ts`, 'authorize', 'resource: buttonResource(ctx.objectCode, button,'),
         ],
       ),
       purpose: 'when:employment.exitImportProfile' as const,
