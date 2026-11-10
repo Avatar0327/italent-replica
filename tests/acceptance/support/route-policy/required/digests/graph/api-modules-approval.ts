@@ -1471,8 +1471,12 @@ export const GRAPH: Graph = {
     '#handlerFacts',
   ],
   'apps/api/src/modules/approval/handling-content.ts#recordHandlingContent': ['#CONTENT_SCHEMA_VERSION'],
+  'apps/api/src/modules/approval/handling-content.ts#selectBusinessContent': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#HANDLING_EVENTS',
+    '#latestHandlingCopy',
+  ],
   'apps/api/src/modules/approval/handling-content.ts#selectContent': ['#hasPendingTask', '#latestHandlingCopy'],
-  'apps/api/src/modules/approval/handling-content.ts#selectContentAcross': ['#hasPendingTask', '#latestHandlingCopy'],
   'apps/api/src/modules/approval/handover-empty.ts#decideHandoverApprovers': [
     'packages/domain/src/approval/sources.ts#expressionValue',
     'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
@@ -2411,10 +2415,6 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/store.ts#instanceOf': ['#iso'],
   'apps/api/src/modules/approval/store.ts#instanceOfTask': ['apps/api/src/modules/approval/context.ts#rowsOf'],
-  'apps/api/src/modules/approval/store.ts#instancesOfBusiness': [
-    'apps/api/src/modules/approval/context.ts#rowsOf',
-    '#instanceOf',
-  ],
   'apps/api/src/modules/approval/store.ts#latestInstanceOf': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#instanceOf',

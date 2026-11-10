@@ -226,7 +226,7 @@ const missingCopy = () =>
 async function latestHandlingCopy(
   tx: Tx,
   ctx: Pick<ApprovalContext, 'tenantId'>,
-  instance: InstanceRow,
+  instance: Pick<InstanceRow, 'id' | 'businessType'>,
   userId: string,
 ): Promise<FrozenContent | null> {
   const [row] = rowsOf<HandlingRow>(
@@ -272,27 +272,40 @@ export async function selectContent(
 }
 
 /**
- * 业务单读取（设计 §5.3，单 Offer 详情等「按业务单读」的入口）：候选来自该业务单的**全部**审批实例，
- * 驳回 / 不同意后重开、新建实例都不让旧份丢失。任一实例上本人是发起人或有待办 → 现值；否则取本人所有办理份里
- * 办理时间最晚的一份；一份都没有 → 现值。
+ * 业务单读取（设计 §1.2、§5.3，单 Offer 详情等「按业务单读」的入口）：候选来自该业务单的**全部**审批实例，在库里
+ * 一次判定，不受展示窗口（最新 200 条）截断（评审 P2-1）。任一实例上本人是发起人或有待办 → 现值；否则各实例先按
+ * 日志序号取本人最近一次办理，跨实例按办理时间倒序（同时刻按实例创建时间、实例 ID、日志序号）取第一份；
+ * 一份都没有 → 现值；选中的那次办理缺份 → 503（latestHandlingCopy，DEC-807）。
  */
-export async function selectContentAcross(
+export async function selectBusinessContent(
   tx: Tx,
   ctx: Pick<ApprovalContext, 'tenantId'>,
-  instances: readonly InstanceRow[],
-  tasksOf: (instance: InstanceRow) => Promise<readonly TaskRow[]>,
+  businessType: BusinessType,
+  businessId: string,
   userId: string,
 ): Promise<ContentSelection> {
-  const copies: FrozenContent[] = [];
-  for (const instance of instances) {
-    if (instance.initiatorUserId === userId || hasPendingTask(await tasksOf(instance), userId)) {
-      return { mode: 'live' };
-    }
-    const copy = await latestHandlingCopy(tx, ctx, instance, userId);
-    if (copy) copies.push(copy);
-  }
-  const latest = copies.sort((a, b) => b.actedAt.localeCompare(a.actedAt))[0];
-  return latest ? { mode: 'frozen', frozen: latest } : { mode: 'live' };
+  const [row] = rowsOf<{ live: boolean; instanceId: string | null }>(
+    await tx.execute(sql`WITH inst AS (
+        SELECT id, initiator_user_id, created_at FROM approval_instances
+        WHERE tenant_id = ${ctx.tenantId} AND business_type = ${businessType} AND business_id = ${businessId}::uuid
+      ), latest AS (
+        SELECT DISTINCT ON (l.instance_id) l.instance_id, l.seq, COALESCE(c.acted_at, l.created_at) AS acted_at
+        FROM approval_instance_logs l JOIN inst ON inst.id = l.instance_id
+        LEFT JOIN approval_handling_contents c ON c.tenant_id = l.tenant_id AND c.handling_log_id = l.id
+        WHERE l.tenant_id = ${ctx.tenantId} AND l.actor_user_id = ${userId}::uuid
+          AND l.event = ANY(${`{${HANDLING_EVENTS.join(',')}}`}::text[])
+        ORDER BY l.instance_id, l.seq DESC
+      )
+      SELECT EXISTS (SELECT 1 FROM inst WHERE initiator_user_id = ${userId}::uuid)
+          OR EXISTS (SELECT 1 FROM approval_tasks t JOIN inst ON inst.id = t.instance_id
+            WHERE t.tenant_id = ${ctx.tenantId} AND t.assignee_user_id = ${userId}::uuid AND t.status = 'pending'
+              AND t.origin NOT IN ('self_skip', 'subject_skip')) AS live,
+        (SELECT latest.instance_id::text FROM latest JOIN inst ON inst.id = latest.instance_id
+          ORDER BY latest.acted_at DESC, inst.created_at DESC, inst.id DESC, latest.seq DESC LIMIT 1) AS "instanceId"`),
+  );
+  if (!row || row.live || !row.instanceId) return { mode: 'live' };
+  const frozen = await latestHandlingCopy(tx, ctx, { id: row.instanceId, businessType }, userId);
+  return frozen ? { mode: 'frozen', frozen } : { mode: 'live' };
 }
 
 /** 响应里的“内容来源”说明（设计 §5.5）：前端据此区分办理时快照与现值。 */

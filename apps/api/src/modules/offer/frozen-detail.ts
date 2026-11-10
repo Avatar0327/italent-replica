@@ -1,8 +1,8 @@
 /**
  * 单 Offer 详情的已办读取（F-476 P6，设计 §5.3、§6）：GET /offers/:id 是审批中心之外的第二条读取路径。
- * 候选办理份来自该 Offer 的**全部**审批实例（不是 latestInstanceOf / 当前指针），驳回、不同意后重开或新建实例
- * 都不让旧份丢失（P8 评审 P2-2）。读法与审批中心同源：同一个选择函数、同一个 readDetail，表单值用 formValuesView
- * （审批中心 detailView 的 form.values 也走它），所以两条路径不会读出不同的值。
+ * 候选办理份来自该 Offer 的**全部**审批实例（不是 latestInstanceOf / 当前指针，也不受展示窗口截断），驳回、
+ * 不同意后重开或新建实例都不让旧份丢失（P8 评审 P2-2、P6 评审 P2-1）。读法与审批中心同源：同一个取份函数、
+ * 同一个 readDetail，表单值用 formValuesView（审批中心 detailView 的 form.values 也走它），两条路径读不出不同的值。
  * DEC-801：发起人 / 有待办 → 现值；其余按本人最近一次办理的份。
  * 已办读者读到的是办理时的整份，不再按当前数据范围裁行（DEC-834④）；字段按「节点表单 ∩ 办理时上限 ∩ 当前字段权限」。
  * 返回 null 表示读现值，由调用方走原有详情路径；缺份直接抛 503（DEC-807），不退回现值。
@@ -12,8 +12,7 @@ import { withTenant } from '@italent/db';
 import { OFFER_OBJECT } from '@italent/domain';
 import { approvalError, canonicalId } from '../approval/context.js';
 import { formValuesView, readDetail } from '../approval/disclosure.js';
-import { contentViewOf, selectContentAcross } from '../approval/handling-content.js';
-import { instancesOfBusiness, loadTasks } from '../approval/store.js';
+import { contentViewOf, selectBusinessContent } from '../approval/handling-content.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { getModuleViewableFields } from '../permission/module-access.js';
 import type { OfferContext } from './context.js';
@@ -25,15 +24,7 @@ export async function frozenOfferDetail(
 ): Promise<Record<string, unknown> | null> {
   const userId = canonicalId(ctx.userId);
   const found = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-    const instances = await instancesOfBusiness(tx, ctx.tenantId, 'offer', offerId);
-    if (!instances.length) return null;
-    const selection = await selectContentAcross(
-      tx,
-      ctx,
-      instances,
-      (instance) => loadTasks(tx, ctx.tenantId, instance.id),
-      userId,
-    );
+    const selection = await selectBusinessContent(tx, ctx, 'offer', offerId, userId);
     if (selection.mode !== 'frozen') return null;
     // 选中的办理份所在实例：readDetail 在该实例上对本人的选择与上面是同一份（本人在任一实例有待办 / 是发起人时已返回现值）
     const data = await readDetail(
