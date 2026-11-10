@@ -27,10 +27,13 @@ describe('转交记录（DEC-726 三页签）', () => {
       items: [subordinateItem(otherSub.id, receiver.id)],
     });
 
-    const leave = await x.directLeave('2026-10-05');
-    await x.planDuties(leave.id, [{ employeeId: subordinate.id, receiverId: receiver.id }]);
-    await x.activate(leave.id, MENU_TODAY);
-    expect(await x.managerOf(subordinate.id)).toBe(receiver.id);
+    // DT-R4：负责人已经由上面的立即转交在今天换手，保存日（今天）起不再持有；最后工作日取今天，生效日次日
+    const leave = await x.directLeave(
+      MENU_TODAY,
+      x.dutyPlan([{ employeeId: subordinate.id, receiverId: receiver.id }]),
+    );
+    await x.activate(leave.id, '2026-10-07');
+    expect(await x.managerOf(subordinate.id, '2026-10-07')).toBe(receiver.id);
 
     const all = await x.records('tab=all');
     expect(all.total).toBe(3);

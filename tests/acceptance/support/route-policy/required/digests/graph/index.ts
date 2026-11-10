@@ -13,6 +13,7 @@ import { GRAPH as api_modules_contracts } from './api-modules-contracts.js';
 import { GRAPH as api_modules_duty_transfer } from './api-modules-duty-transfer.js';
 import { GRAPH as api_modules_employee_self_service } from './api-modules-employee-self-service.js';
 import { GRAPH as api_modules_employment } from './api-modules-employment.js';
+import { GRAPH as api_modules_esign } from './api-modules-esign.js';
 import { GRAPH as api_modules_establishment } from './api-modules-establishment.js';
 import { GRAPH as api_modules_evaluation } from './api-modules-evaluation.js';
 import { GRAPH as api_modules_hr_analysis } from './api-modules-hr-analysis.js';
@@ -39,6 +40,7 @@ import { GRAPH as domain_attachments } from './domain-attachments.js';
 import { GRAPH as domain_audit } from './domain-audit.js';
 import { GRAPH as domain_contracts } from './domain-contracts.js';
 import { GRAPH as domain_employment } from './domain-employment.js';
+import { GRAPH as domain_esign } from './domain-esign.js';
 import { GRAPH as domain_evaluation } from './domain-evaluation.js';
 import { GRAPH as domain_expression } from './domain-expression.js';
 import { GRAPH as domain_hr_analysis } from './domain-hr-analysis.js';
@@ -67,6 +69,7 @@ export const GRAPH: Graph = {
   ...api_modules_duty_transfer,
   ...api_modules_employee_self_service,
   ...api_modules_employment,
+  ...api_modules_esign,
   ...api_modules_establishment,
   ...api_modules_evaluation,
   ...api_modules_hr_analysis,
@@ -93,6 +96,7 @@ export const GRAPH: Graph = {
   ...domain_audit,
   ...domain_contracts,
   ...domain_employment,
+  ...domain_esign,
   ...domain_evaluation,
   ...domain_expression,
   ...domain_hr_analysis,

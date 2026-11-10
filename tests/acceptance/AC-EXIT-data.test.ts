@@ -12,7 +12,7 @@ const testDb = useTestDb();
 const DENIED = /permission denied/;
 
 describe('AC-DM-19 / B-67 离职数据表（R2-T03 B1a）', () => {
-  it('扩展行：非日期业务字段可改；业务 / 员工 / 周期 / 发起方式 / 批次 / 转交时机快照不可改；约束生效；不可删除', async () => {
+  it('扩展行：非日期业务字段可改；业务 / 员工 / 周期 / 发起方式 / 批次不可改，转交时机与指定日期可改（R2-T09b DT-R3，已转交后的锁定由应用层判）；约束生效；不可删除', async () => {
     const w = await exitWorld(testDb().db, 'data-request');
     const seeded = await w.seedExitBusiness();
     expect(seeded.error).toBeUndefined();
@@ -22,9 +22,13 @@ describe('AC-DM-19 / B-67 离职数据表（R2-T03 B1a）', () => {
     for (const column of ['staff_id', 'employee_id', 'initiator_user_id', 'batch_id']) {
       expect(await update(sql`${sql.identifier(column)} = gen_random_uuid()`), column).toMatch(DENIED);
     }
-    for (const column of ['mode', 'initiator', 'duty_transfer_timing']) {
+    for (const column of ['mode', 'initiator']) {
       expect(await update(sql`${sql.identifier(column)} = 'approval_passed'`), column).toMatch(DENIED);
     }
+    expect(
+      await update(sql`duty_transfer_timing = 'specified_date', duty_transfer_date = '2026-10-12'`),
+    ).toBeUndefined();
+    expect(await update(sql`duty_transfer_timing = 'approval_passed', duty_transfer_date = NULL`)).toBeUndefined();
     for (const [set, constraint] of [
       [sql`attachment_refs = '{"a":1}'::jsonb`, 'exit_requests_attachments'],
       [sql`compensation_amount = -1`, 'exit_requests_amounts'],

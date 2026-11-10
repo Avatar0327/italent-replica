@@ -9,6 +9,7 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { requestWorld, type RequestWorld } from './AC-PT-request-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -77,7 +78,15 @@ describe('F-249 新增节点：兼职类型 / 结束日期 / 兼职部门 / 直�
 
   async function jobData(w: RequestWorld) {
     const api = tenantApi(database().db, { clock: () => new Date('2026-10-01T01:00:00.000Z') });
+    let granted: Promise<string> | undefined;
+    const unit = () =>
+      (granted ??= grantJobUnit(
+        (method, path, init) => api.request(method, path, { ...init, user: w.hr.id, tenant: w.tenant.id }),
+        w.hr.id,
+        w.tenant.id,
+      ));
     const create = async (kind: string, extra: Record<string, unknown> = {}) => {
+      if (kind === 'levels') await unit();
       const response = await api.request('POST', `/api/tenant/job/${kind}`, {
         user: w.hr.id,
         tenant: w.tenant.id,
