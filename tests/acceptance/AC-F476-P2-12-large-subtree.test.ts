@@ -3,6 +3,7 @@
  * 不得让提交成功的合法单据到最后审批时才必然失败）。预览树本身受 DEC-728 的 2000 节点上限约束，超出 413：
  * - 子树 ≤ 2000：冻结完整（节点、编制原值逐项一致，事后改编制不漂移），体积远小于 16 MiB；
  * - 子树 > 2000：办理照常成功，办理份记下“超限”，已办预览 / 导出与现值读同一个 413，详情 / 明细仍读冻结份。
+ * 错误优先级与现值读一致：先读编制（汇总预算超限 503），再数节点（超限 413）；同时超限时两者都是 503。
  * 夹具一条 SQL 铺下级；断言只看 HTTP 响应与办理份体积。
  */
 import { sql, withTenant } from '@italent/db';
@@ -38,7 +39,7 @@ const refusalOf = async (res: Response) => ({
 });
 
 onRealPg('AC-F476-12 大子树的办理与冻结（真 PostgreSQL）', { timeout: 600_000 }, () => {
-  it('10,002 个节点、根组织有「仅本级」编制：办理成功（不因编制汇总预算 503）；已办预览 / 导出 413，详情仍读冻结份', async () => {
+  it('10,002 个节点、根组织有「仅本级」编制：办理成功（不因编制汇总预算 503）；已办预览 / 导出与现值读同为 503（编制预算先于节点数判断），详情仍读冻结份', async () => {
     const w = await flowWorld(testDb().db, 'f476p2-big-local');
     await seedChildren(w, w.a, 10_001);
     await localCapacity(w, w.a, 5);
@@ -49,8 +50,8 @@ onRealPg('AC-F476-12 大子树的办理与冻结（真 PostgreSQL）', { timeout
     const bytes = await payloadBytes(w, (await w.instance(id)).id);
     expect(bytes).toHaveLength(1);
     expect(bytes[0]).toBeLessThan(MIB);
-    await expectError(await reader(w).previewRes(id, w.hrbp.userId), 413, 'PAYLOAD_TOO_LARGE');
-    await expectError(await exportRes(w, id, w.hrbp.userId), 413, 'PAYLOAD_TOO_LARGE');
+    await expectError(await reader(w).previewRes(id, w.hrbp.userId), 503, 'SERVICE_UNAVAILABLE');
+    await expectError(await exportRes(w, id, w.hrbp.userId), 503, 'SERVICE_UNAVAILABLE');
     const detail = await reader(w).detail(id, w.hrbp.userId);
     expect(detail.id).toBe(id);
     expect((await reader(w).items(id, w.hrbp.userId)).items.map((item) => item.name)).toEqual([NAME_A]);
