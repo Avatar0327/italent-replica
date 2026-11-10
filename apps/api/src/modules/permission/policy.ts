@@ -53,6 +53,7 @@ export const PERMISSION_POLICIES = defineTable('permission', {
   [`GET ${BASE}/scope-policies/:appCode/:objectCode/:targetKind/:targetCode`]: otherSettings,
   [`PUT ${BASE}/scope-policies/:appCode/:objectCode/:targetKind/:targetCode`]: otherSettingsWrite,
   [`GET ${BASE}/mous`]: admin('mou_manage'),
+  [`GET ${BASE}/mous/tree`]: admin('mou_manage'),
   [`GET ${BASE}/mous/:id`]: admin('mou_manage', byId),
   [`POST ${BASE}/mous`]: otherSettingsWrite,
   [`PUT ${BASE}/mous/:id`]: otherSettingsWriteById,

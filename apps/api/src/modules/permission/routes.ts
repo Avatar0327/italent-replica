@@ -6,7 +6,7 @@ import { tenantLocalDate } from '@italent/domain';
  *   用户授权  GET /grantable-profiles、GET/POST /grants、POST /grants/:id/revoke             user_grant
  *   管理员    GET/POST /admins、GET/PUT /admins/:id                                         admin_manage
  *   用户管理  /users…（见 user-routes.ts）                                                  user_manage
- *   管理单元  GET /mous、GET /mous/:id；增删改见 data-scope-routes.ts                     mou_manage / other_settings
+ *   管理单元  GET /mous、GET /mous/tree、GET /mous/:id；增删改见 data-scope-routes.ts                     mou_manage / other_settings
  *   许可      GET /licenses                                                                license_balance
  *             GET /licenses/:licenseType/seats（使用明细）                                   license_usage
  *   菜单      GET /admin-menus  当前用户可见的企业设置菜单及可操作性（06 §7.1 矩阵）

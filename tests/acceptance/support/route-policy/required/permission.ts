@@ -102,6 +102,7 @@ export const PERMISSION: RequiredTable = {
   'GET /api/tenant/permission/scope-policies/:appCode/:objectCode/:targetKind/:targetCode': [configRoute],
   'PUT /api/tenant/permission/scope-policies/:appCode/:objectCode/:targetKind/:targetCode': [configRoute],
   'GET /api/tenant/permission/mous': [mouView('/mous')],
+  'GET /api/tenant/permission/mous/tree': [mouView('/mous/tree')],
   'GET /api/tenant/permission/mous/:id': [mouView('/mous/:id')],
   'POST /api/tenant/permission/mous': [scopeRoute(SCOPES, 'POST', '/mous')],
   'PUT /api/tenant/permission/mous/:id': [scopeRoute(SCOPES, 'PUT', '/mous/:id')],
