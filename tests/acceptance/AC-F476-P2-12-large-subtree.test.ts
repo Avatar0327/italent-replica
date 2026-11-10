@@ -10,7 +10,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { APPROVAL } from './AC-F476-support.js';
 import { flowWorld } from './AC-OA-approval-support.js';
-import { expectError } from './AC-OA-head-support.js';
+import { bodyOf, expectError } from './AC-OA-head-support.js';
 import { rename } from './AC-OA-items-support.js';
 import { flatten, reader } from './AC-OA-read-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
@@ -29,6 +29,13 @@ const testDb = useTestDb();
 // 大子树在 PGlite（WASM 单线程）里要跑几十分钟：只在真 PostgreSQL 跑（CI 的 PG 分片；本地 pnpm test:pg）
 const onRealPg = describe.skipIf(!process.env.TEST_DATABASE_URL);
 const MIB = 1024 * 1024;
+
+/** 响应的错误口径（状态码、错误码、文案）；成功响应没有错误体。 */
+const refusalOf = async (res: Response) => ({
+  status: res.status,
+  code: (await bodyOf(res)).error?.code,
+  message: (await bodyOf(res)).error?.message,
+});
 
 onRealPg('AC-F476-12 大子树的办理与冻结（真 PostgreSQL）', { timeout: 600_000 }, () => {
   it('10,002 个节点、根组织有「仅本级」编制：办理成功（不因编制汇总预算 503）；已办预览 / 导出 413，详情仍读冻结份', async () => {
@@ -116,6 +123,29 @@ onRealPg('AC-F476-12 大子树的办理与冻结（真 PostgreSQL）', { timeout
     expect(await payloadBytes(w, (await w.instance(id)).id)).toHaveLength(1);
     await expectError(await reader(w).previewRes(id, w.hrbp.userId), 503, 'SERVICE_UNAVAILABLE');
     expect((await reader(w).detail(id, w.hrbp.userId)).id).toBe(id);
+  });
+
+  describe.each([
+    ['节点与编制预算同时超限（现值先撞编制预算 503，不是 413）', 10_001, true, 503, 'SERVICE_UNAVAILABLE'],
+    ['仅节点超限（413）', 2_500, false, 413, 'PAYLOAD_TOO_LARGE'],
+    ['仅编制预算超限（启用节点不超 2000，503）', 10_001, 'disabled', 503, 'SERVICE_UNAVAILABLE'],
+  ] as const)('冻结读与办理前现值读同口径：%s', (_label, children, capacity, status, code) => {
+    it('预览与导出的状态码、错误码、文案办理前后逐项相同', async () => {
+      const w = await flowWorld(testDb().db, `f476p2-same-${status}-${children}-${capacity}`);
+      await seedChildren(w, w.a, children, { enabled: capacity !== 'disabled' });
+      if (capacity) await localCapacity(w, w.a, 5);
+      const { id } = await w.draft(rename(w.a, { name: NAME_A }));
+      await w.submitted(id);
+      const readAll = async (user: string) => [
+        await refusalOf(await reader(w).previewRes(id, user)),
+        await refusalOf(await exportRes(w, id, user)),
+      ];
+
+      const live = await readAll(w.hr.id); // 办理前：发起人读现值
+      for (const entry of live) expect(entry).toMatchObject({ status, code });
+      await w.acted(id, w.hrbp, 'approve');
+      expect(await readAll(w.hrbp.userId)).toEqual(live); // 办理后：冻结读，错误口径一字不差
+    });
   });
 
   it('大子树单据办理时办理份写入失败：整笔回滚（任务 / 日志 / 办理份无残留），移除故障后可重试成功', async () => {
