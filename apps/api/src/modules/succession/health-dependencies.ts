@@ -1,7 +1,7 @@
 /** DEC-431① / DEC-455①：字段、人口、度量共用依赖计划，授权和取数不得分别猜测来源。 */
 import type { SuccessionLevelRow } from '@italent/domain';
 import { unsupportedHealthRule } from './health-rule-support.js';
-import { CalcObjectFailure } from './calc-contract.js';
+import { CalcObjectFailure } from './calc-contract-core.js';
 
 type Source = 'org' | 'incumbents' | 'successors' | 'on_duty_count' | 'green_rate' | 'review';
 type Denominator = 'population' | 'successors' | 'incumbents' | 'nonempty' | null;

@@ -1697,13 +1697,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
   ],
+  'apps/api/src/modules/employment/entry-contract-schema.ts#entryContractSchema': [
+    'apps/api/src/modules/contracts/input.ts#fieldsSchema',
+  ],
   'apps/api/src/modules/employment/entry-contract.ts#contractContext': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
-  ],
-  'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema': [
-    'apps/api/src/modules/contracts/input.ts#fieldsSchema',
   ],
   'apps/api/src/modules/employment/entry-contract.ts#generateEntryContract': [
     'apps/api/src/modules/contracts/ports.ts#generateContractForBusiness',
@@ -1829,7 +1829,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/replay-guard.ts#pendingActionGuard',
   ],
   'apps/api/src/modules/employment/entry-routes.ts#completeInput': [
-    'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
+    'apps/api/src/modules/employment/entry-contract-schema.ts#entryContractSchema',
     'apps/api/src/modules/employment/entry-options.ts#probationTerms',
   ],
   'apps/api/src/modules/employment/entry-routes.ts#editInput': [
@@ -2098,10 +2098,10 @@ export const GRAPH: Graph = {
     '#recordEffectiveCorrection',
     '#revalidateAfterPostponement',
     '#syncActualRetirementDate',
-    'apps/api/src/modules/employment/exit-confirmation.ts#runExitEffectiveHooks',
     'apps/api/src/modules/employment/exit-contract-effects.ts#handleContractsOnExitEffective',
     'apps/api/src/modules/employment/exit-duty-clear.ts#settleExitDuties',
     'apps/api/src/modules/employment/exit-gate.ts#isOverLimitAck',
+    'apps/api/src/modules/employment/exit-post-effect-hooks.ts#runExitEffectiveHooks',
     'apps/api/src/modules/employment/exit-projection.ts#assertExtendedEmploymentAvailable',
     'apps/api/src/modules/employment/exit-projection.ts#assertNoNewEstablishmentOccupancy',
     'apps/api/src/modules/employment/exit-projection.ts#loadTimelineSegments',
@@ -2164,7 +2164,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
   ],
   'apps/api/src/modules/employment/exit-application.ts#exitPatchSchema': [
-    'apps/api/src/modules/employment/exit-initiation.ts#exitOptionsSchema',
+    'apps/api/src/modules/employment/exit-options-schema.ts#exitOptionsSchema',
   ],
   'apps/api/src/modules/employment/exit-application.ts#initialTimingChoice': [
     '#dutyTransferTiming',
@@ -2290,9 +2290,9 @@ export const GRAPH: Graph = {
     '#exitKindLabel',
     '#loadCancelHead',
     '#lockForCancel',
-    'apps/api/src/modules/employment/exit-confirmation.ts#runExitCancelledHooks',
     'apps/api/src/modules/employment/exit-downstream.ts#probeDownstream',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
+    'apps/api/src/modules/employment/exit-post-effect-hooks.ts#runExitCancelledHooks',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
@@ -2330,8 +2330,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-confirmation.ts#registerPreRelease': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
-    '#confirmedHooks',
     '#retirementReEmployed',
+    'apps/api/src/modules/employment/exit-post-effect-hooks.ts#runExitConfirmedHooks',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'apps/api/src/modules/establishment/exit-release.ts#registerEstablishmentPreRelease',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -2339,9 +2339,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-confirmation.ts#retirementReEmployed': [
     'apps/api/src/modules/employment/retirement-application.ts#loadRetirementRequest',
   ],
-  'apps/api/src/modules/employment/exit-confirmation.ts#runExitCancelledHooks': ['#cancelledHooks'],
-  'apps/api/src/modules/employment/exit-confirmation.ts#runExitEffectiveHooks': ['#effectiveHooks'],
-  'apps/api/src/modules/employment/exit-confirmation.ts#runExitReplannedHooks': ['#replannedHooks'],
   'apps/api/src/modules/employment/exit-contract-effects.ts#handleContractsOnExitEffective': [
     'apps/api/src/modules/approval/context.ts#schedulerAwareContext',
     'apps/api/src/modules/approval/notifications.ts#notifyMessage',
@@ -2400,6 +2397,10 @@ export const GRAPH: Graph = {
     '#writerOf',
   ],
   'apps/api/src/modules/employment/exit-dictionaries.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
+  'apps/api/src/modules/employment/exit-downstream-visibility.ts#downstreamVisibilityOf': ['#downstreamVisibility'],
+  'apps/api/src/modules/employment/exit-downstream-visibility.ts#registerDownstreamVisibility': [
+    '#downstreamVisibility',
+  ],
   'apps/api/src/modules/employment/exit-downstream.ts#contractViewableFields': [
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
@@ -2443,7 +2444,6 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-downstream.ts#probes': ['#handoverProbe', '#ledgerProbe', '#notConnected'],
-  'apps/api/src/modules/employment/exit-downstream.ts#registerDownstreamVisibility': ['#downstreamVisibility'],
   'apps/api/src/modules/employment/exit-downstream.ts#trimContractDetail': [
     'packages/domain/src/contracts/rules.ts#CONTRACT_FIELDS',
   ],
@@ -2455,13 +2455,13 @@ export const GRAPH: Graph = {
     '#visibleMap',
   ],
   'apps/api/src/modules/employment/exit-downstream.ts#visibleMap': [
+    'apps/api/src/modules/employment/exit-downstream-visibility.ts#downstreamVisibilityOf',
     '#CONTRACT_TARGETS',
     '#DEPARTMENT_SCOPED_TYPES',
     '#HANDOVER_TARGET',
     '#allowed',
     '#contractsInScope',
     '#discloseHandovers',
-    '#downstreamVisibility',
     'apps/api/src/modules/employment/exit-gate.ts#batchDisclose',
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
@@ -3297,30 +3297,18 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-initiation.ts#boundEmployee': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/exit-initiation.ts#exitOptionsSchema': [
-    '#code',
-    '#day',
-    '#month',
-    '#realDay',
-    'apps/api/src/modules/employment/fields.ts#normalizedUuid',
-    'packages/domain/src/employment/blacklist.ts#BLACKLIST_NOTE_MAX',
-    'packages/domain/src/employment/blacklist.ts#BLACKLIST_REASON_CODES',
-    'packages/domain/src/employment/exit.ts#EXIT_FORM_DUTY_TRANSFER_TIMINGS',
-  ],
   'apps/api/src/modules/employment/exit-initiation.ts#managerInitiationEnabled': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'packages/domain/src/employment/exit.ts#EXIT_MANAGER_INITIATION_KEY',
-  ],
-  'apps/api/src/modules/employment/exit-initiation.ts#realDay': [
-    '#day',
-    'apps/api/src/modules/org/read-model.ts#validIsoDate',
   ],
   'apps/api/src/modules/employment/exit-initiation.ts#resolveBlacklistFields': [
     '#BLACKLIST_DETAIL_KEYS',
     '#NO_BLACKLIST',
     '#reject',
   ],
-  'apps/api/src/modules/employment/exit-initiation.ts#splitExitOptions': ['#exitOptionsSchema'],
+  'apps/api/src/modules/employment/exit-initiation.ts#splitExitOptions': [
+    'apps/api/src/modules/employment/exit-options-schema.ts#exitOptionsSchema',
+  ],
   'apps/api/src/modules/employment/exit-initiation.ts#touchesBlacklist': ['#BLACKLIST_DETAIL_KEYS'],
   'apps/api/src/modules/employment/exit-later-records.ts#assertNoLaterExitRecords': [
     '#exitLaterRecordMessage',
@@ -3358,6 +3346,24 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
   ],
+  'apps/api/src/modules/employment/exit-options-schema.ts#exitOptionsSchema': [
+    '#code',
+    '#day',
+    '#month',
+    '#realDay',
+    'apps/api/src/modules/employment/fields.ts#normalizedUuid',
+    'packages/domain/src/employment/blacklist.ts#BLACKLIST_NOTE_MAX',
+    'packages/domain/src/employment/blacklist.ts#BLACKLIST_REASON_CODES',
+    'packages/domain/src/employment/exit.ts#EXIT_FORM_DUTY_TRANSFER_TIMINGS',
+  ],
+  'apps/api/src/modules/employment/exit-options-schema.ts#realDay': [
+    '#day',
+    'apps/api/src/modules/org/read-model.ts#validIsoDate',
+  ],
+  'apps/api/src/modules/employment/exit-post-effect-hooks.ts#runExitCancelledHooks': ['#cancelledHooks'],
+  'apps/api/src/modules/employment/exit-post-effect-hooks.ts#runExitConfirmedHooks': ['#confirmedHooks'],
+  'apps/api/src/modules/employment/exit-post-effect-hooks.ts#runExitEffectiveHooks': ['#effectiveHooks'],
+  'apps/api/src/modules/employment/exit-post-effect-hooks.ts#runExitReplannedHooks': ['#replannedHooks'],
   'apps/api/src/modules/employment/exit-preview-effects.ts#contractExitWarning': [
     'apps/api/src/modules/contracts/ports.ts#previewContractsOnExit',
     'apps/api/src/modules/employment/exit-downstream.ts#allowed',
@@ -3551,9 +3557,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-reschedule.ts#rescheduleEffectiveExit': [
     'apps/api/src/modules/employment/exit-cancel-intervals.ts#assertOccupancyChange',
-    'apps/api/src/modules/employment/exit-confirmation.ts#runExitReplannedHooks',
     'apps/api/src/modules/employment/exit-downstream.ts#effectiveRescheduleHints',
     'apps/api/src/modules/employment/exit-downstream.ts#probeRescheduleDownstream',
+    'apps/api/src/modules/employment/exit-post-effect-hooks.ts#runExitReplannedHooks',
     'apps/api/src/modules/employment/exit-replacement.ts#replaceExit',
     'apps/api/src/modules/employment/exit-reposition.ts#repositionExit',
     '#replanAttempts',
@@ -3563,12 +3569,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-activation.ts#activateExit',
     'apps/api/src/modules/employment/exit-cancel-intervals.ts#assertOccupancyChange',
     'apps/api/src/modules/employment/exit-cancel-intervals.ts#loadOccupancy',
-    'apps/api/src/modules/employment/exit-confirmation.ts#runExitReplannedHooks',
     'apps/api/src/modules/employment/exit-downstream.ts#probeRescheduleDownstream',
     'apps/api/src/modules/employment/exit-duty-timing.ts#settleTimingOnReschedule',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
     'apps/api/src/modules/employment/exit-gate.ts#saveAck',
+    'apps/api/src/modules/employment/exit-post-effect-hooks.ts#runExitReplannedHooks',
     '#exitDateChange',
     '#prepareReschedule',
     '#replanAttempts',
@@ -3590,7 +3596,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-routes.ts#VIEW_QUERY_KEYS': ['#viewQuery'],
   'apps/api/src/modules/employment/exit-routes.ts#batchSchema': [
     'apps/api/src/modules/employment/exit-batch.ts#EXIT_BATCH_LIMIT',
-    'apps/api/src/modules/employment/exit-initiation.ts#exitOptionsSchema',
+    'apps/api/src/modules/employment/exit-options-schema.ts#exitOptionsSchema',
     '#day',
     'apps/api/src/modules/employment/fields.ts#normalizedUuid',
   ],
@@ -4220,7 +4226,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/user-provisioning.ts#provisionEmployeeUser',
   ],
   'apps/api/src/modules/employment/intern-create.ts#internContract': [
-    'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
+    'apps/api/src/modules/employment/entry-contract-schema.ts#entryContractSchema',
   ],
   'apps/api/src/modules/employment/intern-create.ts#internCreateGuard': [
     'apps/api/src/modules/employment/context.ts#commandContext',
@@ -7051,7 +7057,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-options.ts#probationTerms',
   ],
   'apps/api/src/modules/employment/retirement-rehire.ts#rehireEnvelope': [
-    'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
+    'apps/api/src/modules/employment/entry-contract-schema.ts#entryContractSchema',
     '#rehireEntry',
   ],
   'apps/api/src/modules/employment/retirement-rehire.ts#rehireFailure': [

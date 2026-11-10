@@ -60,11 +60,17 @@ export const rows = {
     occurredAt: '2026-10-12T03:00:00Z',
     operator: { name: '合成操作人' },
     operationLabel: '编辑',
+    app: '企业设置',
     objectLabel: '员工',
     objectId: 'DEMO-001',
     content: '名称:从【甲】修改为【乙】',
     sourceAction: '编辑',
     traceId: 'demo-trace',
+    sourcePageType: null,
+    sourcePage: null,
+    terminal: null,
+    clientVersion: null,
+    ip: null,
     snapshot: null,
   },
 };
@@ -96,7 +102,10 @@ export async function settingsFixtures(page: Page, editable = true) {
     if (path.includes('/profiles')) body = collection('profiles', rows.profile);
     if (path.includes('/grantable-profiles')) body = { items: [rows.profile] };
     if (path.includes('/grants')) body = collection('grants', rows.grant);
-    if (path.includes('/mous')) body = collection('mous', rows.mou);
+    if (path.includes('/mous'))
+      body = path.endsWith('/mous/tree')
+        ? { items: [{ ...rows.mou, matched: true, children: [] }], total: 1 }
+        : collection('mous', rows.mou);
     if (path.includes('/scopes/'))
       body = { userId: user, appCode: 'TenantBase', kind: 'default', revision: 6, mouId: null, orgRanges: [] };
     return body ? route.fulfill({ json: body }) : route.fallback();
@@ -104,7 +113,12 @@ export async function settingsFixtures(page: Page, editable = true) {
   await page.route('**/api/tenant/audit/**', (route) =>
     route.fulfill({
       json: new URL(route.request().url()).pathname.endsWith('/data-changes')
-        ? { items: [rows.audit], nextCursor: null, window: { from: '2026-07-13', to: '2026-10-13' } }
+        ? {
+            items: [rows.audit],
+            nextCursor: null,
+            apps: ['企业设置'],
+            window: { from: '2026-07-13', to: '2026-10-13' },
+          }
         : rows.audit,
     }),
   );

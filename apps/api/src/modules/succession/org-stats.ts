@@ -12,7 +12,7 @@ import { listOrgDescendantsInTransaction } from '../org/hierarchy-reader.js';
 import { loadOrgSnapshot, validIsoDate } from '../org/read-model.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import type { TalentReviewSyncPort } from '../talent-review/sync-port.js';
-import { CalcBlocked, CalcObjectFailure, type CalcHandler } from './calc-contract.js';
+import { CalcBlocked, CalcObjectFailure, type CalcHandler } from './calc-contract-core.js';
 import { codeOf, type SuccessionContext } from './access.js';
 import { INCUMBENT_EXCLUDED_STATUSES, rowsOf } from './read-sql.js';
 import { successionReviewReads } from './ports.js';
