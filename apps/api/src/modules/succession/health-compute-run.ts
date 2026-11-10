@@ -2,8 +2,9 @@
 import { randomUUID } from 'node:crypto';
 import type { Tx } from '@italent/db';
 import type { OrgHealthComputePort, OrgHealthComputeResult } from '../talent-review/health-port.js';
-import { CalcObjectFailure, type CalcContext, type CalcObject } from './calc-contract.js';
-import { enqueueCalcRun, runCalcPageInTransaction } from './calc-worker.js';
+import { CalcObjectFailure, type CalcContext, type CalcObject } from './calc-contract-core.js';
+import { enqueueCalcRun } from './calc-enqueue.js';
+import { runCalcPageInTransaction } from './calc-runner.js';
 
 type Input = Parameters<OrgHealthComputePort['compute']>[1];
 export async function runProjectHealthCompute(
