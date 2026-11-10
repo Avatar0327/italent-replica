@@ -318,8 +318,8 @@ function registerRequestRead(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // 申请详情（含主职信息 / 员工信息分组，读员工当前主职）：DEC-177 可见（申请部门 ∪ 员工当前主职部门）；范围外与不存在同一个 404；
   // 主职分组只在操作人看得到该主职记录时给出；三组各按所属对象的字段查看权逐层裁剪。
   // F-476 P5：已办人读办理时冻结的申请内容（不套数据范围，DEC-834④）：申请内容按完整披露集（办理上限 ∩ 办理节点表单 ∩
-  // 当前字段权）逐层裁；主职 / 员工分组是办理时冻结的展示材料，主职按任职对象办理上限、员工按员工对象办理上限（R2 P1），
-  // 再按当前字段权裁（R1 P2-3）；其余人读现值。
+  // 当前字段权）逐层裁；主职 / 员工分组是办理时冻结的展示材料，主职（记录 ID 与 fields，R4 P2-1）按任职对象办理上限、
+  // 员工按员工对象办理上限（R2 P1），再按当前字段权裁（R1 P2-3）；其余人读现值。
   router.get('/part-time-requests/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
@@ -337,7 +337,7 @@ function registerRequestRead(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     });
     if (read.frozen) {
       const { primary, employee, employeeCeiling, ...request } = read.frozen;
-      const cappedPrimary = primary && { ...primary, fields: keepIn(primary.fields, read.ceiling) };
+      const cappedPrimary = primary && capPrimary(primary, read.ceiling);
       const cappedEmployee = keepIn(employee, storedCeiling(employeeCeiling));
       return c.json({
         ...(await trimRequestDto(deps, ctx, capByDisclosed(request, read.ceiling, read.fields))),
@@ -389,6 +389,15 @@ const keepIn = <T extends object>(
   allowed: ReadonlySet<string> | null | undefined,
   name = (k: string) => k,
 ): T => (allowed ? Object.fromEntries(Object.entries(source).filter(([key]) => allowed.has(name(key)))) : source) as T;
+
+/**
+ * 冻结的主职分组按任职对象办理上限截（R4 P2-1）：记录 ID 等分组元数据键与 fields 内各字段同一道上限，
+ * 之后再由 trimEmploymentResponse 按当前字段权裁；不能只截 fields、让 id 只经过当前字段权（设计 §5.2）。
+ */
+function capPrimary(primary: NonNullable<PartTimeContent['primary']>, ceiling: ReadonlySet<string> | null) {
+  const { fields, ...meta } = primary;
+  return { ...keepIn(meta, ceiling), fields: keepIn(fields, ceiling) };
+}
 
 /**
  * 办理份申请内容按披露集逐层截（F-476 P5 R1 P1-1）：顶层表单键、`fields`、`customFields` 用完整披露集

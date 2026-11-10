@@ -498,7 +498,7 @@ export const DIGESTS: Digests = {
     createRequestSchema: '52a7b52bd676',
     isDateRequestBody: 'c4858943b546',
     'route:DELETE /part-time-requests/:id': '61b879bdece3',
-    'route:GET /part-time-requests/:id': 'cbb66a3cd567',
+    'route:GET /part-time-requests/:id': 'ad2d0eb1c075',
     'route:PATCH /part-time-requests/:id': '49eb5c5d724e',
     'route:POST /part-time-requests': 'd8fa0373eeb1',
     'route:POST /part-time-requests/:id/revoke': 'f79d589acb03',
@@ -2266,7 +2266,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/part-time/request-routes.ts#createRequestSchema': '8190a0548af5',
   'apps/api/src/modules/employment/part-time/request-routes.ts#isDateRequestBody': '33b9a70ec0bc',
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:DELETE /part-time-requests/:id': 'cbb0342b952d',
-  'apps/api/src/modules/employment/part-time/request-routes.ts#route:GET /part-time-requests/:id': '069db905b296',
+  'apps/api/src/modules/employment/part-time/request-routes.ts#route:GET /part-time-requests/:id': '8f43a819f086',
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:PATCH /part-time-requests/:id': 'f8ac8cef4aad',
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:POST /part-time-requests': '38d8a979570b',
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:POST /part-time-requests/:id/revoke':

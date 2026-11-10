@@ -4850,6 +4850,7 @@ export const GRAPH: Graph = {
     '#formCode',
     '#keepIn',
   ],
+  'apps/api/src/modules/employment/part-time/request-routes.ts#capPrimary': ['#keepIn'],
   'apps/api/src/modules/employment/part-time/request-routes.ts#createBusiness': [
     'apps/api/src/modules/employment/part-time/routes.ts#writeBusiness',
   ],
@@ -4921,6 +4922,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/request-actions.ts#availableRequestActions',
     'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeRequestDetail',
     '#capByDisclosed',
+    '#capPrimary',
     '#keepIn',
     '#trimRequestDto',
     'apps/api/src/modules/employment/part-time/request-service.ts#notFound',
