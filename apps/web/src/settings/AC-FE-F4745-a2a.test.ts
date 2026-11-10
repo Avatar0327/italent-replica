@@ -79,8 +79,12 @@ describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
     expect(ui.host.textContent).not.toContain('login@example.com');
     expect(ui.host.querySelector('tbody')?.textContent).toContain('启用');
     expect(ui.host.querySelector('tbody')?.textContent).not.toContain('已撤销');
+    const select = ui.host.querySelector<HTMLInputElement>('input[aria-label="选择此行"]');
+    await act(() => select!.click());
+    expect(select!.checked).toBe(true);
     await next();
     expect(queries().at(-1)?.searchParams.get('offset')).toBe('15');
+    expect(ui.host.querySelector<HTMLInputElement>('input[aria-label="选择此行"]')?.checked).toBe(false);
   });
   it('用户授权读取关联名称与管理单元，不依赖可授予身份权限或当前页切片', async () => {
     await ui.render(h(GrantsPage, { ...props, code: 'permission.user_grant', canScope: false }), '/', undefined, {
@@ -186,5 +190,42 @@ describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
     await next();
     expect(queries().at(-1)?.searchParams.get('offset')).toBe('15');
     expect(ui.host.querySelectorAll('tbody .ant-table-row')).toHaveLength(1);
+  });
+  it('总数收缩后从失效页回到有效页，不保留越界空页', async () => {
+    await ui.render(h(ProfilesPage, { ...props, code: 'permission.profiles' }), '/', undefined, {
+      [`${base}/profiles`]: (url: URL) => ({
+        items: url.searchParams.get('offset') === '0' ? [profile] : [],
+        total: url.searchParams.get('offset') === '0' ? 31 : 1,
+      }),
+    });
+    await next();
+    expect(
+      queries()
+        .filter((url) => url.pathname.endsWith('/profiles'))
+        .map((url) => url.searchParams.get('offset')),
+    ).toEqual(['0', '15', '0']);
+    expect(ui.host.querySelectorAll('tbody .ant-table-row')).toHaveLength(1);
+  });
+  it('修改人、自动持有与特殊字符如实显示，不把关联应用冒充所属应用', async () => {
+    await ui.render(h(ProfilesPage, { ...props, code: 'permission.profiles' }), '/', undefined, {
+      [`${base}/profiles`]: {
+        items: [
+          {
+            ...profile,
+            name: '<script>合成</script>',
+            autoHeld: true,
+            updatedBy: { userId: id, displayName: '合成修改人' },
+          },
+        ],
+        total: 1,
+      },
+    });
+    const cells = ui.host.querySelectorAll('tbody .ant-table-row td');
+    expect(cells[3]?.textContent).toBe('自动适用于全体员工');
+    expect(cells[7]?.textContent).toBe('合成修改人');
+    expect(cells[9]?.textContent).toBe('—');
+    expect(ui.host.querySelector('tbody script')).toBeNull();
+    expect(ui.host.querySelector('input[aria-label="名称"]')?.getAttribute('maxlength')).toBe('100');
+    expect(ui.host.querySelector('input[aria-label="关联应用"]')?.getAttribute('maxlength')).toBe('64');
   });
 });

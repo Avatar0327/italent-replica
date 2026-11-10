@@ -12,6 +12,7 @@ import {
 } from '../../../../tests/acceptance/AC-PRM-support.js';
 import { uniqueSuffix } from '../../../../tests/acceptance/support/unique.js';
 import { h, uiHarness } from '../../../../tests/acceptance/support/f474-ui.js';
+import { AdminsPage } from './AdminsPage.js';
 import { UsersPage } from './UsersPage.js';
 import { ProfilesPage } from './ProfilesPage.js';
 import { GrantsPage } from './GrantsPage.js';
@@ -85,5 +86,17 @@ describe('AC-FE-F4745-A2a 真后端响应进入列表', () => {
     expect(ui.headers()).toContain('管理单元');
     expect(ui.host.textContent).toContain('合成读者');
     expect(ui.host.textContent).toContain('身份A2a_');
+  });
+  it('管理员真实列表显示创建时间，部门保持空值', async () => {
+    ui = uiHarness();
+    await ui.render(
+      h(AdminsPage, { code: 'permission.admins', title: '管理员', editable: true }),
+      '/',
+      undefined,
+      responses,
+    );
+    expect(ui.headers()).toContain('创建人');
+    expect(ui.host.querySelectorAll('tbody .ant-table-row')).toHaveLength(1);
+    expect(ui.host.querySelectorAll('tbody .ant-table-row td')[3]?.textContent).toBe('—');
   });
 });
