@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ASSESSMENT_OPINION_CODES, ASSESSMENT_STATUSES, type AssessmentStatus } from './assessment.js';
 import {
   assessmentBlocksAutoRegularization,
+  assessmentSkipsAutoRegularization,
   autoAssessmentTargetDate,
   matchAutoAssessmentRules,
   isAutoAssessmentDays,
@@ -58,5 +59,16 @@ describe('PB-R21 考核类失败条件', () => {
     for (const status of statuses)
       for (const opinion of [...ASSESSMENT_OPINION_CODES, null])
         expect(assessmentBlocksAutoRegularization({ type: 'probation', status, opinion })).toBe(status === 'in_review');
+  });
+
+  it('静默跳过（F-500，DEC-841①）：只有试用中考核、审批通过且意见 = 提前转正；与阻断互斥', () => {
+    for (const type of ['probation', 'regularization'] as const)
+      for (const status of statuses)
+        for (const opinion of [...ASSESSMENT_OPINION_CODES, null]) {
+          const facts = { type, status, opinion };
+          const skips = assessmentSkipsAutoRegularization(facts);
+          expect(skips).toBe(type === 'probation' && status === 'approved' && opinion === 'early');
+          if (skips) expect(assessmentBlocksAutoRegularization(facts)).toBe(false);
+        }
   });
 });

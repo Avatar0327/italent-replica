@@ -63,10 +63,18 @@ export interface CycleAssessmentFacts {
 /**
  * PB-R21 考核部分：这条考核是否让自动转正失败。
  * - 转正考核：草稿 / 驳回 / 审批中 / 不通过 / 作废，或审批通过但意见 ≠ 正常转正（本系统没有草稿状态）；
- * - 试用中考核：审批中，或审批通过且意见 = 提前转正。
+ * - 试用中考核：审批中。审批通过且意见 = 提前转正不是失败，是静默跳过（见 assessmentSkipsAutoRegularization）。
  */
 export function assessmentBlocksAutoRegularization(facts: CycleAssessmentFacts): boolean {
-  if (facts.type === 'probation')
-    return facts.status === 'in_review' || (facts.status === 'approved' && facts.opinion === 'early');
+  if (facts.type === 'probation') return facts.status === 'in_review';
   return facts.status !== 'approved' || facts.opinion !== 'normal';
+}
+
+/**
+ * 试用中考核已生效且意见 = 提前转正：自动转正对该员工静默跳过（F-500，DEC-841①，照北森 F-485 实测）——
+ * 不记失败、不进回执失败列、不重试排队。仅当本周期没有任何 assessmentBlocksAutoRegularization 的阻断时才跳过，
+ * 同周期另有其他失败条件（含转正记录）时仍按失败处理。
+ */
+export function assessmentSkipsAutoRegularization(facts: CycleAssessmentFacts): boolean {
+  return facts.type === 'probation' && facts.status === 'approved' && facts.opinion === 'early';
 }

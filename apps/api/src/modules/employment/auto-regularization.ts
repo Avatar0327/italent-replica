@@ -3,8 +3,9 @@
  * - 适用对象（PB-R19）：当前生效主职为试用、内部员工，本任职周期有预计试用结束日，命中启用中的规则（优先级最小者）；
  * - 触发（R2e7，03 口径）：目标日 = 预计结束日 − N 天，目标日 ≤ 当天即发起（补发）；同一任职同一规则只发起一次——
  *   发起台账（规则 × 本任职周期的开启记录）在员工锁内复核，主键兜底；
+ * - 静默跳过（F-500，DEC-841①）：试用中考核已生效且意见 = 提前转正（且无其他失败条件）——返回 null，不记台账、不进回执、不重试；
  * - 失败（PB-R21）：本周期已有已驳回 / 不通过 / 作废 / 审批中 / 通过 / 生效的转正业务，或考核类条件（BE-15b2：转正考核
- *   草稿 / 驳回 / 审批中 / 不通过 / 作废或通过但意见 ≠ 正常转正，试用中考核审批中或通过且提前转正），发起人找不到，或转正入口拒绝
+ *   草稿 / 驳回 / 审批中 / 不通过 / 作废或通过但意见 ≠ 正常转正，试用中考核审批中），发起人找不到，或转正入口拒绝
  *   （PB-R9 互斥、试用结果已停用等）——整人回滚到保存点，台账记 failed、次数与原因，下一次执行重试（DEC-052）；
  * - 发起：经 BE-3 的单一入口 launchRegularization（默认转正日期 = 预计结束日次日，F-205；申请走同一提交与审批发起），
  *   发起人取规则配置，审批日志与台账带“系统代发”标记（R2e7 第 4 条）。
@@ -13,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import {
   assessmentBlocksAutoRegularization,
+  assessmentSkipsAutoRegularization,
   AUTO_REGULARIZATION_BLOCKING_STATES,
   autoRegularizationTargetDate,
   EMPLOYEE_STATUS,
@@ -161,8 +163,9 @@ async function assertNoCycleRegularization(tx: Tx, tenantId: string, subject: Su
 /**
  * PB-R21（考核部分，BE-15b2）：本任职周期（anchor_id）里的考核按（类型、状态、意见）判断；
  * 取本周期全部考核再交领域函数判，单一来源（assessmentBlocksAutoRegularization）。
+ * 有阻断就抛；无阻断但有“试用中考核已生效且意见 = 提前转正”返回 'skip'（F-500，DEC-841①，静默跳过）。
  */
-async function assertNoCycleAssessments(tx: Tx, tenantId: string, subject: Subject) {
+async function assertNoCycleAssessments(tx: Tx, tenantId: string, subject: Subject): Promise<'skip' | 'ok'> {
   const { employeeId, id: anchorId } = subject.cycle.anchor;
   const rows = rowsOf<{
     id: string;
@@ -181,6 +184,7 @@ async function assertNoCycleAssessments(tx: Tx, tenantId: string, subject: Subje
       reason: 'ASSESSMENT_BLOCKS_REGULARIZATION',
       assessmentId: blocking.id,
     });
+  return rows.some((row) => assessmentSkipsAutoRegularization(row)) ? 'skip' : 'ok';
 }
 
 /** 有效账号（本租户成员关系有效、全局账号未停用），同审批中心 userOfPerson 的口径；人员没有账号为空。 */
@@ -301,7 +305,8 @@ export async function autoRegularizeEmployee(
   try {
     const launched = await tx.transaction(async (savepoint) => {
       await assertNoCycleRegularization(savepoint, ctx.tenantId, subject);
-      await assertNoCycleAssessments(savepoint, ctx.tenantId, subject);
+      // 先判完全部失败条件再决定跳过：提前转正已生效只在没有其他失败条件时才静默跳过
+      if ((await assertNoCycleAssessments(savepoint, ctx.tenantId, subject)) === 'skip') return null;
       const initiatorUserId = await resolveInitiator(savepoint, ctx.tenantId, rule, subject.departmentId, today);
       const [employee] = rowsOf<{ revision: number }>(
         await savepoint.execute(sql`SELECT revision FROM employment_employees
@@ -315,6 +320,7 @@ export async function autoRegularizeEmployee(
       );
       return { business, initiatorUserId };
     });
+    if (!launched) return null;
     await recordOutcome(tx, ctx, key, {
       businessId: launched.business.id,
       initiatorUserId: launched.initiatorUserId,
