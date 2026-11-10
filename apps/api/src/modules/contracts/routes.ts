@@ -82,10 +82,10 @@ function isReceipt(value: unknown): boolean {
   );
 }
 async function trim(deps: TenantRouteDeps, ctx: ContractContext, object: string, value: unknown): Promise<unknown> {
-  return projectFields(await getModuleViewableFields(deps, ctx, object), value);
+  return trimWithFields(value, await getModuleViewableFields(deps, ctx, object));
 }
 /** trim 的纯投影部分：调用方已在事务内查出可见字段时直接用它，不在 withTenant 里再经授权器取字段（会重入根事务）。 */
-function projectFields(fields: ReadonlySet<string> | undefined, value: unknown): unknown {
+function trimWithFields(value: unknown, fields: ReadonlySet<string> | undefined): unknown {
   if (fields === undefined || isReceipt(value)) return value;
   function project(value: unknown): unknown {
     if (Array.isArray(value)) return value.map(project);
@@ -570,7 +570,7 @@ function registerFailures(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       await checkScope(tx, ctx, request.employeeId, request.createdBy);
       // 申请元数据沿用现读 trim；提交载荷容器不在字段目录里，按同一投影契约在容器内部裁
       return {
-        ...(projectFields(viewable, request) as object),
+        ...(trimWithFields(request, viewable) as object),
         ...(submittedFields ? { submittedFields: submittedView(submittedFields, viewable) } : {}),
         contentView: content?.contentView ?? LIVE_VIEW,
       };

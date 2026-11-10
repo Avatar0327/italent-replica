@@ -4812,6 +4812,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeContent': [
     'apps/api/src/modules/approval/adapter-support.ts#employeeHeader',
+    'apps/api/src/modules/approval/object-ceiling.ts#handlingCeilingOf',
+    'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     '#landedRecordId',
     '#requestDto',
     'apps/api/src/modules/employment/part-time/request-store.ts#loadPartTimeRequest',
@@ -4911,6 +4913,7 @@ export const GRAPH: Graph = {
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/approval/frozen-read.ts#LIVE_VIEW',
     'apps/api/src/modules/approval/frozen-read.ts#openContentRead',
+    'apps/api/src/modules/approval/object-ceiling.ts#storedCeiling',
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/context.ts#readPageContext',
@@ -4919,6 +4922,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeRequestDetail',
     '#capByDisclosed',
     '#keepIn',
+    '#trimRequestDto',
     'apps/api/src/modules/employment/part-time/request-service.ts#notFound',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
@@ -4995,6 +4999,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/request-service.ts#submitRequest',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/part-time/request-routes.ts#trimRequestDto': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
+    '#formCode',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
   'apps/api/src/modules/employment/part-time/request-service.ts#assertAction': [
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',

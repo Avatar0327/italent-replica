@@ -4469,7 +4469,7 @@
       "module": "contracts",
       "primitives": {
         "fieldsOut": [
-          "trim()"
+          "trimWithFields / trimSubset"
         ],
         "object": [
           "routeContext"

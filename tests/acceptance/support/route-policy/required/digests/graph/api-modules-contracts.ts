@@ -378,11 +378,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/contracts/routes.ts#route:GET /requests/:id': [
     'apps/api/src/modules/approval/frozen-read.ts#LIVE_VIEW',
     'apps/api/src/modules/approval/frozen-read.ts#openContentRead',
+    'apps/api/src/modules/approval/handling-content.ts#capViewable',
     'apps/api/src/modules/contracts/context.ts#checkScope',
     'apps/api/src/modules/contracts/frozen.ts#projectRequestView',
     'apps/api/src/modules/contracts/frozen.ts#submittedView',
     '#routeContext',
-    '#trim',
+    '#trimWithFields',
     'apps/api/src/modules/contracts/service.ts#loadRequest',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
@@ -502,13 +503,14 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
   ],
   'apps/api/src/modules/contracts/routes.ts#trim': [
-    '#isReceipt',
+    '#trimWithFields',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
   'apps/api/src/modules/contracts/routes.ts#trimEmployment': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
+  'apps/api/src/modules/contracts/routes.ts#trimWithFields': ['#isReceipt'],
   'apps/api/src/modules/contracts/routes.ts#write': [
     'apps/api/src/modules/contracts/context.ts#checkScope',
     '#requireMasterScope',
