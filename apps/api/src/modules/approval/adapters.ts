@@ -102,6 +102,8 @@ export interface BusinessSnapshot {
   readonly tutorEmployeeId?: string | null;
   /** 离职交接申请的工作交接人（离职申请的交接人，审批人表达式 handover_work_owner，R2 BE-8b2）；其他业务为空。 */
   readonly handoverEmployeeId?: string | null;
+  /** 退休申请里的返聘计划（审批人表达式 rehire_direct_manager / rehire_department_hrbp，F-478 S4）；其他业务与不返聘为空。 */
+  readonly rehirePlan?: RehirePlanRef | null;
   /**
    * 看板日期（规格 35 B51，人事流程看板判“业务已过期 / 晚提交 / 晚审批”）：Offer = 入职日期、离职 = 最后工作日，
    * 其余 = 生效日期；业务没有这类日期时不填。实例发起与重提时写入审批实例 business_date 列（DEC-402 不回填存量）。
@@ -117,6 +119,12 @@ export interface BusinessSnapshot {
    * 员工子集变更按子集取各自的编码。客户端提交参数不能覆盖这份绑定。
    */
   readonly processCode: string | null;
+}
+
+/** 返聘审批人来源只读返聘计划的两个字段：返聘部门与返聘后直线经理（员工 ID）。 */
+export interface RehirePlanRef {
+  readonly departmentId: string | null;
+  readonly directManagerId: string | null;
 }
 
 export interface BusinessAdapter {
@@ -248,6 +256,13 @@ async function exitMetadata(tx: Tx, tenantId: string, businessId: string, kind: 
     reEmployed: retirement?.reEmployed ?? null,
     expectedRetirementDate: retirement?.expectedRetirementDate ?? null,
   };
+}
+
+/** 退休申请里的返聘计划（只取审批人来源要用的部门与直线经理）；不返聘或没有计划为 null。 */
+async function rehirePlanOf(tx: Tx, tenantId: string, businessId: string): Promise<RehirePlanRef | null> {
+  const plan = (await loadRetirementRequest(tx, tenantId, businessId))?.rehirePlan;
+  if (!plan) return null;
+  return { departmentId: plan.fields.departmentId ?? null, directManagerId: plan.fields.directManagerId ?? null };
 }
 
 /** 变更前原值：前一条任职的字段、自定义字段与业务日期；离职扩展字段没有前一版（为空）。 */
@@ -484,11 +499,16 @@ const employmentAdapter: BusinessAdapter = {
         ...(business.kind === 'leave' || business.kind === 'retirement'
           ? { 'business.initiation': await exitInitiation(tx, ctx.tenantId, businessId) }
           : {}),
+        // F-478 S4：退休「是否同时返聘」是业务出口守卫的事实（办理人不能改变它，创建后不可改）
+        ...(business.kind === 'retirement' && typeof exit.reEmployed === 'boolean'
+          ? { 'business.reEmployed': String(exit.reEmployed) }
+          : {}),
         ...ref('before', before?.fields),
         ...ref('record', fields),
       },
       latestDepartmentId: current?.fields.departmentId ?? null,
       recordDepartmentId: fields.departmentId,
+      ...(business.kind === 'retirement' ? { rehirePlan: await rehirePlanOf(tx, ctx.tenantId, businessId) } : {}),
       ...(linkage.foreignFields.length ? { foreignFields: linkage.foreignFields } : {}),
       // 离职扩展字段不在任职载荷里：其指纹也进审批版本，HR 改了离职类型等内容，旧审批页面随即失效（#388 P2-1）
       version: [payload.version, linkage.version, exitVersion(exit)].filter(Boolean).join(':'),

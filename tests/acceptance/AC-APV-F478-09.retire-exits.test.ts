@@ -13,7 +13,7 @@ import type { NodeInput, ProcessView } from './AC-APV-support.js';
 
 const testDb = useTestDb();
 
-const single = (key: string, value: string, type = 'object_field'): NodeInput => ({
+const single = (key: string, value: string, type: 'object_field' | 'department' = 'object_field'): NodeInput => ({
   key,
   name: key,
   approver: { type, value },
@@ -24,7 +24,10 @@ const single = (key: string, value: string, type = 'object_field'): NodeInput =>
 async function publishRetireFlow(s: RetireScene) {
   const nodes: NodeInput[] = [
     single('direct_head', 'direct_manager'),
-    { ...single('hr_interview', 'record_department_hrbp', 'department'), exits: ['approve_no_rehire', 'approve_rehire'] },
+    {
+      ...single('hr_interview', 'record_department_hrbp', 'department'),
+      exits: ['approve_no_rehire', 'approve_rehire'],
+    },
     { ...single('rehire_manager', 'record_department_head', 'department') },
   ].map((node) => node as NodeInput);
   const created = await s.w.createProcess({
