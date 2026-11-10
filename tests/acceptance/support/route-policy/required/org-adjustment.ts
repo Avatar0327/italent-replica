@@ -311,7 +311,7 @@ function reader(path: string, anchor: string): Obligation[] {
         {
           role: 'impl',
           unit: OPEN_DETAIL,
-          anchor: 'return await readDetail(tx, command, instance.id, viewer, false, live)',
+          anchor: 'return await readDetail(tx, command, instance.id, viewer, false)',
         },
         {
           role: 'impl',

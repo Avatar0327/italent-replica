@@ -777,7 +777,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/foreign-fields.ts#viewableWithForeign': ['e74b5d1584de', '4deaff7abd54'],
   'apps/api/src/modules/approval/frozen-read.ts#LIVE_VIEW': ['ef21f90f1846', 'e3b0c44298fc'],
   'apps/api/src/modules/approval/frozen-read.ts#contentViewFor': ['b57e5cf9d184', 'cf32ac1d3a89'],
-  'apps/api/src/modules/approval/frozen-read.ts#openApprovalDetail': ['53784ffc9491', '754be4c67e9a'],
+  'apps/api/src/modules/approval/frozen-read.ts#openApprovalDetail': ['949c13120ab3', '754be4c67e9a'],
   'apps/api/src/modules/approval/frozen-read.ts#openContentRead': ['c72eb63139a9', '1e713c37d9a7'],
   'apps/api/src/modules/approval/frozen-read.ts#pickDisclosed': ['a8b90a1093a6', '614b0efdb32b'],
   'apps/api/src/modules/approval/handling-content.ts#CONTENT_PROVIDERS': ['e33c7daea5d9', 'fb9d9b46295f'],

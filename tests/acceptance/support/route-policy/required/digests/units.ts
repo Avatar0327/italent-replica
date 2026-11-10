@@ -83,7 +83,7 @@ export const DIGESTS: Digests = {
     readDetail: 'c7cb079aa298',
   },
   'apps/api/src/modules/approval/frozen-read.ts': {
-    openApprovalDetail: '53784ffc9491',
+    openApprovalDetail: '949c13120ab3',
   },
   'apps/api/src/modules/approval/my-applications.ts': {
     listMyApplications: 'ace0fe7e3d49',
