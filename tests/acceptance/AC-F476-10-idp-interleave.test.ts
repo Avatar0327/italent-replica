@@ -8,6 +8,8 @@
  * 进程内拦截 drizzle 的 execute：捕获每条读职业发展 / 轮岗的 SELECT 执行前，测试在另一连接上真实提交下一步状态。
  * 第 3 轮返工：模板模块的修改只锁模板、不锁计划。捕获读完模块名 A 后，依次提交“模块名 → B”“优势 → B”，再读关键信息：
  * 真实状态只有 AA → BA → BB（模块名 × 优势），不得保存 AB。
+ * 第 4 轮返工：阶段名称取子流程现值（PATCH /idp/processes/:id 可改已引用子流程的名称，只锁流程、不锁计划）。捕获读完
+ * 阶段名 A 后，依次提交“子流程名 → B”“优势 → B”，再读关键信息：真实状态只有 AA → BA → BB（阶段名 × 优势）。
  */
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -24,6 +26,8 @@ const CAREER_A = 'ZZ_优势A';
 const CAREER_B = 'ZZ_优势B';
 const MODULE_A = 'ZZ_关键信息模块A';
 const MODULE_B = 'ZZ_关键信息模块B';
+const STAGE_A = 'ZZ_阶段名A';
+const STAGE_B = 'ZZ_阶段名B';
 
 type World = Awaited<ReturnType<typeof planWorld>>;
 
@@ -80,6 +84,21 @@ async function executeOwner(w: World): Promise<{ execute: (query: unknown) => Pr
   let owner: object | null = await withTenant(w.db, w.tenant.id, async (tx) => tx);
   while (owner && !Object.prototype.hasOwnProperty.call(owner, 'execute')) owner = Object.getPrototypeOf(owner);
   return owner as { execute: (query: unknown) => Promise<unknown> };
+}
+
+/** 每份办理份的（配置名 × 优势）须是 AA / BA / BB 之一，且 A、B 不同时出现。 */
+function expectExistedPairs(copies: { text: string }[], [nameA, nameB]: readonly [string, string]) {
+  for (const copy of copies) {
+    const seen = { nameA: copy.text.includes(nameA), nameB: copy.text.includes(nameB) };
+    const career = { a: copy.text.includes(CAREER_A), b: copy.text.includes(CAREER_B) };
+    const existed = [
+      seen.nameA && career.a, // AA
+      seen.nameB && career.a, // BA
+      seen.nameB && career.b, // BB
+    ].some(Boolean);
+    const exclusive = seen.nameA !== seen.nameB && career.a !== career.b;
+    expect(existed && exclusive, `办理份是未曾完整存在过的组合：${JSON.stringify({ seen, career })}`).toBe(true);
+  }
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -149,17 +168,36 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-F476-10 IDP：捕获�
     expect(gated(), '捕获没有经过关键信息读取').toBe(1);
     expect([200, 409], await response.clone().text()).toContain(response.status);
     const copies = await copiesOfPlan(w, plan.id);
-    for (const copy of copies) {
-      const seen = { moduleA: copy.text.includes(MODULE_A), moduleB: copy.text.includes(MODULE_B) };
-      const career = { a: copy.text.includes(CAREER_A), b: copy.text.includes(CAREER_B) };
-      const existed = [
-        seen.moduleA && career.a, // AA
-        seen.moduleB && career.a, // BA
-        seen.moduleB && career.b, // BB
-      ].some(Boolean);
-      const exclusive = seen.moduleA !== seen.moduleB && career.a !== career.b;
-      expect(existed && exclusive, `办理份是未曾完整存在过的组合：${JSON.stringify({ seen, career })}`).toBe(true);
-    }
+    expectExistedPairs(copies, [MODULE_A, MODULE_B]);
+    if (response.status === 409) {
+      expect(await response.clone().text()).toContain('IDP_KEY_INFO_CHANGING');
+      expect(copies, '409 时不得留办理份').toHaveLength(0);
+    } else expect(copies.length, '200 时应留下办理份').toBeGreaterThan(0);
+  });
+
+  it('读完阶段名 A 后依次提交“子流程名 → B”“优势 → B”：不保存“阶段名 A + 优势 B”（子流程只锁流程）', async () => {
+    const { w, plan, instance, task } = await seeded('f476-idp-10-stage');
+    // 被办理阶段（第 1 段）所属子流程的名称；真实入口是 PATCH /idp/processes/:id（process-service 只锁流程）
+    const rename = (name: string) =>
+      withTenant(w.db, w.tenant.id, (tx) =>
+        tx.execute(sql`UPDATE idp_sub_processes SET name = ${name} WHERE tenant_id = ${w.tenant.id}::uuid
+          AND id = (SELECT sub_process_id FROM idp_plan_stages WHERE tenant_id = ${w.tenant.id}::uuid
+            AND plan_id = ${plan.id}::uuid AND seq = 1)`),
+      );
+    await rename(STAGE_A);
+    // 捕获读关键信息之前：子流程名 → B 提交，再优势 → B 提交（AA → BA → BB）
+    const gated = gateKeyInfoReads(await executeOwner(w), [
+      async () => {
+        await rename(STAGE_B);
+        await commit(w, 'idp_careers', CAREER_B);
+      },
+    ]);
+    const response = await w.taskAction(w.employee.userId, task.id, 'approve', instance.revision);
+    vi.restoreAllMocks();
+    expect(gated(), '捕获没有经过关键信息读取').toBe(1);
+    expect([200, 409], await response.clone().text()).toContain(response.status);
+    const copies = await copiesOfPlan(w, plan.id);
+    expectExistedPairs(copies, [STAGE_A, STAGE_B]);
     if (response.status === 409) {
       expect(await response.clone().text()).toContain('IDP_KEY_INFO_CHANGING');
       expect(copies, '409 时不得留办理份').toHaveLength(0);
