@@ -34,7 +34,12 @@ describe('AC-APV-F478-16 候选接口：命名来源与审批类型过滤', () =
   it.each(SINGLE_SUBJECT)('%s：主体员工本人、系统管理员都在候选里', async (type) => {
     const w = await approvalWorld(database().db, `f478s3-cand-single-${type}`);
     const subject = await candidates(w, `type=object_field&approvalType=${type}`);
-    expect(subject).toEqual([{ id: 'subject_employee', name: '主体员工本人', enabled: true, parentId: null }]);
+    const named = [{ id: 'subject_employee', name: '主体员工本人', enabled: true, parentId: null }];
+    // F-478 S4：退休类型多一个“返聘后直线经理”命名来源（其他类型没有）
+    if (type === 'retirement') {
+      named.push({ id: 'rehire_direct_manager', name: '返聘后直线经理', enabled: true, parentId: null });
+    }
+    expect(subject).toEqual(named);
     expect(idsOf(await candidates(w, `type=identity&approvalType=${type}`))).toContain('system_admin');
   });
 
@@ -53,7 +58,8 @@ describe('AC-APV-F478-16 候选接口：命名来源与审批类型过滤', () =
         type,
       ).toHaveLength(1);
       const subject = idsOf(await candidates(w, `type=object_field&approvalType=${type}`));
-      expect(subject.length === 1, type).toBe(!MULTI_SUBJECT.includes(type));
+      expect(subject.includes('subject_employee'), type).toBe(!MULTI_SUBJECT.includes(type));
+      expect(subject.includes('rehire_direct_manager'), type).toBe(type === 'retirement');
     }
   });
 

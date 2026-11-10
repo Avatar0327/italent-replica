@@ -54,6 +54,9 @@ export const APPROVER_EXPRESSIONS = [
   // F-478 S3（设计 §5.1 / §5.2）：业务主体员工本人（单主体类型）、本租户按开通先后第一位系统管理员（任一类型）
   'subject_employee',
   'system_admin',
+  // F-478 S4（设计 §6.1）：只有退休审批可选（REHIRE_ONLY_APPROVERS），取退休申请里的返聘计划（部门 / 直线经理）
+  'rehire_direct_manager', // 返聘后直线经理：返聘计划里的直线经理
+  'rehire_department_hrbp', // 返聘后 HRBP：返聘计划里的部门 → HRBP
 ] as const;
 export type ApproverExpression = (typeof APPROVER_EXPRESSIONS)[number];
 
@@ -70,6 +73,11 @@ export const OFFER_APPROVERS: Readonly<Record<'offer' | 'offer_batch', ReadonlyS
 };
 /** 只在试用期考核两类审批上可用的审批人表达式：取考核对象本人（员工自评）。 */
 export const ASSESSMENT_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set(['assessment_employee']);
+/** 只在退休审批上可用的审批人表达式（F-478 S4）：读退休申请的返聘计划，其他类型取不到。 */
+export const REHIRE_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
+  'rehire_direct_manager',
+  'rehire_department_hrbp',
+]);
 /** 只在离职交接申请上可用的审批人表达式。 */
 export const HANDOVER_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
   'handover_work_owner',
@@ -172,6 +180,17 @@ export const MAX_ADD_SIGNERS = 10;
  */
 export const NODE_EXITS = ['approve', 'disagree'] as const;
 export type NodeExit = (typeof NODE_EXITS)[number];
+/**
+ * 业务出口（F-478，设计 §1.2）：同意族的业务分叉出口，成对出现；能否用于某个审批类型 / 节点由 routes.ts 的登记表决定。
+ * 不进 NODE_EXITS：会签流转规则、EXIT_TARGETS 只认「同意 / 不同意」。
+ */
+export type BusinessExit = 'approve_no_rehire' | 'approve_rehire';
+export type AnyNodeExit = NodeExit | BusinessExit;
+/** 业务出口在办理页 / 路径上的名称。 */
+export const BUSINESS_EXIT_LABELS: Readonly<Record<BusinessExit, string>> = {
+  approve_no_rehire: '同意（不返聘）',
+  approve_rehire: '同意（同时返聘）',
+};
 /**
  * 出口连线的去向。复刻首版的流程是线性的：「同意」进入下一节点；「不同意」连到结束——流程结束、业务不生效，不进入
  * 可修改重提的“退回”（原站本租户的不同意连线都连到结束，面板提示“任一审批人不同意，流程流转结束”，`14` §12.2）。
@@ -305,7 +324,7 @@ interface ApprovalNodeBase {
   /** 多主体回避命中后的动作（DEC-331⑤）；缺省「跳过」。 */
   readonly avoidSubjectsResult?: AvoidSubjectsResult;
   /** 出口动作（DEC-144）；缺省只有「同意」（DEFAULT_EXITS）。 */
-  readonly exits?: readonly NodeExit[];
+  readonly exits?: readonly AnyNodeExit[];
   /** F-478：各出口的后继分支；缺省 / 空 = 线性流转（同意 → 下一节点，不同意 → 结束）。 */
   readonly routes?: readonly ExitRoute[];
   /**
@@ -351,11 +370,11 @@ export function approverExpressionsOf(node: ApprovalNode): readonly ApproverExpr
   );
 }
 
-export function nodeExits(node: Pick<ApprovalNode, 'exits'>): readonly NodeExit[] {
+export function nodeExits(node: Pick<ApprovalNode, 'exits'>): readonly AnyNodeExit[] {
   return node.exits ?? DEFAULT_EXITS;
 }
 
-export function hasExit(node: Pick<ApprovalNode, 'exits'>, exit: NodeExit): boolean {
+export function hasExit(node: Pick<ApprovalNode, 'exits'>, exit: AnyNodeExit): boolean {
   return nodeExits(node).includes(exit);
 }
 
@@ -486,6 +505,12 @@ const IDP_PLAN_OBJECT = `${IDP_APP}.Idp`;
 const LEAVE_CONDITION_FIELDS: readonly ConditionField[] = [
   ...EMPLOYMENT_CONDITION_FIELDS,
   { path: 'business.initiation', label: '发起方式', kind: 'text' },
+];
+
+/** 退休多一个事实：是否同时返聘（'true' / 'false'）。业务出口守卫与仿真据此取出口（F-478 S4，设计 §3.3 / §3.4）。 */
+const RETIREMENT_APPROVAL_CONDITION_FIELDS: readonly ConditionField[] = [
+  ...LEAVE_CONDITION_FIELDS,
+  { path: 'business.reEmployed', label: '是否同时返聘', kind: 'text' },
 ];
 
 /**
@@ -661,7 +686,7 @@ export const APPROVAL_TYPES = {
   hire: employmentType('hire', '入职', 'EntryProcessNew'),
   // R2-T04 §3.4：退休与离职同条件字段（含发起方式）；表单多带退休类型 / 是否返聘 / 预计退休日期（只读带出）
   retirement: {
-    ...employmentType('retirement', '退休', 'RetireProcess', LEAVE_CONDITION_FIELDS),
+    ...employmentType('retirement', '退休', 'RetireProcess', RETIREMENT_APPROVAL_CONDITION_FIELDS),
     formFields: [...employmentFormFields, ...RETIREMENT_REQUEST_FIELDS],
   },
   org_adjustment: ORG_ADJUSTMENT_TYPE,
