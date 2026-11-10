@@ -1579,7 +1579,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   ],
   'apps/api/src/modules/employment/auto-regularization.ts#RUN_PAGE': ['8592349b631d', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/auto-regularization.ts#activeUser': ['7f1077543357', 'f3b71127b550'],
-  'apps/api/src/modules/employment/auto-regularization.ts#assertNoCycleAssessments': ['4d04c58acc2e', '900263b08ed0'],
+  'apps/api/src/modules/employment/auto-regularization.ts#assertNoCycleAssessments': ['eed76a6cdd43', '575baf57cda2'],
   'apps/api/src/modules/employment/auto-regularization.ts#assertNoCycleRegularization': [
     'c7e6864f6b35',
     '4eb2a8f6dde9',
@@ -1588,7 +1588,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
     'd4e96c914c0e',
     '994744d85312',
   ],
-  'apps/api/src/modules/employment/auto-regularization.ts#autoRegularizeEmployee': ['966824a0cc90', 'e14f17defba1'],
+  'apps/api/src/modules/employment/auto-regularization.ts#autoRegularizeEmployee': ['c93202822a50', 'e14f17defba1'],
   'apps/api/src/modules/employment/auto-regularization.ts#collectOutcome': ['b8d007563659', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/auto-regularization.ts#cursorPosition': ['0a6b54416a28', '849afa6590e6'],
   'apps/api/src/modules/employment/auto-regularization.ts#dueRuleOf': ['0340e51f484e', '816464888906'],
@@ -8203,7 +8203,11 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'packages/domain/src/employment/auto-assessment.ts#AUTO_ASSESSMENT_RULE_LIMIT': ['ea1dd0c067b1', 'e3b0c44298fc'],
   'packages/domain/src/employment/auto-assessment.ts#AUTO_ASSESSMENT_SETTING_KEY': ['a2725b8c48dc', 'e3b0c44298fc'],
   'packages/domain/src/employment/auto-assessment.ts#assessmentBlocksAutoRegularization': [
-    'f1c18756aedb',
+    'f18a4a512540',
+    'e3b0c44298fc',
+  ],
+  'packages/domain/src/employment/auto-assessment.ts#assessmentSkipsAutoRegularization': [
+    '8928571c78ba',
     'e3b0c44298fc',
   ],
   'packages/domain/src/employment/auto-assessment.ts#autoAssessmentTargetDate': ['90df68d05c52', 'f0ef4cc427db'],
