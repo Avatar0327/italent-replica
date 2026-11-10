@@ -1,8 +1,8 @@
 /** 权限接口的请求体校验。批量字段设上限（AGENTS.md §10「批量」）：原站任职记录 274 字段、349 按钮。 */
 import { ADMIN_ROLES, BUTTON_LEVELS } from '@italent/domain';
 import { z } from 'zod';
-import { AppError } from '../../errors.js';
 import { grantScopeBody } from './data-scope-schemas.js';
+import { listPage, textFilter } from './enterprise-lists.js';
 
 const MAX_ITEMS = 1000;
 const code = (pattern: RegExp) => z.string().regex(pattern);
@@ -44,11 +44,20 @@ export const adminSetsBody = z.strictObject({
 
 export const adminBody = adminSetsBody.extend({ userId: z.uuid(), role: z.enum(ADMIN_ROLES) });
 
-const optionalUuid = z.uuid().optional();
-export const grantQuery = {
-  parse(input: { userId: string | undefined }): { userId: string | undefined } {
-    const parsed = optionalUuid.safeParse(input.userId);
-    if (!parsed.success) throw new AppError('VALIDATION_FAILED', 'userId 必须是 UUID');
-    return { userId: parsed.data };
-  },
-};
+/** 用户授权列表（F-474-5 #22）：筛选 + 分页；userId 保持原有的按用户查询。 */
+export const grantListQuery = z.strictObject({
+  userId: z.uuid().optional(),
+  profileId: z.uuid().optional(),
+  mouId: z.uuid().optional(),
+  status: z.enum(['active', 'revoked']).optional(),
+  q: textFilter.optional(),
+  ...listPage,
+});
+
+/** 管理员列表（F-474-5 #23）。 */
+export const adminListQuery = z.strictObject({
+  role: z.enum(ADMIN_ROLES).optional(),
+  mouId: z.uuid().optional(),
+  q: textFilter.optional(),
+  ...listPage,
+});

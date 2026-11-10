@@ -3,10 +3,10 @@ import { tenantLocalDate } from '@italent/domain';
  * 权限接口（R1-T01；企业设置 R1-T15）。全部在 /api/tenant/permission 之下，经租户上下文中间件；写请求带
  * Idempotency-Key，修改已有对象带 If-Match（revision）。企业设置类接口按 8 类管理员能力鉴权（06 §7.1）：
  *   身份      GET/POST /profiles、GET /profiles/:id、PUT /profiles/:id/objects/:objectCode   profile_manage
- *   用户授权  GET /grantable-profiles、GET/POST /grants、POST /grants/:id/revoke             user_grant
+ *   用户授权  GET /grantable-profiles、GET（筛选 / 分页 / total）/POST /grants、POST /grants/:id/revoke             user_grant
  *   管理员    GET/POST /admins、GET/PUT /admins/:id                                         admin_manage
  *   用户管理  /users…（见 user-routes.ts）                                                  user_manage
- *   管理单元  GET /mous、GET /mous/tree、GET /mous/:id；增删改见 data-scope-routes.ts                     mou_manage / other_settings
+ *   管理单元  GET /mous、GET /mous/tree、GET /mous/:id；增删改见 data-scope-routes.ts   mou_manage / other_settings
  *   许可      GET /licenses                                                                license_balance
  *             GET /licenses/:licenseType/seats（使用明细）                                   license_usage
  *   菜单      GET /admin-menus  当前用户可见的企业设置菜单及可操作性（06 §7.1 矩阵）
@@ -24,16 +24,25 @@ import type { BodyLimitOverride } from '../../middleware.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { type TenantEnv, tenantOf } from '../../tenant-context.js';
 import { adminCommand as command, adminGuard as guard } from './admin-http.js';
-import { createAdmin, getAdmin, listAdmins, updateAdmin } from './admins.js';
+import { ADMIN_LIST_UNRECORDED, createAdmin, getAdmin, listAdmins, updateAdmin } from './admins.js';
 import { registerDataScopeRoutes } from './data-scope-routes.js';
 import { objectCatalog } from './catalog.js';
-import { createGrant, grantableProfiles, listGrants, revokeGrant } from './grants.js';
+import { createGrant, GRANT_LIST_UNRECORDED, grantableProfiles, listGrants, revokeGrant } from './grants.js';
+import { parseQuery } from './enterprise-lists.js';
 import { etag, idParam, ifMatch, objectCodeParam, parseBody } from './http.js';
 import { listBalances, listSeats } from './licenses.js';
 import { myObjectPermission } from './me.js';
 import { buildPermissionSnapshot } from './me-snapshot.js';
 import { createProfile, getProfileDetail, listProfiles, setObjectPermission } from './profiles.js';
-import { adminBody, adminSetsBody, grantBody, grantQuery, objectPermissionBody, profileBody } from './schemas.js';
+import {
+  adminBody,
+  adminListQuery,
+  adminSetsBody,
+  grantBody,
+  grantListQuery,
+  objectPermissionBody,
+  profileBody,
+} from './schemas.js';
 import { loadAdminRoles } from './subject.js';
 import { registerUserRoutes } from './user-routes.js';
 
@@ -163,8 +172,17 @@ function grantRoutes(router: Router, deps: TenantRouteDeps): void {
   });
   router.get(`${BASE}/grants`, async (c) => {
     const ctx = await guard(c, deps, 'user_grant');
-    const { userId } = grantQuery.parse({ userId: c.req.query('userId') });
-    return c.json({ items: await withTenant(deps.db, ctx.tenantId, (tx) => listGrants(tx, userId)) });
+    const query = parseQuery(grantListQuery, {
+      userId: c.req.query('userId'),
+      profileId: c.req.query('profileId'),
+      mouId: c.req.query('mouId'),
+      status: c.req.query('status'),
+      q: c.req.query('q'),
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+    });
+    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listGrants(tx, query));
+    return c.json({ ...page, unrecorded: GRANT_LIST_UNRECORDED });
   });
   router.post(`${BASE}/grants`, async (c) => {
     const ctx = await guard(c, deps, 'user_grant');
@@ -184,7 +202,15 @@ function grantRoutes(router: Router, deps: TenantRouteDeps): void {
 function adminRoutes(router: Router, deps: TenantRouteDeps): void {
   router.get(`${BASE}/admins`, async (c) => {
     const ctx = await guard(c, deps, 'admin_manage');
-    return c.json({ items: await withTenant(deps.db, ctx.tenantId, listAdmins) });
+    const query = parseQuery(adminListQuery, {
+      role: c.req.query('role'),
+      mouId: c.req.query('mouId'),
+      q: c.req.query('q'),
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+    });
+    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listAdmins(tx, query));
+    return c.json({ ...page, unrecorded: ADMIN_LIST_UNRECORDED });
   });
   router.get(`${BASE}/admins/:id`, async (c) => {
     const ctx = await guard(c, deps, 'admin_manage');

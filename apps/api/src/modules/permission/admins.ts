@@ -4,6 +4,7 @@
  */
 import {
   and,
+  asc,
   eq,
   pgErrorCode,
   type PermissionAdmin,
@@ -11,6 +12,7 @@ import {
   permissionAdminGrantableRoles,
   permissionAdmins,
   permissionProfiles,
+  sql,
   type Tx,
 } from '@italent/db';
 import { type AdminRole, isAdminRole } from '@italent/domain';
@@ -18,8 +20,10 @@ import { inArray } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { audit, type WriteContext } from './audit.js';
 import { assertNotAutoHeld } from './auto-held.js';
+import { accountMatch, hasMou, mousOfUsers, type UserMou } from './enterprise-lists.js';
 import { revisionConflict } from './http.js';
 import { assertActiveMember } from './members.js';
+import { userLabels } from './tenant-users.js';
 
 export interface PermissionAdminView {
   readonly id: string;
@@ -64,12 +68,68 @@ export async function grantableSetsOf(
   };
 }
 
-export async function listAdmins(tx: Tx): Promise<PermissionAdminView[]> {
-  const rows = await tx.select().from(permissionAdmins).where(eq(permissionAdmins.status, 'active'));
-  // 同一事务连接上逐条查询，不并发
-  const views: PermissionAdminView[] = [];
-  for (const row of rows) views.push(await viewOf(tx, row));
-  return views;
+/** 管理员列表行：管理员记录 + 用户 / 创建信息 / 管理单元投影（F-474-5 #23）。 */
+export interface AdminListRow extends PermissionAdminView {
+  readonly displayName: string;
+  readonly email: string;
+  readonly mous: UserMou[];
+  readonly createdAt: string;
+  readonly createdBy: { readonly userId: string; readonly displayName: string } | null;
+}
+
+/** 原站管理员列表有、本系统未记录的列 / 筛选：部门（账号与管理员记录都不带部门，不跨模块拼接）。 */
+export const ADMIN_LIST_UNRECORDED = ['department'] as const;
+
+export interface AdminListQuery {
+  readonly role?: AdminRole;
+  readonly mouId?: string;
+  readonly q?: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** 总数与当页同一个 where（只含有效管理员记录）。 */
+export async function listAdmins(tx: Tx, query: AdminListQuery): Promise<{ items: AdminListRow[]; total: number }> {
+  const where = and(
+    eq(permissionAdmins.status, 'active'),
+    query.role ? eq(permissionAdmins.role, query.role) : undefined,
+    query.mouId ? hasMou(permissionAdmins.userId, query.mouId) : undefined,
+    query.q ? accountMatch(permissionAdmins.userId, query.q) : undefined,
+  );
+  const rows = await tx
+    .select()
+    .from(permissionAdmins)
+    .where(where)
+    .orderBy(asc(permissionAdmins.createdAt), asc(permissionAdmins.id))
+    .limit(query.limit)
+    .offset(query.offset);
+  const [count] = await tx
+    .select({ total: sql<number>`count(*)::int` })
+    .from(permissionAdmins)
+    .where(where);
+  const labels = await userLabels(
+    tx,
+    rows.flatMap((r) => (r.createdBy ? [r.userId, r.createdBy] : [r.userId])),
+  );
+  const mous = await mousOfUsers(
+    tx,
+    rows.map((r) => r.userId),
+  );
+  // 同一事务连接上逐条查询，不并发；条数 = 本页行数，有界
+  const items: AdminListRow[] = [];
+  for (const row of rows) {
+    items.push({
+      ...(await viewOf(tx, row)),
+      displayName: labels.get(row.userId)?.displayName ?? '',
+      email: labels.get(row.userId)?.email ?? '',
+      mous: mous.get(row.userId) ?? [],
+      createdAt: row.createdAt.toISOString(),
+      createdBy: row.createdBy
+        ? { userId: row.createdBy, displayName: labels.get(row.createdBy)?.displayName ?? '' }
+        : null,
+    });
+  }
+  return { items, total: count?.total ?? 0 };
 }
 
 export async function getAdmin(tx: Tx, id: string): Promise<PermissionAdminView> {
