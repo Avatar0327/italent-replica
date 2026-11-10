@@ -4,7 +4,7 @@
  */
 import { type Db, eq, users, withPlatform } from '@italent/db';
 import { QUALIFICATION_OBJECTS } from '@italent/domain';
-import { type Call, type Guarded, type Json, listAll } from './client.js';
+import { type Call, type Guarded, type Json, listAll, listAllByOffset } from './client.js';
 import { seedR3 } from './r3-seed.js';
 import {
   DEMO_DATES,
@@ -399,8 +399,12 @@ export class DemoWorld {
 
   async grant(userId: string, profileCode: string): Promise<void> {
     const profileId = this.profiles.get(profileCode)!;
-    const grants = await this.as(`permission/grants?userId=${userId}`, 'GET');
-    if (((grants.items ?? []) as Json[]).some((row) => row.profileId === profileId && row.status !== 'revoked')) return;
+    // 点查：用户 × 身份 × 有效，至多一条（有效授权唯一）；不靠翻页——撤销记录累计超过一页时不会漏看
+    const held = await this.as(
+      `permission/grants?userId=${userId}&profileId=${profileId}&status=active&limit=1`,
+      'GET',
+    );
+    if (((held.items ?? []) as Json[]).length > 0) return;
     await this.as('permission/grants', 'POST', { userId, profileId });
     await this.wrote('access', `${userId}:${profileCode}`);
   }
@@ -417,7 +421,7 @@ export class DemoWorld {
   /** 审计管理员：管理员角色 audit_admin 看日志入口；只读身份 + 数据范围决定能看到哪些业务行（audit/visibility.ts）。 */
   private async setupAuditor(): Promise<void> {
     const auditor = this.accounts.get('auditor')!;
-    const admins = await listAll(this.call, this.admin, '/api/tenant/permission/admins');
+    const admins = await listAllByOffset(this.call, this.admin, '/api/tenant/permission/admins');
     if (!admins.some((row) => row.userId === auditor)) {
       await this.as('permission/admins', 'POST', {
         userId: auditor,

@@ -123,9 +123,9 @@ describe('AC-EMP / AC-PRM F-474 子集顺序与设置列表', () => {
     await ui.render(h(ProfilesPage, { title: '身份管理', editable: false }));
     expect(ui.widths()).toEqual([193, 128, 128, 128, 128, 168].map((n) => `${n}px`));
   });
-  it('变更日志已有七列采用原站宽度', async () => {
+  it('变更日志补齐应用和来源列，保持已有列宽', async () => {
     await ui.render(h(AuditPage));
-    expect(ui.widths()).toEqual([128, 118, 146, 128, 128, 128, 128].map((n) => `${n}px`));
+    expect(ui.widths()).toEqual([128, 118, 146, ...Array(11).fill(128), 24].map((n) => `${n}px`));
   });
 });
 
