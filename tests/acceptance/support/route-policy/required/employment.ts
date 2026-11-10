@@ -337,6 +337,28 @@ const runReceiptDisclosure = (file: string, path: string, project = 'visibleRunR
     ...SCOPE_AT['employment.runReceipt'],
   ],
 });
+/**
+ * F-476 P7：已办读取的字段披露。冻结份只在“办理时上限 ∩ 当前字段权限”内露出，当前字段权限由
+ * getModuleViewableFieldsInTransaction 对表单对象取查看字段得到（探测事实 object.* 动作）；它只决定哪些键出现在响应里，
+ * 不参与准入（准入仍是详情入口的 readPageContext 与范围判断）。
+ */
+const HANDLED_READ = `${SRC}/employment/handled-read.ts`;
+const handledDisclosure = (perm: string, call: Evidence, constant: Evidence): Obligation => ({
+  perm,
+  purpose: 'disclosure:handledFrozen',
+  need: NONE,
+  facts: ['object:object.* 动作'],
+  note: '只决定已办冻结份里哪些字段出现在响应中，不拒绝请求；发起人 / 待办人读现值不经此处。',
+  at: [
+    call,
+    fn(
+      HANDLED_READ,
+      'selectHandledRead',
+      'const own = await getModuleViewableFieldsInTransaction(bound, ctx, data.snapshot.fieldObjectCode, tx)',
+    ),
+    constant,
+  ],
+});
 const recordView = (call: Evidence, facts = ['object:readPageContext']) =>
   ob(`obj:${RECORD}:view`, facts, [call, PAGE, READ, RECORD_CONST]);
 const managerIdentity = (call: Evidence) =>
@@ -3811,6 +3833,11 @@ export const EMPLOYMENT: RequiredTable = {
       ],
       '看不见与不存在同一个 404（DEC-177 可见口径）',
     ),
+    handledDisclosure(
+      `obj:${RECORD}:view`,
+      at(INTENT, 'GET', '/retirement-intentions/:id', "selectHandledRead(deps, ctx, 'retirement_intention', id)"),
+      RECORD_CONST,
+    ),
   ],
   // ---- R2-T03 B4 撤销离职 ----
   'POST /api/tenant/employment/exits/:id/cancel': exitCancelCommand(),
@@ -4551,6 +4578,11 @@ export const EMPLOYMENT: RequiredTable = {
         ASSESSMENT_SCOPE_SQL,
       ],
       '考核不存在与考核对象在范围外同一个 404',
+    ),
+    handledDisclosure(
+      `obj:${ASSESSMENT}:view`,
+      at(ASSESS, 'GET', '/probation-assessments/:id', "selectHandledRead(deps, ctx, 'probation_assessment', id)"),
+      ASSESSMENT_CONST,
     ),
   ],
   'POST /api/tenant/employment/probation-assessments': [

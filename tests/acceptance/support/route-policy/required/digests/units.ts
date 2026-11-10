@@ -273,7 +273,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employment/assessment-routes.ts': {
     'route:GET /probation-assessments': '47f2e8dfaa4c',
-    'route:GET /probation-assessments/:id': 'bff8ddc87a0f',
+    'route:GET /probation-assessments/:id': 'd1e3f84d0453',
     'route:PATCH /probation-assessments/:id': 'f805edcc68ba',
     'route:POST /probation-assessments': '17037f156e66',
   },
@@ -453,6 +453,9 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/forward-preview.ts': {
     previewEmploymentForwardUpdate: '4e3f3230bc73',
   },
+  'apps/api/src/modules/employment/handled-read.ts': {
+    selectHandledRead: '8a4056c7f6b1',
+  },
   'apps/api/src/modules/employment/intern-actions.ts': {
     requireRevokeAccess: '8f3da55b73bc',
     rowActions: 'a98eb54c83ef',
@@ -559,7 +562,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/retirement-intention-routes.ts': {
     intentionGuard: 'a4ae072e9f95',
     'route:GET /retirement-intentions': 'c27ab662952e',
-    'route:GET /retirement-intentions/:id': '98cc81b89c0c',
+    'route:GET /retirement-intentions/:id': 'af80a48b5814',
     'route:PATCH /retirement-intentions/:id': '3974ae923459',
     'route:POST /retirement-intentions/:id/submit': 'a6c1e862c697',
     'route:POST /retirement-intentions/:id/withdraw': 'a6c1e862c697',
@@ -648,9 +651,9 @@ export const DIGESTS: Digests = {
     'route:DELETE /api/tenant/establishment/schemes/:id': '90d76eee9b37',
     'route:GET /api/tenant/establishment/capacities': '1f3ddbcb5fa7',
     'route:GET /api/tenant/establishment/capacities/:id': '5e89a747e7eb',
-    'route:GET /api/tenant/establishment/copy-jobs/:id': 'd1e53f44ad76',
-    'route:GET /api/tenant/establishment/copy-jobs/:id/report': '55b5ba30b515',
-    'route:GET /api/tenant/establishment/notifications': 'eece053b4c67',
+    'route:GET /api/tenant/establishment/copy-jobs/:id': '989c90fac699',
+    'route:GET /api/tenant/establishment/copy-jobs/:id/report': '9419b4626b3a',
+    'route:GET /api/tenant/establishment/notifications': '271241086b26',
     'route:GET /api/tenant/establishment/schemes': 'e3ddf43b74c8',
     'route:GET /api/tenant/establishment/schemes/:id': '927514efddf6',
     'route:GET /api/tenant/establishment/settings': 'd841aa91a935',
@@ -658,7 +661,7 @@ export const DIGESTS: Digests = {
     'route:PATCH /api/tenant/establishment/schemes/:id': '23d874e50836',
     'route:POST /api/tenant/establishment/capacities': '645b6b7a8d0a',
     'route:POST /api/tenant/establishment/copy-jobs': '7f8eecf2768c',
-    'route:POST /api/tenant/establishment/copy-jobs/:id/execute': 'd8e67e29d590',
+    'route:POST /api/tenant/establishment/copy-jobs/:id/execute': '8a98c5392086',
     'route:POST /api/tenant/establishment/schemes': 'c143c93e7fc2',
     'route:PUT /api/tenant/establishment/settings': '7de74073c39f',
     visibleCapacity: '83b0e7615025',
@@ -2102,7 +2105,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview': '78398667795d',
   'apps/api/src/modules/employment/all-people.ts#route:GET /all-people': 'cc5c2830b78c',
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments': '0bbbce83c90f',
-  'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': '10fc77350e79',
+  'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': 'ef6635089abf',
   'apps/api/src/modules/employment/assessment-routes.ts#route:PATCH /probation-assessments/:id': '1856c700e55a',
   'apps/api/src/modules/employment/assessment-routes.ts#route:POST /probation-assessments': '5dd78b722ceb',
   'apps/api/src/modules/employment/assessment-store.ts#assessmentScopeSql': '0602b4cb55a7',
@@ -2237,6 +2240,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#runExitCancel': 'ba269b777c05',
   'apps/api/src/modules/employment/forward-import.ts#schema': '12907b33413c',
   'apps/api/src/modules/employment/forward-preview.ts#previewEmploymentForwardUpdate': '3bddf9cc4a51',
+  'apps/api/src/modules/employment/handled-read.ts#selectHandledRead': '01704aa908da',
   'apps/api/src/modules/employment/intern-actions.ts#requireRevokeAccess': '28203aac1ec9',
   'apps/api/src/modules/employment/intern-actions.ts#rowActions': '75815f414437',
   'apps/api/src/modules/employment/intern-create.ts#createInternEntry': '93cde734e116',
@@ -2311,7 +2315,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionWriteScope': '0b611979014e',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#intentionGuard': '02aebe00f7b4',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions': '9e50ab965e69',
-  'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions/:id': 'f621e1693421',
+  'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions/:id': '3235864d8cfc',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:PATCH /retirement-intentions/:id':
     '3523950dadcd',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:POST /retirement-intentions/:id/submit':
@@ -2381,10 +2385,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/establishment/routes.ts#route:DELETE /api/tenant/establishment/schemes/:id': 'ad749dd90f8a',
   'apps/api/src/modules/establishment/routes.ts#route:GET /api/tenant/establishment/capacities': 'a9f44c9abaa9',
   'apps/api/src/modules/establishment/routes.ts#route:GET /api/tenant/establishment/capacities/:id': '8cc29313bdcb',
-  'apps/api/src/modules/establishment/routes.ts#route:GET /api/tenant/establishment/copy-jobs/:id': '5eab2032c261',
+  'apps/api/src/modules/establishment/routes.ts#route:GET /api/tenant/establishment/copy-jobs/:id': 'a8cbf210cf1b',
   'apps/api/src/modules/establishment/routes.ts#route:GET /api/tenant/establishment/copy-jobs/:id/report':
-    'f0f603dfd334',
-  'apps/api/src/modules/establishment/routes.ts#route:GET /api/tenant/establishment/notifications': 'a2ba30ba9cba',
+    'e9972666fa8b',
+  'apps/api/src/modules/establishment/routes.ts#route:GET /api/tenant/establishment/notifications': 'f04cfd0d91ef',
   'apps/api/src/modules/establishment/routes.ts#route:GET /api/tenant/establishment/schemes': '1b72fafa5104',
   'apps/api/src/modules/establishment/routes.ts#route:GET /api/tenant/establishment/schemes/:id': '9e06a83bc020',
   'apps/api/src/modules/establishment/routes.ts#route:GET /api/tenant/establishment/settings': '7744691a128e',
@@ -2393,7 +2397,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/establishment/routes.ts#route:POST /api/tenant/establishment/capacities': '0fc9717a15e6',
   'apps/api/src/modules/establishment/routes.ts#route:POST /api/tenant/establishment/copy-jobs': 'd5fda412d75d',
   'apps/api/src/modules/establishment/routes.ts#route:POST /api/tenant/establishment/copy-jobs/:id/execute':
-    'e67a34c0527e',
+    '85c7c3e5b46c',
   'apps/api/src/modules/establishment/routes.ts#route:POST /api/tenant/establishment/schemes': '70ab2c4abbc3',
   'apps/api/src/modules/establishment/routes.ts#route:PUT /api/tenant/establishment/settings': '54a226b874c8',
   'apps/api/src/modules/establishment/routes.ts#visibleCapacity': '41a7915759e3',

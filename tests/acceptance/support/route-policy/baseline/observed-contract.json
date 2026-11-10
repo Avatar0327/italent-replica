@@ -5717,10 +5717,13 @@
           "trimEmploymentResponse"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
-          "readPageContext"
+          "checkScope",
+          "readPageContext",
+          "visible()"
         ]
       }
     },
@@ -5925,13 +5928,16 @@
           "trimEmploymentResponse"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
+          "checkScope",
           "employment visibility",
           "readPageContext",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -6613,8 +6619,10 @@
           "TenantBase.OrganizationEstablishment:view"
         ],
         "scope": [
+          "creator scope",
           "establishment visible*/check*",
-          "requestScope"
+          "requestScope",
+          "visible()"
         ]
       }
     },
@@ -6645,8 +6653,10 @@
           "TenantBase.OrganizationEstablishment:view"
         ],
         "scope": [
+          "creator scope",
           "establishment visible*/check*",
-          "requestScope"
+          "requestScope",
+          "visible()"
         ]
       }
     },
@@ -6680,8 +6690,10 @@
           "listTodos / listNotifications / listInstances"
         ],
         "scope": [
+          "creator scope",
           "requestScope",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },

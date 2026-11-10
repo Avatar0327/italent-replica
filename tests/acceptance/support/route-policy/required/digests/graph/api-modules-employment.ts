@@ -289,6 +289,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
   ],
   'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#isConflict': ['#REASON'],
+  'apps/api/src/modules/employment/assessment-content.ts#CONTENT_KEYS': [
+    'packages/domain/src/employment/assessment.ts#ASSESSMENT_FORM_FIELDS',
+  ],
+  'apps/api/src/modules/employment/assessment-content.ts#composeAssessment': [
+    '#CONTENT_KEYS',
+    '#FACTS',
+    'apps/api/src/modules/employment/handled-read.ts#composeHandled',
+    'apps/api/src/modules/employment/handled-read.ts#requireExt',
+  ],
+  'apps/api/src/modules/employment/assessment-content.ts#loadAssessmentContent': [
+    '#CONTENT_KEYS',
+    'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
+    'apps/api/src/modules/employment/handled-read.ts#pickContent',
+  ],
   'apps/api/src/modules/employment/assessment-in-flight.ts#assessmentVoidNotice': [
     'packages/domain/src/employment/assessment.ts#ASSESSMENT_TYPES',
   ],
@@ -319,12 +333,14 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
   ],
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': [
+    'apps/api/src/modules/employment/assessment-content.ts#composeAssessment',
     'apps/api/src/modules/employment/assessment-store.ts#assessmentView',
     'apps/api/src/modules/employment/assessment-store.ts#loadAssessmentRead',
     'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
     'apps/api/src/modules/employment/assessment-store.ts#withTerminationFlag',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
+    'apps/api/src/modules/employment/handled-read.ts#selectHandledRead',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
   ],
@@ -4016,6 +4032,26 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/forward-store.ts#auditForwardTarget',
     'apps/api/src/modules/establishment/employment-check.ts#affectsEstablishmentOccupancy',
   ],
+  'apps/api/src/modules/employment/handled-read.ts#instancesOf': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/employment/handled-read.ts#openAsParticipant': [
+    'apps/api/src/modules/approval/disclosure.ts#readDetail',
+  ],
+  'apps/api/src/modules/employment/handled-read.ts#requireExt': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+  ],
+  'apps/api/src/modules/employment/handled-read.ts#selectHandledRead': [
+    'apps/api/src/modules/approval/context.ts#canonicalId',
+    'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
+    'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
+    'apps/api/src/modules/approval/foreign-fields.ts#viewableWithForeign',
+    'apps/api/src/modules/approval/handling-content.ts#contentViewOf',
+    '#LIVE',
+    '#instancesOf',
+    '#openAsParticipant',
+    '#pendingFor',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+  ],
   'apps/api/src/modules/employment/import-audit.ts#failedImportAnchors': [
     'apps/api/src/audit/record.ts#rawImportRows',
     'apps/api/src/audit/record.ts#rawUuid',
@@ -6651,6 +6687,20 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_FORM_FIELDS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/retirement-intention-content.ts#CONTENT_KEYS': [
+    'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_FORM_FIELDS',
+  ],
+  'apps/api/src/modules/employment/retirement-intention-content.ts#composeIntention': [
+    'apps/api/src/modules/employment/handled-read.ts#composeHandled',
+    'apps/api/src/modules/employment/handled-read.ts#requireExt',
+    '#CONTENT_KEYS',
+    '#FACTS',
+  ],
+  'apps/api/src/modules/employment/retirement-intention-content.ts#loadIntentionContent': [
+    'apps/api/src/modules/employment/handled-read.ts#pickContent',
+    '#CONTENT_KEYS',
+    'apps/api/src/modules/employment/retirement-intention-store.ts#loadIntention',
+  ],
   'apps/api/src/modules/employment/retirement-intention-routes.ts#approvalFields': [
     'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
@@ -6680,6 +6730,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions/:id': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
+    'apps/api/src/modules/employment/handled-read.ts#selectHandledRead',
+    'apps/api/src/modules/employment/retirement-intention-content.ts#composeIntention',
     'apps/api/src/modules/employment/retirement-intention-store.ts#intentionView',
     'apps/api/src/modules/employment/retirement-intention-store.ts#loadVisibleIntention',
     'apps/api/src/modules/job/context.ts#uuidParam',

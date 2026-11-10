@@ -5,6 +5,13 @@ import { editFields, actionTask } from './edit-model.js';
 import { detailText as d, messages as m } from './messages.js';
 import type { ApprovalAction, ApprovalDetail, ApprovalList, ApprovalLog, ApprovalRow, ApprovalView } from './types.js';
 
+export interface DecisionButton {
+  readonly action: 'approve' | 'disagree';
+  /** 接口 exits 的出口编码；旧形状兜底时没有，请求体也不带 exit。 */
+  readonly exit?: string;
+  readonly label: string;
+}
+
 const base = '/api/tenant/approval';
 const actions: ApprovalAction[] = ['approve', 'disagree', 'reject', 'transfer', 'withdraw', 'edit'];
 export const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -12,6 +19,21 @@ export const visibleActions = (detail: ApprovalDetail) =>
   actions.filter(
     (action) => detail.actions.includes(action) && (action !== 'edit' || editFields(detail, action).length > 0),
   );
+
+/**
+ * F-478 S5（设计 §4）：同意 / 不同意按钮按接口 exits 渲染，文案取 exits.label，前端不拼文案、不按审批类型分支；
+ * 详情没有 exits（旧形状）时按 actions 兜底为“同意 / 不同意”。出口仍须在 actions 里可见，二者不一致时不显示。
+ */
+export function decisionButtons(detail: ApprovalDetail): DecisionButton[] {
+  const visible = visibleActions(detail);
+  if (!Array.isArray(detail.exits))
+    return (['approve', 'disagree'] as const)
+      .filter((action) => visible.includes(action))
+      .map((action) => ({ action, label: m[action] }));
+  return detail.exits
+    .filter((exit) => (exit.family === 'approve' || exit.family === 'disagree') && visible.includes(exit.family))
+    .map((exit) => ({ action: exit.family, exit: exit.code, label: exit.label }));
+}
 
 export async function approvalList(
   api: ApiClient,
@@ -72,16 +94,20 @@ export function approvalRequest(
   action: ApprovalAction,
   taskId?: string,
   input: Record<string, unknown> = {},
+  exit?: string,
 ) {
   taskId = actionTask(detail, taskId);
-  if (!visibleActions(detail).includes(action) || (action !== 'withdraw' && !taskId))
+  const exitGone =
+    exit !== undefined && !decisionButtons(detail).some((item) => item.action === action && item.exit === exit);
+  if (!visibleActions(detail).includes(action) || (action !== 'withdraw' && !taskId) || exitGone)
     throw new ApiError(403, 'ACTION_UNAVAILABLE', 'forbidden', m.actionDenied);
   const toUserId = typeof input.toUserId === 'string' ? input.toUserId.trim().toLowerCase() : undefined;
   if (action === 'transfer' && (!toUserId || !uuidPattern.test(toUserId)))
     throw new ApiError(422, 'INVALID_TARGET', 'fields', m.targetInvalid);
   const comment = typeof input.comment === 'string' ? input.comment.trim() || null : null;
-  const body: { comment?: string | null; toUserId?: string; fields?: Record<string, unknown> } =
+  const body: { comment?: string | null; toUserId?: string; fields?: Record<string, unknown>; exit?: string } =
     action === 'withdraw' || action === 'edit' ? {} : { comment };
+  if (exit !== undefined) body.exit = exit;
   const keys = editFields(detail, action).map(({ key }) => key);
   if (keys.length) body.fields = Object.fromEntries(Object.entries(input).filter(([key]) => keys.includes(key)));
   if (action === 'transfer') body.toUserId = toUserId;
@@ -106,14 +132,22 @@ export function approvalCommand(
 /** 审批 fields 是传输信封；内核表单的字段名不带此前缀。保留状态码供内核区分明确拒绝与未知。 */
 export function approvalFailure(error: unknown): unknown {
   if (!(error instanceof ApiError)) return error;
+  // F-478 S5：审批业务冲突（顶层 CONFLICT，如他人已办理、出口已不可用）保留服务端原因并提示重新读取；
+  // 通用客户端不保留 details.reason，不按原因码分支，也不把原因码显示给用户（DEC-045）。内核按明确拒绝处理，不自动重提。
+  const changed = error.status === 409 && error.kind === 'conflict';
+  const message = changed
+    ? m.handlingChanged(error.serverMessage || error.message)
+    : // F-291 的业务原因在 details.reason；顶层 code 是 FORBIDDEN，不能拿它匹配业务原因。
+      error.status === 403
+      ? (error.serverMessage ?? m.fieldNotEditable)
+      : error.message;
   return new ApiError(
     error.status,
     error.code,
     error.kind,
-    // F-291 的业务原因在 details.reason；顶层 code 是 FORBIDDEN，不能拿它匹配业务原因。
-    error.status === 403 ? (error.serverMessage ?? m.fieldNotEditable) : error.message,
+    message,
     {
-      message: error.serverMessage,
+      message: changed ? message : error.serverMessage,
       details: error.fieldErrors.flatMap(({ name, errors }) =>
         errors.map((message) => ({ path: name[0] === 'fields' ? name.slice(1) : name, message })),
       ),
