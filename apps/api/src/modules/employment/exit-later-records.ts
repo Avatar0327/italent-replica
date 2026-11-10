@@ -64,15 +64,9 @@ export function assertNoLaterExitRecords(
   });
 }
 
-/** 历史失败与命令重放都按读取人的当前权限投影；不能沿用调度时的系统可见集合。 */
-export async function projectExitFailureDetails(
-  tx: Tx,
-  ctx: EmploymentContext,
-  detail: Record<string, unknown>,
-  viewable?: Pick<ReadonlySet<string>, 'has'>,
-) {
-  const records = (Array.isArray(detail.records) ? detail.records : []) as LaterRecord[];
-  if (!records.length) return detail;
+/** 后续记录里读取人当前看得到的那些（DEC-177 可见性 + 字段权，按读取人的当前数据范围判）。 */
+async function visibleRecordIds(tx: Tx, ctx: EmploymentContext, records: readonly LaterRecord[]) {
+  if (!records.length) return new Set<string>();
   const ids = sql.join(
     records.map((row) => sql`${row.docId}::uuid`),
     sql`, `,
@@ -85,7 +79,24 @@ export async function projectExitFailureDetails(
   );
   const employeeId = candidates[0]?.employeeId;
   const shown = employeeId ? await batchDisclose(tx, ctx, employeeId, candidates) : { items: [] };
-  const visible = new Set(shown.items.map((row) => row.businessId));
+  return new Set(shown.items.map((row) => row.businessId));
+}
+
+/**
+ * 历史失败与命令重放都按读取人的当前权限投影；不能沿用调度时的系统可见集合。
+ * frozenRead（F-476 P4 已办冻结读取）：viewable 已叠上办理披露集合；提示文案嵌着现值的最后工作日（不是办理时的值，
+ * 也不能按办理份改写成另一句话），一律不下发；没有记录时也不回退原始详情（原始详情里有原定 / 最终生效日）。
+ */
+export async function projectExitFailureDetails(
+  tx: Tx,
+  ctx: EmploymentContext,
+  detail: Record<string, unknown>,
+  viewable?: Pick<ReadonlySet<string>, 'has'>,
+  frozenRead = false,
+) {
+  const records = (Array.isArray(detail.records) ? detail.records : []) as LaterRecord[];
+  if (!records.length && !frozenRead) return detail;
+  const visible = await visibleRecordIds(tx, ctx, records);
   const allow = (key: string) => viewable === undefined || viewable.has(key);
   const result = records
     .filter((row) => visible.has(row.docId))
@@ -96,7 +107,7 @@ export async function projectExitFailureDetails(
     }));
   return {
     title: '离职暂无法生效',
-    ...(allow('lastWorkDate') ? { message: detail.message } : {}),
+    ...(allow('lastWorkDate') && !frozenRead ? { message: detail.message } : {}),
     records: result,
     hiddenCount: records.length - result.length,
     actions: ['查看记录', '关闭'],

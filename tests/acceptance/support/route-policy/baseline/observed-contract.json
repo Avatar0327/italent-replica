@@ -4823,13 +4823,16 @@
           "transfer.source"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
+          "checkScope",
           "employment visibility",
           "readPageContext",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -5384,13 +5387,16 @@
           "transfer.initiator"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
+          "checkScope",
           "employment visibility",
           "readPageContext",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -5415,13 +5421,16 @@
           "transfer.initiator"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
+          "checkScope",
           "employment visibility",
           "readPageContext",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -6010,13 +6019,16 @@
           "transfer.initiator"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
+          "checkScope",
           "employment visibility",
           "readPageContext",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -6048,10 +6060,12 @@
           "TenantBase.EmploymentRecord:view"
         ],
         "scope": [
+          "checkScope",
           "employment visibility",
           "readContext（非配置对象）",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
