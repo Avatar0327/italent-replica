@@ -815,6 +815,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/auto-regularization.ts#assertNoCycleAssessments': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'packages/domain/src/employment/auto-assessment.ts#assessmentBlocksAutoRegularization',
+    'packages/domain/src/employment/auto-assessment.ts#assessmentSkipsAutoRegularization',
   ],
   'apps/api/src/modules/employment/auto-regularization.ts#assertNoCycleRegularization': [
     '#findCycleRegularization',
@@ -4980,11 +4981,22 @@ export const GRAPH: Graph = {
     '#requestActionTarget',
     'apps/api/src/modules/employment/part-time/request-service.ts#isRequestInitiator',
     'apps/api/src/modules/employment/part-time/request-store.ts#loadPartTimeRequest',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'packages/domain/src/employment/part-time-request.ts#nextPartTimeRequestState',
   ],
   'apps/api/src/modules/employment/part-time/request-actions.ts#requestActionTarget': ['#REQUEST_ACTION_ACCESS'],
   'apps/api/src/modules/employment/part-time/request-read.ts#landedRecordId': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeContent': [
+    'apps/api/src/modules/approval/adapter-support.ts#employeeHeader',
+    'apps/api/src/modules/approval/object-ceiling.ts#handlingCeilingOf',
+    'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    '#landedRecordId',
+    '#requestDto',
+    'apps/api/src/modules/employment/part-time/request-store.ts#loadPartTimeRequest',
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeRequestDetail': [
     'apps/api/src/modules/approval/adapter-support.ts#employeeHeader',
@@ -5011,6 +5023,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],
+  'apps/api/src/modules/employment/part-time/request-routes.ts#capByDisclosed': [
+    '#FORM_TOP_KEYS',
+    '#formCode',
+    '#keepIn',
+  ],
+  'apps/api/src/modules/employment/part-time/request-routes.ts#capPrimary': ['#keepIn'],
   'apps/api/src/modules/employment/part-time/request-routes.ts#createBusiness': [
     'apps/api/src/modules/employment/part-time/routes.ts#writeBusiness',
   ],
@@ -5072,11 +5090,19 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:GET /part-time-requests/:id': [
     'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/approval/frozen-read.ts#LIVE_VIEW',
+    'apps/api/src/modules/approval/frozen-read.ts#openContentRead',
+    'apps/api/src/modules/approval/object-ceiling.ts#storedCeiling',
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     'apps/api/src/modules/employment/part-time/request-actions.ts#availableRequestActions',
     'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeRequestDetail',
+    '#capByDisclosed',
+    '#capPrimary',
+    '#keepIn',
+    '#trimRequestDto',
     'apps/api/src/modules/employment/part-time/request-service.ts#notFound',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
@@ -5153,6 +5179,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/request-service.ts#submitRequest',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/part-time/request-routes.ts#trimRequestDto': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
+    '#formCode',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
   'apps/api/src/modules/employment/part-time/request-service.ts#assertAction': [
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',

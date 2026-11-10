@@ -75,6 +75,22 @@ export function duplicateEmployeeNoRows(rows: readonly { rowNo: number; employee
   return duplicated;
 }
 
+/**
+ * 批内重复电子邮件（c 类，设计 §3.3）：每个重复邮箱的所有行都命中（不只后出现的），
+ * 比较键 lower(btrim(email))；邮箱为空的行不参与。格式不对的行自己已有错误，由调用方先剔除。
+ */
+export function duplicateEmailRows(rows: readonly { rowNo: number; email: string | null }[]): Set<number> {
+  const seen = new Map<string, number[]>();
+  for (const row of rows) {
+    const key = row.email?.trim().toLowerCase() ?? '';
+    if (key === '') continue;
+    seen.set(key, [...(seen.get(key) ?? []), row.rowNo]);
+  }
+  const duplicated = new Set<number>();
+  for (const rowNos of seen.values()) if (rowNos.length > 1) rowNos.forEach((rowNo) => duplicated.add(rowNo));
+  return duplicated;
+}
+
 /** 加黑三项：只有勾选加黑才校验；原因必填，截止日（可空）不得早于离职生效日。 */
 export function validateExitImportBlacklist(
   row: { addToBlacklist?: boolean; blacklistReason?: string; blacklistExpiryDate?: string },

@@ -13,6 +13,7 @@ import {
   rejectToPreviousAllowed,
   blindReviewFields,
   disclosedFieldNames,
+  hasApproveExit,
   hasExit,
   isCountersign,
   recordsHiddenFor,
@@ -40,6 +41,11 @@ import { loadRecusalFacts } from './subjects.js';
 import { displayWindow, loadInstance, loadLogs, loadTasks, type InstanceRow, type TaskRow } from './store.js';
 
 export const SHOW_ORIGINALS_SETTING = 'approval.show_original_values';
+
+/** 「审批原值显示」开关（租户设置，缺省显示）：申请详情与审批中心共用。 */
+export async function showOriginalsOf(tx: Tx, tenantId: string): Promise<boolean> {
+  return (await readEffectiveSetting(tx, tenantId, SHOW_ORIGINALS_SETTING)).value === true;
+}
 
 export interface Viewer {
   readonly userId: string;
@@ -104,7 +110,6 @@ export async function readDetail(
     transfer: await adminCovers(tx, ctx.tenantId, instanceId, viewer.transferScope),
     intervene: await adminCovers(tx, ctx.tenantId, instanceId, viewer.interveneScope),
   };
-  const setting = await readEffectiveSetting(tx, ctx.tenantId, SHOW_ORIGINALS_SETTING);
   // F-476：先选内容来源（缺份 503，DEC-807），已办读冻结份里的快照，其余读现值
   const content: ContentSelection = forceLive
     ? { mode: 'live' }
@@ -120,7 +125,7 @@ export async function readDetail(
     tasks: displayWindow(allTasks),
     allTasks,
     logs: withLogs ? await loadLogs(tx, ctx.tenantId, instanceId) : [],
-    showOriginals: setting.value === true,
+    showOriginals: await showOriginalsOf(tx, ctx.tenantId),
     admin,
     recusal: await loadRecusalFacts(tx, ctx.tenantId, instance),
     ccNodeKey,
@@ -225,7 +230,7 @@ function actionsFor(
     // DEC-144：同意 / 不同意是出口动作，按节点配置公布；会签节点的前加签人不计入流转规则，不公布不同意（DEC-152）。
     // 驳回是节点开关（F-003 第二轮），加签人沿用原节点开关。
     const votes = !isCountersign(node) || votesInTransition(allTasks, mine);
-    if (decide && hasExit(node, 'approve')) actions.push('approve');
+    if (decide && hasApproveExit(node)) actions.push('approve');
     if (decide && votes && hasExit(node, 'disagree')) actions.push('disagree');
     if (decide && rejectAllowed(node)) actions.push('reject');
     // DEC-318 K-39：驳回到上一步（单人节点、非第一个节点）、审批人跳转按节点开关公布，与命令同一判定
@@ -326,7 +331,7 @@ export function detailView(
       ...(edit ? { edit } : {}),
     },
     actions: [...new Set(actions)],
-    exits: exitsView(actions),
+    exits: exitsView(actions, node, data.snapshot),
     // DEC-104 / DEC-115：看不到审批记录的人不披露路径（路径会暴露已走过的节点与分支结果）
     path: hidden ? [] : pathView(version.nodes, instance.currentNodeKey, pathFacts),
   };
