@@ -33,7 +33,13 @@ import { etag, idParam, ifMatch, objectCodeParam, parseBody } from './http.js';
 import { listBalances, listSeats } from './licenses.js';
 import { myObjectPermission } from './me.js';
 import { buildPermissionSnapshot } from './me-snapshot.js';
-import { createProfile, getProfileDetail, listProfiles, setObjectPermission } from './profiles.js';
+import {
+  createProfile,
+  getProfileDetail,
+  listProfiles,
+  PROFILE_LIST_UNRECORDED,
+  setObjectPermission,
+} from './profiles.js';
 import {
   adminBody,
   adminListQuery,
@@ -42,6 +48,7 @@ import {
   grantListQuery,
   objectPermissionBody,
   profileBody,
+  profileListQuery,
 } from './schemas.js';
 import { loadAdminRoles } from './subject.js';
 import { registerUserRoutes } from './user-routes.js';
@@ -123,7 +130,15 @@ function licenseRoutes(router: Router, deps: TenantRouteDeps): void {
 function profileRoutes(router: Router, deps: TenantRouteDeps): void {
   router.get(`${BASE}/profiles`, async (c) => {
     const ctx = await guard(c, deps, 'profile_manage');
-    return c.json({ items: await withTenant(deps.db, ctx.tenantId, listProfiles) });
+    const query = parseQuery(profileListQuery, {
+      name: c.req.query('name'),
+      code: c.req.query('code'),
+      app: c.req.query('app'),
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+    });
+    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listProfiles(tx, query));
+    return c.json({ ...page, unrecorded: PROFILE_LIST_UNRECORDED });
   });
   router.get(`${BASE}/profiles/:id`, async (c) => {
     const ctx = await guard(c, deps, 'profile_manage');

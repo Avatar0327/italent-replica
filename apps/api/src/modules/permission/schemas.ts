@@ -61,3 +61,12 @@ export const adminListQuery = z.strictObject({
   q: textFilter.optional(),
   ...listPage,
 });
+
+/** 身份列表（F-474-5 #25）：名称 / 编码包含匹配，关联应用精确匹配；默认一页取全以兼容既有调用方。 */
+export const profileListQuery = z.strictObject({
+  name: textFilter.optional(),
+  code: textFilter.optional(),
+  app: z.string().regex(APP_CODE).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(500),
+  offset: listPage.offset,
+});
