@@ -1,4 +1,4 @@
-/** F-135 / DEC-789：只对齐六类线性预置；F-478 的分支和新来源不在本批。 */
+/** F-135 / DEC-789：线性预置基线；转正 / 实习转正（S3）与退休（S4）有意改契约，单列在下方。 */
 import { PRESET_PROCESSES, type ApprovalTypeCode } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -14,14 +14,6 @@ const cases = [
     [
       ['直接上级', 'object_field', 'direct_manager'],
       ['HR访谈', 'department', 'record_department_hrbp'],
-    ],
-  ],
-  [
-    'retirement',
-    '退休（只保留两节点）',
-    [
-      ['直线经理', 'object_field', 'direct_manager'],
-      ['HRBP', 'department', 'record_department_hrbp'],
     ],
   ],
   [
@@ -106,6 +98,28 @@ describe('AC-APV-F135：真实安装接口保存并读回线性预置', () => {
     const matches = installed.filter((item) => item.approvalType === type);
     expect(matches).toHaveLength(1);
     expect(matches[0]!.latestVersion.nodes.map((n) => [n.name, n.approver?.type, n.approver?.value])).toEqual(expected);
+    expect(matches[0]!.currentVersion).toBeNull();
+    expect(matches[0]!.latestVersion.status).toBe('draft');
+  });
+
+  // F-478 S4 有意改契约：退休预置由两节点改为四节点（HRBP 按是否返聘走业务出口，返聘后再经返聘后直线经理 → 返聘后 HRBP）；
+  // 出口、路由与办理流转在 AC-APV-F478-18 逐项断言。
+  it('retirement：F-478 S4 四节点预置，节点、顺序与来源', () => {
+    const matches = installed.filter((item) => item.approvalType === 'retirement');
+    expect(matches).toHaveLength(1);
+    const nodes = matches[0]!.latestVersion.nodes;
+    expect(nodes.map((n) => [n.name, n.approver?.type, n.approver?.value])).toEqual([
+      ['直线经理', 'object_field', 'direct_manager'],
+      ['HRBP', 'department', 'record_department_hrbp'],
+      ['返聘后直线经理', 'object_field', 'rehire_direct_manager'],
+      ['返聘后 HRBP', 'department', 'rehire_department_hrbp'],
+    ]);
+    expect(nodes.map((n) => n.exits)).toEqual([
+      ['approve'],
+      ['approve_no_rehire', 'approve_rehire'],
+      ['approve'],
+      ['approve'],
+    ]);
     expect(matches[0]!.currentVersion).toBeNull();
     expect(matches[0]!.latestVersion.status).toBe('draft');
   });

@@ -7,7 +7,7 @@ import { expect } from 'vitest';
 import { approvalWorld, type ApprovalWorld, type InstanceView, type TaskView } from './AC-APV-support.js';
 import { APV } from './AC-APV-F478-support.js';
 import { detailOf, errorInfo, type DetailWithExits } from './AC-APV-F478-s2-support.js';
-import type { Db } from '@italent/db';
+import { sql, withTenant, type Db } from '@italent/db';
 
 export { APV, detailOf, errorInfo };
 
@@ -23,7 +23,7 @@ export interface RetireScene {
   readonly manager: string;
   readonly subject: { userId: string; employeeId: string };
   /** 创建并提交退休申请；返回审批实例。 */
-  retire(reEmployed: boolean): Promise<InstanceView>;
+  retire(reEmployed: boolean, lastWorkDate?: string): Promise<InstanceView>;
   /** 办理一个待办：返回原始响应。 */
   decide(
     view: InstanceView,
@@ -34,6 +34,8 @@ export interface RetireScene {
   /** 办理当前待办并重读详情。 */
   advance(view: InstanceView, body?: Record<string, unknown>): Promise<InstanceView>;
   businessStatus(businessId: string): Promise<string>;
+  /** 退休申请的返聘事实：是否返聘与已生成的返聘业务 ID。 */
+  extension(businessId: string): Promise<{ re_employed: boolean; rehire_business_id: string | null } | undefined>;
 }
 
 /** 搭建退休场景：原部门（负责人、HRBP）、返聘部门（HRBP）、被退休员工（带直线经理）。 */
@@ -50,13 +52,13 @@ export async function retireScene(db: Db, label: string): Promise<RetireScene> {
   await w.setOrgRoles(backId, { hrbp: backHrbp.employeeId });
   const subject = await w.person('退休员工', homeId, { directManagerId: manager.employeeId });
 
-  async function retire(reEmployed: boolean): Promise<InstanceView> {
+  async function retire(reEmployed: boolean, lastWorkDate = '2026-10-31'): Promise<InstanceView> {
     const revision = await w.json<{ revision: number }>(
       await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${subject.employeeId}`),
     );
     const body = {
       mode: 'application',
-      lastWorkDate: '2026-10-31',
+      lastWorkDate,
       ...(reEmployed
         ? {
             reEmployed: true,
@@ -98,6 +100,15 @@ export async function retireScene(db: Db, label: string): Promise<RetireScene> {
     return (await w.business(businessId)).status;
   }
 
+  async function extension(businessId: string) {
+    return withTenant(w.db, w.tenant.id, async (tx) => {
+      const result = await tx.execute(sql`SELECT re_employed, rehire_business_id::text AS rehire_business_id
+        FROM retirement_requests WHERE tenant_id=${w.tenant.id} AND business_id=${businessId}::uuid`);
+      const rows = Array.isArray(result) ? result : (result as { rows: unknown[] }).rows;
+      return rows[0] as { re_employed: boolean; rehire_business_id: string | null } | undefined;
+    });
+  }
+
   return {
     w,
     home: { id: homeId, head: head.userId, hrbp: hrbp.userId },
@@ -108,6 +119,7 @@ export async function retireScene(db: Db, label: string): Promise<RetireScene> {
     decide,
     advance,
     businessStatus,
+    extension,
   };
 }
 
