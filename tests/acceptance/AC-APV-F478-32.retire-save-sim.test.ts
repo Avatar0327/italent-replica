@@ -58,7 +58,12 @@ describe('AC-APV-F478-32 保存：业务出口组校验', () => {
       { ...node(key, { type: 'department', value: 'record_department_hrbp' }), exits: [...exits] } as NodeInput,
       node('next', { type: 'object_field', value: 'direct_manager' }),
     ];
-    const created = await w.createProcess({ approvalType, isFallback: true, conditions: { items: [] }, nodes: [nodes[1]!] });
+    const created = await w.createProcess({
+      approvalType,
+      isFallback: true,
+      conditions: { items: [] },
+      nodes: [nodes[1]!],
+    });
     const body = cloneForPut(created.latestVersion, { nodes });
     expect(await errorInfo(await putDraft(w, created, body))).toMatchObject({
       status: 400,

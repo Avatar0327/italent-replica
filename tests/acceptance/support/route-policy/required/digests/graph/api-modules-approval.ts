@@ -548,7 +548,7 @@ export const GRAPH: Graph = {
     '#employmentAdapter',
     '#employmentPatch',
     '#employmentTransition',
-    '#exitInitiation',
+    '#exitConditionValues',
     '#exitMetadata',
     '#exitVersion',
     '#filledExitFields',
@@ -592,6 +592,7 @@ export const GRAPH: Graph = {
     '#businessRevision',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
   ],
+  'apps/api/src/modules/approval/adapters.ts#exitConditionValues': ['#exitInitiation'],
   'apps/api/src/modules/approval/adapters.ts#exitInitiation': [
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
   ],

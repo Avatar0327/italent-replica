@@ -241,6 +241,25 @@ async function exitInitiation(tx: Tx, tenantId: string, businessId: string): Pro
  * R2-T03 §9 exitMetadata：离职扩展行上的表单字段（离职类型 / 原因 / 去向等）；不是离职单返回空。
  * 退休（R2-T04 §3.4）只带交接人 / 加黑，另返回退休类型、是否同时返聘与创建时快照的预计退休日期（审批人只看本单字段，DEC-057）。
  */
+/**
+ * 离职 / 退休的流程匹配与出口守卫事实：发起方式（R2-T03 §4B）；退休再多「是否同时返聘」
+ * （F-478 S4，业务出口守卫的事实，办理人不能改变它，创建后不可改）。
+ */
+async function exitConditionValues(
+  tx: Tx,
+  tenantId: string,
+  businessId: string,
+  kind: string,
+  exit: Row,
+): Promise<Record<string, string>> {
+  if (kind !== 'leave' && kind !== 'retirement') return {};
+  return {
+    'business.initiation': await exitInitiation(tx, tenantId, businessId),
+    ...(kind === 'retirement' && typeof exit.reEmployed === 'boolean'
+      ? { 'business.reEmployed': String(exit.reEmployed) }
+      : {}),
+  };
+}
 async function exitMetadata(tx: Tx, tenantId: string, businessId: string, kind: string): Promise<Row> {
   const row = (await loadExitRequest(tx, tenantId, businessId)) as Row | undefined;
   if (!row) return {};
@@ -495,14 +514,7 @@ const employmentAdapter: BusinessAdapter = {
         'employee.code': employee.code,
         'employee.name': employee.name,
         'record.effectiveDate': business.effectiveDate,
-        // R2-T03 §4B：离职流程匹配多一个输入——发起方式（hr / self / manager）
-        ...(business.kind === 'leave' || business.kind === 'retirement'
-          ? { 'business.initiation': await exitInitiation(tx, ctx.tenantId, businessId) }
-          : {}),
-        // F-478 S4：退休「是否同时返聘」是业务出口守卫的事实（办理人不能改变它，创建后不可改）
-        ...(business.kind === 'retirement' && typeof exit.reEmployed === 'boolean'
-          ? { 'business.reEmployed': String(exit.reEmployed) }
-          : {}),
+        ...(await exitConditionValues(tx, ctx.tenantId, businessId, business.kind, exit)),
         ...ref('before', before?.fields),
         ...ref('record', fields),
       },
