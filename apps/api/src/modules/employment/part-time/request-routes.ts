@@ -16,11 +16,18 @@ import { requirePermission } from '../../../authorization.js';
 import { AppError } from '../../../errors.js';
 import type { TenantRouteDeps } from '../../../routes.js';
 import type { TenantEnv } from '../../../tenant-context.js';
+import { LIVE_VIEW, openContentRead } from '../../approval/frozen-read.js';
 import { foreignVisibility } from '../../approval/foreign-fields.js';
 import type { FieldAccess } from '../../approval/context.js';
-import { getModuleViewableFieldsInTransaction, trimModuleResponse } from '../../permission/module-access.js';
+import { storedCeiling } from '../../approval/object-ceiling.js';
+import {
+  getModuleViewableFields,
+  getModuleViewableFieldsInTransaction,
+  trimModuleResponse,
+} from '../../permission/module-access.js';
 import {
   EMPLOYEE_OBJECT,
+  EMPLOYMENT_OBJECT,
   jsonBody,
   readContext,
   readPageContext,
@@ -43,7 +50,12 @@ import {
   type PartTimeWriteTarget,
 } from './replay-guard.js';
 import { availableRequestActions, REQUEST_ACTION_ACCESS, requestActionTarget } from './request-actions.js';
-import { loadPartTimeRequestDetail, loadRequestReceipt } from './request-read.js';
+import {
+  loadPartTimeRequestDetail,
+  loadRequestReceipt,
+  type PartTimeContent,
+  type PartTimeRequestDto,
+} from './request-read.js';
 import {
   createAddRequest,
   deleteRequest,
@@ -304,21 +316,106 @@ function registerRequestChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
 
 function registerRequestRead(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // 申请详情（含主职信息 / 员工信息分组，读员工当前主职）：DEC-177 可见（申请部门 ∪ 员工当前主职部门）；范围外与不存在同一个 404；
-  // 主职分组只在操作人看得到该主职记录时给出；三组各按所属对象的字段查看权逐层裁剪
+  // 主职分组只在操作人看得到该主职记录时给出；三组各按所属对象的字段查看权逐层裁剪。
+  // F-476 P5：已办人读办理时冻结的申请内容（不套数据范围，DEC-834④）：申请内容按完整披露集（办理上限 ∩ 办理节点表单 ∩
+  // 当前字段权）逐层裁；主职 / 员工分组是办理时冻结的展示材料，主职（记录 ID 与 fields，R4 P2-1）按任职对象办理上限、
+  // 员工按员工对象办理上限（R2 P1），再按当前字段权裁（R1 P2-3）；其余人读现值。
   router.get('/part-time-requests/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
-    const detail = await withTenant(deps.db, ctx.tenantId, (tx) => loadPartTimeRequestDetail(tx, ctx, id));
+    const read = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const content = await openContentRead<PartTimeContent>(tx, deps, ctx, 'part_time', id, EMPLOYMENT_OBJECT);
+      if (content?.frozen) {
+        return {
+          frozen: content.frozen.ext,
+          ceiling: content.ceiling,
+          fields: content.fields,
+          view: content.contentView,
+        };
+      }
+      return { detail: await loadPartTimeRequestDetail(tx, ctx, id), view: content?.contentView ?? LIVE_VIEW };
+    });
+    if (read.frozen) {
+      const { primary, employee, employeeCeiling, ...request } = read.frozen;
+      const cappedPrimary = primary && capPrimary(primary, read.ceiling);
+      const cappedEmployee = keepIn(employee, storedCeiling(employeeCeiling));
+      return c.json({
+        ...(await trimRequestDto(deps, ctx, capByDisclosed(request, read.ceiling, read.fields))),
+        availableActions: [],
+        primary: cappedPrimary ? await trimEmploymentResponse(deps, ctx, cappedPrimary) : null,
+        employee: await trimModuleResponse(deps, ctx, EMPLOYEE_OBJECT, cappedEmployee),
+        contentView: read.view,
+      });
+    }
+    const detail = read.detail;
     if (!detail) throw notFound();
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
     const { primary, employee, ...request } = detail;
-    const trimmed = (await trimEmploymentResponse(deps, ctx, request)) as object;
+    const trimmed = await trimRequestDto(deps, ctx, request);
     return c.json({
       ...trimmed,
       // F-268：逐单可用动作（写入口同一组判定，request-actions.ts）；状态字段对当前操作人不可见时不下发，避免动作集合泄露状态
       availableActions: 'status' in trimmed ? await availableRequestActions(c, deps, ctx.tenantId, id) : [],
       primary: primary ? await trimEmploymentResponse(deps, ctx, primary) : null,
       employee: await trimModuleResponse(deps, ctx, EMPLOYEE_OBJECT, employee),
+      contentView: read.view,
     });
   });
+}
+
+/**
+ * 申请 DTO 的最终投影（R2 P2-3）：任职类型在 DTO 里叫 serviceType，在字段权限 / 节点表单里叫 partTimeType（与审批中心、
+ * 自助申请 application-access.ts 同一编码），按后者判权；其余键交 trimEmploymentResponse。
+ */
+async function trimRequestDto(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  request: object,
+): Promise<Record<string, unknown>> {
+  const { serviceType, ...rest } = request as Record<string, unknown>;
+  const trimmed = (await trimEmploymentResponse(deps, ctx, rest)) as Record<string, unknown>;
+  if (!Object.hasOwn(request, 'serviceType')) return trimmed;
+  const viewable = await getModuleViewableFields(deps, ctx, ctx.objectCode ?? EMPLOYMENT_OBJECT);
+  return !viewable || viewable.has(formCode('serviceType')) ? { ...trimmed, serviceType } : trimmed;
+}
+
+/** 申请 DTO 里属于「申请表单业务字段」的顶层键；其余顶层键（id、状态、版本号等）只受办理上限约束。 */
+const FORM_TOP_KEYS = new Set(['serviceType', 'effectiveDate', 'endDate', 'originalEndDate', 'requestRemark']);
+/** DTO 键 → 字段权限 / 节点表单编码（服务类型在权限里叫 partTimeType，开始日期的 DTO 键已是 effectiveDate）。 */
+const formCode = (key: string) => (key === 'serviceType' ? 'partTimeType' : key);
+
+const keepIn = <T extends object>(
+  source: T,
+  allowed: ReadonlySet<string> | null | undefined,
+  name = (k: string) => k,
+): T => (allowed ? Object.fromEntries(Object.entries(source).filter(([key]) => allowed.has(name(key)))) : source) as T;
+
+/**
+ * 冻结的主职分组按任职对象办理上限截（R4 P2-1）：记录 ID 等分组元数据键与 fields 内各字段同一道上限，
+ * 之后再由 trimEmploymentResponse 按当前字段权裁；不能只截 fields、让 id 只经过当前字段权（设计 §5.2）。
+ */
+function capPrimary(primary: NonNullable<PartTimeContent['primary']>, ceiling: ReadonlySet<string> | null) {
+  const { fields, ...meta } = primary;
+  return { ...keepIn(meta, ceiling), fields: keepIn(fields, ceiling) };
+}
+
+/**
+ * 办理份申请内容按披露集逐层截（F-476 P5 R1 P1-1）：顶层表单键、`fields`、`customFields` 用完整披露集
+ * （办理上限 ∩ 节点表单 ∩ 当前字段权），非表单顶层键只按办理上限；披露集 undefined = 不受字段权限约束。
+ */
+function capByDisclosed(
+  dto: PartTimeRequestDto,
+  ceiling: ReadonlySet<string> | null,
+  disclosed: ReadonlySet<string> | undefined,
+): PartTimeRequestDto {
+  const top = Object.fromEntries(
+    Object.entries(dto).filter(([key]) =>
+      FORM_TOP_KEYS.has(key) ? !disclosed || disclosed.has(formCode(key)) : !ceiling || ceiling.has(key),
+    ),
+  );
+  return {
+    ...top,
+    fields: keepIn(dto.fields, disclosed),
+    customFields: keepIn(dto.customFields, disclosed, (id) => `custom:${id}`),
+  } as PartTimeRequestDto;
 }

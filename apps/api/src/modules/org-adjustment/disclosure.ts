@@ -10,14 +10,13 @@
  * 不在这里再拼一遍；快照随单据现值计算（审批中心同口径），披露集按查看人所在节点，不随之后的修改改变。
  */
 import { and, auditObjectCreators, asc, eq, inArray, type Tx } from '@italent/db';
-import { APPROVAL_INSTANCE_OBJECT, buttonResource, MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
+import { MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
-import { memberInstanceScope } from '../approval/access.js';
-import { disclosedFields, readDetail, type DetailData } from '../approval/disclosure.js';
-import { contentViewOf } from '../approval/handling-content.js';
-import { latestInstanceOf, type InstanceRow } from '../approval/store.js';
+import { disclosedFields } from '../approval/disclosure.js';
+import { contentViewFor, openApprovalDetail, type ContentView } from '../approval/frozen-read.js';
+import { latestInstanceOf } from '../approval/store.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import {
   authorizeInTransaction,
@@ -55,20 +54,6 @@ export interface Disclosure {
   readonly contentView: ContentView;
 }
 
-export interface ContentView {
-  readonly mode: 'live' | 'frozen';
-  readonly instanceId: string | null;
-  readonly taskId: string | null;
-  readonly round: number | null;
-  readonly actedAt: string | null;
-}
-
-function contentViewFor(instance: InstanceRow | null, data: DetailData | null): ContentView {
-  if (!instance || !data)
-    return { mode: 'live', instanceId: instance?.id ?? null, taskId: null, round: null, actedAt: null };
-  return contentViewOf(instance.id, data.content);
-}
-
 type Deps = Pick<TenantRouteDeps, 'authorize' | 'clock'>;
 
 /** 审批人路径不按组织 / 任职对象范围裁剪（沿用审批中心可打开口径），也不展示逐员工失败行。 */
@@ -88,7 +73,7 @@ export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantCon
   if (!view) throw notFound();
   const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
   const instance = await latestInstanceOf(tx, ctx.tenantId, 'org_adjustment', id);
-  const data = instance ? await openDetail(tx, bound, ctx, instance) : null;
+  const data = instance ? await openApprovalDetail(tx, bound, ctx, instance) : null;
   if (instance && data?.content.mode === 'frozen') {
     const source = data.content.frozen.content.ext as OrgContent | null;
     if (!source) throw new AppError('SERVICE_UNAVAILABLE', '办理记录暂不可读取，请稍后重试');
@@ -169,30 +154,6 @@ export async function loadOrgCreators(tx: Tx, tenantId: string, scope: ModuleSco
 export function orgInScope(disclosure: Pick<Disclosure, 'orgScope' | 'orgCreators'>, orgId: string): boolean {
   const scope = disclosure.orgScope;
   return !scope || scopeAllows(scope, { orgId, creatorId: disclosure.orgCreators.get(orgId) });
-}
-
-/**
- * 审批中心同一判定（参与人或范围内的流程管理员）与同一份详情数据（含业务快照、查看人任务与抄送）；打不开返回 null。
- * 管理员范围在本事务内解析（PGlite 单连接）。
- */
-async function openDetail(tx: Tx, bound: Deps, ctx: TenantContext, instance: InstanceRow): Promise<DetailData | null> {
-  const adminScope = async (button: 'adminTransfer' | 'adminIntervene') => {
-    const resource = buttonResource(APPROVAL_INSTANCE_OBJECT, button, 'detail');
-    if (!(await bound.authorize({ ...ctx, action: 'object.button', resource }))) return null;
-    return memberInstanceScope(bound as TenantRouteDeps, ctx, tx);
-  };
-  const viewer = {
-    userId: ctx.userId,
-    transferScope: await adminScope('adminTransfer'),
-    interveneScope: await adminScope('adminIntervene'),
-  };
-  const command = { ...ctx, now: bound.clock(), commandId: '', expectedRevision: 0 };
-  try {
-    return await readDetail(tx, command, instance.id, viewer, false);
-  } catch (error) {
-    if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
-    throw error;
-  }
 }
 
 /** 组织明细分区是否对查看人披露：至少一个 `orgItems.*` 字段可见。 */

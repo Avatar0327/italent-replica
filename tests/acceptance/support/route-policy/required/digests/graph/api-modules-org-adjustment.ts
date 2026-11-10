@@ -214,9 +214,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/disclosure.ts#OBJECT': [
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
   ],
-  'apps/api/src/modules/org-adjustment/disclosure.ts#contentViewFor': [
-    'apps/api/src/modules/approval/handling-content.ts#contentViewOf',
-  ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#hrDisclosure': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     '#OBJECT',
@@ -230,21 +227,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/scope-audit.ts#hasCreatorScope',
   ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#notFound': ['#NOT_FOUND_MESSAGE'],
-  'apps/api/src/modules/org-adjustment/disclosure.ts#openDetail': [
-    'apps/api/src/modules/approval/access.ts#memberInstanceScope',
-    'apps/api/src/modules/approval/disclosure.ts#readDetail',
-    'packages/domain/src/approval/catalog.ts#APPROVAL_INSTANCE_OBJECT',
-    'packages/domain/src/permission/decide.ts#buttonResource',
-  ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': [
     'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
+    'apps/api/src/modules/approval/frozen-read.ts#contentViewFor',
+    'apps/api/src/modules/approval/frozen-read.ts#openApprovalDetail',
     'apps/api/src/modules/approval/store.ts#latestInstanceOf',
     '#APPROVER_SCOPE',
     '#OBJECT',
-    '#contentViewFor',
     '#hrDisclosure',
     '#notFound',
-    '#openDetail',
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
