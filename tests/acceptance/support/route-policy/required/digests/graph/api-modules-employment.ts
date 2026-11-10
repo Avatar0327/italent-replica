@@ -152,8 +152,16 @@ export const GRAPH: Graph = {
     '#pickRecord',
   ],
   'apps/api/src/modules/employment/approval-content.ts#composeExit': ['#EXIT_FACTS', '#pickFacts'],
-  'apps/api/src/modules/employment/approval-content.ts#disclosing': ['#FACT_FIELDS', '#approvalCodeOf'],
-  'apps/api/src/modules/employment/approval-content.ts#hasRequiredContent': ['#EXIT_KINDS', '#isRow'],
+  'apps/api/src/modules/employment/approval-content.ts#disclosedBy': ['#FACT_FIELDS', '#approvalCodeOf'],
+  'apps/api/src/modules/employment/approval-content.ts#disclosing': ['#disclosedBy'],
+  'apps/api/src/modules/employment/approval-content.ts#hasBusinessContent': ['#isIsoDate', '#isRow'],
+  'apps/api/src/modules/employment/approval-content.ts#hasExitContent': ['#isIsoDate', '#isRow'],
+  'apps/api/src/modules/employment/approval-content.ts#hasRequiredContent': [
+    '#EXIT_KINDS',
+    '#hasBusinessContent',
+    '#hasExitContent',
+    '#isRow',
+  ],
   'apps/api/src/modules/employment/approval-content.ts#liveKindOf': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
@@ -1252,6 +1260,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/context.ts#trimEmploymentResponse': [
     '#EMPLOYMENT_OBJECT',
     '#PROTOCOL_KEYS',
+    '#failureProjection',
     '#projectActivationFailures',
     '#visiblePreviousRecords',
     '#withEmploymentFormNames',
@@ -3221,7 +3230,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#timelinePosition',
   ],
-  'apps/api/src/modules/employment/exit-later-records.ts#projectExitFailureDetails': [
+  'apps/api/src/modules/employment/exit-later-records.ts#projectExitFailureDetails': ['#visibleRecordIds'],
+  'apps/api/src/modules/employment/exit-later-records.ts#visibleRecordIds': [
     'apps/api/src/modules/employment/exit-gate.ts#batchDisclose',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
@@ -7640,6 +7650,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/routes.ts#shownBusiness': [
     'apps/api/src/modules/employment/approval-content.ts#composeBusiness',
+    'apps/api/src/modules/employment/approval-content.ts#disclosedBy',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
   ],
   'apps/api/src/modules/employment/routes.ts#splitLoginEmail': ['#loginEmail', '#parse'],
