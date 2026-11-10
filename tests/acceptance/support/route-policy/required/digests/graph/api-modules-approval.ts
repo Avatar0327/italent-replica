@@ -1478,6 +1478,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/handling-content.ts#CONTENT_PROVIDERS': [
     '#SNAPSHOT_ONLY',
     'apps/api/src/modules/contracts/frozen.ts#loadContractContent',
+    'apps/api/src/modules/employment/approval-content.ts#loadEmploymentContent',
     'apps/api/src/modules/employment/assessment-content.ts#loadAssessmentContent',
     'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeContent',
     'apps/api/src/modules/employment/retirement-intention-content.ts#loadIntentionContent',

@@ -17,8 +17,9 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
-import { pageQuery, readContext, readPageContext, uuidParam } from './context.js';
-import { resolveDepartmentIds, type ExitViewFilter } from './exit-queries.js';
+import { composeExit, disclosing, selectEmploymentRead, type EmploymentRead } from './approval-content.js';
+import { bindEmployeeResource, pageQuery, readContext, readPageContext, uuidParam } from './context.js';
+import { resolveDepartmentIds, type ExitViewable, type ExitViewFilter } from './exit-queries.js';
 import { day, parse, requireViewableExitFilters, viewableIn } from './exit-routes.js';
 import { inFlightApplications } from './exit-gate.js';
 import { normalizedUuid } from './fields.js';
@@ -55,19 +56,47 @@ async function upcomingDaysOf(requested: number | undefined, read: () => Promise
   return typeof configured === 'number' ? configured : FALLBACK_UPCOMING_DAYS;
 }
 
+/**
+ * F-476 P4：退休单内容的读取来源——已办审批人读办理时冻结的内容（逐路径按披露集合取舍），其余读现值；
+ * 流程事实始终是现值。详情与“员工在途退休单”是同一份内容的两个入口，必须共用这一处，否则已办审批人能从在途入口读到现值。
+ */
+function shownRetirement<D extends object>(
+  detail: D,
+  read: EmploymentRead,
+  show: ExitViewable,
+): { shown: D; show: ExitViewable; contentView: EmploymentRead['contentView'] } {
+  if (!read.frozen) return { shown: detail, show, contentView: read.contentView };
+  return {
+    shown: composeExit(detail, read.frozen.content) as D,
+    show: disclosing(show, read.frozen.allowed),
+    contentView: read.contentView,
+  };
+}
+
 function registerRetirementInFlight(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // F-410：员工当前在途的退休单（草稿 / 审批中 / 已批准 / 已驳回，与互斥门禁同一集合）；没有则 item 为 null。
   // 入口以此接续草稿，不再只信页面缓存（DEC-727）。员工范围外与不存在同一个 404；单据内容走详情同一裁剪。
+  // F-476 P4：先找到在途单再决定是否套范围——本人已办的单读本人冻结内容，不套当前数据范围（DEC-834④）；
+  // 其余读者仍先过员工范围（范围外同 404），没有在途单也一样。
   router.get('/retirements/employees/:id/in-flight', async (c) => {
     const id = uuidParam(c);
-    const ctx = await readContext(c, deps, 'object.view', 0, id);
-    const detail = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const [flight] = await inFlightApplications(tx, ctx, id, ['retirement'], IN_FLIGHT_STATES, null);
-      return flight ? loadRetirementDetail(tx, ctx.tenantId, flight.id, ctx.scope) : null;
+    const base = await readContext(c, deps, 'object.view', 0);
+    const flight = await withTenant(deps.db, base.tenantId, async (tx) => {
+      const [found] = await inFlightApplications(tx, base, id, ['retirement'], IN_FLIGHT_STATES, null);
+      return found;
     });
-    if (!detail) return c.json({ item: null });
+    const read = flight ? await selectEmploymentRead(deps, base, flight.id, ['retirement']) : null;
+    const ctx = read?.frozen ? base : await bindEmployeeResource(deps, base, 'object.view', id);
+    const detail =
+      flight && read
+        ? await withTenant(deps.db, ctx.tenantId, (tx) =>
+            loadRetirementDetail(tx, ctx.tenantId, flight.id, read.frozen ? undefined : ctx.scope),
+          )
+        : null;
+    if (!detail || !read) return c.json({ item: null });
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
-    return c.json({ item: trimRetirementDetail(detail, await viewableIn(deps, ctx)) });
+    const { shown, show, contentView } = shownRetirement(detail, read, await viewableIn(deps, ctx));
+    return c.json({ item: { ...trimRetirementDetail(shown, show), contentView } });
   });
 }
 
@@ -135,14 +164,18 @@ export function registerRetirementViews(router: Hono<TenantEnv>, deps: TenantRou
   router.get('/retirements/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
+    // F-476 P4：已办审批人读本人办理时冻结的内容，不套用其当前数据范围（DEC-834④）；其余读现值，范围照旧
+    const read = await selectEmploymentRead(deps, ctx, id, ['retirement']);
+    const scope = read.frozen ? undefined : ctx.scope;
     const today = tenantLocalDate(ctx.now, ctx.timezone);
     const detail = await withTenant(deps.db, ctx.tenantId, async (tx) =>
-      (await loadEmploymentBusiness(tx, ctx.tenantId, id, today, ctx.scope))
-        ? loadRetirementDetail(tx, ctx.tenantId, id, ctx.scope)
+      (await loadEmploymentBusiness(tx, ctx.tenantId, id, today, scope))
+        ? loadRetirementDetail(tx, ctx.tenantId, id, scope)
         : null,
     );
     if (!detail) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
-    return c.json(trimRetirementDetail(detail, await viewableIn(deps, ctx)));
+    const { shown, show, contentView } = shownRetirement(detail, read, await viewableIn(deps, ctx));
+    return c.json({ ...trimRetirementDetail(shown, show), contentView });
   });
 }
