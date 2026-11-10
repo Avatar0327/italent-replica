@@ -1,0 +1,70 @@
+import { Button } from 'antd';
+import { ADMIN_ROLE_NAMES, ADMIN_ROLES, type AdminRole } from '@italent/domain';
+import { ListPage } from '../foundation/templates.js';
+import type { SettingsProps } from './SettingsPage.js';
+import type { AdminRow } from './model.js';
+import { ListFilters } from './ListFilters.js';
+import {
+  useSettingsList,
+  useListInstant,
+  useRowSelection,
+  columnGear,
+  mouOptions,
+  mouText,
+  textValue,
+} from './list-support.js';
+import { m } from './messages.js';
+export function AdminsPage({ title }: SettingsProps) {
+  const list = useSettingsList<AdminRow>('admins');
+  const items = list.data?.items ?? [];
+  const selection = useRowSelection(items, (row) => row.id);
+  const instant = useListInstant();
+  return (
+    <ListPage
+      title={title}
+      rowKey="id"
+      page={list.page}
+      onPageChange={list.setPage}
+      data={list.data ?? { items: [] }}
+      loading={list.loading}
+      error={list.error}
+      retry={list.refresh}
+      filters={
+        <ListFilters
+          apply={list.apply}
+          fields={[
+            { name: 'q', label: m.personSearch },
+            {
+              name: 'role',
+              label: m.profileId,
+              options: ADMIN_ROLES.map((role) => ({ value: role, label: ADMIN_ROLE_NAMES[role] })),
+            },
+            { name: 'mouId', label: m.mous, pageCandidates: true, options: mouOptions(items) },
+          ]}
+        />
+      }
+      actions={<Button onClick={list.refresh}>{m.refresh}</Button>}
+      columns={[
+        ...selection,
+        { title: m.displayName, dataIndex: 'displayName', width: 134 },
+        { title: m.listEmail, dataIndex: 'email', width: 194, render: textValue },
+        { title: m.department, width: 134, render: () => m.empty },
+        { title: m.mous, dataIndex: 'mous', width: 134, render: mouText },
+        {
+          title: m.profileId,
+          dataIndex: 'role',
+          width: 134,
+          render: (role: AdminRole) => ADMIN_ROLE_NAMES[role] ?? m.empty,
+        },
+        { title: m.createdAt, dataIndex: 'createdAt', width: 152, render: instant },
+        {
+          title: m.createdBy,
+          width: 124,
+          render: (_: unknown, row: AdminRow) => textValue(row.createdBy?.displayName),
+        },
+        { title: m.operation, width: 160, render: () => m.empty },
+        columnGear,
+      ]}
+    />
+  );
+}

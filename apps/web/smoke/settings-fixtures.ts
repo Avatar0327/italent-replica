@@ -21,6 +21,9 @@ export const rows = {
     userId: user,
     displayName: '合成用户甲',
     email: 'user-a@example.com',
+    contactEmail: 'contact-a@example.com',
+    accountStatus: 'active',
+    createdAt: '2026-11-10T03:00:00Z',
     userType: 'external',
     businessIdentity: '顾问',
     membershipStatus: 'active',
@@ -35,6 +38,9 @@ export const rows = {
     description: '合成身份',
     source: 'custom',
     revision: 3,
+    updatedBy: null,
+    updatedAt: '2026-11-10T03:00:00Z',
+    grantCount: 1,
     autoHeld: false,
     objects: [
       {
@@ -44,7 +50,19 @@ export const rows = {
       },
     ],
   },
-  grant: { id: ids.grant, userId: user, profileId: ids.profile, source: 'manual', status: 'active', revision: 4 },
+  grant: {
+    id: ids.grant,
+    userId: user,
+    profileId: ids.profile,
+    source: 'manual',
+    status: 'active',
+    revision: 4,
+    userName: '合成用户甲',
+    userEmail: 'user-a@example.com',
+    profileName: '合成人事身份',
+    apps: ['TenantBase'],
+    mous: [],
+  },
   mou: {
     id: ids.mou,
     name: '合成管理单元',
@@ -96,7 +114,7 @@ export async function settingsFixtures(page: Page, editable = true) {
   await page.route('**/api/tenant/permission/**', (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/admin-menus') || path.includes('/me/')) return route.fallback();
-    const collection = (name: string, row: unknown) => (path.endsWith(`/${name}`) ? { items: [row] } : row);
+    const collection = (name: string, row: unknown) => (path.endsWith(`/${name}`) ? { items: [row], total: 1 } : row);
     let body: unknown;
     if (path.includes('/users')) body = collection('users', rows.user);
     if (path.includes('/profiles')) body = collection('profiles', rows.profile);

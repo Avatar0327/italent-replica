@@ -1,22 +1,23 @@
 import { Button, Input, Table, Tabs } from 'antd';
 import { useState } from 'react';
-import { newCommand, type PageResult } from '../foundation/client.js';
+import { newCommand } from '../foundation/client.js';
 import { FormOverlay } from '../foundation/FormOverlay.js';
 import { useApiClient } from '../foundation/Session.js';
 import { ListPage } from '../foundation/templates.js';
 import { base, type Profile } from './model.js';
-import { Facts, Notice, RemoteDetail, Status } from './parts.js';
+import { Facts, Notice, RemoteDetail } from './parts.js';
 import type { SettingsProps } from './SettingsPage.js';
-import { useResource } from './useResource.js';
+import { useSettingsList, useListInstant } from './list-support.js';
+import { ListFilters } from './ListFilters.js';
+import { profileColumns } from './profile-columns.js';
 import { useWrite } from './useWrite.js';
 import { m } from './messages.js';
 export function ProfilesPage({ title, editable }: SettingsProps) {
-  const list = useResource<PageResult<Profile>>(`${base}/profiles`);
-  const [page, setPage] = useState({ page: 1, pageSize: 15 });
-  const [query, setQuery] = useState('');
+  const list = useSettingsList<Profile>('profiles');
+  const { page, setPage } = list;
+  const instant = useListInstant();
   const [detail, setDetail] = useState<string>();
   const [create, setCreate] = useState(false);
-  const items = (list.data?.items ?? []).filter((row) => `${row.name} ${row.code}`.includes(query));
   return (
     <>
       <Notice text={m.profileNotice} />
@@ -28,15 +29,15 @@ export function ProfilesPage({ title, editable }: SettingsProps) {
         loading={list.loading}
         error={list.error}
         retry={list.refresh}
-        data={{ items: items.slice((page.page - 1) * page.pageSize, page.page * page.pageSize), total: items.length }}
+        data={list.data ?? { items: [] }}
         filters={
-          <Input.Search
-            aria-label={m.search}
-            placeholder={m.search}
-            onSearch={(value) => {
-              setQuery(value);
-              setPage({ ...page, page: 1 });
-            }}
+          <ListFilters
+            apply={list.apply}
+            fields={[
+              { name: 'name', label: m.name },
+              { name: 'code', label: m.code },
+              { name: 'app', label: m.apps, max: 64, pattern: /^[A-Za-z][A-Za-z0-9_.]{0,63}$/ },
+            ]}
           />
         }
         actions={
@@ -54,27 +55,7 @@ export function ProfilesPage({ title, editable }: SettingsProps) {
             )}
           </>
         }
-        columns={[
-          {
-            title: m.name,
-            dataIndex: 'name',
-            width: 193,
-            render: (name: string, row: Profile) => (
-              <Button type="link" onClick={() => setDetail(row.id)}>
-                {name}
-              </Button>
-            ),
-          },
-          { title: m.code, dataIndex: 'code', width: 128 },
-          { title: m.apps, dataIndex: 'apps', width: 128, render: (apps: string[]) => apps.join('、') },
-          { title: m.source, dataIndex: 'source', width: 128, render: (value: string) => <Status value={value} /> },
-          { title: m.description, dataIndex: 'description', width: 128 },
-          {
-            title: m.operation,
-            width: 168,
-            render: (_: unknown, row: Profile) => (row.autoHeld ? m.autoHeld : m.empty),
-          },
-        ]}
+        columns={profileColumns(setDetail, instant)}
       />
       {detail && <ProfileDetails detail={detail} close={() => setDetail(undefined)} />}
       {create && <ProfileForm close={() => setCreate(false)} refresh={list.refresh} editable={editable} />}
