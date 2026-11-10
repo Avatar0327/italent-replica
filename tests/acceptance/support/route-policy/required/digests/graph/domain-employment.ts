@@ -71,6 +71,8 @@ export const GRAPH: Graph = {
     '#invalidDate',
   ],
   'packages/domain/src/employment/exit-notice-templates.ts#EXIT_NOTICE_TEMPLATES': [
+    '#EXIT_IMPORT_FINISHED_CLEAN_TEMPLATE',
+    '#EXIT_IMPORT_FINISHED_TEMPLATE',
     '#FLOW_TERMINATED_BY_EXIT_TEMPLATE',
   ],
   'packages/domain/src/employment/exit-notice-templates.ts#renderExitNotice': ['#EXIT_NOTICE_TEMPLATES', '#fill'],
