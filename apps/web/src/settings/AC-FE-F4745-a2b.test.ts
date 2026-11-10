@@ -101,16 +101,18 @@ describe('AC-FE-F4745-A2b 对象列表与权限弹窗结构', () => {
     ).toEqual([false, true]);
     expect(dialog!.textContent).toContain('100条/页');
   });
-  it('只读菜单可查看配置，所有编辑控件和确定按钮锁定', async () => {
+  it.each(['数据操作权限', '字段权限'])('只读菜单的%s可查看配置且不存在保存按钮', async (entry) => {
     await open(false);
-    await click('数据操作权限');
+    await click(entry);
     const dialog = document.querySelector('.ant-modal');
-    expect(Array.from(dialog!.querySelectorAll<HTMLInputElement>('input[type="radio"]')).every((i) => i.disabled)).toBe(
-      true,
+    const controls = Array.from(
+      dialog!.querySelectorAll<HTMLInputElement>('input[type="radio"], input[type="checkbox"]'),
     );
+    expect(controls.length).toBeGreaterThan(0);
+    expect(controls.every((input) => input.disabled)).toBe(true);
     const save = Array.from(dialog!.querySelectorAll<HTMLButtonElement>('button')).find(
       (b) => b.textContent?.replace(/\s/g, '') === '确定',
     );
-    expect(save?.disabled).toBe(true);
+    expect(save).toBeUndefined();
   });
 });

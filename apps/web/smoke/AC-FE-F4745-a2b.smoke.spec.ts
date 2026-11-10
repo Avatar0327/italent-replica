@@ -376,3 +376,83 @@ test('AC-FE-F4745-A2b 提交后后退，迟到成功不跳转；前进重开读�
   await expect(modal(page).getByRole('radio', { name: '编辑 关闭', exact: true })).toBeChecked();
   await expect(modal(page).getByRole('radio', { name: '删除 开启', exact: true })).toBeChecked();
 });
+
+async function catalogConflict(page: Page, change: () => void) {
+  await page.route('**/objects/*/fields', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback();
+    change();
+    await route.fulfill({ status: 409, json: { error: { code: 'CATALOG_CHANGED' } } });
+    await page.unroute('**/objects/*/fields');
+  });
+  await save(page);
+  await modal(page).getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await modal(page).getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+}
+
+test('AC-FE-F4745-A2b P2-1 重读目录100变101后出现第二页，新字段可见且草稿可保存', async ({ page }) => {
+  const fixture = await setup(page);
+  const added = fixture.fields.pop()!;
+  await open(page, '字段权限');
+  await expect(modal(page)).toContainText('共 100 条');
+  await modal(page).getByRole('checkbox', { name: 'Field001 查看', exact: true }).check();
+  await catalogConflict(page, () => {
+    fixture.fields.push(added);
+    fixture.advance(undefined, 'fedcba9876543210');
+  });
+  await expect(modal(page)).toContainText('共 101 条');
+  await expect(modal(page).getByRole('checkbox', { name: 'Field001 查看', exact: true })).toBeChecked();
+  await modal(page).locator('.ant-pagination-next button').click();
+  await expect(modal(page).getByRole('checkbox', { name: 'Field100 查看', exact: true })).toBeVisible();
+  await modal(page).getByRole('checkbox', { name: 'Field100 查看', exact: true }).check();
+  await save(page);
+  await expect(modal(page)).toHaveCount(0);
+  expect(fixture.writes[0]!.headers['if-match']).toBe('4');
+  expect(fixture.writes[0]!.body).toEqual({
+    catalogDigest: 'fedcba9876543210',
+    fields: [
+      { fieldCode: 'Field001', view: true, edit: false },
+      { fieldCode: 'Field100', view: true, edit: false },
+    ],
+  });
+});
+
+for (const remaining of [50, 0]) {
+  test(`AC-FE-F4745-A2b P2-1 重读后筛选结果101缩至${remaining}，页码回到有效页`, async ({ page }) => {
+    const fixture = await setup(page);
+    fixture.fields.push({ fieldCode: 'Other', system: false, view: false, edit: false });
+    await open(page, '字段权限');
+    await modal(page).getByRole('textbox', { name: '编码', exact: true }).fill('fIeLd');
+    await modal(page)
+      .getByRole('button', { name: /^查\s*询$/ })
+      .click();
+    await expect(modal(page)).toContainText('共 101 条');
+    await modal(page).getByRole('checkbox', { name: 'Field001 查看', exact: true }).check();
+    await modal(page).locator('.ant-pagination-next button').click();
+    await modal(page).getByRole('checkbox', { name: 'Field100 编辑', exact: true }).check();
+    await catalogConflict(page, () => {
+      fixture.fields.splice(remaining, 101 - remaining);
+      fixture.advance(undefined, 'fedcba9876543210');
+    });
+    await expect(modal(page).locator('.ant-pagination-item-2')).toHaveCount(0);
+    await expect(modal(page).getByRole('textbox', { name: '编码', exact: true })).toHaveValue('fIeLd');
+    if (remaining) {
+      await expect(modal(page)).toContainText('共 50 条');
+      await expect(modal(page).locator('.ant-pagination-item-active')).toHaveText('1');
+      await expect(modal(page).getByRole('checkbox', { name: 'Field001 查看', exact: true })).toBeChecked();
+      await expect(modal(page).getByRole('checkbox', { name: 'Other 查看', exact: true })).toHaveCount(0);
+      await save(page);
+      await expect(modal(page)).toHaveCount(0);
+      expect(fixture.writes[0]!.body).toEqual({
+        catalogDigest: 'fedcba9876543210',
+        fields: [{ fieldCode: 'Field001', view: true, edit: false }],
+      });
+    } else {
+      await expect(modal(page).locator('.ant-table-tbody .ant-table-row')).toHaveCount(0);
+      await modal(page).getByRole('textbox', { name: '编码', exact: true }).clear();
+      await modal(page)
+        .getByRole('button', { name: /^查\s*询$/ })
+        .click();
+      await expect(modal(page).getByRole('checkbox', { name: 'Other 查看', exact: true })).toBeVisible();
+    }
+  });
+}
