@@ -3,7 +3,7 @@
  * - 适用对象（PB-R19）：当前生效主职为试用、内部员工，本任职周期有预计试用结束日，命中启用中的规则（优先级最小者）；
  * - 触发（R2e7，03 口径）：目标日 = 预计结束日 − N 天，目标日 ≤ 当天即发起（补发）；同一任职同一规则只发起一次——
  *   发起台账（规则 × 本任职周期的开启记录）在员工锁内复核，主键兜底；
- * - 静默跳过（F-500，DEC-841①）：试用中考核已生效且意见 = 提前转正（且无其他失败条件）——返回 null，不记台账、不进回执、不重试；
+ * - 静默跳过（F-500，DEC-841①，仅申请类）：试用中考核已生效且意见 = 提前转正（且无其他失败条件）——返回 null，不记台账、不进回执、不重试；
  * - 失败（PB-R21）：本周期已有已驳回 / 不通过 / 作废 / 审批中 / 通过 / 生效的转正业务，或考核类条件（BE-15b2：转正考核
  *   草稿 / 驳回 / 审批中 / 不通过 / 作废或通过但意见 ≠ 正常转正，试用中考核审批中），发起人找不到，或转正入口拒绝
  *   （PB-R9 互斥、试用结果已停用等）——整人回滚到保存点，台账记 failed、次数与原因，下一次执行重试（DEC-052）；
@@ -23,6 +23,7 @@ import {
   type AssessmentOpinion,
   type AssessmentStatus,
   type AssessmentType,
+  type AutoRegularizationMode,
   type AutoRuleInitiator,
 } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
@@ -164,8 +165,15 @@ async function assertNoCycleRegularization(tx: Tx, tenantId: string, subject: Su
  * PB-R21（考核部分，BE-15b2）：本任职周期（anchor_id）里的考核按（类型、状态、意见）判断；
  * 取本周期全部考核再交领域函数判，单一来源（assessmentBlocksAutoRegularization）。
  * 有阻断就抛；无阻断但有“试用中考核已生效且意见 = 提前转正”返回 'skip'（F-500，DEC-841①，静默跳过）。
+ * 静默跳过只适用“自动发起转正申请”类（application，北森 F-485 实测）；“直接自动转正”类（direct）口径待定
+ * （F-485 未触发），该考核仍按原条件阻断、记失败。
  */
-async function assertNoCycleAssessments(tx: Tx, tenantId: string, subject: Subject): Promise<'skip' | 'ok'> {
+async function assertNoCycleAssessments(
+  tx: Tx,
+  tenantId: string,
+  subject: Subject,
+  mode: AutoRegularizationMode,
+): Promise<'skip' | 'ok'> {
   const { employeeId, id: anchorId } = subject.cycle.anchor;
   const rows = rowsOf<{
     id: string;
@@ -178,7 +186,10 @@ async function assertNoCycleAssessments(tx: Tx, tenantId: string, subject: Subje
       WHERE tenant_id=${tenantId} AND employee_id=${employeeId}::uuid AND anchor_id=${anchorId}::uuid
       ORDER BY created_at, id`),
   );
-  const blocking = rows.find((row) => assessmentBlocksAutoRegularization(row));
+  const skipsEarly = mode === 'application';
+  const blocking = rows.find(
+    (row) => assessmentBlocksAutoRegularization(row) || (!skipsEarly && assessmentSkipsAutoRegularization(row)),
+  );
   if (blocking)
     throw new AppError('CONFLICT', '本任职周期的考核未满足自动转正条件，不能自动转正', {
       reason: 'ASSESSMENT_BLOCKS_REGULARIZATION',
@@ -305,8 +316,8 @@ export async function autoRegularizeEmployee(
   try {
     const launched = await tx.transaction(async (savepoint) => {
       await assertNoCycleRegularization(savepoint, ctx.tenantId, subject);
-      // 先判完全部失败条件再决定跳过：提前转正已生效只在没有其他失败条件时才静默跳过
-      if ((await assertNoCycleAssessments(savepoint, ctx.tenantId, subject)) === 'skip') return null;
+      // 先判完全部失败条件再决定跳过：提前转正已生效只在没有其他失败条件时才静默跳过（仅申请类，见函数注释）
+      if ((await assertNoCycleAssessments(savepoint, ctx.tenantId, subject, rule.mode)) === 'skip') return null;
       const initiatorUserId = await resolveInitiator(savepoint, ctx.tenantId, rule, subject.departmentId, today);
       const [employee] = rowsOf<{ revision: number }>(
         await savepoint.execute(sql`SELECT revision FROM employment_employees
