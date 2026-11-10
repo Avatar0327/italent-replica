@@ -115,8 +115,16 @@ describe('§9.1 职责转交保存：校验与授权，任一不通过整单不�
     await x.effectiveExit(departed.id, '2026-10-01');
     const stranger = await x.peer('不汇报给离职人');
     const before = await x.stateOf(x.employee.id);
-    const send = async (subordinateId: string, receiverId: string) =>
-      x.reason(await x.createLeave(x.employee.id, leaveBody('2026-10-20', 'direct', duty(subordinateId, receiverId))));
+    // DT-R4：真正的下属必须有接收人，否则先被 409 拦下；两条非法计划各带一条合法的覆盖项
+    const covering = { employeeId: subordinate.id, receiverId: receiver.id, relation: 'direct' };
+    const send = async (subordinateId: string, receiverId: string) => {
+      const items = subordinateId === subordinate.id ? [] : [covering];
+      const plan = {
+        subordinates: [...items, { employeeId: subordinateId, receiverId, relation: 'direct' }],
+        orgRoles: [],
+      };
+      return x.reason(await x.createLeave(x.employee.id, leaveBody('2026-10-20', 'direct', { dutyTransfer: plan })));
+    };
     expect(await send(subordinate.id, departed.id)).toMatchObject({
       status: 400,
       reason: 'TRANSFER_PERSON_NOT_ELIGIBLE',

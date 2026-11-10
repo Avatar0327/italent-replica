@@ -407,6 +407,20 @@ export const establishmentCopyJobs = pgTable(
   ],
 );
 
+/**
+ * 复制失败时的结构化冲突信息（F-484 第 2 轮）：失败原因文本只存不带名称的通用句，名称在读取时
+ * 按当前读取人 / 接收人的权限由这里的 ID 重新生成，不把执行人看得到的名称固化进持久数据。
+ */
+export interface EstablishmentCapacityConflict {
+  readonly reason: 'CAPACITY_EXISTS' | 'CAPACITY_PERIOD_OVERLAP';
+  readonly orgId: string;
+  readonly schemeId: string;
+  /** 冲突区间首月（1～12）。 */
+  readonly month: number;
+  /** 查组织名称的业务日期（执行当日）。 */
+  readonly asOf: string;
+}
+
 export const ESTABLISHMENT_COPY_STATUSES = ['pending', 'succeeded', 'failed'] as const;
 export type EstablishmentCopyStatus = (typeof ESTABLISHMENT_COPY_STATUSES)[number];
 export const establishmentCopyJobVersions = pgTable(
@@ -420,6 +434,7 @@ export const establishmentCopyJobVersions = pgTable(
     status: text('status').$type<EstablishmentCopyStatus>().notNull().default('pending'),
     attempts: integer('attempts').notNull().default(0),
     failureReason: text('failure_reason'),
+    failureDetail: jsonb('failure_detail').$type<EstablishmentCapacityConflict>(),
     createdAt: utc(),
   },
   (t): PgTableExtraConfigValue[] => [
@@ -478,6 +493,7 @@ export const establishmentNotifications = pgTable(
     recipientUserId: uuid('recipient_user_id'),
     status: text('status').$type<EstablishmentDeliveryStatus>().notNull().default('pending'),
     reason: text('reason').notNull(),
+    reasonDetail: jsonb('reason_detail').$type<EstablishmentCapacityConflict>(),
     attempt: integer('attempt').notNull().default(0),
     createdAt: utc(),
   },

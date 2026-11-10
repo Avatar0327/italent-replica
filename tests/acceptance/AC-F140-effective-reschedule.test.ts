@@ -246,11 +246,13 @@ describe('F-140b2 已生效离职', () => {
       bad = await x.peer('合成失效接收人');
     const one = await x.subordinateOf(x.employee.id, '合成下属一');
     const two = await x.subordinateOf(x.employee.id, '合成下属二');
-    const leave = await x.directLeave('2026-10-15');
-    await x.planDuties(leave.id, [
-      { employeeId: one.id, receiverId: good.id },
-      { employeeId: two.id, receiverId: bad.id },
-    ]);
+    const leave = await x.directLeave(
+      '2026-10-15',
+      x.dutyPlan([
+        { employeeId: one.id, receiverId: good.id },
+        { employeeId: two.id, receiverId: bad.id },
+      ]),
+    );
     await x.directLeave('2026-10-12', undefined, bad.id);
     await x.runScheduler('2026-10-13T01:00:00Z');
     await x.runScheduler('2026-10-16T01:00:00Z');

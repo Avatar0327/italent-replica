@@ -5,6 +5,9 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'apps/api/src/modules/job/competency.ts#validateCompetencyModel': [
+    'apps/api/src/modules/talent/port.ts#isTalentCriterionReferenceable',
+  ],
   'apps/api/src/modules/job/context.ts#pageQuery': ['#queryInteger'],
   'apps/api/src/modules/job/context.ts#queryDate': [
     'apps/api/src/modules/org/read-model.ts#validIsoDate',
@@ -89,6 +92,7 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/job/import-service.ts#importRow': [
+    '#rowReason',
     '#updateMapped',
     'apps/api/src/modules/job/metadata.ts#jobTables',
     'apps/api/src/modules/job/store.ts#auditJob',
@@ -102,7 +106,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/store.ts#snakeCase',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/job/import-service.ts#rowReason': ['#ROW_REASONS'],
   'apps/api/src/modules/job/import-service.ts#updateMapped': [
+    '#sameResourceSet',
     'apps/api/src/modules/job/read-model.ts#latestJobObject',
     'apps/api/src/modules/job/write-service.ts#updateJobObject',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -121,6 +127,10 @@ export const GRAPH: Graph = {
     '#POSITION_MANAGER_SYNC_RECORD',
     '#assertIncumbents',
     'apps/api/src/modules/job/store.ts#auditJob',
+  ],
+  'apps/api/src/modules/job/qualification-link.ts#withLinkedQualification': [
+    '#LINK_TYPES',
+    'apps/api/src/modules/job/store.ts#rowsOf',
   ],
   'apps/api/src/modules/job/read-model.ts#assertLevelInPost': ['#numericRange', '#requiredObject'],
   'apps/api/src/modules/job/read-model.ts#countEnabledPositions': ['#resultRows'],
@@ -155,6 +165,20 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/job/read-model.ts#numericRange': ['#requiredObject'],
   'apps/api/src/modules/job/read-model.ts#queryRecords': ['#record', '#resultRows'],
   'apps/api/src/modules/job/read-model.ts#requiredObject': ['#loadJobObject'],
+  'apps/api/src/modules/job/resource-set-candidates.ts#registerResourceSetCandidates': [
+    'apps/api/src/modules/permission/module-route-access.ts#JOB_OBJECT_CODES',
+    'apps/api/src/modules/permission/module-route-access.ts#objectContext',
+    'apps/api/src/modules/permission/owner-units.ts#authorizedUnits',
+    'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/job/resource-set.ts#resolveResourceSet': [
+    'apps/api/src/modules/permission/owner-units.ts#NO_UNIT_MESSAGE',
+    'apps/api/src/modules/permission/owner-units.ts#UNIT_NOT_FOUND',
+    'apps/api/src/modules/permission/owner-units.ts#authorizedUnits',
+    'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/job/routes.ts#assignment': ['apps/api/src/modules/job/fields.ts#businessDate'],
   'apps/api/src/modules/job/routes.ts#assignmentReferences': [
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
@@ -188,6 +212,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#parseBody',
     'apps/api/src/modules/job/context.ts#queryDate',
     'apps/api/src/modules/job/read-model.ts#jobCandidates',
+    'apps/api/src/modules/job/resource-set-candidates.ts#registerResourceSetCandidates',
     '#BASE',
     '#assignment',
     '#assignmentReferences',
@@ -203,6 +228,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/job/routes.ts#route:GET /api/tenant/job/:kind': [
     'apps/api/src/modules/job/context.ts#pageQuery',
     'apps/api/src/modules/job/context.ts#queryDate',
+    'apps/api/src/modules/job/qualification-link.ts#withLinkedQualification',
     'apps/api/src/modules/job/read-model.ts#listJobObjects',
     '#BASE',
     '#enabledFilter',
@@ -217,6 +243,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/job/routes.ts#route:GET /api/tenant/job/:kind/:id': [
     'apps/api/src/modules/job/context.ts#queryDate',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/job/qualification-link.ts#withLinkedQualification',
     '#BASE',
     '#objectKind',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
@@ -423,6 +450,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/job/validation.ts#validateJobAssignment': ['#checkSelectedRange', '#invalid', '#requiredJob'],
   'apps/api/src/modules/job/validation.ts#validateJobFields': [
+    'apps/api/src/modules/job/competency.ts#validateCompetencyModel',
     '#checkRanges',
     '#checkScoreRange',
     '#positionParents',
@@ -456,6 +484,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/job/write-service.ts#createJobObject': [
     'apps/api/src/modules/job/fields.ts#normalizeFields',
     'apps/api/src/modules/job/metadata.ts#jobTables',
+    'apps/api/src/modules/job/resource-set.ts#resolveResourceSet',
     'apps/api/src/modules/job/settings.ts#lockJobTenant',
     'apps/api/src/modules/job/store.ts#auditJob',
     'apps/api/src/modules/job/store.ts#insertRow',

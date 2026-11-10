@@ -5,6 +5,13 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'apps/api/src/modules/duty-transfer/duties.ts#clearedDuty': ['#dutyKey'],
+  'apps/api/src/modules/duty-transfer/duties.ts#clearedRecords': ['#clearedWhere', '#dutyKey'],
+  'apps/api/src/modules/duty-transfer/duties.ts#clearedWhere': [
+    '#stillVacant',
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_SOURCE',
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
+  ],
   'apps/api/src/modules/duty-transfer/duties.ts#currentDuties': [
     '#dutiesSql',
     '#dutyKey',
@@ -13,6 +20,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/duty-transfer/duties.ts#departedTotal': ['#departedWithDuties'],
   'apps/api/src/modules/duty-transfer/duties.ts#departedWithDuties': [
+    '#clearedWhere',
     '#departedTotal',
     '#dutiesSql',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
@@ -27,7 +35,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/duty-transfer/duties.ts#pendingRecords': [
     '#dutyKey',
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_SOURCE',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
+  ],
+  'apps/api/src/modules/duty-transfer/duties.ts#stillVacant': [
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TYPE',
   ],
   'apps/api/src/modules/duty-transfer/records.ts#TAB_STATUS': [
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
@@ -52,6 +64,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_OBJECT',
   ],
   'apps/api/src/modules/duty-transfer/routes.ts#dutyMenu': [
+    'apps/api/src/modules/duty-transfer/duties.ts#clearedDuty',
+    'apps/api/src/modules/duty-transfer/duties.ts#clearedRecords',
     'apps/api/src/modules/duty-transfer/duties.ts#currentDuties',
     'apps/api/src/modules/duty-transfer/duties.ts#pendingRecords',
     'packages/domain/src/employment/duty-transfer-menu.ts#dutyPendingHint',
@@ -194,6 +208,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
   ],
   'apps/api/src/modules/duty-transfer/service.ts#submitMenuTransfer': [
+    'apps/api/src/modules/duty-transfer/duties.ts#clearedDuty',
+    'apps/api/src/modules/duty-transfer/duties.ts#clearedRecords',
     'apps/api/src/modules/duty-transfer/duties.ts#currentDuties',
     'apps/api/src/modules/duty-transfer/duties.ts#dutyKey',
     'apps/api/src/modules/duty-transfer/duties.ts#pendingRecords',
@@ -216,5 +232,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/duty-transfer/service.ts#voidRecord': [
     '#auditRecord',
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_STATUS',
+  ],
+  'apps/api/src/modules/duty-transfer/uncovered.ts#uncoveredDuties': [
+    'apps/api/src/modules/duty-transfer/duties.ts#currentDuties',
+    'apps/api/src/modules/duty-transfer/duties.ts#dutyKey',
+    '#plannedDutyKeys',
   ],
 };

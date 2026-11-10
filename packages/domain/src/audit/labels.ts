@@ -104,6 +104,10 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'approval-instance': { label: '审批单', app: APPROVAL },
   'approval-task': { label: '审批任务', app: APPROVAL },
   'approval-process': { label: '审批流程', app: APPROVAL },
+  'approval-public-variable': { label: '公共变量', app: APPROVAL },
+  'approval-application-variable': { label: '应用变量', app: APPROVAL },
+  'approval-matrix': { label: '审批矩阵', app: APPROVAL },
+  'approval-matrix-row': { label: '审批矩阵规则行', app: APPROVAL },
   'approval-exception-admin': { label: '异常管理员', app: APPROVAL },
   tenant: { label: '租户', app: ENTERPRISE },
   tenant_setting: { label: '租户配置', app: ENTERPRISE },
@@ -120,6 +124,8 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   permission_dynamic_org_grant: { label: '动态组织授权', app: ENTERPRISE },
   license_pool: { label: '许可', app: ENTERPRISE },
   audit_retention: { label: '日志保留期', app: ENTERPRISE },
+  'esign-template': { label: '电子签署模板', app: ORG_PEOPLE },
+  'esign-scene-settings': { label: '签署场景设置', app: ORG_PEOPLE },
   'survey360-settings': { label: '360设置', app: SURVEY360 },
   'survey360-person': { label: '360人员', app: SURVEY360 },
   'survey360-role': { label: '评价角色', app: SURVEY360 },
@@ -277,6 +283,12 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   name: '名称',
   shortName: '简称',
   code: '编码',
+  // F-326 变量字段（设计 §4.5）：编码、名称、状态已在上方
+  dataType: '数据类型',
+  defaultValue: '默认值',
+  usageScopes: '适用范围',
+  description: '描述',
+  appId: '应用',
   establishedOn: '成立日期',
   personInChargeId: '负责人',
   hrbpId: 'HRBP',
@@ -332,6 +344,12 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   dutyDetails: '职责描述',
   transferDate: '转交日期',
   failureCode: '失败原因',
+  // F-481 调动电子签署：签署模板（code / name / status 沿用上方同名字段）与场景设置
+  body: '模板正文',
+  sortOrder: '显示顺序',
+  scene: '签署场景',
+  validityDays: '签署有效期（天）',
+  remindBeforeExpiry: '到期前自动提醒',
 };
 
 /** 职责转交菜单的审计动作（R2-T09a）：设置 / 改期 / 撤回 / 到期执行成功或失败；改写组织与任职的审计由执行入口照常写。 */
@@ -462,6 +480,13 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'establishment-settings',
   'approval-process',
   'approval-exception-admin',
+  'esign-template',
+  'esign-scene-settings',
+  // F-326：变量与矩阵是租户级配置，没有人员 / 组织归属（设计 §4.5）
+  'approval-public-variable',
+  'approval-application-variable',
+  'approval-matrix',
+  'approval-matrix-row',
 ]);
 
 /**

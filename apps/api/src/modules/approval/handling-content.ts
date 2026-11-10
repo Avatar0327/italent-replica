@@ -11,7 +11,9 @@
 import { createHash } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { loadContractContent } from '../contracts/frozen.js';
+import { loadAssessmentContent } from '../employment/assessment-content.js';
 import { loadPartTimeContent } from '../employment/part-time/request-read.js';
+import { loadIntentionContent } from '../employment/retirement-intention-content.js';
 import { loadPersonnelContent } from '../personnel/frozen.js';
 import { loadOrgContent } from '../org-adjustment/content.js';
 import type { BusinessSnapshot, BusinessType } from './adapters.js';
@@ -51,8 +53,8 @@ export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> 
   part_time: { kind: 'extended', ext: loadPartTimeContent },
   offer: SNAPSHOT_ONLY,
   offer_batch: SNAPSHOT_ONLY,
-  probation_assessment: SNAPSHOT_ONLY,
-  retirement_intention: SNAPSHOT_ONLY,
+  probation_assessment: { kind: 'extended', ext: (tx, tenantId, id) => loadAssessmentContent(tx, tenantId, id) },
+  retirement_intention: { kind: 'extended', ext: (tx, tenantId, id) => loadIntentionContent(tx, tenantId, id) },
   exit_handover: SNAPSHOT_ONLY,
   // 结果审批尚无真实 provider（适配器本身是占位，不可发起）：到达这里一律拒绝，不写空份
   talent_review: { kind: 'not-wired', reason: '盘点结果审批的办理份 provider 尚未接入' },
