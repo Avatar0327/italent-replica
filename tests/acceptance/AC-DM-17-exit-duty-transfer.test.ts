@@ -31,11 +31,13 @@ describe('AC-DM-17 business_effective：生效时（步骤 6）', () => {
       await x.subordinateOf(x.employee.id, '下属二'),
       await x.peer('接收人'),
     ];
-    const leave = await x.directLeave('2026-10-05');
-    await x.planDuties(leave.id, [
-      { employeeId: s1.id, receiverId: receiver.id },
-      { employeeId: s2.id, receiverId: receiver.id },
-    ]);
+    const leave = await x.directLeave(
+      '2026-10-05',
+      x.dutyPlan([
+        { employeeId: s1.id, receiverId: receiver.id },
+        { employeeId: s2.id, receiverId: receiver.id },
+      ]),
+    );
     expect(await x.managerOf(s1.id)).toBe(x.employee.id);
     expect(await dutyEffects(x, leave.id)).toEqual([]);
 
@@ -58,9 +60,12 @@ describe('AC-DM-17 business_effective：生效时（步骤 6）', () => {
     const x = await world('b16');
     const subordinate = await x.subordinateOf(x.employee.id, '下属');
     const receiver = await x.peer('已离职接收人');
+    // 保存时接收人必须在职（计划随单校验）；保存之后接收人离职，落地时该子项才失败
+    const leave = await x.directLeave(
+      '2026-10-05',
+      x.dutyPlan([{ employeeId: subordinate.id, receiverId: receiver.id }]),
+    );
     await x.effectiveExit(receiver.id, '2026-10-01');
-    const leave = await x.directLeave('2026-10-05');
-    await x.planDuties(leave.id, [{ employeeId: subordinate.id, receiverId: receiver.id }]);
     expect(await x.activate(leave.id, TODAY)).toMatchObject({ outcome: 'effective' });
     expect(await x.stateOfBusiness(leave.id)).toBe('effective');
     expect(await x.managerOf(subordinate.id)).toBe(x.employee.id);
@@ -125,14 +130,17 @@ describe('AC-DM-17 approval_passed：确认阶段（审批通过 / 直接离职�
       const subordinate = await x.subordinateOf(x.employee.id, '下属');
       const receiver = await x.peer('接收人');
       await x.useTiming('approval_passed');
-      const leave = await x.directLeave(last);
-      await x.planDuties(leave.id, [{ employeeId: subordinate.id, receiverId: receiver.id }]);
+      const leave = await x.directLeave(last, x.dutyPlan([{ employeeId: subordinate.id, receiverId: receiver.id }]));
 
       await x.confirm(leave.id, TODAY);
 
       expect(await x.managerOf(subordinate.id)).toBe(receiver.id);
       expect(await x.stateOfBusiness(leave.id)).toBe('approved');
-      expect((await x.items(leave.id))[0]).toMatchObject({ status: 'succeeded', effective: TODAY });
+      // 直接离职保存当天 = 时钟所在日：L 已过时停在 L 当天保存（parkedDay），L 在后时即 TODAY
+      expect((await x.items(leave.id))[0]).toMatchObject({
+        status: 'succeeded',
+        effective: last < TODAY ? last : TODAY,
+      });
       expect(confirmedModes.filter((mode) => mode === 'direct')).toEqual([]);
 
       const at = last < TODAY ? TODAY : '2026-10-21';
@@ -157,8 +165,10 @@ describe('transfer-locks participants 纳入 kind = leave 的转交下属（§5.
     const x = await world('participants');
     const subordinate = await x.subordinateOf(x.employee.id, '下属');
     const receiver = await x.peer('接收人');
-    const leave = await x.directLeave('2026-10-05');
-    await x.planDuties(leave.id, [{ employeeId: subordinate.id, receiverId: receiver.id }]);
+    const leave = await x.directLeave(
+      '2026-10-05',
+      x.dutyPlan([{ employeeId: subordinate.id, receiverId: receiver.id }]),
+    );
     const held = () =>
       withTenant(database().db, x.session.tenant.id, async (tx) => {
         const ctx = {

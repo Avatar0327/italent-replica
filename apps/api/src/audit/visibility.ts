@@ -1,4 +1,5 @@
 import { CapacityAuditFields, capacityAuditChanges, visibleCapacityParts } from './establishment-capacity.js';
+import { approvalContentFields } from './controlled-fields.js';
 import { NestedAuditFields, type NestedChildren, visibleNested, visibleNestedChanges } from './nested-fields.js';
 /**
  * DEC-197 / DEC-203（PR #75 第二、三轮）：审计查询按查看人**当前**的数据范围与字段权限裁剪，不设全量读取特权。
@@ -589,12 +590,15 @@ const RULES: readonly Rule[] = [
       (SELECT c.created_by FROM contract_records c WHERE c.tenant_id = ${viewer.tenantId} AND c.id = ${id}),
       (SELECT r.created_by FROM contract_requests r WHERE r.tenant_id = ${viewer.tenantId} AND r.id = ${id}))`;
   }),
-  // F-489（DEC-830③）：F-482 统计报表导出日志（behavior=export，对象类型 = 报表所属的人事分析对象，对象编号 = 报表编码）。
-  // 导出日志没有人员 / 组织归属也没有逐行明细，沿用上面 personRule 的任务行口径（第四轮 N2）：看全部可见；
-  // 否则归属为空时按“使用用户”维度判断，创建人回退为执行人——本人导出的对本人可见，其余范围一律 fail-closed。
-  // 前提与导出接口一致：先要有该报表对象的查看权（resolveRule 的 object.view）。不新增授权项、不新增口径。
-  personRule([HR_MOVEMENT_REPORT_OBJECT], HR_MOVEMENT_REPORT_OBJECT, () => sql`NULL::uuid`),
-  personRule([HR_STRUCTURE_REPORT_OBJECT], HR_STRUCTURE_REPORT_OBJECT, () => sql`NULL::uuid`),
+  // F-489（DEC-830③）+ F-509（DEC-853 / DEC-855 口径 A）：F-482 统计报表导出日志（behavior=export，对象类型 = 报表所属的
+  // 人事分析对象，对象编号 = 报表编码）。导出日志没有人员 / 组织归属也没有逐行明细：有日志审计能力（入口门禁）又有该报表对象
+  // 查看权（resolveRule 的 object.view）的人看全部人的导出，不再按数据范围或“本人导出”过滤；没有查看权、别的租户仍看不到。
+  // 不新增授权项、不新增口径；失败导出不写审计（DEC-846①）。
+  ...[HR_MOVEMENT_REPORT_OBJECT, HR_STRUCTURE_REPORT_OBJECT].map((code): Rule => ({
+    types: [code],
+    objectCode: code,
+    visible: () => sql`true`,
+  })),
   // R2 BE-14a：Offer 审计归属录用部门，创建人取审计的首条 offer.create（删除后仍可判断）
   orgRule(['offer'], OFFER_OBJECT, (row, viewer) => creatorSql(viewer.tenantId, row.objectId, 'offer.create', 'offer')),
   // R2 BE-14a3：批量审批单归属审批主体组织，按 Offer 对象的组织范围查看
@@ -851,6 +855,8 @@ interface ConfigFields {
   readonly presets?: boolean;
   /** 固定可见的键（不按字段权限解析）。 */
   readonly fixed?: readonly string[];
+  /** 审计键不在字段目录里的对象（F-326 变量与矩阵）：由「审批流程」权限推出精确键与受控动态路径。 */
+  readonly derive?: (viewable: ReadonlySet<string> | undefined) => ReadonlySet<string> | undefined;
 }
 
 const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
@@ -865,7 +871,15 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   retirement_rule: { code: 'TenantBase.EmploymentSettings' },
   retirement_identity_type: { code: 'TenantBase.EmploymentSettings' },
   employment_custom_field: { code: 'TenantBase.EmploymentCustomField' },
+  'esign-template': { code: MODULE_OBJECTS.eSignSettings.code },
+  'esign-scene-settings': { code: MODULE_OBJECTS.eSignSettings.code },
   'approval-process': { code: 'TenantBase.ApprovalProcess' },
+  // F-326：变量与矩阵的审计键（dataType / defaultValue、动态的 row:<id> / column:<id>、删除快照）不在审批流程字段目录
+  // 里，由审批流程权限推出精确键与受控动态路径（controlled-fields.ts），没有权限时 fail-closed
+  'approval-public-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
+  'approval-application-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
+  'approval-matrix': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
+  'approval-matrix-row': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
   transfer_form: {
     code: EMPLOYMENT,
     presets: true,
@@ -1192,6 +1206,7 @@ async function resolveConfigFields(deps: Deps, ctx: TenantContext, present: read
   const fieldsFor = async (config: ConfigFields) => {
     if (config.fixed) return new Set(config.fixed);
     const viewable = await getModuleViewableFields(deps, ctx, config.code!);
+    if (config.derive) return config.derive(viewable);
     if (viewable === undefined) return undefined;
     const presets = config.presets ? [...viewable].map((code) => `preset:${code}`) : [];
     return new Set([...viewable, ...presets, ...(config.protocol ?? [])]);

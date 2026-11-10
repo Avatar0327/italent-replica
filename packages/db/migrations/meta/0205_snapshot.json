@@ -1,5 +1,5 @@
 {
-  "id": "876d996b-c1e3-466e-adac-492fe722b8ae",
+  "id": "a8fc036b-b598-4914-b571-0b5267b69dcf",
   "prevId": "10606fd1-bcd6-44ba-923f-df4630fe9bec",
   "version": "7",
   "dialect": "postgresql",
@@ -26110,6 +26110,872 @@
         "approval_tasks_origin": {
           "name": "approval_tasks_origin",
           "value": "\"approval_tasks\".\"origin\" IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',\n        'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',\n        'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve',\n        'add_sign_parallel','countersign_reopen','subject_skip')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_matrices": {
+      "name": "approval_matrices",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "approval_matrices_list": {
+          "name": "approval_matrices_list",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "approval_matrices_tenant_id_tenants_id_fk": {
+          "name": "approval_matrices_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_matrices",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_matrices_creator": {
+          "name": "approval_matrices_creator",
+          "tableFrom": "approval_matrices",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "created_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_matrices_updater": {
+          "name": "approval_matrices_updater",
+          "tableFrom": "approval_matrices",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "updated_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approval_matrices_tenant_id": {
+          "name": "approval_matrices_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "approval_matrices_code": {
+          "name": "approval_matrices_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "approval_matrices_status": {
+          "name": "approval_matrices_status",
+          "value": "\"approval_matrices\".\"status\" IN ('draft','enabled','disabled')"
+        },
+        "approval_matrices_revision": {
+          "name": "approval_matrices_revision",
+          "value": "\"approval_matrices\".\"revision\" > 0"
+        },
+        "approval_matrices_name": {
+          "name": "approval_matrices_name",
+          "value": "char_length(btrim(\"approval_matrices\".\"name\")) > 0"
+        },
+        "approval_matrices_code_format": {
+          "name": "approval_matrices_code_format",
+          "value": "\"approval_matrices\".\"code\" ~ '^[A-Za-z0-9_]{1,64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_matrix_cells": {
+      "name": "approval_matrix_cells",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "row_id": {
+          "name": "row_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "column_id": {
+          "name": "column_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ref_ids": {
+          "name": "ref_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "approval_matrix_cells_tenant_id_tenants_id_fk": {
+          "name": "approval_matrix_cells_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_matrix_cells",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_matrix_cells_row": {
+          "name": "approval_matrix_cells_row",
+          "tableFrom": "approval_matrix_cells",
+          "tableTo": "approval_matrix_rows",
+          "columnsFrom": [
+            "tenant_id",
+            "row_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "approval_matrix_cells_column": {
+          "name": "approval_matrix_cells_column",
+          "tableFrom": "approval_matrix_cells",
+          "tableTo": "approval_matrix_columns",
+          "columnsFrom": [
+            "tenant_id",
+            "column_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "approval_matrix_cells_pk": {
+          "name": "approval_matrix_cells_pk",
+          "columns": [
+            "tenant_id",
+            "row_id",
+            "column_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "approval_matrix_cells_size": {
+          "name": "approval_matrix_cells_size",
+          "value": "cardinality(\"approval_matrix_cells\".\"ref_ids\") <= 100"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_matrix_columns": {
+      "name": "approval_matrix_columns",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "matrix_id": {
+          "name": "matrix_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dimension": {
+          "name": "dimension",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "include_children": {
+          "name": "include_children",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "allow_multiple": {
+          "name": "allow_multiple",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "approval_matrix_columns_tenant_id_tenants_id_fk": {
+          "name": "approval_matrix_columns_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_matrix_columns",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_matrix_columns_matrix": {
+          "name": "approval_matrix_columns_matrix",
+          "tableFrom": "approval_matrix_columns",
+          "tableTo": "approval_matrices",
+          "columnsFrom": [
+            "tenant_id",
+            "matrix_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approval_matrix_columns_tenant_id": {
+          "name": "approval_matrix_columns_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "approval_matrix_columns_name": {
+          "name": "approval_matrix_columns_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "matrix_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "approval_matrix_columns_name_nonempty": {
+          "name": "approval_matrix_columns_name_nonempty",
+          "value": "char_length(btrim(\"approval_matrix_columns\".\"name\")) > 0"
+        },
+        "approval_matrix_columns_kind": {
+          "name": "approval_matrix_columns_kind",
+          "value": "(\"approval_matrix_columns\".\"kind\" = 'condition' AND \"approval_matrix_columns\".\"dimension\" IS NOT NULL AND \"approval_matrix_columns\".\"dimension\" IN ('department','position','job'))\n        OR (\"approval_matrix_columns\".\"kind\" = 'role' AND \"approval_matrix_columns\".\"dimension\" IS NULL)"
+        },
+        "approval_matrix_columns_include_children": {
+          "name": "approval_matrix_columns_include_children",
+          "value": "NOT \"approval_matrix_columns\".\"include_children\" OR \"approval_matrix_columns\".\"dimension\" IS NOT DISTINCT FROM 'department'"
+        },
+        "approval_matrix_columns_allow_multiple": {
+          "name": "approval_matrix_columns_allow_multiple",
+          "value": "NOT \"approval_matrix_columns\".\"allow_multiple\" OR \"approval_matrix_columns\".\"kind\" = 'role'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_matrix_rows": {
+      "name": "approval_matrix_rows",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "matrix_id": {
+          "name": "matrix_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "approval_matrix_rows_tenant_id_tenants_id_fk": {
+          "name": "approval_matrix_rows_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_matrix_rows",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_matrix_rows_matrix": {
+          "name": "approval_matrix_rows_matrix",
+          "tableFrom": "approval_matrix_rows",
+          "tableTo": "approval_matrices",
+          "columnsFrom": [
+            "tenant_id",
+            "matrix_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approval_matrix_rows_tenant_id": {
+          "name": "approval_matrix_rows_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "approval_matrix_rows_seq": {
+          "name": "approval_matrix_rows_seq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "matrix_id",
+            "seq"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "approval_matrix_rows_seq_positive": {
+          "name": "approval_matrix_rows_seq_positive",
+          "value": "\"approval_matrix_rows\".\"seq\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_variables": {
+      "name": "approval_variables",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "app_id": {
+          "name": "app_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data_type": {
+          "name": "data_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "default_value": {
+          "name": "default_value",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage_scopes": {
+          "name": "usage_scopes",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
+        "origin_process_id": {
+          "name": "origin_process_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin_version_id": {
+          "name": "origin_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin_node_key": {
+          "name": "origin_node_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin_slot": {
+          "name": "origin_slot",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "approval_variables_list": {
+          "name": "approval_variables_list",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scope",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "approval_variables_origin_slot": {
+          "name": "approval_variables_origin_slot",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "origin_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "origin_node_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "origin_slot",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"approval_variables\".\"origin\" = 'auto' AND \"approval_variables\".\"status\" <> 'disabled'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "approval_variables_origin_process": {
+          "name": "approval_variables_origin_process",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "origin_process_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"approval_variables\".\"origin\" = 'auto'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "approval_variables_tenant_id_tenants_id_fk": {
+          "name": "approval_variables_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_variables",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_variables_origin_process_fk": {
+          "name": "approval_variables_origin_process_fk",
+          "tableFrom": "approval_variables",
+          "tableTo": "approval_processes",
+          "columnsFrom": [
+            "tenant_id",
+            "origin_process_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_variables_origin_version_fk": {
+          "name": "approval_variables_origin_version_fk",
+          "tableFrom": "approval_variables",
+          "tableTo": "approval_process_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "origin_version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_variables_creator": {
+          "name": "approval_variables_creator",
+          "tableFrom": "approval_variables",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "created_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_variables_updater": {
+          "name": "approval_variables_updater",
+          "tableFrom": "approval_variables",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "updated_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approval_variables_tenant_id": {
+          "name": "approval_variables_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "approval_variables_code": {
+          "name": "approval_variables_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "approval_variables_scope": {
+          "name": "approval_variables_scope",
+          "value": "\"approval_variables\".\"scope\" IN ('public','application')"
+        },
+        "approval_variables_data_type": {
+          "name": "approval_variables_data_type",
+          "value": "\"approval_variables\".\"data_type\" IN ('string','integer','decimal','datetime','boolean','person','persons')"
+        },
+        "approval_variables_status": {
+          "name": "approval_variables_status",
+          "value": "\"approval_variables\".\"status\" IN ('draft','enabled','disabled')"
+        },
+        "approval_variables_revision": {
+          "name": "approval_variables_revision",
+          "value": "\"approval_variables\".\"revision\" > 0"
+        },
+        "approval_variables_name": {
+          "name": "approval_variables_name",
+          "value": "char_length(btrim(\"approval_variables\".\"name\")) > 0"
+        },
+        "approval_variables_code_format": {
+          "name": "approval_variables_code_format",
+          "value": "(\"approval_variables\".\"scope\" = 'public' AND \"approval_variables\".\"code\" ~ '^Global\\.B\\.[A-Za-z][A-Za-z0-9_]{0,63}$')\n        OR (\"approval_variables\".\"scope\" = 'application' AND \"approval_variables\".\"code\" ~ '^B\\.[A-Za-z0-9_]{1,64}$')"
+        },
+        "approval_variables_scope_columns": {
+          "name": "approval_variables_scope_columns",
+          "value": "(\"approval_variables\".\"scope\" = 'public' AND \"approval_variables\".\"app_id\" IS NULL\n          AND cardinality(\"approval_variables\".\"usage_scopes\") >= 1\n          AND \"approval_variables\".\"usage_scopes\" <@ ARRAY['process','business_rule','message_template']::text[])\n        OR (\"approval_variables\".\"scope\" = 'application' AND \"approval_variables\".\"app_id\" IS NOT NULL\n          AND cardinality(\"approval_variables\".\"usage_scopes\") = 0 AND \"approval_variables\".\"description\" IS NULL)"
+        },
+        "approval_variables_origin": {
+          "name": "approval_variables_origin",
+          "value": "\"approval_variables\".\"origin\" IN ('manual','auto')"
+        },
+        "approval_variables_origin_slot_value": {
+          "name": "approval_variables_origin_slot_value",
+          "value": "\"approval_variables\".\"origin_slot\" IN ('approver','empty_approver')"
+        },
+        "approval_variables_origin_columns": {
+          "name": "approval_variables_origin_columns",
+          "value": "(\"approval_variables\".\"origin\" = 'manual' AND \"approval_variables\".\"origin_process_id\" IS NULL AND \"approval_variables\".\"origin_version_id\" IS NULL\n          AND \"approval_variables\".\"origin_node_key\" IS NULL AND \"approval_variables\".\"origin_slot\" IS NULL)\n        OR (\"approval_variables\".\"origin\" = 'auto' AND \"approval_variables\".\"origin_process_id\" IS NOT NULL AND \"approval_variables\".\"origin_version_id\" IS NOT NULL\n          AND \"approval_variables\".\"origin_node_key\" IS NOT NULL AND \"approval_variables\".\"origin_slot\" IS NOT NULL\n          AND \"approval_variables\".\"scope\" = 'public' AND \"approval_variables\".\"data_type\" IN ('person','persons')\n          AND \"approval_variables\".\"usage_scopes\" = ARRAY['process']::text[])"
         }
       },
       "isRLSEnabled": false
@@ -58173,604 +59039,6 @@
         "exit_whereabouts_display_order": {
           "name": "exit_whereabouts_display_order",
           "value": "\"exit_whereabouts\".\"display_order\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.exit_import_batches": {
-      "name": "exit_import_batches",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "submitted_by": {
-          "name": "submitted_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "file_name": {
-          "name": "file_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'queued'"
-        },
-        "total": {
-          "name": "total",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_count": {
-          "name": "created_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "error_row_count": {
-          "name": "error_row_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "error_count": {
-          "name": "error_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "lease_until": {
-          "name": "lease_until",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "finished_at": {
-          "name": "finished_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "purged_at": {
-          "name": "purged_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        }
-      },
-      "indexes": {
-        "exit_import_batches_status_lease": {
-          "name": "exit_import_batches_status_lease",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "lease_until",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "exit_import_batches_expiry": {
-          "name": "exit_import_batches_expiry",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "expires_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"exit_import_batches\".\"purged_at\" IS NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "exit_import_batches_own_list": {
-          "name": "exit_import_batches_own_list",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "submitted_by",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "\"created_at\" DESC",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "\"id\" DESC",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "exit_import_batches_tenant_id_tenants_id_fk": {
-          "name": "exit_import_batches_tenant_id_tenants_id_fk",
-          "tableFrom": "exit_import_batches",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "exit_import_batches_submitter_fk": {
-          "name": "exit_import_batches_submitter_fk",
-          "tableFrom": "exit_import_batches",
-          "tableTo": "tenant_memberships",
-          "columnsFrom": [
-            "tenant_id",
-            "submitted_by"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "user_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "exit_import_batches_tenant_id_id_pk": {
-          "name": "exit_import_batches_tenant_id_id_pk",
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "exit_import_batches_status": {
-          "name": "exit_import_batches_status",
-          "value": "\"exit_import_batches\".\"status\" IN ('queued','running','completed','failed')"
-        },
-        "exit_import_batches_total": {
-          "name": "exit_import_batches_total",
-          "value": "\"exit_import_batches\".\"total\" BETWEEN 1 AND 1000"
-        },
-        "exit_import_batches_counts": {
-          "name": "exit_import_batches_counts",
-          "value": "\"exit_import_batches\".\"created_count\" >= 0 AND \"exit_import_batches\".\"error_row_count\" >= 0 AND \"exit_import_batches\".\"error_count\" >= 0 AND \"exit_import_batches\".\"attempts\" >= 0\n        AND \"exit_import_batches\".\"error_row_count\" <= \"exit_import_batches\".\"total\" AND \"exit_import_batches\".\"error_count\" >= \"exit_import_batches\".\"error_row_count\""
-        },
-        "exit_import_batches_file_name": {
-          "name": "exit_import_batches_file_name",
-          "value": "char_length(\"exit_import_batches\".\"file_name\") BETWEEN 1 AND 255"
-        },
-        "exit_import_batches_expires": {
-          "name": "exit_import_batches_expires",
-          "value": "\"exit_import_batches\".\"expires_at\" IS NULL OR \"exit_import_batches\".\"status\" IN ('completed','failed')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.exit_import_rows": {
-      "name": "exit_import_rows",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "batch_id": {
-          "name": "batch_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "row_no": {
-          "name": "row_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "department_code": {
-          "name": "department_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "entry_date": {
-          "name": "entry_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "position_name": {
-          "name": "position_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "post_name": {
-          "name": "post_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "level_name": {
-          "name": "level_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "work_date": {
-          "name": "work_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "place": {
-          "name": "place",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "id_number": {
-          "name": "id_number",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "mobile_phone": {
-          "name": "mobile_phone",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "personal_email": {
-          "name": "personal_email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "gender": {
-          "name": "gender",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "birthday": {
-          "name": "birthday",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "nation": {
-          "name": "nation",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "political_status": {
-          "name": "political_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "household_address": {
-          "name": "household_address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "regist_address": {
-          "name": "regist_address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "school": {
-          "name": "school",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "major": {
-          "name": "major",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_work_date": {
-          "name": "last_work_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "exit_type_name": {
-          "name": "exit_type_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "exit_reason_name": {
-          "name": "exit_reason_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "whereabouts_name": {
-          "name": "whereabouts_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "exit_note": {
-          "name": "exit_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "errors": {
-          "name": "errors",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "exit_business_id": {
-          "name": "exit_business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "exit_import_rows_pending": {
-          "name": "exit_import_rows_pending",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "batch_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "row_no",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "exit_import_rows_batch_fk": {
-          "name": "exit_import_rows_batch_fk",
-          "tableFrom": "exit_import_rows",
-          "tableTo": "exit_import_batches",
-          "columnsFrom": [
-            "tenant_id",
-            "batch_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "exit_import_rows_employee_fk": {
-          "name": "exit_import_rows_employee_fk",
-          "tableFrom": "exit_import_rows",
-          "tableTo": "employment_employees",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "exit_import_rows_business_fk": {
-          "name": "exit_import_rows_business_fk",
-          "tableFrom": "exit_import_rows",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "exit_business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "exit_import_rows_tenant_id_batch_id_row_no_pk": {
-          "name": "exit_import_rows_tenant_id_batch_id_row_no_pk",
-          "columns": [
-            "tenant_id",
-            "batch_id",
-            "row_no"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "exit_import_rows_row_no": {
-          "name": "exit_import_rows_row_no",
-          "value": "\"exit_import_rows\".\"row_no\" >= 1"
-        },
-        "exit_import_rows_status": {
-          "name": "exit_import_rows_status",
-          "value": "\"exit_import_rows\".\"status\" IN ('pending','succeeded','created_with_error','failed')"
-        },
-        "exit_import_rows_errors": {
-          "name": "exit_import_rows_errors",
-          "value": "jsonb_typeof(\"exit_import_rows\".\"errors\") = 'array' AND ((\"exit_import_rows\".\"status\" IN ('failed','created_with_error'))\n        = (jsonb_array_length(\"exit_import_rows\".\"errors\") > 0))"
-        },
-        "exit_import_rows_refs": {
-          "name": "exit_import_rows_refs",
-          "value": "(\"exit_import_rows\".\"status\" IN ('succeeded','created_with_error')) = (\"exit_import_rows\".\"employee_id\" IS NOT NULL)\n        AND (\"exit_import_rows\".\"employee_id\" IS NOT NULL) = (\"exit_import_rows\".\"exit_business_id\" IS NOT NULL)"
         }
       },
       "isRLSEnabled": false

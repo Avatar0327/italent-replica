@@ -97,7 +97,20 @@ describe('P2-2 离职落地的引用校验：按存在性，合法引用不被�
       },
       subordinate.revision,
     );
-    const managerLeave = await x.directLeave('2026-10-20');
+    // DT-R4：经理名下有下属，直接离职须随单带转交计划（接收人为另一在职同事）
+    const receiver = await x.session.employee('接收人');
+    await x.session.business(
+      receiver.id,
+      { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { departmentId: x.from.id } },
+      receiver.revision,
+    );
+    const plan = {
+      dutyTransfer: {
+        subordinates: [{ employeeId: subordinate.id, receiverId: receiver.id, relation: 'direct' }],
+        orgRoles: [],
+      },
+    };
+    const managerLeave = await x.directLeave('2026-10-20', plan);
     const subordinateLeave = await x.directLeave('2026-10-20', undefined, subordinate.id);
     expect(await x.activate(managerLeave.id, '2026-10-21')).toMatchObject({ outcome: 'effective' });
     expect(await x.activate(subordinateLeave.id, '2026-10-21')).toMatchObject({ outcome: 'effective' });

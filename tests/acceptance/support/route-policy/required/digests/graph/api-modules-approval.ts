@@ -1206,6 +1206,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/engine.ts#autoProcess': [
     '#MECHANISMS',
+    'apps/api/src/modules/approval/handling-content.ts#prepareHandlingContent',
+    'apps/api/src/modules/approval/handling-content.ts#recordHandlingContent',
     'apps/api/src/modules/approval/notifications.ts#applyMessageRules',
     'apps/api/src/modules/approval/store.ts#appendLog',
     'apps/api/src/modules/approval/store.ts#insertTask',
@@ -1438,6 +1440,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/handling-content.ts#CONTENT_PROVIDERS': [
     '#SNAPSHOT_ONLY',
+    'apps/api/src/modules/employment/assessment-content.ts#loadAssessmentContent',
+    'apps/api/src/modules/employment/retirement-intention-content.ts#loadIntentionContent',
     'apps/api/src/modules/org-adjustment/content.ts#loadOrgContent',
   ],
   'apps/api/src/modules/approval/handling-content.ts#prepareHandlingContent': [

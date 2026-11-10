@@ -52,6 +52,34 @@
       "obj:TenantBase.Organization:view"
     ]
   },
+  "GET /api/tenant/org/organizations/chart": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.Organization"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Organization/TenantBase.Organization.list"
+    ],
+    "trace": [
+      "obj:TenantBase.Organization:view"
+    ]
+  },
+  "GET /api/tenant/org/organizations/tree": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.Organization"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Organization/TenantBase.Organization.list"
+    ],
+    "trace": [
+      "obj:TenantBase.Organization:view"
+    ]
+  },
   "GET /api/tenant/org/person-candidates": {
     "all": {
       "status": 200

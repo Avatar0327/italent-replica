@@ -224,6 +224,12 @@
   border-radius: 8px;
   background: white;
 }
+/* F-478 S5：不经过的节点淡化显示，与待办（灰）区分 */
+.approval-progress .approval-path-skipped .ant-steps-item-title,
+.approval-progress .approval-path-skipped .ant-steps-item-description {
+  color: #b8bcbf;
+  text-decoration: line-through;
+}
 .approval-detail-columns {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);

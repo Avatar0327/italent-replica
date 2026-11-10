@@ -10,6 +10,8 @@
  */
 import { createHash } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import { loadAssessmentContent } from '../employment/assessment-content.js';
+import { loadIntentionContent } from '../employment/retirement-intention-content.js';
 import { loadOrgContent } from '../org-adjustment/content.js';
 import type { BusinessSnapshot, BusinessType } from './adapters.js';
 import { approvalError, rowsOf, type ApprovalContext } from './context.js';
@@ -47,15 +49,25 @@ export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> 
   part_time: SNAPSHOT_ONLY,
   offer: SNAPSHOT_ONLY,
   offer_batch: SNAPSHOT_ONLY,
-  probation_assessment: SNAPSHOT_ONLY,
-  retirement_intention: SNAPSHOT_ONLY,
+  probation_assessment: { kind: 'extended', ext: (tx, tenantId, id) => loadAssessmentContent(tx, tenantId, id) },
+  retirement_intention: { kind: 'extended', ext: (tx, tenantId, id) => loadIntentionContent(tx, tenantId, id) },
   exit_handover: SNAPSHOT_ONLY,
   // 结果审批尚无真实 provider（适配器本身是占位，不可发起）：到达这里一律拒绝，不写空份
   talent_review: { kind: 'not-wired', reason: '盘点结果审批的办理份 provider 尚未接入' },
 };
 
 export type HandlingAction =
-  'approve' | 'disagree' | 'reject' | 'reject_previous' | 'jump' | 'transfer' | 'add_sign_before' | 'add_sign_after';
+  | 'approve'
+  | 'disagree'
+  | 'reject'
+  | 'reject_previous'
+  | 'jump'
+  | 'transfer'
+  | 'add_sign_before'
+  | 'add_sign_after'
+  // 系统处理（自动同意 / 自动跳过，设计 §1.3）：actor 为空的系统份，不是任何人的亲自办理
+  | 'auto_approve'
+  | 'skip';
 
 /** 视为“办理”的日志事件（选择时按它找查看人最近一次办理）；管理员事件与引擎系统日志不是办理锚点。 */
 export const HANDLING_EVENTS: readonly string[] = [
@@ -115,6 +127,8 @@ export interface HandlingAnchor {
   readonly logId: string;
   readonly task: TaskRow;
   readonly action: HandlingAction;
+  /** true：系统处理（自动同意 / 跳过）。actor 固定为空，不取 ctx 的操作人，更不冒认候选人（设计 §1.3）。 */
+  readonly system?: boolean;
 }
 
 /** 写办理份（调用方已写好办理日志）。唯一约束 / 守卫触发器把任务、日志、实例的一致性兜在库里。 */
@@ -126,7 +140,7 @@ export async function recordHandlingContent(
 ): Promise<void> {
   const { ctx, instance } = run;
   const { task } = anchor;
-  const actor = ctx.actorUserId === undefined ? ctx.userId : ctx.actorUserId;
+  const actor = anchor.system ? null : ctx.actorUserId === undefined ? ctx.userId : ctx.actorUserId;
   // null = 办理人不受字段权限约束（不设上限），写 SQL NULL 而非 jsonb 'null'：租户备份 / 恢复按 JSON 往返，
   // 'null' 字面量会被还原成 SQL NULL（F-476 预检返工）。
   const ceiling = prepared.ceiling === null ? null : JSON.stringify(prepared.ceiling);

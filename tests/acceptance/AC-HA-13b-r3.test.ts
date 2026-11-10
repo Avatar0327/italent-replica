@@ -271,27 +271,39 @@ describe('AC-HA-13b 第 3 轮返工回归', () => {
     expect(rowKeys(previous, 'establishment')).toEqual([old]);
   });
 
-  it('第 9 项：编制多周期（季度两期 + 年度）、月度方案只出覆盖 asOf 的那期，各一行不互相覆盖', async () => {
-    const Y = await w.org(named('多周期编制部'));
-    const person = await w.hire('多周期编制员工', '2026-01-05', Y);
+  it('第 9 项：编制多周期（季度两期、年度、月度各在自己的组织）只出覆盖 asOf 的那期，各一行不互相覆盖', async () => {
+    // F-484（DEC-295①）：同一组织不能让不同方案的期间重叠，三种周期分别落在三个组织上
+    const Q = await w.org(named('季度多周期编制部'));
+    const Y = await w.org(named('年度编制部'));
+    const M = await w.org(named('月度编制部'));
+    const [quarterPerson, yearPerson, monthPerson] = [
+      await w.hire('季度编制员工', '2026-01-05', Q),
+      await w.hire('年度编制员工', '2026-01-05', Y),
+      await w.hire('月度编制员工', '2026-01-05', M),
+    ];
     const quarterly = await scheme({ periodType: 'quarterly', startDate: '2026-01-01' });
-    await capacity(Y.id, quarterly, '2026-07-01', 3);
-    const q4 = await capacity(Y.id, quarterly, '2026-10-01', 4);
+    await capacity(Q.id, quarterly, '2026-07-01', 3);
+    const q4 = await capacity(Q.id, quarterly, '2026-10-01', 4);
     const annual = await scheme({ periodType: 'annual', startDate: '2026-01-01' });
     const year = await capacity(Y.id, annual, '2026-01-01', 10);
     const monthly = await scheme({ periodType: 'monthly', startDate: '2026-01-01' });
     // 月度方案新建会自动补齐当年后续各月；先建十月再建九月，九月补齐时跳过已有的十月
-    const october = await capacity(Y.id, monthly, '2026-10-01', 2);
-    await capacity(Y.id, monthly, '2026-09-01', 1);
-    const scoped = `${AS_OF}&departmentId=${Y.id}`;
+    const october = await capacity(M.id, monthly, '2026-10-01', 2);
+    await capacity(M.id, monthly, '2026-09-01', 1);
 
-    expect(await establishmentKeys(scoped)).toEqual([q4, year, october].sort());
-    for (const id of [q4, year, october]) await c.expectCount(BASE, '3.1.36', ids(person), scoped, id);
-    const report = await c.report('establishment', scoped);
-    expect(rowKeys(report, 'establishment').sort()).toEqual([q4, year, october].sort());
-    expect(row(report, 'establishment', q4)).toMatchObject({ localCapacity: 4, actual: 1 });
-    expect(row(report, 'establishment', october)).toMatchObject({ localCapacity: 2, actual: 1 });
-    expect(table(report, 'establishment').summary.cells).toMatchObject({ localCapacity: 16 });
+    for (const [org, person, id, localCapacity] of [
+      [Q, quarterPerson, q4, 4],
+      [Y, yearPerson, year, 10],
+      [M, monthPerson, october, 2],
+    ] as const) {
+      const scoped = `${AS_OF}&departmentId=${org.id}`;
+      expect(await establishmentKeys(scoped)).toEqual([id]);
+      await c.expectCount(BASE, '3.1.36', ids(person), scoped, id);
+      const report = await c.report('establishment', scoped);
+      expect(rowKeys(report, 'establishment')).toEqual([id]);
+      expect(row(report, 'establishment', id)).toMatchObject({ localCapacity, actual: 1 });
+      expect(table(report, 'establishment').summary.cells).toMatchObject({ localCapacity });
+    }
   });
 
   it('第 9 项：数据范围外组织的编制不进 3.1.36 与组织编制页签', async () => {

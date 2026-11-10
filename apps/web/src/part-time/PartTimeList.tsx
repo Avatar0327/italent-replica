@@ -14,12 +14,13 @@ import { d } from './direct-messages.js';
 import type { Row } from './model.js';
 import { RequestEntries, NewRequestButton } from './RequestEntries.js';
 import { m } from './messages.js';
-import { useViewState } from './list-state.js';
+import { useViewState, useViewSwitching, viewAddressChanged, viewOf } from './list-state.js';
 function useList() {
   const access = useDirectAccess();
   const [params, setParams] = useSearchParams();
-  const view = views.find((item) => item.key === params.get('view'))?.key ?? 'ongoing';
+  const view = viewOf(params);
   const { state, patch, reset } = useViewState(view);
+  const switching = useViewSwitching(view);
   const { page, filters, sort } = state;
   const allowed = useFilterPermission();
   const canSort = useSortPermission(view);
@@ -30,6 +31,7 @@ function useList() {
   return {
     ...state,
     access,
+    switching,
     check: (checked: Row[]) => patch({ checked }),
     setDirect: (direct?: string) => patch({ direct }),
     async refreshDirect() {
@@ -49,6 +51,7 @@ function useList() {
     switchView(next: View) {
       if (next === view) reset();
       setParams({ view: next });
+      viewAddressChanged();
     },
     applyFilters(next: Filters) {
       patch({ filters: allowedFilters(next, allowed, view), page: 1, checked: [] });
@@ -104,7 +107,7 @@ export function PartTimeList() {
 function ListCard({ state }: { state: State }) {
   const { view, setDrawer, select, result } = state;
   return (
-    <section className="part-time-card">
+    <section className="part-time-card" inert={state.switching} aria-busy={state.switching}>
       <div className="part-time-toolbar">
         {state.access.p.can('Employment.PartTime') && (
           <Button type="primary" disabled={!state.access.operation(true)} onClick={() => state.setDirect('create')}>
@@ -151,7 +154,7 @@ function ListCard({ state }: { state: State }) {
                 ? (row) => (
                     <Button
                       type="link"
-                      disabled={!state.access.operation(false)}
+                      disabled={state.switching || !state.access.operation(false)}
                       onClick={() => state.setDirect(row.id)}
                     >
                       {d.edit.replace('兼职', '')}
@@ -161,7 +164,8 @@ function ListCard({ state }: { state: State }) {
             }
             view={view}
             {...{ sort: state.sort, canSort: state.canSort, onSort: state.onSort }}
-            loading={result.loading}
+            loading={result.loading || state.switching}
+            disabled={state.switching}
             noScope={result.data?.hasDataPermission === false}
             onOpen={(row) => select({ id: row.id, request: view === 'in_approval' })}
           />
