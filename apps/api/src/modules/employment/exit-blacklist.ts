@@ -23,7 +23,7 @@ import { adminAncestors } from '../approval/resolver.js';
 import { addBlacklistEntry, revokeExitListing } from './blacklist.js';
 import { loadBlacklistRules, readAutoBlacklistEnabled } from './blacklist-rules.js';
 import { auditEmployment } from './context.js';
-import { exitPostEffectHooks, type ExitCancelledEvent, type ExitEffectiveEvent } from './exit-confirmation.js';
+import { exitPostEffectHooks, type ExitCancelledEvent, type ExitEffectiveEvent } from './exit-post-effect-hooks.js';
 import { loadExitRequest } from './exit-gate.js';
 import { findCurrentRecord } from './read-model.js';
 import { rowsOf } from './record-store.js';

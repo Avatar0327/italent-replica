@@ -26,12 +26,8 @@ import {
 } from './context.js';
 import { completePendingEntry } from './employee-status.js';
 import { assertProbationTerms, probationTerms } from './entry-options.js';
-import {
-  entryContractSchema,
-  type EntryContract,
-  generateEntryContract,
-  requireEntryContractAccess,
-} from './entry-contract.js';
+import { generateEntryContract, requireEntryContractAccess } from './entry-contract.js';
+import { entryContractSchema, type EntryContract } from './entry-contract-schema.js';
 import { pendingActionGuard, pendingDeleteGuard } from './replay-guard.js';
 import { cancelPendingEntry, deletePendingEntry, editPendingEntry, postponePendingEntry } from './entry-actions.js';
 import { ENTRY_VIEWS, listEntryView } from './entry-views.js';
