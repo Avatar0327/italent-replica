@@ -3141,6 +3141,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/personnel/profile-options.ts#checkProfileOption',
   ],
   'apps/api/src/modules/employment/exit-import-row.ts#provisionDisabledAccount': [
+    'apps/api/src/modules/employment/exit-account-store.ts#auditTask',
     'apps/api/src/modules/employment/exit-import-shape.ts#emailKey',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/permission/audit.ts#audit',
@@ -3162,6 +3163,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-application.ts#dutyTransferTiming',
     'apps/api/src/modules/employment/exit-application.ts#selectedStaffOf',
     '#assertOnlyImportedBusinesses',
+    '#educationPatch',
     '#profilePatch',
     '#provisionDisabledAccount',
     '#settleEffective',
@@ -3215,6 +3217,9 @@ export const GRAPH: Graph = {
     '#LEASE',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-import-worker.ts#departmentResolver': [
+    'apps/api/src/modules/employment/exit-import-resolve.ts#findDepartment',
+  ],
   'apps/api/src/modules/employment/exit-import-worker.ts#drainExitImports': [
     'apps/api/src/modules/employment/active-tenants.ts#activeTenants',
     '#claim',
@@ -3227,6 +3232,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-import-worker.ts#finish': [
     'apps/api/src/audit/record.ts#recordOperationLog',
     '#RETAIN',
+    '#departmentResolver',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-import-worker.ts#judge': [
@@ -3254,6 +3260,7 @@ export const GRAPH: Graph = {
     'apps/api/src/advisory-lock.ts#asUuid',
     'apps/api/src/modules/employment/exit-import-row.ts#writeImportRow',
     'apps/api/src/modules/employment/exit-import-shape.ts#emailKey',
+    '#LEASE',
     '#judge',
     '#settle',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -3263,6 +3270,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-import-worker.ts#stateOf': ['#states'],
   'apps/api/src/modules/employment/exit-import-worker.ts#wakeExitImports': ['#startLoop', '#stateOf'],
   'apps/api/src/modules/employment/exit-import.ts#profileWrites': [
+    'apps/api/src/modules/employment/exit-import-row.ts#educationPatch',
     'apps/api/src/modules/employment/exit-import-row.ts#profilePatch',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
     'packages/domain/src/personnel/fields.ts#SUBSETS',

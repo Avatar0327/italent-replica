@@ -31,7 +31,7 @@ const pick = (ids: readonly string[]): Found =>
       : { id: ids[0]! };
 
 /** 部门编码 → 组织稳定 ID：同一编码历史上挂过多个组织时按歧义报，不猜。 */
-async function findDepartment(tx: Tx, tenantId: string, code: string): Promise<Found> {
+export async function findDepartment(tx: Tx, tenantId: string, code: string): Promise<Found> {
   const found = rowsOf<{ id: string }>(
     await tx.execute(sql`SELECT DISTINCT org_id::text AS id FROM org_versions
       WHERE tenant_id=${tenantId} AND code=${code} LIMIT 2`),
@@ -39,7 +39,11 @@ async function findDepartment(tx: Tx, tenantId: string, code: string): Promise<F
   return pick(found.map((r) => r.id));
 }
 
-/** 职务体系对象按名称匹配：只认入职日当天启用且在有效期内的版本，同名多个对象即歧义（设计 §3.3）。 */
+/**
+ * 职务体系对象按名称匹配（设计 §3.1、§3.3）：先取每个对象在入职日当天的有效版本（起点 ≤ 入职日，同起点取版本号大的，
+ * 与职位模块 loadJobObject 同口径），再在这些版本里匹配名称、所属部门、启用与有效期；同名多个对象即歧义。
+ * 先选版本再过滤，才不会命中已被改名 / 停用替代的历史版本。
+ */
 async function findJob(
   tx: Tx,
   tenantId: string,
@@ -49,9 +53,14 @@ async function findJob(
   orgId?: string,
 ): Promise<Found> {
   const found = rowsOf<{ id: string }>(
-    await tx.execute(sql`SELECT DISTINCT object_id::text AS id FROM ${sql.identifier(table)}
-      WHERE tenant_id=${tenantId} AND name=${name} AND enabled
-        AND start_date <= ${on}::date AND ${on}::date <= stop_date
+    await tx.execute(sql`WITH effective AS (
+        SELECT DISTINCT ON (object_id) object_id, name, enabled, stop_date, ${
+          orgId ? sql`org_id` : sql`NULL::uuid AS org_id`
+        } FROM ${sql.identifier(table)}
+        WHERE tenant_id=${tenantId} AND start_date <= ${on}::date
+        ORDER BY object_id, start_date DESC, version_no DESC
+      ) SELECT object_id::text AS id FROM effective
+      WHERE name=${name} AND enabled AND stop_date >= ${on}::date
         ${orgId ? sql`AND org_id=${orgId}::uuid` : sql``} LIMIT 2`),
   );
   return pick(found.map((r) => r.id));
@@ -63,7 +72,7 @@ const DICTIONARY_TABLE: Record<ExitDictionaryKind, string> = {
   whereabouts: 'exit_whereabouts',
 };
 
-/** 离职字典按名称精确匹配；停用项单独报 DISABLED（名称在租户内不要求唯一）。 */
+/** 离职字典按名称精确匹配，对完整候选集分类（不截断）：启用多个 AMBIGUOUS、全停用 DISABLED（名称不要求唯一）。 */
 async function findDictionary(
   tx: Tx,
   tenantId: string,
@@ -72,7 +81,7 @@ async function findDictionary(
 ): Promise<{ code: string } | { error: 'REFERENCE_NOT_FOUND' | 'REFERENCE_AMBIGUOUS' | 'REFERENCE_DISABLED' }> {
   const found = rowsOf<{ code: string; enabled: boolean }>(
     await tx.execute(sql`SELECT code, enabled FROM ${sql.identifier(DICTIONARY_TABLE[kind])}
-      WHERE tenant_id=${tenantId} AND name=${name} LIMIT 3`),
+      WHERE tenant_id=${tenantId} AND name=${name}`),
   );
   if (found.length === 0) return { error: 'REFERENCE_NOT_FOUND' };
   const enabled = found.filter((item) => item.enabled);

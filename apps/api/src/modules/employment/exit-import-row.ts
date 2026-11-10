@@ -22,6 +22,7 @@ import { saveSubset } from '../personnel/subsets.js';
 import { employeeInput } from '../personnel/validation.js';
 import { auditEmployment } from './context.js';
 import { createEmployee } from './employees.js';
+import { auditTask } from './exit-account-store.js';
 import { dutyTransferTiming, selectedStaffOf } from './exit-application.js';
 import { emailKey, isoOf, type ImportRowInput, type RowError } from './exit-import-shape.js';
 import type { ResolvedImportRow } from './exit-import-resolve.js';
@@ -54,6 +55,20 @@ const REFERENCE_COLUMN: Readonly<Record<string, string>> = {
   levels: 'H',
   place: 'J',
 };
+
+/**
+ * 教育经历写入计划（T / U 列）：提交守卫与写入端口共用这一份，授权按实际写入字段的并集判（含两个标志，
+ * 与实习生建档同口径，设计 §6.1）。学校与专业都空则不建教育经历。
+ */
+export function educationPatch(row: ImportRowInput): Row | null {
+  if (!row.school && !row.major) return null;
+  return {
+    ...(row.school ? { school: row.school } : {}),
+    ...(row.major ? { major: row.major } : {}),
+    isHighestEducation: true,
+    isMainMajor: true,
+  };
+}
 
 /** 档案补丁：邮箱必写；其余只写有值的列。国籍不写默认值（设计 §3.3：北森模板没有这一列）。 */
 export function profilePatch(row: ImportRowInput): Row {
@@ -123,13 +138,8 @@ export async function writeImportRow(
   const employee = await createEmployee(tx, importCtx, { code: null, name: row.name! });
   const personnel = { ...importCtx };
   await appendEmployee(tx, personnel, employee.id, profilePatch(row), false);
-  if (row.school || row.major)
-    await saveSubset(tx, personnel, employee.id, 'education', {
-      ...(row.school ? { school: row.school } : {}),
-      ...(row.major ? { major: row.major } : {}),
-      isHighestEducation: true,
-      isMainMajor: true,
-    });
+  const education = educationPatch(row);
+  if (education) await saveSubset(tx, personnel, employee.id, 'education', education);
 
   const afterCreate = await lockEmploymentEmployee(tx, importCtx, employee.id);
   const fields = {
@@ -240,16 +250,20 @@ async function provisionDisabledAccount(
     after: { ...memberSnapshot(membership), accountCreated: true, source: 'exit_import' },
   });
   // 账号新建时 revision = 1；任务记下它，日后重聘恢复账号时据此判断账号自导入后有没有被人改过
-  await tx.insert(exitAccountTasks).values({
-    tenantId: ctx.tenantId,
-    businessId: exitBusinessId,
-    employeeId,
-    userId,
-    handlerUserId: auditActor(batch.submittedBy),
-    status: 'disabled',
-    commandId,
-    autoRevision: 1,
-  });
+  const [task] = await tx
+    .insert(exitAccountTasks)
+    .values({
+      tenantId: ctx.tenantId,
+      businessId: exitBusinessId,
+      employeeId,
+      userId,
+      handlerUserId: auditActor(batch.submittedBy),
+      status: 'disabled',
+      commandId,
+      autoRevision: 1,
+    })
+    .returning();
+  await auditTask(tx, ctx, null, task!); // 任务与审计同事务（设计 §10.3）
   return account!.login_assigned;
 }
 

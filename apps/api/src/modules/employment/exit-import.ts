@@ -12,7 +12,7 @@ import type { ModuleScope } from '../permission/scope-types.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import { authorize } from '../personnel/access.js';
 import { auditEmployment, EMPLOYEE_OBJECT, requireEmploymentWrite } from './context.js';
-import { profilePatch } from './exit-import-row.js';
+import { educationPatch, profilePatch } from './exit-import-row.js';
 import { shapeErrors, type ExitImportBody, type ImportRowInput, type RowError } from './exit-import-shape.js';
 import { wakeExitImports } from './exit-import-worker.js';
 import type { EmploymentContext } from './types.js';
@@ -60,21 +60,16 @@ function writtenFields(rows: readonly ImportRowInput[]) {
   return { kind: 'hire', mode: 'direct', effectiveDate: '2000-01-01', fields };
 }
 
-/** 档案更新写权按本批非空列的并集判（电子邮件每行必有）；教育新增权在有学校 / 专业时判。 */
+/** 档案更新写权按本批非空列的并集判（电子邮件每行必有）；教育新增权按教育写入计划的实际字段并集判。 */
 function profileWrites(rows: readonly ImportRowInput[]) {
   const fields: Record<string, string> = { email: 'x' };
   for (const row of rows) for (const key of Object.keys(profilePatch(row))) fields[key] = 'x';
-  const education = rows.some((row) => row.school !== null || row.major !== null);
+  const education: Record<string, string> = {};
+  for (const row of rows) for (const key of Object.keys(educationPatch(row) ?? {})) education[key] = 'x';
   return [
     { objectCode: PERSONNEL_OBJECT, operation: 'update' as const, payload: fields },
-    ...(education
-      ? [
-          {
-            objectCode: SUBSETS.education.objectCode,
-            operation: 'create' as const,
-            payload: { school: 'x', major: 'x' },
-          },
-        ]
+    ...(Object.keys(education).length
+      ? [{ objectCode: SUBSETS.education.objectCode, operation: 'create' as const, payload: education }]
       : []),
   ];
 }
@@ -153,9 +148,10 @@ export async function submitExitImport(
         };
       }),
     );
+  const prefailed = [...errors.values()].filter((list) => list.length > 0).length;
   await auditEmployment(tx, ctx, 'employment.exit_import.submitted', 'exit-import', batchId, null, {
-    fileName: body.fileName,
     total: body.rows.length,
+    prefailed,
   });
   afterTransactionCommit(tx, `exit-import:${ctx.tenantId}:${batchId}`, async (db) => wake(db));
   return { status: 202, body: { batchId, status: 'queued', total: body.rows.length } };

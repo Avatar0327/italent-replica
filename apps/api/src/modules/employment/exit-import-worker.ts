@@ -18,7 +18,7 @@ import {
   writeImportRow,
   type ImportBatchRef,
 } from './exit-import-row.js';
-import { resolveImportRow, type ResolvedImportRow } from './exit-import-resolve.js';
+import { findDepartment, resolveImportRow, type ResolvedImportRow } from './exit-import-resolve.js';
 import { emailKey, type ImportRowInput, type RowError } from './exit-import-shape.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
@@ -233,6 +233,9 @@ async function runRow(tx: Tx, tenant: TenantRow, batch: ClaimedBatch, row: Impor
   };
   const resolved = verdict.resolved!;
   const done = await writeImportRow(tx, ctx, batch, row, resolved);
+  // 成功行与本行写入同事务续租（设计 §6.2 第 5 步）：长批次持续处理期间不会被另一执行者当作过期接管
+  await tx.execute(sql`UPDATE exit_import_batches SET lease_until=now() + ${LEASE}
+    WHERE tenant_id=${tenant.id} AND id=${batch.id}::uuid AND status='running'`);
   const errors: RowError[] = done.loginAssigned ? [] : [{ column: 'C', reason: 'LOGIN_TAKEN' }];
   await settle(tx, tenant.id, batch.id, row.rowNo, errors.length ? 'created_with_error' : 'succeeded', {
     errors,
@@ -299,15 +302,15 @@ async function finish(db: Db, tenant: TenantRow, batch: ClaimedBatch, now: Date)
       status: string;
       employee_id: string | null;
       exit_business_id: string | null;
-      n: number;
+      department_code: string | null;
+      errors: readonly RowError[];
     }>(
-      await tx.execute(sql`SELECT row_no, status, employee_id::text, exit_business_id::text,
-        jsonb_array_length(errors) AS n FROM exit_import_rows
-        WHERE tenant_id=${tenant.id} AND batch_id=${batch.id}::uuid ORDER BY row_no`),
+      await tx.execute(sql`SELECT row_no, status, employee_id::text, exit_business_id::text, department_code, errors
+        FROM exit_import_rows WHERE tenant_id=${tenant.id} AND batch_id=${batch.id}::uuid ORDER BY row_no`),
     );
     const created = rows.filter((r) => r.status === 'succeeded' || r.status === 'created_with_error').length;
     const errorRows = rows.filter((r) => r.status === 'failed' || r.status === 'created_with_error').length;
-    const errorCount = rows.reduce((sum, r) => sum + Number(r.n), 0);
+    const errorCount = rows.reduce((sum, r) => sum + r.errors.length, 0);
     const [closed] = rowsOf<{ id: string }>(
       await tx.execute(sql`UPDATE exit_import_batches SET status='completed', created_count=${created},
         error_row_count=${errorRows}, error_count=${errorCount}, finished_at=now(), expires_at=now() + ${RETAIN},
@@ -315,6 +318,27 @@ async function finish(db: Db, tenant: TenantRow, batch: ClaimedBatch, now: Date)
         WHERE tenant_id=${tenant.id} AND id=${batch.id}::uuid AND status='running' RETURNING id`),
     );
     if (!closed) return;
+    const orgOf = departmentResolver(tx, tenant.id);
+    // rowIndex = 按行号升序的 0 起序号；items 与 errorReport 共用（设计 §10.3）
+    const items = [];
+    for (const [rowIndex, r] of rows.entries())
+      items.push({
+        rowIndex,
+        outcome: r.status === 'succeeded' ? ('succeeded' as const) : ('failed' as const),
+        objectId: r.exit_business_id,
+        employeeId: r.employee_id,
+        orgId: await orgOf(r.department_code),
+      });
+    // 每个 errors 元素一条（带原因码），而不是每个错误行一条
+    const errorReport = rows.flatMap((r, rowIndex) =>
+      r.status === 'succeeded'
+        ? []
+        : r.errors.map((error) => ({
+            rowIndex,
+            errorCode: r.status === 'failed' ? 'EXIT_IMPORT_ROW_FAILED' : 'EXIT_IMPORT_CREATED_WITH_ERROR',
+            reason: error.reason,
+          })),
+    );
     await recordOperationLog(tx, {
       tenantId: tenant.id,
       actorUserId: batch.submittedBy,
@@ -323,25 +347,23 @@ async function finish(db: Db, tenant: TenantRow, batch: ClaimedBatch, now: Date)
       objectId: batch.id,
       successCount: rows.filter((r) => r.status === 'succeeded').length,
       failureCount: errorRows,
-      errorReport: errorRows
-        ? rows.flatMap((r, rowIndex) =>
-            r.status === 'succeeded'
-              ? []
-              : [
-                  {
-                    rowIndex,
-                    errorCode: r.status === 'failed' ? 'EXIT_IMPORT_ROW_FAILED' : 'EXIT_IMPORT_CREATED_WITH_ERROR',
-                  },
-                ],
-          )
-        : null,
-      items: rows.map((r, rowIndex) => ({
-        rowIndex,
-        outcome: r.status === 'succeeded' ? ('succeeded' as const) : ('failed' as const),
-        ...(r.employee_id ? { employeeId: r.employee_id, objectId: r.exit_business_id } : {}),
-      })),
+      errorReport: errorReport.length ? errorReport : null,
+      items,
       commandId: `exit-import:${batch.id}`,
       occurredAt: now,
     });
   });
+}
+
+/** 部门编码 → 组织 ID，仅在唯一解析时给出（同批多行同编码只查一次）；解析不到 / 有歧义为 null。 */
+function departmentResolver(tx: Tx, tenantId: string) {
+  const cache = new Map<string, string | null>();
+  return async (code: string | null): Promise<string | null> => {
+    if (code === null) return null;
+    if (!cache.has(code)) {
+      const found = await findDepartment(tx, tenantId, code);
+      cache.set(code, 'id' in found ? found.id : null);
+    }
+    return cache.get(code)!;
+  };
 }
