@@ -212,7 +212,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/duty-transfer/service.ts': {
     authorizeDuty: '67161ee474f6',
-    submitMenuTransfer: 'bc90fc106a1d',
+    submitMenuTransfer: '2abaf46744ec',
   },
   'apps/api/src/modules/employee-self-service/access.ts': {
     boundEmployee: 'b8e9da14ecca',
@@ -273,7 +273,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employment/assessment-routes.ts': {
     'route:GET /probation-assessments': '47f2e8dfaa4c',
-    'route:GET /probation-assessments/:id': 'bff8ddc87a0f',
+    'route:GET /probation-assessments/:id': 'd1e3f84d0453',
     'route:PATCH /probation-assessments/:id': 'f805edcc68ba',
     'route:POST /probation-assessments': '17037f156e66',
   },
@@ -385,7 +385,7 @@ export const DIGESTS: Digests = {
     exitActions: 'aea292d2440d',
   },
   'apps/api/src/modules/employment/exit-gate.ts': {
-    requireExitPermission: 'bab3da3cf152',
+    requireExitPermission: 'c44e1d56c3a3',
   },
   'apps/api/src/modules/employment/exit-handover-batch.ts': {
     batchGuard: '8f0ebe7f3c4f',
@@ -451,6 +451,9 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employment/forward-preview.ts': {
     previewEmploymentForwardUpdate: '4e3f3230bc73',
+  },
+  'apps/api/src/modules/employment/handled-read.ts': {
+    selectHandledRead: '8a4056c7f6b1',
   },
   'apps/api/src/modules/employment/intern-actions.ts': {
     requireRevokeAccess: '8f3da55b73bc',
@@ -558,7 +561,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/retirement-intention-routes.ts': {
     intentionGuard: 'a4ae072e9f95',
     'route:GET /retirement-intentions': 'c27ab662952e',
-    'route:GET /retirement-intentions/:id': '98cc81b89c0c',
+    'route:GET /retirement-intentions/:id': 'af80a48b5814',
     'route:PATCH /retirement-intentions/:id': '3974ae923459',
     'route:POST /retirement-intentions/:id/submit': 'a6c1e862c697',
     'route:POST /retirement-intentions/:id/withdraw': 'a6c1e862c697',
@@ -638,6 +641,15 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employment/write-service.ts': {
     materializeEmploymentRecord: '9ee842355dd2',
+  },
+  'apps/api/src/modules/esign/routes.ts': {
+    OBJECT: 'b38353085f2c',
+    'route:GET /api/tenant/esign/scenes/transfer': '33ca8c794a34',
+    'route:GET /api/tenant/esign/template-options/transfer-form': 'aba471489c48',
+    'route:GET /api/tenant/esign/templates': 'aaa6c7c3c049',
+    'route:PATCH /api/tenant/esign/templates/:id': '3898bb298a0a',
+    'route:POST /api/tenant/esign/templates': 'ec441f3401ab',
+    'route:PUT /api/tenant/esign/scenes/transfer': '2f47be14a50a',
   },
   'apps/api/src/modules/establishment/copy-service.ts': {
     listNotifications: 'ea9103b1ab2d',
@@ -1836,6 +1848,7 @@ export const DIGESTS: Digests = {
     ORG_ADJUSTMENT_OBJECT_CODE: '011609a4568b',
   },
   'packages/domain/src/permission/module-actions.ts': {
+    'MODULE_OBJECTS>eSignSettings': '884af10c17e4',
     'MODULE_OBJECTS>establishment': 'b43c05b47d73',
     'MODULE_OBJECTS>organization': 'f9148e7c7e44',
     actions: '276b20c96915',
@@ -2060,7 +2073,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/duty-transfer/routes.ts#route:POST /api/tenant/duty-transfers/people/:id': 'fc161ff8fb19',
   'apps/api/src/modules/duty-transfer/routes.ts#route:POST /api/tenant/duty-transfers/people/:id/check': '934eaa763551',
   'apps/api/src/modules/duty-transfer/service.ts#authorizeDuty': 'd94930ffb7e9',
-  'apps/api/src/modules/duty-transfer/service.ts#submitMenuTransfer': 'aee8a9ded615',
+  'apps/api/src/modules/duty-transfer/service.ts#submitMenuTransfer': '03cc9c5cbdd2',
   'apps/api/src/modules/employee-self-service/access.ts#boundEmployee': '107479715613',
   'apps/api/src/modules/employee-self-service/access.ts#grantedSelfServiceButtons': '616738b6d7c8',
   'apps/api/src/modules/employee-self-service/access.ts#requireSelfServiceButtons': 'ea35ebbfdbae',
@@ -2104,7 +2117,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview': '78398667795d',
   'apps/api/src/modules/employment/all-people.ts#route:GET /all-people': 'cc5c2830b78c',
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments': '0bbbce83c90f',
-  'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': '10fc77350e79',
+  'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': 'ef6635089abf',
   'apps/api/src/modules/employment/assessment-routes.ts#route:PATCH /probation-assessments/:id': '1856c700e55a',
   'apps/api/src/modules/employment/assessment-routes.ts#route:POST /probation-assessments': '5dd78b722ceb',
   'apps/api/src/modules/employment/assessment-store.ts#assessmentScopeSql': '0602b4cb55a7',
@@ -2188,7 +2201,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-account-routes.ts#route:PUT /exit-account/settings': '6641fd835a82',
   'apps/api/src/modules/employment/exit-account-routes.ts#settingsObject': 'e3b0c44298fc',
   'apps/api/src/modules/employment/exit-actions.ts#exitActions': 'c34e05738e99',
-  'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': 'cdfa06966e5b',
+  'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': '0a0a8c1ae2bf',
   'apps/api/src/modules/employment/exit-handover-batch.ts#batchGuard': '47659727261c',
   'apps/api/src/modules/employment/exit-handover-batch.ts#handoverRowActions': 'd5fce766c2f9',
   'apps/api/src/modules/employment/exit-handover-batch.ts#runHandoverBatch': '7d1ba027343a',
@@ -2238,6 +2251,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#runExitCancel': 'ba269b777c05',
   'apps/api/src/modules/employment/forward-import.ts#schema': '12907b33413c',
   'apps/api/src/modules/employment/forward-preview.ts#previewEmploymentForwardUpdate': '3bddf9cc4a51',
+  'apps/api/src/modules/employment/handled-read.ts#selectHandledRead': '01704aa908da',
   'apps/api/src/modules/employment/intern-actions.ts#requireRevokeAccess': '28203aac1ec9',
   'apps/api/src/modules/employment/intern-actions.ts#rowActions': '75815f414437',
   'apps/api/src/modules/employment/intern-create.ts#createInternEntry': '93cde734e116',
@@ -2312,7 +2326,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionWriteScope': '0b611979014e',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#intentionGuard': '02aebe00f7b4',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions': '9e50ab965e69',
-  'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions/:id': 'f621e1693421',
+  'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions/:id': '3235864d8cfc',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:PATCH /retirement-intentions/:id':
     '3523950dadcd',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:POST /retirement-intentions/:id/submit':
@@ -2377,6 +2391,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite': '413b0e4e2c2a',
   'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure': '573e99887edc',
   'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': 'c407882418e6',
+  'apps/api/src/modules/esign/routes.ts#OBJECT': '962a8dd9a03e',
+  'apps/api/src/modules/esign/routes.ts#route:GET /api/tenant/esign/scenes/transfer': 'f82ebf22fcca',
+  'apps/api/src/modules/esign/routes.ts#route:GET /api/tenant/esign/template-options/transfer-form': '9fb3399ad472',
+  'apps/api/src/modules/esign/routes.ts#route:GET /api/tenant/esign/templates': 'f9c8a3fb2cf6',
+  'apps/api/src/modules/esign/routes.ts#route:PATCH /api/tenant/esign/templates/:id': '9ebdc5ed7a21',
+  'apps/api/src/modules/esign/routes.ts#route:POST /api/tenant/esign/templates': 'bae133f89588',
+  'apps/api/src/modules/esign/routes.ts#route:PUT /api/tenant/esign/scenes/transfer': '660e2ea3c959',
   'apps/api/src/modules/establishment/copy-service.ts#listNotifications': '5cecb2b72dfa',
   'apps/api/src/modules/establishment/routes.ts#OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/establishment/routes.ts#route:DELETE /api/tenant/establishment/schemes/:id': 'ad749dd90f8a',
@@ -3250,6 +3271,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/offer/rules.ts#OFFER_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/org-adjustment/entry-buttons.ts#ORG_ITEM_ENTRY_BUTTONS': '91839983af98',
   'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE': 'e3b0c44298fc',
+  'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>eSignSettings': '7268a9736af9',
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>establishment': '338aa90ac3d1',
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>organization': 'b292502f2d84',
   'packages/domain/src/permission/module-actions.ts#actions': 'b1e627792f33',

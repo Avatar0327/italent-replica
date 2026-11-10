@@ -81,6 +81,7 @@ export const GRAPH: Graph = {
     '#job',
     '#object',
   ],
+  'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>eSignSettings': ['#object'],
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>establishment': ['#button', '#crud', '#object'],
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>organization': ['#button', '#crud', '#object'],
   'packages/domain/src/permission/module-actions.ts#actions': ['#tenantConfiguration'],

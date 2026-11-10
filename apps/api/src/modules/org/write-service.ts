@@ -441,7 +441,7 @@ export async function assignTransferOrganizationPeople(
   context: Omit<OrgWriteContext, 'rootName' | 'expectedRevision'> & { scope?: ModuleScope; authorize?: Authorizer },
   orgId: string,
   effectiveDate: string,
-  people: { personInChargeId?: string; shopOwnerId?: string; hrbpId?: string },
+  people: { personInChargeId?: string | null; shopOwnerId?: string | null; hrbpId?: string | null },
 ): Promise<OrgRecord> {
   await requireTransferOrganizationScope(tx, context, orgId);
   const [root] = await tx

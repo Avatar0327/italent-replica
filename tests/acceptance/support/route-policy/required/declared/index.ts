@@ -15,6 +15,7 @@ import { TEAM_DASHBOARD_DECLARED } from './team-dashboard.js';
 import { HR_MOVEMENT_DECLARED } from './hr-movement.js';
 import { CONTRACT_BOARD_DECLARED } from './contract-board.js';
 import { DUTY_TRANSFER_DECLARED } from './duty-transfer.js';
+import { ESIGN_DECLARED } from './esign.js';
 import { HR_ANALYSIS_DECLARED } from './hr-analysis.js';
 import { IDP_DECLARED } from './idp.js';
 import { JOB_DECLARED } from './job.js';
@@ -50,6 +51,7 @@ export const DECLARED: Readonly<Record<string, ModuleDeclared>> = {
   'hr-movement': HR_MOVEMENT_DECLARED,
   'contract-board': CONTRACT_BOARD_DECLARED,
   'duty-transfer': DUTY_TRANSFER_DECLARED,
+  esign: ESIGN_DECLARED,
   'hr-analysis': HR_ANALYSIS_DECLARED,
   idp: IDP_DECLARED,
   job: JOB_DECLARED,

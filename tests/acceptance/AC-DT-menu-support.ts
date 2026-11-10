@@ -30,6 +30,8 @@ export interface DutyView {
     readonly receiverId: string;
     readonly transferDate: string;
   } | null;
+  /** DT-R5 清空后待补转交的职责（来源 2 离职 / 4 退休的清空记录）；仍持有的职责为 null。 */
+  readonly cleared?: { readonly recordId: string; readonly revision: number; readonly source: 2 | 4 } | null;
 }
 
 export interface DutiesView {

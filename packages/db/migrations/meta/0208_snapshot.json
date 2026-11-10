@@ -1,6 +1,6 @@
 {
-  "id": "a309b42b-5267-4b38-adbb-faf8d11c9ea5",
-  "prevId": "45dec814-f23f-4865-9d00-227eff59ccf7",
+  "id": "c4d3a428-f433-4157-aa9e-dba5a60f3848",
+  "prevId": "d3c51ecd-047f-4103-b472-a6a47d8f7839",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4920,30 +4920,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
-        },
-        "owner_org_id": {
-          "name": "owner_org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "salary_upper": {
-          "name": "salary_upper",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "salary_mid": {
-          "name": "salary_mid",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "salary_lower": {
-          "name": "salary_lower",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -5373,18 +5349,6 @@
         },
         "work_location": {
           "name": "work_location",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "responsibilities": {
-          "name": "responsibilities",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "requirements": {
-          "name": "requirements",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -30087,6 +30051,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "esign_requested": {
+          "name": "esign_requested",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "part_time_record_ids": {
           "name": "part_time_record_ids",
@@ -58621,6 +58592,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "duty_transfer_date": {
+          "name": "duty_transfer_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
         "pre_release_date": {
           "name": "pre_release_date",
           "type": "date",
@@ -58796,7 +58773,11 @@
         },
         "exit_requests_timing": {
           "name": "exit_requests_timing",
-          "value": "\"exit_requests\".\"duty_transfer_timing\" IN ('business_effective', 'approval_passed')"
+          "value": "\"exit_requests\".\"duty_transfer_timing\" IN ('business_effective', 'approval_passed', 'specified_date')"
+        },
+        "exit_requests_timing_date": {
+          "name": "exit_requests_timing_date",
+          "value": "(\"exit_requests\".\"duty_transfer_timing\" = 'specified_date') = (\"exit_requests\".\"duty_transfer_date\" IS NOT NULL)"
         },
         "exit_requests_attachments": {
           "name": "exit_requests_attachments",
@@ -67537,7 +67518,7 @@
           "name": "receiver_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "duty_type": {
           "name": "duty_type",
@@ -67610,7 +67591,7 @@
           "name": "operator_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "attempt_count": {
           "name": "attempt_count",
@@ -67695,7 +67676,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"duty_transfer_records\".\"status\" = 0",
+          "where": "\"duty_transfer_records\".\"status\" = 0 AND \"duty_transfer_records\".\"source\" = 1",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -67864,7 +67845,11 @@
         },
         "duty_transfer_records_source": {
           "name": "duty_transfer_records_source",
-          "value": "\"duty_transfer_records\".\"source\" = 1"
+          "value": "\"duty_transfer_records\".\"source\" IN (1, 2, 4)"
+        },
+        "duty_transfer_records_party": {
+          "name": "duty_transfer_records_party",
+          "value": "(\"duty_transfer_records\".\"source\" = 1 AND \"duty_transfer_records\".\"receiver_id\" IS NOT NULL AND \"duty_transfer_records\".\"operator_id\" IS NOT NULL)\n        OR (\"duty_transfer_records\".\"source\" IN (2, 4) AND \"duty_transfer_records\".\"receiver_id\" IS NULL AND \"duty_transfer_records\".\"status\" = 0)\n        OR (\"duty_transfer_records\".\"source\" IN (2, 4) AND \"duty_transfer_records\".\"receiver_id\" IS NOT NULL AND \"duty_transfer_records\".\"operator_id\" IS NOT NULL AND \"duty_transfer_records\".\"status\" = 1)"
         },
         "duty_transfer_records_target": {
           "name": "duty_transfer_records_target",
@@ -67877,6 +67862,896 @@
         "duty_transfer_records_counts": {
           "name": "duty_transfer_records_counts",
           "value": "\"duty_transfer_records\".\"attempt_count\" >= 0 AND \"duty_transfer_records\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.transfer_linkage_esign_templates": {
+      "name": "transfer_linkage_esign_templates",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_id": {
+          "name": "version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "template_id": {
+          "name": "template_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transfer_linkage_esign_templates_tenant_id_tenants_id_fk": {
+          "name": "transfer_linkage_esign_templates_tenant_id_tenants_id_fk",
+          "tableFrom": "transfer_linkage_esign_templates",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_esign_templates_version_fk": {
+          "name": "transfer_linkage_esign_templates_version_fk",
+          "tableFrom": "transfer_linkage_esign_templates",
+          "tableTo": "transfer_linkage_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_esign_templates_template_fk": {
+          "name": "transfer_linkage_esign_templates_template_fk",
+          "tableFrom": "transfer_linkage_esign_templates",
+          "tableTo": "esign_templates",
+          "columnsFrom": [
+            "tenant_id",
+            "template_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "transfer_linkage_esign_templates_tenant_id_version_id_seq_pk": {
+          "name": "transfer_linkage_esign_templates_tenant_id_version_id_seq_pk",
+          "columns": [
+            "tenant_id",
+            "version_id",
+            "seq"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "transfer_linkage_esign_templates_seq": {
+          "name": "transfer_linkage_esign_templates_seq",
+          "value": "\"transfer_linkage_esign_templates\".\"seq\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.esign_scene_settings": {
+      "name": "esign_scene_settings",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scene": {
+          "name": "scene",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "validity_days": {
+          "name": "validity_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 2
+        },
+        "remind_before_expiry": {
+          "name": "remind_before_expiry",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "esign_scene_settings_tenant_id_tenants_id_fk": {
+          "name": "esign_scene_settings_tenant_id_tenants_id_fk",
+          "tableFrom": "esign_scene_settings",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "esign_scene_settings_updated_by_users_id_fk": {
+          "name": "esign_scene_settings_updated_by_users_id_fk",
+          "tableFrom": "esign_scene_settings",
+          "tableTo": "users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "esign_scene_settings_tenant_id_scene_pk": {
+          "name": "esign_scene_settings_tenant_id_scene_pk",
+          "columns": [
+            "tenant_id",
+            "scene"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "esign_scene_settings_scene": {
+          "name": "esign_scene_settings_scene",
+          "value": "\"esign_scene_settings\".\"scene\" IN ('transfer')"
+        },
+        "esign_scene_settings_validity": {
+          "name": "esign_scene_settings_validity",
+          "value": "\"esign_scene_settings\".\"validity_days\" BETWEEN 2 AND 30"
+        },
+        "esign_scene_settings_revision": {
+          "name": "esign_scene_settings_revision",
+          "value": "\"esign_scene_settings\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.esign_task_files": {
+      "name": "esign_task_files",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "template_id": {
+          "name": "template_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "template_name": {
+          "name": "template_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "esign_task_files_tenant_id_tenants_id_fk": {
+          "name": "esign_task_files_tenant_id_tenants_id_fk",
+          "tableFrom": "esign_task_files",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "esign_task_files_task_fk": {
+          "name": "esign_task_files_task_fk",
+          "tableFrom": "esign_task_files",
+          "tableTo": "esign_tasks",
+          "columnsFrom": [
+            "tenant_id",
+            "task_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "esign_task_files_template_fk": {
+          "name": "esign_task_files_template_fk",
+          "tableFrom": "esign_task_files",
+          "tableTo": "esign_templates",
+          "columnsFrom": [
+            "tenant_id",
+            "template_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "esign_task_files_tenant_id_task_id_seq_pk": {
+          "name": "esign_task_files_tenant_id_task_id_seq_pk",
+          "columns": [
+            "tenant_id",
+            "task_id",
+            "seq"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "esign_task_files_seq": {
+          "name": "esign_task_files_seq",
+          "value": "\"esign_task_files\".\"seq\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.esign_tasks": {
+      "name": "esign_tasks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scene": {
+          "name": "scene",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_department_id": {
+          "name": "owner_department_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "initiator_user_id": {
+          "name": "initiator_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "current_node": {
+          "name": "current_node",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "employee_signer_user_id": {
+          "name": "employee_signer_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "employee_signed_at": {
+          "name": "employee_signed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enterprise_signed_at": {
+          "name": "enterprise_signed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "validity_days": {
+          "name": "validity_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "remind_before_expiry": {
+          "name": "remind_before_expiry",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "expiry_reminded_at": {
+          "name": "expiry_reminded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "initiated_at": {
+          "name": "initiated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_by": {
+          "name": "revoked_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoke_cause": {
+          "name": "revoke_cause",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expired_at": {
+          "name": "expired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_detail": {
+          "name": "failure_detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'simulated'"
+        },
+        "provider_ref": {
+          "name": "provider_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "esign_tasks_business": {
+          "name": "esign_tasks_business",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "esign_tasks_one_signing": {
+          "name": "esign_tasks_one_signing",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"esign_tasks\".\"status\" = 'signing'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "esign_tasks_tenant_id_tenants_id_fk": {
+          "name": "esign_tasks_tenant_id_tenants_id_fk",
+          "tableFrom": "esign_tasks",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "esign_tasks_initiator_user_id_users_id_fk": {
+          "name": "esign_tasks_initiator_user_id_users_id_fk",
+          "tableFrom": "esign_tasks",
+          "tableTo": "users",
+          "columnsFrom": [
+            "initiator_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "esign_tasks_employee_signer_user_id_users_id_fk": {
+          "name": "esign_tasks_employee_signer_user_id_users_id_fk",
+          "tableFrom": "esign_tasks",
+          "tableTo": "users",
+          "columnsFrom": [
+            "employee_signer_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "esign_tasks_revoked_by_users_id_fk": {
+          "name": "esign_tasks_revoked_by_users_id_fk",
+          "tableFrom": "esign_tasks",
+          "tableTo": "users",
+          "columnsFrom": [
+            "revoked_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "esign_tasks_business_fk": {
+          "name": "esign_tasks_business_fk",
+          "tableFrom": "esign_tasks",
+          "tableTo": "employment_business_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "business_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "esign_tasks_employee_fk": {
+          "name": "esign_tasks_employee_fk",
+          "tableFrom": "esign_tasks",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "esign_tasks_department_fk": {
+          "name": "esign_tasks_department_fk",
+          "tableFrom": "esign_tasks",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_department_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "esign_tasks_tenant_id": {
+          "name": "esign_tasks_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "esign_tasks_scene": {
+          "name": "esign_tasks_scene",
+          "value": "\"esign_tasks\".\"scene\" IN ('transfer')"
+        },
+        "esign_tasks_origin": {
+          "name": "esign_tasks_origin",
+          "value": "\"esign_tasks\".\"origin\" IN ('activation', 'manual')"
+        },
+        "esign_tasks_status": {
+          "name": "esign_tasks_status",
+          "value": "\"esign_tasks\".\"status\" IN ('signing', 'completed', 'revoked', 'expired', 'failed')"
+        },
+        "esign_tasks_node": {
+          "name": "esign_tasks_node",
+          "value": "\"esign_tasks\".\"current_node\" IS NULL OR \"esign_tasks\".\"current_node\" IN ('employee', 'enterprise')"
+        },
+        "esign_tasks_terminal_node": {
+          "name": "esign_tasks_terminal_node",
+          "value": "(\"esign_tasks\".\"status\" = 'signing') = (\"esign_tasks\".\"current_node\" IS NOT NULL)"
+        },
+        "esign_tasks_failure": {
+          "name": "esign_tasks_failure",
+          "value": "(\"esign_tasks\".\"status\" = 'failed') = (\"esign_tasks\".\"failure_reason\" IS NOT NULL)"
+        },
+        "esign_tasks_revoke_cause": {
+          "name": "esign_tasks_revoke_cause",
+          "value": "\"esign_tasks\".\"revoke_cause\" IS NULL OR \"esign_tasks\".\"revoke_cause\" IN ('manual', 'business_deleted')"
+        },
+        "esign_tasks_validity": {
+          "name": "esign_tasks_validity",
+          "value": "\"esign_tasks\".\"validity_days\" BETWEEN 2 AND 30"
+        },
+        "esign_tasks_revision": {
+          "name": "esign_tasks_revision",
+          "value": "\"esign_tasks\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.esign_templates": {
+      "name": "esign_templates",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'enabled'"
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "esign_templates_options": {
+          "name": "esign_templates_options",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sort_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "esign_templates_tenant_id_tenants_id_fk": {
+          "name": "esign_templates_tenant_id_tenants_id_fk",
+          "tableFrom": "esign_templates",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "esign_templates_updated_by_users_id_fk": {
+          "name": "esign_templates_updated_by_users_id_fk",
+          "tableFrom": "esign_templates",
+          "tableTo": "users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "esign_templates_tenant_id": {
+          "name": "esign_templates_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "esign_templates_code": {
+          "name": "esign_templates_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        },
+        "esign_templates_name": {
+          "name": "esign_templates_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "esign_templates_code_nonempty": {
+          "name": "esign_templates_code_nonempty",
+          "value": "btrim(\"esign_templates\".\"code\") <> ''"
+        },
+        "esign_templates_name_length": {
+          "name": "esign_templates_name_length",
+          "value": "char_length(\"esign_templates\".\"name\") BETWEEN 1 AND 100 AND btrim(\"esign_templates\".\"name\") <> ''"
+        },
+        "esign_templates_body_length": {
+          "name": "esign_templates_body_length",
+          "value": "char_length(\"esign_templates\".\"body\") <= 20000"
+        },
+        "esign_templates_status": {
+          "name": "esign_templates_status",
+          "value": "\"esign_templates\".\"status\" IN ('enabled', 'disabled')"
+        },
+        "esign_templates_revision": {
+          "name": "esign_templates_revision",
+          "value": "\"esign_templates\".\"revision\" > 0"
         }
       },
       "isRLSEnabled": false

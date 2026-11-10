@@ -1,5 +1,5 @@
 {
-  "id": "45dec814-f23f-4865-9d00-227eff59ccf7",
+  "id": "d3c51ecd-047f-4103-b472-a6a47d8f7839",
   "prevId": "752fa0d4-abc3-4777-8dbc-15fce001e69d",
   "version": "7",
   "dialect": "postgresql",
@@ -5349,18 +5349,6 @@
         },
         "work_location": {
           "name": "work_location",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "responsibilities": {
-          "name": "responsibilities",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "requirements": {
-          "name": "requirements",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -58597,6 +58585,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "duty_transfer_date": {
+          "name": "duty_transfer_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
         "pre_release_date": {
           "name": "pre_release_date",
           "type": "date",
@@ -58772,7 +58766,11 @@
         },
         "exit_requests_timing": {
           "name": "exit_requests_timing",
-          "value": "\"exit_requests\".\"duty_transfer_timing\" IN ('business_effective', 'approval_passed')"
+          "value": "\"exit_requests\".\"duty_transfer_timing\" IN ('business_effective', 'approval_passed', 'specified_date')"
+        },
+        "exit_requests_timing_date": {
+          "name": "exit_requests_timing_date",
+          "value": "(\"exit_requests\".\"duty_transfer_timing\" = 'specified_date') = (\"exit_requests\".\"duty_transfer_date\" IS NOT NULL)"
         },
         "exit_requests_attachments": {
           "name": "exit_requests_attachments",
@@ -67513,7 +67511,7 @@
           "name": "receiver_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "duty_type": {
           "name": "duty_type",
@@ -67586,7 +67584,7 @@
           "name": "operator_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "attempt_count": {
           "name": "attempt_count",
@@ -67671,7 +67669,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"duty_transfer_records\".\"status\" = 0",
+          "where": "\"duty_transfer_records\".\"status\" = 0 AND \"duty_transfer_records\".\"source\" = 1",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -67840,7 +67838,11 @@
         },
         "duty_transfer_records_source": {
           "name": "duty_transfer_records_source",
-          "value": "\"duty_transfer_records\".\"source\" = 1"
+          "value": "\"duty_transfer_records\".\"source\" IN (1, 2, 4)"
+        },
+        "duty_transfer_records_party": {
+          "name": "duty_transfer_records_party",
+          "value": "(\"duty_transfer_records\".\"source\" = 1 AND \"duty_transfer_records\".\"receiver_id\" IS NOT NULL AND \"duty_transfer_records\".\"operator_id\" IS NOT NULL)\n        OR (\"duty_transfer_records\".\"source\" IN (2, 4) AND \"duty_transfer_records\".\"receiver_id\" IS NULL AND \"duty_transfer_records\".\"status\" = 0)\n        OR (\"duty_transfer_records\".\"source\" IN (2, 4) AND \"duty_transfer_records\".\"receiver_id\" IS NOT NULL AND \"duty_transfer_records\".\"operator_id\" IS NOT NULL AND \"duty_transfer_records\".\"status\" = 1)"
         },
         "duty_transfer_records_target": {
           "name": "duty_transfer_records_target",
