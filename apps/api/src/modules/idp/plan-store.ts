@@ -121,6 +121,15 @@ export async function loadStageInstances(
   return new Map(rows.map((row) => [row.id, row.stageId]));
 }
 
+/** 阶段所属计划（plan_id 建后不变：阶段只由建计划插入，之后的更新只改状态 / 实例 / 结束日 / 失败字段）。 */
+export async function stagePlanId(tx: Tx, tenantId: string, stageId: string): Promise<string | undefined> {
+  const [row] = rowsOf<{ plan_id: string }>(
+    await tx.execute(sql`SELECT plan_id::text FROM idp_plan_stages
+      WHERE tenant_id = ${tenantId} AND id = ${stageId}::uuid`),
+  );
+  return row?.plan_id;
+}
+
 export async function loadStage(tx: Tx, tenantId: string, stageId: string): Promise<StageRow | undefined> {
   const [row] = rowsOf<RawStage>(
     await tx.execute(sql`SELECT ${STAGE_COLUMNS} FROM idp_plan_stages s

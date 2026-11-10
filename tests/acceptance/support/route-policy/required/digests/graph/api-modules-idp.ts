@@ -56,11 +56,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/idp/access.ts#requireReadable': ['#IDP_LABELS', '#accessOf'],
   'apps/api/src/modules/idp/access.ts#requireViewable': ['#IDP_LABELS', '#viewable'],
   'apps/api/src/modules/idp/access.ts#requireWrite': ['apps/api/src/authorization.ts#requirePermission', '#codeOf'],
+  'apps/api/src/modules/idp/approval-adapter.ts#activeType': [
+    'apps/api/src/modules/approval/store.ts#activeInstanceOf',
+  ],
   'apps/api/src/modules/idp/approval-adapter.ts#deletedInstance': ['apps/api/src/modules/idp/access.ts#rowsOf'],
   'apps/api/src/modules/idp/approval-adapter.ts#deletedSubject': ['#deletedInstance'],
   'apps/api/src/modules/idp/approval-adapter.ts#deletedType': ['#deletedInstance'],
   'apps/api/src/modules/idp/approval-adapter.ts#idpAdapter': [
     'apps/api/src/modules/idp/access.ts#rowsOf',
+    '#activeType',
     '#deletedSubject',
     '#deletedType',
     '#requireGoals',
@@ -1002,6 +1006,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/idp/plan-store.ts#pendingNodeOf': ['apps/api/src/modules/idp/access.ts#rowsOf'],
   'apps/api/src/modules/idp/plan-store.ts#requirePlanRow': ['#loadPlanRow'],
+  'apps/api/src/modules/idp/plan-store.ts#stagePlanId': ['apps/api/src/modules/idp/access.ts#rowsOf'],
   'apps/api/src/modules/idp/plan-view.ts#configScopes': [
     'apps/api/src/modules/idp/access.ts#codeOf',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
@@ -1040,7 +1045,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/idp/plan-view.ts#listOf': ['apps/api/src/modules/idp/access.ts#project'],
   'apps/api/src/modules/idp/plan-view.ts#loadContents': ['apps/api/src/modules/idp/access.ts#rowsOf'],
   'apps/api/src/modules/idp/plan-view.ts#loadGoals': ['apps/api/src/modules/idp/access.ts#rowsOf'],
-  'apps/api/src/modules/idp/plan-view.ts#loadPlanContent': ['#loadContents', '#loadGoals', '#loadUnlockedContent'],
+  'apps/api/src/modules/idp/plan-view.ts#loadPlanContent': ['#planContent'],
   'apps/api/src/modules/idp/plan-view.ts#loadPlanDetail': [
     'apps/api/src/modules/idp/plan-store.ts#currentNodes',
     'apps/api/src/modules/idp/plan-store.ts#loadStages',
@@ -1049,15 +1054,18 @@ export const GRAPH: Graph = {
     '#stageViews',
     'packages/domain/src/idp/plan-rules.ts#currentStageName',
   ],
+  'apps/api/src/modules/idp/plan-view.ts#loadStageContent': ['#planContent'],
   'apps/api/src/modules/idp/plan-view.ts#loadUnlockedContent': [
     'apps/api/src/modules/idp/access.ts#rowsOf',
     '#KEY_INFO_COLUMNS',
     '#keyInfoBlock',
     '#modulesBlock',
+    '#stageBlock',
     'apps/api/src/modules/idp/read-model.ts#moduleView',
     'packages/domain/src/idp/plan-rules.ts#periodsIntersect',
   ],
   'apps/api/src/modules/idp/plan-view.ts#modulesBlock': ['#MODULE_COLUMNS', '#NODE_COLUMNS', '#pairs'],
+  'apps/api/src/modules/idp/plan-view.ts#planContent': ['#loadContents', '#loadGoals', '#loadUnlockedContent'],
   'apps/api/src/modules/idp/plan-view.ts#planListProjections': [
     'apps/api/src/modules/idp/access.ts#projectionOf',
     '#configScopes',
@@ -1091,6 +1099,7 @@ export const GRAPH: Graph = {
     '#stageSourcesOf',
     '#stagesShown',
   ],
+  'apps/api/src/modules/idp/plan-view.ts#stageBlock': ['#STAGE_HEAD_COLUMNS', '#pairs'],
   'apps/api/src/modules/idp/plan-view.ts#stageSourcesOf': ['#configVisible'],
   'apps/api/src/modules/idp/plan-view.ts#stageViews': [
     '#dueBasisOf',
@@ -1433,8 +1442,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/idp/stage-content.ts#isList': ['#isRecord'],
   'apps/api/src/modules/idp/stage-content.ts#loadIdpStageContent': [
     'apps/api/src/modules/idp/plan-store.ts#loadPlanRow',
-    'apps/api/src/modules/idp/plan-store.ts#loadStage',
-    'apps/api/src/modules/idp/plan-view.ts#loadPlanContent',
+    'apps/api/src/modules/idp/plan-store.ts#stagePlanId',
+    'apps/api/src/modules/idp/plan-view.ts#loadStageContent',
     '#sectionsOf',
   ],
   'apps/api/src/modules/idp/stage-content.ts#missing': ['apps/api/src/modules/approval/context.ts#approvalError'],

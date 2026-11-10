@@ -365,17 +365,45 @@ function keyInfoBlock(plan: PlanRow, { table, person, columns }: (typeof KEY_INF
       AND ${span})`;
 }
 
+/** 办理份里的阶段标识：名称取子流程现值（子流程改名只锁流程、不锁计划，第 4 轮返工 P2-4）。 */
+export interface StageHead {
+  readonly id: string;
+  readonly seq: number;
+  readonly name: string;
+  readonly subProcessId: string;
+}
+
+const STAGE_HEAD_COLUMNS: Record<keyof StageHead, string> = {
+  id: 's.id',
+  seq: 's.seq',
+  name: 'sp.name',
+  subProcessId: 's.sub_process_id',
+};
+
+/** 本计划的某个阶段（带子流程名）；不捕获阶段时为 NULL。 */
+function stageBlock(plan: PlanRow, stageId: string | null) {
+  if (stageId === null) return sql`NULL::json`;
+  return sql`(SELECT json_build_object(${sql.raw(pairs(STAGE_HEAD_COLUMNS))}) FROM idp_plan_stages s
+      JOIN idp_sub_processes sp ON sp.tenant_id = s.tenant_id AND sp.id = s.sub_process_id
+    WHERE s.tenant_id = ${plan.tenantId} AND s.plan_id = ${plan.id}::uuid AND s.id = ${stageId}::uuid)`;
+}
+
 type ModuleJson = ModuleSource & { readonly nodeSettings: NodeSettingView[] };
+type UnlockedRow = { stage: StageHead | null; modules: ModuleJson[] } & Record<
+  keyof KeyInfo,
+  Record<string, unknown>[]
+>;
 
 /**
- * 不受计划行锁保护的内容：模板模块（含节点设置）与关键信息（IDP-R7；储备人才信息待 R3-T06，K-16）。
- * 模板维护只锁模板，关键信息维护只锁源记录，都不取计划锁；分开的几条 SELECT 在 READ COMMITTED 下各取各的快照，
- * 会拼出从未同时存在的组合（模块名 A + 优势 B，F-476 P8 第 3 轮返工 P2-4）。这里五块放进同一条 SELECT 的标量子查询，
- * 共用一个语句快照，读到的就是某一提交时刻的完整状态（含模块 / 记录的增删）；不加新锁（设计 §4.3）。
+ * 不受计划行锁保护的内容：子流程名（阶段名称）、模板模块（含节点设置）与关键信息（IDP-R7；储备人才信息待 R3-T06，
+ * K-16）。流程维护只锁流程，模板维护只锁模板，关键信息维护只锁源记录，都不取计划锁；分开的几条 SELECT 在
+ * READ COMMITTED 下各取各的快照，会拼出从未同时存在的组合（模块名 / 阶段名 A + 优势 B，F-476 P8 第 3、4 轮返工
+ * P2-4）。这里各块放进同一条 SELECT 的标量子查询，共用一个语句快照，读到的就是某一提交时刻的完整状态（含模块 /
+ * 记录的增删）；不加新锁（设计 §4.3）。
  */
-async function loadUnlockedContent(tx: Tx, plan: PlanRow): Promise<Pick<PlanContent, 'modules' | 'keyInfo'>> {
-  const [row] = rowsOf<{ modules: ModuleJson[] } & Record<keyof KeyInfo, Record<string, unknown>[]>>(
-    await tx.execute(sql`SELECT ${modulesBlock(plan)} AS modules,
+async function loadUnlockedContent(tx: Tx, plan: PlanRow, stageId: string | null) {
+  const [row] = rowsOf<UnlockedRow>(
+    await tx.execute(sql`SELECT ${stageBlock(plan, stageId)} AS stage, ${modulesBlock(plan)} AS modules,
       ${keyInfoBlock(plan, KEY_INFO_COLUMNS.tutorships)} AS tutorships,
       ${keyInfoBlock(plan, KEY_INFO_COLUMNS.careers)} AS careers,
       ${keyInfoBlock(plan, KEY_INFO_COLUMNS.workShifts)} AS "workShifts"`),
@@ -384,6 +412,7 @@ async function loadUnlockedContent(tx: Tx, plan: PlanRow): Promise<Pick<PlanCont
   const keep = (rows: Record<string, unknown>[]) =>
     rows.filter((r) => periodsIntersect(period, r as { startDate: string; endDate: string | null }));
   return {
+    stage: row!.stage === null ? null : { ...row!.stage, seq: Number(row!.stage.seq) },
     modules: row!.modules.map(({ nodeSettings, ...module }) => moduleView(module, nodeSettings)),
     keyInfo: { tutorships: keep(row!.tutorships), careers: keep(row!.careers), workShifts: keep(row!.workShifts) },
   };
@@ -400,16 +429,26 @@ export interface PlanContent {
 
 /**
  * 目标 / 任务 / 目标回顾 / 综述 / 回顾的写入都先锁计划行（execution-service executorFor），办理捕获持有计划锁时不变；
- * 不受计划锁保护的模板模块与关键信息在 loadUnlockedContent 的同一条语句里读出。两部分组合因此是真实存在过的状态。
+ * 不受计划锁保护的子流程名、模板模块与关键信息在 loadUnlockedContent 的同一条语句里读出。组合因此是真实存在过的状态。
  */
-export async function loadPlanContent(tx: Tx, plan: PlanRow): Promise<PlanContent> {
-  const { modules, keyInfo } = await loadUnlockedContent(tx, plan);
-  return {
+async function planContent(tx: Tx, plan: PlanRow, stageId: string | null) {
+  const { stage, modules, keyInfo } = await loadUnlockedContent(tx, plan, stageId);
+  const content: PlanContent = {
     modules,
     goals: await loadGoals(tx, plan.tenantId, plan.id),
     ...(await loadContents(tx, plan.tenantId, plan.id)),
     keyInfo,
   };
+  return { stage, content };
+}
+
+export async function loadPlanContent(tx: Tx, plan: PlanRow): Promise<PlanContent> {
+  return (await planContent(tx, plan, null)).content;
+}
+
+/** 办理份捕获：阶段标识（含子流程名）与计划内容一起读；阶段不属于本计划时 stage 为 null。 */
+export async function loadStageContent(tx: Tx, plan: PlanRow, stageId: string) {
+  return planContent(tx, plan, stageId);
 }
 
 export async function loadPlanDetail(tx: Tx, plan: PlanRow, asOf: string): Promise<PlanDetail> {

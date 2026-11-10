@@ -11,16 +11,17 @@
 import type { Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { approvalError } from '../approval/context.js';
-import { loadPlanRow, loadStage } from './plan-store.js';
+import { loadPlanRow, stagePlanId } from './plan-store.js';
 import {
   type GoalView,
   type KeyInfo,
-  loadPlanContent,
+  loadStageContent,
   type ParticipantDetail,
   type PlanContent,
   type PlanDetail,
   presentParticipant,
   type Projections,
+  type StageHead,
 } from './plan-view.js';
 
 /** 办理份里的披露段（设计 §5.2 的“真实详情的 module / section 映射”）。 */
@@ -28,7 +29,7 @@ export const SECTIONS = ['goals', 'tasks', 'goalReviews', 'analyses', 'reviews',
 export type Section = (typeof SECTIONS)[number];
 
 export interface IdpStageContent extends PlanContent {
-  readonly stage: { readonly id: string; readonly seq: number; readonly name: string; readonly subProcessId: string };
+  readonly stage: StageHead;
   /** 办理时的计划修订号（展示版本，不对外）。 */
   readonly planRevision: number;
   /** 计划标识随份保存：计划被删除后，审批中心仍能只凭办理份呈现（第 2 轮返工）。 */
@@ -63,17 +64,19 @@ export function sectionsOf(modules: PlanContent['modules']): Section[] {
 
 /**
  * 办理份扩展内容加载器（经 provider 注册，在办理人办理、业务状态还没被推进之前调用）。
- * 调用方已持有计划行锁（适配器 lock 先锁计划再锁实例，与所有计划内容写入同序）：目标、任务、综述、回顾与修订号因此不变。
- * 模板模块（只锁模板）与关键信息（只锁源记录）不受计划锁保护，由 loadPlanContent 在同一条 SELECT 里读出、共用一个
- * 语句快照（第 3 轮返工）；两部分组合是某一提交时刻真实存在过的状态。不加新锁（设计 §4.3）。
+ * 调用方已持有计划行锁（适配器 lock 先锁计划再锁实例，与所有计划内容写入同序）：计划头、目标、任务、综述、回顾与修订号
+ * 因此不变。阶段名称（子流程名，只锁流程）、模板模块（只锁模板）与关键信息（只锁源记录）不受计划锁保护，由
+ * loadStageContent 在同一条 SELECT 里读出、共用一个语句快照（第 3、4 轮返工）；组合是某一提交时刻真实存在过的状态。
+ * 阶段的 plan_id 建后不变，先单独读出用来取计划行。不加新锁（设计 §4.3）。
  */
 export async function loadIdpStageContent(tx: Tx, tenantId: string, stageId: string): Promise<IdpStageContent> {
-  const stage = await loadStage(tx, tenantId, stageId);
-  const plan = stage ? await loadPlanRow(tx, tenantId, stage.planId) : undefined;
-  if (!stage || !plan) throw new AppError('NOT_FOUND', '发展计划阶段不存在');
-  const content = await loadPlanContent(tx, plan);
+  const planId = await stagePlanId(tx, tenantId, stageId);
+  const plan = planId ? await loadPlanRow(tx, tenantId, planId) : undefined;
+  const captured = plan ? await loadStageContent(tx, plan, stageId) : undefined;
+  if (!plan || !captured?.stage) throw new AppError('NOT_FOUND', '发展计划阶段不存在');
+  const { stage, content } = captured;
   return {
-    stage: { id: stage.id, seq: stage.seq, name: stage.name, subProcessId: stage.subProcessId },
+    stage,
     planRevision: plan.revision,
     plan: {
       id: plan.id,
