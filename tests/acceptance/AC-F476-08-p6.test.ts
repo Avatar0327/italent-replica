@@ -24,6 +24,7 @@ import {
   handledSingle,
   instanceIdsOf,
   offerDetail,
+  renameOrg,
   rewriteBatchMembers,
   rowsOfBatch,
   stripExt,
@@ -60,6 +61,23 @@ describe('AC-F476-08 offer（Offer 单）：办理 → 修改 → 两路径读�
     });
     expect(viaOffer.text).not.toContain(PLACE_B);
     expect(viaOffer.text).not.toContain(NAME_B1);
+  });
+
+  it('办理后录用部门改名：两条路径都不出现当前名称（审批中心不按现名补 departmentIdName）', async () => {
+    const w = await offerApprovalWorld(testDb().db, 'p6-08-renamed');
+    const s = await handledSingle(w);
+    const renamed = 'ZZ_改名后的录用部门';
+    await renameOrg(w, s.atHandling.departmentId as string, renamed);
+    expect((await w.get(s.offer.id)).departmentName, '夹具：现值已是新名称').toBe(renamed);
+
+    const viaCenter = await center(w, s.instanceId, w.head.userId);
+    expect(viaCenter.status, viaCenter.text).toBe(200);
+    expect(viaCenter.body.form.values.departmentName).toBe(s.atHandling.departmentName);
+    expect(viaCenter.text).not.toContain(renamed);
+    const viaOffer = await offerDetail(w, s.offer.id, w.head.userId);
+    expect(viaOffer.status, viaOffer.text).toBe(200);
+    expect(viaOffer.body.departmentName).toBe(s.atHandling.departmentName);
+    expect(viaOffer.text).not.toContain(renamed);
   });
 
   it('对照：发起人（申请人）不是已办读者，读到的仍是现值（D1，DEC-801）', async () => {

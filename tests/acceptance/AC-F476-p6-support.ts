@@ -3,7 +3,8 @@
  * 办理份只经 withTenant 查询（app_owner + FORCE RLS 下也能通过）；内容一律合成（ZZ_ 前缀）。
  * 断言刻意只用 HTTP 返回与 jsonb 文本，不依赖办理份内部形状（形状由实现决定，设计 §3）。
  */
-import { sql, withTenant } from '@italent/db';
+import { randomUUID } from 'node:crypto';
+import { eq, orgHierarchyLinks, orgVersions, sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS, type ObjectDefinition } from '@italent/domain';
 import { expect } from 'vitest';
 import { grantFieldAccess, permissionAdmin, type InstanceView, type Person } from './AC-APV-support.js';
@@ -203,5 +204,23 @@ export async function stripExt(w: World, actorUserId: string) {
     await tx.execute(sql`UPDATE approval_handling_contents SET content = content - 'ext'
       WHERE actor_user_id = ${actorUserId}::uuid`);
     await tx.execute(sql`ALTER TABLE approval_handling_contents ENABLE TRIGGER USER`);
+  });
+}
+
+/** 可信夹具：给组织追加一条只改名称的版本（同 AC-APV setOrgRoles 的追加方式），模拟办理后部门改名。 */
+export async function renameOrg(w: World, orgId: string, name: string) {
+  await withTenant(w.db, w.tenant.id, async (tx) => {
+    const [old] = await tx
+      .select()
+      .from(orgVersions)
+      .where(eq(orgVersions.orgId, orgId))
+      .orderBy(sql`version_no DESC`)
+      .limit(1);
+    const versionId = randomUUID();
+    await tx
+      .insert(orgVersions)
+      .values({ ...old!, id: versionId, versionNo: old!.versionNo + 1, previousVersionId: old!.id, name });
+    const links = await tx.select().from(orgHierarchyLinks).where(eq(orgHierarchyLinks.versionId, old!.id));
+    if (links.length) await tx.insert(orgHierarchyLinks).values(links.map((link) => ({ ...link, versionId })));
   });
 }
