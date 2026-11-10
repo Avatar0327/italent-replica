@@ -68,20 +68,23 @@ export function projectBatchValues(
   values: Row,
   rowViewable: ReadonlySet<string> | undefined,
 ): Row {
-  const lines = values.offers;
-  if (!Array.isArray(lines)) return values; // 批的 offers 字段已被裁掉，整个子表不披露
+  // 份的完整性先于披露裁剪校验：offers 被裁掉不等于份完好，残缺份一律 503（R2 P2-3，设计 §3.4、§5.1）
   const ext = frozen.content.ext as Partial<OfferBatchContent> | null;
   if (!isRecord(ext) || !Array.isArray(ext.rows)) throw malformed();
   if (ext.rowCeiling !== null && !Array.isArray(ext.rowCeiling)) throw malformed();
+  const labelsByOffer = new Map(ext.rows.map((row) => [row.offerId, row.labels]));
+  const lines = values.offers;
+  if (!Array.isArray(lines)) return values; // 批的 offers 字段已被裁掉，整个子表不披露
   const allowed = capViewable(rowViewable, ext.rowCeiling ? new Set(ext.rowCeiling) : null);
   const open = (source: string | null | undefined) => source === null || !allowed || (!!source && allowed.has(source));
-  const labelsByOffer = new Map(ext.rows.map((row) => [row.offerId, row.labels]));
   const offers = (lines as Row[]).map((line) => {
     const cell: Row = { offerId: line.offerId };
     for (const [column, source] of Object.entries(BATCH_COLUMN_SOURCE)) {
       if (open(source) && Object.hasOwn(line, column)) cell[column] = line[column];
     }
-    const labels = labelsByOffer.get(String(line.offerId)) ?? {};
+    // 采集时每行都写一条标签（content.ts）：行缺标签条目只可能是份残缺，不以空标签冒充
+    const labels = labelsByOffer.get(String(line.offerId));
+    if (!isRecord(labels)) throw malformed();
     for (const key of BATCH_ROW_LABEL_KEYS) {
       if (open(sourceOf(key)) && Object.hasOwn(labels, key)) cell[key] = labels[key];
     }
