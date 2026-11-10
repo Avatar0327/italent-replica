@@ -224,3 +224,17 @@ export async function renameOrg(w: World, orgId: string, name: string) {
     if (links.length) await tx.insert(orgHierarchyLinks).values(links.map((link) => ({ ...link, versionId })));
   });
 }
+
+/**
+ * 可信夹具：照某实例复制 count 条更晚创建、已作废的实例（同一业务对象、同一发起人，没有任务与日志），
+ * 把真实办理所在实例挤出「最新 200 条」展示窗口（F-476 P6 评审 P2-1）。
+ */
+export async function laterInstances(w: World, instanceId: string, count: number) {
+  await withTenant(w.db, w.tenant.id, async (tx) => {
+    await tx.execute(sql`INSERT INTO approval_instances
+      SELECT (jsonb_populate_record(NULL::approval_instances, to_jsonb(i) || jsonb_build_object(
+        'id', gen_random_uuid(), 'status', 'cancelled', 'created_at', i.created_at + g * interval '1 second'))).*
+      FROM approval_instances i, generate_series(1, ${count}) g
+      WHERE i.tenant_id = ${w.tenant.id} AND i.id = ${instanceId}::uuid`);
+  });
+}

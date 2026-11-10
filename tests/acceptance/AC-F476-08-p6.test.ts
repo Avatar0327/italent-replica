@@ -23,6 +23,7 @@ import {
   handledBatch,
   handledSingle,
   instanceIdsOf,
+  laterInstances,
   offerDetail,
   renameOrg,
   rewriteBatchMembers,
@@ -126,6 +127,22 @@ describe('AC-F476-08 offer（Offer 单）：办理 → 修改 → 两路径读�
     // 新建了实例：旧实例上没有待办，负责人读自己在旧实例的办理份（A）；沿用原实例：待办在手读现值
     expect(old.body.form.values.workPlace).toBe(reused ? PLACE_B : PLACE_A);
     expect((await copiesFor(w, first.id)).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('办理所在实例之后又有 200 个实例：单 Offer 详情仍按全部实例定位本人的办理份，不回退现值（评审 P2-1）', async () => {
+    const w = await offerApprovalWorld(testDb().db, 'p6-08-201st');
+    const s = await handledSingle(w);
+    await laterInstances(w, s.instanceId, 200); // 办理份落在第 201 个实例上；本人在后来的实例上没有待办
+    await changeSingle(w, s.offer.id);
+
+    const viaOffer = await offerDetail(w, s.offer.id, w.head.userId);
+    expect(viaOffer.status, viaOffer.text).toBe(200);
+    expect(viaOffer.body).toMatchObject({ name: NAME_A1, workPlace: PLACE_A, contentView: { mode: 'frozen' } });
+    expect(viaOffer.text).not.toContain(PLACE_B);
+    const viaCenter = await center(w, s.instanceId, w.head.userId);
+    expect(viaCenter.status, viaCenter.text).toBe(200);
+    expect(viaCenter.body.contentView).toMatchObject({ mode: 'frozen' });
+    expect(viaCenter.body.form.values).toMatchObject({ name: NAME_A1, workPlace: PLACE_A });
   });
 
   it('缺份（办理份被去掉扩展）：两条路径都 503，不回退现值', async () => {

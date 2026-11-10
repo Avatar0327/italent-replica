@@ -3,9 +3,10 @@
  * 屏障制造稳定交错：测试会话先持业务行锁（Offer 行 / 实例行），两个请求都排到锁后（waitForBlocked 数到等锁会话）才放行，
  * 先后交给数据库，不靠 Promise.all 偶然重现。断言只核对不变量：办理份数 = 办理成功数；份内容（快照与扩展）同属办理那一刻；
  * 办理失败时不留半份。PGlite 单连接无法并发，本文件仅在设了 TEST_DATABASE_URL 时运行。
- * 覆盖：编辑 × 同意（单 Offer）、子项改动 × 集合办理（批）、接管 × 同意、成员停用 × 同意。
+ * 覆盖：编辑 × 同意（单 Offer）、子项改动 × 集合办理（批）、接管 × 同意、成员停用 × 同意、
+ * 两次读名称之间部门改名 × 同意（评审 P2-2：份里的标签与引用名须同一时刻）。
  */
-import { revokeMembership, sql, withTenant } from '@italent/db';
+import { revokeMembership, sql, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { offerApprovalWorld } from './AC-OF-BE14a3-support.js';
@@ -21,6 +22,7 @@ import {
   createOffer,
   handledBatch,
   pendingTask,
+  renameOrg,
   type World,
 } from './AC-F476-p6-support.js';
 import { cmd } from './support/tenant-api.js';
@@ -63,6 +65,37 @@ const action = (w: World, taskId: string, userId: string, revision: number, verb
     ifMatch: revision,
     body: { comment: '合成意见' },
   });
+
+/**
+ * 名称屏障：包一层 db，办理事务里第一次读到 marker（办理时部门名）的原生查询返回后，另一个连接提交部门改名再放行。
+ * 原生查询之后若还有语句另读名称，就会读到改名后的值——份里标签与引用名不一致即失败（设计 §4.3 单条一致性查询）。
+ */
+function nameBarrier(raw: Db) {
+  const hook = { marker: '', onHit: async () => {}, hits: 0 };
+  type Exec = (...args: unknown[]) => Promise<unknown>;
+  type Begin = (cb: (tx: unknown) => Promise<unknown>, ...rest: unknown[]) => Promise<unknown>;
+  const wrap = <T extends object>(target: T): T =>
+    new Proxy(target, {
+      get(object, prop, receiver) {
+        const value = Reflect.get(object, prop, receiver) as unknown;
+        if (prop === 'execute')
+          return async (...args: unknown[]) => {
+            const result = await (value as Exec).apply(object, args);
+            if (hook.marker && JSON.stringify(resultRows(result)).includes(hook.marker)) {
+              hook.marker = '';
+              hook.hits += 1;
+              await hook.onHit();
+            }
+            return result;
+          };
+        if (prop === 'transaction')
+          return (cb: (tx: object) => Promise<unknown>, ...rest: unknown[]) =>
+            (value as Begin).call(object, (tx) => cb(wrap(tx as object)), ...rest);
+        return value;
+      },
+    });
+  return { db: wrap(raw), hook };
+}
 
 describe.runIf(realPostgres)('AC-F476-10 P6：Offer 单 / 批办理与并发写交错', () => {
   it('单 Offer：HTTP 编辑 × 同意——编辑一律 409（审批中不可编辑），办理份是办理时的 A', async () => {
@@ -216,5 +249,31 @@ describe.runIf(realPostgres)('AC-F476-10 P6：Offer 单 / 批办理与并发写�
     expect([200, 401, 403, 409]).toContain(approved.status);
     const copies = await copiesFor(w, view.id);
     expect(copies).toHaveLength(approved.status === 200 ? 1 : 0);
+  });
+
+  it('两次读名称之间部门改名 × 同意：份里的部门标签与引用名同属一个时刻（全 A 或全 B），或 409', async () => {
+    const raw = testDb().db;
+    const { db, hook } = nameBarrier(raw);
+    const w = await offerApprovalWorld(db, 'p6-10-rename-between');
+    const offer = await createOffer(w, NAME_A1);
+    await w.json(await w.submitRaw(offer));
+    const view = await w.instance(offer.id);
+    const task = await pendingTask(w, view, w.head);
+    const current = await w.get(offer.id);
+    const nameA = current.departmentName as string;
+    const nameB = 'ZZ_屏障间改名的部门';
+    hook.marker = nameA;
+    hook.onHit = () => renameOrg({ ...w, db: raw }, current.departmentId as string, nameB);
+    const approved = await action(w, task.id, w.head.userId, view.revision, 'approve');
+    expect(hook.hits, '夹具：办理事务里读到了办理时的部门名').toBe(1);
+    expect([200, 409]).toContain(approved.status);
+    const copies = await copiesFor({ ...w, db: raw }, view.id);
+    expect(copies).toHaveLength(approved.status === 200 ? 1 : 0);
+    if (!copies[0]) return;
+    const { ext } = JSON.parse(copies[0].text) as {
+      ext: { labels: Record<string, string | null>; refs: Record<string, string | null> };
+    };
+    expect([nameA, nameB]).toContain(ext.labels.departmentName);
+    expect(ext.refs.departmentIdName, '标签与引用名须同一时刻').toBe(ext.labels.departmentName);
   });
 });
