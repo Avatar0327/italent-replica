@@ -3,10 +3,10 @@ import { tenantLocalDate } from '@italent/domain';
  * 权限接口（R1-T01；企业设置 R1-T15）。全部在 /api/tenant/permission 之下，经租户上下文中间件；写请求带
  * Idempotency-Key，修改已有对象带 If-Match（revision）。企业设置类接口按 8 类管理员能力鉴权（06 §7.1）：
  *   身份      GET/POST /profiles、GET /profiles/:id、PUT /profiles/:id/objects/:objectCode   profile_manage
- *   用户授权  GET /grantable-profiles、GET/POST /grants、POST /grants/:id/revoke             user_grant
+ *   用户授权  GET /grantable-profiles、GET（筛选 / 分页 / total）/POST /grants、POST /grants/:id/revoke             user_grant
  *   管理员    GET/POST /admins、GET/PUT /admins/:id                                         admin_manage
  *   用户管理  /users…（见 user-routes.ts）                                                  user_manage
- *   管理单元  GET /mous、GET /mous/:id；增删改见 data-scope-routes.ts                     mou_manage / other_settings
+ *   管理单元  GET /mous、GET /mous/tree、GET /mous/:id；增删改见 data-scope-routes.ts   mou_manage / other_settings
  *   许可      GET /licenses                                                                license_balance
  *             GET /licenses/:licenseType/seats（使用明细）                                   license_usage
  *   菜单      GET /admin-menus  当前用户可见的企业设置菜单及可操作性（06 §7.1 矩阵）
@@ -24,16 +24,36 @@ import type { BodyLimitOverride } from '../../middleware.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { type TenantEnv, tenantOf } from '../../tenant-context.js';
 import { adminCommand as command, adminGuard as guard } from './admin-http.js';
-import { createAdmin, getAdmin, listAdmins, updateAdmin } from './admins.js';
+import { ADMIN_LIST_UNRECORDED, createAdmin, getAdmin, listAdmins, updateAdmin } from './admins.js';
 import { registerDataScopeRoutes } from './data-scope-routes.js';
 import { objectCatalog } from './catalog.js';
-import { createGrant, grantableProfiles, listGrants, revokeGrant } from './grants.js';
+import { createGrant, GRANT_LIST_UNRECORDED, grantableProfiles, listGrants, revokeGrant } from './grants.js';
+import { parseQuery } from './enterprise-lists.js';
 import { etag, idParam, ifMatch, objectCodeParam, parseBody } from './http.js';
 import { listBalances, listSeats } from './licenses.js';
 import { myObjectPermission } from './me.js';
+import { readDataOperations, readFields, saveDataOperations, saveFields } from './object-dialogs.js';
 import { buildPermissionSnapshot } from './me-snapshot.js';
-import { createProfile, getProfileDetail, listProfiles, setObjectPermission } from './profiles.js';
-import { adminBody, adminSetsBody, grantBody, grantQuery, objectPermissionBody, profileBody } from './schemas.js';
+import {
+  createProfile,
+  getProfileDetail,
+  listProfiles,
+  PROFILE_LIST_UNRECORDED,
+  setObjectPermission,
+} from './profiles.js';
+import {
+  adminBody,
+  adminListQuery,
+  adminSetsBody,
+  dataOperationsBody,
+  fieldsBody,
+  fieldsQuery,
+  grantBody,
+  grantListQuery,
+  objectPermissionBody,
+  profileBody,
+  profileListQuery,
+} from './schemas.js';
 import { loadAdminRoles } from './subject.js';
 import { registerUserRoutes } from './user-routes.js';
 
@@ -114,7 +134,15 @@ function licenseRoutes(router: Router, deps: TenantRouteDeps): void {
 function profileRoutes(router: Router, deps: TenantRouteDeps): void {
   router.get(`${BASE}/profiles`, async (c) => {
     const ctx = await guard(c, deps, 'profile_manage');
-    return c.json({ items: await withTenant(deps.db, ctx.tenantId, listProfiles) });
+    const query = parseQuery(profileListQuery, {
+      name: c.req.query('name'),
+      code: c.req.query('code'),
+      app: c.req.query('app'),
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+    });
+    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listProfiles(tx, query));
+    return c.json({ ...page, unrecorded: PROFILE_LIST_UNRECORDED });
   });
   router.get(`${BASE}/profiles/:id`, async (c) => {
     const ctx = await guard(c, deps, 'profile_manage');
@@ -154,6 +182,57 @@ function profileRoutes(router: Router, deps: TenantRouteDeps): void {
     etag(c, (result.body as { revision: number }).revision);
     return c.json(result.body);
   });
+  objectDialogRoutes(router, deps);
+}
+
+/** 身份详情的数据操作 / 字段权限弹窗（F-474-5 #26）：读当前值，写合并后走同一个对象权限写出口。 */
+function objectDialogRoutes(router: Router, deps: TenantRouteDeps): void {
+  const target = (c: Parameters<typeof idParam>[0]) => ({
+    profileId: idParam(c, 'id'),
+    objectCode: objectCodeParam(c),
+  });
+  const dialog = `${BASE}/profiles/:id/objects/:objectCode`;
+  router.get(`${dialog}/data-operations`, async (c) => {
+    const ctx = await guard(c, deps, 'profile_manage');
+    const { profileId, objectCode } = target(c);
+    const result = await withTenant(deps.db, ctx.tenantId, (tx) => readDataOperations(tx, profileId, objectCode));
+    etag(c, result.revision);
+    return c.json(result);
+  });
+  router.put(`${dialog}/data-operations`, async (c) => {
+    const ctx = await guard(c, deps, 'profile_manage');
+    const expectedRevision = ifMatch(c);
+    const body = await parseBody(c, dataOperationsBody);
+    const change = { ...target(c), expectedRevision, ...body };
+    const result = await command(c, deps, ctx, { op: 'profile.set_data_operations', change }, (tx, w) =>
+      saveDataOperations(tx, w, change),
+    );
+    etag(c, (result.body as { revision: number }).revision);
+    return c.json(result.body);
+  });
+  router.get(`${dialog}/fields`, async (c) => {
+    const ctx = await guard(c, deps, 'profile_manage');
+    const { profileId, objectCode } = target(c);
+    const query = parseQuery(fieldsQuery, {
+      code: c.req.query('code'),
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+    });
+    const result = await withTenant(deps.db, ctx.tenantId, (tx) => readFields(tx, profileId, objectCode, query));
+    etag(c, result.revision);
+    return c.json(result);
+  });
+  router.put(`${dialog}/fields`, async (c) => {
+    const ctx = await guard(c, deps, 'profile_manage');
+    const expectedRevision = ifMatch(c);
+    const body = await parseBody(c, fieldsBody);
+    const change = { ...target(c), expectedRevision, ...body };
+    const result = await command(c, deps, ctx, { op: 'profile.set_fields', change }, (tx, w) =>
+      saveFields(tx, w, change),
+    );
+    etag(c, (result.body as { revision: number }).revision);
+    return c.json(result.body);
+  });
 }
 
 function grantRoutes(router: Router, deps: TenantRouteDeps): void {
@@ -163,8 +242,17 @@ function grantRoutes(router: Router, deps: TenantRouteDeps): void {
   });
   router.get(`${BASE}/grants`, async (c) => {
     const ctx = await guard(c, deps, 'user_grant');
-    const { userId } = grantQuery.parse({ userId: c.req.query('userId') });
-    return c.json({ items: await withTenant(deps.db, ctx.tenantId, (tx) => listGrants(tx, userId)) });
+    const query = parseQuery(grantListQuery, {
+      userId: c.req.query('userId'),
+      profileId: c.req.query('profileId'),
+      mouId: c.req.query('mouId'),
+      status: c.req.query('status'),
+      q: c.req.query('q'),
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+    });
+    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listGrants(tx, query));
+    return c.json({ ...page, unrecorded: GRANT_LIST_UNRECORDED });
   });
   router.post(`${BASE}/grants`, async (c) => {
     const ctx = await guard(c, deps, 'user_grant');
@@ -184,7 +272,15 @@ function grantRoutes(router: Router, deps: TenantRouteDeps): void {
 function adminRoutes(router: Router, deps: TenantRouteDeps): void {
   router.get(`${BASE}/admins`, async (c) => {
     const ctx = await guard(c, deps, 'admin_manage');
-    return c.json({ items: await withTenant(deps.db, ctx.tenantId, listAdmins) });
+    const query = parseQuery(adminListQuery, {
+      role: c.req.query('role'),
+      mouId: c.req.query('mouId'),
+      q: c.req.query('q'),
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+    });
+    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listAdmins(tx, query));
+    return c.json({ ...page, unrecorded: ADMIN_LIST_UNRECORDED });
   });
   router.get(`${BASE}/admins/:id`, async (c) => {
     const ctx = await guard(c, deps, 'admin_manage');

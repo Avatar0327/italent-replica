@@ -199,6 +199,36 @@ export function auditObjectMeta(objectType: string): AuditObjectMeta {
   return { label: objectType, app };
 }
 
+/** 数据变更日志「应用」筛选的取值：已登记对象的应用 + 按前缀归类的应用 + 兜底的「组织员工」。 */
+export const AUDIT_APPS: readonly string[] = [
+  ...new Set([...Object.values(OBJECTS).map((meta) => meta.app), ...APP_PREFIXES.map(([, app]) => app), ORG_PEOPLE]),
+];
+
+export interface AuditAppScope {
+  /** 登记在 OBJECTS 里、属于该应用的对象编码。 */
+  readonly types: readonly string[];
+  /** 未登记的对象按编码前缀归入该应用。 */
+  readonly prefixes: readonly string[];
+  /** 全部已登记对象编码（前缀与兜底只对未登记的对象生效）。 */
+  readonly registered: readonly string[];
+  /** 兜底应用：既未登记、也不带任何前缀的对象。 */
+  readonly fallback: boolean;
+  /** 兜底时需要排除的全部前缀。 */
+  readonly allPrefixes: readonly string[];
+}
+
+/** 把「应用」翻译成对象编码的匹配条件，口径与 auditObjectMeta 完全一致（供 SQL 筛选使用）。 */
+export function auditAppScope(app: string): AuditAppScope {
+  const registered = Object.keys(OBJECTS);
+  return {
+    types: registered.filter((type) => OBJECTS[type]!.app === app),
+    prefixes: APP_PREFIXES.filter(([, name]) => name === app).map(([prefix]) => prefix),
+    registered,
+    fallback: app === ORG_PEOPLE,
+    allPrefixes: APP_PREFIXES.map(([prefix]) => prefix),
+  };
+}
+
 /** 任职记录（及引用同名字段的组织、调动等对象）的字段中文名。 */
 const FIELD_LABELS: Readonly<Record<string, string>> = {
   earlyEnabled: '启用提前停用',

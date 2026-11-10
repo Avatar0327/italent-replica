@@ -120,3 +120,18 @@ export async function listAll(call: Call, userId: string, path: string): Promise
     if (rows.length < 200) return items;
   }
 }
+
+/**
+ * 读完 limit / offset 分页的列表接口（用户授权、管理员、用户列表，F-474-5）：每页 200，按 total 与当页条数收口。
+ * 与 listAll（page / pageSize）是两套分页契约，不能混用：这类接口会忽略 page / pageSize，只返回默认一页。
+ */
+export async function listAllByOffset(call: Call, userId: string, path: string): Promise<Json[]> {
+  const items: Json[] = [];
+  const joiner = path.includes('?') ? '&' : '?';
+  for (;;) {
+    const response = await call(userId, 'GET', `${path}${joiner}limit=200&offset=${items.length}`);
+    const rows = (response.items ?? []) as Json[];
+    items.push(...rows);
+    if (rows.length < 200 || items.length >= Number(response.total ?? 0)) return items;
+  }
+}

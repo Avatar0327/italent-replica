@@ -9,7 +9,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/audit/routes.ts': {
     auditContext: 'd5b4775d58c3',
     'route:GET /api/tenant/audit/command-failures': '9ac7295f99cb',
-    'route:GET /api/tenant/audit/data-changes': 'fb535c575801',
+    'route:GET /api/tenant/audit/data-changes': 'dcc21074fa55',
     'route:GET /api/tenant/audit/data-changes/:id': 'dfa96793df49',
     'route:GET /api/tenant/audit/operation-logs': 'b6857e645117',
   },
@@ -1054,6 +1054,7 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/permission/grant-prefill/:userId/:profileId': 'c2a64d197c20',
     'route:GET /api/tenant/permission/mous': '6c170c4380e1',
     'route:GET /api/tenant/permission/mous/:id': '0b7bad30eab8',
+    'route:GET /api/tenant/permission/mous/tree': '57ebbfcfc19f',
     'route:GET /api/tenant/permission/scopes/:userId/:appCode': '052436b28fe9',
     'route:POST /api/tenant/permission/mous': '42bb2d3cd32f',
     'route:PUT /api/tenant/permission/mous/:id': 'c6113d3cc56b',
@@ -1074,20 +1075,24 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/permission/routes.ts': {
     'route:GET /api/tenant/permission/admin-roles': 'd1748d513636',
-    'route:GET /api/tenant/permission/admins': '216325da7a28',
+    'route:GET /api/tenant/permission/admins': 'be74fe701664',
     'route:GET /api/tenant/permission/admins/:id': '7ef20d0775e2',
     'route:GET /api/tenant/permission/grantable-profiles': '9a5b3f8e188e',
-    'route:GET /api/tenant/permission/grants': '52fbf0c9af21',
+    'route:GET /api/tenant/permission/grants': '5f19ff77b8c9',
     'route:GET /api/tenant/permission/licenses': '21a9f3e0abad',
     'route:GET /api/tenant/permission/licenses/:licenseType/seats': 'de2cfcf8393b',
-    'route:GET /api/tenant/permission/profiles': '253c803722fc',
+    'route:GET /api/tenant/permission/profiles': '2314d9583ec0',
     'route:GET /api/tenant/permission/profiles/:id': '6b87fc9f8f78',
+    'route:GET /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations': '3223bd8fe9d8',
+    'route:GET /api/tenant/permission/profiles/:id/objects/:objectCode/fields': '27a71ad764e6',
     'route:POST /api/tenant/permission/admins': '5b37587b01a1',
     'route:POST /api/tenant/permission/grants': '58df94ccb438',
     'route:POST /api/tenant/permission/grants/:id/revoke': 'ea42a2752d0b',
     'route:POST /api/tenant/permission/profiles': 'e677befa3a93',
     'route:PUT /api/tenant/permission/admins/:id': 'b3ec2383a3c1',
     'route:PUT /api/tenant/permission/profiles/:id/objects/:objectCode': '30c1c8004696',
+    'route:PUT /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations': 'b54b5302ecf0',
+    'route:PUT /api/tenant/permission/profiles/:id/objects/:objectCode/fields': '19438161635e',
   },
   'apps/api/src/modules/permission/scope-policy-routes.ts': {
     configRoutes: '6f56ba3d62b3',
@@ -1102,7 +1107,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/permission/user-routes.ts': {
     CAPABILITY: 'd88cc26e2f8a',
     lifecycleRequest: '9deb8aac7f8a',
-    'route:GET /api/tenant/permission/users': 'e8a089c8deee',
+    'route:GET /api/tenant/permission/users': '3e7cdfd2177c',
     'route:GET /api/tenant/permission/users/:userId': '50d1f8e60281',
     'route:POST /api/tenant/permission/users': '76c0e18799c0',
     'route:PUT /api/tenant/permission/users/:userId': '29cdfa555efe',
@@ -1921,7 +1926,7 @@ export const DIGESTS: Digests = {
 export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/audit/routes.ts#auditContext': 'ac02878f0b13',
   'apps/api/src/audit/routes.ts#route:GET /api/tenant/audit/command-failures': '2d9b4d876442',
-  'apps/api/src/audit/routes.ts#route:GET /api/tenant/audit/data-changes': '1de39195df73',
+  'apps/api/src/audit/routes.ts#route:GET /api/tenant/audit/data-changes': '3716330f525f',
   'apps/api/src/audit/routes.ts#route:GET /api/tenant/audit/data-changes/:id': '4a5d1edd24bd',
   'apps/api/src/audit/routes.ts#route:GET /api/tenant/audit/operation-logs': 'e453470a6384',
   'apps/api/src/authorization.ts#requirePermission': 'de23424a7b48',
@@ -2706,6 +2711,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     'ad097e8c714e',
   'apps/api/src/modules/permission/data-scope-routes.ts#route:GET /api/tenant/permission/mous': '8beae7a4dacc',
   'apps/api/src/modules/permission/data-scope-routes.ts#route:GET /api/tenant/permission/mous/:id': '496070fe7d91',
+  'apps/api/src/modules/permission/data-scope-routes.ts#route:GET /api/tenant/permission/mous/tree': '1555d3bb4c8a',
   'apps/api/src/modules/permission/data-scope-routes.ts#route:GET /api/tenant/permission/scopes/:userId/:appCode':
     '800863ebcdd3',
   'apps/api/src/modules/permission/data-scope-routes.ts#route:POST /api/tenant/permission/mous': '3d2c972e1fb0',
@@ -2720,15 +2726,19 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/permission/object-write.ts#requireObjectWrite': '23de1c1cd72f',
   'apps/api/src/modules/permission/owner-units.ts#chooseUnit': '01d1f2d1ad36',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admin-roles': '7a11d0289c9b',
-  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins': '8fe0082a523b',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins': '99e04dcbbfe8',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins/:id': '76a428b4f6df',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grantable-profiles': '7e4f35c521e5',
-  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants': 'a5061e968d12',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants': 'e76637809bc2',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/licenses': 'b684105aaeb1',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/licenses/:licenseType/seats':
     '76a5e8a06263',
-  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/profiles': '5e81f674dab9',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/profiles': 'e51ed3ac8a6d',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/profiles/:id': '7b12d9a6007a',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations':
+    '4d602a2718b0',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/profiles/:id/objects/:objectCode/fields':
+    'bab0c55f4acd',
   'apps/api/src/modules/permission/routes.ts#route:POST /api/tenant/permission/admins': '8ce0aba49cbc',
   'apps/api/src/modules/permission/routes.ts#route:POST /api/tenant/permission/grants': '61bbac2c6248',
   'apps/api/src/modules/permission/routes.ts#route:POST /api/tenant/permission/grants/:id/revoke': '3a918c491b89',
@@ -2736,6 +2746,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/permission/routes.ts#route:PUT /api/tenant/permission/admins/:id': 'c1d070f1a60a',
   'apps/api/src/modules/permission/routes.ts#route:PUT /api/tenant/permission/profiles/:id/objects/:objectCode':
     '9fb0d74a1d8c',
+  'apps/api/src/modules/permission/routes.ts#route:PUT /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations':
+    '22c831d852e6',
+  'apps/api/src/modules/permission/routes.ts#route:PUT /api/tenant/permission/profiles/:id/objects/:objectCode/fields':
+    'c87e3b7963e7',
   'apps/api/src/modules/permission/scope-policy-routes.ts#configRoutes': '660d2391e67c',
   'apps/api/src/modules/permission/scope-policy-routes.ts#personLinkRoutes': '29749d3e8b6e',
   'apps/api/src/modules/permission/scope-policy-routes.ts#route:GET /api/tenant/permission/person-links/:userId':
@@ -2747,7 +2761,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/permission/scope-resolver.ts#personnelCreationScope': 'f265096ec1b2',
   'apps/api/src/modules/permission/user-routes.ts#CAPABILITY': 'e3b0c44298fc',
   'apps/api/src/modules/permission/user-routes.ts#lifecycleRequest': '9c5c8f50d1c3',
-  'apps/api/src/modules/permission/user-routes.ts#route:GET /api/tenant/permission/users': '2c93a6fc4682',
+  'apps/api/src/modules/permission/user-routes.ts#route:GET /api/tenant/permission/users': '95e66cf90ff5',
   'apps/api/src/modules/permission/user-routes.ts#route:GET /api/tenant/permission/users/:userId': '064fa968e716',
   'apps/api/src/modules/permission/user-routes.ts#route:POST /api/tenant/permission/users': '11be7368f104',
   'apps/api/src/modules/permission/user-routes.ts#route:PUT /api/tenant/permission/users/:userId': '2c4e0a1ad4fb',

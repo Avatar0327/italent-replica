@@ -1,6 +1,6 @@
 /**
  * 企业设置 · 用户管理接口（R1-T15；DEC-128；06 §7.1「用户管理」= 租户 / 系统 / 员工 / 用户管理员，能力 user_manage）：
- *   GET  /users?type=internal|external|all&limit&offset   内部员工 / 外部用户 / 全部用户
+ *   GET  /users?type=internal|external|all&membershipStatus&q&limit&offset   内部员工 / 外部用户 / 全部用户，带 total
  *   GET  /users/:userId                                    详情（ETag = 成员关系 revision）
  *   POST /users                                            登记外部用户（内部员工随建档产生，一律拒绝）
  *   PUT  /users/:userId                                    修改外部用户的业务身份（If-Match 成员关系 revision）
@@ -18,6 +18,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext, TenantEnv } from '../../tenant-context.js';
 import { userAvatars } from '../avatar/references.js';
 import { adminCommand, adminGuard, platformCommandId, type RouteContext } from './admin-http.js';
+import { listPage, parseQuery, textFilter } from './enterprise-lists.js';
 import { etag, idParam, ifMatch, parseBody } from './http.js';
 import {
   getTenantUser,
@@ -26,6 +27,7 @@ import {
   registerExternalUser,
   type TenantUserView,
   updateExternalUser,
+  USER_LIST_UNRECORDED,
 } from './tenant-users.js';
 
 const BASE = '/api/tenant/permission/users';
@@ -42,20 +44,23 @@ const updateBody = z.strictObject({ userType: z.enum(USER_TYPES), businessIdenti
 const statusBody = z.strictObject({ status: z.enum(['active', 'disabled']) });
 const listQuery = z.strictObject({
   type: z.enum(['internal', 'external', 'all']).default('all'),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
-  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+  membershipStatus: z.enum(['active', 'revoked']).optional(),
+  q: textFilter.optional(),
+  ...listPage,
 });
 
 export function registerUserRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   router.get(BASE, async (c) => {
     const ctx = await adminGuard(c, deps, CAPABILITY);
-    const parsed = listQuery.safeParse({
+    const query = parseQuery(listQuery, {
       type: c.req.query('type'),
+      membershipStatus: c.req.query('membershipStatus'),
+      q: c.req.query('q'),
       limit: c.req.query('limit'),
       offset: c.req.query('offset'),
     });
-    if (!parsed.success) throw new AppError('VALIDATION_FAILED', '查询参数不合法', parsed.error.issues);
-    return c.json({ items: await withTenant(deps.db, ctx.tenantId, (tx) => listTenantUsers(tx, parsed.data)) });
+    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listTenantUsers(tx, query));
+    return c.json({ ...page, unrecorded: USER_LIST_UNRECORDED });
   });
   router.get(`${BASE}/:userId`, async (c) => {
     const ctx = await adminGuard(c, deps, CAPABILITY);
