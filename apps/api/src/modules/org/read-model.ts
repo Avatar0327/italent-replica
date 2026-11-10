@@ -81,12 +81,19 @@ export async function loadOrgSnapshot(
 type SnapshotRow = Awaited<ReturnType<typeof orgSnapshotQuery>>[number];
 type HierarchyLink = typeof orgHierarchyLinks.$inferSelect;
 
-/** 把现行版本、层级链接与全称路径拼成组织记录；纯函数，单测用访问次数守住它不退化成逐节点扫全表。 */
+/** 把现行版本、层级链接与全称路径拼成组织记录；纯函数，AC-F476-P2-13 用访问次数守住线性。 */
 export function assembleOrgRecords(
   selected: readonly SnapshotRow[],
   links: readonly HierarchyLink[],
   paths: ReadonlyMap<string, OrgPath>,
 ): OrgRecord[] {
+  // 先按版本分组一次：万级节点逐个组织再扫全部链接是 O(N²)，2.5 万节点在 CI 上要几分钟（F-476 P2 第 4 轮量测）
+  const linksByVersion = new Map<string, HierarchyLink[]>();
+  for (const link of links) {
+    const group = linksByVersion.get(link.versionId);
+    if (group) group.push(link);
+    else linksByVersion.set(link.versionId, [link]);
+  }
   return selected.map(({ object, version }) => ({
     ...version,
     ...paths.get(version.id),
@@ -95,9 +102,10 @@ export function assembleOrgRecords(
     code: version.code,
     revision: object.revision,
     parents: Object.fromEntries(
-      links
-        .filter((link) => link.versionId === version.id)
-        .map((link) => [link.dimension, { parentId: link.parentOrgId, sequence: link.sequence }]),
+      (linksByVersion.get(version.id) ?? []).map((link) => [
+        link.dimension,
+        { parentId: link.parentOrgId, sequence: link.sequence },
+      ]),
     ),
   }));
 }

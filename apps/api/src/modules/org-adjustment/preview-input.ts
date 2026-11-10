@@ -68,15 +68,19 @@ export function rangeSubtree(orgs: ReadonlyMap<string, OrgRecord>, range: readon
   for (const org of orgs.values()) {
     const parentId = org.parents.admin?.parentId;
     if (org.enabled === false || !parentId) continue;
-    children.set(parentId, [...(children.get(parentId) ?? []), org.id]);
+    // 就地追加：同一上级下万级下级时，每次复制整个数组是 O(N²)（F-476 P2 第 4 轮量测）
+    const siblings = children.get(parentId);
+    if (siblings) siblings.push(org.id);
+    else children.set(parentId, [org.id]);
   }
   const result = new Set<string>();
   const queue = range.filter((id) => orgs.get(id)?.enabled !== false && orgs.has(id));
-  while (queue.length) {
-    const id = queue.shift()!;
+  // 下标走队列：shift() 在大数组上每次 O(n)；也不用 push(...大数组)，参数个数过万会撞调用栈上限
+  for (let head = 0; head < queue.length; head += 1) {
+    const id = queue[head]!;
     if (result.has(id)) continue;
     result.add(id);
-    queue.push(...(children.get(id) ?? []));
+    for (const child of children.get(id) ?? []) queue.push(child);
   }
   return [...result].map((id) => orgs.get(id)!);
 }
