@@ -172,6 +172,7 @@ const CONFIG_OBJECTS = new Set<string>([
   MODULE_OBJECTS.employmentCustomField.code,
   MODULE_OBJECTS.contractSettings.code,
   MODULE_OBJECTS.contractRules.code,
+  MODULE_OBJECTS.eSignSettings.code,
 ]);
 
 /** 只读聚合对象：只授查看（无数据操作、无按钮、字段不可编辑），不能用 full 授增删改。 */

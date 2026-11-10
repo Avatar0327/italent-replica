@@ -38,6 +38,10 @@ export interface JobRecord {
   readonly maxLevelId?: string | null;
   readonly minGradeId?: string | null;
   readonly maxGradeId?: string | null;
+  readonly ownerOrgId?: string | null;
+  readonly salaryUpper?: number | null;
+  readonly salaryMid?: number | null;
+  readonly salaryLower?: number | null;
   readonly parentId?: string | null;
   readonly sequenceId?: string | null;
   readonly professionalLineId?: string | null;
@@ -65,7 +69,7 @@ function record(kind: JobKind, row: Record<string, unknown>): JobRecord {
       value,
     ]),
   );
-  for (const field of ['scoreLow', 'scoreHigh', 'evaluationScore']) {
+  for (const field of ['scoreLow', 'scoreHigh', 'evaluationScore', 'salaryUpper', 'salaryMid', 'salaryLower']) {
     if (converted[field] !== null && converted[field] !== undefined) converted[field] = Number(converted[field]);
   }
   const item = { ...converted, id: converted.objectId, versionId: converted.id, kind } as JobRecord;

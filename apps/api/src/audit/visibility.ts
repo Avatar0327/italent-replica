@@ -1,4 +1,5 @@
 import { CapacityAuditFields, capacityAuditChanges, visibleCapacityParts } from './establishment-capacity.js';
+import { approvalContentFields } from './controlled-fields.js';
 import { NestedAuditFields, type NestedChildren, visibleNested, visibleNestedChanges } from './nested-fields.js';
 /**
  * DEC-197 / DEC-203（PR #75 第二、三轮）：审计查询按查看人**当前**的数据范围与字段权限裁剪，不设全量读取特权。
@@ -854,6 +855,8 @@ interface ConfigFields {
   readonly presets?: boolean;
   /** 固定可见的键（不按字段权限解析）。 */
   readonly fixed?: readonly string[];
+  /** 审计键不在字段目录里的对象（F-326 变量与矩阵）：由「审批流程」权限推出精确键与受控动态路径。 */
+  readonly derive?: (viewable: ReadonlySet<string> | undefined) => ReadonlySet<string> | undefined;
 }
 
 const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
@@ -868,7 +871,15 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   retirement_rule: { code: 'TenantBase.EmploymentSettings' },
   retirement_identity_type: { code: 'TenantBase.EmploymentSettings' },
   employment_custom_field: { code: 'TenantBase.EmploymentCustomField' },
+  'esign-template': { code: MODULE_OBJECTS.eSignSettings.code },
+  'esign-scene-settings': { code: MODULE_OBJECTS.eSignSettings.code },
   'approval-process': { code: 'TenantBase.ApprovalProcess' },
+  // F-326：变量与矩阵的审计键（dataType / defaultValue、动态的 row:<id> / column:<id>、删除快照）不在审批流程字段目录
+  // 里，由审批流程权限推出精确键与受控动态路径（controlled-fields.ts），没有权限时 fail-closed
+  'approval-public-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
+  'approval-application-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
+  'approval-matrix': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
+  'approval-matrix-row': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
   transfer_form: {
     code: EMPLOYMENT,
     presets: true,
@@ -1195,6 +1206,7 @@ async function resolveConfigFields(deps: Deps, ctx: TenantContext, present: read
   const fieldsFor = async (config: ConfigFields) => {
     if (config.fixed) return new Set(config.fixed);
     const viewable = await getModuleViewableFields(deps, ctx, config.code!);
+    if (config.derive) return config.derive(viewable);
     if (viewable === undefined) return undefined;
     const presets = config.presets ? [...viewable].map((code) => `preset:${code}`) : [];
     return new Set([...viewable, ...presets, ...(config.protocol ?? [])]);

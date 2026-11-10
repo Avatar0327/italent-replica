@@ -1436,6 +1436,55 @@
       "when": 1794175728256,
       "tag": "0204_f493_s1_nullable_code_login",
       "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1794208249639,
+      "tag": "0205_f326_s1_approval_variables",
+      "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1794239661732,
+      "tag": "0206_f484_conflict_detail",
+      "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1794239661733,
+      "tag": "0207_r2t09b_duty_clear",
+      "breakpoints": true
+    },
+    {
+      "idx": 208,
+      "version": "7",
+      "when": 1794239661734,
+      "tag": "0208_f481_esign_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 209,
+      "version": "7",
+      "when": 1794239661735,
+      "tag": "0209_f474_2a_position_duty",
+      "breakpoints": true
+    },
+    {
+      "idx": 210,
+      "version": "7",
+      "when": 1794239661736,
+      "tag": "0210_f474_2a_level_resource",
+      "breakpoints": true
+    },
+    {
+      "idx": 211,
+      "version": "7",
+      "when": 1794285153872,
+      "tag": "0211_f493_s2_import_contract",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,15 @@ async function dateForm(page: Page, kind = '延长') {
     .click();
   return page.getByRole('dialog', named(`${kind}兼职申请`));
 }
+/**
+ * 切到“审批中的兼职”后打开申请详情。BrowserRouter 以 transition 切视图，新视图提交前页面让旧列表不可交互
+ * （list-state.ts useViewSwitching）；这里显式等新视图提交，再点新视图的行。
+ */
+async function openRequestDetail(page: Page) {
+  await page.getByRole('button', named('审批中的兼职')).click();
+  await page.getByRole('button', { ...named('审批中的兼职'), pressed: true }).waitFor();
+  await page.getByRole('button', named('查看详情')).click();
+}
 test('AC-FE-R2d2b-01 延长缩短：取消不发，确定提交，warnings 不重复确认', async ({ page }) => {
   const state = await requestSetup(page);
   const form = await dateForm(page);
@@ -53,8 +62,7 @@ test('AC-FE-R2d2b-04 非原发起人提交被拒是中文拒绝并重读，不�
   const state = await requestSetup(page);
   state.row.status = 'draft';
   state.failure = 403;
-  await page.getByRole('button', named('审批中的兼职')).click();
-  await page.getByRole('button', named('查看详情')).click();
+  await openRequestDetail(page);
   await page.getByRole('button', named('提交')).click();
   const form = page.getByRole('dialog', named('提交兼职申请'));
   await form.getByRole('button', named('提交')).click();
@@ -157,8 +165,7 @@ for (const approvalType of ['part_time_extend', 'transfer'])
 test('AC-FE-R2d2b-09 草稿修改、提交、撤回、删除使用真实 revision', async ({ page }) => {
   const state = await requestSetup(page);
   state.row.status = 'draft';
-  await page.getByRole('button', named('审批中的兼职')).click();
-  await page.getByRole('button', named('查看详情')).click();
+  await openRequestDetail(page);
   const detail = page.getByRole('dialog').filter({ has: page.getByRole('heading', named('兼职申请详情')) });
   await detail.getByRole('button', named('修改')).click();
   let form = page.getByRole('dialog', named('修改兼职申请'));
@@ -188,8 +195,7 @@ test('AC-FE-R2d2b-10 写成功后读取失败仍 unknown，重开不换命令', 
   await expect(reopened).toContainText('结果待确认');
   await reopened.getByRole('button', named('取消')).click();
   state.readFailure = false;
-  await page.getByRole('button', named('审批中的兼职')).click();
-  await page.getByRole('button', named('查看详情')).click();
+  await openRequestDetail(page);
   await page.getByRole('button', named('修改')).click();
   const edit = page.getByRole('dialog', named('修改兼职申请'));
   await expect(edit.getByRole('button', named('保存'))).toBeDisabled();
@@ -200,8 +206,7 @@ test('AC-FE-R2d2b-11 409 重读保留改过字段，未改字段回填新值，�
   const state = await requestSetup(page);
   state.row.status = 'draft';
   state.failure = 409;
-  await page.getByRole('button', named('审批中的兼职')).click();
-  await page.getByRole('button', named('查看详情')).click();
+  await openRequestDetail(page);
   await page.getByRole('button', named('修改')).click();
   const form = page.getByRole('dialog', named('修改兼职申请'));
   await form.getByLabel('新结束日期', { exact: true }).fill('2027-01-31');
@@ -221,8 +226,7 @@ test('AC-FE-R2d2b-11 409 重读保留改过字段，未改字段回填新值，�
 test('AC-FE-R2d2b-12 显式重读申请按原基线保留人工修改并回填未改字段', async ({ page }) => {
   const state = await requestSetup(page);
   state.row.status = 'draft';
-  await page.getByRole('button', named('审批中的兼职')).click();
-  await page.getByRole('button', named('查看详情')).click();
+  await openRequestDetail(page);
   await page.getByRole('button', named('修改')).click();
   const form = page.getByRole('dialog', named('修改兼职申请'));
   await form.getByLabel('新结束日期', { exact: true }).fill('2027-01-31');
@@ -235,8 +239,7 @@ test('AC-FE-R2d2b-12 显式重读申请按原基线保留人工修改并回填�
 test('AC-FE-R2d2b-13 HR 撤销后终态不再显示申请动作', async ({ page }) => {
   const state = await requestSetup(page);
   state.row.status = 'in_review';
-  await page.getByRole('button', named('审批中的兼职')).click();
-  await page.getByRole('button', named('查看详情')).click();
+  await openRequestDetail(page);
   const detail = page.getByRole('dialog').filter({ has: page.getByRole('heading', named('兼职申请详情')) });
   await detail.getByRole('button', named('撤销')).click();
   const form = page.getByRole('dialog', named('撤销兼职申请'));

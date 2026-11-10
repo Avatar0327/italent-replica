@@ -385,6 +385,7 @@ export interface ExitExtension {
   readonly employerName: string | null;
   readonly actualLeaveDate: string | null;
   readonly dutyTransferTiming: string;
+  readonly dutyTransferDate: string | null;
   readonly preReleaseDate: string | null;
 }
 
@@ -401,7 +402,12 @@ export interface ExitDetail extends ExitItem, ExitExtension {
   readonly approvalInstanceId: string | null;
   /** 效果台账只给汇总件数，不带目标 ID（目标对象的可见性由各自模块负责）。 */
   readonly effects: readonly { readonly phase: string; readonly kind: string; readonly count: number }[];
-  readonly dutyTransfer: { readonly timing: string; readonly transferred: number; readonly failed: number };
+  readonly dutyTransfer: {
+    readonly timing: string;
+    readonly date: string | null;
+    readonly transferred: number;
+    readonly failed: number;
+  };
 }
 
 const amount = (value: unknown) => (value === null || value === undefined ? null : Number(value));
@@ -418,6 +424,7 @@ async function loadDetailParts(tx: Tx, tenantId: string, id: string) {
       social_insurance_end_month AS "socialInsuranceEndMonth", annual_leave_settled AS "annualLeaveSettled",
       tax_period AS "taxPeriod", tax_year AS "taxYear", employer_name AS "employerName",
       actual_leave_date::text AS "actualLeaveDate", duty_transfer_timing AS "dutyTransferTiming",
+      duty_transfer_date::text AS "dutyTransferDate",
       pre_release_date::text AS "preReleaseDate"
     FROM exit_requests WHERE tenant_id=${tenantId} AND business_id=${id}::uuid
   `),
@@ -492,6 +499,7 @@ export async function loadExitDetail(
     employerName: (ext.employerName as string | null) ?? null,
     actualLeaveDate: (ext.actualLeaveDate as string | null) ?? null,
     dutyTransferTiming: ext.dutyTransferTiming as string,
+    dutyTransferDate: (ext.dutyTransferDate as string | null) ?? null,
     preReleaseDate: (ext.preReleaseDate as string | null) ?? null,
     versions: versions.map((version) => ({ ...version, createdAt: iso(version.createdAt) })),
     events: events.map((event) => ({ ...event, createdAt: iso(event.createdAt) })),
@@ -499,6 +507,7 @@ export async function loadExitDetail(
     effects: effects.map((effect) => ({ ...effect, count: Number(effect.count) })),
     dutyTransfer: {
       timing: ext.dutyTransferTiming as string,
+      date: (ext.dutyTransferDate as string | null) ?? null,
       transferred: counted('duty_transferred'),
       failed: counted('duty_failed'),
     },
@@ -563,6 +572,8 @@ const OWN_FIELDS = [
 /** 路径写法：顶层键 `key`、嵌套 `a.b`、数组 `a` 与其元素 `a[]`、元素内的键 `a[].b`。 */
 export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = {
   ...Object.fromEntries(OWN_FIELDS.map((field) => [field, on(field)])),
+  // 指定日期跟随转交时机的字段权（同一个设置的两半，不另开字段编码）
+  dutyTransferDate: on('dutyTransferTiming'),
   name: { field: 'name', object: 'employee' },
   code: { field: 'code', object: 'employee' },
   // F-352①：逐单动作由单据状态派生，无状态查看权的人不下发（路由层按此判定，不让动作反推隐藏的状态）
@@ -643,6 +654,7 @@ export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = 
   'effects[].count': independent('效果台账汇总（件数）：同上'),
   dutyTransfer: CONTAINER,
   'dutyTransfer.timing': on('dutyTransferTiming'),
+  'dutyTransfer.date': on('dutyTransferTiming'),
   'dutyTransfer.transferred': independent('职责转交成功件数：来自 exit_effects 汇总，不派生自受控字段'),
   'dutyTransfer.failed': independent('职责转交失败件数：同上'),
 };

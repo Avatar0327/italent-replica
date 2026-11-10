@@ -13,6 +13,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { PERSON_OBJECT, RECORD_OBJECT, ROSTER_OBJECT, rosterWorld, type RosterWorld } from './AC-HA-roster-support.js';
 import { ALL_PEOPLE_COLUMNS, ALL_PEOPLE_ROW } from './support/f474-all-people-row.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
@@ -29,7 +30,14 @@ interface Page {
   hasDataPermission: boolean;
 }
 
+/** 职级新建需要创建人有职务体系授权管理单元（DEC-339①）：每个世界补一次。 */
+const unitGranted = new WeakMap<RosterWorld, Promise<string>>();
+
 async function job(w: RosterWorld, kind: 'posts' | 'positions' | 'levels', name: string, extra = {}) {
+  if (kind === 'levels' && !unitGranted.has(w)) {
+    unitGranted.set(w, grantJobUnit(w.call, w.as.user, w.as.tenant));
+  }
+  if (kind === 'levels') await unitGranted.get(w);
   const response = await w.call('POST', `/api/tenant/job/${kind}`, {
     ifMatch: 0,
     body: { name, code: `L4C_${uniqueSuffix()}`, startDate: '2024-01-01', ...extra },

@@ -11,6 +11,7 @@ import { nextPartTimeRequestState, PART_TIME_BUTTONS, type PartTimeRequestAction
 import type { Context } from 'hono';
 import type { TenantRouteDeps } from '../../../routes.js';
 import type { TenantEnv } from '../../../tenant-context.js';
+import { authorizeInTransaction } from '../../permission/module-access.js';
 import { permits, tryWriteContext } from '../context.js';
 import { requirePartTimeRequestAccess, type PartTimeRequestTarget } from './replay-guard.js';
 import { isRequestInitiator } from './request-service.js';
@@ -67,7 +68,9 @@ export async function availableRequestActions(
     if (!request) return [];
     const offered: RequestActionCode[] = [];
     for (const action of REQUEST_ACTIONS) {
-      const scoped = contexts[REQUEST_ACTION_ACCESS[action].operation];
+      const base = contexts[REQUEST_ACTION_ACCESS[action].operation];
+      // 事务内判定必须绑到本事务：授权器自开租户事务时，在已占用连接的事务里直接调用会重入根事务而等待（F-476 P5 R1）
+      const scoped = base && { ...base, authorize: base.authorize && authorizeInTransaction(base.authorize, tx) };
       if (!scoped || !nextPartTimeRequestState(request.state, MACHINE_ACTION[action])) continue;
       if (INITIATOR_ONLY.has(action) && !isRequestInitiator(request, scoped)) continue;
       if (await permits(() => requirePartTimeRequestAccess(tx, scoped, requestActionTarget(requestId, action))))

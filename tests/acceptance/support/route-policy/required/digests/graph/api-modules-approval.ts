@@ -599,7 +599,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/adapter-support.ts#employeeHeader',
     '#personnelChange',
     '#same',
-    '#subsetVersion',
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/personnel/change-requests.ts#applyApprovedChangeInTransaction',
@@ -607,6 +606,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/change-requests.ts#disapproveChangeInTransaction',
     'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction',
     'apps/api/src/modules/personnel/change-requests.ts#withdrawChangeInTransaction',
+    'apps/api/src/modules/personnel/frozen.ts#changeOriginals',
     'apps/api/src/modules/personnel/store.ts#lockPerson',
     'apps/api/src/modules/personnel/subsets.ts#loadSubset',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
@@ -626,11 +626,6 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/adapters.ts#splitExitEdit': [
     'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS',
-  ],
-  'apps/api/src/modules/approval/adapters.ts#subsetVersion': [
-    '#camelRow',
-    'apps/api/src/modules/approval/context.ts#rowsOf',
-    'packages/domain/src/personnel/fields.ts#SUBSETS',
   ],
   'apps/api/src/modules/approval/adapters.ts#transferMetadata': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/adapters.ts#transferProcessCode': [
@@ -1128,21 +1123,24 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/disclosure.ts#readDetail': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
     'apps/api/src/modules/approval/definitions.ts#loadVersion',
-    '#SHOW_ORIGINALS_SETTING',
     '#adminCovers',
     '#assertCanOpen',
     '#ccNodeOf',
+    '#showOriginalsOf',
     'apps/api/src/modules/approval/handling-content.ts#selectContent',
     'apps/api/src/modules/approval/store.ts#displayWindow',
     'apps/api/src/modules/approval/store.ts#loadInstance',
     'apps/api/src/modules/approval/store.ts#loadLogs',
     'apps/api/src/modules/approval/store.ts#loadTasks',
     'apps/api/src/modules/approval/subjects.ts#loadRecusalFacts',
-    'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
   ],
   'apps/api/src/modules/approval/disclosure.ts#recordsHidden': [
     '#ownTasks',
     'packages/domain/src/approval/policies.ts#recordsHiddenFor',
+  ],
+  'apps/api/src/modules/approval/disclosure.ts#showOriginalsOf': [
+    '#SHOW_ORIGINALS_SETTING',
+    'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
   ],
   'apps/api/src/modules/approval/disclosure.ts#viewerNode': ['#ownTasks'],
   'apps/api/src/modules/approval/disclosure.ts#visibleRecordInstances': [
@@ -1438,10 +1436,33 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
   ],
+  'apps/api/src/modules/approval/frozen-read.ts#contentViewFor': [
+    'apps/api/src/modules/approval/handling-content.ts#contentViewOf',
+  ],
+  'apps/api/src/modules/approval/frozen-read.ts#openApprovalDetail': [
+    'apps/api/src/modules/approval/access.ts#memberInstanceScope',
+    'apps/api/src/modules/approval/disclosure.ts#readDetail',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'packages/domain/src/approval/catalog.ts#APPROVAL_INSTANCE_OBJECT',
+    'packages/domain/src/permission/decide.ts#buttonResource',
+  ],
+  'apps/api/src/modules/approval/frozen-read.ts#openContentRead': [
+    'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
+    '#contentViewFor',
+    '#openApprovalDetail',
+    'apps/api/src/modules/approval/store.ts#latestInstanceOf',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+  ],
   'apps/api/src/modules/approval/handling-content.ts#CONTENT_PROVIDERS': [
     '#SNAPSHOT_ONLY',
+    'apps/api/src/modules/contracts/frozen.ts#loadContractContent',
+    'apps/api/src/modules/employment/assessment-content.ts#loadAssessmentContent',
+    'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeContent',
+    'apps/api/src/modules/employment/retirement-intention-content.ts#loadIntentionContent',
     'apps/api/src/modules/idp/stage-content.ts#loadIdpStageContent',
     'apps/api/src/modules/org-adjustment/content.ts#loadOrgContent',
+    'apps/api/src/modules/personnel/frozen.ts#loadPersonnelContent',
   ],
   'apps/api/src/modules/approval/handling-content.ts#prepareHandlingContent': [
     'apps/api/src/modules/approval/context.ts#approvalError',

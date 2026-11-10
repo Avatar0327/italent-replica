@@ -10,7 +10,12 @@
  */
 import { createHash } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import { loadContractContent } from '../contracts/frozen.js';
+import { loadAssessmentContent } from '../employment/assessment-content.js';
+import { loadPartTimeContent } from '../employment/part-time/request-read.js';
+import { loadIntentionContent } from '../employment/retirement-intention-content.js';
 import { loadIdpStageContent } from '../idp/stage-content.js';
+import { loadPersonnelContent } from '../personnel/frozen.js';
 import { loadOrgContent } from '../org-adjustment/content.js';
 import type { BusinessSnapshot, BusinessType } from './adapters.js';
 import { approvalError, rowsOf, type ApprovalContext } from './context.js';
@@ -27,7 +32,10 @@ export interface HandlingContent {
   readonly ext: unknown;
 }
 
-/** ctx 是本次办理的命令上下文：需要按办理人裁剪源对象的 provider（IDP 关键信息，P2-1）从中取办理人与授权器。 */
+/**
+ * 第 4 个参数是办理上下文（办理人、办理时刻、租户时区）：个别业务要把「办理当时」的关联材料（如兼职的主职）一并冻结；
+ * 按办理人裁剪源对象的 provider（IDP 关键信息，P2-1）从中取办理人与授权器。系统处理时办理人为空（prepareHandlingContent）。
+ */
 type ExtLoader = (tx: Tx, tenantId: string, businessId: string, ctx: ApprovalContext) => Promise<unknown>;
 type ContentProvider =
   | { readonly kind: 'snapshot-only' }
@@ -43,14 +51,14 @@ const SNAPSHOT_ONLY: ContentProvider = { kind: 'snapshot-only' };
 export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> = {
   org_adjustment: { kind: 'extended', ext: (tx, tenantId, id) => loadOrgContent(tx, tenantId, id) },
   employment: SNAPSHOT_ONLY,
-  personnel_change: SNAPSHOT_ONLY,
-  contract: SNAPSHOT_ONLY,
+  personnel_change: { kind: 'extended', ext: loadPersonnelContent },
+  contract: { kind: 'extended', ext: loadContractContent },
   idp: { kind: 'extended', ext: (tx, tenantId, stageId, ctx) => loadIdpStageContent(tx, tenantId, stageId, ctx) },
-  part_time: SNAPSHOT_ONLY,
+  part_time: { kind: 'extended', ext: loadPartTimeContent },
   offer: SNAPSHOT_ONLY,
   offer_batch: SNAPSHOT_ONLY,
-  probation_assessment: SNAPSHOT_ONLY,
-  retirement_intention: SNAPSHOT_ONLY,
+  probation_assessment: { kind: 'extended', ext: (tx, tenantId, id) => loadAssessmentContent(tx, tenantId, id) },
+  retirement_intention: { kind: 'extended', ext: (tx, tenantId, id) => loadIntentionContent(tx, tenantId, id) },
   exit_handover: SNAPSHOT_ONLY,
   // 结果审批尚无真实 provider（适配器本身是占位，不可发起）：到达这里一律拒绝，不写空份
   talent_review: { kind: 'not-wired', reason: '盘点结果审批的办理份 provider 尚未接入' },

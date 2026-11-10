@@ -31,6 +31,13 @@ export async function addPreAssessmentTable(db: Db): Promise<() => Promise<void>
     await db.execute(sql`GRANT SELECT ON retirement_intentions TO app_user`);
     added.push('retirement_intentions');
   }
+  // R2-T09b：当前离职入口取待清空下属时左连退休申请扩展表（读 re_employed），迁移 be5a_retirement 才建；同法临时补空表。
+  if (!(await present(db, 'retirement_requests'))) {
+    await db.execute(sql`CREATE TABLE retirement_requests (tenant_id uuid NOT NULL, business_id uuid NOT NULL,
+      re_employed boolean NOT NULL)`);
+    await db.execute(sql`GRANT SELECT ON retirement_requests TO app_user`);
+    added.push('retirement_requests');
+  }
   // F-261：旧结构夹具仍经当前离职入口。临时任务表仅支持造旧实例，升级前撤掉；生产不做缺表兜底。
   if (!(await present(db, 'exit_requests'))) {
     // 当前提交入口会用 Drizzle 读完整扩展行；旧实例没有扩展数据，列齐全但始终保持空表。
@@ -41,7 +48,7 @@ export async function addPreAssessmentTable(db: Db): Promise<() => Promise<void>
       compensation_amount numeric(14,2), non_compete_amount numeric(14,2), last_pay_date date,
       social_insurance_end_month text, annual_leave_settled boolean, tax_period text, tax_year integer,
       employer_name text, actual_leave_date date, pending_transfer_ack jsonb, batch_id uuid,
-      duty_transfer_timing text, pre_release_date date, created_at timestamptz)`);
+      duty_transfer_timing text, duty_transfer_date date, pre_release_date date, created_at timestamptz)`);
     await db.execute(sql`GRANT SELECT ON exit_requests TO app_user`);
     added.push('exit_requests');
   }

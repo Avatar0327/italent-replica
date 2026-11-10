@@ -304,20 +304,37 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
 
   // ---- 第 1 轮审查 P2-03：连接故障要分类审计、记次数与原因 -------------------------------------------------------------
   /**
-   * 终止当前事务所在的 PG 后端，并等到后端确实消失、客户端也处理完断开事件，才让后面的语句发出：
-   * postgres.js 在断开事件还没处理完时发新语句，会在定时器里对已置空的连接取 write，成为进程级未捕获异常（CI 上出现过）。
+   * 终止当前事务所在的 PG 后端，且这个事务此后不再往下走（F-383）。
+   * postgres.js 3.4.9 的 sql.begin 在连接断开时，外层 Promise 先因 CONNECTION_CLOSED 拒绝，但内层 scope 仍在后台继续：
+   * 探针一返回，它就对已置空 socket 的连接发 commit / rollback，connection.js 的 nextWrite（setImmediate 回调）读 null socket，
+   * 抛进程级未捕获异常，Vitest 计 1 个 error 判红（CI 上偶发；等断开事件处理完再返回并不能避免，只是改变时机）。
+   * 所以探针杀掉后端后永不返回：外层照常收到连接关闭错误并走恢复路径，被遗弃的内层 scope 随闭包回收，不再写已死连接。
+   * 只作用于用例的被杀连接池，不改 postgres.js、不在进程级吞异常。
    */
-  async function killOwnBackend(db: Db, tx: Tx) {
+  async function killOwnBackend(db: Db, tx: Tx): Promise<never> {
     const [row] = rowsOf<{ pid: number }>(await tx.execute(sql`SELECT pg_backend_pid() AS pid`));
     await db.execute(sql`SELECT pg_terminate_backend(${row!.pid})`);
-    for (let i = 0; i < 100; i += 1) {
-      const [alive] = rowsOf<{ n: number }>(
-        await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity WHERE pid=${row!.pid}`),
-      );
-      if (alive!.n === 0) break;
-      await new Promise((done) => setTimeout(done, 20));
-    }
-    await new Promise((done) => setTimeout(done, 300));
+    return new Promise<never>(() => undefined);
+  }
+  /** 旁观进程级未捕获异常（不吞：Vitest 自己的监听照常收到）；用于断言被杀连接没有留下孤儿异常。 */
+  function watchUncaught() {
+    const seen: Error[] = [];
+    const listener = (error: Error) => void seen.push(error);
+    process.on('uncaughtException', listener);
+    return {
+      /**
+       * 收口前留一段观察窗口（不用来排先后，只用来看有没有异常冒出来）：被遗弃的事务体若继续往下走，
+       * 崩溃落在之后的 setImmediate 里，只看当下会漏掉。
+       */
+      async stop() {
+        try {
+          await new Promise((done) => setTimeout(done, 800));
+        } finally {
+          process.off('uncaughtException', listener);
+        }
+        return seen;
+      },
+    };
   }
   const failureAudits = (w: Awaited<ReturnType<typeof configured>>['w']) =>
     withTenant(w.db, w.tenantId, async (tx) =>
@@ -331,6 +348,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
     const { w, fields } = await configured('qlsync-pg-conn-exec');
     const recordId = await w.transferWith('2026-10-05', fields);
     qualificationSyncProbe.afterRecheck = (tx) => killOwnBackend(w.db, tx);
+    const uncaught = watchUncaught();
+    let seen: Error[] = [];
     try {
       const first = await withKillablePool(w.db, (killable) =>
         runQualificationSync(killable, w.tenantId, { clock: () => new Date('2026-10-10T05:00:00Z') }),
@@ -338,7 +357,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
       expect(first).toMatchObject({ failed: 1, done: 0 });
     } finally {
       qualificationSyncProbe.afterRecheck = undefined;
+      seen = await uncaught.stop(); // 失败路径也要移除进程级监听，再对收集结果断言
     }
+    expect(seen, '被杀连接不得留下进程级未捕获异常（F-383）').toEqual([]);
     const [row] = await w.queue(recordId);
     expect(row).toMatchObject({ state: 'failed', attempts: 1 });
     expect(row!.reason).toBeTruthy();
@@ -355,6 +376,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
     const { w, fields } = await configured('qlsync-pg-conn-commit');
     const recordId = await w.transferWith('2026-10-05', fields);
     qualificationSyncProbe.afterSettle = (tx) => killOwnBackend(w.db, tx);
+    const uncaught = watchUncaught();
+    let seen: Error[] = [];
     try {
       const first = await withKillablePool(w.db, (killable) =>
         runQualificationSync(killable, w.tenantId, { clock: () => new Date('2026-10-10T05:00:00Z') }),
@@ -362,12 +385,35 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
       expect(first).toMatchObject({ failed: 1, done: 0 });
     } finally {
       qualificationSyncProbe.afterSettle = undefined;
+      seen = await uncaught.stop();
     }
+    expect(seen, '被杀连接不得留下进程级未捕获异常（F-383）').toEqual([]);
     expect(await w.queue(recordId)).toMatchObject([{ state: 'failed', attempts: 1 }]);
     expect(await failureAudits(w)).toMatchObject([{ outcome: 'unknown' }]);
     expect(await w.subsets()).toEqual([]);
 
     expect(await w.run('2026-10-10T07:00:00Z')).toMatchObject({ done: 1 });
     expect(await w.subsets()).toHaveLength(1);
+  });
+
+  it('被终止连接上的事务体不再继续：postgres.js 的孤儿 scope 否则会向已死连接发 commit（F-383）', async () => {
+    const { w } = await configured('qlsync-pg-conn-orphan');
+    let resumed = false;
+    const uncaught = watchUncaught();
+    let seen: Error[] = [];
+    try {
+      await expect(
+        withKillablePool(w.db, (killable) =>
+          withTenant(killable, w.tenantId, async (tx) => {
+            await killOwnBackend(w.db, tx);
+            resumed = true; // 走到这里 = 孤儿 scope 复活，接着就会对已置空 socket 的连接写 commit
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'CONNECTION_CLOSED' });
+    } finally {
+      seen = await uncaught.stop();
+    }
+    expect(seen, '被杀连接不得留下进程级未捕获异常（F-383）').toEqual([]);
+    expect(resumed, '被终止连接上的事务体不得继续往下走').toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Db } from '@italent/db';
 import { expect } from 'vitest';
+import { grantJobUnit } from './support/job-unit.js';
 import { seedTenantWithMember, tenantApi, type RequestOptions } from './support/tenant-api.js';
 
 export const JOB_TODAY = '2026-10-01';
@@ -27,7 +28,17 @@ export async function jobSession(db: Db, label: string) {
       tenant: member.tenant.id,
     });
 
+  /** 职级新建需要创建人有职务体系授权管理单元（DEC-339①）；每个会话只补一次。 */
+  let unit: Promise<string> | undefined;
+  const grantUnit = () =>
+    (unit ??= grantJobUnit(
+      (method, path, init) => api.request(method, path, { ...init, user: member.user.id, tenant: member.tenant.id }),
+      member.user.id,
+      member.tenant.id,
+    ));
+
   async function create(kind: string, name: string, extra: Record<string, unknown> = {}): Promise<JobRecord> {
+    if (kind === 'levels') await grantUnit();
     const response = await request('POST', `/${kind}`, {
       ifMatch: 0,
       body: { name, code: `J${randomUUID().replaceAll('-', '')}`, startDate: JOB_TODAY, ...extra },
@@ -63,7 +74,7 @@ export async function jobSession(db: Db, label: string) {
     return (await response.json()) as { id: string; name: string; revision: number };
   }
 
-  return { ...member, request, create, detail, list, org };
+  return { ...member, request, create, detail, list, org, grantUnit };
 }
 
 export type JobSession = Awaited<ReturnType<typeof jobSession>>;
