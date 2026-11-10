@@ -60,6 +60,25 @@ export function projectOfferValues(frozen: FrozenContent, values: Row, disclosed
 }
 
 /**
+ * 批办理份的完整性：扩展形状（rows 数组、rowCeiling 为 null 或数组）+ 未经裁剪的冻结行逐行都有标签条目。
+ * 采集时每行都写一条标签（content.ts），缺条目只可能是份残缺。必须在任何字段裁剪 / 提前返回之前做完：
+ * 查看人看不到 offers 不等于份完好，残缺份一律 503（R2 / R3 P2-3，设计 §3.4、§5.1）。
+ */
+function checkedBatchCopy(frozen: FrozenContent) {
+  const ext = frozen.content.ext as Partial<OfferBatchContent> | null;
+  if (!isRecord(ext) || !Array.isArray(ext.rows)) throw malformed();
+  if (ext.rowCeiling !== null && !Array.isArray(ext.rowCeiling)) throw malformed();
+  const labelsByOffer = new Map<string, unknown>();
+  for (const row of ext.rows as unknown[]) if (isRecord(row)) labelsByOffer.set(String(row.offerId), row.labels);
+  const frozenLines: unknown = frozen.content.snapshot.values.offers;
+  if (!Array.isArray(frozenLines)) throw malformed();
+  for (const line of frozenLines) {
+    if (!isRecord(line) || !isRecord(labelsByOffer.get(String(line.offerId)))) throw malformed();
+  }
+  return { rowCeiling: ext.rowCeiling, labelsByOffer: labelsByOffer as ReadonlyMap<string, Labels> };
+}
+
+/**
  * Offer 批：行（成员、顺序、取值）取自办理时的 snapshot，批行内列按 Offer 对象字段权限披露：
  * 办理时上限 ∩ 查看人当前 Offer 字段权限；行不丢（不按单个 Offer 的数据范围丢行，DEC-057），隐藏列不留计数。
  */
@@ -68,23 +87,18 @@ export function projectBatchValues(
   values: Row,
   rowViewable: ReadonlySet<string> | undefined,
 ): Row {
-  // 份的完整性先于披露裁剪校验：offers 被裁掉不等于份完好，残缺份一律 503（R2 P2-3，设计 §3.4、§5.1）
-  const ext = frozen.content.ext as Partial<OfferBatchContent> | null;
-  if (!isRecord(ext) || !Array.isArray(ext.rows)) throw malformed();
-  if (ext.rowCeiling !== null && !Array.isArray(ext.rowCeiling)) throw malformed();
-  const labelsByOffer = new Map(ext.rows.map((row) => [row.offerId, row.labels]));
+  const { rowCeiling, labelsByOffer } = checkedBatchCopy(frozen); // 先校验整份，下面才按披露裁剪
   const lines = values.offers;
   if (!Array.isArray(lines)) return values; // 批的 offers 字段已被裁掉，整个子表不披露
-  const allowed = capViewable(rowViewable, ext.rowCeiling ? new Set(ext.rowCeiling) : null);
+  const allowed = capViewable(rowViewable, rowCeiling ? new Set(rowCeiling) : null);
   const open = (source: string | null | undefined) => source === null || !allowed || (!!source && allowed.has(source));
   const offers = (lines as Row[]).map((line) => {
     const cell: Row = { offerId: line.offerId };
     for (const [column, source] of Object.entries(BATCH_COLUMN_SOURCE)) {
       if (open(source) && Object.hasOwn(line, column)) cell[column] = line[column];
     }
-    // 采集时每行都写一条标签（content.ts）：行缺标签条目只可能是份残缺，不以空标签冒充
     const labels = labelsByOffer.get(String(line.offerId));
-    if (!isRecord(labels)) throw malformed();
+    if (!labels) throw malformed(); // 表单值取自同一份冻结快照，校验过的行必有条目；防御性兜底
     for (const key of BATCH_ROW_LABEL_KEYS) {
       if (open(sourceOf(key)) && Object.hasOwn(labels, key)) cell[key] = labels[key];
     }
