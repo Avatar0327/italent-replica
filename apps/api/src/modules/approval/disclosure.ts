@@ -13,6 +13,7 @@ import {
   rejectToPreviousAllowed,
   blindReviewFields,
   disclosedFieldNames,
+  hasApproveExit,
   hasExit,
   isCountersign,
   recordsHiddenFor,
@@ -229,7 +230,7 @@ function actionsFor(
     // DEC-144：同意 / 不同意是出口动作，按节点配置公布；会签节点的前加签人不计入流转规则，不公布不同意（DEC-152）。
     // 驳回是节点开关（F-003 第二轮），加签人沿用原节点开关。
     const votes = !isCountersign(node) || votesInTransition(allTasks, mine);
-    if (decide && hasExit(node, 'approve')) actions.push('approve');
+    if (decide && hasApproveExit(node)) actions.push('approve');
     if (decide && votes && hasExit(node, 'disagree')) actions.push('disagree');
     if (decide && rejectAllowed(node)) actions.push('reject');
     // DEC-318 K-39：驳回到上一步（单人节点、非第一个节点）、审批人跳转按节点开关公布，与命令同一判定
@@ -330,7 +331,7 @@ export function detailView(
       ...(edit ? { edit } : {}),
     },
     actions: [...new Set(actions)],
-    exits: exitsView(actions),
+    exits: exitsView(actions, node, data.snapshot),
     // DEC-104 / DEC-115：看不到审批记录的人不披露路径（路径会暴露已走过的节点与分支结果）
     path: hidden ? [] : pathView(version.nodes, instance.currentNodeKey, pathFacts),
   };

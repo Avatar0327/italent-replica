@@ -181,7 +181,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-routes.ts#day',
   ],
   'apps/api/src/modules/employee-self-service/application-service.ts#exitFields': [
-    'apps/api/src/modules/employment/exit-initiation.ts#exitOptionsSchema',
+    'apps/api/src/modules/employment/exit-options-schema.ts#exitOptionsSchema',
   ],
   'apps/api/src/modules/employee-self-service/application-service.ts#exitUpdate': ['#exitCreate'],
   'apps/api/src/modules/employee-self-service/application-service.ts#writeApplication': [

@@ -5,7 +5,7 @@
 import {
   APPROVAL_EDIT_REQUIRED,
   APPROVAL_TYPES,
-  hasExit,
+  hasApproveExit,
   type ApprovalNode,
   type ApprovalTypeCode,
 } from '@italent/domain';
@@ -49,7 +49,7 @@ export function editSurface(input: {
 }): EditSurface | null {
   const { approvalType, node, mine } = input;
   if (node.editMode === 'none' || editBlocker(approvalType, input.tasks, mine)) return null;
-  if (node.editMode === 'with_approve' && !hasExit(node, 'approve')) return null;
+  if (node.editMode === 'with_approve' && !hasApproveExit(node)) return null;
   const keys = editableKeys(node, input.viewable);
   if (!keys.length) return null;
   const required = APPROVAL_EDIT_REQUIRED[approvalType] ?? {};

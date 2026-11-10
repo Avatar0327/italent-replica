@@ -129,16 +129,26 @@ export interface Mou {
   revision: number;
   orgRanges?: OrgRange[];
 }
+export interface MouTreeNode extends Mou {
+  matched: boolean;
+  children: MouTreeNode[];
+}
 export interface Audit {
   id: string;
   occurredAt: string;
   operator: { name: string };
   operationLabel: string;
+  app: string;
   objectLabel: string;
   objectId: string | null;
   content: string;
   sourceAction: string | null;
   traceId: string | null;
+  sourcePageType: string | null;
+  sourcePage: string | null;
+  terminal: string | null;
+  clientVersion: string | null;
+  ip: string | null;
   changes?: { field: string; before: unknown; after: unknown }[];
   snapshot?: unknown;
 }

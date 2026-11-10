@@ -8,10 +8,10 @@ import { HANDOVER_NODE_KEYS } from '../employment/exit-handover.js';
 import {
   approverExpressionsOf,
   ASSESSMENT_ONLY_APPROVERS,
+  REHIRE_ONLY_APPROVERS,
   avoidsSelf,
   avoidsSubjects,
   ENABLED_AVOID_SUBJECTS_RESULTS,
-  hasExit,
   HANDOVER_FALLBACK_APPROVERS,
   HANDOVER_FALLBACK_LIMIT,
   HANDOVER_ONLY_APPROVERS,
@@ -26,6 +26,7 @@ import {
   type ApprovalTypeDefinition,
   type ProcessDefinition,
 } from './types.js';
+import { hasApproveExit } from './routes.js';
 
 export const MAX_NODES = 50;
 const NODE_KEY = /^[a-z][a-z0-9_]{0,39}$/;
@@ -99,6 +100,10 @@ export function approverSourceViolations(node: ApprovalNode, type: ApprovalTypeD
     violations.push(`节点 ${node.key} 的审批人“离职交接”类取值只能用于离职交接申请审批`);
   }
   violations.push(...subjectEmployeeViolations(node, type));
+  const rehireOnly = approverExpressionsOf(node).filter((expression) => REHIRE_ONLY_APPROVERS.has(expression));
+  if (type.code !== 'retirement' && rehireOnly.length) {
+    violations.push(`节点 ${node.key} 的审批人“返聘后直线经理 / 返聘后 HRBP”只能用于退休审批`);
+  }
   const offerViolation = offerApproverViolation(node, type);
   if (offerViolation) violations.push(offerViolation);
   const orgAdjustmentViolation = orgAdjustmentApproverViolation(node, type);
@@ -138,7 +143,7 @@ export function emptyApproverPolicyViolation(node: ApprovalNode, type: ApprovalT
     return `节点 ${node.key} 的空审批人处理方式只能配置在离职交接的两个会签节点上`;
   const allowed = work ? ['stop', 'auto_approve', 'specified'] : ['exception_admin', 'auto_approve', 'specified'];
   if (!allowed.includes(policy)) return `节点 ${node.key} 的空审批人处理方式不合法`;
-  if (policy === 'auto_approve' && !hasExit(node, 'approve')) return `节点 ${node.key} 配置自动同意时必须有同意出口`;
+  if (policy === 'auto_approve' && !hasApproveExit(node)) return `节点 ${node.key} 配置自动同意时必须有同意出口`;
   return null;
 }
 
@@ -218,7 +223,7 @@ export function publishViolations(definition: ProcessDefinition): DefinitionViol
   }
   if (!definition.nodes.length)
     violations.push({ reason: 'APPROVAL_NODES_REQUIRED', message: '流程至少需要一个审批节点' });
-  for (const node of definition.nodes.filter((candidate) => !hasExit(candidate, 'approve'))) {
+  for (const node of definition.nodes.filter((candidate) => !hasApproveExit(candidate))) {
     if (node.actions.addSign) {
       // 提示照搬原站（CustomerKB 109710739“勾选加签的XXX节点必须配置同意出口线”）。
       const message = `勾选加签的${node.name}节点必须配置同意出口线`;
@@ -239,7 +244,7 @@ export function publishViolations(definition: ProcessDefinition): DefinitionViol
  */
 export function avoidSubjectsViolations(node: ApprovalNode): DefinitionViolation[] {
   const violations: DefinitionViolation[] = [];
-  if (avoidsSubjects(node) && (isCountersign(node) || !hasExit(node, 'approve'))) {
+  if (avoidsSubjects(node) && (isCountersign(node) || !hasApproveExit(node))) {
     violations.push({
       reason: 'APPROVAL_AVOID_SUBJECTS_UNSUPPORTED',
       message: `节点 ${node.name}：多主体回避只能用于有「同意」出口的单人审批节点`,

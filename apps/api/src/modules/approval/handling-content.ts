@@ -11,6 +11,7 @@
 import { createHash } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { loadContractContent } from '../contracts/frozen.js';
+import { loadEmploymentContent } from '../employment/approval-content.js';
 import { loadAssessmentContent } from '../employment/assessment-content.js';
 import { loadPartTimeContent } from '../employment/part-time/request-read.js';
 import { loadIntentionContent } from '../employment/retirement-intention-content.js';
@@ -50,7 +51,7 @@ const SNAPSHOT_ONLY: ContentProvider = { kind: 'snapshot-only' };
  */
 export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> = {
   org_adjustment: { kind: 'extended', ext: (tx, tenantId, id) => loadOrgContent(tx, tenantId, id) },
-  employment: SNAPSHOT_ONLY,
+  employment: { kind: 'extended', ext: (tx, tenantId, id) => loadEmploymentContent(tx, tenantId, id) },
   personnel_change: { kind: 'extended', ext: loadPersonnelContent },
   contract: { kind: 'extended', ext: loadContractContent },
   idp: { kind: 'extended', ext: (tx, tenantId, stageId, ctx) => loadIdpStageContent(tx, tenantId, stageId, ctx) },

@@ -14,6 +14,7 @@ import {
   getUserAppScope,
   grantScopePrefill,
   listMous,
+  listMouTree,
   updateMou,
 } from './data-scope-admin.js';
 import { mouBody, scopeAppCode, scopeAssignmentBody } from './data-scope-schemas.js';
@@ -93,6 +94,18 @@ function mouRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await mouViewGuard(c, deps);
     const paging = page(c);
     return c.json({ items: await withTenant(deps.db, ctx.tenantId, (tx) => listMous(tx, paging)) });
+  });
+  // 必须排在 /mous/:id 之前，否则 tree 会被当成对象编号
+  router.get(`${BASE}/mous/tree`, async (c) => {
+    const ctx = await mouViewGuard(c, deps);
+    const parsed = z
+      .strictObject({
+        status: z.enum(['active', 'disabled', 'all']).default('active'),
+        q: z.string().trim().max(100).optional(),
+      })
+      .safeParse({ status: c.req.query('status') || undefined, q: c.req.query('q') || undefined });
+    if (!parsed.success) throw new AppError('VALIDATION_FAILED', '筛选参数不合法');
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => listMouTree(tx, parsed.data)));
   });
   router.get(`${BASE}/mous/:id`, async (c) => {
     const ctx = await mouViewGuard(c, deps);

@@ -188,10 +188,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/store.ts#appendLog',
   ],
+  'apps/api/src/modules/approval/actions.ts#approveExitOf': [
+    '#assertExit',
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'packages/domain/src/approval/routes.ts#availableBusinessExits',
+    'packages/domain/src/approval/routes.ts#hasBusinessExits',
+  ],
   'apps/api/src/modules/approval/actions.ts#approveTask': [
     '#applyEdit',
+    '#approveExitOf',
     '#assertApprovalEdit',
-    '#assertExit',
     '#assertNotBlindAfterEdit',
     '#assertOpen',
     '#auditTask',
@@ -542,13 +548,14 @@ export const GRAPH: Graph = {
     '#employmentAdapter',
     '#employmentPatch',
     '#employmentTransition',
-    '#exitInitiation',
+    '#exitConditionValues',
     '#exitMetadata',
     '#exitVersion',
     '#filledExitFields',
     '#latestPayload',
     '#originalsOf',
     '#ref',
+    '#rehirePlanOf',
     '#requireExitApprovalEdit',
     '#same',
     '#splitExitEdit',
@@ -585,6 +592,7 @@ export const GRAPH: Graph = {
     '#businessRevision',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
   ],
+  'apps/api/src/modules/approval/adapters.ts#exitConditionValues': ['#exitInitiation'],
   'apps/api/src/modules/approval/adapters.ts#exitInitiation': [
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
   ],
@@ -617,6 +625,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/adapters.ts#personnelChange': [
     'apps/api/src/modules/personnel/change-requests.ts#loadChange',
     'packages/domain/src/personnel/fields.ts#SUBSETS',
+  ],
+  'apps/api/src/modules/approval/adapters.ts#rehirePlanOf': [
+    'apps/api/src/modules/employment/retirement-application.ts#loadRetirementRequest',
   ],
   'apps/api/src/modules/approval/adapters.ts#requireExitApprovalEdit': [
     'apps/api/src/modules/employment/exit-gate.ts#businessKind',
@@ -1058,7 +1069,12 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#isCountersign',
     'packages/domain/src/approval/types.ts#nodeExits',
   ],
-  'apps/api/src/modules/approval/detail-path.ts#exitsView': ['packages/domain/src/approval/types.ts#EXIT_LABELS'],
+  'apps/api/src/modules/approval/detail-path.ts#exitsView': [
+    'packages/domain/src/approval/routes.ts#availableBusinessExits',
+    'packages/domain/src/approval/routes.ts#hasBusinessExits',
+    'packages/domain/src/approval/types.ts#BUSINESS_EXIT_LABELS',
+    'packages/domain/src/approval/types.ts#EXIT_LABELS',
+  ],
   'apps/api/src/modules/approval/detail-path.ts#loadPathFacts': ['#activatedExits', '#pendingWalk'],
   'apps/api/src/modules/approval/detail-path.ts#pendingWalk': [
     'apps/api/src/modules/approval/matching.ts#conditionContext',
@@ -1078,6 +1094,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/rules.ts#votesInTransition',
     'packages/domain/src/approval/recusal.ts#instanceRecusal',
     'packages/domain/src/approval/recusal.ts#nodeRecusal',
+    'packages/domain/src/approval/routes.ts#hasApproveExit',
     'packages/domain/src/approval/types.ts#hasExit',
     'packages/domain/src/approval/types.ts#isCountersign',
     'packages/domain/src/approval/types.ts#jumpAllowed',
@@ -1159,7 +1176,7 @@ export const GRAPH: Graph = {
     '#editBlocker',
     '#editableKeys',
     'packages/domain/src/approval/presets.ts#APPROVAL_EDIT_REQUIRED',
-    'packages/domain/src/approval/types.ts#hasExit',
+    'packages/domain/src/approval/routes.ts#hasApproveExit',
   ],
   'apps/api/src/modules/approval/engine.ts#advanceTo': [
     'apps/api/src/modules/approval/activations.ts#predecessorOf',
@@ -1180,9 +1197,12 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#isCountersign',
   ],
   'apps/api/src/modules/approval/engine.ts#afterNodeApproved': [
+    '#autoExitOf',
     '#followExit',
+    '#nodeIndex',
     'apps/api/src/modules/approval/store.ts#loadTasks',
     'apps/api/src/modules/approval/task-state.ts#AWAITING_STATUSES',
+    'packages/domain/src/approval/routes.ts#hasBusinessExits',
   ],
   'apps/api/src/modules/approval/engine.ts#announceAssignment': [
     'apps/api/src/modules/approval/notifications.ts#applyMessageRules',
@@ -1209,6 +1229,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/notifications.ts#applyMessageRules',
     'apps/api/src/modules/approval/store.ts#appendLog',
     'apps/api/src/modules/approval/store.ts#insertTask',
+    'packages/domain/src/approval/routes.ts#hasBusinessExits',
   ],
   'apps/api/src/modules/approval/engine.ts#blindReviewSeat': [
     '#logEnded',
@@ -1457,6 +1478,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/handling-content.ts#CONTENT_PROVIDERS': [
     '#SNAPSHOT_ONLY',
     'apps/api/src/modules/contracts/frozen.ts#loadContractContent',
+    'apps/api/src/modules/employment/approval-content.ts#loadEmploymentContent',
     'apps/api/src/modules/employment/assessment-content.ts#loadAssessmentContent',
     'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeContent',
     'apps/api/src/modules/employment/retirement-intention-content.ts#loadIntentionContent',
@@ -2298,7 +2320,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/sources.ts#expressionValue',
     'packages/domain/src/approval/sources.ts#sourceKey',
   ],
-  'apps/api/src/modules/approval/simulation.ts#walkOf': ['packages/domain/src/approval/routes.ts#walkDefaultPath'],
+  'apps/api/src/modules/approval/simulation.ts#walkOf': [
+    'packages/domain/src/approval/routes.ts#hasBusinessExits',
+    'packages/domain/src/approval/routes.ts#walkDefaultPath',
+  ],
   'apps/api/src/modules/approval/source-identity.ts#memberUserIds': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/permission/auto-held.ts#isAutoHeld',

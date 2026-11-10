@@ -10,7 +10,7 @@ import {
   type HealthMetric,
 } from '@italent/domain';
 import { healthDependencies, type HealthDependencies } from './health-dependencies.js';
-import { CalcObjectFailure } from './calc-contract.js';
+import { CalcObjectFailure } from './calc-contract-core.js';
 export interface HealthSample {
   /** 人员键用于去重；来源零提名不伪造人员样本。 */
   key: string;
