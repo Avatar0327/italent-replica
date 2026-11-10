@@ -40,26 +40,30 @@ async function operator(x: ImportWorld, revoke: Revoke = {}) {
     asAdmin: { user: user.id, tenant: tenant.id },
   };
   const profile = await createProfile(pw, `imp-${uniqueSuffix()}`, { apps: ['TenantBase'] });
-  for (const definition of OBJECTS) {
-    const response = await setObjectPermission(
-      pw,
-      profile,
-      {
-        dataOperations: { create: revoke.noCreate !== definition.code, update: true, delete: true },
-        fields: definition.fields.map((f) => ({
-          fieldCode: f.code,
-          view: true,
-          edit: !f.system && !(revoke.field?.[0] === definition.code && revoke.field[1] === f.code),
-        })),
-        buttons: definition.buttons
-          .filter((b) => !(revoke.noButton && b.code === BUTTON))
-          .map((b) => ({ buttonCode: b.code, level: b.level })),
-      },
-      definition.code,
-    );
-    expect(response.status, `${definition.code} ${await response.clone().text()}`).toBe(200);
-  }
-  for (const target of [RECORD, EMPLOYEE, PERSONNEL_OBJECT].filter((t) => t !== revoke.noScope)) {
+  /** 按 `revoke` 重配身份的对象权限（可在授权后再次调用，用于撤权场景）。 */
+  const configure = async (missing: Revoke) => {
+    for (const definition of OBJECTS) {
+      const response = await setObjectPermission(
+        pw,
+        profile,
+        {
+          dataOperations: { create: missing.noCreate !== definition.code, update: true, delete: true },
+          fields: definition.fields.map((f) => ({
+            fieldCode: f.code,
+            view: true,
+            edit: !f.system && !(missing.field?.[0] === definition.code && missing.field[1] === f.code),
+          })),
+          buttons: definition.buttons
+            .filter((b) => !(missing.noButton && b.code === BUTTON))
+            .map((b) => ({ buttonCode: b.code, level: b.level })),
+        },
+        definition.code,
+      );
+      expect(response.status, `${definition.code} ${await response.clone().text()}`).toBe(200);
+    }
+  };
+  await configure(revoke);
+  for (const target of [RECORD, EMPLOYEE, PERSONNEL_OBJECT, EDUCATION].filter((t) => t !== revoke.noScope)) {
     const response = await pw.api.request(
       'PUT',
       `/api/tenant/permission/profiles/${profile.id}/data-scopes/TenantBase`,
@@ -74,13 +78,14 @@ async function operator(x: ImportWorld, revoke: Revoke = {}) {
   await makeGrantable(pw, [profile.id]);
   const member = await addMember(pw, `imp-op-${uniqueSuffix()}`);
   expect((await grant(pw, member.id, profile.id)).status).toBe(201);
-  return (rows: readonly unknown[]) =>
+  const submit = (rows: readonly unknown[], options: { key?: string | null } = {}) =>
     pw.api.request('POST', '/api/tenant/employment/exits/import', {
       user: member.id,
       tenant: tenant.id,
       body: { fileName: '合成导入.xlsx', rows },
-      idempotencyKey: `dm30-authz-${uniqueSuffix()}`,
+      idempotencyKey: options.key === undefined ? `dm30-authz-${uniqueSuffix()}` : options.key,
     });
+  return Object.assign(submit, { reconfigure: configure });
 }
 
 const denied = async (x: ImportWorld, revoke: Revoke, rows: (d: string) => unknown[]) => {
@@ -131,6 +136,33 @@ describe('AC-DM-30-F493-23 真实授权器下的提交', () => {
   });
 });
 
+describe('AC-DM-30-F493-09/10 重放与幂等键（真实授权器）', () => {
+  it('第一次成功后撤掉导入按钮：同键重放 403，不回放 202，批次数不变', async () => {
+    const x = await importWorld(database().db, '09-replay');
+    const d = await x.dept('撤权重放部门');
+    const submit = await operator(x);
+    const key = `dm30-replay-${uniqueSuffix()}`;
+    const first = await submit([x.row(1, d.code)], { key });
+    expect(first.status, await first.clone().text()).toBe(202);
+    await x.settle();
+    await submit.reconfigure({ noButton: true });
+    const before = await x.writeCounts();
+    const replay = await submit([x.row(1, d.code)], { key });
+    expect(replay.status, await replay.clone().text()).toBe(403);
+    expect(await x.writeCounts()).toEqual(before);
+  });
+
+  it('缺 Idempotency-Key → 400，零写入', async () => {
+    const x = await importWorld(database().db, '10-nokey');
+    const d = await x.dept('缺键部门');
+    const submit = await operator(x);
+    const before = await x.writeCounts();
+    const response = await submit([x.row(1, d.code)], { key: null });
+    expect(response.status, await response.clone().text()).toBe(400);
+    expect(await x.writeCounts()).toEqual(before);
+  });
+});
+
 describe('AC-DM-30-F493-37 档案字段写权（真实授权器）', () => {
   it('收回档案 email 写权 → 403，不落批次', async () => {
     const x = await importWorld(database().db, '37-email');
@@ -148,6 +180,30 @@ describe('AC-DM-30-F493-37 档案字段写权（真实授权器）', () => {
     const filled = await submit([x.row(2, d.code), x.row(3, d.code, { mobilePhone: '13800000002' })]);
     expect(filled.status).toBe(403);
     expect(await x.writeCounts()).toEqual(before);
+  });
+
+  // 写入端口还会设置「最高学历」「主修专业」两个标志：授权按实际写入字段的并集判（与实习生建档同口径）
+  it.each(['isHighestEducation', 'isMainMajor'])('T/U 列有值但没有教育经历 %s 写权 → 403，不落批次', async (flag) => {
+    const x = await importWorld(database().db, `37-${flag}`);
+    await denied(x, { field: [EDUCATION, flag] }, (code) => [
+      x.row(1, code, { school: '合成大学', major: '合成专业' }),
+    ]);
+  });
+
+  it('对照：权限齐全且 T/U 列有值 → 202，教育经历带两个标志', async () => {
+    const x = await importWorld(database().db, '37-edu-ok');
+    const d = await x.dept('有教育部门');
+    const submit = await operator(x);
+    const response = await submit([x.row(1, d.code, { school: '合成大学', major: '合成专业' })]);
+    expect(response.status, await response.clone().text()).toBe(202);
+  });
+
+  it('只收回 isMainMajor 写权：T、U 列全空时仍 202（不写教育经历就不需要这些字段权）', async () => {
+    const x = await importWorld(database().db, '37-flag-empty');
+    const d = await x.dept('无教育部门');
+    const submit = await operator(x, { field: [EDUCATION, 'isMainMajor'] });
+    const response = await submit([x.row(1, d.code)]);
+    expect(response.status, await response.clone().text()).toBe(202);
   });
 
   it('T 列有值但没有教育经历新增权 → 403，不落批次', async () => {

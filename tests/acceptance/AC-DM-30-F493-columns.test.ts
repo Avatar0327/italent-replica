@@ -165,7 +165,17 @@ describe('AC-DM-30-F493-40 性别 / 民族 / 政治面貌选项（DEC-840①）'
     const batchId = await x.imported(rows);
     const result = await x.rowsOfBatch(batchId);
     expect(result.map((r) => r.status)).toEqual([
-      'succeeded', 'failed', 'failed', 'failed', 'failed', 'failed', 'failed', 'failed', 'succeeded', 'succeeded', 'failed',
+      'succeeded',
+      'failed',
+      'failed',
+      'failed',
+      'failed',
+      'failed',
+      'failed',
+      'failed',
+      'succeeded',
+      'succeeded',
+      'failed',
     ]);
     const columnsOf = (no: number) => result[no - 1]!.errors.map((e) => e.column);
     expect([2, 3, 4, 5, 6, 7, 8].map((no) => columnsOf(no))).toEqual([['N'], ['N'], ['N'], ['P'], ['P'], ['Q'], ['Q']]);
@@ -173,6 +183,14 @@ describe('AC-DM-30-F493-40 性别 / 民族 / 政治面貌选项（DEC-840①）'
     for (const no of [2, 3, 4, 5, 6, 7, 8, 11])
       for (const error of result[no - 1]!.errors) expect(error.reason).toBe('OPTION_NOT_FOUND');
     expect(await x.batchOf(batchId)).toMatchObject({ created_count: 3, error_row_count: 8, error_count: 10 });
+    // 收尾操作日志：计数按行（8 个失败行），errorReport 按错误条（10 条，每条带原因码），设计 §10.3
+    const [log] = await x.q<{ failure_count: number; error_report: { rowIndex: number; reason: string }[] }>(x.sql`
+      SELECT failure_count, error_report FROM audit_operation_logs
+      WHERE tenant_id=${x.tenantId} AND object_type='exit-import' AND object_id::text=${batchId}`);
+    expect(log!.failure_count).toBe(8);
+    expect(log!.error_report).toHaveLength(10);
+    expect(log!.error_report.map((entry) => entry.rowIndex)).toEqual([1, 2, 3, 4, 5, 6, 7, 10, 10, 10]);
+    for (const entry of log!.error_report) expect(entry.reason).toBe('OPTION_NOT_FOUND');
     expect(await x.employeeCount()).toBe(3);
     const profiles = await Promise.all([1, 9, 10].map((no) => x.profileOf(result[no - 1]!.employee_id!)));
     expect(profiles[0]).toMatchObject({ gender: '男', nation: '汉族', political_status: '群众' });

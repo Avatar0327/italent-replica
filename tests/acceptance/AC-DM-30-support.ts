@@ -187,7 +187,18 @@ export async function importWorld(db: Db, label: string) {
       body: { startDate: '2020-01-01', ...body },
     });
     expect(response.status, `${path} ${await response.clone().text()}`).toBe(201);
-    return (await response.json()) as { id: string };
+    return (await response.json()) as { id: string; revision: number };
+  };
+  /** 修订职务体系对象（生效日 ≥ 当前起点；等于起点即同日修订，产生同起点的新版本）。返回新 revision。 */
+  const jobPatch = async (kind: string, id: string, revision: number, body: object) => {
+    const response = await jobApi.request('PATCH', `/api/tenant/job/${kind}/${id}`, {
+      user: w.session.user.id,
+      tenant: tenantId,
+      ifMatch: revision,
+      body,
+    });
+    expect(response.status, `${kind} ${await response.clone().text()}`).toBe(200);
+    return ((await response.json()) as { revision: number }).revision;
   };
   let unit: Promise<string> | undefined;
   async function jobs(orgId: string) {
@@ -258,6 +269,7 @@ export async function importWorld(db: Db, label: string) {
     writeCounts,
     profileOf,
     jobs,
+    jobPatch,
     duplicatePosition,
     disable,
     errorOf,
