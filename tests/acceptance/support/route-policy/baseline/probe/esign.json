@@ -1,0 +1,78 @@
+{
+  "GET /api/tenant/esign/scenes/transfer": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.ESignSettings"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.ESignSettings:view"
+    ]
+  },
+  "GET /api/tenant/esign/template-options/transfer-form": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Transfer.Hr@detail",
+      "obj:TenantBase.EmploymentRecord:create"
+    ]
+  },
+  "GET /api/tenant/esign/templates": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.ESignSettings"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.ESignSettings:view"
+    ]
+  },
+  "PATCH /api/tenant/esign/templates/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "dab75f3f5a99",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.ESignSettings:update"
+    ]
+  },
+  "POST /api/tenant/esign/templates": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "d430e8ae4835",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.ESignSettings:create"
+    ]
+  },
+  "PUT /api/tenant/esign/scenes/transfer": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "35b289034ba8",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.ESignSettings:update"
+    ]
+  }
+}

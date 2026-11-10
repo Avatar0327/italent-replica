@@ -14,7 +14,7 @@
 import { OFFER_NAME_FIELDS, OFFER_OBJECT, tenantLocalDate } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import type { Run } from '../approval/engine.js';
-import { approvalError, rowsOf } from '../approval/context.js';
+import { approvalError, rowsOf, type ApprovalContext } from '../approval/context.js';
 import type { HandlerFacts } from '../approval/handling-content.js';
 import { personnelHooks } from '../employment/personnel-hooks.js';
 
@@ -141,6 +141,7 @@ export async function loadOfferContent(
   tx: Tx,
   _tenantId: string,
   _businessId: string,
+  _ctx: ApprovalContext,
   run: Run,
   handler: HandlerFacts,
 ): Promise<OfferContent> {
@@ -164,6 +165,7 @@ export async function loadOfferBatchContent(
   tx: Tx,
   _tenantId: string,
   _businessId: string,
+  _ctx: ApprovalContext,
   run: Run,
   handler: HandlerFacts,
 ): Promise<OfferBatchContent> {

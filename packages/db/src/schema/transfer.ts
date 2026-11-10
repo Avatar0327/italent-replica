@@ -15,6 +15,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { contractRecords } from './contracts.js';
+import { esignTemplates } from './esign.js';
 import { employmentBusinessObjects, employmentEmployees } from './employment.js';
 import { orgObjects } from './org.js';
 import { tenants, users } from './tenancy.js';
@@ -299,6 +300,8 @@ export const transferLinkageVersions = pgTable(
     onTrialMonths: integer('on_trial_months'),
     handover: boolean('handover').notNull().default(false),
     handoverPersonId: uuid('handover_person_id'),
+    /** 是否发起电子文件签署（F-481 设计 §3.1）；所选模板在 transfer_linkage_esign_templates。 */
+    esignRequested: boolean('esign_requested').notNull().default(false),
     partTimeRecordIds: uuid('part_time_record_ids')
       .array()
       .notNull()
@@ -388,6 +391,32 @@ export const transferLinkageDuties = pgTable(
           AND ${t.orgRole} IN ('person_in_charge', 'shop_owner', 'hrbp')
           AND ${t.subordinateId} IS NULL AND ${t.relation} IS NULL`,
     ),
+  ],
+);
+
+/** 联动版本所选的电子签署模板（F-481 设计 §4.1，与 transfer_linkage_duties 同型：一次保存一版，不原地改）。 */
+export const transferLinkageEsignTemplates = pgTable(
+  'transfer_linkage_esign_templates',
+  {
+    tenantId: tenant(),
+    versionId: uuid('version_id').notNull(),
+    /** 所选顺序，从 1 起。 */
+    seq: integer('seq').notNull(),
+    templateId: uuid('template_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.versionId, t.seq] }),
+    foreignKey({
+      name: 'transfer_linkage_esign_templates_version_fk',
+      columns: [t.tenantId, t.versionId],
+      foreignColumns: [transferLinkageVersions.tenantId, transferLinkageVersions.id],
+    }),
+    foreignKey({
+      name: 'transfer_linkage_esign_templates_template_fk',
+      columns: [t.tenantId, t.templateId],
+      foreignColumns: [esignTemplates.tenantId, esignTemplates.id],
+    }),
+    check('transfer_linkage_esign_templates_seq', sql`${t.seq} > 0`),
   ],
 );
 

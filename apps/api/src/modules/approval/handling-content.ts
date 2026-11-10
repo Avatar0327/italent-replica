@@ -10,7 +10,12 @@
  */
 import { createHash } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import { loadContractContent } from '../contracts/frozen.js';
+import { loadAssessmentContent } from '../employment/assessment-content.js';
+import { loadPartTimeContent } from '../employment/part-time/request-read.js';
+import { loadIntentionContent } from '../employment/retirement-intention-content.js';
 import { loadOfferBatchContent, loadOfferContent } from '../offer/content.js';
+import { loadPersonnelContent } from '../personnel/frozen.js';
 import { loadOrgContent } from '../org-adjustment/content.js';
 import type { BusinessSnapshot, BusinessType } from './adapters.js';
 import { actorOf, approvalError, rowsOf, type ApprovalContext } from './context.js';
@@ -37,8 +42,18 @@ export interface HandlerFacts {
   viewableOf(objectCode: string): Promise<ReadonlySet<string> | undefined>;
 }
 
-/** run / handler 追加在末尾：只按业务单取内容的 provider 仍可只声明前三个参数（与 P1 契约兼容）。 */
-type ExtLoader = (tx: Tx, tenantId: string, businessId: string, run: Run, handler: HandlerFacts) => Promise<unknown>;
+/**
+ * 第 4 个参数是办理上下文（办理人、办理时刻、租户时区）：个别业务要把「办理当时」的关联材料（如兼职的主职）一并冻结。
+ * run / handler 追加在末尾（F-476 P6）：只用前几个参数的 provider 不必声明（与 P1 / P5 契约兼容）。
+ */
+type ExtLoader = (
+  tx: Tx,
+  tenantId: string,
+  businessId: string,
+  ctx: ApprovalContext,
+  run: Run,
+  handler: HandlerFacts,
+) => Promise<unknown>;
 type ContentProvider =
   | { readonly kind: 'snapshot-only' }
   | { readonly kind: 'extended'; readonly ext: ExtLoader }
@@ -53,14 +68,14 @@ const SNAPSHOT_ONLY: ContentProvider = { kind: 'snapshot-only' };
 export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> = {
   org_adjustment: { kind: 'extended', ext: (tx, tenantId, id) => loadOrgContent(tx, tenantId, id) },
   employment: SNAPSHOT_ONLY,
-  personnel_change: SNAPSHOT_ONLY,
-  contract: SNAPSHOT_ONLY,
+  personnel_change: { kind: 'extended', ext: loadPersonnelContent },
+  contract: { kind: 'extended', ext: loadContractContent },
   idp: SNAPSHOT_ONLY,
-  part_time: SNAPSHOT_ONLY,
+  part_time: { kind: 'extended', ext: loadPartTimeContent },
   offer: { kind: 'extended', ext: loadOfferContent },
   offer_batch: { kind: 'extended', ext: loadOfferBatchContent },
-  probation_assessment: SNAPSHOT_ONLY,
-  retirement_intention: SNAPSHOT_ONLY,
+  probation_assessment: { kind: 'extended', ext: (tx, tenantId, id) => loadAssessmentContent(tx, tenantId, id) },
+  retirement_intention: { kind: 'extended', ext: (tx, tenantId, id) => loadIntentionContent(tx, tenantId, id) },
   exit_handover: SNAPSHOT_ONLY,
   // 结果审批尚无真实 provider（适配器本身是占位，不可发起）：到达这里一律拒绝，不写空份
   talent_review: { kind: 'not-wired', reason: '盘点结果审批的办理份 provider 尚未接入' },
@@ -118,7 +133,7 @@ export async function prepareHandlingContent(
   run: Run,
   viewable: ReadonlySet<string> | undefined,
 ): Promise<PreparedContent> {
-  const { instance, snapshot } = run;
+  const { instance, snapshot, ctx } = run;
   const provider = CONTENT_PROVIDERS[instance.businessType];
   if (provider.kind === 'not-wired') {
     throw approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_CONTENT_NOT_WIRED', '该类审批暂不能办理', {
@@ -127,7 +142,7 @@ export async function prepareHandlingContent(
   }
   const ext =
     provider.kind === 'extended'
-      ? await provider.ext(tx, run.ctx.tenantId, instance.businessId, run, handlerFacts(tx, run, viewable))
+      ? await provider.ext(tx, ctx.tenantId, instance.businessId, ctx, run, handlerFacts(tx, run, viewable))
       : null;
   const json = JSON.stringify({ snapshot, ext } satisfies HandlingContent);
   const bytes = Buffer.byteLength(json, 'utf8');

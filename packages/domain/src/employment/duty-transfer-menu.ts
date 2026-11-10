@@ -12,6 +12,9 @@ export const DUTY_TRANSFER_STATUS = { unfinished: 0, completed: 1, voided: 2, dr
 export const DUTY_TRANSFER_SOURCE = { menu: 1, leave: 2, transfer: 3, retirement: 4 } as const;
 export const DUTY_TYPE = { orgRole: 1, subordinate: 2 } as const;
 
+/** DT-R4：直接离职 / 直接退休时仍有职责未指定接收人的拒绝文案（规格原文，逐字）。 */
+export const DUTY_TRANSFER_REQUIRED_MESSAGE = '检查到该人员还有职责未指定接收人，无法继续操作。请执行职责转交操作';
+
 /** 职责转交记录的字段（字段权限与审计标签同一份编码）。 */
 export const DUTY_TRANSFER_FIELDS = [
   'employeeId',

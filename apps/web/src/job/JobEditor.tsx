@@ -13,11 +13,13 @@ import {
   jobTiming,
   referenceKind,
   referenceObject,
+  referencePath,
   referenceQuery,
   type JobKind,
   type JobRow,
 } from './page-model.js';
 import { pageText as m } from './messages.js';
+import { ReferenceName } from './ReferenceName.js';
 
 const numbers = new Set([
   'layerLevel',
@@ -27,6 +29,9 @@ const numbers = new Set([
   'scoreHigh',
   'displayOrder',
   'evaluationScore',
+  'salaryUpper',
+  'salaryMid',
+  'salaryLower',
   'adminSequence',
   'dottedSequence',
 ]);
@@ -53,7 +58,7 @@ export function ReferenceSelect({
 }) {
   const [query, setQuery] = useState('');
   const searchable = useNameSearchable(kind);
-  const base = kind === 'org' ? '/api/tenant/org/organizations' : `/api/tenant/job/${kind}`;
+  const base = referencePath(kind);
   const remote = useRemote<{ items: JobRow[] }>(`${base}?${referenceQuery(date, query, searchable)}`);
   const choices = (remote.data?.items ?? [])
     .filter((item) => item.id !== exclude)
@@ -130,31 +135,64 @@ function jobFormClass(kind: JobKind, original?: JobRow) {
   if (original || kind === 'layers' || kind === 'professional-lines') return undefined;
   return kind === 'posts' || kind === 'positions' ? 'job-form' : 'job-form job-form-single';
 }
+/** 新建职级的资源集合候选：只有多个授权管理单元时才出下拉，一个由服务端自动填写（DEC-339①）。 */
+function useResourceSets(kind: JobKind, creating: boolean) {
+  const remote = useRemote<{ items: { id: string }[] }>(
+    kind === 'levels' && creating ? '/api/tenant/job/candidates/resource-sets' : null,
+  );
+  return remote.data?.items ?? [];
+}
+function ResourceSetSelect({ options, date, value, onChange }: ResourceSetProps) {
+  return (
+    <Select
+      className="r1-wide-control"
+      value={value}
+      onChange={onChange}
+      aria-label={m.resourceSetHint}
+      placeholder={m.resourceSetHint}
+      options={options.map(({ id }) => ({ value: id, label: <ReferenceName kind="org" id={id} date={date} /> }))}
+    />
+  );
+}
+interface ResourceSetProps {
+  options: { id: string }[];
+  date: string;
+  value?: string;
+  onChange?: (value: string) => void;
+}
 export function JobEditor(props: EditorProps) {
   const { kind, original, access } = props;
   const record = useJobCommand(props);
+  const resourceSets = useResourceSets(kind, !original);
   // 业务时点只从槽里取：提示、候选、重读与请求体都用它，换列表日期不另起命令。
   const { date } = record.context;
   const timing = jobTiming(original, date, date, access.field('startDate'));
   const sections = jobFormGroups(kind, Boolean(original)).map((group) => ({
     title: m[group.key as 'basic'],
-    fields: group.fields.map((name): FormField => {
-      const control = jobControl(name, kind, timing.asOf, original?.id);
-      return {
-        name,
-        label: jobLabel(kind, name, 'form'),
-        control,
-        requiredMark: original ? undefined : createRequiredMarks[kind]?.includes(name),
-        // 生效日期沿用页面级恢复槽的实际时点，只展示、不另造一个提交日期。
-        display: name === 'startDate' ? timing.asOf : undefined,
-        access:
-          name === 'startDate' ? { ...access.field(name), editable: false } : access.field(jobPermissionField(name)),
-        rules:
-          name === 'name' || (!original && ['orgId', 'postId'].includes(name))
-            ? [{ required: true, message: m.required }]
-            : undefined,
-      };
-    }),
+    fields: group.fields
+      .filter((name) => name !== 'ownerOrgId' || resourceSets.length > 1)
+      .map((name): FormField => {
+        const control =
+          name === 'ownerOrgId' ? (
+            <ResourceSetSelect options={resourceSets} date={timing.asOf} />
+          ) : (
+            jobControl(name, kind, timing.asOf, original?.id)
+          );
+        return {
+          name,
+          label: jobLabel(kind, name, 'form'),
+          control,
+          requiredMark: original ? undefined : createRequiredMarks[kind]?.includes(name),
+          // 生效日期沿用页面级恢复槽的实际时点，只展示、不另造一个提交日期。
+          display: name === 'startDate' ? timing.asOf : undefined,
+          access:
+            name === 'startDate' ? { ...access.field(name), editable: false } : access.field(jobPermissionField(name)),
+          rules:
+            name === 'name' || (!original && ['orgId', 'postId', 'ownerOrgId'].includes(name))
+              ? [{ required: true, message: m.required }]
+              : undefined,
+        };
+      }),
   }));
   const groups = record.resumed ? withResumed(sections, date) : sections;
   const build = (body: Record<string, unknown>, current?: JobRow) =>

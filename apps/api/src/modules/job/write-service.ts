@@ -9,6 +9,7 @@ import { employmentJobPersonnel } from './employment-port.js';
 import { applyPositionPersonnelRules } from './personnel.js';
 import { assertNotPausedByOrgAdjustment } from '../org-adjustment/pause.js';
 import { latestJobObject, loadJobObject, type JobRecord } from './read-model.js';
+import { resolveResourceSet } from './resource-set.js';
 import { lockJobTenant } from './settings.js';
 import { auditJob, insertRow, rowsOf } from './store.js';
 import type {
@@ -39,7 +40,11 @@ export async function createJobObject(
     kind === 'posts' || kind === 'positions' ? { ...input, syncSequenceToAssignments: false } : input,
   );
   await lockJobTenant(tx, ctx);
-  const fields = await validateJobFields(tx, ctx, kind, id, normalized);
+  const withOwner =
+    kind === 'levels'
+      ? { ...normalized, ownerOrgId: await resolveResourceSet(tx, ctx, normalized.ownerOrgId as string) }
+      : normalized;
+  const fields = await validateJobFields(tx, ctx, kind, id, withOwner);
   await assertOrgNotPaused(tx, ctx, kind, fields);
   await assertJobCodeAvailable(tx, ctx, kind, fields);
   if (kind === 'positions') await assertPositionNameAvailable(tx, ctx, fields);

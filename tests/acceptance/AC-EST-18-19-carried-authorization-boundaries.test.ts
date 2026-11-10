@@ -14,7 +14,7 @@ type World = Awaited<ReturnType<typeof carriedWorld>>;
 const absent = { error: { code: 'NOT_FOUND', message: '编制在该时点不存在' } };
 const clock = () => new Date('2026-10-01T01:00:00Z');
 
-function scopedApi(w: World, scope: 'from' | 'to' | 'creator') {
+function scopedApi(w: World, scope: 'from' | 'to' | 'creator', creatorId = w.session.user.id) {
   const authorize: Authorizer = () => true;
   registerScopeProvider(authorize, {
     scope: async (query) => {
@@ -22,7 +22,7 @@ function scopedApi(w: World, scope: 'from' | 'to' | 'creator') {
         return {
           ...EMPTY_SCOPE,
           hasDataPermission: true,
-          terms: [{ dimension: 'using_user', orgIds: [], personIds: [], creatorId: w.session.user.id }],
+          terms: [{ dimension: 'using_user', orgIds: [], personIds: [], creatorId }],
         };
       const orgIds =
         query.objectCode === MODULE_OBJECTS.establishment.code && scope !== 'creator'
@@ -121,6 +121,8 @@ async function otherOwnedCapacity(w: World, variant: 'scheme' | 'capacity' | 'ac
   });
   expect(schemeResponse.status).toBe(201);
   const scheme = (await schemeResponse.json()) as { id: string };
+  // F-484（DEC-295①）：from / to 已有本方案的 2026 年度编制，别人用另一方案在同组织同期间建编制一律被拒，
+  // “他人创建的第二候选”在写入侧不再可能出现。
   for (const orgId of [w.from.id, w.to.id]) {
     const capacity = await write('capacities', {
       schemeId: scheme.id,
@@ -129,17 +131,19 @@ async function otherOwnedCapacity(w: World, variant: 'scheme' | 'capacity' | 'ac
       effectiveDate: variant === 'active' ? '2026-10-01' : '2026-11-01',
       localCapacity: 5,
     });
-    expect(capacity.status, await capacity.clone().text()).toBe(201);
+    expect(capacity.status, await capacity.clone().text()).toBe(409);
+    expect(await capacity.json()).toMatchObject({
+      error: { code: 'CONFLICT', details: { reason: 'CAPACITY_PERIOD_OVERLAP' } },
+    });
   }
 }
 
 it.each(['scheme', 'capacity', 'active'] as const)(
-  'AC-EST-19 创建人范围下，他人创建的 %s 候选仅在实际参与时需要授权',
+  'AC-EST-19 创建人范围下，他人用另一方案（%s 变体）无法在同组织同期间建编制，调动按原编制正常落地',
   async (variant) => {
     const w = await carriedWorld(database().db, `creator-time-${variant}`);
     const person = await w.hired();
     await otherOwnedCapacity(w, variant);
-    const before = await w.capacities();
     const result = await scopedApi(w, 'creator').request(
       'POST',
       `/api/tenant/employment/transfers/employees/${person.employee.id}`,
@@ -157,14 +161,42 @@ it.each(['scheme', 'capacity', 'active'] as const)(
         },
       },
     );
-    expect(result.status, await result.clone().text()).toBe(variant === 'active' ? 404 : 201);
-    if (variant === 'active') {
-      expect(await result.json()).toEqual(absent);
-      expect(await w.capacities()).toEqual(before);
-      expect(await w.history()).toEqual([]);
-    } else {
-      expect((await w.capacities()).map((c) => c.localCapacity)).toEqual([2, 1]);
-      expect(await w.history()).toHaveLength(2);
-    }
+    expect(result.status, await result.clone().text()).toBe(201);
+    expect((await w.capacities()).map((c) => c.localCapacity)).toEqual([2, 1]);
+    expect(await w.history()).toHaveLength(2);
   },
 );
+
+// F-484 复审 P3-1：重叠校验消除了“他人创建的第二候选”，但“唯一参与的编制由他人创建”仍可合法存在，创建人范围负例须保留
+it('AC-EST-19 创建人范围下，唯一参与的编制由他人创建时调动返回 404，编制与历史均无写入', async () => {
+  const w = await carriedWorld(database().db, 'creator-only-other');
+  const person = await w.hired();
+  const member = await createUser(
+    w.db,
+    { email: `capacity-${randomUUID()}@example.com`, displayName: '合成另一执行成员' },
+    cmd(),
+  );
+  await grantMembership(w.db, { tenantId: w.session.tenant.id, userId: member.id, expectedRevision: 0 }, cmd());
+  const before = await w.capacities();
+  const result = await scopedApi(w, 'creator', member.id).request(
+    'POST',
+    `/api/tenant/employment/transfers/employees/${person.employee.id}`,
+    {
+      user: member.id,
+      tenant: w.session.tenant.id,
+      ifMatch: person.hire.employeeRevision,
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
+        mode: 'direct',
+        effectiveDate: '2026-10-05',
+        withEstablishment: true,
+        fields: { departmentId: w.to.id, positionId: w.targetPosition },
+      },
+    },
+  );
+  expect(result.status, await result.clone().text()).toBe(404);
+  expect(await result.json()).toEqual(absent);
+  expect(await w.capacities()).toEqual(before);
+  expect(await w.history()).toEqual([]);
+});

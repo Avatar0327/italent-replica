@@ -86,6 +86,40 @@ export async function requireReportingSubordinate(
   return record;
 }
 
+const notVacant = () =>
+  new AppError('VALIDATION_FAILED', '该职责已有承担人，不能补转交', { reason: 'DUTY_SUPPLEMENT_NOT_VACANT' });
+
+/** 补转交（DT-R5 清空后）下属：当前任职须在操作人范围内，且该上级字段仍为空（已另有上级则不覆盖）。 */
+export async function requireVacantSubordinate(
+  tx: Tx,
+  ctx: EmploymentContext,
+  subordinateId: string,
+  relation: DutyRelation,
+) {
+  const record = await findCurrentRecord(tx, ctx.tenantId, subordinateId, tenantLocalDate(ctx.now, ctx.timezone));
+  if (!record) throw notEligible();
+  await requireLinkedEmploymentRecord(tx, ctx, subordinateId, record.fields.departmentId, record.id);
+  if (record.fields[RELATION_FIELDS[relation]] != null) throw notVacant();
+}
+
+/** 补转交（DT-R5 清空后）组织角色：该角色当日须仍空缺（已另有负责人则不覆盖）。 */
+export async function requireRoleVacant(
+  tx: Tx,
+  ctx: EmploymentContext,
+  orgId: string,
+  role: OrgRole,
+  asOf = tenantLocalDate(ctx.now, ctx.timezone),
+) {
+  const [version] = rowsOf<{ holder: string | null }>(
+    await tx.execute(sql`
+    SELECT ${sql.raw(ROLE_COLUMNS[role])} AS holder FROM org_versions
+    WHERE tenant_id=${ctx.tenantId} AND org_id=${orgId}::uuid
+      AND start_date<=${asOf}::date AND stop_date>=${asOf}::date
+    ORDER BY version_no DESC LIMIT 1`),
+  );
+  if (!version || version.holder !== null) throw notVacant();
+}
+
 /** 组织角色转交：调动人当前须担任该组织的该角色（`30` DT-R1）。 */
 export async function requireRoleHolder(
   tx: Tx,

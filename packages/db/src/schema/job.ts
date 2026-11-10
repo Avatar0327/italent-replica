@@ -145,6 +145,12 @@ export const jobLevelVersions = pgTable(
     levelTypeId: uuid('level_type_id'),
     minGradeId: uuid('min_grade_id'),
     maxGradeId: uuid('max_grade_id'),
+    // 所属资源集合 = 创建人的授权管理单元（DEC-778④、DEC-339①），只在新建时定，随版本链沿用
+    ownerOrgId: uuid('owner_org_id'),
+    // R1a §2.8：薪资上中下限；规格未验证三者的大小关系，不加 CHECK
+    salaryUpper: numeric('salary_upper', { mode: 'number' }),
+    salaryMid: numeric('salary_mid', { mode: 'number' }),
+    salaryLower: numeric('salary_lower', { mode: 'number' }),
   },
   (t) => [
     ...versionRules('job_level_versions', t, jobLevelObjects),
@@ -270,6 +276,8 @@ export const jobPositionVersions = pgTable(
     dottedSequence: integer('dotted_sequence'),
     standardPositionId: uuid('standard_position_id'),
     workLocation: text('work_location'),
+    responsibilities: text('responsibilities'),
+    requirements: text('requirements'),
     isKey: boolean('is_key').notNull().default(false),
     isConfidential: boolean('is_confidential').notNull().default(false),
     syncSequenceToAssignments: boolean('sync_sequence_to_assignments').notNull().default(false),

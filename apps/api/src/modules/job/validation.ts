@@ -2,6 +2,7 @@ import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { employmentDepartmentDisable } from '../org/employment-validity.js';
 import { jobTables, type JobKind } from './metadata.js';
+import { validateCompetencyModel } from './competency.js';
 import { loadJobObject, type JobRecord } from './read-model.js';
 import { rowsOf } from './store.js';
 import type { JobFields, JobWriteContext } from './types.js';
@@ -49,6 +50,7 @@ export async function validateJobFields(
   }
   checkScoreRange(persisted);
   checkRanges(persisted, resolved);
+  if (kind === 'posts') await validateCompetencyModel(tx, ctx.tenantId, persisted, previous?.competencyModelId);
   if (kind === 'positions') {
     await validateOrganizationReference(tx, ctx, fields, previous?.orgId !== fields.orgId);
     await validatePositionHierarchy(tx, ctx, objectId, persisted);

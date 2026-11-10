@@ -395,6 +395,25 @@ const RUN_RECEIPT_DISCLOSURE = object({
   ),
 });
 
+/**
+ * F-476 P7：考核 / 意向详情的已办冻结份披露（可选分支，不参与准入、不拒绝请求）：冻结份里的表单字段只在
+ * “办理时上限 ∩ 当前字段权限”内出现；当前字段权限由 selectHandledRead 对表单对象取查看字段得到，范围与详情入口同一判断。
+ */
+const HANDLED_ASSESSMENT_DISCLOSURE = object({
+  object: ASSESSMENT,
+  operation: 'view',
+  button: noButton('已办披露只取考核对象的字段查看权'),
+  scope: noScope('范围已由详情入口的考核范围判断判过，这里只取字段查看权'),
+  fields: projector('employment.response', 'employment.assessment'),
+});
+const HANDLED_INTENTION_DISCLOSURE = object({
+  object: EMPLOYMENT,
+  operation: 'view',
+  button: noButton('已办披露只取任职记录对象的字段查看权'),
+  scope: noScope('可见口径已由详情入口的意向可见判断判过，这里只取字段查看权'),
+  fields: RESPONSE,
+});
+
 /** 退休规则立即执行回执的人员披露（BE-5c2）：同上，逐人条目是固定键（员工、规则、写入的人事字段名、失败原因），不含日期值。 */
 const RETIREMENT_RUN_RECEIPT_DISCLOSURE = object({
   object: EMPLOYMENT,
@@ -2745,6 +2764,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     button: noButton('详情无按钮'),
     scope: guardScope('employment.assessmentScope', NF_ASSESSMENT),
     fields: projector('employment.response', 'employment.assessment'),
+    optional: { handledFrozen: HANDLED_ASSESSMENT_DISCLOSURE },
     ...byId,
   }),
   // 选人批量发起（PB-R3）：body 严格 { assessmentType, assessmentName, assessmentDate, items[1～100]: { employeeId, revision } }；
@@ -2922,6 +2942,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     button: noButton('详情无按钮'),
     scope: guardScope('employment.intentionVisibility', NF_INTENTION),
     fields: RESPONSE,
+    optional: { handledFrozen: HANDLED_INTENTION_DISCLOSURE },
     ...byId,
   }),
 });

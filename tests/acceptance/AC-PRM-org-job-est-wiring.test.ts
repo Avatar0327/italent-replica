@@ -13,6 +13,7 @@ import {
   setObjectPermission,
   type PermissionWorld,
 } from './AC-PRM-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -440,10 +441,16 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
   });
 
   it('子部门范围不能通过 syncParents 修改无权父部门，整单回滚', async () => {
+    // F-484（DEC-295①）：同组织不同方案的期间不可重叠，本用例的方案编制落在独立的上级部门上
+    const top = await fixtureCreate(paths.organization, {
+      name: '独立上级部门',
+      establishedOn: '2026-01-01',
+      parents: { admin: { parentId: world.tenant.id } },
+    });
     const child = await fixtureCreate(paths.organization, {
       name: '仅有权子部门',
       establishedOn: '2026-01-01',
-      parents: { admin: { parentId: org.id } },
+      parents: { admin: { parentId: top.id } },
     });
     const ownScheme = await fixtureCreate(paths.establishment, {
       name: '同步父级方案',
@@ -452,7 +459,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
       startDate: '2026-01-01',
     });
     const parentCap = await fixtureCreate('/api/tenant/establishment/capacities', {
-      orgId: org.id,
+      orgId: top.id,
       schemeId: ownScheme.id,
       periodStart: '2026-01-01',
       inclusiveCapacity: 10,
@@ -490,10 +497,16 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
   });
 
   it('AC-PRM-37 / DEC-178：同步上级编制碰到可见上级即改写并写审计，不可见整单拒绝并保留联动拒绝码', async () => {
+    // F-484（DEC-295①）：同组织不同方案的期间不可重叠，本用例的方案编制落在独立的上级部门上
+    const top = await fixtureCreate(paths.organization, {
+      name: '独立上级部门',
+      establishedOn: '2026-01-01',
+      parents: { admin: { parentId: world.tenant.id } },
+    });
     const child = await fixtureCreate(paths.organization, {
       name: '联动口径子部门',
       establishedOn: '2026-01-01',
-      parents: { admin: { parentId: org.id } },
+      parents: { admin: { parentId: top.id } },
     });
     const ownScheme = await fixtureCreate(paths.establishment, {
       name: '联动口径方案',
@@ -502,7 +515,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
       startDate: '2026-01-01',
     });
     const parentCap = await fixtureCreate('/api/tenant/establishment/capacities', {
-      orgId: org.id,
+      orgId: top.id,
       schemeId: ownScheme.id,
       periodStart: '2026-01-01',
       inclusiveCapacity: 10,
@@ -530,7 +543,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     });
     expect(denied.status).toBe(404);
     expect(await denied.json()).toMatchObject({ error: { code: 'LINKED_RECORD_OUT_OF_SCOPE' } });
-    const visible = await scoped(org.id, true);
+    const visible = await scoped(top.id, true);
     const changed = await world.api.request('PATCH', `/api/tenant/establishment/capacities/${childCap.id}`, {
       ...visible,
       ifMatch: 1,
@@ -552,10 +565,16 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
   });
 
   it('原同步父级命令即使入口子级仍有权，收窄为子级后也不能重放', async () => {
+    // F-484（DEC-295①）：同组织不同方案的期间不可重叠，本用例的方案编制落在独立的上级部门上
+    const top = await fixtureCreate(paths.organization, {
+      name: '独立上级部门',
+      establishedOn: '2026-01-01',
+      parents: { admin: { parentId: world.tenant.id } },
+    });
     const child = await fixtureCreate(paths.organization, {
       name: '重放子部门',
       establishedOn: '2026-01-01',
-      parents: { admin: { parentId: org.id } },
+      parents: { admin: { parentId: top.id } },
     });
     const ownScheme = await fixtureCreate(paths.establishment, {
       name: '重放祖先方案',
@@ -564,7 +583,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
       startDate: '2026-01-01',
     });
     await fixtureCreate('/api/tenant/establishment/capacities', {
-      orgId: org.id,
+      orgId: top.id,
       schemeId: ownScheme.id,
       periodStart: '2026-01-01',
       inclusiveCapacity: 10,
@@ -623,6 +642,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     await revokeScope(as.user);
     expect((await world.api.request('POST', '/api/tenant/job/import', input)).status).toBe(404);
     const est = await actor('establishment', { scope: true, buttons: [{ buttonCode: 'copy', level: 'list' }] });
+    // F-484（DEC-295①）：org 上 2026 / 2027 年已有别的方案编制，本用例换到 2028 年，期间不重叠
     const ownScheme = await fixtureCreate(paths.establishment, {
       name: '复制重放方案',
       periodType: 'annual',
@@ -632,7 +652,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     const source = await fixtureCreate('/api/tenant/establishment/capacities', {
       orgId: org.id,
       schemeId: ownScheme.id,
-      periodStart: '2026-01-01',
+      periodStart: '2028-01-01',
       inclusiveCapacity: 10,
     });
     const copy = { ...est, ifMatch: 0, idempotencyKey: randomUUID(), body: { capacityIds: [source.id] } };
@@ -642,6 +662,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
   });
 
   it('编制复制执行的缓存不能绕过目标字段权限收回', async () => {
+    // F-484（DEC-295①）：org 上 2026 / 2027 年已有别的方案编制，本用例换到 2030 年，期间不重叠
     const buttons = [
       { buttonCode: 'copy', level: 'list' },
       { buttonCode: 'execute', level: 'detail' },
@@ -656,7 +677,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     const source = await fixtureCreate('/api/tenant/establishment/capacities', {
       orgId: org.id,
       schemeId: ownScheme.id,
-      periodStart: '2026-01-01',
+      periodStart: '2030-01-01',
       inclusiveCapacity: 10,
     });
     const queued = await world.api.request('POST', '/api/tenant/establishment/copy-jobs', {
@@ -803,11 +824,27 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     const as = await actor('jobPost', { buttons: [{ buttonCode: 'validate', level: 'detail' }] });
     await addObjectView(as, key);
     await objectAll(as, 'jobPost');
+    // 职级新建需要创建人有职务体系授权管理单元（DEC-339①）：建完把管理员的范围还原成缺省，不影响后续用例
+    if (kind === 'levels') {
+      await grantJobUnit(
+        (method, path, init) => fixture.request(method, path, { ...world.asAdmin, ...init }),
+        world.asAdmin.user,
+        world.tenant.id,
+      );
+    }
     const reference = await fixtureCreate(`/api/tenant/job/${kind}`, {
       name: '隐藏的关联对象',
       startDate: '2026-01-01',
       [kind === 'levels' ? 'level' : 'grade']: 1,
     });
+    if (kind === 'levels') {
+      const restore = await fixture.request('PUT', `/api/tenant/permission/scopes/${world.asAdmin.user}/TenantBase`, {
+        ...world.asAdmin,
+        ifMatch: 1,
+        body: { kind: 'default' },
+      });
+      expect(restore.status, await restore.clone().text()).toBe(200);
+    }
     expect(
       (
         await world.api.request('POST', '/api/tenant/job/validate-assignment', {

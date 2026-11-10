@@ -4,6 +4,7 @@
 import { expect } from 'vitest';
 import { offerWorld, type OfferBody, type OfferWorld } from './AC-OF-BE14a-support.js';
 import { withLoginEmail } from './AC-EMP-support.js';
+import { seedLevelCreator } from './support/job-unit.js';
 import { uniqueSuffix } from './support/unique.js';
 import type { Db } from '@italent/db';
 import {
@@ -230,8 +231,16 @@ export async function syncWorld<W extends OfferWorld = OfferWorld>(db: Db, label
     body: { name: '同步职级体系', code: `LT${uniqueSuffix()}`, startDate: '2020-01-01' },
   });
   expect(type.status, await type.clone().text()).toBe(201);
+  // 职级新建要求创建人有职务体系管理单元（DEC-339①）：seeder 同时是员工 / Offer 断言的主体，不动它的数据范围，
+  // 另用一个只负责建职级的独立成员（新用户 + 自己的管理单元）来建
+  const levelCreator = await seedLevelCreator(
+    db,
+    (method, path, init) => w.seeder.request(method, path, { ...as, ...init }),
+    w.tenant.id,
+  );
   const level = await w.seeder.request('POST', '/api/tenant/job/levels', {
     ...as,
+    user: levelCreator,
     ifMatch: 0,
     body: {
       name: '同步职级',

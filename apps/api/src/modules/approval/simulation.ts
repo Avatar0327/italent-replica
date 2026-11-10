@@ -18,6 +18,7 @@ import {
   decideNode,
   evaluateCondition,
   exitRulesOf,
+  hasBusinessExits,
   isCountersign,
   nodeExits,
   nodeKindOf,
@@ -346,9 +347,13 @@ function stepFields(step: PathStep) {
   return { onPath: true, ...(step.exit ? { exit: step.exit, branchNo: step.branchNo } : {}) };
 }
 
-/** 版本里配置了分支才推演路径；线性流程的输出与现状一致，只在顶层补 path（全部节点）。 */
+/**
+ * 版本里配置了分支或业务出口才推演路径；纯线性流程的输出与现状一致，只在顶层补 path（全部节点）。
+ * 业务出口节点即使不配显式路由（走默认后继，设计 §1.4）也要推演，否则守卫缺值判断（设计 §3.4）会被绕过。
+ */
 function walkOf(version: VersionView, type: ApprovalTypeCode, context: ConditionContext): PathWalk | null {
-  if (!version.nodes.some((node) => node.routes?.length) || !version.nodes[0]) return null;
+  const branching = version.nodes.some((node) => node.routes?.length || hasBusinessExits(node));
+  if (!branching || !version.nodes[0]) return null;
   return walkDefaultPath(version.nodes, version.nodes[0].key, type, context);
 }
 

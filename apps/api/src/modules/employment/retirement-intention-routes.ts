@@ -27,6 +27,7 @@ import {
   type EmploymentContext,
 } from './context.js';
 import { parse } from './entry-routes.js';
+import { selectHandledRead } from './handled-read.js';
 import { lockIntentionRows, requireIntentionRight } from './retirement-intention-access.js';
 import {
   createIntention,
@@ -36,6 +37,7 @@ import {
   updateIntention,
   withdrawIntention,
 } from './retirement-intention.js';
+import { composeIntention } from './retirement-intention-content.js';
 import { intentionView, listIntentions, loadVisibleIntention } from './retirement-intention-store.js';
 
 type C = Context<TenantEnv>;
@@ -162,6 +164,10 @@ function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
     const row = await withTenant(deps.db, ctx.tenantId, (tx) => loadVisibleIntention(tx, ctx, id));
-    return c.json(await trimEmploymentResponse(deps, ctx, intentionView(row)));
+    // F-476 P7：已办审批人读办理时冻结的申请内容，状态 / 版本号读现值
+    const read = await selectHandledRead(deps, ctx, 'retirement_intention', id);
+    const live = intentionView(row);
+    const shown = read.frozen ? composeIntention(live, read.frozen.ext, read.frozen.allowed) : live;
+    return c.json({ ...((await trimEmploymentResponse(deps, ctx, shown)) as object), contentView: read.contentView });
   });
 }

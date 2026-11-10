@@ -7,7 +7,14 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { errorOf, offerRealWorld, offerWorld } from './AC-OF-BE14a-support.js';
-import { requireApproval, rowsOf, sendRecords, send, setEstablishment } from './AC-OF-BE14b1-support.js';
+import {
+  requireApproval,
+  rowsOf,
+  sendRecords,
+  send,
+  setEstablishment,
+  setLocalCapacity,
+} from './AC-OF-BE14b1-support.js';
 
 const testDb = useTestDb();
 const accept = { target: 'accepted', acceptTime: '2026-10-16' };
@@ -151,11 +158,11 @@ describe('AC-OF-13 超编弱控：发送和管理员转已接受要二次确认�
 
   it('未超编不需要确认；管理员转已拒绝不判编制', async () => {
     const w = await offerWorld(testDb().db, 'quota-ok');
-    await setEstablishment(w, false, 5);
+    const capacity = await setEstablishment(w, false, 5);
     const offer = await w.social();
     expect((await w.transfer(offer, accept)).status).toBe(200);
     const other = await w.social();
-    await setEstablishment(w, false, 0);
+    await setLocalCapacity(w, capacity, 0);
     const refused = await w.transfer(other, {
       target: 'rejected',
       refusalTime: '2026-10-16',
