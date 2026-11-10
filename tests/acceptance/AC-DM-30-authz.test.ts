@@ -26,6 +26,8 @@ interface Revoke {
   noCreate?: string;
   noScope?: string;
   noButton?: boolean;
+  /** 收回某对象的某按钮（档案更新 / 教育新增按钮权，与对象写权分开判）。 */
+  noObjectButton?: [object: string, button: string];
 }
 
 /** 配一个除 `revoke` 外什么都有的身份，返回用它提交的函数。 */
@@ -55,6 +57,7 @@ async function operator(x: ImportWorld, revoke: Revoke = {}) {
           })),
           buttons: definition.buttons
             .filter((b) => !(missing.noButton && b.code === BUTTON))
+            .filter((b) => !(missing.noObjectButton?.[0] === definition.code && missing.noObjectButton[1] === b.code))
             .map((b) => ({ buttonCode: b.code, level: b.level })),
         },
         definition.code,
@@ -204,6 +207,17 @@ describe('AC-DM-30-F493-37 档案字段写权（真实授权器）', () => {
     const submit = await operator(x, { field: [EDUCATION, 'isMainMajor'] });
     const response = await submit([x.row(1, d.code)]);
     expect(response.status, await response.clone().text()).toBe(202);
+  });
+
+  // 按钮权与对象 / 字段写权分开判：F-039 静态探测器观测不到这条链（经 exitImportGuard 进入），由本组测试兜底
+  it('收回档案「更新」按钮权（对象与字段写权都在）→ 403，不落批次', async () => {
+    const x = await importWorld(database().db, '37-btn-update');
+    await denied(x, { noObjectButton: [PERSONNEL_OBJECT, 'update'] }, (code) => [x.row(1, code)]);
+  });
+
+  it('T 列有值但收回教育「新增」按钮权 → 403，不落批次', async () => {
+    const x = await importWorld(database().db, '37-btn-create');
+    await denied(x, { noObjectButton: [EDUCATION, 'create'] }, (code) => [x.row(1, code, { school: '合成大学' })]);
   });
 
   it('T 列有值但没有教育经历新增权 → 403，不落批次', async () => {
