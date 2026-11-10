@@ -63,7 +63,7 @@ export interface PreviewTree {
 }
 
 /** 调整范围所选组织及其全部在用下级（行政维度）；所选组织之间互为上下级时只算一次。 */
-function rangeSubtree(orgs: ReadonlyMap<string, OrgRecord>, range: readonly string[]): OrgRecord[] {
+export function rangeSubtree(orgs: ReadonlyMap<string, OrgRecord>, range: readonly string[]): OrgRecord[] {
   const children = new Map<string, string[]>();
   for (const org of orgs.values()) {
     const parentId = org.parents.admin?.parentId;

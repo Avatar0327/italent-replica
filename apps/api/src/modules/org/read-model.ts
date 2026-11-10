@@ -75,6 +75,18 @@ export async function loadOrgSnapshot(
         .where(and(eq(orgHierarchyLinks.tenantId, tenantId), inArray(orgHierarchyLinks.versionId, versionIds)))
     : [];
   const paths = await resolveOrgPaths(tx, tenantId, asOf, versionIds);
+  return assembleOrgRecords(selected, links, paths);
+}
+
+type SnapshotRow = Awaited<ReturnType<typeof orgSnapshotQuery>>[number];
+type HierarchyLink = typeof orgHierarchyLinks.$inferSelect;
+
+/** 把现行版本、层级链接与全称路径拼成组织记录；纯函数，单测用访问次数守住它不退化成逐节点扫全表。 */
+export function assembleOrgRecords(
+  selected: readonly SnapshotRow[],
+  links: readonly HierarchyLink[],
+  paths: ReadonlyMap<string, OrgPath>,
+): OrgRecord[] {
   return selected.map(({ object, version }) => ({
     ...version,
     ...paths.get(version.id),
