@@ -21,7 +21,7 @@ const single = (key: string, value: string, type: 'object_field' | 'department' 
 });
 
 /** 退休四节点（与预置同形，审批人换成指定的真实取法）：HRBP 节点两个业务出口，不返聘 → END，返聘 → 返聘后经理。 */
-async function publishRetireFlow(s: RetireScene) {
+async function publishRetireFlow(s: RetireScene, withRoutes = true) {
   const nodes: NodeInput[] = [
     single('direct_head', 'direct_manager'),
     {
@@ -46,15 +46,17 @@ async function publishRetireFlow(s: RetireScene) {
     await putDraft(
       s.w,
       created,
-      cloneForPut(created.latestVersion, { nodes: withRoutesOn(created.latestVersion.nodes, routes as never) }),
+      cloneForPut(created.latestVersion, {
+        nodes: withRoutes ? withRoutesOn(created.latestVersion.nodes, routes as never) : created.latestVersion.nodes,
+      }),
     ),
   );
   return s.w.publish(saved);
 }
 
-async function atHrbp(label: string, reEmployed: boolean) {
+async function atHrbp(label: string, reEmployed: boolean, withRoutes = true) {
   const s = await retireScene(testDb().db, label);
-  await publishRetireFlow(s);
+  await publishRetireFlow(s, withRoutes);
   const first = await s.retire(reEmployed);
   expect(s.w.pending(first)[0]!.nodeKey).toBe('direct_head');
   const view = await s.advance(first);
@@ -115,5 +117,21 @@ describe('AC-APV-F478-09 越权与隔离', () => {
     expect([403, 404]).toContain(response.status);
     expect((await s.w.detail(view.id)).revision).toBe(view.revision);
     expect(APV).toContain('approval');
+  });
+});
+
+/** 业务出口节点不配显式路由也是合法定义：办理入口的守卫与出口披露不依赖路由（审查 P2-1 顺带核运行时）。 */
+describe('AC-APV-F478-09 无显式路由的业务出口节点：运行时仍受守卫约束', () => {
+  it('reEmployed=false：只披露不返聘；approve_rehire / 不带 exit 都 409，状态不变', async () => {
+    const { s, view } = await atHrbp('f478-09-noroute', false, false);
+    const detail = await detailOf(s.w, view.id, s.home.hrbp);
+    expect(detail.exits).toEqual([{ code: 'approve_no_rehire', label: '同意（不返聘）', family: 'approve' }]);
+    const wrong = await s.decide(view, 'approve', { comment: '同意', exit: 'approve_rehire' });
+    expect(await errorInfo(wrong)).toMatchObject({ status: 409, reason: 'APPROVAL_EXIT_NOT_AVAILABLE' });
+    const bare = await s.decide(view, 'approve', { comment: '同意' });
+    expect(await errorInfo(bare)).toMatchObject({ status: 409, reason: 'APPROVAL_EXIT_REQUIRED' });
+    const unchanged = await s.w.detail(view.id);
+    expect(unchanged.revision).toBe(view.revision);
+    expect(s.w.pending(unchanged).map((task) => task.nodeKey)).toEqual(['hr_interview']);
   });
 });

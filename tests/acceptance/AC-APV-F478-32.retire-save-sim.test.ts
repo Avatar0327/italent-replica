@@ -180,3 +180,50 @@ describe('AC-APV-F478-32 仿真：按是否同时返聘走不同路径', () => {
     expect(missing.nodes.find((n) => n.key === 'hr_interview')?.branch).toBe('undetermined');
   });
 });
+
+/**
+ * 业务出口节点不配显式路由也是合法定义（设计 §1.4 默认后继）：仿真同样要读守卫事实，
+ * 缺 business.reEmployed 时停在 HRBP，不得把四节点全推成 pass（审查 P2-1）。
+ */
+describe('AC-APV-F478-32 仿真：无显式路由的业务出口节点仍按守卫推演', () => {
+  type Sim = { path: string[]; nodes: { key: string; branch?: string; exit?: string }[] };
+  async function publishedWithoutRoutes(label: string, routes: 'omitted' | 'empty') {
+    const w = await approvalWorld(testDb().db, label);
+    const created = await w.createProcess({
+      approvalType: 'retirement',
+      isFallback: true,
+      conditions: { items: [] },
+      nodes: linear(GROUP),
+    });
+    const nodes =
+      routes === 'empty'
+        ? withRoutesOn(created.latestVersion.nodes, { hr_interview: [] } as never)
+        : created.latestVersion.nodes;
+    const response = await putDraft(w, created, cloneForPut(created.latestVersion, { nodes }));
+    expect(response.status, await response.clone().text()).toBe(200);
+    return { w, process: await w.publish(await w.json<ProcessView>(response)) };
+  }
+  const simulate = async (ctx: Awaited<ReturnType<typeof publishedWithoutRoutes>>, values: Record<string, string>) =>
+    ctx.w.json<Sim>(
+      await ctx.w.request(ctx.w.hr.id, 'POST', `${APV}/processes/${ctx.process.id}/simulate`, {
+        body: { scope: 'published', data: { values: { processCode: 'RetireProcess', ...values } } },
+      }),
+    );
+
+  it.each(['omitted', 'empty'] as const)('routes %s：缺 reEmployed 停在 HRBP，不得推完整条路径', async (routes) => {
+    const ctx = await publishedWithoutRoutes(`f478-32-noroute-missing-${routes}`, routes);
+    const result = await simulate(ctx, {});
+    expect(result.path).toEqual(['direct_head', 'hr_interview']);
+    expect(result.nodes.find((n) => n.key === 'hr_interview')?.branch).toBe('undetermined');
+    expect(result.nodes.find((n) => n.key === 'rehire_manager')).not.toHaveProperty('exit');
+  });
+
+  it.each(['omitted', 'empty'] as const)('routes %s：给定 true / false 返回对应出口', async (routes) => {
+    const ctx = await publishedWithoutRoutes(`f478-32-noroute-given-${routes}`, routes);
+    const hrbp = async (value: string) =>
+      (await simulate(ctx, { 'business.reEmployed': value })).nodes.find((n) => n.key === 'hr_interview');
+    expect(await hrbp('true')).toMatchObject({ exit: 'approve_rehire' });
+    expect(await hrbp('false')).toMatchObject({ exit: 'approve_no_rehire' });
+    expect(await hrbp('true')).not.toHaveProperty('branch', 'undetermined');
+  });
+});
