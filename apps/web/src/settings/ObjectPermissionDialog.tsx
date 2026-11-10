@@ -92,14 +92,16 @@ function DialogActions({ editor, editable, close }: { editor: Editor; editable: 
       {editor.command.status === 'unknown' && editable && (
         <Button onClick={() => void editor.replay()}>{om.replay}</Button>
       )}
-      <Button
-        type="primary"
-        disabled={editor.locked || !editor.snapshot}
-        loading={editor.command.busy}
-        onClick={() => void editor.submit()}
-      >
-        {om.confirm}
-      </Button>
+      {editable && (
+        <Button
+          type="primary"
+          disabled={editor.locked || !editor.snapshot}
+          loading={editor.command.busy}
+          onClick={() => void editor.submit()}
+        >
+          {om.confirm}
+        </Button>
+      )}
     </Space>
   );
 }

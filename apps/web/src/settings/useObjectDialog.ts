@@ -39,7 +39,7 @@ export function useObjectDialog(
     await command.reread(async () => {
       try {
         const latest = await readDialog(api, data.path, id, objectCode, mode);
-        data.install(latest, true);
+        data.replace(latest);
         return { id, revision: latest.revision, values: latest.values };
       } catch (cause) {
         if (data.alive.current) data.setError(dialogError(cause));
@@ -163,6 +163,24 @@ function useDialogRead(id: string, objectCode: string, mode: DialogMode, form: F
     loading,
     error,
     setError,
+    replace: (latest: DialogSnapshot) => {
+      if (!data.alive.current) return;
+      data.install(latest, true);
+      if (mode !== 'fields') return;
+      const rows = Object.values(latest.rows).filter((row) =>
+        row.fieldCode.toLowerCase().includes(query.toLowerCase()),
+      );
+      const current = Math.min(page.current, Math.max(1, Math.ceil(rows.length / page.pageSize)));
+      const offset = (current - 1) * page.pageSize;
+      setPage({ ...page, current });
+      setResult({
+        profileId: id,
+        objectCode,
+        revision: latest.revision,
+        items: rows.slice(offset, offset + page.pageSize),
+        total: rows.length,
+      });
+    },
     page,
     setPage,
     code,
