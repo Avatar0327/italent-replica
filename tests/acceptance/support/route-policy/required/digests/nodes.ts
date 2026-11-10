@@ -947,7 +947,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/simulation.ts#virtualDecisions': ['76147db12e2c', 'c82f1b5a482a'],
   'apps/api/src/modules/approval/simulation.ts#virtualFacts': ['287563c3e806', '11f4c4dc7ba7'],
   'apps/api/src/modules/approval/simulation.ts#virtualSources': ['974ff7f1984a', '4dddf230e8a0'],
-  'apps/api/src/modules/approval/simulation.ts#walkOf': ['a60e902b35d4', 'a3345e806442'],
+  'apps/api/src/modules/approval/simulation.ts#walkOf': ['1f1f2f052442', '523de7671050'],
   'apps/api/src/modules/approval/source-identity.ts#BATCH': ['b3758337b171', 'e3b0c44298fc'],
   'apps/api/src/modules/approval/source-identity.ts#memberUserIds': ['28c87775eee9', '592d57e2a938'],
   'apps/api/src/modules/approval/source-identity.ts#resolveIdentity': ['8098d6556c0e', '13740a5c65fe'],

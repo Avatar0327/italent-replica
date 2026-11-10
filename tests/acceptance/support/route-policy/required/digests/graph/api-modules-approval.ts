@@ -2273,7 +2273,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/sources.ts#expressionValue',
     'packages/domain/src/approval/sources.ts#sourceKey',
   ],
-  'apps/api/src/modules/approval/simulation.ts#walkOf': ['packages/domain/src/approval/routes.ts#walkDefaultPath'],
+  'apps/api/src/modules/approval/simulation.ts#walkOf': [
+    'packages/domain/src/approval/routes.ts#hasBusinessExits',
+    'packages/domain/src/approval/routes.ts#walkDefaultPath',
+  ],
   'apps/api/src/modules/approval/source-identity.ts#memberUserIds': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/permission/auto-held.ts#isAutoHeld',
