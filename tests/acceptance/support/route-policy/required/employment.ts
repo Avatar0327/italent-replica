@@ -3609,8 +3609,9 @@ export const EMPLOYMENT: RequiredTable = {
       'obj:TenantBase.Education:create',
       'btn:TenantBase.Education#create@list',
     ].map((perm) => ({
-      // 事务内调用经 replay-guard 的 exitImportGuard 进入，静态探测器不沿 guard 选项展开，观测不到这三类事实，
-      // 所以不登记 facts；对象写权与按钮权（object.button）由 personnel authorize 实际判定，证据见下
+      // 事务内调用经 replay-guard 的 exitImportGuard 进入，静态探测器不沿 guard 选项展开：通用 object:object.*
+      // 动作仍可观测，且已由本路由的其他义务承接；观测不到的是 btn:…#update@detail、btn:…#create@list 这两条
+      // 按钮事实，所以这里不登记 facts；对象写权与按钮权（object.button）由 personnel authorize 实际判定，证据见下
       ...ob(
         perm,
         [],
