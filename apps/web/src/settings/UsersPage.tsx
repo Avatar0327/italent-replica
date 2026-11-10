@@ -75,7 +75,7 @@ export function UsersPage({ code, title, editable }: SettingsProps) {
             <Facts
               items={[
                 [m.displayName, user.displayName],
-                [m.email, user.email],
+                [m.email, user.contactEmail],
                 [m.businessIdentity, user.businessIdentity],
                 [m.status, <Status value={user.membershipStatus} />],
                 [m.userId, user.userId],
