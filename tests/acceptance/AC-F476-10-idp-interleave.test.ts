@@ -33,6 +33,11 @@ type World = Awaited<ReturnType<typeof planWorld>>;
 
 async function seeded(label: string) {
   const w = await planWorld(testDb().db, label);
+  // 办理份只存模板配置的展示列（第 5 轮 P2-1）：带教区块改为展示备注，A / B 状态才能从份里辨认（职业发展取缺省含优势项）
+  await withTenant(w.db, w.tenant.id, (tx) =>
+    tx.execute(sql`UPDATE idp_template_modules SET key_info_fields = ARRAY['tutorship.remark']
+      WHERE tenant_id = ${w.tenant.id}::uuid AND module_type = 'key_info'`),
+  );
   for (const [path, body] of [
     ['/tutorships', { tutorEmployeeId: w.manager.employeeId, tuteeEmployeeId: w.employee.employeeId, remark: TUTOR_A }],
     ['/careers', { employeeId: w.employee.employeeId, strengths: CAREER_A }],
