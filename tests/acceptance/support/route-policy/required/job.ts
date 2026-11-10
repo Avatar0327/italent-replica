@@ -8,6 +8,7 @@ import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const ROUTES = 'apps/api/src/modules/job/routes.ts';
 const SEQUENCE = 'apps/api/src/modules/job/sequence-routes.ts';
+const RESOURCE_SETS = 'apps/api/src/modules/job/resource-set-candidates.ts';
 const ACCESS = 'apps/api/src/modules/permission/module-route-access.ts';
 const KINDS =
   '{TenantBase.JobGrade,TenantBase.JobLayer,TenantBase.JobLevel,TenantBase.JobLevelType,TenantBase.JobPost,' +
@@ -167,6 +168,22 @@ export const JOB: RequiredTable = {
   ],
   'GET /api/tenant/job/candidates/levels': candidates('TenantBase.JobLevel'),
   'GET /api/tenant/job/candidates/grades': candidates('TenantBase.JobGrade'),
+  'GET /api/tenant/job/candidates/resource-sets': [
+    {
+      perm: 'obj:TenantBase.JobLevel:create',
+      facts: ['object:objectContext'],
+      note: '只返回本人在职务体系的授权管理单元 ID（DEC-339①），不披露组织字段',
+      at: [
+        unit(
+          'registerResourceSetCandidates',
+          "const ctx = await objectContext(c, deps, JOB_OBJECT_CODES.levels, 'create')",
+          RESOURCE_SETS,
+        ),
+        OBJECT_CONTEXT,
+        CODES,
+      ],
+    },
+  ],
   'POST /api/tenant/job/validate-assignment': [
     {
       perm: 'obj:TenantBase.JobPost:view',

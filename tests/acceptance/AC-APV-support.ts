@@ -28,6 +28,7 @@ import {
 import { expect } from 'vitest';
 import { createProcess, publishProcess } from '../../apps/api/src/modules/approval/definitions.js';
 import { withLoginEmail } from './AC-EMP-support.js';
+import { grantJobUnit } from './support/job-unit.js';
 import { createProfile, grant, makeGrantable, setObjectPermission, type PermissionWorld } from './AC-PRM-support.js';
 import { cmd, seedTenantWithMember, tenantApi, type RequestOptions } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -462,6 +463,11 @@ export async function approvalWorld(db: Db, label: string, fixed: FixedIds = {})
     );
   }
 
+  /** 职级新建需要创建人有职务体系授权管理单元（DEC-339①）：给 HR 补一个，只补一次。 */
+  let jobUnit: Promise<string> | undefined;
+  const grantHrJobUnit = () =>
+    (jobUnit ??= grantJobUnit((method, path, init) => request(hr.id, method, path, init), hr.id, tenant.id));
+
   return {
     db,
     tenant,
@@ -469,6 +475,7 @@ export async function approvalWorld(db: Db, label: string, fixed: FixedIds = {})
     exceptionAdmin,
     api,
     clock,
+    grantHrJobUnit,
     setNow(iso: string) {
       now = new Date(iso);
     },

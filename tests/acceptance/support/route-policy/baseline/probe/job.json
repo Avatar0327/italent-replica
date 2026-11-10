@@ -56,6 +56,16 @@
       "obj:TenantBase.JobLevel:view"
     ]
   },
+  "GET /api/tenant/job/candidates/resource-sets": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.JobLevel:create"
+    ]
+  },
   "GET /api/tenant/job/sequence-sync/messages": {
     "all": {
       "status": 200

@@ -42,6 +42,7 @@ async function world(label: string, reapprovalAllowed: boolean) {
     }),
     201,
   );
+  await w.grantHrJobUnit();
   const realLevel = await w.json<{ id: string }>(
     await w.request(w.hr.id, 'POST', '/api/tenant/job/levels', {
       ifMatch: 0,

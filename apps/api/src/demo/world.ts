@@ -169,6 +169,38 @@ export class DemoWorld {
     return id;
   }
 
+  /**
+   * 职级新建要求创建人有职务体系的授权管理单元（DEC-339①，零单元 403）：演示管理员的职务体系范围来自身份（看全部），
+   * 没有用户 × 应用的管理单元。建职级期间临时授一个只含首个一级组织的管理单元（职级归属它），建完恢复缺省，
+   * 其他写入的数据范围不受影响。
+   */
+  private async withJobUnit(create: () => Promise<void>): Promise<void> {
+    const path = `permission/scopes/${this.admin}/TenantBase`;
+    const current = await this.as(path, 'GET');
+    if (current.kind !== 'default') return create();
+    const top = DEMO_ORGS.find((org) => !org.parent)!;
+    const code = 'DEMO-JOB';
+    const units = await listAll(this.call, this.admin, '/api/tenant/permission/mous');
+    const unit =
+      units.find((row) => row.code === code) ??
+      (await this.as(
+        'permission/mous',
+        'POST',
+        {
+          code,
+          name: '演示职务体系管理单元',
+          orgRanges: [{ orgId: this.orgs.get(top.key)!.id, includeDescendants: true }],
+        },
+        0,
+      ));
+    const granted = await this.as(path, 'PUT', { kind: 'mou', mouId: str(unit, 'id') }, Number(current.revision ?? 0));
+    try {
+      await create();
+    } finally {
+      await this.as(path, 'PUT', { kind: 'default' }, Number(granted.revision));
+    }
+  }
+
   private async existingJobs(kind: string): Promise<Map<string, string>> {
     const rows = await listAll(this.call, this.admin, `/api/tenant/job/${kind}?includeDisabled=true`);
     return new Map(rows.map((row) => [str(row, 'code'), str(row, 'id')]));
@@ -194,16 +226,20 @@ export class DemoWorld {
       );
     }
     const levels = await this.existingJobs('levels');
-    for (const item of DEMO_LEVELS) {
-      const levelTypeId = this.levelTypes.get(item.track)!;
-      const id = await this.ensureJob('levels', levels, {
-        name: item.name,
-        code: item.code,
-        level: item.level,
-        levelTypeId,
-      });
-      this.levels.set(item.name, id);
-    }
+    const createLevels = async () => {
+      for (const item of DEMO_LEVELS) {
+        const levelTypeId = this.levelTypes.get(item.track)!;
+        const id = await this.ensureJob('levels', levels, {
+          name: item.name,
+          code: item.code,
+          level: item.level,
+          levelTypeId,
+        });
+        this.levels.set(item.name, id);
+      }
+    };
+    if (DEMO_LEVELS.every((item) => levels.has(item.code))) await createLevels();
+    else await this.withJobUnit(createLevels);
     const sequences = await this.existingJobs('sequences');
     for (const item of DEMO_SEQUENCES) {
       this.sequences.set(item.key, await this.ensureJob('sequences', sequences, { name: item.name, code: item.code }));

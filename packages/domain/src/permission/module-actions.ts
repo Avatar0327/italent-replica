@@ -269,7 +269,16 @@ export const MODULE_OBJECTS = {
   jobLayer: job('JobLayer', ['layerLevel']),
   jobGrade: job('JobGrade', ['grade', 'scoreLow', 'scoreHigh', 'layerId']),
   jobLevelType: job('JobLevelType', []),
-  jobLevel: job('JobLevel', ['level', 'levelTypeId', 'minGradeId', 'maxGradeId']),
+  jobLevel: job('JobLevel', [
+    'level',
+    'levelTypeId',
+    'minGradeId',
+    'maxGradeId',
+    'ownerOrgId',
+    'salaryUpper',
+    'salaryMid',
+    'salaryLower',
+  ]),
   jobSequence: job(
     'JobSequence',
     ['parentId', 'levelTypeId', 'source', 'externalId'],
@@ -284,7 +293,16 @@ export const MODULE_OBJECTS = {
   jobPost: job('JobPost', [...assignment, 'competencyModelId', 'responsibilities', 'requirements', 'evaluationScore']),
   jobPosition: job(
     'Position',
-    [...assignment, 'orgId', 'postId', 'parents', 'workLocation', 'standardPositionId'],
+    [
+      ...assignment,
+      'orgId',
+      'postId',
+      'parents',
+      'workLocation',
+      'responsibilities',
+      'requirements',
+      'standardPositionId',
+    ],
     ['directParentId', 'dottedParentId', 'directSequence', 'dottedSequence'],
   ),
   establishment: object(

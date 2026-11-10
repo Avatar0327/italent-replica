@@ -258,6 +258,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       50: '9a513a1f39304868',
       // F-474-2b（DEC-778②）：组织对象新增只读系统字段 headcount（在岗人数）、establishment（编制），授给能看组织的三个标准管理身份
       51: '43a1b3e881b76d7c',
+      // F-474-2a（DEC-776 / DEC-778）：职位职责说明 / 任职要求，职级资源集合与薪资上中下限的字段授权；版本为 main + 1 占位，合并时重算。
+      52: 'acbafd07e26b55e1',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

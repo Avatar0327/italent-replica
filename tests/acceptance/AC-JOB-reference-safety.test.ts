@@ -16,6 +16,7 @@ describe('AC-JOB-01/04 约束引用的租户、时间与数值一致性', () => 
       stopDate: '2026-09-30',
     });
     const future = await session.create('level-types', '未来类别', { startDate: '2026-11-01' });
+    await session.grantUnit();
     for (const type of [foreignType, expired, future]) {
       const response = await session.request('POST', '/levels', {
         ifMatch: 0,
@@ -36,6 +37,7 @@ describe('AC-JOB-01/04 约束引用的租户、时间与数值一致性', () => 
     const foreignGrade = await foreign.create('grades', '外租户职等', { grade: 3, layerId: foreignLayer.id });
     const firstType = await session.create('level-types', '专业类别');
     const secondType = await session.create('level-types', '管理类别');
+    await session.grantUnit();
     const badGrades = await session.request('POST', '/levels', {
       ifMatch: 0,
       body: {
