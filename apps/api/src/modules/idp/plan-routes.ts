@@ -37,7 +37,7 @@ import * as input from './plan-input.js';
 import { mentorSourcesOf } from './plan-mentor.js';
 import * as plans from './plan-service.js';
 import { loadPlanRow, loadStageInstances, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
-import { presentFrozen } from './stage-content.js';
+import { parseIdpStageContent, presentFrozen } from './stage-content.js';
 import type { WriteContext } from './write-support.js';
 import {
   currentStageShown,
@@ -124,7 +124,8 @@ async function presentRead(
     return presentPlan(tx, ctx.tenantId, shown.detail, shown.viewer, shown.projections);
   }
   const stageId = byInstance.get(read.instanceId!)!;
-  return presentFrozen(tx, ctx.tenantId, shown.detail, selection.frozen.content.ext, stageId, shown.projections);
+  const content = parseIdpStageContent(selection.frozen.content.ext, stageId);
+  return presentFrozen(tx, ctx.tenantId, shown.detail, content, shown.projections);
 }
 
 async function respondPlan(

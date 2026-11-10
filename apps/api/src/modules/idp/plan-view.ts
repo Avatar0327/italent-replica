@@ -283,47 +283,62 @@ async function loadContents(tx: Tx, tenantId: string, planId: string) {
   return { analyses, reviews };
 }
 
-/** 关键信息（IDP-R7）：与计划起止有交集的记录；储备人才信息待 R3-T06（K-16）。 */
+/** 关键信息三类的输出列（属性名 → 列名）；起止日期另加。 */
+const KEY_INFO_COLUMNS = {
+  tutorships: {
+    table: 'idp_tutorships',
+    person: 'tutee_employee_id',
+    columns: { id: 'id', tutorEmployeeId: 'tutor_employee_id', tuteeEmployeeId: 'tutee_employee_id', remark: 'remark' },
+  },
+  careers: {
+    table: 'idp_careers',
+    person: 'employee_id',
+    columns: {
+      id: 'id',
+      employeeId: 'employee_id',
+      targetPositionId: 'target_position_id',
+      strengths: 'strengths',
+      developmentItems: 'development_items',
+      intendedCity: 'intended_city',
+    },
+  },
+  workShifts: {
+    table: 'idp_work_shifts',
+    person: 'employee_id',
+    columns: {
+      id: 'id',
+      employeeId: 'employee_id',
+      orgId: 'org_id',
+      positionId: 'position_id',
+      postId: 'post_id',
+      mentorEmployeeId: 'mentor_employee_id',
+    },
+  },
+} as const;
+
+/**
+ * 关键信息（IDP-R7）：与计划起止有交集的记录；储备人才信息待 R3-T06（K-16）。
+ * 三类在同一条 SELECT 里读出（F-476 P8 第 2 轮返工 P2-4）：关键信息维护只锁源记录、不取计划锁，分开的几条 SELECT
+ * 在 READ COMMITTED 下各取各的快照，可能拼出从未同时存在的组合（带教 A + 职业发展 B）；一条语句只用一个快照，
+ * 读到的就是某一提交时刻的完整状态。不加新锁（设计 §4.3）。
+ */
 export async function loadKeyInfo(tx: Tx, plan: PlanRow): Promise<KeyInfo> {
   const period = { startDate: plan.startDate, endDate: plan.endDate };
   const span = sql`start_date <= ${plan.endDate}::date AND (end_date IS NULL OR end_date >= ${plan.startDate}::date)`;
-  const select = (columns: ReturnType<typeof sql>, table: string, person: string) =>
-    tx.execute(sql`SELECT ${columns}, start_date::text AS "startDate", end_date::text AS "endDate"
+  const block = ({ table, person, columns }: (typeof KEY_INFO_COLUMNS)[keyof KeyInfo]) => {
+    const fields = Object.entries(columns).map(([key, column]) => `'${key}', ${column}`);
+    return sql`(SELECT COALESCE(json_agg(json_build_object(${sql.raw(fields.join(', '))},
+        'startDate', start_date::text, 'endDate', end_date::text) ORDER BY start_date, id), '[]'::json)
       FROM ${sql.raw(table)} WHERE tenant_id = ${plan.tenantId} AND ${sql.raw(person)} = ${plan.employeeId}::uuid
-        AND ${span} ORDER BY start_date, id`);
+        AND ${span})`;
+  };
+  const [row] = rowsOf<Record<keyof KeyInfo, Record<string, unknown>[]>>(
+    await tx.execute(sql`SELECT ${block(KEY_INFO_COLUMNS.tutorships)} AS tutorships,
+      ${block(KEY_INFO_COLUMNS.careers)} AS careers, ${block(KEY_INFO_COLUMNS.workShifts)} AS "workShifts"`),
+  );
   const keep = (rows: Record<string, unknown>[]) =>
     rows.filter((r) => periodsIntersect(period, r as { startDate: string; endDate: string | null }));
-  return {
-    tutorships: keep(
-      rowsOf(
-        await select(
-          sql`id, tutor_employee_id AS "tutorEmployeeId", tutee_employee_id AS "tuteeEmployeeId", remark`,
-          'idp_tutorships',
-          'tutee_employee_id',
-        ),
-      ),
-    ),
-    careers: keep(
-      rowsOf(
-        await select(
-          sql`id, employee_id AS "employeeId", target_position_id AS "targetPositionId", strengths,
-            development_items AS "developmentItems", intended_city AS "intendedCity"`,
-          'idp_careers',
-          'employee_id',
-        ),
-      ),
-    ),
-    workShifts: keep(
-      rowsOf(
-        await select(
-          sql`id, employee_id AS "employeeId", org_id AS "orgId", position_id AS "positionId",
-            post_id AS "postId", mentor_employee_id AS "mentorEmployeeId"`,
-          'idp_work_shifts',
-          'employee_id',
-        ),
-      ),
-    ),
-  };
+  return { tutorships: keep(row!.tutorships), careers: keep(row!.careers), workShifts: keep(row!.workShifts) };
 }
 
 async function templateModules(tx: Tx, tenantId: string, templateId: string) {
@@ -605,7 +620,23 @@ export async function presentPlan(
     }
     return shown;
   }
-  const { stage, nodeKey } = viewer.at;
+  return presentParticipant(tx, tenantId, detail, viewer.at, projections);
+}
+
+/** 参与人呈现用到的计划字段：已办读冻结份时计划可能已删，进度类字段（状态、阶段）可为空（F-476 P8）。 */
+export type ParticipantDetail = Omit<
+  Pick<PlanDetail, (typeof PARTICIPANT_PLAN_KEYS)[number] | 'modules' | 'goals' | 'analyses' | 'reviews' | 'keyInfo'>,
+  'status'
+> & { readonly status: PlanDetail['status'] | null };
+
+export async function presentParticipant(
+  tx: Tx,
+  tenantId: string,
+  detail: ParticipantDetail,
+  at: Extract<PlanViewer, { kind: 'participant' }>['at'],
+  projections: Projections,
+): Promise<Record<string, unknown>> {
+  const { stage, nodeKey } = at;
   const buttons = stage && nodeKey ? await nodeButtons(tx, tenantId, stage, nodeKey) : new Map<string, string[]>();
   const shown: Record<string, unknown> = Object.fromEntries(PARTICIPANT_PLAN_KEYS.map((k) => [k, detail[k]]));
   shown.stages = await stagesShown(tx, { tenantId, ...detail }, detail.stages, null, projections.asOf);

@@ -86,10 +86,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/idp/approval-adapter.ts#stageOf': ['apps/api/src/modules/idp/plan-store.ts#loadStage'],
   'apps/api/src/modules/idp/approval-content.ts#idpFrozenContent': [
-    'apps/api/src/modules/idp/plan-store.ts#loadStage',
-    'apps/api/src/modules/idp/plan-store.ts#requirePlanRow',
+    'apps/api/src/modules/idp/plan-store.ts#loadPlanRow',
     'apps/api/src/modules/idp/plan-view.ts#loadPlanDetail',
     'apps/api/src/modules/idp/plan-view.ts#planProjections',
+    'apps/api/src/modules/idp/stage-content.ts#parseIdpStageContent',
     'apps/api/src/modules/idp/stage-content.ts#presentFrozen',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
@@ -568,6 +568,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/idp/plan-routes.ts#planCommand': ['apps/api/src/modules/permission/scope-types.ts#EMPTY_SCOPE'],
   'apps/api/src/modules/idp/plan-routes.ts#presentRead': [
     'apps/api/src/modules/idp/plan-view.ts#presentPlan',
+    'apps/api/src/modules/idp/stage-content.ts#parseIdpStageContent',
     'apps/api/src/modules/idp/stage-content.ts#presentFrozen',
   ],
   'apps/api/src/modules/idp/plan-routes.ts#receiptsNow': [
@@ -1040,6 +1041,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/idp/plan-view.ts#loadGoals': ['apps/api/src/modules/idp/access.ts#rowsOf'],
   'apps/api/src/modules/idp/plan-view.ts#loadKeyInfo': [
     'apps/api/src/modules/idp/access.ts#rowsOf',
+    '#KEY_INFO_COLUMNS',
     'packages/domain/src/idp/plan-rules.ts#periodsIntersect',
   ],
   'apps/api/src/modules/idp/plan-view.ts#loadPlanContent': [
@@ -1072,15 +1074,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/idp/plan-view.ts#presentPlan': [
-    'apps/api/src/modules/idp/access.ts#project',
+  'apps/api/src/modules/idp/plan-view.ts#presentParticipant': [
     'apps/api/src/modules/idp/plan-access.ts#nodeButtons',
     '#PARTICIPANT_PLAN_KEYS',
+    '#keyInfoShown',
+    '#stagesShown',
+  ],
+  'apps/api/src/modules/idp/plan-view.ts#presentPlan': [
+    'apps/api/src/modules/idp/access.ts#project',
     '#configVisible',
     '#currentStageShown',
     '#keyInfoConfigVisible',
     '#keyInfoShown',
     '#listOf',
+    '#presentParticipant',
     '#stageSourcesOf',
     '#stagesShown',
   ],
@@ -1427,24 +1434,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/idp/access.ts#idpWriteContext',
     'apps/api/src/modules/job/context.ts#revision',
   ],
-  'apps/api/src/modules/idp/stage-content.ts#changing': ['apps/api/src/modules/approval/context.ts#approvalError'],
   'apps/api/src/modules/idp/stage-content.ts#frozenDetail': ['#NO_KEY_INFO'],
   'apps/api/src/modules/idp/stage-content.ts#isList': ['#isRecord'],
   'apps/api/src/modules/idp/stage-content.ts#loadIdpStageContent': [
     'apps/api/src/modules/idp/plan-store.ts#loadPlanRow',
     'apps/api/src/modules/idp/plan-store.ts#loadStage',
-    'apps/api/src/modules/idp/plan-view.ts#loadKeyInfo',
     'apps/api/src/modules/idp/plan-view.ts#loadPlanContent',
-    '#changing',
     '#sectionsOf',
   ],
   'apps/api/src/modules/idp/stage-content.ts#missing': ['apps/api/src/modules/approval/context.ts#approvalError'],
   'apps/api/src/modules/idp/stage-content.ts#parseIdpStageContent': ['#SECTIONS', '#isList', '#isRecord', '#missing'],
   'apps/api/src/modules/idp/stage-content.ts#presentFrozen': [
-    'apps/api/src/modules/idp/plan-view.ts#presentPlan',
+    'apps/api/src/modules/idp/plan-view.ts#presentParticipant',
     '#READ_ONLY',
     '#frozenDetail',
-    '#parseIdpStageContent',
   ],
   'apps/api/src/modules/idp/stage-content.ts#sectionsOf': ['#SECTIONS'],
   'apps/api/src/modules/idp/stage-service.ts#approvalContext': ['apps/api/src/system-actor.ts#SYSTEM_USER_ID'],
