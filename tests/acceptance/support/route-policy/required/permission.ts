@@ -124,6 +124,18 @@ export const PERMISSION: RequiredTable = {
   'PUT /api/tenant/permission/profiles/:id/objects/:objectCode': [
     guarded('profile_manage', 'PUT', '/profiles/:id/objects/:objectCode'),
   ],
+  'GET /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations': [
+    guarded('profile_manage', 'GET', '/profiles/:id/objects/:objectCode/data-operations'),
+  ],
+  'PUT /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations': [
+    guarded('profile_manage', 'PUT', '/profiles/:id/objects/:objectCode/data-operations'),
+  ],
+  'GET /api/tenant/permission/profiles/:id/objects/:objectCode/fields': [
+    guarded('profile_manage', 'GET', '/profiles/:id/objects/:objectCode/fields'),
+  ],
+  'PUT /api/tenant/permission/profiles/:id/objects/:objectCode/fields': [
+    guarded('profile_manage', 'PUT', '/profiles/:id/objects/:objectCode/fields'),
+  ],
   'GET /api/tenant/permission/grantable-profiles': [guarded('user_grant', 'GET', '/grantable-profiles')],
   'GET /api/tenant/permission/grants': [guarded('user_grant', 'GET', '/grants')],
   'POST /api/tenant/permission/grants': [

@@ -32,6 +32,7 @@ import { parseQuery } from './enterprise-lists.js';
 import { etag, idParam, ifMatch, objectCodeParam, parseBody } from './http.js';
 import { listBalances, listSeats } from './licenses.js';
 import { myObjectPermission } from './me.js';
+import { readDataOperations, readFields, saveDataOperations, saveFields } from './object-dialogs.js';
 import { buildPermissionSnapshot } from './me-snapshot.js';
 import {
   createProfile,
@@ -44,6 +45,9 @@ import {
   adminBody,
   adminListQuery,
   adminSetsBody,
+  dataOperationsBody,
+  fieldsBody,
+  fieldsQuery,
   grantBody,
   grantListQuery,
   objectPermissionBody,
@@ -174,6 +178,57 @@ function profileRoutes(router: Router, deps: TenantRouteDeps): void {
     };
     const result = await command(c, deps, ctx, { op: 'profile.set_object', change }, (tx, w) =>
       setObjectPermission(tx, w, objectCatalog, change),
+    );
+    etag(c, (result.body as { revision: number }).revision);
+    return c.json(result.body);
+  });
+  objectDialogRoutes(router, deps);
+}
+
+/** 身份详情的数据操作 / 字段权限弹窗（F-474-5 #26）：读当前值，写合并后走同一个对象权限写出口。 */
+function objectDialogRoutes(router: Router, deps: TenantRouteDeps): void {
+  const target = (c: Parameters<typeof idParam>[0]) => ({
+    profileId: idParam(c, 'id'),
+    objectCode: objectCodeParam(c),
+  });
+  const dialog = `${BASE}/profiles/:id/objects/:objectCode`;
+  router.get(`${dialog}/data-operations`, async (c) => {
+    const ctx = await guard(c, deps, 'profile_manage');
+    const { profileId, objectCode } = target(c);
+    const result = await withTenant(deps.db, ctx.tenantId, (tx) => readDataOperations(tx, profileId, objectCode));
+    etag(c, result.revision);
+    return c.json(result);
+  });
+  router.put(`${dialog}/data-operations`, async (c) => {
+    const ctx = await guard(c, deps, 'profile_manage');
+    const expectedRevision = ifMatch(c);
+    const body = await parseBody(c, dataOperationsBody);
+    const change = { ...target(c), expectedRevision, ...body };
+    const result = await command(c, deps, ctx, { op: 'profile.set_data_operations', change }, (tx, w) =>
+      saveDataOperations(tx, w, change),
+    );
+    etag(c, (result.body as { revision: number }).revision);
+    return c.json(result.body);
+  });
+  router.get(`${dialog}/fields`, async (c) => {
+    const ctx = await guard(c, deps, 'profile_manage');
+    const { profileId, objectCode } = target(c);
+    const query = parseQuery(fieldsQuery, {
+      code: c.req.query('code'),
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+    });
+    const result = await withTenant(deps.db, ctx.tenantId, (tx) => readFields(tx, profileId, objectCode, query));
+    etag(c, result.revision);
+    return c.json(result);
+  });
+  router.put(`${dialog}/fields`, async (c) => {
+    const ctx = await guard(c, deps, 'profile_manage');
+    const expectedRevision = ifMatch(c);
+    const body = await parseBody(c, fieldsBody);
+    const change = { ...target(c), expectedRevision, ...body };
+    const result = await command(c, deps, ctx, { op: 'profile.set_fields', change }, (tx, w) =>
+      saveFields(tx, w, change),
     );
     etag(c, (result.body as { revision: number }).revision);
     return c.json(result.body);

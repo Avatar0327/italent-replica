@@ -70,3 +70,27 @@ export const profileListQuery = z.strictObject({
   limit: z.coerce.number().int().min(1).max(500).default(500),
   offset: listPage.offset,
 });
+
+/** 数据操作权限弹窗：只有三个开关，不带字段与按钮（沿用整对象写入口保存，见 object-dialogs.ts）。 */
+export const dataOperationsBody = z.strictObject({
+  dataOperations: z.strictObject({ create: z.boolean(), update: z.boolean(), delete: z.boolean() }),
+});
+
+/** 字段权限弹窗：只提交被改动的字段，服务端合并进现有对象权限；目录指纹含义同整对象保存。 */
+export const fieldsBody = z.strictObject({
+  fields: z
+    .array(z.strictObject({ fieldCode: code(ITEM_CODE), view: z.boolean(), edit: z.boolean() }))
+    .min(1)
+    .max(MAX_ITEMS),
+  catalogDigest: z
+    .string()
+    .regex(/^[0-9a-f]{16}$/)
+    .optional(),
+});
+
+/** 字段权限弹窗列表：按字段编码包含筛选（目录无字段显示名）；原站 100 条 / 页。 */
+export const fieldsQuery = z.strictObject({
+  code: textFilter.optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+  offset: listPage.offset,
+});
