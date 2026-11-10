@@ -196,12 +196,16 @@ export async function rewriteBatchMembers(w: World, batchId: string, offerIds: r
   });
 }
 
-/** 夹具直写：去掉办理份里的扩展（模拟缺份）；触发器放行仅限本事务，不属于业务路径。 */
-export async function stripExt(w: World, actorUserId: string) {
+/**
+ * 夹具直写：去掉办理份里的扩展（模拟缺份），或只去掉批扩展的第一行标签（模拟份残缺）；
+ * 触发器放行仅限本事务，不属于业务路径。
+ */
+export async function stripExt(w: World, actorUserId: string, part: 'ext' | 'firstBatchRow' = 'ext') {
+  const content = part === 'ext' ? sql`content - 'ext'` : sql`content #- '{ext,rows,0}'`;
   await w.db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
     await tx.execute(sql`ALTER TABLE approval_handling_contents DISABLE TRIGGER USER`);
-    await tx.execute(sql`UPDATE approval_handling_contents SET content = content - 'ext'
+    await tx.execute(sql`UPDATE approval_handling_contents SET content = ${content}
       WHERE actor_user_id = ${actorUserId}::uuid`);
     await tx.execute(sql`ALTER TABLE approval_handling_contents ENABLE TRIGGER USER`);
   });

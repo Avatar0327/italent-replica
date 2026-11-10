@@ -202,4 +202,14 @@ describe('AC-F476-08 offer_batch（Offer 批）：办理 → 修改 → 两路�
     expect(viaCenter.status, viaCenter.text).toBe(503);
     expect(viaCenter.text).not.toContain(PLACE_B);
   });
+
+  it('份残缺（批扩展少了一行的标签条目）：503，不以空标签冒充办理时的行（R2 P2-3 同类）', async () => {
+    const w = await offerApprovalWorld(testDb().db, 'p6-08-batch-row-missing');
+    const s = await handledBatch(w);
+    await stripExt(w, w.manager.userId, 'firstBatchRow');
+    const viaCenter = await center(w, s.instanceId, w.manager.userId);
+    expect(viaCenter.status, viaCenter.text).toBe(503);
+    expect(viaCenter.text).not.toContain(NAME_A1);
+    expect(viaCenter.text).not.toContain(s.atHandling[1]!.departmentName as string);
+  });
 });
