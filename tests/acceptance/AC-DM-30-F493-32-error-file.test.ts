@@ -113,7 +113,8 @@ describe('AC-DM-30-F493-32 错误文件结构', () => {
     expect((await x.errorOf(none)).details?.reason).toBe('EXIT_IMPORT_NO_ERROR_FILE');
 
     const bad = await x.imported([x.row(1, 'zzf496nope')]);
-    await x.q(x.sql`UPDATE exit_import_batches SET status='running', lease_until = now() + interval '1 hour'
+    await x.q(x.sql`UPDATE exit_import_batches SET status='running', expires_at = NULL,
+      lease_until = now() + interval '1 hour'
       WHERE tenant_id=${x.tenantId} AND id=${bad}::uuid`);
     const running = await errorFile(x, bad);
     expect(running.status).toBe(409);

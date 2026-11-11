@@ -60,6 +60,14 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/employment/exit-handover.ts#isDays': ['#HANDOVER_REMIND_DAYS_MAX'],
   'packages/domain/src/employment/exit-import-contract.ts#EXIT_IMPORT_COLUMNS': ['#column'],
+  'packages/domain/src/employment/exit-import-contract.ts#displayValue': ['#DATE_COLUMNS', '#normalizeExitImportDate'],
+  'packages/domain/src/employment/exit-import-contract.ts#exitImportErrorText': [
+    '#EXIT_IMPORT_COLUMNS',
+    '#EXIT_IMPORT_REASONS',
+    '#ROW_LEVEL_TEXT',
+    '#VALUE_SUFFIX',
+    '#displayValue',
+  ],
   'packages/domain/src/employment/exit-import-contract.ts#normalizeExitImportDate': [
     'packages/domain/src/audit/retention.ts#isIsoDate',
     '#DATE_ISO',

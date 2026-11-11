@@ -46,19 +46,18 @@ async function oneImported(label: string, disableFrom?: string) {
 }
 
 describe('AC-DM-30-12 列表与详情', () => {
-  it('已完成 / 全部能查到，发起方式 = 导入，按 initiation=import 筛得出；进行中查不到；详情动作有 edit', async () => {
+  it('已完成 / 全部能查到，发起方式显示直接离职（F-493 S3c：不再露出导入标识），按 initiation=direct 筛得出；进行中查不到；详情动作有 edit', async () => {
     const { x, exitBusinessId } = await oneImported('list');
     for (const view of ['completed', 'all'])
       expect((await listed(x, `view=${view}`)).find((item) => item.id === exitBusinessId)).toMatchObject({
-        mode: 'import',
+        mode: 'direct',
         actions: expect.arrayContaining(['edit']),
       });
-    expect((await listed(x, 'view=all&initiation=import')).map((item) => item.id)).toEqual([exitBusinessId]);
-    expect((await listed(x, 'view=all&initiation=direct')).map((item) => item.id)).not.toContain(exitBusinessId);
+    expect((await listed(x, 'view=all&initiation=direct')).map((item) => item.id)).toContain(exitBusinessId);
     expect((await listed(x, 'view=in_progress')).map((item) => item.id)).not.toContain(exitBusinessId);
     const detail = await x.session.request('GET', `/exits/${exitBusinessId}`);
     const body = (await detail.json()) as { mode: string; actions: string[] };
-    expect(body.mode).toBe('import');
+    expect(body.mode).toBe('direct');
     expect(body.actions).toContain('edit');
     expect(body.actions).not.toContain('submit');
   });

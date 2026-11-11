@@ -3,14 +3,21 @@
  * 一行一个租户事务（成功即提交、失败整行回滚）：业务拒绝记为该行 failed；系统故障（非业务错误、5xx、锁超时、
  * 唯一键撞车）中止本轮，批次留在 running 并写 last_error，租约到期后由下一次唤醒或调度器接管（S3b）。
  * S3b：调度器（唤醒丢失的补偿 + 到期清理）、尝试次数上限（连续 5 次后 failed）、领到批次后的提交者权限复核。
- * 本文件不做：通知、错误文件下载（S3c / S3d）。
+ * S3c：收尾事务内给提交人发一条完成站内通知（只在 running → 终态的那一次，重复调度不重发）。
+ * 本文件不做：错误文件 / 模板 / 原文件下载（exit-import-file.ts 与路由，S3c / S3d）。
  */
 import { exitImportRows, isIsolatedTestDb, sql, withTenant, type Db, type Tx } from '@italent/db';
-import { EXIT_IMPORT_MAX_ATTEMPTS, tenantLocalDate } from '@italent/domain';
+import {
+  EXIT_IMPORT_FINISHED_CLEAN_TEMPLATE,
+  EXIT_IMPORT_FINISHED_TEMPLATE,
+  EXIT_IMPORT_MAX_ATTEMPTS,
+  tenantLocalDate,
+} from '@italent/domain';
 import { asUuid, advisoryLock } from '../../advisory-lock.js';
 import type { Authorizer } from '../../authorization.js';
 import { recordOperationLog } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
+import { notifyMessage } from '../approval/notifications.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { createPermissionAuthorizer } from '../permission/authorizer.js';
 import { activeTenants, type TenantRow } from './active-tenants.js';
@@ -427,7 +434,46 @@ async function finish(db: Db, tenant: TenantRow, batch: ClaimedBatch, now: Date,
       commandId: `exit-import:${batch.id}`,
       occurredAt: now,
     });
+    await notifySubmitter(tx, tenant, batch, errorCount, now);
   });
+}
+
+/** 文件名进通知前去掉控制字符（渲染器不处理；展示端按纯文本显示）。 */
+// eslint-disable-next-line no-control-regex
+const stripControl = (text: string) => text.replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
+
+/**
+ * 完成通知（设计 §8.1、§10.3）：收件人只有提交人；有错误用 exit_import_finished，否则 exit_import_finished_clean。
+ * 发送人显示名在登记时快照进 payload（senderName），之后改名不回溯；提交人已停用 / 退出租户时 notifyMessage 自己跳过。
+ * 挂在批次上（businessType exit_import_batch），不伪造审批实例。
+ */
+async function notifySubmitter(tx: Tx, tenant: TenantRow, batch: ClaimedBatch, errorCount: number, now: Date) {
+  const [info] = rowsOf<{ file_name: string; display_name: string | null }>(
+    await tx.execute(sql`SELECT b.file_name,
+        (SELECT a.display_name FROM tenant_member_accounts(ARRAY[b.submitted_by]) a LIMIT 1) AS display_name
+      FROM exit_import_batches b WHERE b.tenant_id=${tenant.id} AND b.id=${batch.id}::uuid`),
+  );
+  await notifyMessage(
+    tx,
+    {
+      tenantId: tenant.id,
+      userId: batch.submittedBy,
+      timezone: tenant.timezone,
+      now,
+      commandId: `exit-import:${batch.id}`,
+      expectedRevision: 0,
+    },
+    { businessType: 'exit_import_batch', businessId: batch.id },
+    {
+      recipientUserId: batch.submittedBy,
+      templateCode: errorCount >= 1 ? EXIT_IMPORT_FINISHED_TEMPLATE : EXIT_IMPORT_FINISHED_CLEAN_TEMPLATE,
+      payload: {
+        fileName: stripControl(info?.file_name ?? ''),
+        errors: String(errorCount),
+        senderName: info?.display_name ?? '',
+      },
+    },
+  );
 }
 
 /** 部门编码 → 组织 ID，仅在唯一解析时给出（同批多行同编码只查一次）；解析不到 / 有歧义为 null。 */

@@ -119,49 +119,6 @@ export interface ImportedTenureSegment {
   readonly until: string;
 }
 
-const NIL_UUID = '00000000-0000-0000-0000-000000000000';
-
-/**
- * 历史离职导入的编制评估入口（设计 §4.4）：与撤销离职 ΔP 同口径——在段起点与段内每个编制周期起点各判一次，
- * 同一编制对象取最大峰值。严格 / 非严格控编这里都只返回明细，由调用方做“提示并确认”（DEC-258）。
- * 外部人员（employType = external）不占编，返回空。
- */
-export async function importedTenureExcesses(
-  tx: Tx,
-  ctx: EmploymentContext,
-  segment: ImportedTenureSegment,
-  peers: readonly ImportedTenureSegment[],
-): Promise<CapacityExcess[]> {
-  if (segment.fields.employType === 'external') return [];
-  const worst = new Map<string, CapacityExcess>();
-  const starts = await establishmentPeriodStartsWithin(tx, ctx.tenantId, segment.from, segment.until);
-  for (const effectiveDate of [segment.from, ...starts]) {
-    const { excesses } = await evaluateEstablishment(
-      tx,
-      ctx,
-      {
-        businessId: NIL_UUID,
-        employeeId: NIL_UUID,
-        kind: 'hire',
-        departmentId: segment.departmentId,
-        positionId: segment.positionId,
-        effectiveDate,
-        until: segment.until,
-        reconcileCarried: false,
-        propagates: false,
-        fields: segment.fields,
-      },
-      true,
-      { segment, peers },
-    );
-    for (const item of excesses) {
-      const key = `${item.capacityId}:${item.positionId ?? ''}`;
-      if (!worst.has(key) || (worst.get(key)!.peak ?? -1) < (item.peak ?? 0)) worst.set(key, item);
-    }
-  }
-  return [...worst.values()];
-}
-
 /**
  * 历史离职导入的评估范围（F-139a 设计 §4.4）：只在本文件内部流转，不挂在 ActivationTarget 上，其他入口看不到也传不进。
  * segment 是被评估的这一行，peers 是同批其他行；它们都还没落库，作为独立成员按 key 计数。

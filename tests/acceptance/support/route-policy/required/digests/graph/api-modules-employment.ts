@@ -3179,6 +3179,68 @@ export const GRAPH: Graph = {
     '#refuse',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_OF_TODO',
   ],
+  'apps/api/src/modules/employment/exit-import-download.ts#exitImportErrorFile': [
+    'apps/api/src/audit/record.ts#recordOperationLog',
+    '#notFound',
+    'apps/api/src/modules/employment/exit-import-file.ts#ERROR_FILE_NAME',
+    'apps/api/src/modules/employment/exit-import-file.ts#errorWorkbook',
+    'apps/api/src/modules/employment/exit-import-file.ts#loadErrorFileRows',
+    'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportDownloadAccess',
+    'apps/api/src/modules/employment/exit-import-file.ts#viewableColumns',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-import-file.ts#EDUCATION': ['packages/domain/src/personnel/fields.ts#SUBSETS'],
+  'apps/api/src/modules/employment/exit-import-file.ts#FIELD_OF': [
+    '#EDUCATION',
+    '#RECORD',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+  ],
+  'apps/api/src/modules/employment/exit-import-file.ts#RECORD': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+  ],
+  'apps/api/src/modules/employment/exit-import-file.ts#dataValue': [
+    '#DATE_COLUMNS',
+    'packages/domain/src/employment/exit-import-contract.ts#normalizeExitImportDate',
+  ],
+  'apps/api/src/modules/employment/exit-import-file.ts#errorCell': [
+    'apps/api/src/modules/employment/exit-import-shape.ts#exitImportLimitOf',
+    'packages/domain/src/employment/exit-import-contract.ts#exitImportErrorText',
+  ],
+  'apps/api/src/modules/employment/exit-import-file.ts#errorWorkbook': [
+    'apps/api/src/modules/analytics/stat-xlsx.ts#statWorkbook',
+    '#dataValue',
+    '#errorCell',
+    '#headerSheet',
+    'packages/domain/src/employment/exit-import-contract.ts#EXIT_IMPORT_COLUMNS',
+  ],
+  'apps/api/src/modules/employment/exit-import-file.ts#headerSheet': [
+    'apps/api/src/modules/analytics/stat-xlsx.ts#StatSheet',
+    'packages/domain/src/employment/exit-import-contract.ts#EXIT_IMPORT_COLUMNS',
+  ],
+  'apps/api/src/modules/employment/exit-import-file.ts#loadErrorFileRows': [
+    'packages/domain/src/employment/exit-import-contract.ts#EXIT_IMPORT_COLUMNS',
+  ],
+  'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportButton': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'packages/domain/src/employment/exit-import.ts#EXIT_IMPORT_BUTTON',
+  ],
+  'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportDownloadAccess': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    '#requireExitImportButton',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportTemplateAccess': ['#requireExitImportButton'],
+  'apps/api/src/modules/employment/exit-import-file.ts#templateWorkbook': [
+    'apps/api/src/modules/analytics/stat-xlsx.ts#statWorkbook',
+    '#headerSheet',
+  ],
+  'apps/api/src/modules/employment/exit-import-file.ts#viewableColumns': [
+    '#FIELD_OF',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+  ],
   'apps/api/src/modules/employment/exit-import-recheck.ts#submitterStillAllowed': [
     'apps/api/src/modules/employment/context.ts#contextOf',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -3264,6 +3326,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-import-shape.ts#bodySchema': ['#rowSchema'],
   'apps/api/src/modules/employment/exit-import-shape.ts#cell': ['#VALUE_MAX'],
+  'apps/api/src/modules/employment/exit-import-shape.ts#exitImportLimitOf': [
+    '#LIMITS',
+    'packages/domain/src/employment/exit-import-contract.ts#EXIT_IMPORT_COLUMNS',
+  ],
   'apps/api/src/modules/employment/exit-import-shape.ts#isoOf': [
     'packages/domain/src/employment/exit-import-contract.ts#normalizeExitImportDate',
   ],
@@ -3313,6 +3379,7 @@ export const GRAPH: Graph = {
     'apps/api/src/audit/record.ts#recordOperationLog',
     '#RETAIN',
     '#departmentResolver',
+    '#notifySubmitter',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-import-worker.ts#hasPendingRows': ['#pendingRows'],
@@ -3323,6 +3390,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-import-shape.ts#emailKey',
     '#emailInEmployee',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/exit-import-worker.ts#notifySubmitter': [
+    'apps/api/src/modules/approval/notifications.ts#notifyMessage',
+    '#stripControl',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/employment/exit-notice-templates.ts#EXIT_IMPORT_FINISHED_CLEAN_TEMPLATE',
+    'packages/domain/src/employment/exit-notice-templates.ts#EXIT_IMPORT_FINISHED_TEMPLATE',
   ],
   'apps/api/src/modules/employment/exit-import-worker.ts#pendingRows': ['#PAGE'],
   'apps/api/src/modules/employment/exit-import-worker.ts#processRow': [
@@ -3797,6 +3871,19 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-dictionaries.ts#listExitDictionary',
     '#enabledQuery',
   ],
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/import/batches/:id/error-file': [
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/exit-import-download.ts#exitImportErrorFile',
+    '#xlsxResponse',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/import/template': [
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/exit-import-file.ts#TEMPLATE_FILE_NAME',
+    'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportTemplateAccess',
+    'apps/api/src/modules/employment/exit-import-file.ts#templateWorkbook',
+    '#xlsxResponse',
+  ],
   'apps/api/src/modules/employment/exit-routes.ts#route:PATCH /exits/:id': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -3933,6 +4020,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+  ],
+  'apps/api/src/modules/employment/exit-routes.ts#xlsxResponse': [
+    'apps/api/src/modules/analytics/stat-report-export.ts#XLSX_CONTENT_TYPE',
+    'apps/api/src/modules/analytics/stat-xlsx.ts#attachmentHeader',
   ],
   'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf': ['#readExitTermination'],
   'apps/api/src/modules/employment/exit-termination-policy.ts#readExitTermination': [

@@ -247,6 +247,81 @@ function exitImportObligations(): Obligation[] {
   );
 }
 
+const EXIT_IMPORT_FILE = `${SRC}/employment/exit-import-file.ts`;
+const EXIT_IMPORT_DOWNLOAD = `${SRC}/employment/exit-import-download.ts`;
+/** F-493 S3c：模板与错误文件的下载入口权限链（设计 §3.1、§8.2）；错误文件另判提交人归属与人员 / 档案对象的“看全部”。 */
+function exitImportDownloadObligations(route: 'template' | 'error-file'): Obligation[] {
+  const path = route === 'template' ? '/exits/import/template' : '/exits/import/batches/:id/error-file';
+  const entry = at(EXIT, 'GET', path, "const ctx = await readContext(c, deps, 'object.create')");
+  const access = route === 'template' ? 'requireExitImportTemplateAccess' : 'requireExitImportDownloadAccess';
+  const call = (anchor: string) => fn(EXIT_IMPORT_FILE, access, anchor);
+  const recordScope = {
+    role: 'scope' as const,
+    unit: `${EXIT_IMPORT_FILE}#${access}`,
+    anchor:
+      route === 'template'
+        ? "if (ctx.scope && !ctx.scope.all) throw new AppError('FORBIDDEN', '下载导入模板需要任职对象的“全部数据”范围')"
+        : "if (ctx.scope && !ctx.scope.all) throw new AppError('FORBIDDEN', '下载导入文件需要任职对象的“全部数据”范围')",
+  };
+  const base = withNeeds(
+    [
+      ob(
+        `obj:${RECORD}:create`,
+        ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+        [entry, READ],
+      ),
+      ob(
+        `btn:${RECORD}#Employment.DimissionImport@list`,
+        [],
+        [
+          call('await requireExitImportButton(ctx)'),
+          fn(
+            EXIT_IMPORT_FILE,
+            'requireExitImportButton',
+            "await requireEmploymentWrite(ctx, 'create', {}, EXIT_IMPORT_BUTTON, " +
+              'EMPLOYMENT_OBJECT, { commandOnly: true })',
+          ),
+          WRITE_BUTTON,
+        ],
+        '只判按钮的命令权；撤字段查看权不拦下载，由下载处把对应列置空',
+      ),
+    ],
+    { [`obj:${RECORD}:create`]: bound({ scope: 'see-all' }, [recordScope]) },
+  );
+  if (route === 'template') return base;
+  const personScope = {
+    role: 'scope' as const,
+    unit: `${EXIT_IMPORT_FILE}#requireExitImportDownloadAccess`,
+    anchor: "if (!scope?.all) throw new AppError('FORBIDDEN', '下载导入文件需要人员与档案对象的“全部数据”范围')",
+  };
+  return [
+    ...base,
+    ...withNeeds(
+      ['TenantBase.Employee', 'TenantBase.EmployeeInformation'].map((object) =>
+        ob(
+          `obj:${object}:view`,
+          ['object:object.* 动作'],
+          [call('const scope = await resolveModuleScope(deps, ctx, today, object)')],
+          '人员 / 档案对象只判范围：必须是显式“看全部”，不足 403（fail-closed）',
+        ),
+      ),
+      {
+        'obj:TenantBase.Employee:view': bound({ scope: 'see-all' }, [personScope]),
+        'obj:TenantBase.EmployeeInformation:view': bound({ scope: 'see-all' }, [personScope]),
+      },
+    ),
+    ob(
+      'own:employment.exitImportBatchSubmitter',
+      [],
+      [
+        at(EXIT, 'GET', path, 'const file = await exitImportErrorFile(deps, ctx, uuidParam(c, '),
+        fn(EXIT_IMPORT_DOWNLOAD, 'exitImportErrorFile', 'eq(exitImportBatches.submittedBy, ctx.userId)'),
+      ],
+      '提交人归属：不是本人提交的批次（含他人、他租户的）一律 404，不泄露存在性',
+    ),
+  ];
+}
+
 /** F-317 固定路由决定按钮；批量每个子命令仍复用首次发起的权限和锁。 */
 function handoverListSubmit(path: string, batch: boolean): Obligation[] {
   const code = batch ? 'BatchDimissionHandoverApproval' : 'EmploymentRecrdLineOpDimissionHandoverApproval';
@@ -3633,6 +3708,9 @@ export const EMPLOYMENT: RequiredTable = {
       purpose: 'when:employment.exitImportProfile' as const,
     })),
   ],
+  // F-493 S3c：模板与错误文件下载（设计 §3.1、§8.2、§10.1）；错误文件另判提交人归属，内容按当前字段权裁剪
+  'GET /api/tenant/employment/exits/import/template': exitImportDownloadObligations('template'),
+  'GET /api/tenant/employment/exits/import/batches/:id/error-file': exitImportDownloadObligations('error-file'),
   'PATCH /api/tenant/employment/exits/:id': [
     ...exitBusinessCommand('/exits/:id', 'Employment.DimissionEdit', 'route'),
     linkage(

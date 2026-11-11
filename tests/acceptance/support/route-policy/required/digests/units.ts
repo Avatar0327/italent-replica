@@ -92,7 +92,7 @@ export const DIGESTS: Digests = {
     retrieveTask: '649138642c42',
   },
   'apps/api/src/modules/approval/queries.ts': {
-    listNotifications: '123fde47b5a9',
+    listNotifications: '103debee94a2',
     listTodos: '6b64f79dcefe',
   },
   'apps/api/src/modules/approval/routes.ts': {
@@ -425,6 +425,14 @@ export const DIGESTS: Digests = {
     isHandoverParticipant: 'fceea1bde6da',
     tickHandoverItem: '4e308a4a5be9',
   },
+  'apps/api/src/modules/employment/exit-import-download.ts': {
+    exitImportErrorFile: 'ece1366674b1',
+  },
+  'apps/api/src/modules/employment/exit-import-file.ts': {
+    requireExitImportButton: '6af404a6d69d',
+    requireExitImportDownloadAccess: '1de867f2c33f',
+    requireExitImportTemplateAccess: '3a863cb52383',
+  },
   'apps/api/src/modules/employment/exit-import.ts': {
     requireExitImportAccess: '0616befec7c1',
     requireExitImportProfileAccess: 'e6bcdb12ba3d',
@@ -438,6 +446,8 @@ export const DIGESTS: Digests = {
     'route:GET /exits/:id': '1d69f5d8814c',
     'route:GET /exits/:id/attachments/:fileId/content': 'a5eb43b12436',
     'route:GET /exits/dictionaries/:dict': '3433254b32bc',
+    'route:GET /exits/import/batches/:id/error-file': 'a91d42490dbd',
+    'route:GET /exits/import/template': 'cede8ae15602',
     'route:PATCH /exits/:id': '17f3b1aad9dc',
     'route:PATCH /exits/cancellations/:id': '0da13883c4a4',
     'route:POST /exits/:id/cancel': '8464978ee3ff',
@@ -2239,6 +2249,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     'e6b97d5ea60d',
   'apps/api/src/modules/employment/exit-handover.ts#isHandoverParticipant': '9b0335d7116c',
   'apps/api/src/modules/employment/exit-handover.ts#tickHandoverItem': '37afb6be75dd',
+  'apps/api/src/modules/employment/exit-import-download.ts#exitImportErrorFile': '6b431a6f051e',
+  'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportButton': '4162032a8306',
+  'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportDownloadAccess': '8a65cd89c26a',
+  'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportTemplateAccess': 'afa23768a091',
   'apps/api/src/modules/employment/exit-import.ts#requireExitImportAccess': 'a5a74c1714f0',
   'apps/api/src/modules/employment/exit-import.ts#requireExitImportProfileAccess': 'f7dd7f24747e',
   'apps/api/src/modules/employment/exit-routes.ts#registerExitChanges': '52c341c94843',
@@ -2249,6 +2263,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/:id': 'e4b03ff34af1',
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/:id/attachments/:fileId/content': 'fa60981ed467',
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/dictionaries/:dict': 'f2d7229ace36',
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/import/batches/:id/error-file': '411d5bf40025',
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/import/template': '79f843b9038e',
   'apps/api/src/modules/employment/exit-routes.ts#route:PATCH /exits/:id': '54a381e50b6b',
   'apps/api/src/modules/employment/exit-routes.ts#route:PATCH /exits/cancellations/:id': '2c31e6bc8b1c',
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/:id/cancel': '2ec62664a8ce',

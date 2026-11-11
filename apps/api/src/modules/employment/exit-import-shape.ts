@@ -69,6 +69,11 @@ export function parseExitImportBody(raw: unknown): ExitImportBody {
 
 const letterOf = (key: ExitImportRowKey) => EXIT_IMPORT_COLUMNS.find((c) => c.key === key)!.letter;
 const REQUIRED = EXIT_IMPORT_COLUMNS.filter((c) => c.required).map((c) => c.key!);
+/** 按列字母取 TOO_LONG 文案里的长度上限（错误文件用）；没有单列上限的列为 undefined。 */
+export const exitImportLimitOf = (columnLetter: string | null): number | undefined => {
+  const column = EXIT_IMPORT_COLUMNS.find((c) => c.letter === columnLetter);
+  return column?.key ? LIMITS[column.key] : undefined;
+};
 /** 有长度上限的列（其余列的上限 = 2000，已由整批规则挡住）：姓名 / 部门编码 / 名称匹配列 / 字典名称。 */
 const LIMITS: Partial<Record<ExitImportRowKey, number>> = {
   name: 200,
