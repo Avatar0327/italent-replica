@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, h, uiHarness } from './support/f474-ui.js';
 import { GrantsPage } from '../../apps/web/src/settings/GrantsPage.js';
+import { UsersPage } from '../../apps/web/src/settings/UsersPage.js';
 import { AdminsPage } from '../../apps/web/src/settings/AdminsPage.js';
 
 const base = '/api/tenant/permission';
@@ -44,7 +45,7 @@ async function search(input: HTMLInputElement, value: string) {
 }
 async function clickButton(text: string) {
   const button = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
-    (item) => item.textContent?.trim() === text,
+    (item) => item.textContent?.replace(/\s/g, '') === text,
   );
   expect(button).toBeDefined();
   await act(async () => {
@@ -97,4 +98,105 @@ describe.each([
     expect(queries().some((url) => url.pathname === path && url.searchParams.get('q') === '未匹配')).toBe(true);
     expect(document.body.textContent).toContain('没有匹配的数据');
   });
+});
+
+describe('AC-FE-F516 候选翻页与异步生命周期', () => {
+  const path = `${base}/admins/mou-candidates`;
+  const render = async () =>
+    ui.render(h(AdminsPage, { title: '管理员', editable: false }), '/', undefined, {
+      [`${base}/admins`]: { items: [], total: 0 },
+      [path]: (url: URL) => ({
+        items: [
+          {
+            id: ids[url.searchParams.get('offset') === '50' ? 1 : 0],
+            name: url.searchParams.get('offset') === '50' ? '第二页' : '第一页',
+          },
+        ],
+        total: 51,
+      }),
+    });
+  it('跨候选页保留已选名称与值，搜索回到第一页', async () => {
+    await render();
+    const input = await open('管理单元');
+    await choose('第一页');
+    await clickButton('下一页');
+    expect(
+      queries()
+        .filter((url) => url.pathname === path)
+        .at(-1)!
+        .searchParams.get('offset'),
+    ).toBe('50');
+    await choose('第二页');
+    expect(ui.host.textContent).toContain('第一页');
+    expect(ui.host.textContent).toContain('第二页');
+    await clickButton('查询');
+    expect(
+      queries()
+        .filter((url) => url.pathname === `${base}/admins`)
+        .at(-1)!
+        .searchParams.getAll('mouId'),
+    ).toEqual(ids);
+    await search(input, '检索');
+    expect(
+      queries()
+        .filter((url) => url.pathname === path)
+        .at(-1)!
+        .searchParams.get('offset'),
+    ).toBe('0');
+  });
+  it('旧搜索迟到不能覆盖新结果，失败有重试出口，卸载后迟到不回写', async () => {
+    await render();
+    const input = await open('管理单元');
+    let release: ((response: Response) => void) | undefined;
+    vi.mocked(fetch).mockImplementation((raw) => {
+      const url = new URL(String(raw), 'http://localhost');
+      if (url.searchParams.get('q') === '旧')
+        return new Promise<Response>((resolve) => {
+          release = resolve;
+        });
+      if (url.searchParams.get('q') === '失败')
+        return Promise.resolve(Response.json({ error: { code: 'UNAVAILABLE' } }, { status: 503 }));
+      return Promise.resolve(Response.json({ items: [{ id: ids[1], name: '最新候选' }], total: 1 }));
+    });
+    await search(input, '旧');
+    expect(document.body.textContent).toContain('正在加载');
+    await search(input, '新');
+    await act(async () => {
+      release!(Response.json({ items: [{ id: ids[0], name: '过期候选' }], total: 1 }));
+      await tick();
+    });
+    expect(document.body.textContent).toContain('最新候选');
+    expect(document.body.textContent).not.toContain('过期候选');
+    await search(input, '失败');
+    expect(document.querySelector('[role="alert"]')).not.toBeNull();
+    vi.mocked(fetch).mockResolvedValue(Response.json({ items: [], total: 0 }));
+    await clickButton('重新加载');
+    expect(document.body.textContent).toContain('没有匹配的数据');
+    vi.mocked(fetch).mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    );
+    await search(input, '离开');
+    await ui.render(h('div', null, '已离开'));
+    await act(async () => {
+      release!(Response.json({ items: [{ id: ids[0], name: '离开后结果' }], total: 1 }));
+      await tick();
+    });
+    expect(document.body.textContent).not.toContain('离开后结果');
+  });
+});
+
+it('AC-FE-F516 共用查询编码仍允许筛选覆盖固定 type', async () => {
+  await ui.render(h(UsersPage, { code: 'users.all', title: '全部用户', editable: false }));
+  await open('用户类型');
+  await choose('外部用户');
+  await clickButton('查询');
+  expect(
+    queries()
+      .filter((url) => url.pathname === `${base}/users`)
+      .at(-1)!
+      .searchParams.getAll('type'),
+  ).toEqual(['external']);
 });
