@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { Button, Tooltip, type TableColumnsType } from 'antd';
 import { internalUserGaps } from '../demo-stubs/settings-columns.js';
 import type { User } from './model.js';
@@ -35,7 +36,7 @@ export function userColumns(
     ...column,
     render: () => (
       <Tooltip title={m.fieldPending}>
-        <span>{m.empty}</span>
+        <span>{column.key === 'employeeCode' ? codeText(null) : m.empty}</span>
       </Tooltip>
     ),
   }));

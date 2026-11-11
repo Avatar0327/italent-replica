@@ -17,6 +17,16 @@ type Notice = {
 };
 type NoticePage = { items: Notice[]; page: number; pageSize: number };
 
+// OFFSET 翻页期间插入通知会使后页重叠，保留每个 ID 首次出现的位置与内容。
+function uniqueNotices(items: Notice[]): Notice[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
 /** 抽屉每次打开重新挂载；关闭时销毁票据，分页响应只由当前请求落地。 */
 export function Notifications() {
   const api = useApiClient();
@@ -43,7 +53,7 @@ export function Notifications() {
         });
         if (controller.signal.aborted || ticket !== sequence.current) return;
         const visible = result.items.filter((item) => item.channel === 'inbox' && item.body);
-        setItems((previous) => (page === 1 ? visible : [...previous, ...visible]));
+        setItems((previous) => uniqueNotices(page === 1 ? visible : [...previous, ...visible]));
         // 真实接口没有 hasNext，过滤前的条数决定下一页，避免非站内消息占满一页后截断。
         setMore(result.items.length === result.pageSize);
       } catch {

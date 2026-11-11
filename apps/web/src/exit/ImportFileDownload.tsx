@@ -28,10 +28,14 @@ export function ImportFileDownload({ businessId, children }: { businessId: strin
         signal: controller.signal,
       });
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: { code?: string } } | null;
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { code?: string; details?: { reason?: string } };
+        } | null;
         if (!controller.signal.aborted)
           setError(
-            response.status === 404 && payload?.error?.code === 'EXIT_IMPORT_FILE_EXPIRED'
+            response.status === 404 &&
+              payload?.error?.code === 'NOT_FOUND' &&
+              payload.error.details?.reason === 'EXIT_IMPORT_FILE_EXPIRED'
               ? xi.fileExpired
               : xi.fileDownloadFailed,
           );

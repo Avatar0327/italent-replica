@@ -70,9 +70,10 @@ export function teamKeys(rows: TeamRow[]) {
   return keys.filter((key) => rows.some((row) => Object.hasOwn(row, key)));
 }
 export function teamValue(row: TeamRow, key: string) {
-  if (!Object.hasOwn(row, key)) return m.none;
-  const value = row.display?.[key] ?? row[key];
+  const present = Object.hasOwn(row, key);
+  const value = present ? (row.display?.[key] ?? row[key]) : undefined;
   if (key === 'code' || key === 'jobNumber') return codeText((value as string | null) ?? null);
+  if (!present) return m.none;
   // AGENTS §10：仅未解析的引用 ID 用占位，业务编码即使形似 UUID 也须原样显示。
   if (key.endsWith('Id') && value === row[key] && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(String(value))) return m.none;
   const labels =

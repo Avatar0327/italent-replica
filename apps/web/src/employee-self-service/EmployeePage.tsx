@@ -139,6 +139,7 @@ function Workspace({ tenantId }: { tenantId: string }) {
 
 function display(record: OwnRecord, code: string) {
   const value = record.fields[code];
+  if (code === 'jobNumber') return codeText((value as string | null) ?? null);
   return record.fieldLabels[code] || (typeof value === 'string' && !/^[0-9a-f-]{36}$/i.test(value) ? value : text.none);
 }
 export function EmploymentList({ records, name }: { records: OwnRecord[]; name: string }) {
