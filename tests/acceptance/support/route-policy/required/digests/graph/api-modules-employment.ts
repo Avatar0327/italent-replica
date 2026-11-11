@@ -3194,6 +3194,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-import-file.ts#viewableColumns',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-import-download.ts#exitImportSourceFile': [
+    'apps/api/src/audit/record.ts#recordOperationLog',
+    '#notFound',
+    'apps/api/src/modules/employment/exit-import-file.ts#loadSourceFileRows',
+    'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportDownloadAccess',
+    'apps/api/src/modules/employment/exit-import-file.ts#sourceWorkbook',
+    'apps/api/src/modules/employment/exit-import-file.ts#viewableColumns',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/exit-import-file.ts#EDUCATION': ['packages/domain/src/personnel/fields.ts#SUBSETS'],
   'apps/api/src/modules/employment/exit-import-file.ts#FIELD_OF': [
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
@@ -3223,7 +3232,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/analytics/stat-xlsx.ts#StatSheet',
     'packages/domain/src/employment/exit-import-contract.ts#EXIT_IMPORT_COLUMNS',
   ],
-  'apps/api/src/modules/employment/exit-import-file.ts#loadErrorFileRows': [
+  'apps/api/src/modules/employment/exit-import-file.ts#loadErrorFileRows': ['#rawValues'],
+  'apps/api/src/modules/employment/exit-import-file.ts#loadSourceFileRows': ['#rawValues'],
+  'apps/api/src/modules/employment/exit-import-file.ts#rawValues': [
     'packages/domain/src/employment/exit-import-contract.ts#EXIT_IMPORT_COLUMNS',
   ],
   'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportButton': [
@@ -3238,6 +3249,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/exit-import-file.ts#sourceWorkbook': [
+    'apps/api/src/modules/analytics/stat-xlsx.ts#statWorkbook',
+    '#headerSheet',
+    'packages/domain/src/employment/exit-import-contract.ts#EXIT_IMPORT_COLUMNS',
+  ],
   'apps/api/src/modules/employment/exit-import-file.ts#templateWorkbook': [
     'apps/api/src/modules/analytics/stat-xlsx.ts#statWorkbook',
     '#headerSheet',
@@ -3245,6 +3261,17 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-import-file.ts#viewableColumns': [
     '#FIELD_OF',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+  ],
+  'apps/api/src/modules/employment/exit-import-history.ts#listExitImportHistory': [
+    '#INTERNAL',
+    '#publicStatus',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/employment/exit-import-contract.ts#EXIT_IMPORT_HISTORY_PAGE_SIZE',
+  ],
+  'apps/api/src/modules/employment/exit-import-history.ts#parseExitImportHistoryQuery': [
+    '#STATUSES',
+    '#invalid',
+    'apps/api/src/modules/employment/fields.ts#businessDate',
   ],
   'apps/api/src/modules/employment/exit-import-recheck.ts#submitterStillAllowed': [
     'apps/api/src/modules/employment/context.ts#contextOf',
@@ -3876,9 +3903,21 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-dictionaries.ts#listExitDictionary',
     '#enabledQuery',
   ],
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/import/batches': [
+    'apps/api/src/modules/employment/context.ts#functionContext',
+    'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportButton',
+    'apps/api/src/modules/employment/exit-import-history.ts#listExitImportHistory',
+    'apps/api/src/modules/employment/exit-import-history.ts#parseExitImportHistoryQuery',
+  ],
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/import/batches/:id/error-file': [
     'apps/api/src/modules/employment/context.ts#functionContext',
     'apps/api/src/modules/employment/exit-import-download.ts#exitImportErrorFile',
+    '#xlsxResponse',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/import/batches/:id/source-file': [
+    'apps/api/src/modules/employment/context.ts#functionContext',
+    'apps/api/src/modules/employment/exit-import-download.ts#exitImportSourceFile',
     '#xlsxResponse',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
