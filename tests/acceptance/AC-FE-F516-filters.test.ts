@@ -1,10 +1,11 @@
 /// <reference lib="dom" />
 // @vitest-environment happy-dom
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, h, uiHarness } from './support/f474-ui.js';
-import { GrantsPage } from '../../apps/web/src/settings/GrantsPage.js';
-import { UsersPage } from '../../apps/web/src/settings/UsersPage.js';
-import { AdminsPage } from '../../apps/web/src/settings/AdminsPage.js';
+const { GrantsPage } = await import(resolve('apps/web/src/settings/GrantsPage.tsx'));
+const { UsersPage } = await import(resolve('apps/web/src/settings/UsersPage.tsx'));
+const { AdminsPage } = await import(resolve('apps/web/src/settings/AdminsPage.tsx'));
 
 const base = '/api/tenant/permission';
 const ids = ['10000000-0000-4000-8000-000000000516', '20000000-0000-4000-8000-000000000516'];
