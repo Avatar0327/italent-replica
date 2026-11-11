@@ -2,6 +2,7 @@
  * F-517（DEC-879①，复刻取舍，偏离北森原站：北森直接转正，证据 F500_09～11）：
  * “直接自动转正”类规则（direct）命中后，夜间跑批不直接转正，改为自动发起转正流程（走申请类同一入口与审批链），
  * 审批通过后才转正；条件不满足（未到期、已有转正记录等）不发起。application 类行为不变。
+ * direct 类按预计试用结束日本身判断到期（结束日 ≤ 跑批日），忽略“到期前天数”；application 类仍按结束日 − N 天提前发起。
  * 规格：docs/02_业务建模/29 PB-R18 / PB-R21、AC-PB-08、AC-PB-15。
  */
 import { sql, withTenant } from '@italent/db';
@@ -23,7 +24,7 @@ async function world(label: string) {
   const w = await pbWorld(testDb().db, `f517-${label}`, { approval: true });
   const settings = tenantApi(w.db);
   const as = { tenant: w.session.tenant.id, user: w.session.user.id };
-  const rule = async (mode: 'direct' | 'application') => {
+  const rule = async (mode: 'direct' | 'application', daysBefore = 0) => {
     const response = await w.session.request('POST', '/auto-regularization-rules', {
       ifMatch: 0,
       body: {
@@ -32,7 +33,7 @@ async function world(label: string) {
         orgIds: [w.org.id],
         includeSubordinates: true,
         mode,
-        daysBefore: 0,
+        daysBefore,
         initiatorType: 'rule_operator',
       },
     });
@@ -113,5 +114,39 @@ describe('AC-PB-15 直接自动转正类规则改为自动发起转正流程（F
     ]);
     expect(await regularizations(w, notDue.employee.id)).toEqual([]);
     expect(await regularizations(w, hasRecord.employee.id)).toHaveLength(1);
+  });
+
+  it('direct 类按预计结束日判断到期，忽略到期前天数：结束日未到不发起（不记失败），结束日当天发起', async () => {
+    const w = await world('direct-days');
+    const rule = await w.rule('direct', 3);
+    // 跑批日 10-01：结束日 10-03 未到（结束日 − 3 天 = 09-30 不作数）；结束日 10-01 当天到期
+    const early = await hire(w, { date: '2026-09-01', endDate: '2026-10-03', name: '结束日未到员工' });
+    const onDay = await hire(w, { date: '2026-09-01', endDate: '2026-10-01', name: '结束日当天员工' });
+    await w.enableSwitch();
+    const receipt = await w.run();
+    expect(receipt.failed).toEqual([]);
+    expect(receipt.launched).toEqual([
+      expect.objectContaining({ employeeId: onDay.employee.id, ruleId: rule.id, businessStatus: 'in_review' }),
+    ]);
+    expect(await regularizations(w, early.employee.id)).toEqual([]);
+    const ledger = await withTenant(w.db, w.session.tenant.id, async (tx) =>
+      rows<{ state: string }>(
+        await tx.execute(sql`SELECT state FROM employment_auto_regularization_launches
+          WHERE tenant_id=${w.session.tenant.id} AND employee_id=${early.employee.id}::uuid`),
+      ),
+    );
+    expect(ledger).toEqual([]);
+    expect((await probationOf(w, early.employee.id, '2026-10-01')).regularizationDate).toBeNull();
+  });
+
+  it('对照 application 类：到期前 N 天照旧提前发起（结束日 10-03、N = 3 → 跑批日 10-01 发起）', async () => {
+    const w = await world('application-days');
+    const rule = await w.rule('application', 3);
+    const early = await hire(w, { date: '2026-09-01', endDate: '2026-10-03' });
+    await w.enableSwitch();
+    const receipt = await w.run();
+    expect(receipt.launched).toEqual([
+      expect.objectContaining({ employeeId: early.employee.id, ruleId: rule.id, businessStatus: 'in_review' }),
+    ]);
   });
 });
