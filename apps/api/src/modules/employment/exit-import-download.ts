@@ -12,7 +12,9 @@ import {
   ERROR_FILE_NAME,
   errorWorkbook,
   loadErrorFileRows,
+  loadSourceFileRows,
   requireExitImportDownloadAccess,
+  sourceWorkbook,
   viewableColumns,
 } from './exit-import-file.js';
 import { rowsOf } from './record-store.js';
@@ -65,5 +67,44 @@ export async function exitImportErrorFile(
       occurredAt: ctx.now,
     });
     return { fileName: ERROR_FILE_NAME, content };
+  });
+}
+
+/**
+ * 原文件下载（设计 §8.4）：同错误文件的权限链与“只给提交人”；差别是——执行中也能下、含全部行、
+ * 到期除 expires_at 外还认 purged_at（清理后原始列已置空，不能给出空文件）。成功下载记一条 export 操作日志。
+ */
+export async function exitImportSourceFile(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  batchId: string,
+): Promise<{ readonly fileName: string; readonly content: Buffer }> {
+  await requireExitImportDownloadAccess(deps, ctx);
+  const shown = await viewableColumns(deps, ctx);
+  return withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const [batch] = rowsOf<{ file_name: string; total: number; expired: boolean }>(
+      await tx.execute(sql`SELECT file_name, total,
+          (purged_at IS NOT NULL OR (expires_at IS NOT NULL AND expires_at <= now())) AS expired
+        FROM exit_import_batches
+        WHERE tenant_id=${ctx.tenantId}::uuid AND id=${batchId}::uuid AND submitted_by=${ctx.userId}::uuid`),
+    );
+    if (!batch) throw new AppError('NOT_FOUND', '导入批次不存在');
+    if (batch.expired) throw notFound('EXIT_IMPORT_FILE_EXPIRED', '导入文件已过期（保留 15 天）');
+
+    const content = sourceWorkbook(await loadSourceFileRows(tx, ctx.tenantId, batchId), shown);
+    const fileName = `${batch.file_name.replace(/\.[^./\\]+$/, '')}.xlsx`;
+    await recordOperationLog(tx, {
+      tenantId: ctx.tenantId,
+      actorUserId: ctx.userId,
+      behavior: 'export',
+      objectType: 'exit-import',
+      objectId: batchId,
+      successCount: batch.total,
+      failureCount: 0,
+      summary: `下载历史离职导入原文件（${batch.total}行）`,
+      attachment: { fileName },
+      occurredAt: ctx.now,
+    });
+    return { fileName, content };
   });
 }
