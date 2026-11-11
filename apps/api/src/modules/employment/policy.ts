@@ -1896,22 +1896,12 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     },
     write: employmentWrite('body', [...EXIT_CREATE_PRECONDITIONS, 'assertTransition'], { controls: ['exit'] }),
   }),
-  // F-139a 历史离职人员导入（设计 §7）：权限链 = readContext(object.create) → EMPLOYEE 的 object.create
-  // → Employment.DimissionImport@list
-  // → 字段写权 → 显式“看全部”范围（DEC-121，范围不足 403，与 POST /employees 的 404 不同：入口是批量按钮，不隐藏存在性）。
-  // preview 不开命令事务、不进台账，403 不带逐行结果；import 必带 Idempotency-Key，命令内由 exitImportGuard 复核，
-  // 整批一个事务（任一行有错 400 IMPORT_ROWS_INVALID 零写入；有编制提示未确认 409 CONFIRMATION_REQUIRED）
-  'POST /exits/import/preview': all(
-    [IMPORT_EMPLOYEE_CREATE, importRecordCreate()],
-    noFields('预览回执是固定形状的逐行结果，不含任职字段目录内的字段'),
-    {
-      write: write(
-        'body',
-        none('只读预览：没有命令事务，没有提交前足迹'),
-        none('只读预览：回执是逐行诊断，不是任职对象'),
-      ),
-    },
-  ),
+  // F-493 历史离职人员导入（设计 §6.1）：权限链 = readContext(object.create) → EMPLOYEE 的 object.create
+  // → Employment.DimissionImport@list → 字段写权 → 显式“看全部”范围（DEC-121，范围不足 403，与 POST /employees 的 404 不同：
+  // 入口是批量按钮，不隐藏存在性）。必带 Idempotency-Key；命令内由 exitImportGuard 复核上述各项，并按档案更新权 / 教育新增权
+  // 复核本批要写的档案字段（与 POST /interns 同口径）。提交只落批次与明细并返回 202，逐行写入在后台执行器里；
+  // 没有预览接口。不登记 employment.linkage：提交路径不写任职记录（只落批次与明细），执行器只新建人员与任职、
+  // 不触发生效联动（设计 §5、§6），新人员没有被联动的旧记录可越权。
   'POST /exits/import': all(
     [
       IMPORT_EMPLOYEE_CREATE,
@@ -1924,11 +1914,12 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     projector('employment.exitImport', 'employment.exitImport'),
     {
-      guards: [LINKAGE],
+      guards: ['employment.exitImportProfile'],
       write: write(
         'body',
-        none('命令内由 exitImportGuard 按当前授权复核按钮 / 人员新增权 / 字段 / 看全部范围，业务写入全部在同一事务'),
-        none('回执是批次号与对象标识，不是任职对象，不经 authorizeEmploymentResult 裁剪'),
+        none('命令内由 exitImportGuard 按当前授权复核按钮 / 人员新增权 / 字段 / 看全部范围，批次与明细同一事务'),
+        none('回执是批次号与状态，不是任职对象，不经 authorizeEmploymentResult 裁剪'),
+        { preconditions: ['requireExitImportProfileAccess'], controls: ['fileName', 'rows', 'profile'] },
       ),
     },
   ),

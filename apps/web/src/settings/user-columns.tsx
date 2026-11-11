@@ -1,9 +1,14 @@
 import { Button, Tooltip, type TableColumnsType } from 'antd';
-import { internalUserGaps, allUserGaps } from '../demo-stubs/settings-columns.js';
+import { internalUserGaps } from '../demo-stubs/settings-columns.js';
 import type { User } from './model.js';
 import { Status } from './parts.js';
 import { m } from './messages.js';
-export function userColumns(internal: boolean, detail: (id: string) => void): TableColumnsType<User> {
+import { columnGear, textValue } from './list-support.js';
+export function userColumns(
+  internal: boolean,
+  detail: (id: string) => void,
+  instant: (value?: string) => string = textValue,
+): TableColumnsType<User> {
   const identity: TableColumnsType<User> = [
     {
       title: m.displayName,
@@ -35,9 +40,9 @@ export function userColumns(internal: boolean, detail: (id: string) => void): Ta
   if (!internal)
     return [
       ...identity,
-      gaps[0]!,
-      email,
-      gaps[1]!,
+      { title: m.loginPhone, width: 128, render: () => m.empty },
+      { ...email, dataIndex: 'contactEmail', render: textValue },
+      { title: m.contactPhone, width: 128, render: () => m.empty },
       {
         title: m.userType,
         dataIndex: 'userType',
@@ -46,15 +51,18 @@ export function userColumns(internal: boolean, detail: (id: string) => void): Ta
           (({ internal: m.users, external: m.external }) as Record<string, string>)[value ?? ''] ?? value ?? m.empty,
       },
       { title: m.businessIdentity, dataIndex: 'businessIdentity', width: 128 },
-      ...allUserGaps.map((column) => ({
-        ...column,
-        render: () => (
-          <Tooltip title={m.fieldPending}>
-            <span>{m.empty}</span>
-          </Tooltip>
-        ),
-      })),
-      status,
+      { title: m.accountSource, width: 128, render: () => m.empty },
+      { title: m.createdBy, width: 118, render: () => m.empty },
+      { title: m.createdAt, dataIndex: 'createdAt', width: 146, render: instant },
+      {
+        title: m.accountStatus,
+        dataIndex: 'accountStatus',
+        width: 128,
+        render: (value?: string) =>
+          (({ active: m.active, disabled: m.disabled }) as Record<string, string>)[value ?? ''] ?? m.empty,
+      },
+      { title: m.employeeStatus, width: 128, render: () => m.empty },
+      columnGear,
     ];
   return [...identity, gaps[0]!, email, ...gaps.slice(1), status];
 }
