@@ -1512,6 +1512,10 @@ export const GRAPH: Graph = {
     '#CONTENT_PROVIDERS',
     '#MAX_PAYLOAD_BYTES',
     '#handlerFacts',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+  ],
+  'apps/api/src/modules/approval/handling-content.ts#profileCeilingOf': [
+    'apps/api/src/modules/approval/object-ceiling.ts#storedCeiling',
   ],
   'apps/api/src/modules/approval/handling-content.ts#recordHandlingContent': ['#CONTENT_SCHEMA_VERSION'],
   'apps/api/src/modules/approval/handling-content.ts#selectBusinessContent': [
@@ -1889,6 +1893,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
   ],
   'apps/api/src/modules/approval/routes.ts#ownViewable': [
+    'apps/api/src/modules/approval/handling-content.ts#capViewable',
+    'apps/api/src/modules/approval/handling-content.ts#profileCeilingOf',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',

@@ -10,6 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import { PERSONNEL_OBJECT } from '@italent/domain';
 import { loadContractContent } from '../contracts/frozen.js';
 import { loadEmploymentContent } from '../employment/approval-content.js';
 import { loadAssessmentContent } from '../employment/assessment-content.js';
@@ -23,6 +24,7 @@ import type { BusinessSnapshot, BusinessType } from './adapters.js';
 import { actorOf, approvalError, rowsOf, type ApprovalContext } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import type { Run } from './engine.js';
+import { storedCeiling } from './object-ceiling.js';
 import type { InstanceRow, TaskRow } from './store.js';
 
 export const CONTENT_SCHEMA_VERSION = 1;
@@ -32,6 +34,11 @@ export const MAX_PAYLOAD_BYTES = 16 * 1024 * 1024;
 export interface HandlingContent {
   readonly snapshot: BusinessSnapshot;
   readonly ext: unknown;
+  /**
+   * snapshot.profileFields（员工档案只读字段，按 PERSONNEL_OBJECT 字段权）的办理时上限（F-511）：disclosure_ceiling 只覆盖
+   * fieldObjectCode，这两个字段另存一份。null = 办理人不受约束；系统份存空数组；profileFields 为空的类型没有这个键。
+   */
+  readonly profileCeiling?: readonly string[] | null;
 }
 
 /**
@@ -145,11 +152,13 @@ export async function prepareHandlingContent(
       businessType: instance.businessType,
     });
   }
+  const facts = handlerFacts(tx, ctx, viewable);
   const ext =
-    provider.kind === 'extended'
-      ? await provider.ext(tx, ctx.tenantId, instance.businessId, ctx, run, handlerFacts(tx, ctx, viewable))
-      : null;
-  const json = JSON.stringify({ snapshot, ext } satisfies HandlingContent);
+    provider.kind === 'extended' ? await provider.ext(tx, ctx.tenantId, instance.businessId, ctx, run, facts) : null;
+  // 系统份无办理人、不带字段权，viewableOf 返回空集，上限存空（失败闭合）
+  const profile = snapshot.profileFields.length ? await facts.viewableOf(PERSONNEL_OBJECT) : undefined;
+  const profileCeiling = snapshot.profileFields.length ? { profileCeiling: profile ? [...profile].sort() : null } : {};
+  const json = JSON.stringify({ snapshot, ext, ...profileCeiling } satisfies HandlingContent);
   const bytes = Buffer.byteLength(json, 'utf8');
   if (bytes > MAX_PAYLOAD_BYTES) {
     throw approvalError('PAYLOAD_TOO_LARGE', 'APPROVAL_CONTENT_TOO_LARGE', '本单内容过大，无法保存办理记录', {
@@ -325,6 +334,11 @@ export async function selectBusinessContent(
   if (!row || row.live || !row.instanceId) return { mode: 'live' };
   const frozen = await latestHandlingCopy(tx, ctx, { id: row.instanceId }, userId);
   return frozen ? { mode: 'frozen', frozen } : { mode: 'live' };
+}
+
+/** 已办读取时 profileFields 的办理时上限（F-511）：现值读不设限（null）；冻结读缺键按看不到（失败闭合）。 */
+export function profileCeilingOf(selection: ContentSelection): ReadonlySet<string> | null {
+  return selection.mode === 'frozen' ? storedCeiling(selection.frozen.content.profileCeiling) : null;
 }
 
 /** 响应里的“内容来源”说明（设计 §5.5）：前端据此区分办理时快照与现值。 */
