@@ -165,18 +165,50 @@ describe('AC-APV-F326-02 / 03 编码与默认值', () => {
     const created = await create({ dataType, defaultValue: value, enable: true });
     expect(created.defaultValue).toEqual(dataType === 'datetime' ? new Date(String(value)).toISOString() : value);
     expect(created.status).toBe('enabled');
-    await rejectUnchanged('PATCH', `/${created.id}`, { defaultValue: invalid }, created.revision, 400);
+    const saved = await body(
+      await request('PATCH', `/${created.id}`, { defaultValue: created.defaultValue }, created.revision),
+    );
+    expect(saved.defaultValue).toEqual(created.defaultValue);
+    await rejectUnchanged('PATCH', `/${created.id}`, { defaultValue: invalid }, saved.revision, 400);
   });
-  it.each(['0000-01-01T00:00:00+01:00', '9999-12-31T23:59:59-01:00'])(
-    'AC-APV-F326-03 UTC 年份边界 %s 可继续编辑启用',
-    async (date) => {
-      let value = await create({ dataType: 'datetime', defaultValue: date });
-      expect(value.defaultValue).toBe(new Date(date).toISOString());
-      value = await body(await request('PATCH', `/${value.id}`, { name: '边界时间' }, value.revision));
-      value = await body(await request('POST', `/${value.id}/enable`, {}, value.revision));
-      expect(value.defaultValue).toBe(new Date(date).toISOString());
-    },
-  );
+  it.each(
+    ['public', 'application'].flatMap((scope) =>
+      [
+        { date: '0000-01-01T00:00:00+01:00', utc: '-000001-12-31T23:00:00.000Z' },
+        { date: '9999-12-31T23:59:59-01:00', utc: '+010000-01-01T00:59:59.000Z' },
+      ].map((boundary) => ({ scope, ...boundary })),
+    ),
+  )('AC-APV-F326-03 $scope UTC 年份边界 $date 可原样回传编辑', async ({ scope, date, utc }) => {
+    let value = await create({
+      scope,
+      ...(scope === 'application' ? { appId: 'transfer', usageScopes: [] } : {}),
+      dataType: 'datetime',
+      defaultValue: date,
+    });
+    expect(value.defaultValue).toBe(utc);
+    for (const action of [null, 'enable', 'disable'] as const) {
+      if (action) value = await body(await request('POST', `/${value.id}/${action}`, {}, value.revision));
+      const read = await body(await request('GET', `/${value.id}`));
+      const saved = await body(
+        await request('PATCH', `/${value.id}`, { name: '边界时间', defaultValue: read.defaultValue }, read.revision),
+      );
+      expect(saved.defaultValue).toBe(utc);
+      expect(saved.revision).toBe(read.revision + 1);
+      value = saved;
+    }
+    const rejected = await rejectUnchanged(
+      'PATCH',
+      `/${value.id}`,
+      { defaultValue: '+010001-01-01T00:00:00.000Z' },
+      value.revision,
+      400,
+    );
+    expect(rejected.error.details.reason).toBe('DEFAULT_VALUE_TYPE');
+    const changed = await body(
+      await request('PATCH', `/${value.id}`, { defaultValue: '2026-01-01T08:00:00+08:00' }, value.revision),
+    );
+    expect(changed.defaultValue).toBe('2026-01-01T00:00:00.000Z');
+  });
   it.each(['123', 'false', 'null', '"带引号"', '[1,2]'])(
     'AC-APV-F326-03 字符串 %s 不被 JSON 二次解码',
     async (text) => {
