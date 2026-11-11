@@ -92,7 +92,7 @@ describe('AC-DM-30-F493-FE-02 / 07 导入文件解析', () => {
   });
 
   it('UTF-8 完整报文含 fileName，恰好 1 MiB 可发，超一个字节拒绝', () => {
-    const fileName = '含中文与\"引号.xlsx';
+    const fileName = '含中文与"引号.xlsx';
     const row = [...requiredRows(1)[0]!];
     row[25] = '';
     const parsed = rowsOf([importHeader, row], fileName);

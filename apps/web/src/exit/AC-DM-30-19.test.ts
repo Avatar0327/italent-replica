@@ -4,10 +4,12 @@
 // docs/08_设计/F-493_历史离职人员导入对齐北森_设计.md §9.1。
 import { act, createElement as h } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter, useNavigate } from 'react-router';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
 import { App } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExitPage } from './ExitPage.js';
+import { importEntryVisible } from './ExitImport.js';
+import { x } from './messages.js';
 import { SessionProvider } from '../foundation/Session.js';
 import { uniqueSuffix } from '../../../../tests/acceptance/support/unique.js';
 import {
@@ -71,7 +73,21 @@ async function render() {
     root.render(
       h(SessionProvider, {
         session,
-        children: h(App, null, h(MemoryRouter, { initialEntries: ['/exits'] }, h(Navigation), h(ExitPage))),
+        children: h(
+          App,
+          null,
+          h(
+            MemoryRouter,
+            { initialEntries: ['/exits'] },
+            h(Navigation),
+            h(
+              Routes,
+              null,
+              h(Route, { path: '/exits', element: h(ExitPage) }),
+              h(Route, { path: '*', element: h('div', null, '其他页面') }),
+            ),
+          ),
+        ),
       }),
     ),
   );
@@ -133,6 +149,22 @@ afterEach(async () => {
 });
 
 describe('AC-DM-30-19 / F493 前端导入', () => {
+  it('FE-06 办理方式资源只含直接离职与离职申请，入口仍需新增权和 list 按钮', () => {
+    expect(x.modes).toEqual({ direct: '直接离职', application: '离职申请' });
+    const permission = {
+      objectCode: 'TenantBase.EmploymentRecord',
+      dataOperations: { create: true },
+      viewableFields: [],
+      editableFields: [],
+      buttons: [{ buttonCode: 'Employment.DimissionImport', level: 'list' }],
+    };
+    expect(importEntryVisible(permission)).toBe(true);
+    expect(importEntryVisible({ ...permission, dataOperations: { create: false } })).toBe(false);
+    expect(
+      importEntryVisible({ ...permission, buttons: [{ buttonCode: 'Employment.DimissionImport', level: 'detail' }] }),
+    ).toBe(false);
+  });
+
   it('没有导入按钮时不显示入口', async () => {
     access.buttons = [];
     await render();
@@ -296,5 +328,103 @@ describe('AC-DM-30-19 / F493 前端导入', () => {
     const rows = writes()[0]!.body!.rows as { rowNo: number }[];
     expect(rows).toHaveLength(100);
     expect(rows.at(-1)!.rowNo).toBe(101);
+  });
+
+  it('未知命令离开页面再返回仍锁定，重提沿用原键', async () => {
+    respond = async () => {
+      throw new TypeError('network');
+    };
+    await render();
+    await click(ENTRY);
+    await upload();
+    await click('保存');
+    const first = writes()[0]!;
+    await act(async () => navigate('/elsewhere'));
+    await act(async () => navigate(-1));
+    await settle();
+    await click(ENTRY);
+    expect(document.body.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(true);
+    respond = async (rows) => Response.json(importReceipt(rows), { status: 202 });
+    await click('按原命令重新提交');
+    expect(writes()[1]).toEqual(first);
+  });
+
+  it('400 英文原因退回中文文件提示，413 不采用服务端英文文案', async () => {
+    await render();
+    await click(ENTRY);
+    await upload();
+    for (const status of [400, 413]) {
+      respond = async () => Response.json({ error: { code: 'BODY_TOO_LARGE', message: 'English error' } }, { status });
+      await click('保存');
+      expect(document.body.textContent).toContain(
+        status === 400 ? '文件内容不符合导入要求，请检查后重试' : '文件过大，请分批导入',
+      );
+      expect(document.body.textContent).not.toContain('English error');
+      expect(button('保存')?.disabled).toBe(false);
+    }
+  });
+
+  it('在离职中的员工页签保存也重新读取列表', async () => {
+    await render();
+    await click(ENTRY);
+    await upload();
+    const before = calls.length;
+    await click('保存');
+    expect(
+      calls
+        .slice(before)
+        .filter((call) => call.method === 'GET')
+        .map((call) => call.path),
+    ).toEqual([`${EXITS}?view=in_progress&page=1&pageSize=30`]);
+  });
+
+  it('模板下载中禁止重复请求，关闭后迟到文件被丢弃', async () => {
+    let finish!: (response: Response) => void;
+    const served = vi.mocked(fetch).getMockImplementation()!;
+    let count = 0;
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      if (String(input).endsWith('/import/template')) {
+        count++;
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      }
+      return served(input, init);
+    });
+    const downloaded = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    await render();
+    await click(ENTRY);
+    await click('下载模板');
+    await click('下载模板');
+    expect(count).toBe(1);
+    await click('关闭');
+    await act(async () =>
+      finish(
+        new Response(new Uint8Array([1, 2]), {
+          headers: {
+            'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          },
+        }),
+      ),
+    );
+    await settle();
+    expect(downloaded).not.toHaveBeenCalled();
+  });
+
+  it.each([403, 500])('模板 %s 失败显示中文，按钮可重试且无下载', async (status) => {
+    const served = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation((input, init) =>
+      String(input).endsWith('/import/template')
+        ? Promise.resolve(Response.json({ error: { code: 'FORBIDDEN' } }, { status }))
+        : served(input, init),
+    );
+    const downloaded = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    await render();
+    await click(ENTRY);
+    await click('下载模板');
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toMatch(/[\u4e00-\u9fff]/);
+    expect(document.body.textContent).not.toContain('FORBIDDEN');
+    expect(button('下载模板')?.disabled).toBe(false);
+    expect(downloaded).not.toHaveBeenCalled();
   });
 });

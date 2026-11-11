@@ -83,7 +83,8 @@ export const bombRowsXml = () =>
 
 // ---- 最小 xlsx 生成（只供测试造文件：共享字符串 + 数字单元格，deflate 压缩，与 Excel 产物同构） ----
 const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const column = (index: number) => String.fromCharCode(65 + index);
+const column = (index: number): string =>
+  index < 26 ? String.fromCharCode(65 + index) : column(Math.floor(index / 26) - 1) + column(index % 26);
 /** count 行只填必填列，位置对应完整 26 列模板。 */
 export const requiredRows = (count: number): Cell[][] =>
   Array.from({ length: count }, (_, i) => [

@@ -17,20 +17,18 @@ async function routeImport(page: Page, server: ExitServer, lose = false) {
       lose = false;
       return route.abort('failed');
     }
-    for (const row of importRows) addExit(server, row.name, { status: 'effective', mode: 'direct' });
+    for (const row of importRows) addExit(server, row.name, { status: 'effective', mode: 'import' });
     return route.fulfill({ status: 202, json: importReceipt(body.rows) });
   });
   return posts;
 }
 async function upload(page: Page) {
   const modal = page.getByRole('dialog').filter({ hasText: ENTRY });
-  await modal
-    .getByLabel('选择 Excel 文件')
-    .setInputFiles({
-      name: '历史离职.xlsx',
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      buffer: Buffer.from(await buildXlsx(importSheet)),
-    });
+  await modal.getByLabel('选择 Excel 文件').setInputFiles({
+    name: '历史离职.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: Buffer.from(await buildXlsx(importSheet)),
+  });
   await expect(modal.getByRole('button', { name: /^保\s*存$/ })).toBeEnabled();
   return modal;
 }
@@ -54,6 +52,7 @@ test('F493-FE-01 / 06 保存即提交，回离职中，全部记录按直接离�
   await expect(page.getByRole('progressbar')).toHaveCount(0);
   await page.getByRole('button', { name: '全部离职记录', exact: true }).click();
   await expect(rowOf(page, '合成甲')).toContainText('直接离职');
+  await expect(page.getByRole('option', { name: '导入', exact: true })).toHaveCount(0);
   await rowOf(page, '合成甲').getByRole('button', { name: '查看详情', exact: true }).click();
   const detail = page.getByRole('dialog').filter({ hasText: '离职管理' });
   await expect(detail.locator('th:has-text("办理方式") + td')).toHaveText('直接离职');
