@@ -2,6 +2,7 @@ import { type Db, sql, withTenant } from '@italent/db';
 import { PERSONNEL_OBJECT, PERSONNEL_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
+import { scopeRows } from '../../apps/api/src/modules/permission/scope-hierarchy.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { BASE, seedPermissionWorld } from './AC-PRM-support.js';
 import { hrApi, syntheticEmail } from './AC-PRM-users-support.js';
@@ -27,7 +28,7 @@ export async function f516World(db: Db) {
     const links = await withTenant(db, world.tenant.id, (tx) =>
       tx.execute(sql`SELECT user_id FROM permission_user_person_links WHERE employee_id=${employee.id}::uuid`),
     );
-    const userId = (Array.isArray(links) ? links : links.rows)[0]!.user_id as string;
+    const userId = scopeRows<{ user_id: string }>(links)[0]!.user_id;
     return { ...employee, userId };
   }
   async function page(path: string, reader = api) {
