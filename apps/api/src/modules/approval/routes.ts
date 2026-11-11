@@ -22,6 +22,7 @@ import {
   APPROVER_EXPRESSIONS,
   BUSINESS_EXIT_CODES,
   MAX_ADD_SIGNERS,
+  OFFER_OBJECT,
   PERSONNEL_OBJECT,
 } from '@italent/domain';
 import { Hono, type Context } from 'hono';
@@ -228,7 +229,13 @@ async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, wit
     const facts = await loadPathFacts(tx, ctx, instance, version.nodes, conditionValues, allTasks);
     return { data: detail, pathFacts: facts };
   });
-  return { ctx, data, view: detailView(data, ctx.userId, await detailViewable(deps, ctx, data), pathFacts) };
+  // 批已办读取的行内列按查看人当前对 Offer 对象的字段权限再裁一次（F-476 P6）；其余类型不用
+  const rowViewable =
+    data.content.mode === 'frozen' && data.instance.businessType === 'offer_batch'
+      ? await getModuleViewableFields(deps, ctx, OFFER_OBJECT)
+      : undefined;
+  const viewable = await detailViewable(deps, ctx, data);
+  return { ctx, data, view: detailView(data, ctx.userId, viewable, pathFacts, rowViewable) };
 }
 
 async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {

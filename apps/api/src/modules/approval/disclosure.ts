@@ -26,6 +26,7 @@ import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { employmentTypeNames } from '../employment/employment-types.js';
 import type { TenantContext } from '../../tenant-context.js';
+import { projectBatchValues, projectOfferValues } from '../offer/frozen-view.js';
 import { referenceNames } from './reference-names.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
@@ -278,26 +279,63 @@ function initiatorActions({ instance, version }: DetailData, userId: string): st
   return actions;
 }
 
+/**
+ * 已办读取的值投影（F-476 P6）：办理份里的扩展（显示标签、批行内列）并进表单值；现值与未接扩展的类型原样返回。
+ * rowViewable = 查看人当前对 Offer 对象的字段权限（只批行内列用，undefined = 不受约束）。
+ */
+function frozenValues(
+  data: DetailData,
+  values: Row,
+  disclosed: ReadonlySet<string>,
+  rowViewable: ReadonlySet<string> | undefined,
+): Row {
+  if (data.content.mode !== 'frozen') return values;
+  const { frozen } = data.content;
+  if (data.instance.businessType === 'offer') return projectOfferValues(frozen, values, disclosed);
+  if (data.instance.businessType === 'offer_batch') return projectBatchValues(frozen, values, rowViewable);
+  return values;
+}
+
+/** 表单下发的字段：节点表单 ∩ 字段查看权；DEC-195：两项日期沿用生效日期的节点表单与字段查看权限，不扩展审批快照。 */
+function formFields(data: DetailData, userId: string, viewable: ReadonlySet<string> | undefined) {
+  const disclosed = disclosedFields(data, userId, viewable);
+  const fields = [...disclosed];
+  if (data.instance.status === 'approved' && disclosed.has('effectiveDate'))
+    fields.push('originalEffectiveDate', 'actualEffectiveDate');
+  return { disclosed, fields };
+}
+
+/**
+ * 只取表单值（F-476 P6 单 Offer 已办详情）：与 detailView 的 form.values 同一裁剪、同一冻结投影，但不推算操作按钮——
+ * 冻结读不回 actions，取回 / 转交 / 管理员等按钮判定不进这条读路径。
+ */
+export function formValuesView(
+  data: DetailData,
+  userId: string,
+  viewable: ReadonlySet<string> | undefined,
+  rowViewable?: ReadonlySet<string>,
+): Row {
+  const { disclosed, fields } = formFields(data, userId, viewable);
+  return frozenValues(data, pick(data.snapshot.values, fields), disclosed, rowViewable);
+}
+
 export function detailView(
   data: DetailData,
   userId: string,
   viewable: ReadonlySet<string> | undefined,
   pathFacts: PathFacts = NO_PATH_FACTS,
+  rowViewable?: ReadonlySet<string>,
 ) {
   const { instance, version, snapshot } = data;
   const node = viewerNode(data, userId);
   const hidden = recordsHidden(data, userId);
-  const disclosed = disclosedFields(data, userId, viewable);
+  const { disclosed, fields } = formFields(data, userId, viewable);
   const { actions, edit } = actionsFor(
     data,
     userId,
     blindReviewFields(snapshot.changedFields, viewable).length > 0,
     viewable,
   );
-  const fields = [...disclosed];
-  // DEC-195：两项日期沿用生效日期的节点表单与字段查看权限，不扩展审批快照。
-  if (instance.status === 'approved' && disclosed.has('effectiveDate'))
-    fields.push('originalEffectiveDate', 'actualEffectiveDate');
   const names = new Map(version.nodes.map((candidate) => [candidate.key, candidate.name]));
   const originals = data.showOriginals && snapshot.originals ? { originals: pick(snapshot.originals, fields) } : {};
   return {
@@ -326,7 +364,7 @@ export function detailView(
     contentView: contentViewOf(instance.id, data.content),
     form: {
       nodeKey: node?.key ?? null,
-      values: pick(snapshot.values, fields),
+      values: formValuesView(data, userId, viewable, rowViewable),
       ...originals,
       ...(edit ? { edit } : {}),
     },
