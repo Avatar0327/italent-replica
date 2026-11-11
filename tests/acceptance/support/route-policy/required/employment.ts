@@ -69,9 +69,10 @@ const SERVICE = `${SRC}/transfer/service.ts`;
 const RECORD = 'TenantBase.EmploymentRecord';
 const EMPLOYEE = 'TenantBase.Employee';
 
+// 权限判断在 contextOf 内（readContext 只做 tenantOf 后转调，F-493 S3b 抽出供后台执行器复用）；路由经 readContext 可达
 const READ: Evidence = {
   role: 'impl',
-  unit: `${CTX}#readContext`,
+  unit: `${CTX}#contextOf`,
   anchor: 'await requirePermission(deps.authorize, { ...tenant, action: operation, resource: objectCode,',
 };
 const PAGE: Evidence = {
