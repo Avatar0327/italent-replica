@@ -106,7 +106,7 @@ describe('AC-APV-F326-21 配置中心共享契约', () => {
       visibleConfigurationPages(routes, {
         ...snapshot,
         apps: [],
-        adminMenus: [{ code: 'matrix.manage', path: '流程矩阵', editable: false }],
+        adminMenus: [{ code: 'matrix.manage', path: '流程矩阵', editable: false, implemented: true }],
       }),
     ).toEqual(['synthetic-config']);
   });

@@ -51,6 +51,12 @@
 .configuration-navigation .configuration-application {
   font-weight: 600;
 }
+.configuration-global {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: inherit;
+  font-weight: 600;
+}
 .configuration-navigation :focus-visible {
   outline: 2px solid var(--shell-primary);
   outline-offset: -2px;

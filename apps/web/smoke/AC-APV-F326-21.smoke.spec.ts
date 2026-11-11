@@ -47,7 +47,7 @@ test('AC-APV-F326-21 合成登记通过正常入口展示全局项和应用容�
   await expect(page).toHaveURL(new RegExp(`${globalPath}$`));
   const nav = page.getByRole('navigation', { name: '配置中心目录' });
   await expect(nav.getByText('全局项', { exact: true })).toBeVisible();
-  await expect(nav.locator('.configuration-application')).toHaveText(['组织管理', '组织员工', '调动管理']);
+  await expect(nav.locator('.configuration-application')).toHaveText(['▾ 组织管理', '▾ 组织员工', '▾ 调动管理']);
   await expect(nav.getByRole('link', { name: '合成全局配置' })).toHaveAttribute('href', globalPath);
   await expect(page.getByText('合成全局内容', { exact: true })).toBeVisible();
   const transfer = page.locator('#configuration-sections-transfer');
@@ -88,7 +88,7 @@ test('AC-APV-F326-21 新路径可直达及挂子路由，无权时隐藏全局�
   await page.reload();
   await expect(page.getByText(ui.denied, { exact: true })).toBeVisible();
   const nav = page.getByRole('navigation', { name: '配置中心目录' });
-  await expect(nav.locator('.configuration-application')).toHaveText(['组织员工']);
+  await expect(nav.locator('.configuration-application')).toHaveText(['▾ 组织员工']);
   await expect(nav.getByText('全局项', { exact: true })).toHaveCount(0);
   for (const path of [globalPath, orgPath, transferPath]) {
     await page.goto(path);
