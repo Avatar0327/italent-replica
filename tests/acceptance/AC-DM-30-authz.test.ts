@@ -7,13 +7,15 @@ import './support/exit-gate-enforced.js';
 import { bootstrapTenantAdmin } from '@italent/api';
 import { MODULE_OBJECTS, PERSONNEL_OBJECT, PERSONNEL_OBJECTS, SUBSETS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { installExitImportTestHooks } from '../../apps/api/src/modules/employment/exit-import-worker.js';
 import { importWorld, type ImportWorld } from './AC-DM-30-support.js';
 import { addMember, createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
+afterEach(() => installExitImportTestHooks(database().db, {}));
 const BUTTON = 'Employment.DimissionImport';
 const EMPLOYEE = MODULE_OBJECTS.employee.code;
 const RECORD = MODULE_OBJECTS.employmentRecord.code;
@@ -136,6 +138,31 @@ describe('AC-DM-30-F493-23 真实授权器下的提交', () => {
     // 每个身份配一次租户管理员，同一世界只能配一次，所以两个场景各开一个世界
     const x = await importWorld(database().db, `23-${field}`);
     await denied(x, { field: [object, field] }, (code) => [x.row(1, code)]);
+  });
+});
+
+describe('AC-DM-30-F493-23 ④ 执行期权限复核（真实授权器，S3b，设计 §16 A9）', () => {
+  it('提交后、执行前收回任职 lastWorkDate 写权 → 剩余 pending 行全部 SUBMITTER_FORBIDDEN，不写人员', async () => {
+    const db = database().db;
+    const x = await importWorld(db, '23-4');
+    const d = await x.dept('执行期撤权部门');
+    const submit = await operator(x);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    installExitImportTestHooks(db, { beforeBatch: () => gate });
+    const response = await submit([1, 2].map((n) => x.row(n, d.code)));
+    expect(response.status, await response.clone().text()).toBe(202);
+    const { batchId } = (await response.json()) as { batchId: string };
+
+    await submit.reconfigure({ field: [RECORD, 'lastWorkDate'] });
+    release();
+    await x.settle();
+
+    expect(await x.rowsOfBatch(batchId)).toMatchObject(
+      [1, 2].map(() => ({ status: 'failed', errors: [{ column: null, reason: 'SUBMITTER_FORBIDDEN' }] })),
+    );
+    expect(await x.batchOf(batchId)).toMatchObject({ status: 'completed', created_count: 0, error_row_count: 2 });
+    expect(await x.employeeCount()).toBe(0);
   });
 });
 

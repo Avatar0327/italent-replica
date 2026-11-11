@@ -367,3 +367,14 @@ function departmentResolver(tx: Tx, tenantId: string) {
     return cache.get(code)!;
   };
 }
+
+// ---- S3b 占位（红测试提交用；下一个提交替换为真实现） ------------------------------------------------------
+export function startExitImportScheduler(
+  _db: Db,
+  _options: { clock: () => Date; onError: (error: unknown) => void; intervalMs: number },
+) {
+  return { stop: async () => undefined };
+}
+export async function purgeExpiredExitImports(_db: Db, _tenantId: string): Promise<number> {
+  return 0;
+}
