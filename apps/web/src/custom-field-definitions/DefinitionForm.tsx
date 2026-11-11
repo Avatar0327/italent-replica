@@ -12,19 +12,14 @@ import { useConflictCommand, type Sending } from '../foundation/forms/ConflictCo
 import { listPath, parseRows, PATH, receipt, type actions, type Definition } from './model.js';
 import { m } from './messages.js';
 
-export function DefinitionForm({
-  objectType,
-  row,
-  access,
-  saved,
-  close,
-}: {
+type Props = {
   objectType: CustomFieldObjectType;
   row?: Definition;
   access: ReturnType<typeof actions>;
   saved(): void;
   close(): void;
-}) {
+};
+export function DefinitionForm({ objectType, row, access, saved, close }: Props) {
   const api = useApiClient();
   const alive = useRef(true);
   useEffect(() => {
@@ -44,41 +39,7 @@ export function DefinitionForm({
         }
       : undefined,
   );
-  const required = [{ required: true, message: m.required }];
-  const fields: FormField[] = row
-    ? [
-        {
-          name: 'inherit',
-          label: m.inherit,
-          control: <Switch />,
-          access: { visible: true, editable: access.inherit },
-        },
-      ]
-    : [
-        {
-          name: 'name',
-          label: m.name,
-          control: <Input maxLength={CUSTOM_FIELD_NAME_MAX} />,
-          access: { visible: true, editable: access.editable('name') },
-          rules: [{ required: true, whitespace: true, message: m.required }],
-        },
-        {
-          name: 'valueType',
-          label: m.valueType,
-          control: <Select options={CUSTOM_FIELD_VALUE_TYPES.map((value) => ({ value, label: m.types[value] }))} />,
-          access: { visible: true, editable: access.editable('valueType') },
-          rules: required,
-        },
-        {
-          name: 'objectType',
-          label: m.objectType,
-          control: (
-            <Select options={CUSTOM_FIELD_WRITABLE_OBJECT_TYPES.map((value) => ({ value, label: m.objects[value] }))} />
-          ),
-          access: { visible: true, editable: access.editable('objectType') },
-          rules: required,
-        },
-      ];
+  const fields = fieldsFor(row, access);
   const send = async ({ command }: Sending) => {
     const body = row ? command.body : { ...command.body, name: String(command.body.name).trim() };
     const response = await api.request(row ? `${PATH}/${row.id}/inheritance` : PATH, {
@@ -129,4 +90,42 @@ export function DefinitionForm({
       }}
     />
   );
+}
+
+function fieldsFor(row: Definition | undefined, access: ReturnType<typeof actions>): FormField[] {
+  const required = [{ required: true, message: m.required }];
+  return row
+    ? [
+        {
+          name: 'inherit',
+          label: m.inherit,
+          control: <Switch />,
+          access: { visible: true, editable: access.inherit },
+        },
+      ]
+    : [
+        {
+          name: 'name',
+          label: m.name,
+          control: <Input maxLength={CUSTOM_FIELD_NAME_MAX} />,
+          access: { visible: true, editable: access.editable('name') },
+          rules: [{ required: true, whitespace: true, message: m.required }],
+        },
+        {
+          name: 'valueType',
+          label: m.valueType,
+          control: <Select options={CUSTOM_FIELD_VALUE_TYPES.map((value) => ({ value, label: m.types[value] }))} />,
+          access: { visible: true, editable: access.editable('valueType') },
+          rules: required,
+        },
+        {
+          name: 'objectType',
+          label: m.objectType,
+          control: (
+            <Select options={CUSTOM_FIELD_WRITABLE_OBJECT_TYPES.map((value) => ({ value, label: m.objects[value] }))} />
+          ),
+          access: { visible: true, editable: access.editable('objectType') },
+          rules: required,
+        },
+      ];
 }

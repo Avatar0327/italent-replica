@@ -33,41 +33,7 @@ function Definitions() {
     error = cause;
   }
   const managed = objectType === 'employment' || objectType === 'contract';
-  const columns = [
-    { key: 'name', title: m.name, render: (_: unknown, row: Definition) => row.name ?? m.missing },
-    {
-      key: 'valueType',
-      title: m.valueType,
-      render: (_: unknown, row: Definition) => (row.valueType ? m.types[row.valueType] : m.missing),
-    },
-    {
-      key: 'objectType',
-      title: m.objectType,
-      render: (_: unknown, row: Definition) => (row.objectType ? m.objects[row.objectType] : m.missing),
-    },
-    ...(managed
-      ? [
-          {
-            key: 'inherit',
-            title: m.inherit,
-            render: (_: unknown, row: Definition) => {
-              if (row.inherit === undefined) return m.missing;
-              return row.inherit ? m.yes : m.no;
-            },
-          },
-          {
-            key: 'actions',
-            title: m.actions,
-            render: (_: unknown, row: Definition) =>
-              access.inherit && (
-                <Button type="link" onClick={() => setEditing({ row })}>
-                  {m.edit}
-                </Button>
-              ),
-          },
-        ]
-      : []),
-  ];
+  const columns = columnsFor(managed, access.inherit, (row) => setEditing({ row }));
   return (
     <section>
       <header className="page-heading">
@@ -116,4 +82,42 @@ function Definitions() {
       )}
     </section>
   );
+}
+
+function columnsFor(managed: boolean, canInherit: boolean, edit: (row: Definition) => void) {
+  return [
+    { key: 'name', title: m.name, render: (_: unknown, row: Definition) => row.name ?? m.missing },
+    {
+      key: 'valueType',
+      title: m.valueType,
+      render: (_: unknown, row: Definition) => (row.valueType ? m.types[row.valueType] : m.missing),
+    },
+    {
+      key: 'objectType',
+      title: m.objectType,
+      render: (_: unknown, row: Definition) => (row.objectType ? m.objects[row.objectType] : m.missing),
+    },
+    ...(managed
+      ? [
+          {
+            key: 'inherit',
+            title: m.inherit,
+            render: (_: unknown, row: Definition) => {
+              if (row.inherit === undefined) return m.missing;
+              return row.inherit ? m.yes : m.no;
+            },
+          },
+          {
+            key: 'actions',
+            title: m.actions,
+            render: (_: unknown, row: Definition) =>
+              canInherit && (
+                <Button type="link" onClick={() => edit(row)}>
+                  {m.edit}
+                </Button>
+              ),
+          },
+        ]
+      : []),
+  ];
 }

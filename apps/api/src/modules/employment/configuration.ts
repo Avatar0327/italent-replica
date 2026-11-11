@@ -122,7 +122,8 @@ export async function setCustomFieldInheritance(
   await lockSettings(tx, ctx.tenantId);
   const [head] = rowsOf<{ revision: number; objectType: CustomFieldObjectType }>(
     await tx.execute(sql`
-    SELECT revision, object_type AS "objectType" FROM employment_custom_field_objects WHERE tenant_id=${ctx.tenantId} AND id=${id} FOR UPDATE
+    SELECT revision, object_type AS "objectType" FROM employment_custom_field_objects
+    WHERE tenant_id=${ctx.tenantId} AND id=${id} FOR UPDATE
   `),
   );
   if (!head) throw new AppError('NOT_FOUND', '自定义字段不存在');
