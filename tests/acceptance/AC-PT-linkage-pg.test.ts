@@ -5,7 +5,7 @@
  * - 联动执行（持下属员工行锁）vs 下属离职：离职在员工行上等待，放行后照常落地，两方都成功、不死锁；
  * - 两个定时生效实例同时扫到同一到期联动：恰一次执行（员工行 SKIP LOCKED + 已执行标记），组织只多一个版本。
  */
-import { withTenant, type Db, type Tx } from '@italent/db';
+import { sql, withTenant, type Db, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { runEmploymentActivations } from '@italent/api';
@@ -13,8 +13,10 @@ import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/re
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { httpWorld } from './AC-PT-http-support.js';
 import { createPartTime } from '../../apps/api/src/modules/employment/part-time/service.js';
+import { runDuePartTimeLinkage } from '../../apps/api/src/modules/employment/part-time/linkage.js';
+import { lockTransferParticipants } from '../../apps/api/src/modules/employment/transfer-locks.js';
 import { LINKED, linkageWorld, withLinkage, type LinkageWorld } from './AC-PT-linkage-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withHeldLock } from './support/pg-interleave.js';
 import { cmd } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -107,6 +109,46 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-linkage-pg 兼职联动�
       [1, 2].map(() => runEmploymentActivations(w.db, cmd(), { tenantId: w.tenantId }, { clock })),
     );
     for (const run of runs) expect(run.runs[0]!.errors).toEqual([]);
+    expect(await w.events(record.id)).toMatchObject({ [LINKED]: 1 });
+    expect(await w.orgVersions(w.partTimeOrg.id)).toBe(versions + 1);
+    expect(await w.headOf(w.partTimeOrg.id)).toBe(w.employeeId);
+    expect((await w.managerOf(sub, '2026-10-10')).directManagerId).toBe(w.employeeId);
+  });
+
+  it('F-519：首行已被实例一锁住时，实例二不得越过它抢后续行，导致两个实例都退让', async () => {
+    const w = await linkageWorld(database().db, 'pg-sweep-prefix');
+    const sub = await w.subordinate();
+    const record = await w.create({ startDate: '2026-10-10', isDepartmentHead: true, addedSubordinateIds: [sub] });
+    const versions = await w.orgVersions(w.partTimeOrg.id);
+    w.setNow('2026-10-10T01:00:00.000Z');
+    const [firstId] = [w.employeeId, sub].sort();
+    const outcomes: string[] = [];
+    // 固定真实 SQL 的逐行取锁交错：实例一刚取到 UUID 最小行，实例二开始扫描同一个闭包。
+    // 两个事务始终走租户上下文；withHeldLock 在任何断言失败时都放锁、收束在途事务。
+    await withHeldLock(
+      {
+        run: (work) => withTenant(w.db, w.tenantId, work),
+        take: (tx) =>
+          tx.execute(sql`SELECT id FROM employment_employees
+            WHERE tenant_id=${w.tenantId} AND id=${firstId}::uuid FOR NO KEY UPDATE`),
+        afterRelease: async (tx) => {
+          const outcome = await lockTransferParticipants(tx, w.context(), w.employeeId, [], { skipLocked: true });
+          outcomes.push(outcome);
+          if (outcome === 'acquired') await runDuePartTimeLinkage(tx, w.context(), w.employeeId);
+        },
+      },
+      async (first) => {
+        await first.track(
+          withTenant(w.db, w.tenantId, async (tx) => {
+            const outcome = await lockTransferParticipants(tx, w.context(), w.employeeId, [], { skipLocked: true });
+            outcomes.push(outcome);
+            // 保留实例二已经取到的行锁，直到实例一完成整组取锁，确定性暴露旧实现的 [busy, busy]。
+            await first.release();
+          }),
+        );
+      },
+    );
+    expect(outcomes).toEqual(['busy', 'acquired']);
     expect(await w.events(record.id)).toMatchObject({ [LINKED]: 1 });
     expect(await w.orgVersions(w.partTimeOrg.id)).toBe(versions + 1);
     expect(await w.headOf(w.partTimeOrg.id)).toBe(w.employeeId);
