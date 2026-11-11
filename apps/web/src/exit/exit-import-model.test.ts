@@ -27,7 +27,7 @@ describe('AC-DM-30-19 导入文件解析', () => {
     expect(await rowsOf(importSheet)).toEqual({ rows: importRows });
   });
 
-  it('缺必填列、未知列、重复列、空文件、超过 100 行、加入黑名单非法值都整份拒绝', async () => {
+  it('缺必填列、未知列、重复列、空文件、超过 1000 行、加入黑名单非法值都整份拒绝', async () => {
     const head = importHeader.slice(0, 5);
     expect(await rowsOf([head.slice(1), H0003.slice(1)])).toEqual({ error: '缺少必填列：工号' });
     expect(
@@ -43,7 +43,11 @@ describe('AC-DM-30-19 导入文件解析', () => {
       ]),
     ).toEqual({ error: '列名重复：工号' });
     expect(await rowsOf([head])).toEqual({ error: '文件中没有数据行' });
-    expect(await rowsOf([head, ...Array.from({ length: 101 }, () => H0003)])).toEqual({ error: '一次最多导入 100 行' });
+    // 行数上限与后端同为 1000（设计 §5、§9.1：domain 常量前后端共用）：1001 行整份拒绝；恰 1000 行不报行数错
+    // （前端的 32KB 体积预判是第 1 版遗留，S4a 改为 1 MiB 前 1000 行仍会先报体积错，故只断言不是行数错）
+    const many = (n: number) => rowsOf([head, ...Array.from({ length: n }, () => H0003)]);
+    expect(await many(1001)).toEqual({ error: '一次最多导入 1000 行' });
+    expect(await many(1000)).not.toEqual({ error: '一次最多导入 1000 行' });
     expect(
       await rowsOf([
         [...head, '加入黑名单'],

@@ -40,6 +40,11 @@ export interface ApprovalContext extends TenantContext {
    * 就按操作人复核 HR 范围并在事务外取连接，会拦住调动、合同等业务的审批（#388 CI 回归）。
    */
   readonly exitEditAuthorize?: Authorizer;
+  /**
+   * 办理份捕获的授权器（审批路由注入，F-476 P8 P2-1，DEC-869）：业务 provider 在办理事务内按办理人算源对象的披露上限
+   * （行范围与字段）；未注入时按看不到处理（fail-closed）。
+   */
+  readonly handlingAuthorize?: Authorizer;
   /** 审计与日志记录的操作人；系统自动处理（如成员停用时的接管，DEC-123）可为平台操作人或空。缺省为 userId。 */
   readonly actorUserId?: string | null;
   /** 系统代发（BE-15a 自动转正）：发起人由规则配置，发起日志 detail 带 systemProxy（R2e7“提交（系统代发）”）。 */

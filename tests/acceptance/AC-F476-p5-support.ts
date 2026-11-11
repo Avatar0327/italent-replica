@@ -210,7 +210,12 @@ export function val(subset: SubsetKind, stage: '原值' | '办理时' | '改后'
 }
 
 /** 员工信息变更世界：每个子集开放自助字段，个人信息变更流程为 n1 → n2（兜底流程）。 */
-export async function personnelScene(db: Parameters<typeof approvalWorld>[0], label: string) {
+/** sameAssigneeSecond：第 2 节点也由审批一办理，并开同人自动同意（同一命令里引擎写系统份，F-476 P8 合 main 核对）。 */
+export async function personnelScene(
+  db: Parameters<typeof approvalWorld>[0],
+  label: string,
+  options: { sameAssigneeSecond?: boolean } = {},
+) {
   const w = await approvalWorld(db, label);
   const dept = await w.org('ZZ_子集部门');
   const [n1, n2] = [await w.person('ZZ_审批一', dept), await w.person('ZZ_审批二', dept)];
@@ -234,7 +239,12 @@ export async function personnelScene(db: Parameters<typeof approvalWorld>[0], la
     approvalType: 'personnel_change',
     isFallback: true,
     conditions: { items: [] },
-    nodes: [node('n1', n1), node('n2', n2)],
+    nodes: [
+      node('n1', n1),
+      options.sameAssigneeSecond
+        ? { ...node('n2', n1), sameAssigneeSkip: true, sameAssigneeResult: 'approve' as const }
+        : node('n2', n2),
+    ],
   });
   /** 主数据里的一条子集记录（HR 直接维护）。 */
   async function record(subset: SubsetKind, values: Record<string, unknown>) {

@@ -103,6 +103,33 @@ export async function loadStages(tx: Tx, tenantId: string, planIds: readonly str
   ).map(stage);
 }
 
+/**
+ * 计划各阶段的全部审批实例 → 所属阶段（F-476 P8 稳定读的候选集合）。不能只看阶段当前的 approval_instance_id：
+ * “不同意”会清空该指针、重开阶段会换新实例，旧实例里的办理份仍要能定位（设计 §1.2）。
+ */
+export async function loadStageInstances(
+  tx: Tx,
+  tenantId: string,
+  stages: readonly StageRow[],
+): Promise<Map<string, string>> {
+  if (!stages.length) return new Map();
+  const rows = rowsOf<{ id: string; stageId: string }>(
+    await tx.execute(sql`SELECT id, business_id AS "stageId" FROM approval_instances
+      WHERE tenant_id = ${tenantId} AND business_type = 'idp'
+        AND business_id = ANY(${`{${stages.map((s) => s.id).join(',')}}`}::uuid[])`),
+  );
+  return new Map(rows.map((row) => [row.id, row.stageId]));
+}
+
+/** 阶段所属计划（plan_id 建后不变：阶段只由建计划插入，之后的更新只改状态 / 实例 / 结束日 / 失败字段）。 */
+export async function stagePlanId(tx: Tx, tenantId: string, stageId: string): Promise<string | undefined> {
+  const [row] = rowsOf<{ plan_id: string }>(
+    await tx.execute(sql`SELECT plan_id::text FROM idp_plan_stages
+      WHERE tenant_id = ${tenantId} AND id = ${stageId}::uuid`),
+  );
+  return row?.plan_id;
+}
+
 export async function loadStage(tx: Tx, tenantId: string, stageId: string): Promise<StageRow | undefined> {
   const [row] = rowsOf<RawStage>(
     await tx.execute(sql`SELECT ${STAGE_COLUMNS} FROM idp_plan_stages s

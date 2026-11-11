@@ -15,6 +15,7 @@ import { loadEmploymentContent } from '../employment/approval-content.js';
 import { loadAssessmentContent } from '../employment/assessment-content.js';
 import { loadPartTimeContent } from '../employment/part-time/request-read.js';
 import { loadIntentionContent } from '../employment/retirement-intention-content.js';
+import { loadIdpStageContent } from '../idp/stage-content.js';
 import { loadPersonnelContent } from '../personnel/frozen.js';
 import { loadOrgContent } from '../org-adjustment/content.js';
 import type { BusinessSnapshot, BusinessType } from './adapters.js';
@@ -32,7 +33,10 @@ export interface HandlingContent {
   readonly ext: unknown;
 }
 
-/** 第 4 个参数是办理上下文（办理人、办理时刻、租户时区）：个别业务要把「办理当时」的关联材料（如兼职的主职）一并冻结。 */
+/**
+ * 第 4 个参数是办理上下文（办理人、办理时刻、租户时区）：个别业务要把「办理当时」的关联材料（如兼职的主职）一并冻结；
+ * 按办理人裁剪源对象的 provider（IDP 关键信息，P2-1）从中取办理人与授权器。系统处理时办理人为空（prepareHandlingContent）。
+ */
 type ExtLoader = (tx: Tx, tenantId: string, businessId: string, ctx: ApprovalContext) => Promise<unknown>;
 type ContentProvider =
   | { readonly kind: 'snapshot-only' }
@@ -50,7 +54,7 @@ export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> 
   employment: { kind: 'extended', ext: (tx, tenantId, id) => loadEmploymentContent(tx, tenantId, id) },
   personnel_change: { kind: 'extended', ext: loadPersonnelContent },
   contract: { kind: 'extended', ext: loadContractContent },
-  idp: SNAPSHOT_ONLY,
+  idp: { kind: 'extended', ext: (tx, tenantId, stageId, ctx) => loadIdpStageContent(tx, tenantId, stageId, ctx) },
   part_time: { kind: 'extended', ext: loadPartTimeContent },
   offer: SNAPSHOT_ONLY,
   offer_batch: SNAPSHOT_ONLY,
@@ -102,8 +106,11 @@ export async function prepareHandlingContent(
   tx: Tx,
   run: Run,
   viewable: ReadonlySet<string> | undefined,
+  system = false,
 ): Promise<PreparedContent> {
-  const { instance, snapshot, ctx } = run;
+  const { instance, snapshot } = run;
+  // 系统处理按与写份同口径的空办理人采集，不按触发本次推进的人工操作人裁剪：无办理人也就无字段权（P8 第 6 轮、合 main）
+  const ctx = system ? { ...run.ctx, actorUserId: null, fields: undefined } : run.ctx;
   const provider = CONTENT_PROVIDERS[instance.businessType];
   if (provider.kind === 'not-wired') {
     throw approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_CONTENT_NOT_WIRED', '该类审批暂不能办理', {
