@@ -7,6 +7,7 @@ import * as approvalContext from '../../apps/api/src/modules/approval/context.js
 import { addMember, seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { hrApi, memberWithAdminRole } from './AC-PRM-users-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { waitForBlocked, withHeldLock } from './support/pg-interleave.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
@@ -347,13 +348,29 @@ describe('审批矩阵管理与结构审计', () => {
   it.runIf(!!process.env.TEST_DATABASE_URL)('AC-05：真 PG 两连接竞争同一 revision 只提交一次结构与审计', async () => {
     const m = await create();
     const inputs = [basic(), basic()];
-    const responses = await Promise.all(
-      inputs.map((input) =>
-        request('PUT', `${BASE}/${m.id}/structure`, {
-          revision: m.revision,
-          ...input,
-        }),
-      ),
+    const responses = await withHeldLock(
+      {
+        run: (fn) => withTenant(w.db, w.tenant.id, fn),
+        take: (tx) =>
+          tx.execute(sql`SELECT id FROM approval_matrices
+          WHERE tenant_id=${w.tenant.id} AND id=${m.id} FOR UPDATE`),
+      },
+      async (lock) => {
+        const pending = inputs.map((input) =>
+          lock.track(request('PUT', `${BASE}/${m.id}/structure`, { revision: m.revision, ...input })),
+        );
+        await waitForBlocked(w.db, 2);
+        const blocked = approvalContext.rowsOf(
+          await w.db.execute(sql`
+          SELECT query FROM pg_stat_activity
+          WHERE datname=current_database() AND wait_event_type='Lock'`),
+        );
+        expect(blocked).toHaveLength(2);
+        // 后续写入也会等待头锁，须确认两个请求都停在修改前的 SELECT FOR UPDATE。
+        for (const row of blocked) expect(row.query).toMatch(/select.*"approval_matrices".*for update/i);
+        await lock.release();
+        return Promise.all(pending);
+      },
     );
     expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
     const winning = responses.findIndex((r) => r.status === 200);
