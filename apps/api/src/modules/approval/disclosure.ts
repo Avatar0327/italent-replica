@@ -190,9 +190,11 @@ export function viewerNode(data: DetailData, userId: string): ApprovalNode | nul
 export function disclosedFields(data: DetailData, userId: string, viewable: ReadonlySet<string> | undefined) {
   // 三者取交：办理时的披露上限 ∩ 办理节点表单 ∩ 当前字段权限（F-476 §5.3，DEC-807）
   const ceiling = data.content.mode === 'frozen' ? data.content.frozen.ceiling : null;
+  // 员工档案只读字段的办理时上限已并入 viewable（routes.ownViewable，F-511），不再被本单对象的上限二次剔除
+  const profile = viewable ? data.snapshot.profileFields.filter((field) => viewable.has(field)) : [];
   return disclosedFieldNames(
     formFieldsWithForeign(viewerNode(data, userId)?.formFields ?? [], data.snapshot),
-    capViewable(viewable, ceiling),
+    capViewable(viewable, ceiling && new Set([...ceiling, ...profile])),
   );
 }
 

@@ -63,7 +63,7 @@ describe('F-511 兼职审批 profileFields（gender / age）：办理时上限 �
   it('D 同人自动同意的系统办理份：办理人为空，profileFields 上限存空；人工份存办理人的可见字段', async () => {
     const s = await handled('f511-system', { autoSecond: true });
     await s.r.decide(s.instanceId, s.first, 'approve');
-    const rows = await withTenant(s.w.db, s.w.tenant.id,async (tx) => {
+    const rows = await withTenant(s.w.db, s.w.tenant.id, async (tx) => {
       const result = await tx.execute(sql`SELECT c.handling_kind, c.actor_user_id::text AS actor,
           c.content->'profileCeiling' AS ceiling
         FROM approval_handling_contents c
