@@ -4,6 +4,8 @@ const licenseNames = new Map([
   ['digital_talent', '数字人才用户'],
 ]);
 export const m = {
+  employeeStatuses: { pending: '待入职', employed: '在职', left: '离职', retired: '退休' },
+  orgLoadFailed: '部门候选加载失败，请刷新页面重试',
   licenseOverageTitle: '授权已成功，但许可超额',
   licenseOverageDetail(licenseType: string, balance: number) {
     const name = licenseNames.get(licenseType);

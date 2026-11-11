@@ -13,7 +13,10 @@ import { useSettingsList, useListInstant, useRowSelection } from './list-support
 import { ListFilters } from './ListFilters.js';
 import { m } from './messages.js';
 export function UsersPage({ code, title, editable }: SettingsProps) {
-  const list = useSettingsList<User>('users', { type: code.split('.')[1]! });
+  const list = useSettingsList<User>('users', {
+    type: code.split('.')[1]!,
+    ...(code === 'users.all' ? { accountStatus: 'active' } : {}),
+  });
   const { page, setPage } = list;
   const instant = useListInstant();
   const selection = useRowSelection(list.data?.items ?? [], (row) => row.userId);
@@ -37,6 +40,16 @@ export function UsersPage({ code, title, editable }: SettingsProps) {
               apply={list.apply}
               fields={[
                 { name: 'q', label: m.accountSearch },
+                { name: 'contactEmail', label: m.email },
+                {
+                  name: 'accountStatus',
+                  label: m.accountStatus,
+                  defaultValue: 'active',
+                  options: [
+                    { value: 'active', label: m.active },
+                    { value: 'disabled', label: m.disabled },
+                  ],
+                },
                 {
                   name: 'type',
                   label: m.userType,
