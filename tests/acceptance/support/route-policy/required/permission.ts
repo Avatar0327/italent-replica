@@ -138,6 +138,9 @@ export const PERMISSION: RequiredTable = {
   ],
   'GET /api/tenant/permission/grantable-profiles': [guarded('user_grant', 'GET', '/grantable-profiles')],
   'GET /api/tenant/permission/grants': [guarded('user_grant', 'GET', '/grants')],
+  'GET /api/tenant/permission/grants/profile-candidates': [guarded('user_grant', 'GET', '/grants/profile-candidates')],
+  'GET /api/tenant/permission/grants/mou-candidates': [guarded('user_grant', 'GET', '/grants/mou-candidates')],
+  'GET /api/tenant/permission/admins/mou-candidates': [guarded('admin_manage', 'GET', '/admins/mou-candidates')],
   'POST /api/tenant/permission/grants': [
     guarded('user_grant', 'POST', '/grants'),
     {

@@ -56,8 +56,8 @@ export const GRANT_LIST_UNRECORDED = ['phone'] as const;
 
 export interface GrantListQuery {
   readonly userId?: string;
-  readonly profileId?: string;
-  readonly mouId?: string;
+  readonly profileId?: string | readonly string[];
+  readonly mouId?: string | readonly string[];
   readonly status?: 'active' | 'revoked';
   readonly q?: string;
   readonly limit: number;
@@ -68,7 +68,12 @@ export interface GrantListQuery {
 export async function listGrants(tx: Tx, query: GrantListQuery): Promise<{ items: GrantListRow[]; total: number }> {
   const where = and(
     query.userId ? eq(permissionGrants.userId, query.userId) : undefined,
-    query.profileId ? eq(permissionGrants.profileId, query.profileId) : undefined,
+    query.profileId
+      ? inArray(
+          permissionGrants.profileId,
+          typeof query.profileId === 'string' ? [query.profileId] : [...query.profileId],
+        )
+      : undefined,
     query.status ? eq(permissionGrants.status, query.status) : undefined,
     query.mouId ? hasMou(permissionGrants.userId, query.mouId) : undefined,
     query.q ? accountMatch(permissionGrants.userId, query.q) : undefined,

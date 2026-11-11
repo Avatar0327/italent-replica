@@ -45,10 +45,12 @@ export const adminSetsBody = z.strictObject({
 export const adminBody = adminSetsBody.extend({ userId: z.uuid(), role: z.enum(ADMIN_ROLES) });
 
 /** 用户授权列表（F-474-5 #22）：筛选 + 分页；userId 保持原有的按用户查询。 */
+const idFilter = z.union([z.uuid(), z.array(z.uuid()).min(1)]).optional();
+
 export const grantListQuery = z.strictObject({
   userId: z.uuid().optional(),
-  profileId: z.uuid().optional(),
-  mouId: z.uuid().optional(),
+  profileId: idFilter,
+  mouId: idFilter,
   status: z.enum(['active', 'revoked']).optional(),
   q: textFilter.optional(),
   ...listPage,
@@ -57,7 +59,7 @@ export const grantListQuery = z.strictObject({
 /** 管理员列表（F-474-5 #23）。 */
 export const adminListQuery = z.strictObject({
   role: z.enum(ADMIN_ROLES).optional(),
-  mouId: z.uuid().optional(),
+  mouId: idFilter,
   q: textFilter.optional(),
   ...listPage,
 });

@@ -82,7 +82,7 @@ export const ADMIN_LIST_UNRECORDED = ['department'] as const;
 
 export interface AdminListQuery {
   readonly role?: AdminRole;
-  readonly mouId?: string;
+  readonly mouId?: string | readonly string[];
   readonly q?: string;
   readonly limit: number;
   readonly offset: number;
