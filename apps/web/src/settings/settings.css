@@ -62,3 +62,12 @@
   display: inline-block;
   width: 24px;
 }
+
+.settings-list-filters {
+  gap: 8px;
+  align-items: start;
+}
+.settings-list-filters .ant-input,
+.settings-list-filters .ant-select {
+  width: 180px;
+}

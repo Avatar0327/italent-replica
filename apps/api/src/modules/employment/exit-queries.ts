@@ -35,8 +35,11 @@ export const EXIT_STATES = [
   'deleted',
 ] as const satisfies readonly EmploymentState[];
 
-/** 发起方式筛选：direct = 直接离职（mode=direct），import = 历史导入（mode=import，F-139a），其余按申请的发起人身份（§3.2）。 */
-export const EXIT_INITIATIONS = ['hr', 'self', 'manager', 'direct', 'import'] as const;
+/**
+ * 发起方式筛选：direct = 直接离职（库内 mode=direct 与历史导入的 mode=import 都算，北森列表没有“历史导入”这一方式，
+ * F-493 §7.1），其余按申请的发起人身份（§3.2）。库内 mode 仍记 import（审计 / 改期等内部逻辑按它区分）。
+ */
+export const EXIT_INITIATIONS = ['hr', 'self', 'manager', 'direct'] as const;
 export type ExitInitiationFilter = (typeof EXIT_INITIATIONS)[number];
 
 export interface ExitViewFilter {
@@ -70,7 +73,7 @@ export interface ExitRow {
   whereaboutsCode: string | null;
   whereaboutsName: string | null;
   status: EmploymentState;
-  mode: 'application' | 'direct' | 'import';
+  mode: 'application' | 'direct';
   initiator: 'hr' | 'self' | 'manager';
   initiatorUserId: string;
   batchId: string | null;
@@ -113,7 +116,7 @@ export interface ExitItem {
   readonly status: EmploymentState;
   /** 路由层并入；读模型本身不产生。 */
   readonly actions?: readonly ExitActionCode[];
-  readonly mode: 'application' | 'direct' | 'import';
+  readonly mode: 'application' | 'direct';
   readonly initiator: 'hr' | 'self' | 'manager';
   readonly initiatorUserId: string;
   readonly batchId: string | null;
@@ -233,7 +236,7 @@ export function filterPredicates(tenantId: string, filter: ExitViewFilter): SQL[
   if (filter.reasonCode) parts.push(sql`lower(x.reason_code)=lower(${filter.reasonCode})`);
   if (filter.whereaboutsCode) parts.push(sql`lower(x.whereabouts_code)=lower(${filter.whereaboutsCode})`);
   if (filter.status) parts.push(sql`s.state=${filter.status}`);
-  if (filter.initiation === 'direct' || filter.initiation === 'import') parts.push(sql`x.mode=${filter.initiation}`);
+  if (filter.initiation === 'direct') parts.push(sql`x.mode IN ('direct','import')`);
   else if (filter.initiation) parts.push(sql`(x.mode='application' AND x.initiator=${filter.initiation})`);
   return parts;
 }
@@ -277,7 +280,8 @@ function candidates(
       x.exit_type_code AS "exitTypeCode", et.name AS "exitTypeName",
       x.reason_code AS "reasonCode", er.name AS "reasonName",
       x.whereabouts_code AS "whereaboutsCode", ew.name AS "whereaboutsName",
-      s.state AS status, x.mode, x.initiator, x.initiator_user_id AS "initiatorUserId", x.batch_id AS "batchId",
+      s.state AS status, CASE WHEN x.mode='import' THEN 'direct' ELSE x.mode END AS mode, x.initiator,
+      x.initiator_user_id AS "initiatorUserId", CASE WHEN x.mode='import' THEN NULL ELSE x.batch_id END AS "batchId",
       b.revision, b.created_at AS "createdAt",
       CASE WHEN act.outcome IN ('failed','suspended') THEN act.outcome END AS "activationStatus",
       CASE WHEN act.outcome IN ('failed','suspended') THEN act.reason END AS "activationReason",

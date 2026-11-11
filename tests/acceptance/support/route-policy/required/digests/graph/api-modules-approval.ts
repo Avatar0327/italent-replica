@@ -1113,7 +1113,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/detail-path.ts#pathView',
     '#COMMENT_NOTICE',
     '#actionsFor',
-    '#disclosedFields',
+    '#formFields',
+    '#formValuesView',
     '#pick',
     '#projectLog',
     '#recordsHidden',
@@ -1127,6 +1128,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/foreign-fields.ts#formFieldsWithForeign',
     'apps/api/src/modules/approval/handling-content.ts#capViewable',
     'packages/domain/src/approval/policies.ts#disclosedFieldNames',
+  ],
+  'apps/api/src/modules/approval/disclosure.ts#formFields': ['#disclosedFields'],
+  'apps/api/src/modules/approval/disclosure.ts#formValuesView': ['#formFields', '#frozenValues', '#pick'],
+  'apps/api/src/modules/approval/disclosure.ts#frozenValues': [
+    'apps/api/src/modules/offer/frozen-view.ts#projectBatchValues',
+    'apps/api/src/modules/offer/frozen-view.ts#projectOfferValues',
   ],
   'apps/api/src/modules/approval/disclosure.ts#initiatorActions': [
     'apps/api/src/modules/approval/rules.ts#urgeOpen',
@@ -1482,20 +1489,63 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/assessment-content.ts#loadAssessmentContent',
     'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeContent',
     'apps/api/src/modules/employment/retirement-intention-content.ts#loadIntentionContent',
+    'apps/api/src/modules/idp/stage-content.ts#loadIdpStageContent',
+    'apps/api/src/modules/offer/content.ts#loadOfferBatchContent',
+    'apps/api/src/modules/offer/content.ts#loadOfferContent',
     'apps/api/src/modules/org-adjustment/content.ts#loadOrgContent',
     'apps/api/src/modules/personnel/frozen.ts#loadPersonnelContent',
+  ],
+  'apps/api/src/modules/approval/handling-content.ts#handlerFacts': [
+    'apps/api/src/modules/approval/context.ts#actorOf',
+  ],
+  'apps/api/src/modules/approval/handling-content.ts#latestHandlingCopy': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/definitions.ts#loadVersion',
+    '#HANDLING_EVENTS',
+    '#missingCopy',
+  ],
+  'apps/api/src/modules/approval/handling-content.ts#missingCopy': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
   ],
   'apps/api/src/modules/approval/handling-content.ts#prepareHandlingContent': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     '#CONTENT_PROVIDERS',
     '#MAX_PAYLOAD_BYTES',
+    '#handlerFacts',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+  ],
+  'apps/api/src/modules/approval/handling-content.ts#profileCeilingOf': [
+    'apps/api/src/modules/approval/object-ceiling.ts#storedCeiling',
   ],
   'apps/api/src/modules/approval/handling-content.ts#recordHandlingContent': ['#CONTENT_SCHEMA_VERSION'],
-  'apps/api/src/modules/approval/handling-content.ts#selectContent': [
-    'apps/api/src/modules/approval/context.ts#approvalError',
+  'apps/api/src/modules/approval/handling-content.ts#selectBusinessContent': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
-    'apps/api/src/modules/approval/definitions.ts#loadVersion',
     '#HANDLING_EVENTS',
+    '#latestHandlingCopy',
+  ],
+  'apps/api/src/modules/approval/handling-content.ts#selectContent': ['#hasPendingTask', '#latestHandlingCopy'],
+  'apps/api/src/modules/approval/handling-context.ts#contentViewOfRead': [
+    'apps/api/src/modules/approval/handling-content.ts#contentViewOf',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#inInstance': [
+    'apps/api/src/modules/approval/handling-content.ts#selectContent',
+    'apps/api/src/modules/approval/store.ts#loadInstance',
+    'apps/api/src/modules/approval/store.ts#loadTasks',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#latestHandledInstance': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/handling-content.ts#HANDLING_EVENTS',
+    '#uuidArray',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#pendingInstance': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#uuidArray',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#selectAmong': [
+    '#LIVE',
+    '#inInstance',
+    '#latestHandledInstance',
+    '#pendingInstance',
   ],
   'apps/api/src/modules/approval/handover-empty.ts#decideHandoverApprovers': [
     'packages/domain/src/approval/sources.ts#expressionValue',
@@ -1822,6 +1872,8 @@ export const GRAPH: Graph = {
     '#detailViewable',
     '#readCtx',
     '#viewerOf',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
   ],
   'apps/api/src/modules/approval/routes.ts#detailViewable': [
     'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
@@ -1841,6 +1893,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
   ],
   'apps/api/src/modules/approval/routes.ts#ownViewable': [
+    'apps/api/src/modules/approval/handling-content.ts#capViewable',
+    'apps/api/src/modules/approval/handling-content.ts#profileCeilingOf',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
@@ -1942,6 +1996,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/routes.ts#respondDetail': [
     'apps/api/src/modules/approval/disclosure.ts#namedForm',
     '#detailViewOf',
+    'apps/api/src/modules/approval/typed-content.ts#typedContentOf',
   ],
   'apps/api/src/modules/approval/routes.ts#respondHistory': [
     'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
@@ -2520,6 +2575,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/approval/typed-content.ts#typedContentOf': [
+    'apps/api/src/modules/idp/approval-content.ts#idpFrozenContent',
   ],
   'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure': [
     'apps/api/src/modules/approval/context.ts#approvalError',

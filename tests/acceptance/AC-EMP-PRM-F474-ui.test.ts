@@ -56,9 +56,9 @@ describe('AC-EMP / AC-PRM F-474 员工、团队与用户列表', () => {
       128, 128, 188, 128, 128, 128, 128, 93, 118, 128,
     ]);
   });
-  it('全部用户列表已有字段按原站宽度', () => {
+  it('全部用户列表补齐员工状态与齿轮，保持原站列宽', () => {
     expect(userColumns(false, () => {}).map((column: { width?: number }) => column.width)).toEqual([
-      128, 128, 188, 128, 128, 128, 128, 118, 146, 128,
+      128, 128, 188, 128, 128, 128, 128, 118, 146, 128, 128, 24,
     ]);
   });
   it('团队成员人员先于状态；被裁剪字段不补回', () => {
@@ -119,9 +119,9 @@ describe('AC-EMP / AC-PRM F-474 子集顺序与设置列表', () => {
         .slice(0, fields.length),
     ).toEqual(fields);
   });
-  it('身份管理名称193、普通列128、操作168', async () => {
+  it('身份管理补齐修改人时间等列，保持原站列宽', async () => {
     await ui.render(h(ProfilesPage, { title: '身份管理', editable: false }));
-    expect(ui.widths()).toEqual([193, 128, 128, 128, 128, 168].map((n) => `${n}px`));
+    expect(ui.widths()).toEqual([193, 128, 128, 128, 128, 128, 128, 118, 146, 128, 168, 24].map((n) => `${n}px`));
   });
   it('变更日志补齐应用和来源列，保持已有列宽', async () => {
     await ui.render(h(AuditPage));

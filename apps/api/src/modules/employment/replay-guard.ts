@@ -34,7 +34,7 @@ import {
 import type { ExitOptions } from './exit-initiation.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import type { BusinessKind, EmploymentBusinessPatch, EmploymentContext } from './types.js';
-import { requireExitImportAccess, type ImportRowInput } from './exit-import.js';
+import { requireExitImportAccess, requireExitImportProfileAccess, type ImportRowInput } from './exit-import.js';
 
 /**
  * 写入口径范围：业务在操作人当前数据范围内（范围外与不存在同一个 404），看全部别名另要任职写权。
@@ -418,6 +418,7 @@ export function exitImportGuard(deps: TenantRouteDeps, ctx: EmploymentContext, r
       // 人员对象的范围也在本事务内重新解析：入口之后被撤“看全部”，同键重放同样 403
       const employeeScope = await resolveModuleScopeInTransaction(deps, ctx, tx, EMPLOYEE_OBJECT);
       await requireExitImportAccess(scoped, rows, employeeScope);
+      await requireExitImportProfileAccess(tx, deps, scoped, rows);
     },
   });
 }

@@ -16,6 +16,7 @@ const IDP = '/api/tenant/idp';
 /** 参与人字段集（DEC-296④ 固定字段，不按 IDP 字段权限）。 */
 const PARTICIPANT_KEYS = [
   'analyses',
+  'contentView',
   'currentNodeName',
   'currentStageName',
   'employeeId',

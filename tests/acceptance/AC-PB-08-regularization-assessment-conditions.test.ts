@@ -6,7 +6,7 @@
  * 任一存在，自动转正失败（台账记 failed、原因 ASSESSMENT_BLOCKS_REGULARIZATION），不发起转正。
  * 例外（F-500，DEC-841①，照北森 F-485 实测，仅“自动发起转正申请”类 application）：试用中考核审批通过且意见 = 提前转正，
  * 自动转正静默跳过——不记失败台账、不进回执失败列、不重试排队；员工仍试用中，同批其他员工照常处理。
- * “直接自动转正”类 direct 口径待定（F-485 未触发），保持原行为：仍按失败处理、记 failed 台账。
+ * “直接自动转正”类 direct 无取证依据（F-485 未触发），不适用静默跳过：仍按失败处理、记 failed 台账（F-517 只改命中后的发起方式）。
  * 上一周期（别的 anchor）的考核、不阻断的状态组合不影响。
  */
 import { randomUUID } from 'node:crypto';
@@ -201,7 +201,7 @@ describe('AC-PB-08 试用中考核已生效且意见 = 提前转正：申请类�
     ]);
   });
 
-  it('直接类（口径待定）保持原行为：同一考核条件仍失败，回执带原因，记 failed 台账，再跑累计次数，不发起转正', async () => {
+  it('直接类（无取证依据）不适用静默跳过：同一考核条件仍失败，回执带原因，记 failed 台账，再跑累计次数，不发起转正', async () => {
     const w = await world(`direct-${randomUUID()}`, 'direct');
     const person = await w.dueEmployee('直接类提前转正已生效员工');
     await w.seedAssessment(person.employeeId, earlyApproved);

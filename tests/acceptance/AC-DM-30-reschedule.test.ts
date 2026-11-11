@@ -40,25 +40,24 @@ async function oneImported(label: string, disableFrom?: string) {
   const x = await importWorld(database().db, `12-${label}`);
   const d = await x.dept('改期部门');
   if (disableFrom) await x.disable(d.id, disableFrom);
-  const body = await x.created([x.row(1, d.code)]);
-  const item = body.rows[0]!;
-  return { x, d, ...item };
+  const [item] = await x.rowsOfBatch(await x.imported([x.row(1, d.code)]));
+  expect(item!.status).toBe('succeeded');
+  return { x, d, exitBusinessId: item!.exit_business_id!, employeeId: item!.employee_id! };
 }
 
 describe('AC-DM-30-12 列表与详情', () => {
-  it('已完成 / 全部能查到，发起方式 = 导入，按 initiation=import 筛得出；进行中查不到；详情动作有 edit', async () => {
+  it('已完成 / 全部能查到，发起方式显示直接离职（F-493 S3c：不再露出导入标识），按 initiation=direct 筛得出；进行中查不到；详情动作有 edit', async () => {
     const { x, exitBusinessId } = await oneImported('list');
     for (const view of ['completed', 'all'])
       expect((await listed(x, `view=${view}`)).find((item) => item.id === exitBusinessId)).toMatchObject({
-        mode: 'import',
+        mode: 'direct',
         actions: expect.arrayContaining(['edit']),
       });
-    expect((await listed(x, 'view=all&initiation=import')).map((item) => item.id)).toEqual([exitBusinessId]);
-    expect((await listed(x, 'view=all&initiation=direct')).map((item) => item.id)).not.toContain(exitBusinessId);
+    expect((await listed(x, 'view=all&initiation=direct')).map((item) => item.id)).toContain(exitBusinessId);
     expect((await listed(x, 'view=in_progress')).map((item) => item.id)).not.toContain(exitBusinessId);
     const detail = await x.session.request('GET', `/exits/${exitBusinessId}`);
     const body = (await detail.json()) as { mode: string; actions: string[] };
-    expect(body.mode).toBe('import');
+    expect(body.mode).toBe('direct');
     expect(body.actions).toContain('edit');
     expect(body.actions).not.toContain('submit');
   });
@@ -156,24 +155,23 @@ describe('AC-DM-30-12 改期', () => {
 });
 
 describe('AC-DM-30-12 撤销', () => {
-  it('撤销已生效导入离职：人员恢复在职，onCancelled 照常运行，手动名单回收，不排账号停用任务', async () => {
+  it('撤销已生效导入离职：人员恢复在职，onCancelled 照常运行，不产生名单', async () => {
     const x = await importWorld(database().db, '12-cancel');
     const d = await x.dept('撤销部门');
-    const { rows } = await x.created([x.row(1, d.code, { addToBlacklist: true, blacklistReason: 'instability' })]);
-    const item = rows[0]!;
+    const [item] = await x.rowsOfBatch(await x.imported([x.row(1, d.code)]));
     const cancelled: string[] = [];
     exitPostEffectHooks.onCancelled(async (_tx, _ctx, event) => void cancelled.push(event.businessId));
-    const detail = await x.session.request('GET', `/exits/${item.exitBusinessId}`);
+    const detail = await x.session.request('GET', `/exits/${item!.exit_business_id}`);
     const { revision } = (await detail.json()) as { revision: number };
-    const response = await x.session.request('POST', `/exits/${item.exitBusinessId}/cancel`, {
+    const response = await x.session.request('POST', `/exits/${item!.exit_business_id}/cancel`, {
       ifMatch: revision,
       body: { reason: '合成撤销', confirmed: true },
     });
     expect(response.status, await response.clone().text()).toBe(200);
-    expect(cancelled).toEqual([item.exitBusinessId]);
-    expect((await x.timelineOf(item.employeeId)).map((t) => t.startDate)).toEqual([H]);
-    const active = await x.q(x.sql`SELECT 1 FROM employment_blacklist WHERE tenant_id=${x.tenantId}
-      AND employee_id=${item.employeeId}::uuid AND status='active'`);
-    expect(active).toHaveLength(0);
+    expect(cancelled).toEqual([item!.exit_business_id]);
+    expect((await x.timelineOf(item!.employee_id!)).map((t) => t.startDate)).toEqual([H]);
+    const listed = await x.q(x.sql`SELECT 1 FROM employment_blacklist WHERE tenant_id=${x.tenantId}
+      AND employee_id=${item!.employee_id!}::uuid`);
+    expect(listed).toHaveLength(0);
   });
 });

@@ -173,10 +173,7 @@ export const SCOPE_AT = {
     ),
   ],
   'idp.planScope(responseView)': [
-    scope(
-      `${M}/idp/plan-routes.ts#showPlan`,
-      'const viewer = await requireViewer(tx, ctx, hr, plan, await loadStages(tx, ctx.tenantId, [planId]))',
-    ),
+    scope(`${M}/idp/plan-routes.ts#showPlan`, 'const viewer = await requireViewer(tx, ctx, hr, plan, stages)'),
     scope(
       `${M}/idp/plan-access.ts#requireViewer`,
       "if (!at.participant) throw new AppError('NOT_FOUND', '发展计划不存在')",

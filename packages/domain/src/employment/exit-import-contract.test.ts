@@ -9,7 +9,7 @@ import {
   exitImportErrorText,
   normalizeExitImportDate,
 } from './exit-import-contract.js';
-import { EXIT_IMPORT_ROW_LIMIT, duplicateEmailRows, duplicateEmployeeNoRows } from './exit-import.js';
+import { EXIT_IMPORT_ROW_LIMIT, duplicateEmailRows } from './exit-import.js';
 
 const NAMES = [
   '导入结果', '*姓名', '*电子邮件', '*部门编码', '*入职日期', '职位名称', '职务名称', '职级', '参加工作日期', '工作地点',
@@ -23,12 +23,12 @@ const KEYS = [
 ]; // prettier-ignore
 
 describe('F-493 S2 导入契约常量', () => {
-  it('上限类常量；单批行数上限本片不改（仍为 100，S3a 才改 1000）', () => {
+  it('上限类常量；单批行数上限 1000（S3a）', () => {
     expect(EXIT_IMPORT_BODY_LIMIT).toBe(1024 * 1024);
     expect(EXIT_IMPORT_MAX_ATTEMPTS).toBe(5);
     expect(EXIT_IMPORT_FILE_TTL_DAYS).toBe(15);
     expect(EXIT_IMPORT_HISTORY_PAGE_SIZE).toBe(15);
-    expect(EXIT_IMPORT_ROW_LIMIT).toBe(100);
+    expect(EXIT_IMPORT_ROW_LIMIT).toBe(1000);
   });
 
   it('模板 26 列：列字母 A～Z、列名原文（含「*」）、必填 B C D E V、请求体键齐全且唯一', () => {
@@ -173,9 +173,5 @@ describe('F-493 同文件电子邮件重复 duplicateEmailRows（c 类，AC-DM-3
       { rowNo: 8, email: '' },
     ];
     expect([...duplicateEmailRows(rows)].sort()).toEqual([2, 3, 4]);
-  });
-
-  it('与旧 duplicateEmployeeNoRows 并存（S3a 才删旧）', () => {
-    expect(typeof duplicateEmployeeNoRows).toBe('function');
   });
 });

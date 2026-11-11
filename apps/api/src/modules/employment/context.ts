@@ -9,7 +9,7 @@ import { runCommand, type CommandGuard, type CommandResult } from '../../command
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { auditActor } from '../../system-actor.js';
-import { tenantOf, type TenantEnv } from '../../tenant-context.js';
+import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { businessDate } from './fields.js';
 import type { EmploymentContext, EmploymentScope } from './types.js';
 import {
@@ -45,7 +45,44 @@ export async function readContext(
   objectCode = EMPLOYMENT_OBJECT,
   pageCode?: string,
 ): Promise<EmploymentContext> {
+  return contextOf(tenantOf(c), deps, action, expectedRevision, resource, objectCode, pageCode);
+}
+
+/**
+ * 只验任职对象功能权、不解析数据范围的上下文（F-493 S3c 导入文件下载：模板不含数据；错误文件的范围由人员 / 档案对象各自判，
+ * 设计 §8.2）。scope 恒为 undefined、不带受信旁路，调用方不得据此返回任职人员。
+ */
+export async function functionContext(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  action: 'object.create',
+): Promise<EmploymentContext> {
   const tenant = tenantOf(c);
+  await requirePermission(deps.authorize, { ...tenant, action, resource: EMPLOYMENT_OBJECT, fields: [] });
+  return {
+    ...tenant,
+    now: deps.clock(),
+    expectedRevision: 0,
+    commandId: '',
+    authorize: deps.authorize,
+    objectCode: EMPLOYMENT_OBJECT,
+    trustedScopeBypass: false,
+  };
+}
+
+/**
+ * readContext 去掉 Hono 的部分：按“某租户里的某用户”建同一份任职上下文。后台执行器在执行期复核提交者权限时用
+ * （F-493 S3b，设计 §16 A9）：与提交入口走同一个函数，权限口径不会分叉。
+ */
+export async function contextOf(
+  tenant: TenantContext,
+  deps: TenantRouteDeps,
+  action: string,
+  expectedRevision = 0,
+  resource?: string,
+  objectCode = EMPLOYMENT_OBJECT,
+  pageCode?: string,
+): Promise<EmploymentContext> {
   const operation = action === 'tenant.employment.read' ? 'object.view' : action;
   await requirePermission(deps.authorize, {
     ...tenant,

@@ -1,19 +1,22 @@
 import { userColumns } from './user-columns.js';
 import { Button, Input } from 'antd';
 import { useRef, useState } from 'react';
-import { ApiError, type PageResult } from '../foundation/client.js';
+import { ApiError } from '../foundation/client.js';
 import { FormOverlay } from '../foundation/FormOverlay.js';
 import { useApiClient } from '../foundation/Session.js';
 import { ListPage } from '../foundation/templates.js';
 import { settingsApi } from './api.js';
-import { base, listPath, type User } from './model.js';
+import { base, type User } from './model.js';
 import { Facts, Notice, RemoteDetail, Status } from './parts.js';
 import type { SettingsProps } from './SettingsPage.js';
-import { useResource } from './useResource.js';
+import { useSettingsList, useListInstant, useRowSelection } from './list-support.js';
+import { ListFilters } from './ListFilters.js';
 import { m } from './messages.js';
 export function UsersPage({ code, title, editable }: SettingsProps) {
-  const [page, setPage] = useState({ page: 1, pageSize: 15 });
-  const list = useResource<PageResult<User>>(listPath(code, page));
+  const list = useSettingsList<User>('users', { type: code.split('.')[1]! });
+  const { page, setPage } = list;
+  const instant = useListInstant();
+  const selection = useRowSelection(list.data?.items ?? [], (row) => row.userId);
   const [detail, setDetail] = useState<string>();
   const [create, setCreate] = useState(false);
   return (
@@ -28,6 +31,24 @@ export function UsersPage({ code, title, editable }: SettingsProps) {
         loading={list.loading}
         error={list.error}
         retry={list.refresh}
+        filters={
+          code === 'users.all' && (
+            <ListFilters
+              apply={list.apply}
+              fields={[
+                { name: 'q', label: m.accountSearch },
+                {
+                  name: 'type',
+                  label: m.userType,
+                  options: [
+                    { value: 'internal', label: m.users },
+                    { value: 'external', label: m.external },
+                  ],
+                },
+              ]}
+            />
+          )
+        }
         actions={
           <>
             <Button onClick={list.refresh}>{m.refresh}</Button>
@@ -43,7 +64,10 @@ export function UsersPage({ code, title, editable }: SettingsProps) {
             )}
           </>
         }
-        columns={userColumns(code === 'users.internal', setDetail)}
+        columns={[
+          ...(code === 'users.all' ? selection : []),
+          ...userColumns(code === 'users.internal', setDetail, instant),
+        ]}
       />
       {detail && (
         <RemoteDetail<User> path={`${base}/users/${detail}`} title={m.detail} close={() => setDetail(undefined)}>
@@ -51,7 +75,7 @@ export function UsersPage({ code, title, editable }: SettingsProps) {
             <Facts
               items={[
                 [m.displayName, user.displayName],
-                [m.email, user.email],
+                [m.email, user.contactEmail],
                 [m.businessIdentity, user.businessIdentity],
                 [m.status, <Status value={user.membershipStatus} />],
                 [m.userId, user.userId],
