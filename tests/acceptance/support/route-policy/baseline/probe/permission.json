@@ -72,10 +72,15 @@
     "all": {
       "status": 200
     },
-    "fieldQueries": [],
-    "scopeQueries": [],
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
     "trace": [
-      "admin:admin_manage"
+      "admin:admin_manage",
+      "obj:TenantBase.EmployeeInformation:view"
     ]
   },
   "GET /api/tenant/permission/admins/:id": {
@@ -144,10 +149,15 @@
     "all": {
       "status": 200
     },
-    "fieldQueries": [],
-    "scopeQueries": [],
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
     "trace": [
-      "admin:user_grant"
+      "admin:user_grant",
+      "obj:TenantBase.EmployeeInformation:view"
     ]
   },
   "GET /api/tenant/permission/licenses": {
@@ -367,10 +377,15 @@
     "all": {
       "status": 200
     },
-    "fieldQueries": [],
-    "scopeQueries": [],
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
     "trace": [
-      "admin:user_manage"
+      "admin:user_manage",
+      "obj:TenantBase.EmployeeInformation:view"
     ]
   },
   "GET /api/tenant/permission/users/:userId": {

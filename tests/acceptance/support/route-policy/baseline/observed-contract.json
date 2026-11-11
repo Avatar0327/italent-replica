@@ -8885,6 +8885,12 @@
       "primitives": {
         "admin": [
           "adminGuard"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope"
         ]
       }
     },
@@ -8997,6 +9003,12 @@
       "primitives": {
         "admin": [
           "adminGuard"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope"
         ]
       }
     },
@@ -9370,6 +9382,12 @@
       "primitives": {
         "admin": [
           "adminGuard"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope"
         ]
       }
     },
