@@ -864,7 +864,7 @@ async function autoProcess(
   };
   // F-476 P3：自动处理也留一份系统办理份（actor 为空，不增加候选人的访问资格）；内容取自动处理发生时的业务值，
   // 与任务 / 日志同事务，写不进去整笔回滚（DEC-807）
-  const prepared = await prepareHandlingContent(tx, run, undefined);
+  const prepared = await prepareHandlingContent(tx, run, undefined, true);
   await recordHandlingContent(tx, run, prepared, { logId, task, action: event, system: true });
   return task;
 }

@@ -1482,6 +1482,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/assessment-content.ts#loadAssessmentContent',
     'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeContent',
     'apps/api/src/modules/employment/retirement-intention-content.ts#loadIntentionContent',
+    'apps/api/src/modules/idp/stage-content.ts#loadIdpStageContent',
     'apps/api/src/modules/org-adjustment/content.ts#loadOrgContent',
     'apps/api/src/modules/personnel/frozen.ts#loadPersonnelContent',
   ],
@@ -1496,6 +1497,29 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/approval/definitions.ts#loadVersion',
     '#HANDLING_EVENTS',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#contentViewOfRead': [
+    'apps/api/src/modules/approval/handling-content.ts#contentViewOf',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#inInstance': [
+    'apps/api/src/modules/approval/handling-content.ts#selectContent',
+    'apps/api/src/modules/approval/store.ts#loadInstance',
+    'apps/api/src/modules/approval/store.ts#loadTasks',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#latestHandledInstance': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/handling-content.ts#HANDLING_EVENTS',
+    '#uuidArray',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#pendingInstance': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#uuidArray',
+  ],
+  'apps/api/src/modules/approval/handling-context.ts#selectAmong': [
+    '#LIVE',
+    '#inInstance',
+    '#latestHandledInstance',
+    '#pendingInstance',
   ],
   'apps/api/src/modules/approval/handover-empty.ts#decideHandoverApprovers': [
     'packages/domain/src/approval/sources.ts#expressionValue',
@@ -1942,6 +1966,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/routes.ts#respondDetail': [
     'apps/api/src/modules/approval/disclosure.ts#namedForm',
     '#detailViewOf',
+    'apps/api/src/modules/approval/typed-content.ts#typedContentOf',
   ],
   'apps/api/src/modules/approval/routes.ts#respondHistory': [
     'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
@@ -2520,6 +2545,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/approval/typed-content.ts#typedContentOf': [
+    'apps/api/src/modules/idp/approval-content.ts#idpFrozenContent',
   ],
   'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure': [
     'apps/api/src/modules/approval/context.ts#approvalError',
