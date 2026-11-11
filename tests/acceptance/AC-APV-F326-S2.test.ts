@@ -2,10 +2,13 @@
 import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { once } from 'node:events';
-import { sql, withTenant } from '@italent/db';
+import { permissionAdmins, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { world } from './AC-EXIT-F316-support.js';
+import { createPermissionAuthorizer } from '../../apps/api/src/modules/permission/authorizer.js';
+import * as approvalContext from '../../apps/api/src/modules/approval/context.js';
+import { AppError } from '../../apps/api/src/errors.js';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -47,7 +50,11 @@ beforeAll(async () => {
       headers,
       ...(chunks.length ? { body: Buffer.concat(chunks) } : {}),
     });
-    response.writeHead(result.status, Object.fromEntries(result.headers));
+    const responseHeaders: Record<string, string> = {};
+    result.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+    response.writeHead(result.status, responseHeaders);
     response.end(Buffer.from(await result.arrayBuffer()));
   });
   server.listen(0, '127.0.0.1');
@@ -156,10 +163,30 @@ describe('AC-APV-F326-02 / 03 编码与默认值', () => {
     ['boolean', false, 'false'],
   ])('%s 默认值保留类型、拒绝错误形态', async (dataType, value, invalid) => {
     const created = await create({ dataType, defaultValue: value, enable: true });
-    expect(created.defaultValue).toEqual(value);
+    expect(created.defaultValue).toEqual(dataType === 'datetime' ? new Date(String(value)).toISOString() : value);
     expect(created.status).toBe('enabled');
     await rejectUnchanged('PATCH', `/${created.id}`, { defaultValue: invalid }, created.revision, 400);
   });
+  it.each(['0000-01-01T00:00:00+01:00', '9999-12-31T23:59:59-01:00'])(
+    'AC-APV-F326-03 UTC 年份边界 %s 可继续编辑启用',
+    async (date) => {
+      let value = await create({ dataType: 'datetime', defaultValue: date });
+      expect(value.defaultValue).toBe(new Date(date).toISOString());
+      value = await body(await request('PATCH', `/${value.id}`, { name: '边界时间' }, value.revision));
+      value = await body(await request('POST', `/${value.id}/enable`, {}, value.revision));
+      expect(value.defaultValue).toBe(new Date(date).toISOString());
+    },
+  );
+  it.each(['123', 'false', 'null', '"带引号"', '[1,2]'])(
+    'AC-APV-F326-03 字符串 %s 不被 JSON 二次解码',
+    async (text) => {
+      const value = await create({ defaultValue: text });
+      expect(value.defaultValue).toBe(text);
+      expect((await body(await request('GET', `/${value.id}`))).defaultValue).toBe(text);
+      const changed = await body(await request('PATCH', `/${value.id}`, { defaultValue: '0' }, value.revision));
+      expect(changed.defaultValue).toBe('0');
+    },
+  );
   it('人员资格、UUID 规范化、多人上限与最少回显字段', async () => {
     for (const id of [external, departed, stranger.workOwner.userId, randomUUID()])
       await rejectUnchanged('POST', '', input({ dataType: 'person', defaultValue: id }), 0, 400);
@@ -263,6 +290,40 @@ describe('AC-APV-F326-04 / 05 / 06 状态、并发、台账与审计', () => {
       if (method === 'POST') value = await body(await request('POST', `/${value.id}${suffix}`, {}, value.revision));
     }
   });
+  it('AC-APV-F326-06 outbox 失败时变量、字段审计和台账一起回滚', async () => {
+    let value = await create();
+    for (const [method, path, data, revision] of [
+      ['POST', '', input(), 0],
+      ['PATCH', `/${value.id}`, { name: '必须回滚' }, value.revision],
+      ['POST', `/${value.id}/enable`, {}, value.revision],
+    ] as const) {
+      const key = randomUUID();
+      const before = await stored();
+      const spy = vi
+        .spyOn(approvalContext, 'emitOutbox')
+        .mockRejectedValueOnce(new AppError('SERVICE_UNAVAILABLE', '合成事件写入失败'));
+      try {
+        await body(await request(method, path, data, revision, key), 503);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(await stored()).toEqual(before);
+      expect(await counts(key)).toEqual({ ledger: 0, audit: 0, outbox: 0 });
+    }
+    value = await body(await request('POST', `/${value.id}/enable`, {}, value.revision));
+    const before = await stored();
+    const key = randomUUID();
+    const spy = vi
+      .spyOn(approvalContext, 'emitOutbox')
+      .mockRejectedValueOnce(new AppError('SERVICE_UNAVAILABLE', '合成事件写入失败'));
+    try {
+      await body(await request('POST', `/${value.id}/disable`, {}, value.revision, key), 503);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await stored()).toEqual(before);
+    expect(await counts(key)).toEqual({ ledger: 0, audit: 0, outbox: 0 });
+  });
   it('并发编辑只有一份提交，失败不入台账，创建并启用记两条完整审计', async () => {
     const key = randomUUID();
     const initial = input({ dataType: 'persons', defaultValue: [x.workOwner.userId, x.hrbp.userId], enable: true });
@@ -330,6 +391,57 @@ describe('AC-APV-F326-07 / 08 列表与管理权限', () => {
     ])
       await body(await request('GET', query), 400);
   });
+  it.each(['tenant_admin', 'system_admin', 'matrix_admin'])('AC-APV-F326-07 %s 的真实授权与撤权重放', async (role) => {
+    const user = await x.otherUser();
+    await withTenant(x.db, x.tenantId, (tx) =>
+      tx.insert(permissionAdmins).values({ tenantId: x.tenantId, userId: user.id, role }),
+    );
+    const real = tenantApi(x.db, { authorize: createPermissionAuthorizer(x.db), clock: () => now });
+    const calls: { method: string; path: string; body: unknown; ifMatch: number; idempotencyKey: string }[] = [];
+    const call = async (method: string, path: string, input: unknown, revision: number) => {
+      const spec = { method, path, body: input, ifMatch: revision, idempotencyKey: randomUUID() };
+      calls.push(spec);
+      return body(
+        await real.request(method, `${base}${path}`, { ...x.tenantAs(user.id), ...spec }),
+        path === '' ? 201 : 200,
+      );
+    };
+    let value = await call('POST', '', input({ scope: 'application', appId: 'transfer', usageScopes: [] }), 0);
+    value = await call('PATCH', `/${value.id}`, { name: '管理员修改' }, value.revision);
+    value = await call('POST', `/${value.id}/enable`, {}, value.revision);
+    value = await call('POST', `/${value.id}/disable`, {}, value.revision);
+    await body(await real.request('GET', `${base}/${value.id}`, x.tenantAs(user.id)));
+    await body(await real.request('GET', `${base}?scope=application&appId=transfer`, x.tenantAs(user.id)));
+    await withTenant(x.db, x.tenantId, (tx) =>
+      tx.execute(sql`UPDATE permission_admins SET status='revoked'
+      WHERE tenant_id=${x.tenantId} AND user_id=${user.id}::uuid`),
+    );
+    const before = await stored();
+    for (const spec of calls) {
+      const denied = await real.request(spec.method, `${base}${spec.path}`, { ...x.tenantAs(user.id), ...spec });
+      const result = await body(denied, 403);
+      expect(result).not.toHaveProperty('id');
+    }
+    expect(await stored()).toEqual(before);
+  });
+  it('AC-APV-F326-07 前置检查通过后命令守卫仍重新验权', async () => {
+    let checks = 0;
+    const guarded = tenantApi(x.db, { authorize: (req) => req.action === 'admin.process_matrix' && ++checks === 1 });
+    const key = randomUUID();
+    const before = await stored();
+    await body(
+      await guarded.request('POST', base, {
+        ...x.tenantAs(x.processAdmin.id),
+        body: input(),
+        ifMatch: 0,
+        idempotencyKey: key,
+      }),
+      403,
+    );
+    expect(checks).toBeGreaterThan(1);
+    expect(await stored()).toEqual(before);
+    expect(await counts(key)).toEqual({ ledger: 0, audit: 0, outbox: 0 });
+  });
   it('全部管理接口拒绝无能力账号，租户隔离及撤权后的命令重放', async () => {
     const key = randomUUID();
     const data = input();
@@ -362,7 +474,10 @@ describe('AC-APV-F326-07 / 08 列表与管理权限', () => {
     );
     expect((await body(await request('GET', `/${created.id}`))).name).toBe(data.name);
     for (const path of ['/not-a-uuid', '/not-a-uuid/enable'])
-      await body(await request(path.endsWith('enable') ? 'POST' : 'GET', path, {}), 400);
+      await body(
+        await request(path.endsWith('enable') ? 'POST' : 'GET', path, path.endsWith('enable') ? {} : undefined),
+        400,
+      );
   });
 });
 

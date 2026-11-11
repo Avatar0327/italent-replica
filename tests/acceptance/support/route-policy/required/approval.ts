@@ -234,7 +234,41 @@ const adminTarget = (code: 'adminTransfer' | 'adminIntervene'): Obligation => ({
   ],
 });
 
+const VARIABLE_ROUTES = `${DIR}/variable-routes.ts`;
+function variableAdmin(method: string, path: string, writing = false): Obligation[] {
+  const obligation = processWrite(fn('context', "await requireProcessButton(deps, ctx, 'update')", VARIABLE_ROUTES));
+  return [
+    {
+      ...obligation,
+      facts: writing ? [...(obligation.facts ?? []), 'admin:admin.*'] : obligation.facts,
+      at: [
+        {
+          role: 'call',
+          unit: `${VARIABLE_ROUTES}#route:${method} ${path}`,
+          anchor: writing ? 'variableWrite(c, deps,' : 'await context(c, deps)',
+        },
+        ...obligation.at,
+        ...(writing
+          ? [
+              {
+                role: 'impl' as const,
+                unit: `${VARIABLE_ROUTES}#variableWrite`,
+                anchor: "action: 'admin.process_matrix'",
+              },
+            ]
+          : []),
+      ],
+    },
+  ];
+}
+
 export const APPROVAL: RequiredTable = {
+  'GET /api/tenant/approval/variables': variableAdmin('GET', '/variables'),
+  'GET /api/tenant/approval/variables/:id': variableAdmin('GET', '/variables/:id'),
+  'POST /api/tenant/approval/variables': variableAdmin('POST', '/variables', true),
+  'PATCH /api/tenant/approval/variables/:id': variableAdmin('PATCH', '/variables/:id', true),
+  'POST /api/tenant/approval/variables/:id/enable': variableAdmin('POST', '/variables/:id/enable', true),
+  'POST /api/tenant/approval/variables/:id/disable': variableAdmin('POST', '/variables/:id/disable', true),
   'GET /api/tenant/approval/designer/source-candidates': [
     processWrite(route('GET', '/designer/source-candidates', "await requireProcessButton(deps, ctx, 'update')")),
   ],

@@ -197,6 +197,54 @@
       "admin:process_matrix"
     ]
   },
+  "GET /api/tenant/approval/variables": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "dce49dfad53d",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "GET /api/tenant/approval/variables/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "8433662e079e",
+      "reason": "APPROVAL_VARIABLE_NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "PATCH /api/tenant/approval/variables/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "8433662e079e",
+      "reason": "APPROVAL_VARIABLE_NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
   "POST /api/tenant/approval/exception-admins/handover": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -583,6 +631,54 @@
     },
     "scopeQueries": [],
     "trace": []
+  },
+  "POST /api/tenant/approval/variables": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ba3722c2e4db",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "POST /api/tenant/approval/variables/:id/disable": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "8433662e079e",
+      "reason": "APPROVAL_VARIABLE_NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "POST /api/tenant/approval/variables/:id/enable": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "8433662e079e",
+      "reason": "APPROVAL_VARIABLE_NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
   },
   "PUT /api/tenant/approval/processes/:id/draft": {
     "all": {

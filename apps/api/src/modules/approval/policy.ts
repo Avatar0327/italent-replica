@@ -393,7 +393,40 @@ const ADMIN_LOG_KEYS = [
   'createdAt',
 ];
 
+const VARIABLE_FIELDS = fixed(
+  [
+    'id',
+    'scope',
+    'appId',
+    'code',
+    'name',
+    'dataType',
+    'defaultValue',
+    'usageScopes',
+    'description',
+    'status',
+    'revision',
+    'createdBy',
+    'createdAt',
+    'updatedBy',
+    'updatedAt',
+    'people',
+  ],
+  'F-326 §4.3：管理员配置，人员回显仅姓名、工号、部门',
+);
+const variableConfig = write(
+  none('F-326 管理员变量 DTO，无字段目录'),
+  PROCESS_CONFIG,
+  none('租户级配置，CommandGuard.before 在首次执行和重放时复核管理员能力'),
+);
+
 export const APPROVAL_POLICIES = defineTable('approval', {
+  'GET /variables': admin('process_matrix', { fields: VARIABLE_FIELDS }),
+  'GET /variables/:id': admin('process_matrix', { fields: VARIABLE_FIELDS, ...byId }),
+  'POST /variables': processAdmin({ write: variableConfig }),
+  'PATCH /variables/:id': processAdmin({ ...byId, write: variableConfig }),
+  'POST /variables/:id/enable': processAdmin({ ...byId, write: variableConfig }),
+  'POST /variables/:id/disable': processAdmin({ ...byId, write: variableConfig }),
   // ---- registerProcessRoutes：流程定义（DEC-102）------------------------------------------------------------------
   'GET /designer/source-candidates': admin('process_matrix', {
     fields: fixed(['id', 'name', 'enabled', 'parentId'], 'DEC-691 / DEC-686①'),
