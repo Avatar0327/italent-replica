@@ -1,11 +1,19 @@
 import { permissionMous, permissionProfiles, permissionAdmins, withTenant, eq } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { createTestDb } from '@italent/testkit';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BASE, createProfile, seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { memberWithAdminRole } from './AC-PRM-users-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
-const database = useTestDb();
+let handle: Awaited<ReturnType<typeof createTestDb>>;
+// 本机多工作树并行时完整迁移可能超过 60 秒，与 F-039 重型建库钩子使用同一等待预算。
+beforeAll(async () => {
+  handle = await createTestDb();
+}, 300_000);
+afterAll(async () => {
+  await handle?.close();
+});
+const database = () => handle;
 const paths = ['/grants/profile-candidates', '/grants/mou-candidates', '/admins/mou-candidates'];
 let world: PermissionWorld;
 let reader: { user: string; tenant: string };
@@ -84,7 +92,7 @@ describe('AC-PRM-F516 独立筛选候选', () => {
     expect((await get(`${path}?offset=-1`)).status).toBe(400);
   });
   it('超过单页上限的目录可以翻页穷尽，通配符按字面匹配，虚拟单元不可见', async () => {
-    const prefix = `规模-${uniqueSuffix()}`;
+    const prefix = `F516-scale-${uniqueSuffix()}`;
     await withTenant(world.db, world.tenant.id, async (tx) => {
       const values = Array.from({ length: 205 }, (_, index) => ({
         tenantId: world.tenant.id,
@@ -93,16 +101,14 @@ describe('AC-PRM-F516 独立筛选候选', () => {
       }));
       await tx.insert(permissionProfiles).values(values);
       await tx.insert(permissionMous).values(values);
-      await tx
-        .insert(permissionMous)
-        .values({
-          tenantId: world.tenant.id,
-          code: `${prefix}-virtual`,
-          name: `${prefix}-虚拟`,
-          kind: 'virtual',
-          ownerUserId: reader.user,
-          appCode: 'TenantBase',
-        });
+      await tx.insert(permissionMous).values({
+        tenantId: world.tenant.id,
+        code: `${prefix}-virtual`,
+        name: `${prefix}-虚拟`,
+        kind: 'virtual',
+        ownerUserId: reader.user,
+        appCode: 'TenantBase',
+      });
       await tx
         .insert(permissionProfiles)
         .values({ tenantId: world.tenant.id, code: `${prefix}-literal`, name: '字面%_\\' });

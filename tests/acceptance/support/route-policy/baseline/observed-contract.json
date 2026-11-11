@@ -8910,6 +8910,28 @@
         ]
       }
     },
+    "GET /api/tenant/permission/admins/mou-candidates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "permission",
+      "primitives": {
+        "admin": [
+          "adminGuard"
+        ]
+      }
+    },
     "GET /api/tenant/permission/dynamic-org-grants/:grantId": {
       "edge": {
         "anonymous": {
@@ -8979,6 +9001,50 @@
       }
     },
     "GET /api/tenant/permission/grants": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "permission",
+      "primitives": {
+        "admin": [
+          "adminGuard"
+        ]
+      }
+    },
+    "GET /api/tenant/permission/grants/mou-candidates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "permission",
+      "primitives": {
+        "admin": [
+          "adminGuard"
+        ]
+      }
+    },
+    "GET /api/tenant/permission/grants/profile-candidates": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",

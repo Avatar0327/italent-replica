@@ -95,6 +95,16 @@
       "admin:admin_manage"
     ]
   },
+  "GET /api/tenant/permission/admins/mou-candidates": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:admin_manage"
+    ]
+  },
   "GET /api/tenant/permission/dynamic-org-grants/:grantId": {
     "all": {
       "code": "NOT_FOUND",
@@ -141,6 +151,26 @@
     ]
   },
   "GET /api/tenant/permission/grants": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_grant"
+    ]
+  },
+  "GET /api/tenant/permission/grants/mou-candidates": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_grant"
+    ]
+  },
+  "GET /api/tenant/permission/grants/profile-candidates": {
     "all": {
       "status": 200
     },

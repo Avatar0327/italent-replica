@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
-import { useTestDb } from '@italent/testkit';
-import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { createTestDb } from '@italent/testkit';
+import { afterEach, afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { Window } from 'happy-dom';
 import {
   BASE,
@@ -14,7 +14,15 @@ import {
 import { uniqueSuffix } from './support/unique.js';
 import { act, h, uiHarness } from './support/f474-ui.js';
 import { GrantsPage } from '../../apps/web/src/settings/GrantsPage.js';
-const database = useTestDb();
+let handle: Awaited<ReturnType<typeof createTestDb>>;
+// 本机多工作树并行时完整迁移可能超过 60 秒，与 F-039 重型建库钩子使用同一等待预算。
+beforeAll(async () => {
+  handle = await createTestDb();
+}, 300_000);
+afterAll(async () => {
+  await handle?.close();
+});
+const database = () => handle;
 
 let ui: ReturnType<typeof uiHarness> | undefined;
 afterEach(async () => {

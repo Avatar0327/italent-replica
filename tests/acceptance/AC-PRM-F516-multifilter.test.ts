@@ -1,5 +1,5 @@
-import { useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { createTestDb } from '@italent/testkit';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   BASE,
   createProfile,
@@ -11,7 +11,15 @@ import {
 import { memberWithAdminRole } from './AC-PRM-users-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
-const database = useTestDb();
+let handle: Awaited<ReturnType<typeof createTestDb>>;
+// 本机多工作树并行时完整迁移可能超过 60 秒，与 F-039 重型建库钩子使用同一等待预算。
+beforeAll(async () => {
+  handle = await createTestDb();
+}, 300_000);
+afterAll(async () => {
+  await handle?.close();
+});
+const database = () => handle;
 let world: PermissionWorld;
 const profiles: string[] = [];
 const mous: string[] = [];

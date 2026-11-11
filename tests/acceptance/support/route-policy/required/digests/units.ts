@@ -1092,10 +1092,13 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/permission/routes.ts': {
     'route:GET /api/tenant/permission/admin-roles': 'd1748d513636',
-    'route:GET /api/tenant/permission/admins': 'be74fe701664',
+    'route:GET /api/tenant/permission/admins': 'cd1da18fda26',
     'route:GET /api/tenant/permission/admins/:id': '7ef20d0775e2',
+    'route:GET /api/tenant/permission/admins/mou-candidates': 'db731201dcc7',
     'route:GET /api/tenant/permission/grantable-profiles': '9a5b3f8e188e',
-    'route:GET /api/tenant/permission/grants': '5f19ff77b8c9',
+    'route:GET /api/tenant/permission/grants': '554f49c57d3b',
+    'route:GET /api/tenant/permission/grants/mou-candidates': 'fb2b96fb2ffd',
+    'route:GET /api/tenant/permission/grants/profile-candidates': '1ae088c51163',
     'route:GET /api/tenant/permission/licenses': '21a9f3e0abad',
     'route:GET /api/tenant/permission/licenses/:licenseType/seats': 'de2cfcf8393b',
     'route:GET /api/tenant/permission/profiles': '2314d9583ec0',
@@ -2756,8 +2759,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admin-roles': '7a11d0289c9b',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins': '99e04dcbbfe8',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins/:id': '76a428b4f6df',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins/mou-candidates': '2085f522f261',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grantable-profiles': '7e4f35c521e5',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants': 'e76637809bc2',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants/mou-candidates': '2085f522f261',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants/profile-candidates':
+    '0f8723002740',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/licenses': 'b684105aaeb1',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/licenses/:licenseType/seats':
     '76a5e8a06263',
