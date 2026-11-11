@@ -8,7 +8,9 @@
  *   草稿 / 驳回 / 审批中 / 不通过 / 作废或通过但意见 ≠ 正常转正，试用中考核审批中），发起人找不到，或转正入口拒绝
  *   （PB-R9 互斥、试用结果已停用等）——整人回滚到保存点，台账记 failed、次数与原因，下一次执行重试（DEC-052）；
  * - 发起：经 BE-3 的单一入口 launchRegularization（默认转正日期 = 预计结束日次日，F-205；申请走同一提交与审批发起），
- *   发起人取规则配置，审批日志与台账带“系统代发”标记（R2e7 第 4 条）。
+ *   发起人取规则配置，审批日志与台账带“系统代发”标记（R2e7 第 4 条）；
+ * - 两类规则同一发起路径（F-517，DEC-879①，复刻取舍，偏离北森原站：北森直接自动转正类到期直接转正，证据 F500_09～11）：
+ *   direct 类也不直接转正，改为自动发起转正流程，审批通过后才转正；规则类型只决定静默跳过口径（见下）。
  */
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
@@ -165,8 +167,8 @@ async function assertNoCycleRegularization(tx: Tx, tenantId: string, subject: Su
  * PB-R21（考核部分，BE-15b2）：本任职周期（anchor_id）里的考核按（类型、状态、意见）判断；
  * 取本周期全部考核再交领域函数判，单一来源（assessmentBlocksAutoRegularization）。
  * 有阻断就抛；无阻断但有“试用中考核已生效且意见 = 提前转正”返回 'skip'（F-500，DEC-841①，静默跳过）。
- * 静默跳过只适用“自动发起转正申请”类（application，北森 F-485 实测）；“直接自动转正”类（direct）口径待定
- * （F-485 未触发），该考核仍按原条件阻断、记失败。
+ * 静默跳过只适用“自动发起转正申请”类（application，北森 F-485 实测）；“直接自动转正”类（direct）北森对该考核
+ * 未触发、原因不明，没有取证依据，沿用原条件：阻断、记失败（F-517 只改发起方式，不改失败条件，DEC-879①）。
  */
 async function assertNoCycleAssessments(
   tx: Tx,
@@ -327,7 +329,8 @@ export async function autoRegularizeEmployee(
         savepoint,
         { ...ctx, userId: initiatorUserId, expectedRevision: employee!.revision, systemProxy: true },
         employeeId,
-        { kind: 'regularization', mode: rule.mode, probationResult: rule.probationResult },
+        // F-517（DEC-879①）：direct 类规则也走申请入口，审批通过后才转正（复刻取舍，偏离北森直接转正）
+        { kind: 'regularization', mode: 'application', probationResult: rule.probationResult },
       );
       return { business, initiatorUserId };
     });

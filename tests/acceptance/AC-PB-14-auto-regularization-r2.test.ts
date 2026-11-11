@@ -59,7 +59,7 @@ async function switchOn(w: PbWorld) {
 
 describe('P1 真实授权器：租户管理员维护自动转正规则', () => {
   it('管理员新增 / 编辑 / 完整读取 / 复制 / 启停 / 删除 / 立即执行均可用；普通成员 403 且不写入', async () => {
-    const w = await pbWorld(testDb().db, `auto-reg-real-${randomUUID()}`);
+    const w = await pbWorld(testDb().db, `auto-reg-real-${randomUUID()}`, { approval: true });
     await bootstrapTenantAdmin(w.db, { tenantId: w.session.tenant.id, userId: w.session.user.id }, cmd());
     const real = tenantApi(w.db, { authorize: undefined, clock: CLOCK });
     const admin = (method: string, path: string, options: { ifMatch?: number; body?: unknown } = {}) =>
@@ -150,7 +150,7 @@ describe('P2-2 立即执行续跑', () => {
     Object.assign(limits, { scan: 3, chunk: 100 });
     restore = () => Object.assign(limits, saved);
 
-    const w = await pbWorld(testDb().db, `auto-reg-cursor-${randomUUID()}`);
+    const w = await pbWorld(testDb().db, `auto-reg-cursor-${randomUUID()}`, { approval: true });
     const rule = await w.session.request('POST', '/auto-regularization-rules', { ifMatch: 0, body: ruleBody(w) });
     expect(rule.status, await rule.clone().text()).toBe(201);
     const people = [];
@@ -199,7 +199,7 @@ describe('P2-2 立即执行续跑', () => {
 
 describe('P2-3 调动联动闭包与锁序', () => {
   it('A < B < C、A 的调动草稿关联 C：立即执行整批成功，三人各发起一次', async () => {
-    const w = await pbWorld(testDb().db, `auto-reg-closure-${randomUUID()}`);
+    const w = await pbWorld(testDb().db, `auto-reg-closure-${randomUUID()}`, { approval: true });
     const rule = await w.session.request('POST', '/auto-regularization-rules', { ifMatch: 0, body: ruleBody(w) });
     expect(rule.status, await rule.clone().text()).toBe(201);
     const ids: string[] = [];

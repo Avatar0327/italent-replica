@@ -27,7 +27,7 @@ interface RunReceipt {
 
 /** 真实授权器下的租户管理员（配置管理权 = other_settings），任职数据范围为空。 */
 async function realWorld(label: string) {
-  const w = await pbWorld(testDb().db, `auto-reg-r3-${label}-${randomUUID()}`);
+  const w = await pbWorld(testDb().db, `auto-reg-r3-${label}-${randomUUID()}`, { approval: true });
   const adminRecord = await bootstrapTenantAdmin(
     w.db,
     { tenantId: w.session.tenant.id, userId: w.session.user.id },

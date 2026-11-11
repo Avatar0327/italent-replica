@@ -92,9 +92,9 @@ describe('AC-PB-15 直接自动转正类规则改为自动发起转正流程（F
     expect(before.records.some((record) => record.kind === 'regularization')).toBe(false);
 
     expect((await transition(w, business!, 'approve')).status).toBe(200);
-    await transition(w, business!, 'activate');
     const after = await probationOf(w, due.employee.id, '2026-10-01');
-    expect(after.regularizationDate).toBe('2026-10-01');
+    // 转正日 10-01 ≤ 审批日：审批通过即落地，人员状态改正式（转正日按审批通过后的转正处理）
+    expect(after).toMatchObject({ regularizationDate: '2026-10-01', regularizationState: 'effective' });
     expect(after.records.some((record) => record.kind === 'regularization')).toBe(true);
   });
 
