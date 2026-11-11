@@ -1,0 +1,18 @@
+.profile-object-page header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.profile-object-filter,
+.profile-field-search {
+  margin-bottom: 16px;
+}
+.profile-permission-modal .ant-alert {
+  margin-bottom: 16px;
+}
+.profile-permission-form {
+  margin-top: 16px;
+}
+.profile-permission-form .ant-form-item-label {
+  min-width: 64px;
+}
