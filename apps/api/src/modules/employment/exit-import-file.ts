@@ -34,24 +34,17 @@ export const templateWorkbook = (): Buffer => statWorkbook(headerSheet());
 
 /**
  * 下载入口权限复核（设计 §8.2）：每次下载都按提交人“当前”权限判，不豁免提交人。
- * 任职功能权已由 readContext 判过；这里补导入按钮，并要求任职、人员、档案三个对象都是“看全部”范围（fail-closed）。
- * 只判按钮的命令权（commandOnly）：撤字段查看权不拦下载，由 viewableColumns 把对应列置空。
+ * 任职功能权由 functionContext 判过；这里补导入按钮（只判命令权 commandOnly：撤字段查看权不拦下载，由 viewableColumns 把对应列置空）。
+ * 任职对象不查数据范围：模板不含数据，错误文件只给提交人本人的批次。
  */
 export async function requireExitImportButton(ctx: EmploymentContext): Promise<void> {
   await requireEmploymentWrite(ctx, 'create', {}, EXIT_IMPORT_BUTTON, EMPLOYMENT_OBJECT, { commandOnly: true });
 }
 
-/** 模板：功能权 + 导入按钮；任职对象范围也须是“看全部”（与提交入口同口径，没有提交权的人拿模板没有用）。 */
-export async function requireExitImportTemplateAccess(ctx: EmploymentContext): Promise<void> {
-  if (!ctx.authorize) return;
-  await requireExitImportButton(ctx);
-  if (ctx.scope && !ctx.scope.all) throw new AppError('FORBIDDEN', '下载导入模板需要任职对象的“全部数据”范围');
-}
-
+/** 错误文件：人员、档案两个对象都必须是显式“看全部”范围（fail-closed，设计 §8.2）。 */
 export async function requireExitImportDownloadAccess(deps: TenantRouteDeps, ctx: EmploymentContext): Promise<void> {
   if (!ctx.authorize) return;
   await requireExitImportButton(ctx);
-  if (ctx.scope && !ctx.scope.all) throw new AppError('FORBIDDEN', '下载导入文件需要任职对象的“全部数据”范围');
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   for (const object of [EMPLOYEE_OBJECT, PERSONNEL_OBJECT]) {
     const scope = await resolveModuleScope(deps, ctx, today, object);
@@ -63,10 +56,10 @@ export async function requireExitImportDownloadAccess(deps: TenantRouteDeps, ctx
 const RECORD = EMPLOYMENT_OBJECT;
 const EDUCATION = SUBSETS.education.objectCode;
 const FIELD_OF: Readonly<Record<string, readonly [object: string, field: string]>> = {
-  B: [PERSONNEL_OBJECT, 'name'],
+  B: [EMPLOYEE_OBJECT, 'name'],
   C: [PERSONNEL_OBJECT, 'email'],
   D: [RECORD, 'departmentId'],
-  E: [RECORD, 'entryDate'],
+  E: [RECORD, 'effectiveDate'],
   F: [RECORD, 'positionId'],
   G: [RECORD, 'postId'],
   H: [RECORD, 'levelId'],

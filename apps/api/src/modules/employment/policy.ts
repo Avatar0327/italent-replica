@@ -154,12 +154,12 @@ const importRecordCreate = (failureAudit?: FailureAuditPolicy) =>
   });
 const F_DOWNLOAD_SCOPE = denied(403, 'FORBIDDEN', '下载导入文件需要“全部数据”范围');
 /** F-493 S3c 导入文件下载：任职对象功能权（create）+ 导入按钮；按钮只判命令权，字段查看权不拦下载（按列置空）。 */
-const importFileButton = (scope: ScopePolicy) =>
+const importFileButton = () =>
   object({
     object: EMPLOYMENT,
     operation: 'create',
     button: button(EXIT_IMPORT_BUTTON, 'list'),
-    scope,
+    scope: noScope('设计 §8.2：任职对象不查数据范围；模板不含数据，错误文件另判人员 / 档案对象的看全部并限提交人本人'),
     fields: noFields('下载只判功能权与导入按钮；文件内容由下载处按当前字段权裁剪'),
   });
 /** 人员 / 档案对象只判“看全部”范围（fail-closed）；字段查看权在文件里按列裁剪。 */
@@ -1943,13 +1943,13 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       ),
     },
   ),
-  // F-493 S3c 模板：固定形状只有 26 个列名的 xlsx；功能权 + 导入按钮 + 任职对象看全部（文件不含任何租户数据，范围只是与提交入口同口径的准入）。
-  'GET /exits/import/template': importFileButton(seeAll(F_DOWNLOAD_SCOPE)),
+  // F-493 S3c 模板：固定形状只有 26 个列名的 xlsx；功能权 + 导入按钮（设计 §8.2 末条，文件不含任何租户数据，不查范围）。
+  'GET /exits/import/template': importFileButton(),
   // F-493 S3c 错误文件（设计 §8.2）：只给提交人（批次不是本人的 / 他租户的一律 404）；每次下载复核当前功能权、导入按钮、
-  // 任职 / 人员 / 档案三个对象的看全部范围（不豁免提交人）；内容按提交人当前字段查看权逐列裁剪，无权的列置空、错误原文换成“无查看权限”文案。
+  // 人员 / 档案两个对象的看全部范围（不豁免提交人；任职对象不查范围）；内容按提交人当前字段查看权逐列裁剪，无权的列置空、错误原文换成“无查看权限”文案。
   'GET /exits/import/batches/:id/error-file': all(
     [
-      importFileButton(seeAll(F_DOWNLOAD_SCOPE)),
+      importFileButton(),
       importFileScope(EMPLOYEE),
       importFileScope(PERSONNEL_OBJECT),
       own({

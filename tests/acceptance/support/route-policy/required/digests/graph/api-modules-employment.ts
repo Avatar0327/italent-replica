@@ -1235,6 +1235,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/context.ts#employmentScopePredicate': [
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
   ],
+  'apps/api/src/modules/employment/context.ts#functionContext': [
+    'apps/api/src/authorization.ts#requirePermission',
+    '#EMPLOYMENT_OBJECT',
+    'apps/api/src/tenant-context.ts#tenantOf',
+  ],
   'apps/api/src/modules/employment/context.ts#previousCreators': ['#employmentCreator'],
   'apps/api/src/modules/employment/context.ts#projectActivationFailures': [
     '#projectActivationFailures',
@@ -3191,6 +3196,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-import-file.ts#EDUCATION': ['packages/domain/src/personnel/fields.ts#SUBSETS'],
   'apps/api/src/modules/employment/exit-import-file.ts#FIELD_OF': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     '#EDUCATION',
     '#RECORD',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
@@ -3232,7 +3238,6 @@ export const GRAPH: Graph = {
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportTemplateAccess': ['#requireExitImportButton'],
   'apps/api/src/modules/employment/exit-import-file.ts#templateWorkbook': [
     'apps/api/src/modules/analytics/stat-xlsx.ts#statWorkbook',
     '#headerSheet',
@@ -3872,15 +3877,15 @@ export const GRAPH: Graph = {
     '#enabledQuery',
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/import/batches/:id/error-file': [
-    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#functionContext',
     'apps/api/src/modules/employment/exit-import-download.ts#exitImportErrorFile',
     '#xlsxResponse',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/import/template': [
-    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#functionContext',
     'apps/api/src/modules/employment/exit-import-file.ts#TEMPLATE_FILE_NAME',
-    'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportTemplateAccess',
+    'apps/api/src/modules/employment/exit-import-file.ts#requireExitImportButton',
     'apps/api/src/modules/employment/exit-import-file.ts#templateWorkbook',
     '#xlsxResponse',
   ],

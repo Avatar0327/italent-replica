@@ -5506,14 +5506,12 @@
       "module": "employment",
       "primitives": {
         "object": [
-          "object.* 动作",
-          "readContext(object.*)"
+          "object.* 动作"
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:create"
         ],
         "scope": [
-          "readContext（非配置对象）",
           "resolveModuleScope",
           "scope.all"
         ]
@@ -5537,15 +5535,10 @@
       "module": "employment",
       "primitives": {
         "object": [
-          "object.* 动作",
-          "readContext(object.*)"
+          "object.* 动作"
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:create"
-        ],
-        "scope": [
-          "readContext（非配置对象）",
-          "scope.all"
         ]
       }
     },

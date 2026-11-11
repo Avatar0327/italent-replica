@@ -247,34 +247,34 @@ function exitImportObligations(): Obligation[] {
   );
 }
 
+const FUNCTION_CTX: Evidence = {
+  role: 'impl',
+  unit: `${CTX}#functionContext`,
+  anchor: 'await requirePermission(deps.authorize, { ...tenant, action, resource: EMPLOYMENT_OBJECT, fields: [] })',
+};
 const EXIT_IMPORT_FILE = `${SRC}/employment/exit-import-file.ts`;
 const EXIT_IMPORT_DOWNLOAD = `${SRC}/employment/exit-import-download.ts`;
 /** F-493 S3c：模板与错误文件的下载入口权限链（设计 §3.1、§8.2）；错误文件另判提交人归属与人员 / 档案对象的“看全部”。 */
 function exitImportDownloadObligations(route: 'template' | 'error-file'): Obligation[] {
   const path = route === 'template' ? '/exits/import/template' : '/exits/import/batches/:id/error-file';
-  const entry = at(EXIT, 'GET', path, "const ctx = await readContext(c, deps, 'object.create')");
-  const access = route === 'template' ? 'requireExitImportTemplateAccess' : 'requireExitImportDownloadAccess';
+  const entry = at(EXIT, 'GET', path, "const ctx = await functionContext(c, deps, 'object.create')");
+  const access = route === 'template' ? 'requireExitImportButton' : 'requireExitImportDownloadAccess';
   const call = (anchor: string) => fn(EXIT_IMPORT_FILE, access, anchor);
-  const recordScope = {
-    role: 'scope' as const,
-    unit: `${EXIT_IMPORT_FILE}#${access}`,
-    anchor:
-      route === 'template'
-        ? "if (ctx.scope && !ctx.scope.all) throw new AppError('FORBIDDEN', '下载导入模板需要任职对象的“全部数据”范围')"
-        : "if (ctx.scope && !ctx.scope.all) throw new AppError('FORBIDDEN', '下载导入文件需要任职对象的“全部数据”范围')",
-  };
   const base = withNeeds(
     [
       ob(
         `obj:${RECORD}:create`,
-        ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
-        [entry, READ],
+        ['objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+        [entry, FUNCTION_CTX],
+        '设计 §8.2：只验任职对象功能权，不解析数据范围（functionContext）',
       ),
       ob(
         `btn:${RECORD}#Employment.DimissionImport@list`,
         [],
         [
-          call('await requireExitImportButton(ctx)'),
+          route === 'template'
+            ? at(EXIT, 'GET', path, 'await requireExitImportButton(ctx)')
+            : call('await requireExitImportButton(ctx)'),
           fn(
             EXIT_IMPORT_FILE,
             'requireExitImportButton',
@@ -286,7 +286,7 @@ function exitImportDownloadObligations(route: 'template' | 'error-file'): Obliga
         '只判按钮的命令权；撤字段查看权不拦下载，由下载处把对应列置空',
       ),
     ],
-    { [`obj:${RECORD}:create`]: bound({ scope: 'see-all' }, [recordScope]) },
+    { [`obj:${RECORD}:create`]: bound(NONE) },
   );
   if (route === 'template') return base;
   const personScope = {

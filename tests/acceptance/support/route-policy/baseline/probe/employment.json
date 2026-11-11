@@ -684,6 +684,7 @@
     },
     "fieldQueries": [
       "fields:TenantBase.Education",
+      "fields:TenantBase.Employee",
       "fields:TenantBase.EmployeeInformation",
       "fields:TenantBase.EmploymentRecord"
     ],
@@ -694,9 +695,7 @@
     },
     "scopeQueries": [
       "scope:TenantBase/TenantBase.Employee/-",
-      "scope:TenantBase/TenantBase.EmployeeInformation/-",
-      "scope:TenantBase/TenantBase.EmploymentRecord/-",
-      "scope:data.scope.all:"
+      "scope:TenantBase/TenantBase.EmployeeInformation/-"
     ],
     "trace": [
       "btn:TenantBase.EmploymentRecord#Employment.DimissionImport@list",
@@ -708,10 +707,7 @@
       "status": 200
     },
     "fieldQueries": [],
-    "scopeQueries": [
-      "scope:TenantBase/TenantBase.EmploymentRecord/-",
-      "scope:data.scope.all:"
-    ],
+    "scopeQueries": [],
     "trace": [
       "btn:TenantBase.EmploymentRecord#Employment.DimissionImport@list",
       "obj:TenantBase.EmploymentRecord:create"
