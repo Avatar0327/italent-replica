@@ -57,6 +57,7 @@ import {
   CONTRACT_OBJECT,
   EXIT_BUTTONS,
   EXIT_IMPORT_BUTTON,
+  PERSONNEL_OBJECT,
   HANDOVER_RESUBMIT_BUTTON,
   HANDOVER_ROW_SUBMIT_BUTTON,
   HANDOVER_BATCH_SUBMIT_BUTTON,
@@ -150,6 +151,25 @@ const importRecordCreate = (failureAudit?: FailureAuditPolicy) =>
     fields: noFields('回执是固定形状，不含任职字段目录内的字段'),
     rows: { path: 'rows[*]', fields: 'body', batch: 'atomic' },
     ...(failureAudit ? { failureAudit } : {}),
+  });
+const F_DOWNLOAD_SCOPE = denied(403, 'FORBIDDEN', '下载导入文件需要“全部数据”范围');
+/** F-493 S3c 导入文件下载：任职对象功能权（create）+ 导入按钮；按钮只判命令权，字段查看权不拦下载（按列置空）。 */
+const importFileButton = () =>
+  object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button(EXIT_IMPORT_BUTTON, 'list'),
+    scope: noScope('设计 §8.2：任职对象不查数据范围；模板不含数据，错误文件另判人员 / 档案对象的看全部并限提交人本人'),
+    fields: noFields('下载只判功能权与导入按钮；文件内容由下载处按当前字段权裁剪'),
+  });
+/** 人员 / 档案对象只判“看全部”范围（fail-closed）；字段查看权在文件里按列裁剪。 */
+const importFileScope = (objectCode: string) =>
+  object({
+    object: objectCode,
+    operation: 'view',
+    button: noButton('人员 / 档案对象只判范围，导入按钮在任职对象上'),
+    scope: seeAll(F_DOWNLOAD_SCOPE),
+    fields: noFields('只判范围；文件里的字段由下载处按当前字段权裁剪'),
   });
 /** `job/context.uuidParam`：路径标识非 UUID → 400 VALIDATION_FAILED「对象标识必须为 UUID」。 */
 const byId = { invalidId: BAD_REQUEST };
@@ -1896,22 +1916,12 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     },
     write: employmentWrite('body', [...EXIT_CREATE_PRECONDITIONS, 'assertTransition'], { controls: ['exit'] }),
   }),
-  // F-139a 历史离职人员导入（设计 §7）：权限链 = readContext(object.create) → EMPLOYEE 的 object.create
-  // → Employment.DimissionImport@list
-  // → 字段写权 → 显式“看全部”范围（DEC-121，范围不足 403，与 POST /employees 的 404 不同：入口是批量按钮，不隐藏存在性）。
-  // preview 不开命令事务、不进台账，403 不带逐行结果；import 必带 Idempotency-Key，命令内由 exitImportGuard 复核，
-  // 整批一个事务（任一行有错 400 IMPORT_ROWS_INVALID 零写入；有编制提示未确认 409 CONFIRMATION_REQUIRED）
-  'POST /exits/import/preview': all(
-    [IMPORT_EMPLOYEE_CREATE, importRecordCreate()],
-    noFields('预览回执是固定形状的逐行结果，不含任职字段目录内的字段'),
-    {
-      write: write(
-        'body',
-        none('只读预览：没有命令事务，没有提交前足迹'),
-        none('只读预览：回执是逐行诊断，不是任职对象'),
-      ),
-    },
-  ),
+  // F-493 历史离职人员导入（设计 §6.1）：权限链 = readContext(object.create) → EMPLOYEE 的 object.create
+  // → Employment.DimissionImport@list → 字段写权 → 显式“看全部”范围（DEC-121，范围不足 403，与 POST /employees 的 404 不同：
+  // 入口是批量按钮，不隐藏存在性）。必带 Idempotency-Key；命令内由 exitImportGuard 复核上述各项，并按档案更新权 / 教育新增权
+  // 复核本批要写的档案字段（与 POST /interns 同口径）。提交只落批次与明细并返回 202，逐行写入在后台执行器里；
+  // 没有预览接口。不登记 employment.linkage：提交路径不写任职记录（只落批次与明细），执行器只新建人员与任职、
+  // 不触发生效联动（设计 §5、§6），新人员没有被联动的旧记录可越权。
   'POST /exits/import': all(
     [
       IMPORT_EMPLOYEE_CREATE,
@@ -1924,13 +1934,32 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     projector('employment.exitImport', 'employment.exitImport'),
     {
-      guards: [LINKAGE],
+      guards: ['employment.exitImportProfile'],
       write: write(
         'body',
-        none('命令内由 exitImportGuard 按当前授权复核按钮 / 人员新增权 / 字段 / 看全部范围，业务写入全部在同一事务'),
-        none('回执是批次号与对象标识，不是任职对象，不经 authorizeEmploymentResult 裁剪'),
+        none('命令内由 exitImportGuard 按当前授权复核按钮 / 人员新增权 / 字段 / 看全部范围，批次与明细同一事务'),
+        none('回执是批次号与状态，不是任职对象，不经 authorizeEmploymentResult 裁剪'),
+        { preconditions: ['requireExitImportProfileAccess'], controls: ['fileName', 'rows', 'profile'] },
       ),
     },
+  ),
+  // F-493 S3c 模板：固定形状只有 26 个列名的 xlsx；功能权 + 导入按钮（设计 §8.2 末条，文件不含任何租户数据，不查范围）。
+  'GET /exits/import/template': importFileButton(),
+  // F-493 S3c 错误文件（设计 §8.2）：只给提交人（批次不是本人的 / 他租户的一律 404）；每次下载复核当前功能权、导入按钮、
+  // 人员 / 档案两个对象的看全部范围（不豁免提交人；任职对象不查范围）；内容按提交人当前字段查看权逐列裁剪，无权的列置空、错误原文换成“无查看权限”文案。
+  'GET /exits/import/batches/:id/error-file': all(
+    [
+      importFileButton(),
+      importFileScope(EMPLOYEE),
+      importFileScope(PERSONNEL_OBJECT),
+      own({
+        predicate: 'employment.exitImportBatchSubmitter',
+        denied: denied(404, 'NOT_FOUND', '导入批次不存在'),
+        fields: noFields('归属只判批次提交人'),
+      }),
+    ],
+    projector('employment.exitImportErrorFile', 'employment.exitImportErrorFile'),
+    byId,
   ),
   // F-140b1：If-Match 必填；body = 离职扩展字段 + 计划日期 + 确认控制项；范围外与不存在均 404。
   // DimissionEdit，审批中的单另需 adminIntervene（B-65a）；已生效日期仍拒绝。

@@ -21,6 +21,9 @@ export const rows = {
     userId: user,
     displayName: '合成用户甲',
     email: 'user-a@example.com',
+    contactEmail: 'contact-a@example.com',
+    accountStatus: 'active',
+    createdAt: '2026-11-10T03:00:00Z',
     userType: 'external',
     businessIdentity: '顾问',
     membershipStatus: 'active',
@@ -35,6 +38,9 @@ export const rows = {
     description: '合成身份',
     source: 'custom',
     revision: 3,
+    updatedBy: null,
+    updatedAt: '2026-11-10T03:00:00Z',
+    grantCount: 1,
     autoHeld: false,
     objects: [
       {
@@ -44,7 +50,19 @@ export const rows = {
       },
     ],
   },
-  grant: { id: ids.grant, userId: user, profileId: ids.profile, source: 'manual', status: 'active', revision: 4 },
+  grant: {
+    id: ids.grant,
+    userId: user,
+    profileId: ids.profile,
+    source: 'manual',
+    status: 'active',
+    revision: 4,
+    userName: '合成用户甲',
+    userEmail: 'user-a@example.com',
+    profileName: '合成人事身份',
+    apps: ['TenantBase'],
+    mous: [],
+  },
   mou: {
     id: ids.mou,
     name: '合成管理单元',
@@ -60,11 +78,17 @@ export const rows = {
     occurredAt: '2026-10-12T03:00:00Z',
     operator: { name: '合成操作人' },
     operationLabel: '编辑',
+    app: '企业设置',
     objectLabel: '员工',
     objectId: 'DEMO-001',
     content: '名称:从【甲】修改为【乙】',
     sourceAction: '编辑',
     traceId: 'demo-trace',
+    sourcePageType: null,
+    sourcePage: null,
+    terminal: null,
+    clientVersion: null,
+    ip: null,
     snapshot: null,
   },
 };
@@ -90,13 +114,16 @@ export async function settingsFixtures(page: Page, editable = true) {
   await page.route('**/api/tenant/permission/**', (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/admin-menus') || path.includes('/me/')) return route.fallback();
-    const collection = (name: string, row: unknown) => (path.endsWith(`/${name}`) ? { items: [row] } : row);
+    const collection = (name: string, row: unknown) => (path.endsWith(`/${name}`) ? { items: [row], total: 1 } : row);
     let body: unknown;
     if (path.includes('/users')) body = collection('users', rows.user);
     if (path.includes('/profiles')) body = collection('profiles', rows.profile);
     if (path.includes('/grantable-profiles')) body = { items: [rows.profile] };
     if (path.includes('/grants')) body = collection('grants', rows.grant);
-    if (path.includes('/mous')) body = collection('mous', rows.mou);
+    if (path.includes('/mous'))
+      body = path.endsWith('/mous/tree')
+        ? { items: [{ ...rows.mou, matched: true, children: [] }], total: 1 }
+        : collection('mous', rows.mou);
     if (path.includes('/scopes/'))
       body = { userId: user, appCode: 'TenantBase', kind: 'default', revision: 6, mouId: null, orgRanges: [] };
     return body ? route.fulfill({ json: body }) : route.fallback();
@@ -104,7 +131,12 @@ export async function settingsFixtures(page: Page, editable = true) {
   await page.route('**/api/tenant/audit/**', (route) =>
     route.fulfill({
       json: new URL(route.request().url()).pathname.endsWith('/data-changes')
-        ? { items: [rows.audit], nextCursor: null, window: { from: '2026-07-13', to: '2026-10-13' } }
+        ? {
+            items: [rows.audit],
+            nextCursor: null,
+            apps: ['企业设置'],
+            window: { from: '2026-07-13', to: '2026-10-13' },
+          }
         : rows.audit,
     }),
   );

@@ -11,6 +11,7 @@ import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
   autoApproveExit,
+  hasBusinessExits,
   conditionViolations,
   adminRecused,
   avoidSelfExceptionAdmin,
@@ -37,7 +38,6 @@ import {
   type ConditionContext,
   type CountersignApprovalNode,
   type NodeDecision,
-  type NodeExit,
   type RecusalFacts,
   type RoutingFacts,
   type SingleApprovalNode,
@@ -212,6 +212,7 @@ function routingSubject(run: Run): RoutingSubject {
     recordDepartmentId: run.snapshot.recordDepartmentId,
     tutorEmployeeId: run.snapshot.tutorEmployeeId ?? null,
     handoverEmployeeId: run.snapshot.handoverEmployeeId ?? null,
+    rehirePlan: run.snapshot.rehirePlan ?? null,
     cache: new Map(),
   };
 }
@@ -829,10 +830,12 @@ async function autoProcess(
     decisionExit: exit,
   });
   const mechanism = MECHANISMS[decision.outcome];
-  const detail =
+  const base =
     skip || systemApproval
       ? { mechanism, handler: '系统', candidateUserId: decision.userId, reason: decision.reason }
       : { mechanism, userId: decision.userId, reason: decision.reason };
+  // 业务出口节点的自动处理由守卫取出口（F-478 S4），日志记出口，审计能回答“为什么走了返聘 / 不返聘分支”。
+  const detail = hasBusinessExits(node) ? { ...base, exit } : base;
   const event = skip ? 'skip' : 'auto_approve';
   const logId = await appendLog(tx, run.ctx, run.instance, {
     event,
@@ -861,7 +864,7 @@ async function autoProcess(
   };
   // F-476 P3：自动处理也留一份系统办理份（actor 为空，不增加候选人的访问资格）；内容取自动处理发生时的业务值，
   // 与任务 / 日志同事务，写不进去整笔回滚（DEC-807）
-  const prepared = await prepareHandlingContent(tx, run, undefined);
+  const prepared = await prepareHandlingContent(tx, run, undefined, true);
   await recordHandlingContent(tx, run, prepared, { logId, task, action: event, system: true });
   return task;
 }
@@ -928,7 +931,7 @@ export async function followExit(
   tx: Tx,
   run: Run,
   nodeKey: string,
-  exit: NodeExit,
+  exit: string,
   activationId: string | null,
   known?: readonly TaskRow[],
 ): Promise<void> {
@@ -982,7 +985,10 @@ export async function afterNodeApproved(
   const open = (task: TaskRow) =>
     task.round === run.instance.round && task.nodeKey === nodeKey && AWAITING_STATUSES.has(task.status);
   if (tasks.some(open)) return;
-  await followExit(tx, run, nodeKey, 'approve', approved.activationId, tasks);
+  // 业务出口节点（F-478 S4）：本节点的同意出口由守卫唯一确定，加签链上每一票办理时已校验过它
+  const node = run.version.nodes[nodeIndex(run, nodeKey)]!;
+  const exit = hasBusinessExits(node) ? autoExitOf(run, node) : 'approve';
+  await followExit(tx, run, nodeKey, exit, approved.activationId, tasks);
 }
 
 export interface StartRequest {

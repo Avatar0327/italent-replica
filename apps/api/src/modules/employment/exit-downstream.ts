@@ -9,6 +9,7 @@
 import { sql, type Tx } from '@italent/db';
 import { CONTRACT_FIELDS, CONTRACT_OBJECT, MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
 import { getModuleViewableFieldsInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
+import { downstreamVisibilityOf } from './exit-downstream-visibility.js';
 import { exitListOrder } from './exit-list-order.js';
 import { batchDisclose } from './exit-gate.js';
 import { loadEmploymentBusiness } from './read-model.js';
@@ -193,11 +194,7 @@ export async function allowed(ctx: EmploymentContext, resource: string) {
   return ctx.authorize ? Boolean(await ctx.authorize({ ...ctx, action: 'object.view', resource })) : true;
 }
 
-type Visibility = (tx: Tx, ctx: EmploymentContext, target: DownstreamTarget) => Promise<boolean>;
-const downstreamVisibility = new Map<string, Visibility>();
-export function registerDownstreamVisibility(type: string, visible: Visibility) {
-  downstreamVisibility.set(type, visible);
-}
+export { registerDownstreamVisibility } from './exit-downstream-visibility.js';
 
 const DEPARTMENT_SCOPED_TYPES = ['employment-business', 'employment-record', 'part-time-request'];
 
@@ -327,7 +324,7 @@ async function visibleMap(tx: Tx, ctx: EmploymentContext, targets: readonly Down
       )
     : [];
   for (const target of targets) {
-    const subscriber = downstreamVisibility.get(target.type);
+    const subscriber = downstreamVisibilityOf(target.type);
     if (subscriber) visible.set(key(target), await subscriber(tx, ctx, target));
     else if (CONTRACT_TARGETS.includes(target.type)) visible.set(key(target), contractScope.get(target.id) === true);
     else if (target.type === 'establishment-capacity') visible.set(key(target), capacity);

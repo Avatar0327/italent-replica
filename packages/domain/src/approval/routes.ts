@@ -3,7 +3,14 @@
  * 纯函数、无 IO。没有 routes 的节点保持线性语义：同意 → 下一个节点（末位即结束），不同意 → 结束（EXIT_TARGETS）。
  */
 import { conditionViolations, evaluateCondition, type ConditionContext } from './conditions.js';
-import { isCountersign, nodeExits, type ApprovalNode, type ConditionField, type ProcessCondition } from './types.js';
+import {
+  isCountersign,
+  nodeExits,
+  type ApprovalNode,
+  type BusinessExit,
+  type ConditionField,
+  type ProcessCondition,
+} from './types.js';
 
 /** 分支去向“结束流程”（数据库里 target_node_key 为空）。节点 key 全为小写，不会与它冲突。 */
 export const ROUTE_END = 'END';
@@ -35,7 +42,7 @@ export interface ExitRoute {
 export type ExitFamily = 'approve' | 'disagree';
 
 /** 业务出口组的出口编码（数据库 CHECK 的白名单，成对出现）；能否用于某个审批类型由登记表决定。 */
-export const BUSINESS_EXIT_CODES = ['approve_no_rehire', 'approve_rehire'] as const;
+export const BUSINESS_EXIT_CODES: readonly BusinessExit[] = ['approve_no_rehire', 'approve_rehire'];
 
 /** 出口守卫：按本次申请的事实字段判定该业务出口是否成立（自动处理时需恰好一个成立）。 */
 export type ExitGuard = (facts: Readonly<Record<string, unknown>>) => boolean;
@@ -51,11 +58,30 @@ export interface ExitGroup {
   readonly approvalType: string;
   /** 允许使用该出口组的节点 key。 */
   readonly nodeKeys: readonly string[];
+  /** 守卫读取的事实字段（条件字段路径）；仿真数据缺少其中任一个时不猜出口，路径推演停在本节点（设计 §3.4）。 */
+  readonly requires: readonly string[];
   readonly members: readonly ExitGroupMember[];
 }
 
-/** 业务出口组登记表。本片不登记任何业务出口（S3 随审批类型登记），所以业务出口一律被 `business_exit_type` 拒绝。 */
-export const EXIT_GROUPS: readonly ExitGroup[] = [];
+/** 退休「是否同时返聘」事实：条件字段 business.reEmployed，取值 'true' / 'false'（适配器快照给出，设计 §3.3 / §6.1）。 */
+export const RE_EMPLOYED_FACT = 'business.reEmployed';
+
+/**
+ * 业务出口组登记表。退休审批的 HRBP 节点（预置 hr_interview，S1 契约的 nodeKeys）有「不返聘 / 同时返聘」一对同意族出口，
+ * 由 reEmployed 决定哪一个成立；其余审批类型与节点一律被 `business_exit_type` 拒绝。
+ */
+export const EXIT_GROUPS: readonly ExitGroup[] = [
+  {
+    code: 'rehire_choice',
+    approvalType: 'retirement',
+    nodeKeys: ['hr_interview'],
+    requires: [RE_EMPLOYED_FACT],
+    members: [
+      { exit: 'approve_no_rehire', family: 'approve', guard: (facts) => facts[RE_EMPLOYED_FACT] === 'false' },
+      { exit: 'approve_rehire', family: 'approve', guard: (facts) => facts[RE_EMPLOYED_FACT] === 'true' },
+    ],
+  },
+];
 
 export function isBusinessExit(exit: string): boolean {
   return (BUSINESS_EXIT_CODES as readonly string[]).includes(exit);
@@ -283,6 +309,13 @@ function missingFields(node: ApprovalNode, exit: string, context: ConditionConte
   );
 }
 
+/** 业务出口节点的守卫要读的事实字段在 context 里缺失：无法确定走哪个出口，仿真不猜。 */
+function missingGuardFacts(node: ApprovalNode, approvalType: string, context: ConditionContext): boolean {
+  if (!nodeExits(node).some(isBusinessExit)) return false;
+  const requires = exitGroupOf(approvalType, node.key)?.requires ?? [];
+  return requires.some((field) => !Object.hasOwn(context.values, field));
+}
+
 /**
  * 从 startKey 起按「默认同意族出口」推演后继，直到结束 / 缺字段 / 无可选出口（设计 §3.4、§4）。
  * 仿真（虚拟数据）与详情 path（当前快照）共用，两边不各自解释路由。
@@ -302,7 +335,11 @@ export function walkDefaultPath(
     seen.add(key);
     const node = nodes.find((candidate) => candidate.key === key);
     if (!node) break;
-    const exit = autoApproveExit(node, approvalType, {});
+    if (stopOnMissing && missingGuardFacts(node, approvalType, context)) {
+      steps.push({ nodeKey: key, exit: null, branchNo: null, undetermined: true });
+      return { steps, end: 'undetermined' };
+    }
+    const exit = autoApproveExit(node, approvalType, context.values);
     if (exit === null) {
       steps.push({ nodeKey: key, exit: null, branchNo: null });
       return { steps, end: 'stuck' };
@@ -320,6 +357,30 @@ export function walkDefaultPath(
 }
 
 /**
+ * 业务出口节点上当前可办理的同意族出口：守卫成立的那些（正常恰好一个）。普通节点没有业务出口，返回空。
+ * 办理入口（409 校验）、详情披露（exits）与自动处理（autoApproveExit）共用这一处，三处不会各自解释守卫。
+ */
+export function availableBusinessExits(
+  node: ApprovalNode,
+  approvalType: string,
+  facts: Readonly<Record<string, unknown>>,
+): string[] {
+  const exits = rawExits(node);
+  if (!exits.some(isBusinessExit)) return [];
+  const group = exitGroupOf(approvalType, node.key);
+  return (group?.members ?? [])
+    .filter((member) => member.family === 'approve' && exits.includes(member.exit) && member.guard(facts))
+    .map((member) => member.exit);
+}
+
+/** 节点是否有业务出口（办理时必须显式选出口）。 */
+export const hasBusinessExits = (node: ApprovalNode): boolean => rawExits(node).some(isBusinessExit);
+
+/** 节点能办「同意」：有「同意」出口，或有业务出口（同意族）。办理页公布 approve 动作、编辑并同意据此判定。 */
+export const hasApproveExit = (node: ApprovalNode): boolean =>
+  rawExits(node).includes('approve') || hasBusinessExits(node);
+
+/**
  * 自动处理（相同审批人、历史相同、主体回避、无审批人同意）的出口：普通节点取「同意」；业务出口节点取守卫恰好成立的
  * 那一个同意族出口。不唯一（0 个或多个）返回 null，交给人工办理。
  */
@@ -330,9 +391,6 @@ export function autoApproveExit(
 ): string | null {
   const exits = rawExits(node);
   if (!exits.some(isBusinessExit)) return exits.includes('approve') ? 'approve' : null;
-  const group = exitGroupOf(approvalType, node.key);
-  const passing = (group?.members ?? []).filter(
-    (member) => member.family === 'approve' && exits.includes(member.exit) && member.guard(facts),
-  );
-  return passing.length === 1 ? passing[0]!.exit : null;
+  const passing = availableBusinessExits(node, approvalType, facts);
+  return passing.length === 1 ? passing[0]! : null;
 }

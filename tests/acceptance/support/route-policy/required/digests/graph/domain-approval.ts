@@ -35,7 +35,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#EXIT_LABELS',
     'packages/domain/src/approval/types.ts#EXIT_RULE_KINDS',
   ],
-  'packages/domain/src/approval/countersign.ts#exitRulesOf': ['#EVERYONE', '#ONE_PERSON'],
+  'packages/domain/src/approval/countersign.ts#exitRulesOf': [
+    '#EVERYONE',
+    '#ONE_PERSON',
+    'packages/domain/src/approval/types.ts#NODE_EXITS',
+  ],
   'packages/domain/src/approval/countersign.ts#transitionRuleViolations': [
     '#exitRuleViolation',
     '#exitRulesOf',
@@ -56,12 +60,13 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#ASSESSMENT_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#HANDOVER_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#IDP_ONLY_APPROVERS',
+    'packages/domain/src/approval/types.ts#REHIRE_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#approverExpressionsOf',
   ],
   'packages/domain/src/approval/definition.ts#avoidSubjectsViolations': [
+    'packages/domain/src/approval/routes.ts#hasApproveExit',
     'packages/domain/src/approval/types.ts#ENABLED_AVOID_SUBJECTS_RESULTS',
     'packages/domain/src/approval/types.ts#avoidsSubjects',
-    'packages/domain/src/approval/types.ts#hasExit',
     'packages/domain/src/approval/types.ts#isCountersign',
   ],
   'packages/domain/src/approval/definition.ts#definitionViolations': [
@@ -75,7 +80,7 @@ export const GRAPH: Graph = {
     '#nodeShapeViolations',
   ],
   'packages/domain/src/approval/definition.ts#emptyApproverPolicyViolation': [
-    'packages/domain/src/approval/types.ts#hasExit',
+    'packages/domain/src/approval/routes.ts#hasApproveExit',
     'packages/domain/src/approval/types.ts#isCountersign',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
   ],
@@ -105,7 +110,7 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/approval/definition.ts#publishViolations': [
     '#avoidSubjectsViolations',
-    'packages/domain/src/approval/types.ts#hasExit',
+    'packages/domain/src/approval/routes.ts#hasApproveExit',
   ],
   'packages/domain/src/approval/definition.ts#subjectEmployeeViolations': [
     '#allowsSubjectEmployee',
@@ -171,6 +176,7 @@ export const GRAPH: Graph = {
     '#node',
     '#partTimePreset',
     '#standardCondition',
+    'packages/domain/src/approval/routes.ts#ROUTE_END',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
     'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_FORM_FIELDS',
   ],
@@ -225,7 +231,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#avoidsSubjects',
   ],
   'packages/domain/src/approval/recusal.ts#recusalFacts': ['#lower'],
-  'packages/domain/src/approval/routes.ts#autoApproveExit': ['#exitGroupOf', '#isBusinessExit', '#rawExits'],
+  'packages/domain/src/approval/routes.ts#EXIT_GROUPS': ['#RE_EMPLOYED_FACT'],
+  'packages/domain/src/approval/routes.ts#autoApproveExit': ['#availableBusinessExits', '#isBusinessExit', '#rawExits'],
+  'packages/domain/src/approval/routes.ts#availableBusinessExits': ['#exitGroupOf', '#isBusinessExit', '#rawExits'],
   'packages/domain/src/approval/routes.ts#branchViolation': ['#MAX_ROUTE_PRIORITY', '#ROUTE_END', '#conditionReason'],
   'packages/domain/src/approval/routes.ts#conditionReason': [
     'packages/domain/src/approval/conditions.ts#conditionViolations',
@@ -241,7 +249,14 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#isCountersign',
   ],
   'packages/domain/src/approval/routes.ts#exitShapeViolations': ['#MAX_ROUTE_BRANCHES'],
+  'packages/domain/src/approval/routes.ts#hasApproveExit': ['#hasBusinessExits', '#rawExits'],
+  'packages/domain/src/approval/routes.ts#hasBusinessExits': ['#isBusinessExit', '#rawExits'],
   'packages/domain/src/approval/routes.ts#isBusinessExit': ['#BUSINESS_EXIT_CODES'],
+  'packages/domain/src/approval/routes.ts#missingGuardFacts': [
+    '#exitGroupOf',
+    '#isBusinessExit',
+    'packages/domain/src/approval/types.ts#nodeExits',
+  ],
   'packages/domain/src/approval/routes.ts#possibleTargets': ['#ROUTE_END', '#exitFamily', '#rawExits'],
   'packages/domain/src/approval/routes.ts#rawExits': ['packages/domain/src/approval/types.ts#nodeExits'],
   'packages/domain/src/approval/routes.ts#resolveSuccessor': [
@@ -261,6 +276,7 @@ export const GRAPH: Graph = {
     '#ROUTE_END',
     '#autoApproveExit',
     '#missingFields',
+    '#missingGuardFacts',
     '#resolveSuccessor',
   ],
   'packages/domain/src/approval/routing.ts#adminRecused': [
@@ -301,6 +317,7 @@ export const GRAPH: Graph = {
     '#OFFER_TYPE',
     '#ORG_ADJUSTMENT_TYPE',
     '#PERSONNEL_CONDITION_FIELDS',
+    '#RETIREMENT_APPROVAL_CONDITION_FIELDS',
     '#assessmentType',
     '#contractType',
     '#employeeInfoFormFields',
@@ -333,6 +350,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_PROCESS_CODE',
   ],
+  'packages/domain/src/approval/types.ts#RETIREMENT_APPROVAL_CONDITION_FIELDS': ['#LEAVE_CONDITION_FIELDS'],
   'packages/domain/src/approval/types.ts#approvalTypeOfBusiness': [
     '#APPROVAL_TYPES',
     '#ENTRY_KINDS',

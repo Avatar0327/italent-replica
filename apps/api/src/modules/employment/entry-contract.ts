@@ -6,23 +6,16 @@
  */
 import { sql, type Tx } from '@italent/db';
 import { CONTRACT_OBJECT, buttonResource, contractAction } from '@italent/domain';
-import type { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import { checkFields, checkOperationScope, rowsOf, type ContractContext } from '../contracts/context.js';
-import { fieldsSchema } from '../contracts/input.js';
 import { generateContractForBusiness } from '../contracts/ports.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import type { TenantRouteDeps } from '../../routes.js';
+import { entryContractSchema, type EntryContract } from './entry-contract-schema.js';
 import type { EmploymentContext, EmploymentRecord } from './types.js';
 
-/**
- * 合同字段沿用合同模块的白名单；employmentRecordId 由系统关联，不接受请求指定。
- * 生效日固定取业务日（办理入职 / 新增实习生 = 入职日，退休同时返聘 = 返聘日 R），请求带 effectiveDate 一律 400
- * （F-423，DEC-735；DEC-402 不留兼容）。三个入口共用这一个 schema，不各自 omit。
- */
-export const entryContractSchema = fieldsSchema.omit({ employmentRecordId: true, effectiveDate: true });
-export type EntryContract = z.infer<typeof entryContractSchema>;
+export { entryContractSchema, type EntryContract };
 
 async function contractContext(tx: Tx, deps: TenantRouteDeps, ctx: EmploymentContext): Promise<ContractContext> {
   return {

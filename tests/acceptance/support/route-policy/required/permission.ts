@@ -102,6 +102,7 @@ export const PERMISSION: RequiredTable = {
   'GET /api/tenant/permission/scope-policies/:appCode/:objectCode/:targetKind/:targetCode': [configRoute],
   'PUT /api/tenant/permission/scope-policies/:appCode/:objectCode/:targetKind/:targetCode': [configRoute],
   'GET /api/tenant/permission/mous': [mouView('/mous')],
+  'GET /api/tenant/permission/mous/tree': [mouView('/mous/tree')],
   'GET /api/tenant/permission/mous/:id': [mouView('/mous/:id')],
   'POST /api/tenant/permission/mous': [scopeRoute(SCOPES, 'POST', '/mous')],
   'PUT /api/tenant/permission/mous/:id': [scopeRoute(SCOPES, 'PUT', '/mous/:id')],
@@ -122,6 +123,18 @@ export const PERMISSION: RequiredTable = {
   'POST /api/tenant/permission/profiles': [guarded('profile_manage', 'POST', '/profiles')],
   'PUT /api/tenant/permission/profiles/:id/objects/:objectCode': [
     guarded('profile_manage', 'PUT', '/profiles/:id/objects/:objectCode'),
+  ],
+  'GET /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations': [
+    guarded('profile_manage', 'GET', '/profiles/:id/objects/:objectCode/data-operations'),
+  ],
+  'PUT /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations': [
+    guarded('profile_manage', 'PUT', '/profiles/:id/objects/:objectCode/data-operations'),
+  ],
+  'GET /api/tenant/permission/profiles/:id/objects/:objectCode/fields': [
+    guarded('profile_manage', 'GET', '/profiles/:id/objects/:objectCode/fields'),
+  ],
+  'PUT /api/tenant/permission/profiles/:id/objects/:objectCode/fields': [
+    guarded('profile_manage', 'PUT', '/profiles/:id/objects/:objectCode/fields'),
   ],
   'GET /api/tenant/permission/grantable-profiles': [guarded('user_grant', 'GET', '/grantable-profiles')],
   'GET /api/tenant/permission/grants': [guarded('user_grant', 'GET', '/grants')],

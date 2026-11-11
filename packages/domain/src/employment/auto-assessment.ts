@@ -74,7 +74,7 @@ export function assessmentBlocksAutoRegularization(facts: CycleAssessmentFacts):
  * 试用中考核已生效且意见 = 提前转正：自动转正对该员工静默跳过（F-500，DEC-841①，照北森 F-485 实测）——
  * 不记失败、不进回执失败列、不重试排队。仅当本周期没有任何 assessmentBlocksAutoRegularization 的阻断时才跳过，
  * 同周期另有其他失败条件（含转正记录）时仍按失败处理。
- * 只适用“自动发起转正申请”类规则；“直接自动转正”类口径待定，调用方对其不用本判定（该考核仍按失败）。
+ * 只适用“自动发起转正申请”类规则；“直接自动转正”类无取证依据（F-485 未触发），调用方对其不用本判定（该考核仍按失败；命中后改发起转正流程，F-517）。
  */
 export function assessmentSkipsAutoRegularization(facts: CycleAssessmentFacts): boolean {
   return facts.type === 'probation' && facts.status === 'approved' && facts.opinion === 'early';

@@ -37,7 +37,7 @@ import { userOfPerson } from '../approval/resolver.js';
 import { activeInstanceOf } from '../approval/store.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { assertRevision } from './context.js';
-import { exitPostEffectHooks, type ExitCancelledEvent, type ExitConfirmedEvent } from './exit-confirmation.js';
+import { exitPostEffectHooks, type ExitCancelledEvent, type ExitConfirmedEvent } from './exit-post-effect-hooks.js';
 import { queueExitHandoverRetry } from './exit-handover-retry.js';
 import { listHandoverItems } from './exit-handover-items.js';
 import {

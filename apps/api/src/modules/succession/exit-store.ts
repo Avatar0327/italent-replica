@@ -15,10 +15,11 @@ import {
   type EmployeeStatusHookContext,
 } from '../employment/status-hooks.js';
 import { listRecordRows } from './record-read.js';
-import { registerDownstreamVisibility, type DownstreamItem } from '../employment/exit-downstream.js';
+import type { DownstreamItem } from '../employment/exit-downstream.js';
+import { registerDownstreamVisibility } from '../employment/exit-downstream-visibility.js';
 import { lockTargets } from './record-write.js';
 import { rowsOf } from './read-sql.js';
-import { CalcObjectFailure } from './calc-contract.js';
+import { CalcObjectFailure } from './calc-contract-core.js';
 
 export type ExitApplication = typeof applications.$inferSelect;
 type ExitContext = EmployeeStatusHookContext;

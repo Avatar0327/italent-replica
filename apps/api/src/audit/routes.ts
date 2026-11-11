@@ -16,6 +16,8 @@ import {
   AUDIT_OPERATION_LABELS,
   AUDIT_OPERATIONS,
   type AuditBehavior,
+  AUDIT_APPS,
+  auditAppScope,
   auditContent,
   type AuditFieldChange,
   auditObjectMeta,
@@ -55,6 +57,7 @@ import { linkageSnapshot } from './transfer-linkage.js';
 const BASE = '/api/tenant/audit';
 const CODE = /^[A-Za-z0-9_.:#-]{1,200}$/;
 const FIELD = /^[A-Za-z0-9_.:-]{1,100}$/;
+const TRACE = /^[A-Za-z0-9_.:-]{1,128}$/;
 
 type AuditEventRow = typeof auditEvents.$inferSelect & {
   visibleCount: number | null;
@@ -92,6 +95,7 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
           ),
           nextCursor: page.nextCursor,
           window,
+          apps: AUDIT_APPS,
         };
       }),
     );
@@ -207,15 +211,19 @@ function dataChangeFilters(c: Context, withheld: SQL): SQL[] {
   const field = optionalQuery(c, 'field', FIELD);
   const sourceAction = c.req.query('sourceAction');
   const commandId = optionalQuery(c, 'commandId', CODE);
+  const traceId = optionalQuery(c, 'traceId', TRACE);
+  const app = appFilter(c);
   if (objectType) conditions.push(sql`${t.objectType} = ${objectType}`);
   if (objectId) conditions.push(sql`${t.objectId} = ${normalizeObjectId(objectId)}`);
   if (action) conditions.push(sql`${t.action} = ${action}`);
   if (actor) conditions.push(sql`${t.actorUserId} = ${actor}::uuid`);
   if (commandId) conditions.push(sql`${t.commandId} = ${commandId}`);
+  if (traceId) conditions.push(sql`${t.traceId} = ${traceId}`);
   if (sourceAction) conditions.push(sql`${t.sourceAction} = ${sourceAction.slice(0, 100)}`);
+  if (app) conditions.push(appCondition(app));
   // DEC-340③：脱敏行不展示对象编号、命令 ID 与来源，按它们筛选也不能命中（否则凭条数即可关联匿名答卷）；
-  // DEC-355② 能看完整版的行照常可筛
-  if (objectId || commandId || sourceAction) conditions.push(sql`NOT ${withheld}`);
+  // DEC-355② 能看完整版的行照常可筛。TraceID 同属来源信息，口径一致（F-474-5 #27）
+  if (objectId || commandId || sourceAction || traceId) conditions.push(sql`NOT ${withheld}`);
   // 升级前的历史行已在迁移 0058 回填 operation / changes（P2-3），筛选与展示口径一致
   if (operation) conditions.push(sql`${t.operation} = ${operation}`);
   // 字段可以是展开后的 a.b 形式，按末段匹配；联动由 viewer 对展开后的可见变化筛选。
@@ -225,6 +233,38 @@ function dataChangeFilters(c: Context, withheld: SQL): SQL[] {
       WHERE change->>'field' = ${field} OR right(change->>'field', ${field.length + 1}) = ${`.${field}`}))`);
   }
   return conditions;
+}
+
+/** 应用必须是可选清单里的值：拼错不静默返回空页（与前端下拉同一来源，R1bd §2.15）。 */
+function appFilter(c: Context): string | undefined {
+  const app = c.req.query('app');
+  if (app === undefined || app === '') return undefined;
+  if (!AUDIT_APPS.includes(app)) throw new AppError('VALIDATION_FAILED', 'app 不在可选的应用范围内');
+  return app;
+}
+
+/** 「应用」由对象编码推出（auditObjectMeta）：已登记对象按登记、未登记对象按前缀、其余归“组织员工”。 */
+function appCondition(app: string): SQL {
+  const scope = auditAppScope(app);
+  const list = (values: readonly string[]) =>
+    sql.join(
+      values.map((value) => sql`${value}`),
+      sql`, `,
+    );
+  const unregistered = sql`${auditEvents.objectType} NOT IN (${list(scope.registered)})`;
+  const alternatives: SQL[] = [];
+  if (scope.types.length) alternatives.push(sql`${auditEvents.objectType} IN (${list(scope.types)})`);
+  for (const prefix of scope.prefixes) {
+    alternatives.push(sql`(${unregistered} AND starts_with(${auditEvents.objectType}, ${prefix}))`);
+  }
+  if (scope.fallback) {
+    const prefixed = sql.join(
+      scope.allPrefixes.map((prefix) => sql`starts_with(${auditEvents.objectType}, ${prefix})`),
+      sql` OR `,
+    );
+    alternatives.push(sql`(${unregistered} AND NOT (${prefixed}))`);
+  }
+  return sql`(${sql.join(alternatives, sql` OR `)})`;
 }
 
 function operationFilters(c: Context): SQL[] {

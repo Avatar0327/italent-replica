@@ -27,8 +27,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/succession/audit-scope.ts#recordSelfRestrict': [
     'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql',
   ],
-  'apps/api/src/modules/succession/calc-contract.ts#calcKey': [
+  'apps/api/src/modules/succession/calc-contract-core.ts#calcKey': [
     'apps/api/src/modules/succession/calc-time.ts#calcScheduleSlot',
+  ],
+  'apps/api/src/modules/succession/calc-enqueue.ts#audit': ['apps/api/src/audit/record.ts#recordAudit'],
+  'apps/api/src/modules/succession/calc-enqueue.ts#enqueueCalcRun': [
+    'apps/api/src/modules/succession/calc-contract-core.ts#calcKey',
+    '#audit',
+    '#conflict',
+    '#objectType',
+    '#uuid',
   ],
   'apps/api/src/modules/succession/calc-read.ts#calcAccess': [
     'apps/api/src/authorization.ts#requirePermission',
@@ -84,7 +92,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/calc-read.ts#readCalcRuns',
     'apps/api/src/modules/succession/calc-read.ts#requireCalcRetryScope',
     '#PATH',
-    'apps/api/src/modules/succession/calc-worker.ts#changeCalcRun',
+    'apps/api/src/modules/succession/calc-runner.ts#changeCalcRun',
     'apps/api/src/modules/succession/write-support.ts#authorizeSuccessionResult',
     'apps/api/src/modules/succession/write-support.ts#checkWriteAccess',
     'apps/api/src/modules/talent/http.ts#pageQuery',
@@ -92,46 +100,41 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent/http.ts#revision',
     'apps/api/src/modules/talent/http.ts#uuidParam',
   ],
-  'apps/api/src/modules/succession/calc-time.ts#calcScheduleSlot': [
-    'packages/domain/src/tenant-time.ts#assertValidTimeZone',
-  ],
-  'apps/api/src/modules/succession/calc-worker.ts#audit': ['apps/api/src/audit/record.ts#recordAudit'],
-  'apps/api/src/modules/succession/calc-worker.ts#changeCalcRun': [
+  'apps/api/src/modules/succession/calc-runner.ts#changeCalcRun': [
+    'apps/api/src/modules/succession/calc-enqueue.ts#audit',
+    'apps/api/src/modules/succession/calc-enqueue.ts#conflict',
     'apps/api/src/modules/succession/calc-notifications.ts#enqueueCalcDone',
-    '#audit',
-    '#conflict',
     '#locked',
     '#match',
     '#objectMatch',
   ],
-  'apps/api/src/modules/succession/calc-worker.ts#enqueueCalcRun': [
-    'apps/api/src/modules/succession/calc-contract.ts#calcKey',
-    '#audit',
-    '#conflict',
-    '#objectType',
-    '#uuid',
-  ],
-  'apps/api/src/modules/succession/calc-worker.ts#executePage': [
-    'apps/api/src/modules/succession/calc-contract.ts#CalcBlocked',
-    'apps/api/src/modules/succession/calc-contract.ts#CalcObjectFailure',
+  'apps/api/src/modules/succession/calc-runner.ts#executePage': [
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcBlocked',
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcObjectFailure',
+    'apps/api/src/modules/succession/calc-enqueue.ts#objectType',
+    'apps/api/src/modules/succession/calc-enqueue.ts#uuid',
     '#finishPage',
     '#match',
     '#objectMatch',
-    '#objectType',
-    '#uuid',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
   ],
-  'apps/api/src/modules/succession/calc-worker.ts#finishPage': [
+  'apps/api/src/modules/succession/calc-runner.ts#finishPage': [
+    'apps/api/src/modules/succession/calc-enqueue.ts#audit',
     'apps/api/src/modules/succession/calc-notifications.ts#enqueueCalcDone',
-    '#audit',
     '#match',
     '#objectMatch',
   ],
-  'apps/api/src/modules/succession/calc-worker.ts#locked': ['#match', '#uuid'],
-  'apps/api/src/modules/succession/calc-worker.ts#runCalcPageInTransaction': [
-    'apps/api/src/modules/succession/calc-contract.ts#CalcBlocked',
+  'apps/api/src/modules/succession/calc-runner.ts#locked': [
+    'apps/api/src/modules/succession/calc-enqueue.ts#uuid',
+    '#match',
+  ],
+  'apps/api/src/modules/succession/calc-runner.ts#runCalcPageInTransaction': [
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcBlocked',
     '#executePage',
     '#locked',
+  ],
+  'apps/api/src/modules/succession/calc-time.ts#calcScheduleSlot': [
+    'packages/domain/src/tenant-time.ts#assertValidTimeZone',
   ],
   'apps/api/src/modules/succession/candidates.ts#searchCandidates': [
     '#escapeLike',
@@ -245,7 +248,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/succession/exit-store.ts#applyExit': [
     'apps/api/src/audit/record.ts#recordAudit',
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
-    'apps/api/src/modules/succession/calc-contract.ts#CalcObjectFailure',
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcObjectFailure',
     '#exitEndDate',
     '#key',
     '#records',
@@ -265,7 +268,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/succession/exit-store.ts#installSuccessionExitHooks': [
-    'apps/api/src/modules/employment/exit-downstream.ts#registerDownstreamVisibility',
+    'apps/api/src/modules/employment/exit-downstream-visibility.ts#registerDownstreamVisibility',
     'apps/api/src/modules/employment/status-hooks.ts#registerEmployeeStatusHooks',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
@@ -294,13 +297,13 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/succession/health-compute-run.ts#runProjectHealthCompute': [
-    'apps/api/src/modules/succession/calc-contract.ts#CalcObjectFailure',
-    'apps/api/src/modules/succession/calc-worker.ts#enqueueCalcRun',
-    'apps/api/src/modules/succession/calc-worker.ts#runCalcPageInTransaction',
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcObjectFailure',
+    'apps/api/src/modules/succession/calc-enqueue.ts#enqueueCalcRun',
+    'apps/api/src/modules/succession/calc-runner.ts#runCalcPageInTransaction',
   ],
   'apps/api/src/modules/succession/health-compute.ts#evaluateProjectLevels': [
-    'apps/api/src/modules/succession/calc-contract.ts#CalcBlocked',
-    'apps/api/src/modules/succession/calc-contract.ts#CalcObjectFailure',
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcBlocked',
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcObjectFailure',
     'apps/api/src/modules/succession/health-rule-support.ts#unsupportedHealthRule',
     'packages/domain/src/succession/health.ts#evaluateHealthLevels',
   ],
@@ -320,16 +323,16 @@ export const GRAPH: Graph = {
     'packages/domain/src/expression/rules/compile.ts#RULE_COMPILER_VERSION',
   ],
   'apps/api/src/modules/succession/health-dependencies.ts#fieldSource': [
-    'apps/api/src/modules/succession/calc-contract.ts#CalcObjectFailure',
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcObjectFailure',
   ],
   'apps/api/src/modules/succession/health-dependencies.ts#healthDependencies': [
-    'apps/api/src/modules/succession/calc-contract.ts#CalcObjectFailure',
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcObjectFailure',
     '#fieldSource',
     '#measures',
     'apps/api/src/modules/succession/health-rule-support.ts#unsupportedHealthRule',
   ],
   'apps/api/src/modules/succession/health-measure.ts#matches': [
-    'apps/api/src/modules/succession/calc-contract.ts#CalcObjectFailure',
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcObjectFailure',
     'packages/domain/src/expression/engine.ts#evaluateFormula',
     'packages/domain/src/expression/ports.ts#inMemorySubject',
     'packages/domain/src/expression/rules/compile.ts#compileRuleSet',
@@ -360,7 +363,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/org-stats.ts#readOnDutyCount',
   ],
   'apps/api/src/modules/succession/health-metrics.ts#readReviewSource': [
-    'apps/api/src/modules/succession/calc-contract.ts#CalcObjectFailure',
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcObjectFailure',
   ],
   'apps/api/src/modules/succession/health-metrics.ts#readSuccessionSource': [
     'apps/api/src/modules/succession/health-measure.ts#healthScalar',
@@ -374,8 +377,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
     'apps/api/src/modules/permission/scope-resolver.ts#resolveDataScope',
     'apps/api/src/modules/permission/subject.ts#loadSubject',
-    'apps/api/src/modules/succession/calc-contract.ts#CalcBlocked',
-    'apps/api/src/modules/succession/calc-contract.ts#CalcObjectFailure',
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcBlocked',
+    'apps/api/src/modules/succession/calc-contract-core.ts#CalcObjectFailure',
     'apps/api/src/modules/succession/config-store.ts#populationViews',
     '#sourceField',
     'packages/domain/src/expression/engine.ts#evaluateFormula',
@@ -447,7 +450,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/health-routes.ts#enqueueHealth': [
     'apps/api/src/modules/succession/access.ts#successionContext',
-    'apps/api/src/modules/succession/calc-worker.ts#enqueueCalcRun',
+    'apps/api/src/modules/succession/calc-enqueue.ts#enqueueCalcRun',
     'apps/api/src/modules/succession/health-results.ts#requireHealthOrg',
     '#queueAccess',
     '#queueResults',
@@ -663,7 +666,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/risk-store.ts#readRiskRows',
   ],
   'apps/api/src/modules/succession/map-card-reader.ts#readMapStats': [
-    'apps/api/src/modules/succession/calc-worker.ts#enqueueCalcRun',
+    'apps/api/src/modules/succession/calc-enqueue.ts#enqueueCalcRun',
     'apps/api/src/modules/succession/org-stats.ts#cacheHistoricalOnDutyCounts',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
   ],
@@ -730,7 +733,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#button',
     'apps/api/src/modules/succession/access.ts#codeOf',
     'apps/api/src/modules/succession/access.ts#successionContext',
-    'apps/api/src/modules/succession/calc-worker.ts#enqueueCalcRun',
+    'apps/api/src/modules/succession/calc-enqueue.ts#enqueueCalcRun',
     'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope',
     'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions',
     'apps/api/src/modules/succession/map-preferences.ts#mapDisplayBody',
@@ -756,7 +759,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/succession/map-routes.ts#savePreferences': [
     'apps/api/src/audit/record.ts#recordAudit',
     'apps/api/src/modules/succession/access.ts#codeOf',
-    'apps/api/src/modules/succession/calc-worker.ts#enqueueCalcRun',
+    'apps/api/src/modules/succession/calc-enqueue.ts#enqueueCalcRun',
     'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope',
     'apps/api/src/modules/succession/map-preferences.ts#readPreferences',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
@@ -1080,7 +1083,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/succession/access.ts#SUCCESSION_BASE',
     'apps/api/src/modules/succession/access.ts#successionContext',
-    'apps/api/src/modules/succession/calc-worker.ts#enqueueCalcRun',
+    'apps/api/src/modules/succession/calc-enqueue.ts#enqueueCalcRun',
     'apps/api/src/modules/succession/risk-store.ts#assignRisk',
     'apps/api/src/modules/succession/risk-store.ts#projectRisk',
     'apps/api/src/modules/succession/risk-store.ts#readRiskRows',
@@ -1098,7 +1101,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#button',
     'apps/api/src/modules/succession/access.ts#codeOf',
     'apps/api/src/modules/succession/access.ts#successionContext',
-    'apps/api/src/modules/succession/calc-worker.ts#enqueueCalcRun',
+    'apps/api/src/modules/succession/calc-enqueue.ts#enqueueCalcRun',
     'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope',
     'apps/api/src/modules/succession/map-preferences.ts#preferenceBody',
     '#COMPUTE',
@@ -1373,7 +1376,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/sync-execute.ts#executeSyncBatch': ['#Execution'],
   'apps/api/src/modules/succession/sync-health.ts#enqueueSyncHealth': [
-    'apps/api/src/modules/succession/calc-worker.ts#enqueueCalcRun',
+    'apps/api/src/modules/succession/calc-enqueue.ts#enqueueCalcRun',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
   ],
   'apps/api/src/modules/succession/sync-health.ts#executeHealthTarget': [

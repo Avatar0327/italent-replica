@@ -9,20 +9,18 @@ import { sql, type Tx } from '@italent/db';
 import { EMPLOYEE_STATUS, type RetirementBillView, type RetirementPersonView } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { employmentCreator } from './context.js';
+// 顶层表读的依赖表取自叶子模块，不取 exit-queries（导入环上，加载顺序见 exit-dependencies.ts 文件头）
+import { EXIT_RESPONSE_DEPENDENCIES, EXIT_SORT_DEPENDENCIES, on, type Dependency } from './exit-dependencies.js';
 import { exitListOrder } from './exit-list-order.js';
 import {
   exitCandidates,
-  EXIT_RESPONSE_DEPENDENCIES,
   filterPredicates,
-  EXIT_SORT_DEPENDENCIES,
   exitDetailPayload,
   loadExitDetail,
-  on,
   pageOfCandidates,
   toItem,
   trimWith,
   type CandidateSource,
-  type Dependency,
   type ExitDetail,
   type ExitRow,
   type ExitViewable,

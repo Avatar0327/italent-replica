@@ -12,6 +12,7 @@ export const settingsPages = [
   { code: 'users.external', title: m.external },
   { code: 'permission.profiles', title: m.profiles },
   { code: 'permission.user_grant', title: m.grants },
+  { code: 'permission.admins', title: m.admins },
   { code: 'permission.mous', title: m.mous },
   { code: 'audit.business', title: m.audit },
 ];
@@ -77,6 +78,9 @@ export function scopeInput(values: Record<string, unknown>) {
   throw new ApiError(400, 'VALIDATION_ERROR', 'fields', m.invalid);
 }
 export interface User {
+  contactEmail?: string | null;
+  accountStatus?: string;
+  createdAt?: string;
   userId: string;
   displayName: string;
   email: string;
@@ -87,6 +91,9 @@ export interface User {
   employeeId: string | null;
 }
 export interface Profile {
+  updatedBy?: { userId: string; displayName: string } | null;
+  updatedAt?: string;
+  grantCount?: number;
   id: string;
   name: string;
   code: string;
@@ -102,6 +109,12 @@ export interface Profile {
   }[];
 }
 export interface Grant {
+  userName?: string;
+  userEmail?: string;
+  profileName?: string;
+  profileCode?: string;
+  apps?: string[];
+  mous?: UserMou[];
   id: string;
   userId: string;
   profileId: string;
@@ -129,16 +142,42 @@ export interface Mou {
   revision: number;
   orgRanges?: OrgRange[];
 }
+export interface MouTreeNode extends Mou {
+  matched: boolean;
+  children: MouTreeNode[];
+}
 export interface Audit {
   id: string;
   occurredAt: string;
   operator: { name: string };
   operationLabel: string;
+  app: string;
   objectLabel: string;
   objectId: string | null;
   content: string;
   sourceAction: string | null;
   traceId: string | null;
+  sourcePageType: string | null;
+  sourcePage: string | null;
+  terminal: string | null;
+  clientVersion: string | null;
+  ip: string | null;
   changes?: { field: string; before: unknown; after: unknown }[];
   snapshot?: unknown;
+}
+
+export interface UserMou {
+  appCode: string;
+  mouId: string;
+  name: string;
+}
+export interface AdminRow {
+  id: string;
+  userId: string;
+  displayName: string;
+  email: string;
+  role: string;
+  mous: UserMou[];
+  createdAt: string;
+  createdBy: { userId: string; displayName: string } | null;
 }

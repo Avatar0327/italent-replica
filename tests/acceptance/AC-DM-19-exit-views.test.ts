@@ -497,6 +497,8 @@ const STRUCTURES = [
   'dutyTransfer',
   'dates',
   'rowActions',
+  // F-476 P4：详情的内容来源标记（读现值 / 读本人冻结份），审批办理事实；叶子见下方 ENVELOPE
+  'contentView',
 ];
 const keysOf = (value: object) => Object.keys(value).sort();
 
@@ -720,6 +722,17 @@ const CONTAINER_ONLY = [
   'dutyTransfer.transferred',
   'dutyTransfer.failed',
 ];
+/**
+ * F-476 P4：详情路由在裁剪之后附加的内容来源标记（读现值 / 读本人冻结份），是审批办理事实，不属于 ExitDetailPayload，
+ * 也就不进字段依赖表；它的每个叶子由 AC-F476-13-p4-structure 的流程事实白名单逐个守卫。
+ */
+const ENVELOPE = [
+  'contentView.mode',
+  'contentView.instanceId',
+  'contentView.taskId',
+  'contentView.round',
+  'contentView.actedAt',
+];
 
 async function nestedWorld(label: string) {
   const x = await world(label);
@@ -741,7 +754,7 @@ describe('AC-DM-19 嵌套字段按路径裁剪（第 3 轮 P2-A，设计 §9.1�
   it('嵌套叶子要么登记了自己的字段编码，要么是明确的容器叶子（新增嵌套键不能默认放行）', async () => {
     const { x, as, detailOf, rowOf } = await nestedWorld('views-nested-catalog');
     const full = as(FULL);
-    const known = new Set([...NESTED.map(([path]) => path), ...CONTAINER_ONLY]);
+    const known = new Set([...NESTED.map(([path]) => path), ...CONTAINER_ONLY, ...ENVELOPE]);
     const listed = (await rowOf(full)) as object;
     const nested = [...leafPaths(await detailOf(full)), ...leafPaths(listed)].filter(isNested);
     expect(nested.filter((path) => !known.has(path))).toEqual([]);
@@ -971,9 +984,11 @@ describe('AC-DM-19 字段依赖表守卫', () => {
     const full = as(FULL);
     const leaves = [...leafPaths(await detailOf(full)), ...leafPaths(await rowOf(full))];
     const unregistered = leaves.filter((path) =>
-      isNested(path)
-        ? !(path in EXIT_RESPONSE_DEPENDENCIES)
-        : !(path in EXIT_RESPONSE_DEPENDENCIES) && !FULL.includes(path),
+      ENVELOPE.includes(path)
+        ? false // 路由附加的内容来源标记，不在依赖表（见 ENVELOPE）
+        : isNested(path)
+          ? !(path in EXIT_RESPONSE_DEPENDENCIES)
+          : !(path in EXIT_RESPONSE_DEPENDENCIES) && !FULL.includes(path),
     );
     expect(unregistered).toEqual([]);
     expect(x.ids(await x.view('all'))).toHaveLength(1);

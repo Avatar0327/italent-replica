@@ -29,7 +29,13 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/admins.ts#grantableSetsOf': [
     'packages/domain/src/permission/admin-roles.ts#isAdminRole',
   ],
-  'apps/api/src/modules/permission/admins.ts#listAdmins': ['#viewOf'],
+  'apps/api/src/modules/permission/admins.ts#listAdmins': [
+    '#viewOf',
+    'apps/api/src/modules/permission/enterprise-lists.ts#accountMatch',
+    'apps/api/src/modules/permission/enterprise-lists.ts#hasMou',
+    'apps/api/src/modules/permission/enterprise-lists.ts#mousOfUsers',
+    'apps/api/src/modules/permission/tenant-users.ts#userLabels',
+  ],
   'apps/api/src/modules/permission/admins.ts#updateAdmin': [
     '#assertCanDelegate',
     '#assertContractConfigurationGrant',
@@ -91,6 +97,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/profiles.ts#loadProfile',
     'apps/api/src/modules/permission/sets.ts#permissionSet',
   ],
+  'apps/api/src/modules/permission/data-scope-admin.ts#listMouTree': ['#MOU_TREE_LIMIT'],
   'apps/api/src/modules/permission/data-scope-admin.ts#lockMouHierarchy': ['#lockMouHierarchyOf'],
   'apps/api/src/modules/permission/data-scope-admin.ts#lockMouHierarchyOf': [
     'apps/api/src/advisory-lock.ts#advisoryLock',
@@ -152,6 +159,11 @@ export const GRAPH: Graph = {
     '#mouViewGuard',
     'apps/api/src/modules/permission/http.ts#etag',
     'apps/api/src/modules/permission/http.ts#idParam',
+  ],
+  'apps/api/src/modules/permission/data-scope-routes.ts#route:GET /api/tenant/permission/mous/tree': [
+    'apps/api/src/modules/permission/data-scope-admin.ts#listMouTree',
+    '#BASE',
+    '#mouViewGuard',
   ],
   'apps/api/src/modules/permission/data-scope-routes.ts#route:GET /api/tenant/permission/scopes/:userId/:appCode': [
     'apps/api/src/modules/permission/data-scope-admin.ts#getUserAppScope',
@@ -249,6 +261,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/employment-replay.ts#linkedOnly': ['#LINKED_ACTIONS'],
   'apps/api/src/modules/permission/employment-replay.ts#responseSnapshots': ['#responseSnapshots'],
   'apps/api/src/modules/permission/employment-replay.ts#transferException': ['#rows'],
+  'apps/api/src/modules/permission/enterprise-lists.ts#accountMatch': ['#likePattern'],
   'apps/api/src/modules/permission/establishment-replay.ts#COPY_FIELDS': ['#CHANGED_FIELDS'],
   'apps/api/src/modules/permission/establishment-replay.ts#authorizeEstablishmentReplay': [
     '#CHANGED_FIELDS',
@@ -275,7 +288,13 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/grants.ts#grantableProfiles': [
     'apps/api/src/modules/permission/admins.ts#grantableSetsOf',
   ],
-  'apps/api/src/modules/permission/grants.ts#listGrants': ['#view'],
+  'apps/api/src/modules/permission/grants.ts#listGrants': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#accountMatch',
+    'apps/api/src/modules/permission/enterprise-lists.ts#hasMou',
+    'apps/api/src/modules/permission/enterprise-lists.ts#mousOfUsers',
+    '#view',
+    'apps/api/src/modules/permission/tenant-users.ts#userLabels',
+  ],
   'apps/api/src/modules/permission/grants.ts#revokeGrant': [
     'apps/api/src/modules/permission/audit.ts#audit',
     '#assertGrantable',
@@ -406,6 +425,24 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
+  'apps/api/src/modules/permission/object-dialogs.ts#load': [
+    'apps/api/src/modules/permission/catalog.ts#objectCatalog',
+    'apps/api/src/modules/permission/profiles.ts#loadProfile',
+    'apps/api/src/modules/permission/subject.ts#loadObjectPermissions',
+    'apps/api/src/modules/permission/tenant-catalog.ts#tenantObjectCatalog',
+  ],
+  'apps/api/src/modules/permission/object-dialogs.ts#readDataOperations': ['#load'],
+  'apps/api/src/modules/permission/object-dialogs.ts#readFields': [
+    '#FIELD_DIALOG_UNRECORDED',
+    '#load',
+    'packages/domain/src/platform/standard-grants.ts#objectCatalogDigest',
+  ],
+  'apps/api/src/modules/permission/object-dialogs.ts#save': [
+    'apps/api/src/modules/permission/catalog.ts#objectCatalog',
+    'apps/api/src/modules/permission/profiles.ts#setObjectPermission',
+  ],
+  'apps/api/src/modules/permission/object-dialogs.ts#saveDataOperations': ['#load', '#save'],
+  'apps/api/src/modules/permission/object-dialogs.ts#saveFields': ['#load', '#save'],
   'apps/api/src/modules/permission/object-write.ts#requireObjectWrite': [
     'apps/api/src/authorization.ts#requirePermission',
   ],
@@ -437,7 +474,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/tenant-catalog.ts#tenantObjectCatalog',
     'packages/domain/src/platform/standard-grants.ts#objectCatalogDigest',
   ],
-  'apps/api/src/modules/permission/profiles.ts#listProfiles': ['#view'],
+  'apps/api/src/modules/permission/profiles.ts#listProfiles': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#likePattern',
+    '#view',
+    'apps/api/src/modules/permission/tenant-users.ts#userLabels',
+  ],
   'apps/api/src/modules/permission/profiles.ts#setObjectPermission': [
     'apps/api/src/modules/permission/audit.ts#audit',
     'apps/api/src/modules/permission/http.ts#revisionConflict',
@@ -472,8 +513,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins': [
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
+    'apps/api/src/modules/permission/admins.ts#ADMIN_LIST_UNRECORDED',
     'apps/api/src/modules/permission/admins.ts#listAdmins',
+    'apps/api/src/modules/permission/enterprise-lists.ts#parseQuery',
     '#BASE',
+    'apps/api/src/modules/permission/schemas.ts#adminListQuery',
   ],
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins/:id': [
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
@@ -489,9 +533,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants': [
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
+    'apps/api/src/modules/permission/enterprise-lists.ts#parseQuery',
+    'apps/api/src/modules/permission/grants.ts#GRANT_LIST_UNRECORDED',
     'apps/api/src/modules/permission/grants.ts#listGrants',
     '#BASE',
-    'apps/api/src/modules/permission/schemas.ts#grantQuery',
+    'apps/api/src/modules/permission/schemas.ts#grantListQuery',
   ],
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/licenses': [
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
@@ -506,8 +552,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/profiles': [
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
+    'apps/api/src/modules/permission/enterprise-lists.ts#parseQuery',
+    'apps/api/src/modules/permission/profiles.ts#PROFILE_LIST_UNRECORDED',
     'apps/api/src/modules/permission/profiles.ts#listProfiles',
     '#BASE',
+    'apps/api/src/modules/permission/schemas.ts#profileListQuery',
   ],
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/profiles/:id': [
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
@@ -516,6 +565,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/profiles.ts#getProfileDetail',
     '#BASE',
   ],
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations':
+    [
+      'apps/api/src/modules/permission/admin-http.ts#adminGuard',
+      'apps/api/src/modules/permission/http.ts#etag',
+      'apps/api/src/modules/permission/object-dialogs.ts#readDataOperations',
+    ],
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/profiles/:id/objects/:objectCode/fields':
+    [
+      'apps/api/src/modules/permission/admin-http.ts#adminGuard',
+      'apps/api/src/modules/permission/enterprise-lists.ts#parseQuery',
+      'apps/api/src/modules/permission/http.ts#etag',
+      'apps/api/src/modules/permission/object-dialogs.ts#readFields',
+      'apps/api/src/modules/permission/schemas.ts#fieldsQuery',
+    ],
   'apps/api/src/modules/permission/routes.ts#route:POST /api/tenant/permission/admins': [
     'apps/api/src/modules/permission/admin-http.ts#adminCommand',
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
@@ -573,18 +636,51 @@ export const GRAPH: Graph = {
     '#BASE',
     'apps/api/src/modules/permission/schemas.ts#objectPermissionBody',
   ],
+  'apps/api/src/modules/permission/routes.ts#route:PUT /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations':
+    [
+      'apps/api/src/modules/permission/admin-http.ts#adminCommand',
+      'apps/api/src/modules/permission/admin-http.ts#adminGuard',
+      'apps/api/src/modules/permission/http.ts#etag',
+      'apps/api/src/modules/permission/http.ts#ifMatch',
+      'apps/api/src/modules/permission/http.ts#parseBody',
+      'apps/api/src/modules/permission/object-dialogs.ts#saveDataOperations',
+      'apps/api/src/modules/permission/schemas.ts#dataOperationsBody',
+    ],
+  'apps/api/src/modules/permission/routes.ts#route:PUT /api/tenant/permission/profiles/:id/objects/:objectCode/fields':
+    [
+      'apps/api/src/modules/permission/admin-http.ts#adminCommand',
+      'apps/api/src/modules/permission/admin-http.ts#adminGuard',
+      'apps/api/src/modules/permission/http.ts#etag',
+      'apps/api/src/modules/permission/http.ts#ifMatch',
+      'apps/api/src/modules/permission/http.ts#parseBody',
+      'apps/api/src/modules/permission/object-dialogs.ts#saveFields',
+      'apps/api/src/modules/permission/schemas.ts#fieldsBody',
+    ],
   'apps/api/src/modules/permission/schemas.ts#adminBody': [
     '#adminSetsBody',
+    'packages/domain/src/permission/admin-roles.ts#ADMIN_ROLES',
+  ],
+  'apps/api/src/modules/permission/schemas.ts#adminListQuery': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#listPage',
+    'apps/api/src/modules/permission/enterprise-lists.ts#textFilter',
     'packages/domain/src/permission/admin-roles.ts#ADMIN_ROLES',
   ],
   'apps/api/src/modules/permission/schemas.ts#adminSetsBody': [
     '#MAX_ITEMS',
     'packages/domain/src/permission/admin-roles.ts#ADMIN_ROLES',
   ],
+  'apps/api/src/modules/permission/schemas.ts#fieldsBody': ['#ITEM_CODE', '#MAX_ITEMS', '#code'],
+  'apps/api/src/modules/permission/schemas.ts#fieldsQuery': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#listPage',
+    'apps/api/src/modules/permission/enterprise-lists.ts#textFilter',
+  ],
   'apps/api/src/modules/permission/schemas.ts#grantBody': [
     'apps/api/src/modules/permission/data-scope-schemas.ts#grantScopeBody',
   ],
-  'apps/api/src/modules/permission/schemas.ts#grantQuery': ['#optionalUuid'],
+  'apps/api/src/modules/permission/schemas.ts#grantListQuery': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#listPage',
+    'apps/api/src/modules/permission/enterprise-lists.ts#textFilter',
+  ],
   'apps/api/src/modules/permission/schemas.ts#objectPermissionBody': [
     '#ITEM_CODE',
     '#MAX_ITEMS',
@@ -592,6 +688,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/object-permission.ts#BUTTON_LEVELS',
   ],
   'apps/api/src/modules/permission/schemas.ts#profileBody': ['#APP_CODE', '#LICENSE_TYPE', '#PROFILE_CODE', '#code'],
+  'apps/api/src/modules/permission/schemas.ts#profileListQuery': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#listPage',
+    'apps/api/src/modules/permission/enterprise-lists.ts#textFilter',
+    '#APP_CODE',
+  ],
   'apps/api/src/modules/permission/scope-audit.ts#creatorSql': ['#firstCreatorSql'],
   'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeOrgSet': ['#MAX_SCOPE_IDS', '#scopeRows'],
   'apps/api/src/modules/permission/scope-persons.ts#managedPersonsSql': ['#currentPersons'],
@@ -763,7 +864,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#getTenantUser': ['#memberQuery', '#notFound', '#viewsOf'],
-  'apps/api/src/modules/permission/tenant-users.ts#listTenantUsers': ['#memberQuery', '#typeFilter', '#viewsOf'],
+  'apps/api/src/modules/permission/tenant-users.ts#listTenantUsers': [
+    '#memberQuery',
+    '#textMatch',
+    '#typeFilter',
+    '#viewsOf',
+  ],
   'apps/api/src/modules/permission/tenant-users.ts#provisionAccount': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
     'apps/api/src/system-actor.ts#auditActor',
@@ -777,6 +883,10 @@ export const GRAPH: Graph = {
     '#provisionAccount',
     '#updateMembership',
   ],
+  'apps/api/src/modules/permission/tenant-users.ts#textMatch': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#accountMatch',
+    'apps/api/src/modules/permission/enterprise-lists.ts#likePattern',
+  ],
   'apps/api/src/modules/permission/tenant-users.ts#updateExternalUser': [
     'apps/api/src/modules/permission/audit.ts#audit',
     'apps/api/src/modules/permission/http.ts#revisionConflict',
@@ -788,6 +898,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/tenant-users.ts#updateMembership': [
     'apps/api/src/modules/permission/http.ts#revisionConflict',
   ],
+  'apps/api/src/modules/permission/tenant-users.ts#userLabels': ['#accountsOf'],
   'apps/api/src/modules/permission/tenant-users.ts#viewsOf': [
     'apps/api/src/modules/avatar/references.ts#userAvatars',
     '#accountsOf',
@@ -832,9 +943,15 @@ export const GRAPH: Graph = {
     '#CAPABILITY',
     '#currentUser',
   ],
+  'apps/api/src/modules/permission/user-routes.ts#listQuery': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#listPage',
+    'apps/api/src/modules/permission/enterprise-lists.ts#textFilter',
+  ],
   'apps/api/src/modules/permission/user-routes.ts#registerBody': ['#businessIdentity'],
   'apps/api/src/modules/permission/user-routes.ts#route:GET /api/tenant/permission/users': [
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
+    'apps/api/src/modules/permission/enterprise-lists.ts#parseQuery',
+    'apps/api/src/modules/permission/tenant-users.ts#USER_LIST_UNRECORDED',
     'apps/api/src/modules/permission/tenant-users.ts#listTenantUsers',
     '#BASE',
     '#CAPABILITY',

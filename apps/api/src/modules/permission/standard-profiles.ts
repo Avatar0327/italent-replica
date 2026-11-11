@@ -199,6 +199,8 @@ export async function installProfileRows(
     source: 'standard',
     licenseType: profile.licenseType,
     createdBy: write.actorUserId,
+    // 最近修改人 = 新建人（身份列表 F-474-5 #25）；系统操作无操作人时保持 null，不伪造
+    updatedBy: write.actorUserId,
     createdAt: write.now,
     updatedAt: write.now,
   });

@@ -69,9 +69,10 @@ const SERVICE = `${SRC}/transfer/service.ts`;
 const RECORD = 'TenantBase.EmploymentRecord';
 const EMPLOYEE = 'TenantBase.Employee';
 
+// 权限判断在 contextOf 内（readContext 只做 tenantOf 后转调，F-493 S3b 抽出供后台执行器复用）；路由经 readContext 可达
 const READ: Evidence = {
   role: 'impl',
-  unit: `${CTX}#readContext`,
+  unit: `${CTX}#contextOf`,
   anchor: 'await requirePermission(deps.authorize, { ...tenant, action: operation, resource: objectCode,',
 };
 const PAGE: Evidence = {
@@ -199,9 +200,9 @@ const ob = (perm: string, facts: readonly string[], evidence: readonly Evidence[
 });
 
 const EXIT_IMPORT = `${SRC}/employment/exit-import.ts`;
-/** F-139a：历史离职导入的入口权限链（预览与导入共用 requireExitImportAccess，设计 §7）。 */
-function exitImportObligations(path: '/exits/import' | '/exits/import/preview'): Obligation[] {
-  const entry = at(EXIT, 'POST', path, "const ctx = await readContext(c, deps, 'object.create')");
+/** F-493：历史离职导入的入口权限链（requireExitImportAccess，设计 §6.1）。 */
+function exitImportObligations(): Obligation[] {
+  const entry = at(EXIT, 'POST', '/exits/import', "const ctx = await readContext(c, deps, 'object.create')");
   const access = (anchor: string) => fn(EXIT_IMPORT, 'requireExitImportAccess', anchor);
   const seeAll = bound({ scope: 'see-all' }, [
     {
@@ -244,6 +245,81 @@ function exitImportObligations(path: '/exits/import' | '/exits/import/preview'):
     ],
     { [`obj:${EMPLOYEE}:create`]: employeeSeeAll, [`obj:${RECORD}:create`]: seeAll },
   );
+}
+
+const FUNCTION_CTX: Evidence = {
+  role: 'impl',
+  unit: `${CTX}#functionContext`,
+  anchor: 'await requirePermission(deps.authorize, { ...tenant, action, resource: EMPLOYMENT_OBJECT, fields: [] })',
+};
+const EXIT_IMPORT_FILE = `${SRC}/employment/exit-import-file.ts`;
+const EXIT_IMPORT_DOWNLOAD = `${SRC}/employment/exit-import-download.ts`;
+/** F-493 S3c：模板与错误文件的下载入口权限链（设计 §3.1、§8.2）；错误文件另判提交人归属与人员 / 档案对象的“看全部”。 */
+function exitImportDownloadObligations(route: 'template' | 'error-file'): Obligation[] {
+  const path = route === 'template' ? '/exits/import/template' : '/exits/import/batches/:id/error-file';
+  const entry = at(EXIT, 'GET', path, "const ctx = await functionContext(c, deps, 'object.create')");
+  const access = route === 'template' ? 'requireExitImportButton' : 'requireExitImportDownloadAccess';
+  const call = (anchor: string) => fn(EXIT_IMPORT_FILE, access, anchor);
+  const base = withNeeds(
+    [
+      ob(
+        `obj:${RECORD}:create`,
+        ['objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+        [entry, FUNCTION_CTX],
+        '设计 §8.2：只验任职对象功能权，不解析数据范围（functionContext）',
+      ),
+      ob(
+        `btn:${RECORD}#Employment.DimissionImport@list`,
+        [],
+        [
+          route === 'template'
+            ? at(EXIT, 'GET', path, 'await requireExitImportButton(ctx)')
+            : call('await requireExitImportButton(ctx)'),
+          fn(
+            EXIT_IMPORT_FILE,
+            'requireExitImportButton',
+            "await requireEmploymentWrite(ctx, 'create', {}, EXIT_IMPORT_BUTTON, " +
+              'EMPLOYMENT_OBJECT, { commandOnly: true })',
+          ),
+          WRITE_BUTTON,
+        ],
+        '只判按钮的命令权；撤字段查看权不拦下载，由下载处把对应列置空',
+      ),
+    ],
+    { [`obj:${RECORD}:create`]: bound(NONE) },
+  );
+  if (route === 'template') return base;
+  const personScope = {
+    role: 'scope' as const,
+    unit: `${EXIT_IMPORT_FILE}#requireExitImportDownloadAccess`,
+    anchor: "if (!scope?.all) throw new AppError('FORBIDDEN', '下载导入文件需要人员与档案对象的“全部数据”范围')",
+  };
+  return [
+    ...base,
+    ...withNeeds(
+      ['TenantBase.Employee', 'TenantBase.EmployeeInformation'].map((object) =>
+        ob(
+          `obj:${object}:view`,
+          ['object:object.* 动作'],
+          [call('const scope = await resolveModuleScope(deps, ctx, today, object)')],
+          '人员 / 档案对象只判范围：必须是显式“看全部”，不足 403（fail-closed）',
+        ),
+      ),
+      {
+        'obj:TenantBase.Employee:view': bound({ scope: 'see-all' }, [personScope]),
+        'obj:TenantBase.EmployeeInformation:view': bound({ scope: 'see-all' }, [personScope]),
+      },
+    ),
+    ob(
+      'own:employment.exitImportBatchSubmitter',
+      [],
+      [
+        at(EXIT, 'GET', path, 'const file = await exitImportErrorFile(deps, ctx, uuidParam(c, '),
+        fn(EXIT_IMPORT_DOWNLOAD, 'exitImportErrorFile', 'eq(exitImportBatches.submittedBy, ctx.userId)'),
+      ],
+      '提交人归属：不是本人提交的批次（含他人、他租户的）一律 404，不泄露存在性',
+    ),
+  ];
 }
 
 /** F-317 固定路由决定按钮；批量每个子命令仍复用首次发起的权限和锁。 */
@@ -2200,7 +2276,11 @@ export const EMPLOYMENT: RequiredTable = {
     ),
   ],
   'GET /api/tenant/employment/businesses/:id': [
-    recordView(at(EMP, 'GET', '/businesses/:id', "let ctx = await readPageContext(c, deps, 'detail')")),
+    // F-476 P4：已办审批人的内容取舍要按当前字段查看权裁剪（getModuleViewableFields → object.view），同一对象查看权
+    recordView(at(EMP, 'GET', '/businesses/:id', "let ctx = await readPageContext(c, deps, 'detail')"), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
     INITIATOR_BUTTON(at(EMP, 'GET', '/businesses/:id', 'transferBusinessContext(tx, ctx, id)')),
     ob(
       'guard:transfer.source',
@@ -2647,7 +2727,11 @@ export const EMPLOYMENT: RequiredTable = {
           '/employees/:id/part-times',
           "const ctx = await readContext(c, deps, 'object.create', 0, id)",
         ),
-        { role: 'impl', unit: `${CTX}#readContext`, anchor: '(tx) => requireEmployeeInScope(tx, result, resource)' },
+        {
+          role: 'impl',
+          unit: `${CTX}#bindEmployeeResource`,
+          anchor: '(tx) => requireEmployeeInScope(tx, context, resource)',
+        },
         EMPLOYEE_IN_SCOPE,
       ],
     ),
@@ -3262,8 +3346,8 @@ export const EMPLOYMENT: RequiredTable = {
         ),
         {
           role: 'impl',
-          unit: `${CTX}#readContext`,
-          anchor: '(tx) => requireEmployeeInScope(tx, result, resource)',
+          unit: `${CTX}#bindEmployeeResource`,
+          anchor: '(tx) => requireEmployeeInScope(tx, context, resource)',
         },
         EMPLOYEE_IN_SCOPE,
       ],
@@ -3307,8 +3391,8 @@ export const EMPLOYMENT: RequiredTable = {
               call,
               {
                 role: 'impl',
-                unit: `${CTX}#readContext`,
-                anchor: '(tx) => requireEmployeeInScope(tx, result, resource)',
+                unit: `${CTX}#bindEmployeeResource`,
+                anchor: '(tx) => requireEmployeeInScope(tx, context, resource)',
               },
               EMPLOYEE_IN_SCOPE,
             ],
@@ -3572,19 +3656,61 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     linkage(at(EXIT, 'POST', '/exits/batch', 'body: await createExitBatch(tx, context, items, guard.failures())')),
   ],
-  // F-139a 历史离职人员导入（设计 §7）：预览与导入共用入口权限链 requireExitImportAccess；导入命令内另由 exitImportGuard 复核
-  'POST /api/tenant/employment/exits/import/preview': exitImportObligations('/exits/import/preview'),
+  // F-493 历史离职人员导入（设计 §6.1）：入口权限链 requireExitImportAccess；命令内由 exitImportGuard 复核，
+  // 并按档案更新权 / 教育新增权复核本批要写的档案字段（requireExitImportProfileAccess，与 POST /interns 同口径）
   'POST /api/tenant/employment/exits/import': [
-    ...exitImportObligations('/exits/import'),
-    linkage(
-      at(
-        EXIT,
-        'POST',
-        '/exits/import',
-        'async (tx, context) => ({ status: 201, body: await importExits(tx, context, body) })',
-      ),
+    ...exitImportObligations(),
+    ob(
+      'guard:employment.exitImportProfile',
+      [],
+      [
+        fn(REPLAY, 'exitImportGuard', 'await requireExitImportProfileAccess(tx, deps, scoped, rows)'),
+        fn(
+          EXIT_IMPORT,
+          'requireExitImportProfileAccess',
+          'await authorize(authorizer, access, operation, payload, operation)',
+        ),
+        fn(EXIT_IMPORT, 'requireExitImportProfileAccess', 'scope = await personnelCreationScope('),
+        fn(
+          `${SRC}/permission/scope-resolver.ts`,
+          'personnelCreationScope',
+          "current.terms.map((term) => (term.dimension === 'using_user' ? managed : term))",
+        ),
+      ],
+      '条件准入：档案字段校验档案更新权；有学校 / 专业时再校验教育新增权（DEC-082 创建范围转换）；两者都要求显式“看全部”',
     ),
+    ...[
+      'obj:TenantBase.EmployeeInformation:update',
+      'btn:TenantBase.EmployeeInformation#update@detail',
+      'obj:TenantBase.Education:create',
+      'btn:TenantBase.Education#create@list',
+    ].map((perm) => ({
+      // 事务内调用经 replay-guard 的 exitImportGuard 进入，静态探测器不沿 guard 选项展开：通用 object:object.*
+      // 动作仍可观测，且已由本路由的其他义务承接；观测不到的是 btn:…#update@detail、btn:…#create@list 这两条
+      // 按钮事实，所以这里不登记 facts；对象写权与按钮权（object.button）由 personnel authorize 实际判定，证据见下
+      ...ob(
+        perm,
+        [],
+        [
+          fn(
+            EXIT_IMPORT,
+            'requireExitImportProfileAccess',
+            'await authorize(authorizer, access, operation, payload, operation)',
+          ),
+          fn(
+            `${SRC}/personnel/access.ts`,
+            'authorize',
+            'await requireObjectWrite(authorizer, ctx, { objectCode: ctx.objectCode, operation, payload })',
+          ),
+          fn(`${SRC}/personnel/access.ts`, 'authorize', 'resource: buttonResource(ctx.objectCode, button,'),
+        ],
+      ),
+      purpose: 'when:employment.exitImportProfile' as const,
+    })),
   ],
+  // F-493 S3c：模板与错误文件下载（设计 §3.1、§8.2、§10.1）；错误文件另判提交人归属，内容按当前字段权裁剪
+  'GET /api/tenant/employment/exits/import/template': exitImportDownloadObligations('template'),
+  'GET /api/tenant/employment/exits/import/batches/:id/error-file': exitImportDownloadObligations('error-file'),
   'PATCH /api/tenant/employment/exits/:id': [
     ...exitBusinessCommand('/exits/:id', 'Employment.DimissionEdit', 'route'),
     linkage(
@@ -3894,10 +4020,16 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   // F-479 S2 HR 载体下载：与详情同一个取值（readExitDetail → readPageContext('detail')），再叠 attachmentRefs 字段权
   'GET /api/tenant/employment/exits/:id/attachments/:fileId/content': [
-    recordView(at(EXIT, 'GET', '/exits/:id/attachments/:fileId/content', 'await readExitDetail(c)')),
+    recordView(at(EXIT, 'GET', '/exits/:id/attachments/:fileId/content', 'await readExitDetail(c)'), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
   ],
   'GET /api/tenant/employment/exits/:id': [
-    recordView(at(EXIT, 'GET', '/exits/:id', 'const { ctx, detail, show } = await readExitDetail(c)')),
+    recordView(at(EXIT, 'GET', '/exits/:id', 'await readExitDetail(c, true)'), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
     exitActionsIntervene(
       at(EXIT, 'GET', '/exits/:id', 'await exitActions(deps, ctx, [detail], { withHandle: false })'),
     ),
@@ -4058,7 +4190,7 @@ export const EMPLOYMENT: RequiredTable = {
           RETIRE_VIEWS,
           'GET',
           '/retirements/employees/:id/in-flight',
-          "const ctx = await readContext(c, deps, 'object.view', 0, id)",
+          "const base = await readContext(c, deps, 'object.view', 0)",
         ),
         READ,
         RECORD_CONST,
@@ -4066,7 +4198,10 @@ export const EMPLOYMENT: RequiredTable = {
     ),
   ],
   'GET /api/tenant/employment/retirements/:id': [
-    recordView(at(RETIRE_VIEWS, 'GET', '/retirements/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+    recordView(at(RETIRE_VIEWS, 'GET', '/retirements/:id', "const ctx = await readPageContext(c, deps, 'detail')"), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
   ],
   'GET /api/tenant/employment/exits/dictionaries/:dict': [
     ob(

@@ -22,6 +22,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/audit/changes.ts#renderAuditValue': ['#MAX_TEXT', '#rawText'],
   'packages/domain/src/audit/changes.ts#sameValue': ['#isNothing'],
   'packages/domain/src/audit/labels.ts#APP_PREFIXES': ['#APPROVAL', '#ENTERPRISE', '#SURVEY360'],
+  'packages/domain/src/audit/labels.ts#AUDIT_APPS': ['#APP_PREFIXES', '#OBJECTS', '#ORG_PEOPLE'],
   'packages/domain/src/audit/labels.ts#OBJECTS': [
     '#APPROVAL',
     '#ENTERPRISE',
@@ -44,6 +45,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS',
     'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECT_LABELS',
   ],
+  'packages/domain/src/audit/labels.ts#auditAppScope': ['#APP_PREFIXES', '#OBJECTS', '#ORG_PEOPLE'],
   'packages/domain/src/audit/labels.ts#auditFieldLabel': ['#FIELD_LABELS'],
   'packages/domain/src/audit/labels.ts#auditObjectMeta': ['#APP_PREFIXES', '#OBJECTS', '#ORG_PEOPLE'],
   'packages/domain/src/audit/retention.ts#addMonths': ['#ISO_DATE'],

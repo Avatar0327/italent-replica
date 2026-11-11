@@ -5,17 +5,23 @@
  */
 import { sql, type Tx } from '@italent/db';
 import {
+  availableBusinessExits,
+  BUSINESS_EXIT_LABELS,
   EXIT_LABELS,
   exitRulesOf,
+  hasBusinessExits,
   isCountersign,
   nodeExits,
   tenantLocalDate,
   walkDefaultPath,
   type ApprovalNode,
+  type AnyNodeExit,
   type ApprovalTypeCode,
+  type BusinessExit,
   type NodeExit,
   type PathWalk,
 } from '@italent/domain';
+import type { BusinessSnapshot } from './adapters.js';
 import { rowsOf, type ApprovalContext } from './context.js';
 import { settledOutcome } from './countersign.js';
 import type { InstanceRow, TaskRow } from './store.js';
@@ -217,14 +223,32 @@ export function pathView(
 }
 
 export interface ExitView {
-  readonly code: NodeExit;
+  readonly code: AnyNodeExit;
   readonly label: string;
   readonly family: NodeExit;
 }
 
-/** 与 actions 同一判定：公布了「同意 / 不同意」才有对应出口（业务出口由 S3 随出口组登记后接入）。 */
-export function exitsView(actions: readonly string[]): ExitView[] {
+/**
+ * 与 actions 同一判定：公布了「同意 / 不同意」才有对应出口。业务出口节点（F-478 S4）的「同意」换成守卫成立的业务出口
+ * （办理人不能改变 reEmployed，所以只剩一个），名称取业务出口的名称；守卫都不成立时不披露任何同意出口，办理入口同样 409。
+ */
+export function exitsView(
+  actions: readonly string[],
+  node?: ApprovalNode | null,
+  snapshot?: Pick<BusinessSnapshot, 'approvalType' | 'conditionValues'>,
+): ExitView[] {
+  const business =
+    node && snapshot && hasBusinessExits(node)
+      ? availableBusinessExits(node, snapshot.approvalType, snapshot.conditionValues ?? {})
+      : null;
   return (['approve', 'disagree'] as const)
     .filter((code) => actions.includes(code))
-    .map((code) => ({ code, label: EXIT_LABELS[code], family: code }));
+    .flatMap((code): ExitView[] => {
+      if (code !== 'approve' || business === null) return [{ code, label: EXIT_LABELS[code], family: code }];
+      return business.map((exit) => ({
+        code: exit as AnyNodeExit,
+        label: BUSINESS_EXIT_LABELS[exit as BusinessExit],
+        family: 'approve',
+      }));
+    });
 }

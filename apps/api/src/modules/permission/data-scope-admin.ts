@@ -107,6 +107,72 @@ export async function listMous(tx: Tx, page: { limit: number; offset: number }) 
     .offset(page.offset);
 }
 
+export const MOU_TREE_LIMIT = 5000;
+export type MouTreeStatus = 'active' | 'disabled' | 'all';
+export interface MouTreeNode {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly description: string;
+  readonly status: 'active' | 'disabled';
+  readonly revision: number;
+  readonly parentId: string | null;
+  readonly createdAt: Date;
+  /** 命中筛选条件；false 表示只是为保持层级而带出的祖先。 */
+  readonly matched: boolean;
+  readonly children: MouTreeNode[];
+}
+
+/**
+ * 管理单元树（F-474-5 #24，R1bd §2.11）：由服务端组装完整层级，前端不再靠分页平面列表拼树。
+ * 可见集合与平面列表一致（配置对象，持 mou_manage）；已删除与虚拟管理单元永不出现；
+ * 筛选命中节点连同祖先一并返回以保持层级。不返回被筛掉节点的数量，没有计数旁路。
+ * 管理单元无显示顺序列（模型未记录），同级按编码排序。
+ */
+export async function listMouTree(tx: Tx, filter: { status: MouTreeStatus; q?: string }) {
+  const rows = await tx
+    .select()
+    .from(permissionMous)
+    .where(and(eq(permissionMous.kind, 'named'), sql`${permissionMous.status}<>'deleted'`))
+    .orderBy(asc(permissionMous.code), asc(permissionMous.id))
+    .limit(MOU_TREE_LIMIT + 1);
+  if (rows.length > MOU_TREE_LIMIT) throw new AppError('VALIDATION_FAILED', '管理单元过多，无法组装整棵树');
+  const needle = filter.q?.toLowerCase();
+  const nodes = new Map<string, MouTreeNode>(
+    rows.map((row) => [
+      row.id,
+      {
+        id: row.id,
+        code: row.code,
+        name: row.name,
+        description: row.description,
+        status: row.status as 'active' | 'disabled',
+        revision: row.revision,
+        parentId: row.parentId,
+        createdAt: row.createdAt,
+        matched:
+          (filter.status === 'all' || row.status === filter.status) &&
+          (!needle || row.name.toLowerCase().includes(needle) || row.code.toLowerCase().includes(needle)),
+        children: [],
+      },
+    ]),
+  );
+  const keep = new Set<string>();
+  for (const node of nodes.values()) {
+    for (let at: MouTreeNode | undefined = node.matched ? node : undefined; at && !keep.has(at.id);) {
+      keep.add(at.id);
+      at = at.parentId ? nodes.get(at.parentId) : undefined;
+    }
+  }
+  const roots: MouTreeNode[] = [];
+  for (const node of nodes.values()) {
+    if (!keep.has(node.id)) continue;
+    const parent = node.parentId ? nodes.get(node.parentId) : undefined;
+    (parent ? parent.children : roots).push(node);
+  }
+  return { items: roots, total: keep.size };
+}
+
 async function validateRefs(tx: Tx, refs: readonly OrgRangeInput[]) {
   if (refs.length > 200) throw new AppError('VALIDATION_FAILED', '一次最多选择200个组织');
   const keys = new Set(refs.map((r) => `${r.orgId}:${r.dimension}`));

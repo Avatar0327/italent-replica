@@ -1,3 +1,4 @@
+import { ROUTE_END } from './routes.js';
 import { approverSource } from './sources.js';
 import { CONTRACT_FIELDS } from '../contracts/rules.js';
 /**
@@ -493,17 +494,26 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
     approvalType: 'retirement',
     definition: draft({
       name: '标准退休流程',
-      description: '出厂预置：直线经理 → HRBP，发布前须配置异常管理员',
+      description: '出厂预置：直线经理 → HRBP；同时返聘时再经返聘后直线经理 → 返聘后 HRBP，发布前须配置异常管理员',
       priority: 0,
       isFallback: false,
       conditions: {
         items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'RetireProcess' }],
         expression: '1',
       },
+      // F-478 S4（设计 §6.4）：HRBP 节点按「是否同时返聘」走两个业务出口，不同意出口不设；回避本人沿用 B7b 默认。
       nodes: [
-        // DEC-789：本批仅两节点；同时返聘的条件分支由 F-478 补齐。
         node('direct_head', '直线经理', 'direct_manager', { formFields: RETIRE_FORM }),
-        node('hr_interview', 'HRBP', 'record_department_hrbp', { formFields: RETIRE_FORM }),
+        node('hr_interview', 'HRBP', 'record_department_hrbp', {
+          formFields: RETIRE_FORM,
+          exits: ['approve_no_rehire', 'approve_rehire'],
+          routes: [
+            { exit: 'approve_no_rehire', branches: [{ kind: 'direct', target: ROUTE_END }] },
+            { exit: 'approve_rehire', branches: [{ kind: 'direct', target: 'rehire_manager' }] },
+          ],
+        }),
+        node('rehire_manager', '返聘后直线经理', 'rehire_direct_manager', { formFields: RETIRE_FORM }),
+        node('rehire_hrbp', '返聘后 HRBP', 'rehire_department_hrbp', { formFields: RETIRE_FORM }),
       ],
     }),
   },

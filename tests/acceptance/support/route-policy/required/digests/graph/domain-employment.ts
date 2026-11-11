@@ -59,16 +59,22 @@ export const GRAPH: Graph = {
     '#isRecord',
   ],
   'packages/domain/src/employment/exit-handover.ts#isDays': ['#HANDOVER_REMIND_DAYS_MAX'],
-  'packages/domain/src/employment/exit-import.ts#duplicateEmployeeNoRows': ['#normalizedNo'],
+  'packages/domain/src/employment/exit-import-contract.ts#EXIT_IMPORT_COLUMNS': ['#column'],
+  'packages/domain/src/employment/exit-import-contract.ts#displayValue': ['#DATE_COLUMNS', '#normalizeExitImportDate'],
+  'packages/domain/src/employment/exit-import-contract.ts#exitImportErrorText': [
+    '#EXIT_IMPORT_COLUMNS',
+    '#EXIT_IMPORT_REASONS',
+    '#ROW_LEVEL_TEXT',
+    '#VALUE_SUFFIX',
+    '#displayValue',
+  ],
+  'packages/domain/src/employment/exit-import-contract.ts#normalizeExitImportDate': [
+    'packages/domain/src/audit/retention.ts#isIsoDate',
+    '#DATE_ISO',
+    '#DATE_SLASH',
+  ],
   'packages/domain/src/employment/exit-import.ts#exitImportEffectiveDate': [
     'packages/domain/src/contracts/rules.ts#addDays',
-  ],
-  'packages/domain/src/employment/exit-import.ts#validateExitImportBlacklist': [
-    'packages/domain/src/audit/retention.ts#isIsoDate',
-  ],
-  'packages/domain/src/employment/exit-import.ts#validateExitImportDates': [
-    'packages/domain/src/audit/retention.ts#isIsoDate',
-    '#invalidDate',
   ],
   'packages/domain/src/employment/exit-notice-templates.ts#EXIT_NOTICE_TEMPLATES': [
     '#EXIT_IMPORT_FINISHED_CLEAN_TEMPLATE',

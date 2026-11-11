@@ -6,7 +6,7 @@ import { healthDependencies, type HealthDependencies } from './health-dependenci
 import { orgHealthSourceStatus } from './health-source-access.js';
 import { healthPeople, customHealthPopulation } from './health-population.js';
 import type { healthPrincipal } from './health-principal.js';
-import { type CalcContext, type CalcObject, CalcObjectFailure } from './calc-contract.js';
+import { type CalcContext, type CalcObject, CalcObjectFailure } from './calc-contract-core.js';
 import { loadOrgSnapshot } from '../org/read-model.js';
 import { healthScalar, measureHealth, type HealthSource } from './health-measure.js';
 export type HealthReads = Pick<

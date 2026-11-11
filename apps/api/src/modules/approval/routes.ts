@@ -22,6 +22,7 @@ import {
   APPROVER_EXPRESSIONS,
   BUSINESS_EXIT_CODES,
   MAX_ADD_SIGNERS,
+  OFFER_OBJECT,
   PERSONNEL_OBJECT,
 } from '@italent/domain';
 import { Hono, type Context } from 'hono';
@@ -92,6 +93,7 @@ import {
   type DetailData,
   type Viewer,
 } from './disclosure.js';
+import { capViewable, profileCeilingOf } from './handling-content.js';
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
 import {
@@ -114,6 +116,7 @@ import {
 } from './store.js';
 import { policedSub } from '../../route-policy/index.js';
 import { APPROVAL_POLICIES } from './policy.js';
+import { typedContentOf } from './typed-content.js';
 
 type C = Context<TenantEnv>;
 
@@ -146,7 +149,12 @@ function readCtx(c: C, deps: TenantRouteDeps): ApprovalContext {
 }
 
 function writeCtx(c: C, deps: TenantRouteDeps): ApprovalContext {
-  return { ...readCtx(c, deps), expectedRevision: revision(c), exitEditAuthorize: deps.authorize };
+  return {
+    ...readCtx(c, deps),
+    expectedRevision: revision(c),
+    exitEditAuthorize: deps.authorize,
+    handlingAuthorize: deps.authorize,
+  };
 }
 
 /** 锁冲突（死锁、序列化失败、锁超时）返回可识别的 409，由客户端刷新后显式重提，不自动盲重试（清单 11）。 */
@@ -202,7 +210,8 @@ async function ownViewable(deps: TenantRouteDeps, ctx: TenantContext, data: Deta
   const base = await fields(data.snapshot.fieldObjectCode);
   const profileFields = data.snapshot.profileFields;
   if (!profileFields.length) return base;
-  const profile = await fields(PERSONNEL_OBJECT);
+  // 员工档案只读字段：当前字段权 ∩ 办理时上限（F-511，已办读冻结份时；现值读不设限）
+  const profile = capViewable(await fields(PERSONNEL_OBJECT), profileCeilingOf(data.content));
   if (base === undefined && profile === undefined) return undefined;
   const own = base ?? new Set(Object.keys(data.snapshot.values).filter((field) => !profileFields.includes(field)));
   return new Set([...own, ...profileFields.filter((field) => profile === undefined || profile.has(field))]);
@@ -222,12 +231,20 @@ async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, wit
     const facts = await loadPathFacts(tx, ctx, instance, version.nodes, conditionValues, allTasks);
     return { data: detail, pathFacts: facts };
   });
-  return { ctx, view: detailView(data, ctx.userId, await detailViewable(deps, ctx, data), pathFacts) };
+  // 批已办读取的行内列按查看人当前对 Offer 对象的字段权限再裁一次（F-476 P6）；其余类型不用
+  const rowViewable =
+    data.content.mode === 'frozen' && data.instance.businessType === 'offer_batch'
+      ? await getModuleViewableFields(deps, ctx, OFFER_OBJECT)
+      : undefined;
+  const viewable = await detailViewable(deps, ctx, data);
+  return { ctx, data, view: detailView(data, ctx.userId, viewable, pathFacts, rowViewable) };
 }
 
 async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
-  const { ctx, view } = await detailViewOf(c, deps, instanceId, true);
-  return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view)));
+  const { ctx, data, view } = await detailViewOf(c, deps, instanceId, true);
+  const named = await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view));
+  // F-476 P8：业务内容不在表单里的类型，已办读冻结份时附类型化内容（缺份 503）
+  return c.json({ ...named, ...(await typedContentOf(deps, ctx, data)) });
 }
 
 /**

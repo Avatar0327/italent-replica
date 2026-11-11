@@ -328,23 +328,25 @@ describe('AC-PB-14 规则名称与行操作（DEC-539②、DEC-533②）', () =>
 });
 
 describe('PB-R18 / R19 / R21 自动转正的触发与失败条件', () => {
-  it('自动转正（直接生成）：转正日期取预计结束日次日，到日生效后人员状态改正式', async () => {
-    const w = await autoWorld('direct');
+  it('自动转正（直接生成）类：不直接转正而是发起转正流程（F-517，DEC-879①）；转正日期取预计结束日次日，审批通过且到日生效后人员状态改正式', async () => {
+    const w = await autoWorld('direct', { approval: true });
     const rule = await w.created(w.body({ mode: 'direct', daysBefore: 3 }));
-    // 试用期 09-01～10-03：目标日 09-30 ≤ 今天，转正日期 10-04（未来生效）
-    const due = await hire(w, { date: '2026-09-01', endDate: '2026-10-03' });
+    // 试用期 09-01～10-01：direct 类按结束日判断（10-01 ≤ 今天，忽略到期前 3 天），转正日期 10-02（未来生效）
+    const due = await hire(w, { date: '2026-09-01', endDate: '2026-10-01' });
     await w.enableSwitch();
     const receipt = await w.ran();
     expect(receipt.launched).toEqual([
-      expect.objectContaining({ employeeId: due.employee.id, ruleId: rule.id, businessStatus: 'effective' }),
+      expect.objectContaining({ employeeId: due.employee.id, ruleId: rule.id, businessStatus: 'in_review' }),
     ]);
     const [business] = await regularizations(w, due.employee.id);
-    expect(business).toMatchObject({ mode: 'direct', effective_date: '2026-10-04' });
-    expect((await probationOf(w, due.employee.id, '2026-10-04')).regularizationDate).toBe('2026-10-04');
+    expect(business).toMatchObject({ state: 'in_review', mode: 'application', effective_date: '2026-10-02' });
+    expect((await probationOf(w, due.employee.id, '2026-10-02')).regularizationDate).toBeNull();
+    expect((await transition(w, business!, 'approve')).status).toBe(200);
+    expect((await probationOf(w, due.employee.id, '2026-10-02')).regularizationDate).toBe('2026-10-02');
   });
 
   it('AC-PB-11 停用的规则不命中、不发起；重新启用后恢复', async () => {
-    const w = await autoWorld('toggle');
+    const w = await autoWorld('toggle', { approval: true });
     const rule = await w.created(w.body({ mode: 'direct' }));
     const due = await hire(w, { date: '2026-09-01', months: 1 });
     await w.enableSwitch();
@@ -364,7 +366,7 @@ describe('PB-R18 / R19 / R21 自动转正的触发与失败条件', () => {
   });
 
   it('适用组织：取消“包含下级”时下级部门的人不命中；多条命中取优先级数字最小的一条', async () => {
-    const w = await autoWorld('scope');
+    const w = await autoWorld('scope', { approval: true });
     const child = await w.session.org('试用下级部门', {
       establishedOn: '2026-01-01',
       parents: { admin: { parentId: w.org.id } },
@@ -437,7 +439,7 @@ describe('PB-R18 / R19 / R21 自动转正的触发与失败条件', () => {
   });
 
   it('发起人按主职部门 HRBP（R2e7 B2 样本按身份 HRBP）：发起人为该 HRBP 的账号，台账带系统代发', async () => {
-    const w = await autoWorld('hrbp');
+    const w = await autoWorld('hrbp', { approval: true });
     await w.created(w.body({ mode: 'direct', initiatorType: 'department_hrbp' }));
     const hrbp = await hire(w, { date: '2026-01-05', probation: false, name: '部门 HRBP' });
     const due = await hire(w, { date: '2026-09-01', months: 1 });
@@ -481,7 +483,7 @@ describe('PB-R18 / R19 / R21 自动转正的触发与失败条件', () => {
   });
 
   it('每日批次：租户本地 04:00 前不执行；总开关关闭时不执行也不占用当天批次', async () => {
-    const w = await autoWorld('daily');
+    const w = await autoWorld('daily', { approval: true });
     await w.created(w.body({ mode: 'direct' }));
     const due = await hire(w, { date: '2026-09-01', months: 1 });
     const { runAutoRegularizations } = await scheduler();

@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Authorizer } from '@italent/api';
 import { createUser, grantMembership, sql, withTenant, type Db, type Tx } from '@italent/db';
-import { PRESET_PROCESSES } from '@italent/domain';
+import { PRESET_PROCESSES, PROFILE_FORM_FIELDS } from '@italent/domain';
 import { expect } from 'vitest';
 import type { FieldAccess } from '../../apps/api/src/modules/approval/context.js';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
@@ -58,6 +58,10 @@ export interface WorldOptions {
   readonly extraEditable?: readonly string[];
   /** 三类流程的节点都开启加签（F-291 加签人不下发 form.edit）。 */
   readonly addSign?: boolean;
+  /** 节点表单带出员工档案只读字段 gender / age（DEC-122）；预置流程不带，要显式配置（F-511）。 */
+  readonly profileForm?: boolean;
+  /** 延长流程第 2 个节点与第 1 个同一人，并开同人自动同意：同一命令里引擎写系统办理份（F-511）。 */
+  readonly autoSecond?: boolean;
 }
 
 export async function requestWorld(db: Db, label: string, options: WorldOptions = {}) {
@@ -71,7 +75,10 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     await w.person('兼职HRBP', staff),
     await w.person('兼职负责人', staff),
   ];
-  await w.setOrgRoles(primary, { head: options.noPrimaryHead ? null : pHead.employeeId, hrbp: pHrbp.employeeId });
+  await w.setOrgRoles(primary, {
+    head: options.noPrimaryHead ? null : (options.autoSecond ? pHrbp : pHead).employeeId,
+    hrbp: pHrbp.employeeId,
+  });
   await w.setOrgRoles(side, { head: options.noSideHead ? null : sHead.employeeId, hrbp: sHrbp.employeeId });
   const worker = await w.person('兼职员工', primary);
   const tenantId = w.tenant.id;
@@ -123,6 +130,10 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
                 : preNode;
           return {
             ...node,
+            ...(options.profileForm ? { formFields: [...node.formFields, ...PROFILE_FORM_FIELDS] } : {}),
+            ...(options.autoSecond && installed.approvalType === 'part_time_extend' && index === 1
+              ? { sameAssigneeSkip: true, sameAssigneeResult: 'approve' as const }
+              : {}),
             ...(options.editMode
               ? {
                   editMode: options.editMode,

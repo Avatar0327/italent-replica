@@ -9,7 +9,7 @@ import { runCommand, type CommandGuard, type CommandResult } from '../../command
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { auditActor } from '../../system-actor.js';
-import { tenantOf, type TenantEnv } from '../../tenant-context.js';
+import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { businessDate } from './fields.js';
 import type { EmploymentContext, EmploymentScope } from './types.js';
 import {
@@ -45,7 +45,44 @@ export async function readContext(
   objectCode = EMPLOYMENT_OBJECT,
   pageCode?: string,
 ): Promise<EmploymentContext> {
+  return contextOf(tenantOf(c), deps, action, expectedRevision, resource, objectCode, pageCode);
+}
+
+/**
+ * 只验任职对象功能权、不解析数据范围的上下文（F-493 S3c 导入文件下载：模板不含数据；错误文件的范围由人员 / 档案对象各自判，
+ * 设计 §8.2）。scope 恒为 undefined、不带受信旁路，调用方不得据此返回任职人员。
+ */
+export async function functionContext(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  action: 'object.create',
+): Promise<EmploymentContext> {
   const tenant = tenantOf(c);
+  await requirePermission(deps.authorize, { ...tenant, action, resource: EMPLOYMENT_OBJECT, fields: [] });
+  return {
+    ...tenant,
+    now: deps.clock(),
+    expectedRevision: 0,
+    commandId: '',
+    authorize: deps.authorize,
+    objectCode: EMPLOYMENT_OBJECT,
+    trustedScopeBypass: false,
+  };
+}
+
+/**
+ * readContext 去掉 Hono 的部分：按“某租户里的某用户”建同一份任职上下文。后台执行器在执行期复核提交者权限时用
+ * （F-493 S3b，设计 §16 A9）：与提交入口走同一个函数，权限口径不会分叉。
+ */
+export async function contextOf(
+  tenant: TenantContext,
+  deps: TenantRouteDeps,
+  action: string,
+  expectedRevision = 0,
+  resource?: string,
+  objectCode = EMPLOYMENT_OBJECT,
+  pageCode?: string,
+): Promise<EmploymentContext> {
   const operation = action === 'tenant.employment.read' ? 'object.view' : action;
   await requirePermission(deps.authorize, {
     ...tenant,
@@ -65,19 +102,31 @@ export async function readContext(
     ? undefined
     : await resolveModuleScope(deps, context, tenantLocalDate(now, tenant.timezone), objectCode, pageCode);
   const trustedScopeBypass = await deps.authorize({ ...tenant, action: 'data.scope.all' });
-  if (resource && trustedScopeBypass) {
+  const result = { ...context, scope, authorize: deps.authorize, objectCode, trustedScopeBypass };
+  return resource ? bindEmployeeResource(deps, result, operation, resource) : result;
+}
+
+/**
+ * 把读 / 写上下文绑定到某名员工：受信的范围旁路也要有该员工的读 / 写权，其余按数据范围确认员工可见（范围外同 404）。
+ * 从 readContext 拆出，供“要先看单据才能决定是否套用范围”的入口分两步调用（F-476 P4：已办审批人读本人冻结内容免范围）。
+ */
+export async function bindEmployeeResource(
+  deps: TenantRouteDeps,
+  context: EmploymentContext,
+  operation: string,
+  resource: string,
+): Promise<EmploymentContext> {
+  if (context.trustedScopeBypass) {
     await requirePermission(deps.authorize, {
-      ...tenant,
+      tenantId: context.tenantId,
+      userId: context.userId,
+      timezone: context.timezone,
       action: operation === 'object.view' ? 'tenant.employment.read' : 'tenant.employment.write',
       resource,
     });
   }
-  const result = { ...context, scope, authorize: deps.authorize, objectCode, trustedScopeBypass };
-  if (resource) {
-    const creatorId = await withTenant(deps.db, tenant.tenantId, (tx) => requireEmployeeInScope(tx, result, resource));
-    return { ...result, scopeEmployeeId: resource, scopeEmployeeCreatorId: creatorId };
-  }
-  return result;
+  const creatorId = await withTenant(deps.db, context.tenantId, (tx) => requireEmployeeInScope(tx, context, resource));
+  return { ...context, scopeEmployeeId: resource, scopeEmployeeCreatorId: creatorId };
 }
 
 /**
@@ -273,25 +322,48 @@ export async function requireEmploymentWrite(
   }
 }
 
+/**
+ * 已办冻结读取（F-476 P4）时失败详情的额外取舍：字段再叠办理披露集合（办理时上限 ∩ 办理节点表单），
+ * 失败详情里的后续记录按读取人的当前数据范围判可见——它们不是本人办理的那份内容，不享受 DEC-834④ 的范围例外。
+ */
+export interface FrozenFailureView {
+  readonly discloses: (field: string) => boolean;
+  readonly scope: EmploymentContext['scope'];
+}
+
+interface FailureProjection {
+  readonly ctx: EmploymentContext;
+  readonly viewable: Pick<ReadonlySet<string>, 'has'> | undefined;
+  readonly frozenRead: boolean;
+}
+
+function failureProjection(
+  ctx: EmploymentContext,
+  viewable: ReadonlySet<string> | undefined,
+  frozen: FrozenFailureView | undefined,
+): FailureProjection {
+  if (!frozen) return { ctx, viewable, frozenRead: false };
+  const has = (field: string) => (viewable === undefined || viewable.has(field)) && frozen.discloses(field);
+  return { ctx: { ...ctx, scope: frozen.scope }, viewable: { has }, frozenRead: true };
+}
+
 /** DEC-507：首次、重放、待办统一按读取人的当前字段权与范围裁剪历史失败。 */
 async function projectActivationFailures(
   deps: TenantRouteDeps,
-  ctx: EmploymentContext,
   input: unknown,
-  viewable: ReadonlySet<string> | undefined,
+  view: FailureProjection,
 ): Promise<unknown> {
-  if (Array.isArray(input))
-    return Promise.all(input.map((item) => projectActivationFailures(deps, ctx, item, viewable)));
+  if (Array.isArray(input)) return Promise.all(input.map((item) => projectActivationFailures(deps, item, view)));
   if (!input || typeof input !== 'object') return input;
   const row = { ...(input as Record<string, unknown>) };
-  if (row.items) row.items = await projectActivationFailures(deps, ctx, row.items, viewable);
+  if (row.items) row.items = await projectActivationFailures(deps, row.items, view);
   const activation = row.activation as { failureReason?: string; details?: Record<string, unknown> } | undefined;
   if (activation?.failureReason === 'EXIT_LATER_RECORD_EXISTS' && activation.details) {
     const { projectExitFailureDetails } = await import('./exit-later-records.js');
     row.activation = {
       ...activation,
-      details: await withTenant(deps.db, ctx.tenantId, (tx) =>
-        projectExitFailureDetails(tx, ctx, activation.details!, viewable),
+      details: await withTenant(deps.db, view.ctx.tenantId, (tx) =>
+        projectExitFailureDetails(tx, view.ctx, activation.details!, view.viewable, view.frozenRead),
       ),
     };
   }
@@ -328,10 +400,11 @@ export async function trimEmploymentResponse(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   value: unknown,
+  frozen?: FrozenFailureView,
 ): Promise<unknown> {
   const objectCode = ctx.objectCode ?? EMPLOYMENT_OBJECT;
   const viewable = await getModuleViewableFields(deps, ctx, objectCode);
-  value = await projectActivationFailures(deps, ctx, value, viewable);
+  value = await projectActivationFailures(deps, value, failureProjection(ctx, viewable, frozen));
   if (viewable === undefined) return withEmploymentFormNames(deps, ctx, value);
   const visibleBefore = await visiblePreviousRecords(deps, ctx, value);
   const trim = (record: unknown): unknown => {

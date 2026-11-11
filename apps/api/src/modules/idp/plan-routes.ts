@@ -11,6 +11,7 @@ import type { Context, Hono } from 'hono';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
+import { contentViewOfRead, selectAmong, type StableRead } from '../approval/handling-context.js';
 import { personOfUser } from '../approval/resolver.js';
 import { pageQuery, parseBody, requireNew, revision, uuidParam } from '../job/context.js';
 import { scopeSql } from '../permission/module-access.js';
@@ -31,11 +32,12 @@ import {
 import * as execution from './execution-service.js';
 import { runIdpCommand } from './executor.js';
 import * as intervention from './intervention-service.js';
-import { type HrScope, hrSees, requireViewer, requireVisibleModule } from './plan-access.js';
+import { type HrScope, hrSees, type PlanViewer, requireViewer, requireVisibleModule } from './plan-access.js';
 import * as input from './plan-input.js';
 import { mentorSourcesOf } from './plan-mentor.js';
 import * as plans from './plan-service.js';
-import { loadPlanRow, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
+import { loadPlanRow, loadStageInstances, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
+import { parseIdpStageContent, presentFrozen } from './stage-content.js';
 import type { WriteContext } from './write-support.js';
 import {
   currentStageShown,
@@ -45,6 +47,7 @@ import {
   planListProjections,
   planProjections,
   presentPlan,
+  type Projections,
   stageSourcesOf,
   stagesShown,
   stageViews,
@@ -83,15 +86,46 @@ const planCommand = (hr: HrScope) => ({
  * 按查看人呈现计划当前状态（HR 字段裁剪 / 参与人固定字段集）。opening = 打开详情：另按模板模块判定（F-164）；
  * 写入后的回显不判定，免得 HR 新建、开始只有基本信息模块的计划时写成功却回 403。
  */
-async function showPlan(deps: TenantRouteDeps, ctx: IdpContext, hr: HrScope, planId: string, opening = false) {
+async function showPlan(
+  deps: TenantRouteDeps,
+  ctx: IdpContext,
+  hr: HrScope,
+  planId: string,
+  opening = false,
+  requestedInstance: string | null = null,
+) {
   const projections = await planProjections(deps, ctx);
   return withTenant(deps.db, ctx.tenantId, async (tx) => {
     const plan = await requirePlanRow(tx, ctx.tenantId, planId);
-    const viewer = await requireViewer(tx, ctx, hr, plan, await loadStages(tx, ctx.tenantId, [planId]));
+    const stages = await loadStages(tx, ctx.tenantId, [planId]);
+    const viewer = await requireViewer(tx, ctx, hr, plan, stages);
     if (opening) await requireVisibleModule(tx, ctx.tenantId, plan);
     const detail = await loadPlanDetail(tx, plan, tenantLocalDate(ctx.now, ctx.timezone));
-    return { revision: plan.revision, body: await presentPlan(tx, ctx.tenantId, detail, viewer, projections) };
+    if (!opening)
+      return { revision: plan.revision, body: await presentPlan(tx, ctx.tenantId, detail, viewer, projections) };
+    // 打开详情才区分现值 / 办理份（F-476 P8）：写入后的回显永远是现值
+    const byInstance = await loadStageInstances(tx, ctx.tenantId, stages);
+    const read = await selectAmong(tx, ctx, [...byInstance.keys()], ctx.userId, requestedInstance);
+    const body = await presentRead(tx, ctx, { detail, viewer, projections }, byInstance, read);
+    return { revision: plan.revision, body: { ...body, contentView: contentViewOfRead(read) } };
   });
+}
+
+/** 按选择结果呈现：现值走原呈现；办理份还原办理时内容，只读（共用呈现见 stage-content.presentFrozen）。 */
+async function presentRead(
+  tx: Tx,
+  ctx: IdpContext,
+  shown: { detail: PlanDetail; viewer: PlanViewer; projections: Projections },
+  byInstance: ReadonlyMap<string, string>,
+  read: StableRead,
+) {
+  const { selection } = read;
+  if (selection.mode === 'live') {
+    return presentPlan(tx, ctx.tenantId, shown.detail, shown.viewer, shown.projections);
+  }
+  const stageId = byInstance.get(read.instanceId!)!;
+  const content = parseIdpStageContent(selection.frozen.content.ext, stageId);
+  return presentFrozen(tx, ctx.tenantId, shown.detail, content, shown.projections);
 }
 
 async function respondPlan(
@@ -102,8 +136,9 @@ async function respondPlan(
   id: string,
   status: 200 | 201,
   opening = false,
+  requestedInstance: string | null = null,
 ) {
-  const shown = await showPlan(deps, ctx, hr, id, opening);
+  const shown = await showPlan(deps, ctx, hr, id, opening, requestedInstance);
   c.header('ETag', `"${shown.revision}"`);
   return c.json(shown.body, status);
 }
@@ -271,7 +306,9 @@ function registerPlanReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(`${BASE}/plans/:id`, async (c) => {
     const ctx = baseContext(c, deps);
     const id = uuidParam(c);
-    return respondPlan(c, deps, ctx, await hrScopeOf(c, deps, ctx), id, 200, true);
+    // 可选上下文：指定哪个阶段的审批实例（须属于本计划，否则 404）；不指定按设计 §1.2 自动选
+    const instance = c.req.query('instanceId') ?? null;
+    return respondPlan(c, deps, ctx, await hrScopeOf(c, deps, ctx), id, 200, true, instance);
   });
 }
 

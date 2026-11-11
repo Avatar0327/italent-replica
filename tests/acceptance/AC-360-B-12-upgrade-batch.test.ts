@@ -19,6 +19,7 @@ import { withPreAssessmentSchema } from './support/pre-assessment-schema.js';
 import { withPreBlacklistSchema } from './support/pre-blacklist-schema.js';
 import { withPreInternCycleSchema } from './support/pre-intern-cycle-schema.js';
 import { withPrePartTimeSchema } from './support/pre-part-time-schema.js';
+import { withPreProfileUpdatedBySchema } from './support/pre-profile-updated-by-schema.js';
 
 const database = useTestDb({ migrateBefore: '_survey360_b' });
 const ALL = { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
@@ -200,11 +201,14 @@ it('PR-A 历史计分批次升级后：不能凭它生成报告；重新计分�
     withPreBlacklistSchema(handle.db, () =>
       withPrePartTimeSchema(handle.db, () =>
         withPreInternCycleSchema(handle.db, () =>
-          withPreAssessmentSchema(handle.db, async () => {
-            const list: Legacy[] = [];
-            for (const kind of ['content', 'weights', 'scoreMethod'] as const) list.push(await legacy(handle.db, kind));
-            return list;
-          }),
+          withPreProfileUpdatedBySchema(handle.db, () =>
+            withPreAssessmentSchema(handle.db, async () => {
+              const list: Legacy[] = [];
+              for (const kind of ['content', 'weights', 'scoreMethod'] as const)
+                list.push(await legacy(handle.db, kind));
+              return list;
+            }),
+          ),
         ),
       ),
     ),

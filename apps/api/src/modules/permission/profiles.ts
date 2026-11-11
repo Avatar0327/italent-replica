@@ -6,13 +6,16 @@ import {
   and,
   asc,
   eq,
+  inArray,
   pgErrorCode,
   type PermissionProfile,
+  permissionGrants,
   permissionProfileApps,
   permissionProfileButtons,
   permissionProfileFields,
   permissionProfileObjects,
   permissionProfiles,
+  sql,
   type Tx,
 } from '@italent/db';
 import {
@@ -30,8 +33,10 @@ import './standard-managed-grants.js';
 import { tenantObjectCatalog } from './tenant-catalog.js';
 import { audit, type WriteContext } from './audit.js';
 import { isAutoHeld } from './auto-held.js';
+import { likePattern } from './enterprise-lists.js';
 import { revisionConflict } from './http.js';
 import { loadObjectPermissions } from './subject.js';
+import { userLabels } from './tenant-users.js';
 
 export interface ProfileView {
   readonly id: string;
@@ -66,15 +71,75 @@ export interface NewProfile {
   readonly licenseType: string | null;
 }
 
-export async function listProfiles(tx: Tx): Promise<ProfileView[]> {
-  const rows = await tx.select().from(permissionProfiles).orderBy(asc(permissionProfiles.code));
-  const apps = await tx.select().from(permissionProfileApps);
-  return rows.map((p) =>
-    view(
+/** 身份列表行：身份 + 最近修改人 / 时间 + 授权范围（有效授权数；F-474-5 #25）。 */
+export interface ProfileListRow extends ProfileView {
+  /** 最近修改人；迁移前的旧行没有（不回填，DEC-402）。 */
+  readonly updatedBy: { readonly userId: string; readonly displayName: string } | null;
+  readonly updatedAt: string;
+  /** 授权范围：有效授权行数；自动持有的身份（员工）不发授权行，由 autoHeld 表示“自动适用于全体员工”。 */
+  readonly grantCount: number;
+}
+
+/** 原站身份列表有、本系统没有记录的列：状态（身份没有停用概念）、来源视图（DEC-340③ 不展示）。 */
+export const PROFILE_LIST_UNRECORDED = ['status', 'sourceView'] as const;
+
+export interface ProfileListQuery {
+  readonly name?: string;
+  readonly code?: string;
+  readonly app?: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** 总数与当页同一个 where；按编码排序（编码租户内唯一，翻页稳定）。 */
+export async function listProfiles(
+  tx: Tx,
+  query: ProfileListQuery,
+): Promise<{ items: ProfileListRow[]; total: number }> {
+  const where = and(
+    query.name ? sql`lower(${permissionProfiles.name}) LIKE ${likePattern(query.name)}` : undefined,
+    query.code ? sql`lower(${permissionProfiles.code}) LIKE ${likePattern(query.code)}` : undefined,
+    query.app
+      ? sql`${permissionProfiles.id} IN (
+          SELECT a.profile_id FROM permission_profile_apps a WHERE a.app_code = ${query.app})`
+      : undefined,
+  );
+  const rows = await tx
+    .select()
+    .from(permissionProfiles)
+    .where(where)
+    .orderBy(asc(permissionProfiles.code))
+    .limit(query.limit)
+    .offset(query.offset);
+  const [count] = await tx
+    .select({ total: sql<number>`count(*)::int` })
+    .from(permissionProfiles)
+    .where(where);
+  const ids = rows.map((p) => p.id);
+  const apps = ids.length
+    ? await tx.select().from(permissionProfileApps).where(inArray(permissionProfileApps.profileId, ids))
+    : [];
+  const grants = ids.length
+    ? await tx
+        .select({ profileId: permissionGrants.profileId, total: sql<number>`count(*)::int` })
+        .from(permissionGrants)
+        .where(and(inArray(permissionGrants.profileId, ids), eq(permissionGrants.status, 'active')))
+        .groupBy(permissionGrants.profileId)
+    : [];
+  const labels = await userLabels(
+    tx,
+    rows.flatMap((p) => (p.updatedBy ? [p.updatedBy] : [])),
+  );
+  const items = rows.map((p) => ({
+    ...view(
       p,
       apps.filter((a) => a.profileId === p.id).map((a) => a.appCode),
     ),
-  );
+    updatedBy: p.updatedBy ? { userId: p.updatedBy, displayName: labels.get(p.updatedBy)?.displayName ?? '' } : null,
+    updatedAt: p.updatedAt.toISOString(),
+    grantCount: grants.find((g) => g.profileId === p.id)?.total ?? 0,
+  }));
+  return { items, total: count?.total ?? 0 };
 }
 
 export async function getProfileDetail(tx: Tx, id: string): Promise<ProfileDetail> {
@@ -99,6 +164,7 @@ export async function createProfile(tx: Tx, write: WriteContext, input: NewProfi
         tenantId: write.tenantId,
         ...input,
         createdBy: write.userId,
+        updatedBy: write.userId,
         createdAt: write.now,
         updatedAt: write.now,
       })
@@ -163,7 +229,7 @@ export async function setObjectPermission(
   await replaceObjectRows(tx, write.tenantId, profileId, permission);
   const [bumped] = await tx
     .update(permissionProfiles)
-    .set({ revision: profile.revision + 1, updatedAt: write.now })
+    .set({ revision: profile.revision + 1, updatedAt: write.now, updatedBy: write.userId })
     .where(and(eq(permissionProfiles.id, profileId), eq(permissionProfiles.revision, profile.revision)))
     .returning();
   if (!bumped) throw revisionConflict(change.expectedRevision, undefined);

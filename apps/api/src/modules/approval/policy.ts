@@ -347,7 +347,21 @@ const canOpen = relation({
 });
 // 无 view 时仍是 listTodos 原固定键；卡片摘要取 todoForm 裁剪后字段，不能登记为未裁剪 fixed。
 const TODO_FIELDS = projector('approval.todoCards', 'approval.todoCards');
-const NOTIFICATION_KEYS = ['id', 'instanceId', 'taskId', 'kind', 'channel', 'template', 'status', 'createdAt'];
+const NOTIFICATION_KEYS = [
+  'id',
+  'instanceId',
+  'businessType',
+  'businessId',
+  'taskId',
+  'kind',
+  'channel',
+  'template',
+  'title',
+  'body',
+  'sender',
+  'status',
+  'createdAt',
+];
 const APPLICATION_KEYS = [
   'id',
   'title',

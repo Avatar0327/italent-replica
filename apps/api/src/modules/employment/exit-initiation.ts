@@ -5,59 +5,20 @@
  */
 import { sql, type Tx } from '@italent/db';
 import {
-  BLACKLIST_NOTE_MAX,
-  BLACKLIST_REASON_CODES,
-  EXIT_FORM_DUTY_TRANSFER_TIMINGS,
   EXIT_MANAGER_INITIATION_KEY,
   EXIT_SELF_REASON_CODES,
   EXIT_SELF_WHEREABOUTS_CODES,
   tenantLocalDate,
 } from '@italent/domain';
-import { z } from 'zod';
 import { AppError } from '../../errors.js';
-import { validIsoDate } from '../org/read-model.js';
 import { currentPersons } from '../permission/scope-persons.js';
-import { normalizedUuid } from './fields.js';
+import { exitOptionsSchema, type ExitOptions } from './exit-options-schema.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
 export type ExitInitiation = 'hr' | 'self' | 'manager';
 
-const code = z.string().trim().min(1).max(100);
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const realDay = day.refine(validIsoDate, '日期必须为合法 YYYY-MM-DD');
-const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
-
-/** 请求体里的 exit 区块（通用入口与专用入口同形）；不含 initiation：HTTP 入口的发起方式由路由固定。 */
-export const exitOptionsSchema = z.strictObject({
-  reasonCode: code.optional(),
-  whereaboutsCode: code.optional(),
-  exitTypeCode: code.optional(),
-  attachmentRefs: z.array(normalizedUuid).max(20).optional(),
-  handoverEmployeeId: normalizedUuid.optional(),
-  addToBlacklist: z.boolean().optional(),
-  /** 加黑三项（DM-R2）：只在 addToBlacklist 时可填；有效截止日期空 = 永久，原因必填，说明与黑名单页一致 ≤500 字。 */
-  blacklistExpiryDate: realDay.nullable().optional(),
-  blacklistReason: z.enum(BLACKLIST_REASON_CODES).optional(),
-  blacklistNote: z.string().trim().max(BLACKLIST_NOTE_MAX).nullable().optional(),
-  compensationAmount: z.number().min(0).max(1e11).optional(),
-  nonCompeteAmount: z.number().min(0).max(1e11).optional(),
-  lastPayDate: day.optional(),
-  socialInsuranceEndMonth: month.optional(),
-  annualLeaveSettled: z.boolean().optional(),
-  taxPeriod: month.optional(),
-  taxYear: z.int().min(1900).max(9999).optional(),
-  employerName: z.string().trim().min(1).max(200).optional(),
-  actualLeaveDate: day.optional(),
-  /** 本单的职责转交时机（R2-T09b DT-R3）：不填取租户配置；指定日期必须带 dutyTransferDate。 */
-  dutyTransferTiming: z.enum(EXIT_FORM_DUTY_TRANSFER_TIMINGS).optional(),
-  dutyTransferDate: realDay.optional(),
-  /** 职责转交计划（§5.7）：结构由 transfer/linkage/input.ts 的 normalizeLinkage 校验，只允许 dutyTransfer 区块。 */
-  dutyTransfer: z.unknown().optional(),
-  /** §8 在途调动确认令牌。 */
-  pendingTransferAck: z.string().max(200).optional(),
-});
-export type ExitOptions = z.infer<typeof exitOptionsSchema>;
+export { exitOptionsSchema, type ExitOptions };
 
 const HR_ONLY: readonly (keyof ExitOptions)[] = [
   'exitTypeCode',

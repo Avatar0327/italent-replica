@@ -1,4 +1,4 @@
-import { exitPostEffectHooks } from './exit-confirmation.js';
+import { exitPostEffectHooks } from './exit-post-effect-hooks.js';
 import { queueExitAccount } from './exit-account-store.js';
 import { applyRehireAccount, withdrawRehireAccount } from './rehire-account.js';
 import { registerEmployeeStatusHooks } from './status-hooks.js';

@@ -6,6 +6,8 @@
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_EDIT_REQUIRED,
+  availableBusinessExits,
+  hasBusinessExits,
   instanceRecusal,
   jumpAllowed,
   rejectToPreviousAllowed,
@@ -107,6 +109,32 @@ function assertExit(node: ApprovalNode, exit: NodeExit, requested?: string): voi
   if (!hasExit(node, exit)) {
     throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', `本节点没有「${EXIT_LABELS[exit]}」出口动作`);
   }
+}
+
+/**
+ * 同意时实际走的出口（F-478 S4，设计 §3.3 / §4）。普通节点沿用 assertExit，出口恒为 approve；业务出口节点必须显式带 exit：
+ * 缺省 → 409 APPROVAL_EXIT_REQUIRED；节点没有该出口，或守卫不成立（例如 reEmployed=false 却选“同时返聘”）→ 409
+ * APPROVAL_EXIT_NOT_AVAILABLE。两种拒绝都在任何写之前，实例状态与 revision 不变。办理人不能改变 reEmployed，
+ * 所以守卫决定唯一可用的出口，选择只是确认。
+ */
+function approveExitOf(scene: TaskScene, requested?: string): string {
+  const { node, run } = scene;
+  if (!hasBusinessExits(node)) {
+    assertExit(node, 'approve', requested);
+    return 'approve';
+  }
+  if (requested === undefined) {
+    throw approvalError('CONFLICT', 'APPROVAL_EXIT_REQUIRED', '本节点有业务出口，办理时必须选择出口', {
+      nodeKey: node.key,
+    });
+  }
+  const available = availableBusinessExits(node, run.snapshot.approvalType, run.snapshot.conditionValues ?? {});
+  if (!available.includes(requested)) {
+    throw approvalError('CONFLICT', 'APPROVAL_EXIT_NOT_AVAILABLE', '本节点没有该出口，或该出口当前不可用', {
+      exit: requested,
+    });
+  }
+  return requested;
 }
 
 /**
@@ -309,7 +337,7 @@ export async function approveTask(
 ): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
   assertOpen(scene, ctx);
-  assertExit(scene.node, 'approve', input.exit);
+  const exit = approveExitOf(scene, input.exit);
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
   const { run, task, node } = scene;
@@ -327,14 +355,14 @@ export async function approveTask(
   // （BE-10c 第 3 轮）；同一事务内任一步失败整体回滚。
   await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'approve');
   const record = await captured(tx, run, task, 'approve', viewable);
-  await closeTask(tx, ctx, task.id, 'approved', input.comment, 'approve');
+  await closeTask(tx, ctx, task.id, 'approved', input.comment, exit);
   await record(
     await appendLog(tx, ctx, run.instance, {
       event: 'approve',
       nodeKey: task.nodeKey,
       taskId: task.id,
       adminSelfTransfer: task.adminSelfTransfer,
-      detail: { comment: input.comment },
+      detail: { comment: input.comment, ...(exit === 'approve' ? {} : { exit }) },
     }),
   );
   await auditTask(

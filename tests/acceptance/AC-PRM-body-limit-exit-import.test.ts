@@ -1,6 +1,6 @@
 /**
  * F-493 S2（设计 §5）：POST /api/tenant/employment/exits/import 的请求体放宽到 1 MiB（EXIT_IMPORT_BODY_LIMIT），
- * 超过仍 413；同一前缀下的预览及其他接口仍按默认 32KB。
+ * 超过仍 413；同一前缀下的其他接口仍按默认 32KB（预览路由已在 S3a 删除）。
  */
 import { EXIT_IMPORT_BODY_LIMIT } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
@@ -40,8 +40,7 @@ describe('AC-PRM-body-limit F-493 历史离职导入请求体 1 MiB', () => {
     expect(await errorCode(res)).toBe('PAYLOAD_TOO_LARGE');
   });
 
-  it('预览与其他同前缀接口仍为默认 32KB', async () => {
-    expect((await post(`${IMPORT}/preview`, DEFAULT_LIMIT)).status).toBe(413);
+  it('同前缀的其他接口仍为默认 32KB', async () => {
     expect((await post('/api/tenant/employment/exits/import-other', DEFAULT_LIMIT)).status).toBe(413);
   });
 });

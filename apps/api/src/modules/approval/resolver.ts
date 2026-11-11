@@ -30,6 +30,8 @@ export interface RoutingSubject {
   readonly tutorEmployeeId?: string | null;
   /** 离职交接申请的工作交接人（审批人表达式 handover_work_owner，R2 BE-8b2）。 */
   readonly handoverEmployeeId?: string | null;
+  /** 退休申请的返聘计划（审批人表达式 rehire_*，F-478 S4）：部门与返聘后直线经理。 */
+  readonly rehirePlan?: { readonly departmentId: string | null; readonly directManagerId: string | null } | null;
   /** 同一次推进内的查询缓存（结果只依赖本主体的员工、部门与业务日期，X-20）。 */
   readonly cache?: Map<string, Promise<unknown>>;
   /** 内部诊断，不进入响应/日志：源关系中的组织标识不能借 reason 文案绕过组织披露权限。 */
@@ -332,6 +334,11 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
       return candidateOf(tx, subject, subject.subjectEmployeeId);
     case 'system_admin':
       return systemAdmin(tx, subject);
+    // F-478 S4（设计 §6.1）：返聘后的审批人读返聘计划；没有计划（不返聘）或计划字段为空即取不到人，沿用节点的无审批人策略
+    case 'rehire_direct_manager':
+      return candidateOf(tx, subject, subject.rehirePlan?.directManagerId ?? null);
+    case 'rehire_department_hrbp':
+      return candidateOf(tx, subject, await orgRole(tx, subject, subject.rehirePlan?.departmentId ?? null, 'hrbp'));
   }
 }
 

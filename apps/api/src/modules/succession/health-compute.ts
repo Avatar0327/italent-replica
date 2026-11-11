@@ -11,7 +11,7 @@ import { successionReviewReads } from './ports.js';
 import type { HealthReads, healthMetricReader as MetricReader } from './health-metrics.js';
 import { unsupportedHealthRule } from './health-rule-support.js';
 import { resolveDataScope } from '../permission/scope-resolver.js';
-import { CalcBlocked, CalcObjectFailure } from './calc-contract.js';
+import { CalcBlocked, CalcObjectFailure } from './calc-contract-core.js';
 import { runProjectHealthCompute } from './health-compute-run.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { lockHealthRules } from './health-references.js';

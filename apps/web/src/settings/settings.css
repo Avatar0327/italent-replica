@@ -44,3 +44,30 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.settings-app-filter {
+  min-width: 150px;
+}
+.settings-mou-tree .page-filters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.settings-mou-tree .ant-input-search {
+  width: 260px;
+}
+.settings-mou-tree .ant-select {
+  min-width: 120px;
+}
+.settings-tree-leaf {
+  display: inline-block;
+  width: 24px;
+}
+
+.settings-list-filters {
+  gap: 8px;
+  align-items: start;
+}
+.settings-list-filters .ant-input,
+.settings-list-filters .ant-select {
+  width: 180px;
+}

@@ -217,6 +217,16 @@
       "admin:mou_manage"
     ]
   },
+  "GET /api/tenant/permission/mous/tree": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:mou_manage"
+    ]
+  },
   "GET /api/tenant/permission/person-links/:userId": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -277,6 +287,40 @@
     "scopeQueries": [],
     "trace": [
       "admin:other_settings"
+    ]
+  },
+  "GET /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "b842efd2f3aa",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:profile_manage"
+    ]
+  },
+  "GET /api/tenant/permission/profiles/:id/objects/:objectCode/fields": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "b842efd2f3aa",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:profile_manage"
     ]
   },
   "GET /api/tenant/permission/scope-apps/:appCode": {
@@ -553,6 +597,40 @@
       "code": "NOT_FOUND",
       "error": "d40a65b9992b",
       "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:profile_manage"
+    ]
+  },
+  "PUT /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "f79693720b2f",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "f79693720b2f",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:profile_manage"
+    ]
+  },
+  "PUT /api/tenant/permission/profiles/:id/objects/:objectCode/fields": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "4f3526c07d7e",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "4f3526c07d7e",
+      "status": 400
     },
     "scopeQueries": [],
     "trace": [

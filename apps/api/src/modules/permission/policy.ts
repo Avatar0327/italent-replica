@@ -53,6 +53,7 @@ export const PERMISSION_POLICIES = defineTable('permission', {
   [`GET ${BASE}/scope-policies/:appCode/:objectCode/:targetKind/:targetCode`]: otherSettings,
   [`PUT ${BASE}/scope-policies/:appCode/:objectCode/:targetKind/:targetCode`]: otherSettingsWrite,
   [`GET ${BASE}/mous`]: admin('mou_manage'),
+  [`GET ${BASE}/mous/tree`]: admin('mou_manage'),
   [`GET ${BASE}/mous/:id`]: admin('mou_manage', byId),
   [`POST ${BASE}/mous`]: otherSettingsWrite,
   [`PUT ${BASE}/mous/:id`]: otherSettingsWriteById,
@@ -77,6 +78,17 @@ export const PERMISSION_POLICIES = defineTable('permission', {
   [`PUT ${BASE}/profiles/:id/objects/:objectCode`]: admin('profile_manage', {
     ...byId,
     write: write(none('整对象替换的权限 DTO（512KB 上限）'), 'permission.adminCommand', none('配置对象无范围')),
+  }),
+  // F-474-5 #26：数据操作 / 字段权限弹窗。读当前值；写合并进对象权限后走同一个整对象写出口
+  [`GET ${BASE}/profiles/:id/objects/:objectCode/data-operations`]: admin('profile_manage', byId),
+  [`PUT ${BASE}/profiles/:id/objects/:objectCode/data-operations`]: admin('profile_manage', {
+    ...byId,
+    write: write(none('三个开关的权限 DTO'), 'permission.adminCommand', none('配置对象无范围')),
+  }),
+  [`GET ${BASE}/profiles/:id/objects/:objectCode/fields`]: admin('profile_manage', byId),
+  [`PUT ${BASE}/profiles/:id/objects/:objectCode/fields`]: admin('profile_manage', {
+    ...byId,
+    write: write(none('字段权限 DTO（只含被改字段）'), 'permission.adminCommand', none('配置对象无范围')),
   }),
   [`GET ${BASE}/grantable-profiles`]: admin('user_grant'),
   [`GET ${BASE}/grants`]: admin('user_grant'),

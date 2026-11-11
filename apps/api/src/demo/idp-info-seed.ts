@@ -72,8 +72,10 @@ async function seedIdpAccess(world: DemoWorld) {
   const profiles = await listAll(call, admin, '/api/tenant/permission/profiles');
   const profile = profiles.find((p) => p.code === 'standard_idp_admin');
   if (!profile) throw new Error('演示 IDP 管理员身份缺失');
-  const grants = await listAll(call, admin, `/api/tenant/permission/grants?userId=${admin}`);
-  if (!grants.some((g) => g.profileId === profile.id && g.status !== 'revoked')) {
+  // 点查有效授权（用户 × 身份至多一条），不靠翻页：撤销记录累计超过一页时不会漏看（F-474-5 #22）
+  const query = `userId=${admin}&profileId=${String(profile.id)}&status=active&limit=1`;
+  const held = await as(`permission/grants?${query}`);
+  if (((held.items ?? []) as Json[]).length === 0) {
     await as('permission/grants', 'POST', { userId: admin, profileId: profile.id });
     written++;
   }

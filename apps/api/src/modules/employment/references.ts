@@ -24,13 +24,21 @@ export async function validateNewEmploymentReferences(
   entry = false,
   /** 离职 / 退休落地（R2-T03 §5.1 步骤 2，R-O6）：记录不占用部门、不在某一天“在职”，只校验稳定对象存在且同租户。 */
   terminating = false,
-  /** 历史离职导入（F-139a §4.1）：部门只需在 [入职日, importedUntil) 内每天可用，不按“现在”或 [入职日, ∞) 判。 */
+  /** 历史离职导入（F-493 §4.1）：部门只判设立日，不按“现在”或入职日当天的可用性判。 */
   importedUntil?: string,
 ): Promise<void> {
   if (terminating) return validateTerminatingReferences(tx, ctx, fields);
-  if (importedUntil !== undefined) await assertImportedTenureDepartment(tx, ctx, fields, effectiveDate, importedUntil);
+  if (importedUntil !== undefined) await assertImportedTenureDepartment(tx, ctx, fields, effectiveDate);
   else await assertEmploymentDepartmentAvailable(tx, ctx, fields.departmentId, effectiveDate, entry);
-  await validateEmploymentReferences(tx, ctx, fields, effectiveDate, reporting);
+  await validateEmploymentReferences(
+    tx,
+    ctx,
+    fields,
+    effectiveDate,
+    reporting,
+    effectiveDate,
+    importedUntil !== undefined,
+  );
 }
 
 const JOB_REFERENCES = [
@@ -112,20 +120,21 @@ export async function assertEmploymentDepartmentAvailableWithin(
   if (disabled && (to === null || disabled.disabledOn < to)) throw departmentDisabled(disabled, entryDate);
 }
 
-/** 历史离职导入的部门校验（设计 §4.1）：设立日、存在性按入职日；可用性按 [入职日, 离职生效日) 整段。 */
+/**
+ * 历史离职导入的部门校验（F-493 设计 §4.1，DEC-839③）：只判设立日——入职日不得早于部门最早版本；
+ * 部门在历史任职期间是否停用不拦（历史数据按事实录入），入职日当天的 assertOrg 也一并不判（validateEmploymentReferences 的 skipOrg）。
+ * 将来对这些记录做“取消离职”时由 EMPLOYMENT_DEPARTMENT_DISABLED 兜住（exit-cancel-intervals）。
+ */
 async function assertImportedTenureDepartment(
   tx: Tx,
   ctx: EmploymentContext,
   fields: PresetFields,
   entryDate: string,
-  until: string,
 ): Promise<void> {
   const departmentId = fields.departmentId;
   if (!departmentId) return;
   await lockOrganizationSettings(tx, ctx.tenantId);
   await assertNotBeforeFounded(tx, ctx.tenantId, departmentId, entryDate);
-  await assertEmploymentDepartmentAvailableWithin(tx, ctx, departmentId, entryDate, until, entryDate);
-  await assertOrg(tx, ctx.tenantId, departmentId, entryDate);
 }
 
 /**
@@ -175,11 +184,13 @@ export async function validateEmploymentReferences(
   effectiveDate: string,
   reporting?: ReportingCheck,
   managerAsOf = effectiveDate,
+  /** 历史离职导入已按设立日判过部门，不再按入职日要求部门当天存在 / 启用（DEC-839③）。 */
+  skipDepartmentAsOf = false,
 ): Promise<void> {
   const tenantId = ctx.tenantId;
   await validateEmploymentForm(tx, tenantId, fields.employmentForm);
   await validateEmploymentType(tx, tenantId, fields.employmentType);
-  if (fields.departmentId) await assertOrg(tx, tenantId, fields.departmentId, effectiveDate);
+  if (fields.departmentId && !skipDepartmentAsOf) await assertOrg(tx, tenantId, fields.departmentId, effectiveDate);
   const position = fields.positionId
     ? await requiredJob(tx, tenantId, 'positions', fields.positionId, effectiveDate)
     : undefined;

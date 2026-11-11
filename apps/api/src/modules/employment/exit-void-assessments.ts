@@ -18,7 +18,7 @@ import { schedulerAwareContext } from '../approval/context.js';
 import { activeInstanceOf } from '../approval/store.js';
 import { inFlightAssessments } from './assessment-in-flight.js';
 import { loadAssessment, saveAssessment } from './assessment-store.js';
-import { exitPostEffectHooks, type ExitEffectiveEvent } from './exit-confirmation.js';
+import { exitPostEffectHooks, type ExitEffectiveEvent } from './exit-post-effect-hooks.js';
 import { exitTerminationOf, terminates } from './exit-termination-policy.js';
 import type { EmploymentContext } from './types.js';
 

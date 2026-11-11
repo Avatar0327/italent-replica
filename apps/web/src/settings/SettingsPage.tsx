@@ -9,6 +9,7 @@ import { UsersPage } from './UsersPage.js';
 import { ProfilesPage } from './ProfilesPage.js';
 import { GrantsPage } from './GrantsPage.js';
 import { MousPage } from './MousPage.js';
+import { AdminsPage } from './AdminsPage.js';
 import { AuditPage } from './AuditPage.js';
 import { m } from './messages.js';
 import './settings.css';
@@ -52,6 +53,7 @@ export function SettingsPage() {
       {code === 'permission.user_grant' && (
         <GrantsPage {...props} canScope={settingsAccess(adminMenus, 'other.mou_settings').editable} />
       )}
+      {code === 'permission.admins' && <AdminsPage {...props} />}
       {code === 'permission.mous' && <MousPage {...props} />}
       {code === 'audit.business' && <AuditPage />}
     </div>

@@ -16,10 +16,13 @@ import {
   tenantLocalDate,
 } from '@italent/domain';
 import { withTenant } from '@italent/db';
+import { attachmentHeader } from '../analytics/stat-xlsx.js';
+import { XLSX_CONTENT_TYPE } from '../analytics/stat-report-export.js';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
 import { readCarrierAttachment, respondAttachment } from '../attachments/carrier-read.js';
+import { composeExit, disclosing, selectEmploymentRead } from './approval-content.js';
 import { exitActions } from './exit-actions.js';
 import { handoverRowActions } from './exit-handover-batch.js';
 import { AppError } from '../../errors.js';
@@ -30,6 +33,7 @@ import { registerSettingValidator } from '../tenant-settings/service.js';
 import {
   EMPLOYEE_OBJECT,
   EMPLOYMENT_OBJECT,
+  functionContext,
   jsonBody,
   pageQuery,
   readContext,
@@ -44,7 +48,10 @@ import {
   type EmploymentContext,
 } from './context.js';
 import { rawImportRows, withFailedImportLog } from '../../audit/record.js';
-import { importExits, parseExitImportBody, previewExitImport, requireExitImportAccess } from './exit-import.js';
+import { parseExitImportBody, requireExitImportAccess, submitExitImport } from './exit-import.js';
+import { exitImportErrorFile } from './exit-import-download.js';
+import { requireExitImportButton, TEMPLATE_FILE_NAME, templateWorkbook } from './exit-import-file.js';
+import { wakeExitImports } from './exit-import-worker.js';
 import { createExitApplication, parseExitPatch, updateExitFields } from './exit-application.js';
 import {
   cancelExit,
@@ -254,21 +261,14 @@ function registerExitCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 }
 
 /**
- * F-139a 历史离职人员导入（设计 §3 / §7）：preview 不写数据、不进命令台账；import 整批一个事务，必须带 Idempotency-Key。
- * 权限先于请求体与幂等键校验（无权者不应得到任何逐行结果）。
+ * F-493 历史离职人员导入（设计 §4.1）：POST 只提交批次（202），逐行执行在后台执行器里。
+ * 权限先于请求体与幂等键校验（无权者不应得到任何逐行结果）；没有预览接口。
  */
 /** 人员对象的数据范围（与任职记录分开解析，同 POST /employees 的口径）。 */
 const employeeScopeOf = (deps: TenantRouteDeps, ctx: EmploymentContext) =>
   resolveModuleScope(deps, ctx, tenantLocalDate(ctx.now, ctx.timezone), EMPLOYEE_OBJECT);
 
 function registerExitImportRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  router.post('/exits/import/preview', async (c) => {
-    const ctx = await readContext(c, deps, 'object.create');
-    const body = parseExitImportBody(await jsonBody(c));
-    await requireExitImportAccess(ctx, body.rows, await employeeScopeOf(deps, ctx));
-    const result = await withTenant(deps.db, ctx.tenantId, (tx) => previewExitImport(tx, ctx, body));
-    return c.json(result, 200);
-  });
   router.post('/exits/import', async (c) => {
     const ctx = await readContext(c, deps, 'object.create');
     const raw = await jsonBody(c);
@@ -286,11 +286,35 @@ function registerExitImportRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
         deps,
         ctx,
         body,
-        async (tx, context) => ({ status: 201, body: await importExits(tx, context, body) }),
+        (tx, context) =>
+          submitExitImport(tx, context, body, (db) =>
+            wakeExitImports(db, context.tenantId, deps.clock, deps.authorize),
+          ),
         { guard: exitImportGuard(deps, ctx, body.rows), project: (receipt) => receipt },
       );
     });
   });
+
+  // 模板：固定形状的只有表头的 xlsx；功能权 + 导入按钮（S3c，设计 §3.1）。
+  router.get('/exits/import/template', async (c) => {
+    const ctx = await functionContext(c, deps, 'object.create');
+    await requireExitImportButton(ctx);
+    return xlsxResponse(c, TEMPLATE_FILE_NAME, templateWorkbook());
+  });
+
+  // 错误文件：只给提交人，每次下载复核当前权限并按字段权裁剪（S3c，设计 §8.2）。
+  router.get('/exits/import/batches/:id/error-file', async (c) => {
+    const ctx = await functionContext(c, deps, 'object.create');
+    const file = await exitImportErrorFile(deps, ctx, uuidParam(c, 'id'));
+    return xlsxResponse(c, file.fileName, file.content);
+  });
+}
+
+function xlsxResponse(c: Context<TenantEnv>, fileName: string, content: Buffer) {
+  c.header('Content-Type', XLSX_CONTENT_TYPE);
+  c.header('Content-Disposition', attachmentHeader(fileName));
+  c.header('Cache-Control', 'no-store');
+  return c.body(new Uint8Array(content));
 }
 
 const batchSchema = z.strictObject({
@@ -606,18 +630,21 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
   // 详情：范围外 / 不存在 / 不是离职单同一个 404；先按任职业务口径（DEC-177）确认可见，再取离职详情
   // 详情与附件下载共用的取值：按钮 / 范围 / 读权限同一套判定（F-479 §3.3 “与详情接口同一个取值函数”）
-  const readExitDetail = async (c: Context<TenantEnv>) => {
+  // withHandled：详情入口为 true——已办审批人读本人办理时冻结的内容，不套用其当前数据范围（F-476 P4，DEC-834④）
+  const readExitDetail = async (c: Context<TenantEnv>, withHandled = false) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
+    const read = withHandled ? await selectEmploymentRead(deps, ctx, id, ['leave']) : null;
+    const scope = read?.frozen ? undefined : ctx.scope;
     const today = tenantLocalDate(ctx.now, ctx.timezone);
     const detail = await withTenant(deps.db, ctx.tenantId, async (tx) =>
-      (await loadEmploymentBusiness(tx, ctx.tenantId, id, today, ctx.scope))
-        ? loadExitDetail(tx, ctx.tenantId, id, ctx.scope)
+      (await loadEmploymentBusiness(tx, ctx.tenantId, id, today, scope))
+        ? loadExitDetail(tx, ctx.tenantId, id, scope)
         : null,
     );
     if (!detail) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
-    return { ctx, detail, show: await viewableIn(deps, ctx) };
+    return { ctx, detail, show: await viewableIn(deps, ctx), read };
   };
   // F-479 §3.3 HR 载体下载：无附件字段查看权 / 文件不属于本单 / 不是 bound 一律 404“附件不存在”；缺详情按钮 403（readPageContext）
   router.get('/exits/:id/attachments/:fileId/content', async (c) => {
@@ -630,15 +657,21 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     return respondAttachment(c, row, bytes);
   });
   router.get('/exits/:id', async (c) => {
-    const { ctx, detail, show } = await readExitDetail(c);
-    // 动作随“状态”字段权裁剪（依赖表登记 actions）：无状态查看权的人拿不到，也就无法由动作反推状态
+    const { ctx, detail, show: current, read } = await readExitDetail(c, true);
+    // F-476 P4：已办审批人读办理时冻结的离职内容（逐路径按披露集合取舍），其余读现值；流程事实始终是现值
+    const frozen = read?.frozen ?? null;
+    const shown = (frozen ? composeExit(detail, frozen.content) : detail) as typeof detail;
+    const show = frozen ? disclosing(current, frozen.allowed) : current;
+    // 动作随“状态”字段权裁剪（依赖表登记 actions）：无状态查看权的人拿不到，也就无法由动作反推状态；动作是流程事实，取现值
     const actions = (await exitActions(deps, ctx, [detail], { withHandle: false })).get(detail.id) ?? [];
-    if (detail.activation?.details) {
+    const contentView = read?.contentView;
+    if (shown.activation?.details) {
       const details = await withTenant(deps.db, ctx.tenantId, (tx) =>
-        projectExitFailureDetails(tx, ctx, detail.activation!.details!, { has: show.employment }),
+        projectExitFailureDetails(tx, ctx, shown.activation!.details!, { has: show.employment }, frozen !== null),
       );
-      return c.json(trimExitDetail({ ...detail, actions, activation: { ...detail.activation, details } }, show));
+      const body = trimExitDetail({ ...shown, actions, activation: { ...shown.activation, details } }, show);
+      return c.json({ ...body, contentView });
     }
-    return c.json(trimExitDetail({ ...detail, actions }, show));
+    return c.json({ ...trimExitDetail({ ...shown, actions }, show), contentView });
   });
 }

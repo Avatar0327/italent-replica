@@ -11,6 +11,8 @@ export const PERMISSION_DECLARED: ModuleDeclared = {
     'GET /api/tenant/permission/mous/:id',
     'GET /api/tenant/permission/profiles/:id',
     'GET /api/tenant/permission/profiles/:id/data-scopes/:appCode',
+    'GET /api/tenant/permission/profiles/:id/objects/:objectCode/data-operations',
+    'GET /api/tenant/permission/profiles/:id/objects/:objectCode/fields',
     'GET /api/tenant/permission/users/:userId',
     'POST /api/tenant/permission/grants/:id/revoke',
     'POST /api/tenant/permission/users/:userId/remove',

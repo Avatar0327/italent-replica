@@ -66,6 +66,8 @@ export async function listNotifications(tx: Tx, tenantId: string, userId: string
       template,
       title: rendered?.title ?? null,
       body: rendered?.body ?? null,
+      // 发送人显示名（F-493 §8.1，DEC-839②）：登记时快照在 payload 里，改名不回溯；系统消息为 null
+      sender: rendered?.sender ?? null,
       status: String(row.status),
       createdAt: iso(row.created_at),
     };

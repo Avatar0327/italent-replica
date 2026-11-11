@@ -47,6 +47,9 @@ export const EXPRESSION_SOURCE_TYPES: Readonly<Record<ApproverExpression, Approv
   // handover_hr_admin 先例归 identity（设计 §5.2 写“类型 role”，偏离见 PR 描述）
   subject_employee: 'object_field',
   system_admin: 'identity',
+  // F-478 S4：返聘后直线经理取返聘计划里的人（对象字段，同 direct_manager）；返聘后 HRBP 取返聘计划部门的 HRBP（部门）
+  rehire_direct_manager: 'object_field',
+  rehire_department_hrbp: 'department',
 };
 /** 预置定义使用同一结构，函数不接收网络输入、不提供字符串兼容路径。 */
 export const approverSource = (value: ApproverExpression): ApproverSource => ({

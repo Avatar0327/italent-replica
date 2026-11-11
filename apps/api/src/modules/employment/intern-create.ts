@@ -28,7 +28,8 @@ import {
   type InternProfilePlan,
 } from './intern-profile.js';
 import { createEmployee, employeeName } from './employees.js';
-import { entryContractSchema, generateEntryContract, requireContractCreateAccess } from './entry-contract.js';
+import { generateEntryContract, requireContractCreateAccess } from './entry-contract.js';
+import { entryContractSchema } from './entry-contract-schema.js';
 import { lockEmploymentEmployee } from './record-store.js';
 import type { EntryOptions } from './employee-status.js';
 import type { BusinessKind, EmploymentContext, NormalizedEmploymentInput } from './types.js';

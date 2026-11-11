@@ -29,16 +29,28 @@ export function designerSourcesQuery(query: Record<string, string>) {
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '审批来源候选查询参数不合法');
   return parsed.data;
 }
-/** 命名来源（没有库表对象，id 即来源值）：系统管理员适用任一类型；主体员工本人只给单主体类型（设计 §8.2）。 */
+/**
+ * 命名来源（没有库表对象，id 即来源值）：系统管理员适用任一类型；主体员工本人只给单主体类型（设计 §8.2）；
+ * 返聘后直线经理只给退休类型，选了别的类型保存时 422（设计 §5.3）。
+ */
 function namedRows(query: ReturnType<typeof designerSourcesQuery>) {
   const type = query.approvalType ? APPROVAL_TYPES[query.approvalType] : undefined;
   const named =
     query.type === 'identity'
-      ? { id: 'system_admin', name: '系统管理员', applicable: true }
-      : { id: 'subject_employee', name: '主体员工本人', applicable: !type || allowsSubjectEmployee(type) };
-  return named.applicable
-    ? sql`SELECT ${named.id}::text AS id,${named.name}::text AS name,true AS enabled,NULL::uuid AS parent_id`
-    : sql`SELECT NULL::text AS id,NULL::text AS name,true AS enabled,NULL::uuid AS parent_id WHERE false`;
+      ? [{ id: 'system_admin', name: '系统管理员', applicable: true }]
+      : [
+          { id: 'subject_employee', name: '主体员工本人', applicable: !type || allowsSubjectEmployee(type) },
+          { id: 'rehire_direct_manager', name: '返聘后直线经理', applicable: type?.code === 'retirement' },
+        ];
+  const rows = named.filter((entry) => entry.applicable);
+  if (!rows.length)
+    return sql`SELECT NULL::text AS id,NULL::text AS name,true AS enabled,NULL::uuid AS parent_id WHERE false`;
+  return sql.join(
+    rows.map(
+      (row) => sql`SELECT ${row.id}::text AS id,${row.name}::text AS name,true AS enabled,NULL::uuid AS parent_id`,
+    ),
+    sql` UNION ALL `,
+  );
 }
 async function candidateRows(tx: Tx, tenantId: string, query: ReturnType<typeof designerSourcesQuery>) {
   if (query.type === 'object_field') return namedRows(query);

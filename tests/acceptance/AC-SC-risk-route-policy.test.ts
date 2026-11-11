@@ -6,6 +6,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { riskWorld } from './AC-SC-risk-support.js';
 import { SC_BASE, SC_NOW } from './AC-SC-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { EVIDENCE_SCAN_TIMEOUT_MS } from './support/route-policy/evidence-timeout.js';
 import { scanPrimitives } from './support/route-policy/primitives.js';
 import {
   closureText,
@@ -15,24 +16,30 @@ import {
   scanRegistrations,
 } from './support/route-policy/scan.js';
 
-it('AC-SC-risk-route-policy：风险列表的源码闭包只承载查看入口，不展开写结果适配器的授权分支', () => {
-  const path = `${SC_BASE}/risk-results`;
-  const index = indexSources();
-  const { module, dirs } = moduleDirs(path);
-  const hits = matchRegistrations(scanRegistrations(index), 'GET', path, dirs);
-  expect(hits).toHaveLength(1);
-  const facts = scanPrimitives(
-    {
-      deep: hits.map((hit) => closureText(index, hit, 6)).join('\n'),
-      near: hits.map((hit) => closureText(index, hit, 3)).join('\n'),
-    },
-    'GET',
-    module,
-    path,
-  );
-  expect(facts.object).toEqual(['objectContext']);
-  expect(facts.button ?? []).toEqual([]);
-});
+it(
+  'AC-SC-risk-route-policy：风险列表的源码闭包只承载查看入口，不展开写结果适配器的授权分支',
+  () => {
+    const path = `${SC_BASE}/risk-results`;
+    const index = indexSources();
+    const { module, dirs } = moduleDirs(path);
+    const hits = matchRegistrations(scanRegistrations(index), 'GET', path, dirs);
+    expect(hits).toHaveLength(1);
+    const facts = scanPrimitives(
+      {
+        deep: hits.map((hit) => closureText(index, hit, 6)).join('\n'),
+        near: hits.map((hit) => closureText(index, hit, 3)).join('\n'),
+      },
+      'GET',
+      module,
+      path,
+    );
+    expect(facts.object).toEqual(['objectContext']);
+    expect(facts.button ?? []).toEqual([]);
+    // F-513：全树 scanRegistrations（942 个文件）实测约 15～19 秒（load 60～107），CI 分片更慢，越过全局 30 秒；
+    // 只放宽本用例，沿用证据门禁族的 120 秒取值（见 evidence-timeout.ts），断言不变。
+  },
+  EVIDENCE_SCAN_TIMEOUT_MS,
+);
 
 let handle: DbHandle;
 // 与 B4 其余验收一致：完整迁移在多工作区并行时可能超过公共建库的 60 秒。

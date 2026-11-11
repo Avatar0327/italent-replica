@@ -50,8 +50,13 @@ for (const [code, title] of menus) {
     await expect(page.locator('.ant-table')).toBeVisible();
     if (code === 'users.internal') await page.screenshot({ path: '/tmp/fe-r1d2-users.png', fullPage: true });
     await page.locator('.ant-table-tbody .ant-btn-link').first().click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+    if (code === 'permission.profiles') {
+      await expect(page.getByRole('heading', { name: '对象权限', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: /^返\s*回$/ }).click();
+    } else {
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+    }
     const create = page.getByRole('button', { name: /^新\s*增$/ });
     if (!['users.internal', 'audit.business'].includes(code!)) {
       await create.click();
