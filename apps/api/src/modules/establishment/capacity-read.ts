@@ -288,28 +288,42 @@ export async function batchLocalSums(
       ),
       sql`, `,
     );
+    // 递归每一步都从当前节点出发按索引查下级（LATERAL + OFFSET 0 / LIMIT 1 不让规划器改写成整表连接）：批量导入
+    // 后统计信息还没收集时，规划器把层级链接估成 1 行，整表连接的写法退化成每步重扫工作表与全部现行版本，1 万个
+    // 下级扫约 1 亿行（F-476 P2 第 5 轮实测）。查下级时 ORDER BY 与 org_hierarchy_tenant_parent 同序，无统计时
+    // 规划器才会选这个索引，而不是按主键前缀扫全租户链接再过滤。下级须是它在 asOf 的现行版本且未失效，口径同前。
     const result = await tx.execute(sql`
       WITH RECURSIVE roots(capacity_id, org_id, scheme_id, period_start) AS (VALUES ${values}),
-      orgs AS (
-        SELECT DISTINCT ON (org_id) id,org_id,stop_date FROM org_versions
-        WHERE tenant_id=${tenantId} AND start_date<=${asOf}::date ORDER BY org_id,start_date DESC,version_no DESC
-      ), tree(capacity_id, org_id) AS (
+      tree(capacity_id, org_id) AS (
         SELECT capacity_id,org_id FROM roots UNION
         SELECT tree.capacity_id,child.org_id FROM tree
-        JOIN org_hierarchy_links link ON link.tenant_id=${tenantId}
-          AND link.parent_org_id=tree.org_id AND link.dimension='admin'
-        JOIN orgs child ON child.id=link.version_id AND child.stop_date>=${asOf}::date
-      ), versions AS (
-        SELECT DISTINCT ON (object_id) object_id,local_capacity FROM establishment_versions
-        WHERE tenant_id=${tenantId} AND start_date<=${asOf}::date
-        ORDER BY object_id,start_date DESC,version_no DESC
+        CROSS JOIN LATERAL (
+          SELECT link.version_id FROM org_hierarchy_links link
+          WHERE link.tenant_id=${tenantId} AND link.dimension='admin' AND link.parent_org_id=tree.org_id
+          ORDER BY link.dimension,link.parent_org_id OFFSET 0
+        ) link
+        CROSS JOIN LATERAL (
+          SELECT v.org_id FROM org_versions v
+          WHERE v.tenant_id=${tenantId} AND v.id=link.version_id
+            AND v.start_date<=${asOf}::date AND v.stop_date>=${asOf}::date
+            AND v.id=(
+              SELECT s.id FROM org_versions s WHERE s.tenant_id=${tenantId} AND s.org_id=v.org_id
+                AND s.start_date<=${asOf}::date ORDER BY s.start_date DESC,s.version_no DESC LIMIT 1
+            )
+          OFFSET 0
+        ) child
       )
       SELECT r.capacity_id AS id, COUNT(DISTINCT tree.org_id)::int AS count,
         COALESCE(SUM(v.local_capacity),0)::text AS total FROM roots r
       JOIN tree ON tree.capacity_id=r.capacity_id
       LEFT JOIN establishment_objects o ON o.tenant_id=${tenantId} AND o.org_id=tree.org_id
         AND o.scheme_id=r.scheme_id AND o.period_start=r.period_start
-      LEFT JOIN versions v ON v.object_id=o.id GROUP BY r.capacity_id
+      LEFT JOIN LATERAL (
+        SELECT local_capacity FROM establishment_versions ev
+        WHERE ev.tenant_id=${tenantId} AND ev.object_id=o.id AND ev.start_date<=${asOf}::date
+        ORDER BY ev.start_date DESC,ev.version_no DESC LIMIT 1
+      ) v ON true
+      GROUP BY r.capacity_id
     `);
     for (const row of rowsOf<{ id: string; count: number; total: string }>(result)) {
       if (row.count > 10001) throw new AppError('SERVICE_UNAVAILABLE', '组织行政范围超过单次处理预算');
