@@ -24,7 +24,7 @@ const notice = (id: string, extra = {}) => ({
   createdAt: '2026-11-05T20:30:00Z',
   ...extra,
 });
-const reply = (items: unknown[], page = 1, pageSize = 20) => Response.json({ items, page, pageSize });
+const reply = (items: unknown[], page = 1, pageSize = 50) => Response.json({ items, page, pageSize });
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 let fetcher: ReturnType<typeof vi.fn>;
@@ -144,19 +144,40 @@ it('FE-08 关闭响应到达后再次打开重新请求，卸载响应丢弃', a
 });
 
 it.each([
-  [404, 'EXIT_IMPORT_FILE_EXPIRED', '文件已过期'],
-  [403, 'FORBIDDEN', '下载失败，请重试'],
-  [500, 'SERVER_ERROR', '下载失败，请重试'],
-])('FE-08 下载错误 %s 仅中文提示', async (status, code, message) => {
+  [404, 'NOT_FOUND', 'EXIT_IMPORT_FILE_EXPIRED', '文件已过期'],
+  [404, 'NOT_FOUND', 'EXIT_IMPORT_NO_ERROR_FILE', '下载失败，请重试'],
+  [404, 'NOT_FOUND', undefined, '下载失败，请重试'],
+  [403, 'FORBIDDEN', undefined, '下载失败，请重试'],
+  [500, 'SERVER_ERROR', undefined, '下载失败，请重试'],
+])('FE-08 真实错误信封 %s %s %s 仅中文提示', async (status, code, reason, message) => {
   fetcher
     .mockResolvedValueOnce(reply([notice('batch')]))
-    .mockResolvedValueOnce(Response.json({ error: { code, message: code } }, { status: Number(status) }));
+    .mockResolvedValueOnce(
+      Response.json({ error: { code, message: code, details: reason ? { reason } : undefined } }, { status }),
+    );
   await render();
   await click('消息');
   await click('查看详情');
   expect(fetcher.mock.calls[1]![0]).toBe('/api/tenant/employment/exits/import/batches/batch/error-file');
   expect(document.querySelector('[role=alert]')?.textContent).toContain(message);
   expect(document.body.textContent).not.toContain(code);
+  if (reason) expect(document.body.textContent).not.toContain(reason);
+});
+
+it('FE-08 OFFSET 每页50条，插入新通知后第二页重叠，首次顺序不重复不遗漏', async () => {
+  const existing = Array.from({ length: 60 }, (_, index) => notice(`合成${index}`));
+  fetcher.mockResolvedValueOnce(reply(existing.slice(0, 50)));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  await render();
+  await click('消息');
+  const updated = [notice('新通知'), ...existing];
+  fetcher.mockResolvedValueOnce(reply(updated.slice(50, 100), 2));
+  await click('加载更多');
+  const titles = [...document.querySelectorAll('.notification-list article h3')].map((node) => node.textContent);
+  expect(titles).toEqual(existing.map((item) => item.title));
+  expect(new Set(titles).size).toBe(60);
+  expect(button('加载更多')).toBeUndefined();
+  expect(errors.mock.calls.filter((args) => /same key|unique.*key/i.test(args.join(' ')))).toEqual([]);
 });
 
 it('FE-08 blob 下载取响应文件名，重复点击只发一次，释放 URL', async () => {
