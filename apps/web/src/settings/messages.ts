@@ -24,7 +24,6 @@ export const m = {
   admins: '管理员',
   selectPage: '选择当前页',
   selectRow: '选择此行',
-  pageCandidates: '仅列出当前页可见的候选项，可清空筛选后重新选择。',
   accountSearch: '姓名 / 登录邮箱',
   personSearch: '姓名 / 邮箱',
   listEmail: '邮箱',

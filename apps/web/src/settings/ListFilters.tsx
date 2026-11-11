@@ -8,7 +8,6 @@ export interface ListFilterField {
   options?: { value: string; label: string }[];
   max?: number;
   pattern?: RegExp;
-  pageCandidates?: boolean;
   candidates?: string;
 }
 export function ListFilters({ fields, apply }: { fields: ListFilterField[]; apply(values: ListFilterValues): void }) {
@@ -38,7 +37,6 @@ export function ListFilters({ fields, apply }: { fields: ListFilterField[]; appl
           key={field.name}
           name={field.name}
           label={field.label}
-          tooltip={field.pageCandidates ? m.pageCandidates : undefined}
           rules={field.pattern ? [{ pattern: field.pattern, message: m.invalid }] : []}
         >
           {filterControl(field)}
