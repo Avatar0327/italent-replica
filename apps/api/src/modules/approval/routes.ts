@@ -115,6 +115,7 @@ import {
 } from './store.js';
 import { policedSub } from '../../route-policy/index.js';
 import { APPROVAL_POLICIES } from './policy.js';
+import { typedContentOf } from './typed-content.js';
 
 type C = Context<TenantEnv>;
 
@@ -147,7 +148,12 @@ function readCtx(c: C, deps: TenantRouteDeps): ApprovalContext {
 }
 
 function writeCtx(c: C, deps: TenantRouteDeps): ApprovalContext {
-  return { ...readCtx(c, deps), expectedRevision: revision(c), exitEditAuthorize: deps.authorize };
+  return {
+    ...readCtx(c, deps),
+    expectedRevision: revision(c),
+    exitEditAuthorize: deps.authorize,
+    handlingAuthorize: deps.authorize,
+  };
 }
 
 /** 锁冲突（死锁、序列化失败、锁超时）返回可识别的 409，由客户端刷新后显式重提，不自动盲重试（清单 11）。 */
@@ -228,12 +234,15 @@ async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, wit
     data.content.mode === 'frozen' && data.instance.businessType === 'offer_batch'
       ? await getModuleViewableFields(deps, ctx, OFFER_OBJECT)
       : undefined;
-  return { ctx, view: detailView(data, ctx.userId, await detailViewable(deps, ctx, data), pathFacts, rowViewable) };
+  const viewable = await detailViewable(deps, ctx, data);
+  return { ctx, data, view: detailView(data, ctx.userId, viewable, pathFacts, rowViewable) };
 }
 
 async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
-  const { ctx, view } = await detailViewOf(c, deps, instanceId, true);
-  return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view)));
+  const { ctx, data, view } = await detailViewOf(c, deps, instanceId, true);
+  const named = await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view));
+  // F-476 P8：业务内容不在表单里的类型，已办读冻结份时附类型化内容（缺份 503）
+  return c.json({ ...named, ...(await typedContentOf(deps, ctx, data)) });
 }
 
 /**

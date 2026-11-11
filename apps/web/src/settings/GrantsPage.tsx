@@ -12,14 +12,22 @@ import type { SettingsProps } from './SettingsPage.js';
 import { useResource } from './useResource.js';
 import { useWrite } from './useWrite.js';
 import { m } from './messages.js';
+import {
+  useSettingsList,
+  useRowSelection,
+  columnGear,
+  mouOptions,
+  mouText,
+  textValue,
+  uniqueOptions,
+} from './list-support.js';
+import { ListFilters } from './ListFilters.js';
 import { useGrantReceipt } from './grant-receipt.js';
 export function GrantsPage({ title, editable, canScope }: SettingsProps & { canScope: boolean }) {
   const receipt = useGrantReceipt();
-  const list = useResource<PageResult<Grant>>(`${base}/grants`);
-  const options = useResource<PageResult<Pick<Profile, 'id' | 'name' | 'code'>>>(
-    editable ? `${base}/grantable-profiles` : null,
-  );
-  const [page, setPage] = useState({ page: 1, pageSize: 15 });
+  const list = useSettingsList<Grant>('grants');
+  const { page, setPage } = list;
+  const selection = useRowSelection(list.data?.items ?? [], (row) => row.id);
   const [selected, setSelected] = useState<Grant>();
   const [scopeUser, setScopeUser] = useState<string>();
   const [form, setForm] = useState<'create' | 'revoke'>();
@@ -36,7 +44,8 @@ export function GrantsPage({ title, editable, canScope }: SettingsProps & { canS
         loading={list.loading}
         error={list.error}
         retry={list.refresh}
-        data={{ items: items.slice((page.page - 1) * page.pageSize, page.page * page.pageSize), total: items.length }}
+        data={list.data ?? { items: [] }}
+        filters={<GrantFilters items={items} apply={list.apply} />}
         actions={
           <>
             <Button onClick={list.refresh}>{m.refresh}</Button>
@@ -52,10 +61,13 @@ export function GrantsPage({ title, editable, canScope }: SettingsProps & { canS
             )}
           </>
         }
-        columns={grantColumns(options.data?.items ?? [], editable, canScope, setSelected, setScopeUser, (row) => {
-          setSelected(row);
-          setForm('revoke');
-        })}
+        columns={[
+          ...selection,
+          ...grantColumns(editable, canScope, setSelected, setScopeUser, (row) => {
+            setSelected(row);
+            setForm('revoke');
+          }),
+        ]}
       />
       {selected && !form && <GrantDetails selected={selected} close={() => setSelected(undefined)} />}
       {scopeUser && (
@@ -165,7 +177,6 @@ function GrantForm({
 }
 
 function grantColumns(
-  profiles: Pick<Profile, 'id' | 'name' | 'code'>[],
   editable: boolean,
   canScope: boolean,
   setSelected: (row: Grant) => void,
@@ -174,23 +185,23 @@ function grantColumns(
 ) {
   return [
     {
-      title: m.userId,
-      dataIndex: 'userId',
+      title: m.displayName,
+      dataIndex: 'userName',
+      width: 158,
       render: (value: string, row: Grant) => (
         <Button type="link" onClick={() => setSelected(row)}>
-          {value}
+          {textValue(value)}
         </Button>
       ),
     },
-    {
-      title: m.profileId,
-      dataIndex: 'profileId',
-      render: (id: string) => profiles.find((item) => item.id === id)?.name ?? id,
-    },
-    { title: m.source, dataIndex: 'source', render: (value: string) => <Status value={value} /> },
-    { title: m.status, dataIndex: 'status', render: (value: string) => <Status value={value} /> },
+    { title: m.listEmail, dataIndex: 'userEmail', width: 218, render: textValue },
+    { title: m.phone, width: 158, render: () => m.empty },
+    { title: m.profileId, dataIndex: 'profileName', width: 158, render: textValue },
+    { title: m.mous, dataIndex: 'mous', width: 158, render: mouText },
+    { title: m.product, dataIndex: 'apps', width: 158, render: (apps?: string[]) => apps?.join('、') || m.empty },
     {
       title: m.operation,
+      width: 160,
       render: (_: unknown, row: Grant) => (
         <Space>
           {canScope && (
@@ -211,6 +222,7 @@ function grantColumns(
         </Space>
       ),
     },
+    columnGear,
   ];
 }
 
@@ -234,6 +246,32 @@ function GrantDetails({ selected, close }: { selected: Grant; close(): void }) {
               ]}
             />
           ),
+        },
+      ]}
+    />
+  );
+}
+
+function GrantFilters({ items, apply }: { items: Grant[]; apply(values: Record<string, string>): void }) {
+  return (
+    <ListFilters
+      apply={apply}
+      fields={[
+        { name: 'q', label: m.personSearch },
+        {
+          name: 'profileId',
+          label: m.profileId,
+          pageCandidates: true,
+          options: uniqueOptions(items.map((row) => ({ value: row.profileId, label: row.profileName || m.empty }))),
+        },
+        { name: 'mouId', label: m.mous, pageCandidates: true, options: mouOptions(items) },
+        {
+          name: 'status',
+          label: m.status,
+          options: [
+            { value: 'active', label: m.active },
+            { value: 'revoked', label: m.revoked },
+          ],
         },
       ]}
     />

@@ -45,7 +45,8 @@ import {
   type EmploymentContext,
 } from './context.js';
 import { rawImportRows, withFailedImportLog } from '../../audit/record.js';
-import { importExits, parseExitImportBody, previewExitImport, requireExitImportAccess } from './exit-import.js';
+import { parseExitImportBody, requireExitImportAccess, submitExitImport } from './exit-import.js';
+import { wakeExitImports } from './exit-import-worker.js';
 import { createExitApplication, parseExitPatch, updateExitFields } from './exit-application.js';
 import {
   cancelExit,
@@ -255,21 +256,14 @@ function registerExitCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 }
 
 /**
- * F-139a 历史离职人员导入（设计 §3 / §7）：preview 不写数据、不进命令台账；import 整批一个事务，必须带 Idempotency-Key。
- * 权限先于请求体与幂等键校验（无权者不应得到任何逐行结果）。
+ * F-493 历史离职人员导入（设计 §4.1）：POST 只提交批次（202），逐行执行在后台执行器里。
+ * 权限先于请求体与幂等键校验（无权者不应得到任何逐行结果）；没有预览接口。
  */
 /** 人员对象的数据范围（与任职记录分开解析，同 POST /employees 的口径）。 */
 const employeeScopeOf = (deps: TenantRouteDeps, ctx: EmploymentContext) =>
   resolveModuleScope(deps, ctx, tenantLocalDate(ctx.now, ctx.timezone), EMPLOYEE_OBJECT);
 
 function registerExitImportRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  router.post('/exits/import/preview', async (c) => {
-    const ctx = await readContext(c, deps, 'object.create');
-    const body = parseExitImportBody(await jsonBody(c));
-    await requireExitImportAccess(ctx, body.rows, await employeeScopeOf(deps, ctx));
-    const result = await withTenant(deps.db, ctx.tenantId, (tx) => previewExitImport(tx, ctx, body));
-    return c.json(result, 200);
-  });
   router.post('/exits/import', async (c) => {
     const ctx = await readContext(c, deps, 'object.create');
     const raw = await jsonBody(c);
@@ -287,7 +281,7 @@ function registerExitImportRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
         deps,
         ctx,
         body,
-        async (tx, context) => ({ status: 201, body: await importExits(tx, context, body) }),
+        (tx, context) => submitExitImport(tx, context, body, (db) => wakeExitImports(db, context.tenantId, deps.clock)),
         { guard: exitImportGuard(deps, ctx, body.rows), project: (receipt) => receipt },
       );
     });
