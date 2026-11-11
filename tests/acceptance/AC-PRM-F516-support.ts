@@ -40,7 +40,12 @@ export async function f516World(db: Db) {
       !(request.action === 'object.view' && request.resource === PERSONNEL_OBJECT && !canView);
     registerScopeProvider(authorize, {
       authorize: async (request) => authorize(request),
-      scope: async () => ({ ...EMPTY_SCOPE, all: personIds === undefined, personIds: personIds ?? [] }),
+      scope: async () => ({
+        ...EMPTY_SCOPE,
+        all: personIds === undefined,
+        hasDataPermission: true,
+        terms: [{ dimension: 'management', orgIds: [], personIds: personIds ?? [] }],
+      }),
       fields: async (_tenant, _user, object) =>
         new Set(
           PERSONNEL_OBJECTS.find((item) => item.code === object)

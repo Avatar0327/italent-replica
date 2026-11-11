@@ -53,4 +53,22 @@ describe('AC-PRM-F516 人员手机号与员工概要状态', () => {
     expect(row).not.toHaveProperty('employeeStatus');
     expect((await w.page(`/grants?userId=${person.userId}`, hidden)).items[0]).not.toHaveProperty('phone');
   });
+  it('离职生效后显示离职，最新档案手机号修改后两个列表同步', async () => {
+    const currentProfile = await w.call('GET', `/api/tenant/personnel/employees/${person.id}`);
+    const revision = ((await currentProfile.json()) as { revision: number }).revision;
+    const changed = await w.call('PATCH', `/api/tenant/personnel/employees/${person.id}`, {
+      ifMatch: revision,
+      body: { mobilePhone: '13000000002' },
+    });
+    expect(changed.status, await changed.clone().text()).toBe(200);
+    const employee = await w.hr.getEmployee(person.id);
+    const left = await w.call('POST', `/api/tenant/employment/employees/${person.id}/businesses`, {
+      ifMatch: employee.revision,
+      body: { kind: 'leave', mode: 'direct', lastWorkDate: '2026-09-29' },
+    });
+    expect(left.status, await left.clone().text()).toBe(201);
+    const row = (await w.page('/users?type=internal')).items.find((item) => item.userId === person.userId);
+    expect(row).toMatchObject({ employeeStatus: 'left', contactPhone: '13000000002' });
+    expect((await w.page(`/grants?userId=${person.userId}`)).items[0]).toMatchObject({ phone: '13000000002' });
+  });
 });

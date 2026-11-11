@@ -27,6 +27,16 @@ describe('AC-PRM-F516 管理员主职部门与含下级筛选', () => {
     });
     expect(admin.status, await admin.clone().text()).toBe(201);
   });
+  it('兼职部门不覆盖主职部门，也不参与管理员部门匹配', async () => {
+    const partTime = await w.call('POST', `/api/tenant/employment/employees/${person.id}/part-times`, {
+      body: { partTimeType: 'part_time', startDate: '2026-09-15', fields: { departmentId: other } },
+    });
+    expect(partTime.status, await partTime.clone().text()).toBe(201);
+    expect((await w.page('/admins')).items.find((row) => row.userId === person.userId)).toMatchObject({
+      department: { id: child, name: '合成下级' },
+    });
+    expect((await w.page(`/admins?departmentId=${other}`)).total).toBe(0);
+  });
   it('取当前生效主职部门，无档案为空', async () => {
     const page = await w.page('/admins');
     expect(page.items.find((row) => row.userId === person.userId)).toMatchObject({

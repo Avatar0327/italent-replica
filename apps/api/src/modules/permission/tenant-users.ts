@@ -1,3 +1,10 @@
+import type { EmployeeStatus } from '../employment/employees.js';
+import {
+  listContactEmailFilter,
+  listPersonField,
+  listPersons,
+  type ListPersonAccess,
+} from './person-list-projection.js';
 /**
  * 企业设置 · 用户管理（R1-T15；DEC-128；06 §9、§7.1）。租户内的用户 = 成员关系（tenant_memberships），
  * 全局登录账号（users）只经迁移 0032 的两个受限定义者函数访问：按登录邮箱找到或新建账号、读取本租户成员的账号。
@@ -46,7 +53,12 @@ export interface TenantUserView {
 }
 
 /** 原站用户列表有、本系统未记录的列：不伪造，前端不显示或显示「--」（F-474-5 #21）。 */
-export const USER_LIST_UNRECORDED = ['loginPhone', 'source', 'createdBy', 'contactPhone', 'employeeStatus'] as const;
+export const USER_LIST_UNRECORDED = ['loginPhone', 'source', 'createdBy'] as const;
+
+export interface TenantUserListView extends TenantUserView {
+  readonly contactPhone?: string | null;
+  readonly employeeStatus?: EmployeeStatus | null;
+}
 
 export type UserTypeFilter = UserType | 'all';
 
@@ -198,6 +210,8 @@ function textMatch(q: string): SQL {
 export interface UserListQuery {
   readonly type: UserTypeFilter;
   readonly membershipStatus?: TenantMembership['status'];
+  readonly accountStatus?: 'active' | 'disabled';
+  readonly contactEmail?: string;
   readonly q?: string;
   readonly limit: number;
   readonly offset: number;
@@ -207,9 +221,17 @@ export interface UserListQuery {
 export async function listTenantUsers(
   tx: Tx,
   query: UserListQuery,
-): Promise<{ items: TenantUserView[]; total: number }> {
+  access: ListPersonAccess,
+): Promise<{ items: TenantUserListView[]; total: number }> {
+  const accountStatus = query.accountStatus ?? (query.type === 'all' ? 'active' : undefined);
   const where = and(
     typeFilter(query.type),
+    accountStatus
+      ? sql`${tenantMemberships.userId} IN (
+      SELECT a.account_id FROM tenant_member_accounts(ARRAY(SELECT m.user_id FROM tenant_memberships m)) a
+      WHERE a.status=${accountStatus})`
+      : undefined,
+    query.contactEmail ? listContactEmailFilter(access, tenantMemberships.userId, query.contactEmail) : undefined,
     query.membershipStatus ? eq(tenantMemberships.status, query.membershipStatus) : undefined,
     query.q ? textMatch(query.q) : undefined,
   );
@@ -228,7 +250,19 @@ export async function listTenantUsers(
       ),
     )
     .where(where);
-  return { items: await viewsOf(tx, rows), total: count?.total ?? 0 };
+  const people = await listPersons(
+    tx,
+    access,
+    rows.map((row) => row.membership.userId),
+  );
+  const items = (await viewsOf(tx, rows)).map((row) => ({
+    ...row,
+    ...(listPersonField(access, 'mobilePhone') ? { contactPhone: people.get(row.userId)?.contactPhone ?? null } : {}),
+    ...(listPersonField(access, 'employeeStatus')
+      ? { employeeStatus: people.get(row.userId)?.employeeStatus ?? null }
+      : {}),
+  }));
+  return { items, total: count?.total ?? 0 };
 }
 
 export async function getTenantUser(tx: Tx, userId: string): Promise<TenantUserView> {

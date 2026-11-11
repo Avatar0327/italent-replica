@@ -56,7 +56,16 @@ export function AdminsPage({ title }: SettingsProps) {
           />
         </>
       }
-      actions={<Button onClick={list.refresh}>{m.refresh}</Button>}
+      actions={
+        <Button
+          onClick={() => {
+            list.refresh();
+            organizations.refresh();
+          }}
+        >
+          {m.refresh}
+        </Button>
+      }
       columns={[
         ...selection,
         { title: m.displayName, dataIndex: 'displayName', width: 134 },
