@@ -105,7 +105,8 @@ describe('P1 真实授权器：租户管理员维护自动转正规则', () => {
     const removed = await admin('DELETE', `/auto-regularization-rules/${copy.id}`, { ifMatch: copy.revision + 1 });
     expect(removed.status, await removed.clone().text()).toBe(200);
 
-    const due = await hire(w, { date: '2026-09-01', endDate: '2026-10-03' });
+    // direct 类按预计结束日判断到期（F-517），结束日 = 跑批日当天才发起
+    const due = await hire(w, { date: '2026-09-01', endDate: '2026-10-01' });
     const on = await admin('PUT', SWITCH, { ifMatch: 0, body: { value: true } });
     expect(on.status, await on.clone().text()).toBe(200);
     const run = await admin('POST', '/auto-regularization/run', { ifMatch: 0, body: {} });

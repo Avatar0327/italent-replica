@@ -1,7 +1,7 @@
 /**
  * R2 BE-15a 自动转正的执行（docs/02_业务建模/29 PB-R18 / R19 / R21 / R22；差距表 B57、补证结论 R2e7；DEC-539①）。
  * - 适用对象（PB-R19）：当前生效主职为试用、内部员工，本任职周期有预计试用结束日，命中启用中的规则（优先级最小者）；
- * - 触发（R2e7，03 口径）：目标日 = 预计结束日 − N 天，目标日 ≤ 当天即发起（补发）；同一任职同一规则只发起一次——
+ * - 触发（R2e7，03 口径）：目标日 = 预计结束日 − N 天，目标日 ≤ 当天即发起（补发）；direct 类 N 视为 0（F-517，见下）；同一任职同一规则只发起一次——
  *   发起台账（规则 × 本任职周期的开启记录）在员工锁内复核，主键兜底；
  * - 静默跳过（F-500，DEC-841①，仅申请类）：试用中考核已生效且意见 = 提前转正（且无其他失败条件）——返回 null，不记台账、不进回执、不重试；
  * - 失败（PB-R21）：本周期已有已驳回 / 不通过 / 作废 / 审批中 / 通过 / 生效的转正业务，或考核类条件（BE-15b2：转正考核
@@ -288,7 +288,10 @@ async function dueRuleOf(
   const subject = await subjectOf(tx, tenantId, employeeId, today);
   if (!subject) return null;
   const rule = matchAutoRegularizationRule(rules, subject.departmentId);
-  if (!rule || autoRegularizationTargetDate(subject.expectedEndDate, rule.daysBefore) > today) return null;
+  if (!rule) return null;
+  // F-517（DEC-879①）：direct 类按预计结束日本身判断到期（结束日 ≤ 跑批日），“到期前天数”只对申请类生效
+  const daysBefore = rule.mode === 'direct' ? 0 : rule.daysBefore;
+  if (autoRegularizationTargetDate(subject.expectedEndDate, daysBefore) > today) return null;
   if (await launchedBefore(tx, tenantId, rule.id, subject.cycle.anchor.id)) return null;
   return { subject, rule };
 }

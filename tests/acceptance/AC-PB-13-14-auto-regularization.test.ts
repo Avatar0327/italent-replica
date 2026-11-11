@@ -331,18 +331,18 @@ describe('PB-R18 / R19 / R21 自动转正的触发与失败条件', () => {
   it('自动转正（直接生成）类：不直接转正而是发起转正流程（F-517，DEC-879①）；转正日期取预计结束日次日，审批通过且到日生效后人员状态改正式', async () => {
     const w = await autoWorld('direct', { approval: true });
     const rule = await w.created(w.body({ mode: 'direct', daysBefore: 3 }));
-    // 试用期 09-01～10-03：目标日 09-30 ≤ 今天，转正日期 10-04（未来生效）
-    const due = await hire(w, { date: '2026-09-01', endDate: '2026-10-03' });
+    // 试用期 09-01～10-01：direct 类按结束日判断（10-01 ≤ 今天，忽略到期前 3 天），转正日期 10-02（未来生效）
+    const due = await hire(w, { date: '2026-09-01', endDate: '2026-10-01' });
     await w.enableSwitch();
     const receipt = await w.ran();
     expect(receipt.launched).toEqual([
       expect.objectContaining({ employeeId: due.employee.id, ruleId: rule.id, businessStatus: 'in_review' }),
     ]);
     const [business] = await regularizations(w, due.employee.id);
-    expect(business).toMatchObject({ state: 'in_review', mode: 'application', effective_date: '2026-10-04' });
-    expect((await probationOf(w, due.employee.id, '2026-10-04')).regularizationDate).toBeNull();
+    expect(business).toMatchObject({ state: 'in_review', mode: 'application', effective_date: '2026-10-02' });
+    expect((await probationOf(w, due.employee.id, '2026-10-02')).regularizationDate).toBeNull();
     expect((await transition(w, business!, 'approve')).status).toBe(200);
-    expect((await probationOf(w, due.employee.id, '2026-10-04')).regularizationDate).toBe('2026-10-04');
+    expect((await probationOf(w, due.employee.id, '2026-10-02')).regularizationDate).toBe('2026-10-02');
   });
 
   it('AC-PB-11 停用的规则不命中、不发起；重新启用后恢复', async () => {
