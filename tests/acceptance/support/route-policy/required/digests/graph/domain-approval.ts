@@ -406,6 +406,7 @@ export const GRAPH: Graph = {
     '#textViolation',
   ],
   'packages/domain/src/approval/variables.ts#isUserId': ['#USER_ID'],
+  'packages/domain/src/approval/variables.ts#matrixCodeViolation': ['#MATRIX_CODE'],
   'packages/domain/src/approval/variables.ts#personsOk': ['#PERSONS_DEFAULT_MAX', '#isUserId'],
   'packages/domain/src/approval/variables.ts#textViolation': [
     '#CONTROL_MULTI_LINE',

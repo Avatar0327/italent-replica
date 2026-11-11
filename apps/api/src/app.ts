@@ -127,6 +127,8 @@ export function createApp(deps: AppDeps = {}): Hono {
       { method: 'POST', path: /^\/api\/tenant\/approval\/variables$/, maxSize: 128 * 1024 },
       // F-326 §4.2：编辑同样放宽到 128KiB，启停仍走默认 32KB。
       { method: 'PATCH', path: /^\/api\/tenant\/approval\/variables\/[^/]+$/, maxSize: 128 * 1024 },
+      // F-326 §4.2：500 行、15 列、20000 个 UUID 的标准 JSON 最坏约 0.89 MB。
+      { method: 'PUT', path: /^\/api\/tenant\/approval\/matrices\/[^/]+\/structure$/, maxSize: 1024 * 1024 },
       ...ESIGN_BODY_LIMITS, // F-481：模板正文 ≤20000 字，上限 128KB
       // DEC-422：继任规则保存放宽到 64KB；B2b 等级复用同一例外，其余接口仍为 32KB。
       { method: 'POST', path: /^\/api\/tenant\/succession\/populations$/, maxSize: 64 * 1024 },

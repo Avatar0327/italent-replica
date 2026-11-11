@@ -1,4 +1,5 @@
 import { registerVariableRoutes } from './variable-routes.js';
+import { registerMatrixRoutes } from './matrix-routes.js';
 import { listMyApplications, myApplicationsQuery } from './my-applications.js';
 import { readCarrierAttachment, respondAttachment as respondAttachmentBytes } from '../attachments/carrier-read.js';
 import { listTodoCards, todoCardsQuery } from './todo-cards.js';
@@ -313,6 +314,7 @@ export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
   module.onError(pauseDisclosureHandler(deps));
   registerProcessRoutes(module, deps);
   registerVariableRoutes(module, deps);
+  registerMatrixRoutes(module, deps);
   registerTenantConfigRoutes(module, deps);
   registerSimulationRoutes(module, deps);
   registerReadRoutes(module, deps);

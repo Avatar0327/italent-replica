@@ -3921,6 +3921,50 @@
         ]
       }
     },
+    "GET /api/tenant/approval/matrices": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ]
+      }
+    },
+    "GET /api/tenant/approval/matrices/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ]
+      }
+    },
     "GET /api/tenant/approval/notifications": {
       "edge": {
         "anonymous": {
@@ -13790,6 +13834,32 @@
       "module": "root",
       "primitives": {}
     },
+    "PATCH /api/tenant/approval/matrices/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ]
+      }
+    },
     "PATCH /api/tenant/approval/variables/:id": {
       "edge": {
         "anonymous": {
@@ -17441,6 +17511,83 @@
         ],
         "relation": [
           "initiator（withdraw / resubmit right）"
+        ]
+      }
+    },
+    "POST /api/tenant/approval/matrices": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "command": [
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "POST /api/tenant/approval/matrices/:id/disable": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "POST /api/tenant/approval/matrices/:id/enable": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
         ]
       }
     },
@@ -28899,6 +29046,32 @@
       "primitives": {
         "command": [
           "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "PUT /api/tenant/approval/matrices/:id/structure": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "command": [
+          "assertRevision",
           "runCommand / runWrite"
         ]
       }
