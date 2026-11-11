@@ -2,9 +2,10 @@
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import * as approvalContext from '../../apps/api/src/modules/approval/context.js';
 import { addMember, seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
-import { memberWithAdminRole } from './AC-PRM-users-support.js';
+import { hrApi, memberWithAdminRole } from './AC-PRM-users-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -102,7 +103,7 @@ describe('审批矩阵管理与结构审计', () => {
       const result = await tx.execute(sql`SELECT action,object_id AS "objectId",before,after,command_id AS "commandId"
         FROM audit_events WHERE tenant_id=${w.tenant.id} AND object_id=${id}
         AND action LIKE 'approval.matrix.%' ORDER BY occurred_at,id`);
-      return (Array.isArray(result) ? result : result.rows) as {
+      return approvalContext.rowsOf(result) as {
         action: string;
         objectId: string;
         before: Record<string, unknown>;
@@ -185,7 +186,7 @@ describe('审批矩阵管理与结构审计', () => {
           .status,
       ).toBe(201);
     }
-    const member = await addMember(w, '矩阵普通成员');
+    const member = await addMember(w, 'matrix-member');
     const as = { user: member.id, tenant: w.tenant.id };
     for (const [method, path, body] of [
       ['GET', BASE, undefined],
@@ -228,6 +229,138 @@ describe('审批矩阵管理与结构审计', () => {
     m = await save(m, { columns: [], rows: [] });
     expect(m.rows).toEqual([]);
     expect(m.columns).toEqual([]);
+  });
+
+  it('AC-07/09：详情名称按租户回显，人员只有姓名、工号、部门', async () => {
+    const hr = hrApi(w);
+    const departmentId = await hr.org('合成矩阵部门');
+    const person = await hr.employee('合成矩阵人员', `matrix-${uniqueSuffix()}@example.com`);
+    expect((await hr.hire(person, departmentId)).status).toBe(201);
+    const userId = await withTenant(w.db, w.tenant.id, async (tx) => {
+      const result = await tx.execute(sql`SELECT user_id FROM permission_user_person_links
+        WHERE tenant_id=${w.tenant.id} AND employee_id=${person.id}`);
+      return String(approvalContext.rowsOf(result)[0]!.user_id);
+    });
+    const m = await save(await create(), {
+      columns: [condition(), role()],
+      rows: [{ cells: { c1: [departmentId], r1: [userId] } }],
+    });
+    const detail = await json<{ referenceNames: Record<string, Record<string, unknown>> }>(
+      await request('GET', `${BASE}/${m.id}`),
+    );
+    expect(detail.referenceNames.department![departmentId]).toBe('合成矩阵部门');
+    expect(detail.referenceNames.person![userId]).toEqual({
+      userId,
+      name: '合成矩阵人员',
+      code: person.code,
+      departmentId,
+      departmentName: '合成矩阵部门',
+    });
+  });
+
+  it('AC-05/07：命令重放按当前管理员能力复核，拒绝时业务和审计不变', async () => {
+    let allowed = true;
+    const guarded = tenantApi(w.db, { authorize: ({ action }) => action !== 'admin.process_matrix' || allowed });
+    const m = await create();
+    const key = randomUUID();
+    const options = { ...w.asAdmin, idempotencyKey: key, body: { revision: m.revision, name: '重放合成矩阵' } };
+    const result = await json<Matrix>(await guarded.request('PATCH', `${BASE}/${m.id}`, options));
+    const beforeAudits = await audits(m.id);
+    allowed = false;
+    expect((await guarded.request('PATCH', `${BASE}/${m.id}`, options)).status).toBe(403);
+    expect(await read(m.id)).toEqual(result);
+    expect(await audits(m.id)).toEqual(beforeAudits);
+  });
+
+  it('AC-09：结构外来 ID、重复 ID 与换名调序的合法候选态', async () => {
+    const m = await save(await create(), basic());
+    const same = inputOf(m);
+    same.rows.push(structuredClone(same.rows[0]!));
+    await rejectStructure(m, same);
+    const duplicateColumn = inputOf(m);
+    duplicateColumn.columns.push({ ...duplicateColumn.columns[0]!, key: 'othr', name: '另一个名称' });
+    await rejectStructure(m, duplicateColumn);
+    const renamed = inputOf(m);
+    [renamed.columns[0]!.name, renamed.columns[1]!.name] = [renamed.columns[1]!.name, renamed.columns[0]!.name];
+    const saved = await save(m, renamed);
+    expect(saved.columns.map((c) => c.name)).toEqual(m.columns.map((c) => c.name).reverse());
+  });
+
+  it('AC-09/19：结构写到审计时失败，行列、revision、台账、outbox 一起回滚', async () => {
+    const m = await save(await create(), basic());
+    const prior = await audits(m.id);
+    const commandId = randomUUID();
+    const original = approvalContext.auditApproval;
+    const injected = vi.spyOn(approvalContext, 'auditApproval').mockImplementation(async (tx, ctx, entry) => {
+      if (entry.action === 'approval.matrix.structure')
+        throw Object.assign(new Error('合成审计存储失败'), { code: '53100' });
+      await original(tx, ctx, entry);
+    });
+    try {
+      const response = await request(
+        'PUT',
+        `${BASE}/${m.id}/structure`,
+        {
+          revision: m.revision,
+          columns: [],
+          rows: [],
+        },
+        commandId,
+      );
+      expect(response.status).toBe(503);
+    } finally {
+      injected.mockRestore();
+    }
+    expect(await read(m.id)).toEqual(m);
+    expect(await audits(m.id)).toEqual(prior);
+    await withTenant(w.db, w.tenant.id, async (tx) => {
+      for (const table of ['command_ledger', 'approval_outbox']) {
+        const result = await tx.execute(sql`SELECT count(*)::int AS n FROM ${sql.identifier(table)}
+          WHERE tenant_id=${w.tenant.id} AND command_id=${commandId}`);
+        expect(approvalContext.rowsOf(result)[0]).toEqual({ n: 0 });
+      }
+    });
+  });
+
+  it('AC-28：头部名称和描述边界、合法配对字符、控制字符及未知字段', async () => {
+    const m = await create({ name: '中'.repeat(98) + '😀', description: '中'.repeat(255) });
+    for (const input of [
+      { name: '中'.repeat(101) },
+      { description: '中'.repeat(256) },
+      { name: '\t名称' },
+      { description: '\u0000' },
+      { name: '\uD800' },
+      { updatedBy: randomUUID() },
+    ]) {
+      expect((await request('PATCH', `${BASE}/${m.id}`, { revision: m.revision, ...input })).status).toBe(400);
+      expect(await read(m.id)).toEqual(m);
+    }
+    const updated = await json<Matrix>(
+      await request('PATCH', `${BASE}/${m.id}`, {
+        revision: m.revision,
+        description: '说明\t换行\n回车\r😀',
+      }),
+    );
+    expect(updated.description).toBe('说明\t换行\n回车\r😀');
+  });
+
+  it.runIf(!!process.env.TEST_DATABASE_URL)('AC-05：真 PG 两连接竞争同一 revision 只提交一次结构与审计', async () => {
+    const m = await create();
+    const inputs = [basic(), basic()];
+    const responses = await Promise.all(
+      inputs.map((input) =>
+        request('PUT', `${BASE}/${m.id}/structure`, {
+          revision: m.revision,
+          ...input,
+        }),
+      ),
+    );
+    expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
+    const winning = responses.findIndex((r) => r.status === 200);
+    const saved = await read(m.id);
+    expect(saved.revision).toBe(m.revision + 1);
+    expect(saved.rows[0]!.cells[saved.columns[0]!.id]).toEqual(inputs[winning]!.rows[0]!.cells.c1);
+    expect((await audits(m.id)).filter((a) => a.action === 'approval.matrix.structure')).toHaveLength(1);
   });
 
   it.each([
@@ -323,7 +456,9 @@ describe('审批矩阵管理与结构审计', () => {
     const bytes = Buffer.byteLength(JSON.stringify(payload));
     expect(bytes).toBeGreaterThan(850000);
     expect(bytes).toBeLessThan(1048576);
+    const started = performance.now();
     m = await save(m, worst);
+    console.info(`AC-20 最坏结构 ${bytes} 字节，保存 ${Math.round(performance.now() - started)} 毫秒`);
     const tooMany = structuredClone(worst);
     tooMany.rows[0]!.cells.c000!.push(randomUUID());
     await rejectStructure(m, tooMany);
