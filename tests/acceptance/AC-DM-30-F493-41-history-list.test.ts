@@ -36,10 +36,10 @@ interface HistoryPage {
   hasNext: boolean;
 }
 
-const listOf = async (request: Promise<Response>, status = 200) => {
+const listOf = async (request: Promise<Response>): Promise<HistoryPage> => {
   const response = await request;
-  expect(response.status, await response.clone().text()).toBe(status);
-  return status === 200 ? ((await response.json()) as HistoryPage) : undefined;
+  expect(response.status, await response.clone().text()).toBe(200);
+  return (await response.json()) as HistoryPage;
 };
 const adminList = (x: ImportWorld, query = '') => listOf(x.session.request('GET', `/exits/import/batches${query}`));
 
@@ -52,8 +52,8 @@ const stamp = (x: ImportWorld, batchId: string, minutes: number) =>
 const insertBatch = (x: ImportWorld, userId: string, n: number, minutesAgo: number) =>
   x.q(x.sql`INSERT INTO exit_import_batches (tenant_id, command_id, submitted_by, file_name, status, total,
       created_count, error_row_count, error_count, finished_at, expires_at, created_at)
-    VALUES (${x.tenantId}, ${`syn-cmd-${n}-${minutesAgo}`}, ${userId}::uuid, ${`合成批次${n}.xlsx`}, 'completed', 1, 1, 0, 0,
-      now(), now() + interval '15 days', now() - make_interval(mins => ${minutesAgo}))`);
+    VALUES (${x.tenantId}, ${`syn-cmd-${n}-${minutesAgo}`}, ${userId}::uuid, ${`合成批次${n}.xlsx`},
+      'completed', 1, 1, 0, 0, now(), now() + interval '15 days', now() - make_interval(mins => ${minutesAgo}))`);
 
 async function systemFailedBatch(x: ImportWorld, deptCode: string) {
   const db = x.db;
@@ -218,14 +218,14 @@ describe('AC-DM-30-F493-41 权限（功能权 + 导入按钮 + own；不要求�
     const response = await op.submit([x.row(1, d.code)]);
     expect(response.status, await response.clone().text()).toBe(202);
     await x.settle();
-    expect((await listOf(op.get('/exits/import/batches')))!.items).toHaveLength(1);
+    expect((await listOf(op.get('/exits/import/batches'))).items).toHaveLength(1);
 
     await op.revokeScope(RECORD_OBJECT_CODE);
     await op.revokeScope(EMPLOYEE_OBJECT_CODE);
-    expect((await listOf(op.get('/exits/import/batches')))!.items).toHaveLength(1);
+    expect((await listOf(op.get('/exits/import/batches'))).items).toHaveLength(1);
 
     await op.reconfigure({ noButton: true });
-    await listOf(op.get('/exits/import/batches'), 403);
+    expect((await op.get('/exits/import/batches')).status).toBe(403);
   });
 });
 

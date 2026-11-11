@@ -49,7 +49,8 @@ import {
 } from './context.js';
 import { rawImportRows, withFailedImportLog } from '../../audit/record.js';
 import { parseExitImportBody, requireExitImportAccess, submitExitImport } from './exit-import.js';
-import { exitImportErrorFile } from './exit-import-download.js';
+import { exitImportErrorFile, exitImportSourceFile } from './exit-import-download.js';
+import { listExitImportHistory, parseExitImportHistoryQuery } from './exit-import-history.js';
 import { requireExitImportButton, TEMPLATE_FILE_NAME, templateWorkbook } from './exit-import-file.js';
 import { wakeExitImports } from './exit-import-worker.js';
 import { createExitApplication, parseExitPatch, updateExitFields } from './exit-application.js';
@@ -306,6 +307,20 @@ function registerExitImportRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
   router.get('/exits/import/batches/:id/error-file', async (c) => {
     const ctx = await functionContext(c, deps, 'object.create');
     const file = await exitImportErrorFile(deps, ctx, uuidParam(c, 'id'));
+    return xlsxResponse(c, file.fileName, file.content);
+  });
+
+  // 导入历史：只列我提交的批次；要导入按钮，不要数据范围（列表不含人员数据，设计 §8.4）。
+  router.get('/exits/import/batches', async (c) => {
+    const ctx = await functionContext(c, deps, 'object.create');
+    await requireExitImportButton(ctx);
+    return c.json(await listExitImportHistory(deps, ctx, parseExitImportHistoryQuery(c)));
+  });
+
+  // 原文件：与错误文件同一权限链，执行中也可下载（S3d，设计 §8.4）。
+  router.get('/exits/import/batches/:id/source-file', async (c) => {
+    const ctx = await functionContext(c, deps, 'object.create');
+    const file = await exitImportSourceFile(deps, ctx, uuidParam(c, 'id'));
     return xlsxResponse(c, file.fileName, file.content);
   });
 }

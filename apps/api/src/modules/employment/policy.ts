@@ -1961,6 +1961,34 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     projector('employment.exitImportErrorFile', 'employment.exitImportErrorFile'),
     byId,
   ),
+  // F-493 S3d 原文件（设计 §8.4）：权限链同错误文件（功能权 + 导入按钮 + 人员 / 档案看全部 + 提交人归属）；
+  // 执行中也可下载；过期或已清理 404 EXIT_IMPORT_FILE_EXPIRED；内容按当前字段查看权逐列置空。
+  'GET /exits/import/batches/:id/source-file': all(
+    [
+      importFileButton(),
+      importFileScope(EMPLOYEE),
+      importFileScope(PERSONNEL_OBJECT),
+      own({
+        predicate: 'employment.exitImportBatchSubmitter',
+        denied: denied(404, 'NOT_FOUND', '导入批次不存在'),
+        fields: noFields('归属只判批次提交人'),
+      }),
+    ],
+    projector('employment.exitImportSourceFile', 'employment.exitImportSourceFile'),
+    byId,
+  ),
+  // F-493 S3d 导入历史列表（设计 §8.4）：功能权 + 导入按钮；只列提交人本人的批次，不要求看全部范围（不含人员数据）。
+  'GET /exits/import/batches': all(
+    [
+      importFileButton(),
+      own({
+        predicate: 'employment.exitImportBatchSubmitter',
+        denied: denied(404, 'NOT_FOUND', '导入批次不存在'),
+        fields: noFields('归属只判批次提交人；出参是固定形状的批次摘要，不含人员字段'),
+      }),
+    ],
+    projector('employment.exitImportHistory', 'employment.exitImportHistory'),
+  ),
   // F-140b1：If-Match 必填；body = 离职扩展字段 + 计划日期 + 确认控制项；范围外与不存在均 404。
   // DimissionEdit，审批中的单另需 adminIntervene（B-65a）；已生效日期仍拒绝。
   'PATCH /exits/:id': all(
