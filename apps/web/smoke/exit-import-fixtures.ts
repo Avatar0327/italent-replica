@@ -1,144 +1,100 @@
-// F-139b 历史离职人员导入的夹具（组件测试与冒烟共用），数据全部合成。
-// 形态对照：preview = exit-import.ts previewExitImport；import 成功 = importExits（201 { batchId, rows }）；
-// 未确认的超编 = 409 CONFLICT + details { reason: 'CONFIRMATION_REQUIRED', rows: [{ rowNo, warnings }], hiddenCount }；
-// 行错误 = 400 IMPORT_ROWS_INVALID + details.rows；警告 = ImportWarning（ESTABLISHMENT_EXCEEDED）。
+// F-493 S4a 合成夹具。202 回执对照 submitExitImport，列名独立抄录设计 §3.1。
 export type Cell = string | number | null;
-
-/** 模板列（设计 §2.2 字段，中文名取后端 SHAPE_RULES / NOTE_RULES；原站模板未取证 §13 #U1）。 */
 export const importHeader = [
-  '工号',
-  '姓名',
-  '入职日期',
-  '部门编码',
-  '最后工作日',
-  '职位编码',
-  '岗位编码',
+  '导入结果',
+  '*姓名',
+  '*电子邮件',
+  '*部门编码',
+  '*入职日期',
+  '职位名称',
+  '职务名称',
+  '职级',
+  '参加工作日期',
+  '工作地点',
+  '身份证号',
+  '手机号码',
+  '个人邮箱',
+  '性别',
+  '出生日期',
+  '民族',
+  '政治面貌',
+  '户籍所在地',
+  '籍贯',
+  '毕业学校',
+  '专业',
+  '*最后工作日',
   '离职类型',
   '离职原因',
-  '离职去向',
-  '加入黑名单',
-  '加黑原因',
-  '加黑到期日',
-  '加黑说明',
+  '离职后去向',
+  '离职说明',
 ];
-/** 第 2 行入职日期是 Excel 日期序列号（45000 = 2023-03-15），第 3 行加黑原因写中文名。 */
+const blank = {
+  positionName: null,
+  postName: null,
+  levelName: null,
+  workDate: null,
+  place: null,
+  idNumber: null,
+  mobilePhone: null,
+  personalEmail: null,
+  gender: null,
+  birthday: null,
+  nation: null,
+  politicalStatus: null,
+  householdAddress: null,
+  registAddress: null,
+  school: null,
+  major: null,
+  exitTypeName: null,
+  exitReasonName: null,
+  whereaboutsName: null,
+  exitNote: null,
+};
+export const importRows = ['合成甲', '合成乙', '合成丙'].map((name, i) => ({
+  rowNo: i + 2,
+  name,
+  email: `synthetic.${i + 1}@example.com`,
+  departmentCode: 'D-SYN-01',
+  entryDate: '2023-03-15',
+  lastWorkDate: '2025-06-30',
+  ...blank,
+}));
 export const importSheet: Cell[][] = [
   importHeader,
-  ['H0001', '合成甲', 45000, 'D-SYN-01', '2025-06-30', null, null, 'resign', null, null, '否', null, null, null],
-  [
-    'H0002',
-    '合成乙',
-    '2023-04-01',
-    'D-SYN-01',
-    '2025-07-31',
-    'P-SYN-01',
-    null,
-    null,
-    null,
-    null,
-    '是',
-    '诚信问题',
-    null,
-    '合成说明',
-  ],
+  ...importRows.map((row) => [
+    '旧错误原文应忽略',
+    row.name,
+    row.email,
+    row.departmentCode,
+    45000,
+    ...Array<Cell>(16).fill(null),
+    row.lastWorkDate,
+    ...Array<Cell>(4).fill(null),
+  ]),
 ];
-/** 未填的可选列不发送（后端 normalizeRow 把缺省与 null 同样视为未填），加入黑名单总是发布尔值。 */
-const blank = { addToBlacklist: false };
-/** 上表解析后应发出的行：rowNo = Excel 行号，空单元格的可选字段不出现。 */
-export const importRows = [
-  {
-    rowNo: 2,
-    employeeNo: 'H0001',
-    name: '合成甲',
-    entryDate: '2023-03-15',
-    departmentCode: 'D-SYN-01',
-    lastWorkDate: '2025-06-30',
-    ...blank,
-    exitTypeCode: 'resign',
-  },
-  {
-    rowNo: 3,
-    employeeNo: 'H0002',
-    name: '合成乙',
-    entryDate: '2023-04-01',
-    departmentCode: 'D-SYN-01',
-    lastWorkDate: '2025-07-31',
-    ...blank,
-    positionCode: 'P-SYN-01',
-    addToBlacklist: true,
-    blacklistReason: 'integrity',
-    blacklistNote: '合成说明',
-  },
-];
-export const importDepartment = '61000000-0000-4000-8000-000000000001';
-export const warning = {
-  reason: 'ESTABLISHMENT_EXCEEDED',
-  capacityId: '64000000-0000-4000-8000-000000000001',
-  departmentId: importDepartment,
-  positionId: null,
-  from: '2023-04-01',
-  to: '2025-08-01',
-  peak: 6,
-  limit: 5,
-};
-type Row = { rowNo: number };
-export const previewWarned = (rows: Row[]) => ({
-  rows: rows.map((row, index) => ({ rowNo: row.rowNo, ok: true, errors: [], warnings: index === 1 ? [warning] : [] })),
-  hiddenCount: 0,
-  summary: { total: rows.length, ok: rows.length, failed: 0, warned: rows.length > 1 ? 1 : 0 },
+export const importReceipt = (rows: { rowNo: number }[]) => ({
+  batchId: '65000000-0000-4000-8000-000000000001',
+  status: 'queued',
+  total: rows.length,
 });
-export const duplicateError = {
-  field: 'employeeNo',
-  reason: 'EMPLOYEE_NO_EXISTS',
-  message: '工号已存在',
-};
-/** 有错误行时后端不评估编制：所有行 warnings 为空、hiddenCount 为 0。 */
-export const previewFailed = (rows: Row[]) => ({
-  rows: rows.map((row, index) => ({
-    rowNo: row.rowNo,
-    ok: index !== 0,
-    errors: index === 0 ? [duplicateError] : [],
-    warnings: [],
-  })),
-  hiddenCount: 0,
-  summary: { total: rows.length, ok: rows.length - 1, failed: 1, warned: 0 },
-});
-export const confirmationRequired = (rows: Row[]) => ({
-  error: {
-    code: 'CONFLICT',
-    message: '导入后将超出设定编制，请确认',
-    details: {
-      reason: 'CONFIRMATION_REQUIRED',
-      rows: [{ rowNo: rows[1]!.rowNo, warnings: [warning] }],
-      hiddenCount: 0,
-    },
-  },
-});
-const pad = (n: number) => String(n).padStart(12, '0');
-/** 压缩炸弹：一个内联字符串单元格解压后 64 MiB，压缩后只有几十 KB。 */
+/** 压缩炸弹：单元格解压后 64 MiB。 */
 export const bombRowsXml = () =>
   `<row r="9"><c r="A9" t="inlineStr"><is><t>${'A'.repeat(64 * 1024 * 1024)}</t></is></c></row>`;
-export const importReceipt = (rows: Row[]) => ({
-  batchId: '65000000-0000-4000-8000-000000000001',
-  rows: rows.map((row, i) => ({
-    rowNo: row.rowNo,
-    employeeId: `31000000-0000-4000-8000-${pad(100 + i)}`,
-    hireBusinessId: `66000000-0000-4000-8000-${pad(100 + i)}`,
-    exitBusinessId: `71000000-0000-4000-8000-${pad(100 + i)}`,
-  })),
-});
 
 // ---- 最小 xlsx 生成（只供测试造文件：共享字符串 + 数字单元格，deflate 压缩，与 Excel 产物同构） ----
 const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const column = (index: number) => String.fromCharCode(65 + index);
-/** count 行只填必填列的合成数据（工号 H0001 起）。 */
+/** count 行只填必填列，位置对应完整 26 列模板。 */
 export const requiredRows = (count: number): Cell[][] =>
   Array.from({ length: count }, (_, i) => [
-    `H${String(i + 1).padStart(4, '0')}`,
+    null,
     `合成${i + 1}`,
-    '2023-03-15',
+    `synthetic.${i + 1}@example.com`,
     'D-SYN-01',
+    '2023-03-15',
+    ...Array<Cell>(16).fill(null),
     '2025-06-30',
+    ...Array<Cell>(4).fill(null),
   ]);
 /** 预先铺好格式的空白行：每格只有样式 s="1"（styles.xml 里的填充色），没有值，与 Excel 刷过格式的模板同构。 */
 export const styledBlankRowsXml = (from: number, count: number, columns = importHeader.length) =>
