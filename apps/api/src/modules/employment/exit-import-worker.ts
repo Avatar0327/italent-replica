@@ -146,9 +146,13 @@ async function claim(db: Db, tenantId: string): Promise<ClaimedBatch | null> {
 }
 
 async function runBatch(db: Db, state: State, tenant: TenantRow, batch: ClaimedBatch): Promise<void> {
-  // 领到时尝试次数已超上限：进程在第 5 次中途崩溃、没机会走到下面的终态分支；不再处理任何行（防崩溃循环）
-  if (batch.attempts > EXIT_IMPORT_MAX_ATTEMPTS)
-    return failTerminally(db, tenant, batch, state.clock(), 'ATTEMPTS_EXCEEDED');
+  // 领到时尝试次数已超上限：进程在第 5 次中途崩溃、没机会走到下面的终态分支；仍有剩余工作就不再处理任何行（防崩溃循环）。
+  // 已无 pending 行（最后一行已提交、只差收尾事务）则按正常完成收尾，不记失败（设计 §6.2 恢复表）
+  if (batch.attempts > EXIT_IMPORT_MAX_ATTEMPTS) {
+    if (await hasPendingRows(db, tenant.id, batch.id))
+      return failTerminally(db, tenant, batch, state.clock(), 'ATTEMPTS_EXCEEDED');
+    return finish(db, tenant, batch, state.clock());
+  }
   try {
     await state.hooks.beforeBatch?.();
     // 复核放在领到批次之后、第一行之前：提交后被撤权的人，剩余行一律 SUBMITTER_FORBIDDEN、零写入（设计 §6.3）
@@ -196,6 +200,10 @@ async function failTerminally(db: Db, tenant: TenantRow, batch: ClaimedBatch, no
   console.error(
     JSON.stringify({ type: 'employment.exit-import.batch-failed', tenantId: tenant.id, batchId: batch.id, reason }),
   );
+}
+
+async function hasPendingRows(db: Db, tenantId: string, batchId: string): Promise<boolean> {
+  return (await pendingRows(db, tenantId, batchId)).length > 0;
 }
 
 async function pendingRows(db: Db, tenantId: string, batchId: string): Promise<ImportRowInput[]> {
