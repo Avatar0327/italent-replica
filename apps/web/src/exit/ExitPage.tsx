@@ -116,8 +116,8 @@ function ExitList() {
   };
   // 新建成功后员工进入“离职中”：切过去并重读，视图未变时直接重读
   const created = async () => (view === 'in_progress' && page === 1 ? result.reload() : switchView('in_progress'));
-  // 导入的单据直接生效（设计 §10）：切到“已完成的离职”第 1 页
-  const imported = async () => (view === 'completed' && page === 1 ? result.reload() : switchView('completed'));
+  // F-493 §9.1：保存受理后刷新回“离职中的员工”第 1 页
+  const imported = async () => (view === 'in_progress' && page === 1 ? result.reload() : switchView('in_progress'));
   const applyFilters = (next: Filters) => {
     setPage(1);
     setFilters(next);

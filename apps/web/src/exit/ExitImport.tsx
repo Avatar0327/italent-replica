@@ -1,28 +1,18 @@
 import { EXIT_IMPORT_BUTTON } from '@italent/domain';
-import { Alert, App, Button, Modal, Space, Table, Tag } from 'antd';
-import { useRef, useState } from 'react';
-import { newCommand } from '../foundation/client.js';
+import { Alert, App, Button, Modal, Space } from 'antd';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router';
+import { ApiError } from '../foundation/client.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
-import { ui } from '../foundation/messages.js';
+import { useConflictCommand, type Sending } from '../foundation/forms/ConflictCommands.js';
 import { canButton, type ObjectPermission } from '../foundation/permission-model.js';
-import { useApiClient } from '../foundation/Session.js';
-import { useExitCommand, type ExitSend } from './ExitCommands.js';
-import { x, xi } from './messages.js';
-import {
-  importPath,
-  importRowsOf,
-  parseImportPreview,
-  parseImportReceipt,
-  previewPath,
-  warningText,
-  withRejectedRows,
-  type ImportPreview,
-  type ImportRow,
-  type PreviewRow,
-} from './exit-import-model.js';
+import { useApiClient, useSession } from '../foundation/Session.js';
+import { xi } from './messages.js';
+import { importPath, importRowsOf, parseImportReceipt, type ImportRow } from './exit-import-model.js';
+import { ExitImportTemplate } from './ExitImportTemplate.js';
 import { XlsxError, readXlsx } from './xlsx-reader.js';
 
-/** 工具栏入口：新增权 + list 级按钮 Employment.DimissionImport（与 employment/policy.ts 两条导入路由同口径）。 */
+/** 工具栏入口：新增权 + list 级按钮 Employment.DimissionImport（与 employment/policy.ts 同口径）。 */
 export const importEntryVisible = (p: ObjectPermission | undefined) =>
   !!p?.dataOperations.create && canButton(p, EXIT_IMPORT_BUTTON, 'list');
 
@@ -37,154 +27,123 @@ export function ExitImportEntry(props: { permission: ObjectPermission | undefine
   );
 }
 
-type Loaded = { rows: ImportRow[]; preview: ImportPreview };
+type Loaded = { rows: ImportRow[]; fileName: string };
 type Picked = { reading?: boolean; error?: string; loaded?: Loaded };
-/**
- * 选文件即解析并调 preview（只读，不进命令内核，同 ExitForm 的提交前检查）。
- * 读取期间又换了文件，较早的结果作废；读不出（含解压过大、单元格过多）、列名不对、超过 100 行或报文超过请求体上限都就地提示，不发请求。
- */
-function usePreview() {
-  const api = useApiClient();
-  const [state, setState] = useState<Picked>({});
-  const picked = useRef(0);
-  const load = async (file: File): Promise<Picked> => {
-    const sheet = await file
-      .arrayBuffer()
-      .then((buffer) => readXlsx(new Uint8Array(buffer)))
-      .catch((error: unknown) =>
-        error instanceof XlsxError && error.reason === 'limit' ? xi.errors.tooBig : undefined,
-      );
-    if (typeof sheet === 'string') return { error: sheet };
-    if (!sheet) return { error: xi.errors.unreadable };
-    const parsed = importRowsOf(sheet);
-    if ('error' in parsed) return parsed;
-    const command = newCommand({ rows: parsed.rows });
-    const raw = await api.request<unknown>(previewPath, { method: 'POST', command });
-    return { loaded: { rows: parsed.rows, preview: parseImportPreview(raw, parsed.rows) } };
-  };
-  const pick = async (file: File | undefined) => {
-    const current = ++picked.current;
-    setState({ reading: !!file });
-    if (!file) return;
-    const next = await load(file).catch((error: unknown) => ({ error: (error as Error)?.message || ui.failed }));
-    if (current === picked.current) setState(next);
-  };
-  return { ...state, pick, update: (loaded: Loaded) => setState({ loaded }) };
+async function load(file: File): Promise<Picked> {
+  try {
+    const parsed = importRowsOf(await readXlsx(new Uint8Array(await file.arrayBuffer())), file.name);
+    return 'error' in parsed ? parsed : { loaded: { rows: parsed.rows, fileName: file.name } };
+  } catch (error) {
+    return { error: error instanceof XlsxError && error.reason === 'limit' ? xi.errors.tooBig : xi.errors.unreadable };
+  }
 }
 
-/**
- * 导入走 F-123 内核（useExitCommand，恢复槽 = 导入集合路径）：命令 ID、锁定、拒绝与结果未知都由内核负责。
- * 结果未知时关闭重开仍锁定，只能“按原命令重新提交”：同一 Idempotency-Key、同一报文，台账回放第一次的结果。
- * 有超编警告或不可见的超编时后端 409 CONFIRMATION_REQUIRED，确认框（DEC-258）确认后带 confirmed: true 重提；
- * 重提是内核里的一次新提交，命令 ID（Idempotency-Key）随之换新（设计 §9.3），不沿用被拒那次的键。
- */
-function ExitImport(props: { onClose(): void; onImported(): Promise<unknown> }) {
+/** F-123 内核持有页面级原命令；成功后的页面动作只由仍存活的弹窗执行（F-493 §9.1）。 */
+function useImportDialog(props: { onClose(): void; onImported(): Promise<unknown> }) {
   const { message } = App.useApp();
-  const file = usePreview();
-  // 新建无对象：objects 传空列表，恢复槽为导入集合路径本身（不传则 id 缺失被内核判为无效对象）
-  const cmd = useExitCommand(importPath, { revision: undefined, baseline: {} }, 'import', props.onImported, []);
-  const loaded = file.loaded;
-  /** 一次导入（新提交或原命令重发）：回执按命令里的行核对；整批 400 时把逐行原因合进当前预览表。 */
-  const commit = async (rows: ImportRow[], work: (send: ExitSend) => Promise<boolean>) => {
-    let imported = 0;
-    const send: ExitSend = {
-      path: importPath,
-      method: 'POST',
-      noRevision: true,
-      accept: (raw) => void (imported = parseImportReceipt(raw, rows)),
+  const api = useApiClient();
+  const session = useSession();
+  const location = useLocation();
+  const active = useRef({ live: true });
+  useEffect(() => {
+    const ticket = { live: true };
+    active.current = ticket;
+    return () => {
+      ticket.live = false;
     };
+  }, [location.key, session.tenantId, session.identityKey]);
+  const [file, setFile] = useState<Picked>({});
+  const picked = useRef(0);
+  const cmd = useConflictCommand(importPath, { revision: -1, values: {}, objects: [] }, undefined, {
+    action: 'import',
+  });
+  const close = () => {
+    active.current.live = false;
+    props.onClose();
+  };
+  const pick = async (next: File | undefined) => {
+    const current = ++picked.current;
+    const ticket = active.current;
+    setFile({ reading: !!next });
+    if (!next) return;
+    const loaded = await load(next);
+    if (ticket.live && current === picked.current) setFile(loaded);
+  };
+  const send = async ({ command }: Sending) => {
     try {
-      if (!(await work(send))) return;
-      void message.success(xi.success(imported));
-      props.onClose();
+      const raw = await api.request(importPath, { method: 'POST', command: { ...command, revision: undefined } });
+      parseImportReceipt(raw, command.body.rows as ImportRow[]);
+      return { id: importPath };
     } catch (error) {
-      // 拒绝 / 结果未知由内核状态条显示；预览后数据变了（整批 400）再把逐行原因合进预览表
-      const merged = loaded && withRejectedRows(loaded.preview, error);
-      if (merged) file.update({ ...loaded, preview: merged });
+      // 确定拒绝仍交内核解锁；原始原因码与英文校验文本不直接展示（DEC-045）。
+      if (error instanceof ApiError && [400, 413].includes(error.status)) {
+        const reason = error.status === 413 ? xi.errors.tooLarge : error.serverMessage;
+        throw new ApiError(
+          error.status,
+          error.code,
+          'fields',
+          reason && /[\u4e00-\u9fff]/.test(reason) ? reason : xi.errors.invalid,
+        );
+      }
+      throw error;
     }
   };
-  // 不给 body：rows 与确认项都进内核命令体，内核保存的就是实际报文（设计 §9.3 结果未知按原键重放）
-  const run = () => loaded && commit(loaded.rows, (send) => cmd.submit({ rows: loaded.rows }, ['rows'], send));
-  const state = cmd.form.state;
-  const original = state?.status === 'unknown' ? (state.command?.body.rows as ImportRow[] | undefined) : undefined;
-  const replay = () => original && commit(original, cmd.replay);
-  const preview = loaded?.preview;
-  const busy = cmd.form.busy || cmd.disabled;
-  const footer = (
-    <Space>
-      <Button onClick={props.onClose}>{xi.close}</Button>
-      <Button
-        type="primary"
-        disabled={!preview || preview.summary.failed > 0 || file.reading || cmd.disabled}
-        loading={cmd.form.busy}
-        onClick={() => void run()}
-      >
-        {xi.submit}
-      </Button>
-    </Space>
-  );
+  const commit = async () => {
+    const ticket = active.current;
+    if (cmd.form.busy) return;
+    try {
+      if (cmd.form.status === 'unknown') await cmd.replay(send);
+      else if (file.loaded) await cmd.run({ values: file.loaded, editableFields: ['rows', 'fileName'], send });
+      else return;
+      if (!ticket.live) return;
+      close();
+      void message.success(xi.success);
+      // 已确认 202 后列表读取失败不能把原命令变成结果未知。
+      await props.onImported().catch(() => undefined);
+    } catch {
+      // 拒绝与结果未知均由内核状态条展示，文件选择保留在当前弹窗。
+    }
+  };
+  return { cmd, file, close, pick, commit };
+}
+
+function ExitImport(props: { onClose(): void; onImported(): Promise<unknown> }) {
+  const { cmd, file, close, pick, commit } = useImportDialog(props);
+  const unknown = cmd.form.status === 'unknown';
   return (
-    <Modal open title={xi.entry} width={760} maskClosable={false} onCancel={props.onClose} footer={footer}>
+    <Modal
+      open
+      title={xi.entry}
+      width={760}
+      maskClosable={false}
+      onCancel={close}
+      footer={
+        <Space>
+          <Button onClick={close}>{xi.close}</Button>
+          <Button
+            type="primary"
+            loading={cmd.form.busy}
+            disabled={unknown ? cmd.form.busy : !file.loaded || file.reading || cmd.form.locked}
+            onClick={() => void commit()}
+          >
+            {unknown ? xi.replay : xi.submit}
+          </Button>
+        </Space>
+      }
+    >
       <Space direction="vertical" className="exit-import">
         <span>{xi.hint}</span>
+        <ExitImportTemplate />
         <input
           type="file"
           accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           aria-label={xi.pick}
-          disabled={busy}
-          onChange={(event) => void file.pick(event.target.files?.[0])}
+          disabled={cmd.form.locked}
+          onChange={(event) => void pick(event.target.files?.[0])}
         />
-        {file.reading && <span>{xi.reading}</span>}
         {file.error && <Alert type="error" showIcon message={file.error} />}
-        {loaded && <PreviewTable preview={loaded.preview} rows={loaded.rows} />}
         <CommandStatus submission={cmd.form} />
-        {original && <Button onClick={() => void replay()}>{xi.replay}</Button>}
       </Space>
     </Modal>
-  );
-}
-
-function resultOf(row: PreviewRow) {
-  if (!row.ok) return ['error', xi.results.failed] as const;
-  if (row.warnings.length) return ['warning', xi.results.warned] as const;
-  return ['success', xi.results.ok] as const;
-}
-
-function PreviewTable({ preview, rows }: { preview: ImportPreview; rows: ImportRow[] }) {
-  const sent = new Map(rows.map((row) => [row.rowNo, row]));
-  return (
-    <>
-      <span>{xi.summary(preview.summary)}</span>
-      {preview.summary.failed > 0 && <Alert type="error" showIcon message={xi.fixFirst} />}
-      {preview.hiddenCount > 0 && <Alert type="warning" showIcon message={xi.hidden(preview.hiddenCount)} />}
-      <Table<PreviewRow>
-        size="small"
-        rowKey="rowNo"
-        pagination={false}
-        dataSource={preview.rows}
-        columns={[
-          { key: 'rowNo', title: xi.table.rowNo, dataIndex: 'rowNo' },
-          {
-            key: 'employeeNo',
-            title: xi.table.employeeNo,
-            render: (_, row) => sent.get(row.rowNo)?.employeeNo ?? x.missing,
-          },
-          { key: 'name', title: xi.table.name, render: (_, row) => sent.get(row.rowNo)?.name ?? x.missing },
-          {
-            key: 'result',
-            title: xi.table.result,
-            render: (_, row) => <Tag color={resultOf(row)[0]}>{resultOf(row)[1]}</Tag>,
-          },
-          {
-            key: 'detail',
-            title: xi.table.detail,
-            render: (_, row) =>
-              [...row.errors.map((issue) => issue.message), ...row.warnings.map(warningText)].map((line, i) => (
-                <div key={i}>{line}</div>
-              )),
-          },
-        ]}
-      />
-    </>
   );
 }
