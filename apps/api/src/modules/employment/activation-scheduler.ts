@@ -36,6 +36,7 @@ import { dueLinkageEmployees, runDuePartTimeLinkage } from './part-time/linkage.
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 import { drainExitAccounts, startExitAccountScheduler } from './exit-account-worker.js';
+import { startExitImportScheduler } from './exit-import-worker.js';
 import { runDueExitDutyTransfers } from './exit-duty-due.js';
 import { runDueMenuDutyTransfers, runErrorCode, type DutyTransferRun } from '../duty-transfer/scheduler.js';
 
@@ -274,6 +275,7 @@ export function startEmploymentActivationScheduler(
       });
   };
   const accounts = startExitAccountScheduler(db, { clock, onError, intervalMs });
+  const imports = startExitImportScheduler(db, { clock, onError, intervalMs });
   const timer = setInterval(tick, intervalMs);
   tick();
   return {
@@ -281,6 +283,7 @@ export function startEmploymentActivationScheduler(
       clearInterval(timer);
       await running;
       await accounts.stop();
+      await imports.stop();
     },
   };
 }

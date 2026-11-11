@@ -1217,6 +1217,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
   ],
+  'apps/api/src/modules/employment/context.ts#contextOf': [
+    'apps/api/src/authorization.ts#requirePermission',
+    '#EMPLOYMENT_OBJECT',
+    '#bindEmployeeResource',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/employment/context.ts#employmentCreator': [
     'apps/api/src/modules/permission/scope-audit.ts#firstCreatorSql',
   ],
@@ -1238,12 +1245,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/context.ts#readContext': [
-    'apps/api/src/authorization.ts#requirePermission',
     '#EMPLOYMENT_OBJECT',
-    '#bindEmployeeResource',
-    'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
+    '#contextOf',
     'apps/api/src/tenant-context.ts#tenantOf',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/context.ts#readPageContext': ['#EMPLOYMENT_OBJECT', '#readContext'],
   'apps/api/src/modules/employment/context.ts#requireEmployeeInScope': [
@@ -3175,6 +3179,11 @@ export const GRAPH: Graph = {
     '#refuse',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_OF_TODO',
   ],
+  'apps/api/src/modules/employment/exit-import-recheck.ts#submitterStillAllowed': [
+    'apps/api/src/modules/employment/context.ts#contextOf',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/replay-guard.ts#exitImportGuard',
+  ],
   'apps/api/src/modules/employment/exit-import-resolve.ts#findDepartment': [
     '#pick',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -3299,12 +3308,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-import-worker.ts#emailInEmployee': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-import-worker.ts#failTerminally': ['#finish'],
   'apps/api/src/modules/employment/exit-import-worker.ts#finish': [
     'apps/api/src/audit/record.ts#recordOperationLog',
     '#RETAIN',
     '#departmentResolver',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-import-worker.ts#hasPendingRows': ['#pendingRows'],
   'apps/api/src/modules/employment/exit-import-worker.ts#judge': [
     'apps/api/src/modules/employment/exit-import-resolve.ts#resolveImportRow',
     'apps/api/src/modules/employment/exit-import-row.ts#profileFormatErrors',
@@ -3319,11 +3330,18 @@ export const GRAPH: Graph = {
     '#markFailed',
     '#runRow',
   ],
+  'apps/api/src/modules/employment/exit-import-worker.ts#recordFailure': ['#reasonOf'],
   'apps/api/src/modules/employment/exit-import-worker.ts#runBatch': [
+    'apps/api/src/modules/employment/exit-import-recheck.ts#submitterStillAllowed',
+    '#authorizerOf',
+    '#failTerminally',
     '#finish',
+    '#hasPendingRows',
     '#pendingRows',
     '#processRow',
     '#recordFailure',
+    '#terminalFailure',
+    'packages/domain/src/employment/exit-import-contract.ts#EXIT_IMPORT_MAX_ATTEMPTS',
   ],
   'apps/api/src/modules/employment/exit-import-worker.ts#runRow': [
     'apps/api/src/advisory-lock.ts#advisoryLock',
@@ -3338,6 +3356,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-import-worker.ts#startLoop': ['#drainExitImports', '#stateOf'],
   'apps/api/src/modules/employment/exit-import-worker.ts#stateOf': ['#states'],
+  'apps/api/src/modules/employment/exit-import-worker.ts#terminalFailure': ['#failTerminally', '#reasonOf'],
   'apps/api/src/modules/employment/exit-import-worker.ts#wakeExitImports': ['#startLoop', '#stateOf'],
   'apps/api/src/modules/employment/exit-import.ts#profileWrites': [
     'apps/api/src/modules/employment/exit-import-row.ts#educationPatch',

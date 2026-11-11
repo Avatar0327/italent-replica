@@ -14,7 +14,6 @@ import { authorize } from '../personnel/access.js';
 import { auditEmployment, EMPLOYEE_OBJECT, requireEmploymentWrite } from './context.js';
 import { educationPatch, profilePatch } from './exit-import-row.js';
 import { shapeErrors, type ExitImportBody, type ImportRowInput, type RowError } from './exit-import-shape.js';
-import { wakeExitImports } from './exit-import-worker.js';
 import type { EmploymentContext } from './types.js';
 
 export { parseExitImportBody, type ExitImportBody, type ImportRowInput } from './exit-import-shape.js';
@@ -156,5 +155,3 @@ export async function submitExitImport(
   afterTransactionCommit(tx, `exit-import:${ctx.tenantId}:${batchId}`, async (db) => wake(db));
   return { status: 202, body: { batchId, status: 'queued', total: body.rows.length } };
 }
-
-export { wakeExitImports };
