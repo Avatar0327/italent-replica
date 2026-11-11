@@ -6,7 +6,12 @@ import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { importWorld, type ImportWorld } from './AC-DM-30-support.js';
-import { importOperator, PROFILE_OBJECT_CODE, RECORD_OBJECT_CODE } from './support/exit-import-operator.js';
+import {
+  EMPLOYEE_OBJECT_CODE,
+  importOperator,
+  PROFILE_OBJECT_CODE,
+  RECORD_OBJECT_CODE,
+} from './support/exit-import-operator.js';
 import { readXlsx, valueAt } from './support/xlsx-read.js';
 
 const database = useTestDb();
@@ -60,6 +65,56 @@ describe('AC-DM-30-F493-24 错误文件按当前字段权裁剪', () => {
 
     expect((await download(op, batchId)).status).toBe(200);
     await op.revokeScope(PROFILE_OBJECT_CODE);
+    expect((await download(op, batchId)).status).toBe(403);
+  });
+});
+
+describe('AC-DM-30-F493-24 B、E 列跟随的字段权（设计 §3.1、§8.2 R1 P2-1）', () => {
+  it('撤人员对象 name 查看权：B 列留空、B 列错误换成 FIELD_HIDDEN（档案 name 仍可见不影响）', async () => {
+    const x = await importWorld(database().db, '24-b');
+    const op = await importOperator(x);
+    const d = await x.dept('B列部门');
+    const batchId = await submitted(x, op, [x.row(1, d.code, { name: null }), x.row(2, 'zzf496nope')]);
+    const before = await bookOf(await download(op, batchId));
+    expect(valueAt(before, 'A2')).toContain('[*姓名]：*姓名不能为空');
+    expect(valueAt(before, 'B3')).toBe('合成乙');
+
+    await op.reconfigure({ noView: [[EMPLOYEE_OBJECT_CODE, 'name']] });
+    const after = await bookOf(await download(op, batchId));
+    expect(after.cells.has('B3')).toBe(false);
+    expect(valueAt(after, 'A2')).toBe('[*姓名]：无查看权限，错误原因已隐藏');
+    expect(valueAt(after, 'D3')).toBe('zzf496nope');
+  });
+
+  it('撤任职 effectiveDate 查看权：E 列留空、E 列错误换成 FIELD_HIDDEN', async () => {
+    const x = await importWorld(database().db, '24-e');
+    const op = await importOperator(x);
+    const d = await x.dept('E列部门');
+    const batchId = await submitted(x, op, [x.row(1, d.code, { entryDate: '2023/13/01' })]);
+    const before = await bookOf(await download(op, batchId));
+    expect(valueAt(before, 'E2')).toBe('2023/13/01');
+    expect(String(valueAt(before, 'A2'))).toContain('[*入职日期]：');
+
+    await op.reconfigure({ noView: [[RECORD_OBJECT_CODE, 'effectiveDate']] });
+    const after = await bookOf(await download(op, batchId));
+    expect(after.cells.has('E2')).toBe(false);
+    expect(String(valueAt(after, 'A2'))).toContain('[*入职日期]：无查看权限，错误原因已隐藏');
+    expect(String(valueAt(after, 'A2'))).not.toContain('2023/13/01');
+  });
+});
+
+describe('AC-DM-30-F493-24 下载准入范围（设计 §8.2：功能权、按钮、人员 / 档案两个对象的看全部）', () => {
+  it('只撤任职对象看全部：仍 200，且按当前字段权裁剪；撤人员对象或档案对象看全部：403', async () => {
+    const x = await importWorld(database().db, '24-scope');
+    const op = await importOperator(x);
+    const batchId = await submitted(x, op, [x.row(1, 'zzf496nope', { mobilePhone: MOBILE })]);
+    await op.revokeScope(RECORD_OBJECT_CODE);
+    await op.reconfigure({ noView: [[PROFILE_OBJECT_CODE, 'mobilePhone']] });
+    const book = await bookOf(await download(op, batchId));
+    expect(book.cells.has('L2')).toBe(false);
+    expect(valueAt(book, 'D2')).toBe('zzf496nope');
+
+    await op.revokeScope(EMPLOYEE_OBJECT_CODE);
     expect((await download(op, batchId)).status).toBe(403);
   });
 });

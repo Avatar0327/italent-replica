@@ -8,7 +8,7 @@ import { exitImportErrorText } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { H, importWorld, type ImportWorld } from './AC-DM-30-support.js';
-import { importOperator } from './support/exit-import-operator.js';
+import { importOperator, RECORD_OBJECT_CODE } from './support/exit-import-operator.js';
 import { cmd } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 import { readXlsx, valueAt, type Xlsx } from './support/xlsx-read.js';
@@ -153,6 +153,16 @@ describe('AC-DM-30-F493-39 模板下载', () => {
     expect((await without.get('/exits/import/template')).status).toBe(403);
     const withButton = await importOperator(await importWorld(database().db, '39-btn'));
     expect((await withButton.get('/exits/import/template')).status).toBe(200);
+  });
+
+  it('保留功能权与按钮、撤任职对象看全部：仍 200，只有 26 个表头（设计 §8.2 末条）', async () => {
+    const op = await importOperator(await importWorld(database().db, '39-noscope'));
+    await op.revokeScope(RECORD_OBJECT_CODE);
+    const response = await op.get('/exits/import/template');
+    expect(response.status, await response.clone().text()).toBe(200);
+    const book = await readXlsx(Buffer.from(await response.arrayBuffer()));
+    expect(book.cells.size).toBe(26);
+    expect([...book.cells.keys()].every((ref) => ref.endsWith('1'))).toBe(true);
   });
 });
 
