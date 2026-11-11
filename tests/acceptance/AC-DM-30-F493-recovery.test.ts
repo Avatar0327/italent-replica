@@ -134,6 +134,40 @@ describe('AC-DM-30-F493-11 系统故障：重试与连续 5 次后的终态', ()
   });
 });
 
+describe('AC-DM-30-F493-11 第 5 次最后一行已提交、收尾前崩溃', () => {
+  it('第 6 次认领时已无 pending 行：直接收尾为 completed（last_error 为 NULL、计数正确），不记 ATTEMPTS_EXCEEDED', async () => {
+    const db = database().db;
+    const x = await importWorld(db, '11-last');
+    const d = await x.dept('收尾崩溃部门');
+    const taken = `syn.c.${uniqueSuffix()}@example.com`;
+    await createUser(db, { email: taken, displayName: '合成他租户账号' }, cmd());
+    const response = await x.submit([x.row(1, d.code), x.row(2, d.code, { email: taken }), x.row(3, d.code)]);
+    expect(response.status, await response.clone().text()).toBe(202);
+    const { batchId } = (await response.json()) as { batchId: string };
+    await x.settle();
+    const rows = await x.rowsOfBatch(batchId);
+    expect(rows.map((r) => r.status)).toEqual(['succeeded', 'created_with_error', 'succeeded']);
+    // 还原成“第 5 次执行已提交最后一行、收尾事务没提交就退出”的状态：running、无 pending 行、尝试次数 5、租约已过期
+    await x.q(x.sql`UPDATE exit_import_batches SET status='running', attempts=5, last_error=NULL, finished_at=NULL,
+      expires_at=NULL, created_count=0, error_row_count=0, error_count=0, lease_until=now() - interval '1 second'
+      WHERE tenant_id=${x.tenantId} AND id=${batchId}::uuid`);
+    const headcount = await x.employeeCount();
+
+    expect(await drainExitImports(db, x.tenantId)).toEqual({ batches: 1 }); // 第 6 次认领
+
+    expect(await x.batchOf(batchId)).toMatchObject({
+      status: 'completed',
+      attempts: 6,
+      created_count: 3,
+      error_row_count: 1,
+      error_count: 1,
+      last_error: null,
+    });
+    expect(await x.rowsOfBatch(batchId)).toEqual(rows); // 行不被改写
+    expect(await x.employeeCount()).toBe(headcount);
+  });
+});
+
 describe('AC-DM-30-F493-16③ 提交后、执行前撤销提交者的成员资格', () => {
   it('剩余 pending 行全部 SUBMITTER_FORBIDDEN，批次 completed，不写任何人员', async () => {
     const db = database().db;
