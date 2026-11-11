@@ -5,6 +5,7 @@
 import { sql, withTenant, type Tx } from '@italent/db';
 import { expect } from 'vitest';
 import { batchLocalSums } from '../../apps/api/src/modules/establishment/capacity-read.js';
+import { loadPreviewInput } from '../../apps/api/src/modules/org-adjustment/preview-input.js';
 import { flowWorld } from './AC-OA-approval-support.js';
 import { localCapacity, seedChildren } from './AC-F476-P2-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
@@ -91,5 +92,27 @@ export async function plannedSum(db: Db, name: string, count: number, analyze: b
       touched += rowsTouched(plan!.Plan);
     }
     return { total: sums.get(root!.id), touched };
+  });
+}
+
+/** 当前事务里各表、各索引实际读到的行数（顺序扫描读的行 + 索引返回的条目 + 按索引取回的行）。 */
+async function xactTuplesRead(tx: Tx): Promise<number> {
+  const [row] = resultRows<{ n: string }>(
+    await tx.execute(sql`SELECT coalesce(sum(coalesce(pg_stat_get_xact_tuples_returned(c.oid), 0)
+        + coalesce(pg_stat_get_xact_tuples_fetched(c.oid), 0)), 0)::text AS n
+      FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'i')`),
+  );
+  return Number(row!.n);
+}
+
+/**
+ * 读调整范围（根组织）的预览输入（组织快照、全称路径、编制汇总、负责人姓名，办理冻结与现值预览共用），
+ * 返回读取结果与这一次实际读到的行数。整段 SQL 由产品代码发出，计数取自同一事务的表级统计，与机器快慢无关。
+ */
+export async function previewInputTouched(w: Awaited<ReturnType<typeof flowWorld>>) {
+  return withTenant(w.db, w.tenant.id, async (tx) => {
+    const before = await xactTuplesRead(tx);
+    const input = await loadPreviewInput(tx, w.tenant.id, AS_OF, [w.a], [], 'freeze');
+    return { input, touched: (await xactTuplesRead(tx)) - before };
   });
 }
