@@ -21,6 +21,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/establishment/capacity-read.ts#batchLocalSums': [
     '#withoutSeqScan',
     'apps/api/src/modules/establishment/store.ts#rowsOf',
+    'apps/api/src/modules/org/read-model.ts#plannedTenant',
   ],
   'apps/api/src/modules/establishment/capacity-read.ts#capacityFor': ['#readCapacity'],
   'apps/api/src/modules/establishment/capacity-read.ts#listCapacities': [
