@@ -13,6 +13,7 @@ import {
 import { creatorSql } from '../permission/scope-audit.js';
 import { scopeSql } from '../permission/module-access.js';
 import { AppError } from '../../errors.js';
+import { plannedTenant } from '../org/read-model.js';
 import { subtreeIds } from './org-reader.js';
 import { loadScheme, loadSchemeBatch } from './schemes.js';
 import { rowsOf } from './store.js';
@@ -305,6 +306,8 @@ export async function batchLocalSums(
       ),
       sql`, `,
     );
+    // 租户条件写成参数，见 plannedTenant（新导入租户还不在统计里时，按版本 ID 取现行版本仍走 (租户, ID) 索引）。
+    const tenant = plannedTenant(tenantId);
     // 递归每一步都从当前节点出发按索引查下级（LATERAL + OFFSET 0 / LIMIT 1 不让规划器改写成整表连接）：批量导入
     // 后统计信息还没收集时，规划器把层级链接估成 1 行，整表连接的写法退化成每步重扫工作表与全部现行版本，1 万个
     // 下级扫约 1 亿行（F-476 P2 第 5 轮实测）。查下级时 ORDER BY 与 org_hierarchy_tenant_parent 同序，无统计时
@@ -318,15 +321,15 @@ export async function batchLocalSums(
         SELECT tree.capacity_id,child.org_id FROM tree
         CROSS JOIN LATERAL (
           SELECT link.version_id FROM org_hierarchy_links link
-          WHERE link.tenant_id=${tenantId} AND link.dimension='admin' AND link.parent_org_id=tree.org_id
+          WHERE link.tenant_id=${tenant} AND link.dimension='admin' AND link.parent_org_id=tree.org_id
           ORDER BY link.dimension,link.parent_org_id OFFSET 0
         ) link
         CROSS JOIN LATERAL (
           SELECT v.org_id FROM org_versions v
-          WHERE v.tenant_id=${tenantId} AND v.id=link.version_id
+          WHERE v.tenant_id=${tenant} AND v.id=link.version_id
             AND v.start_date<=${asOf}::date AND v.stop_date>=${asOf}::date
             AND v.id=(
-              SELECT s.id FROM org_versions s WHERE s.tenant_id=${tenantId} AND s.org_id=v.org_id
+              SELECT s.id FROM org_versions s WHERE s.tenant_id=${tenant} AND s.org_id=v.org_id
                 AND s.start_date<=${asOf}::date ORDER BY s.start_date DESC,s.version_no DESC LIMIT 1
             )
           OFFSET 0
@@ -335,11 +338,11 @@ export async function batchLocalSums(
       SELECT r.capacity_id AS id, COUNT(DISTINCT tree.org_id)::int AS count,
         COALESCE(SUM(v.local_capacity),0)::text AS total FROM roots r
       JOIN tree ON tree.capacity_id=r.capacity_id
-      LEFT JOIN establishment_objects o ON o.tenant_id=${tenantId} AND o.org_id=tree.org_id
+      LEFT JOIN establishment_objects o ON o.tenant_id=${tenant} AND o.org_id=tree.org_id
         AND o.scheme_id=r.scheme_id AND o.period_start=r.period_start
       LEFT JOIN LATERAL (
         SELECT local_capacity FROM establishment_versions ev
-        WHERE ev.tenant_id=${tenantId} AND ev.object_id=o.id AND ev.start_date<=${asOf}::date
+        WHERE ev.tenant_id=${tenant} AND ev.object_id=o.id AND ev.start_date<=${asOf}::date
         ORDER BY ev.start_date DESC,ev.version_no DESC LIMIT 1
       ) v ON true
       GROUP BY r.capacity_id

@@ -51,6 +51,14 @@ export function validIsoDate(value: string): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
+/**
+ * 整租户读取的租户条件：写成子查询（规划器视为运行时参数），不写成常量。为什么：批量导入新租户后、下一次自动分析
+ * 之前，统计的高频值里没有这个租户，按常量估算会把“本租户的行”估成 1 行，所有以租户开头的索引代价打平，按版本 ID /
+ * 组织 ID 的连接就只用租户列做索引条件、其余靠过滤，每一行重扫整个租户（F-476 P2 第 6 轮，CI 2.5 万节点超时）。
+ * 参数按“平均每租户行数”估算，不会低于实际均值，连接键所在的索引仍更优；无统计、准确统计时计划不变。
+ */
+export const plannedTenant = (tenantId: string) => sql`(SELECT ${tenantId}::uuid)`;
+
 /** SQL 先为每个组织选中时点最新版本，再仅加载命中版本的层级。 */
 export async function loadOrgSnapshot(
   tx: Tx,
@@ -123,20 +131,21 @@ export async function resolveOrgPaths(
   versionIds: readonly string[],
 ): Promise<Map<string, OrgPath>> {
   if (!versionIds.length) return new Map();
+  const tenant = plannedTenant(tenantId);
   const rows = rowsOf<{ versionId: string; fullName: string; level: number }>(
     await tx.execute(sql`
       WITH RECURSIVE chain(version_id, node_id, node_version_id, names, depth) AS (
         SELECT v.id, v.org_id, v.id, ARRAY[v.name]::text[], 0
         FROM org_versions v
-        WHERE v.tenant_id=${tenantId} AND v.id = ANY(${`{${versionIds.join(',')}}`}::uuid[])
+        WHERE v.tenant_id=${tenant} AND v.id = ANY(${`{${versionIds.join(',')}}`}::uuid[])
         UNION ALL
         SELECT c.version_id, p.org_id, p.id, array_prepend(p.name::text, c.names), c.depth + 1
         FROM chain c
         JOIN org_hierarchy_links l
-          ON l.tenant_id=${tenantId} AND l.version_id=c.node_version_id AND l.dimension='admin'
+          ON l.tenant_id=${tenant} AND l.version_id=c.node_version_id AND l.dimension='admin'
         CROSS JOIN LATERAL (
           SELECT s.id, s.org_id, s.name FROM org_versions s
-          WHERE s.tenant_id=${tenantId} AND s.org_id=l.parent_org_id AND s.start_date <= ${asOf}::date
+          WHERE s.tenant_id=${tenant} AND s.org_id=l.parent_org_id AND s.start_date <= ${asOf}::date
           ORDER BY s.start_date DESC, s.version_no DESC LIMIT 1
         ) p
         WHERE c.node_id <> ${tenantId}::uuid AND c.depth < ${MAX_PATH_DEPTH}
@@ -161,7 +170,7 @@ function currentOrgVersions(
     .from(orgVersions)
     .where(
       and(
-        eq(orgVersions.tenantId, tenantId),
+        sql`${orgVersions.tenantId} = ${plannedTenant(tenantId)}`,
         lte(orgVersions.startDate, asOf),
         ...(excludeRoot ? [ne(orgVersions.orgId, tenantId)] : []),
         ...(filter?.scope
