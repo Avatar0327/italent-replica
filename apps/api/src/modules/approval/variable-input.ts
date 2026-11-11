@@ -1,4 +1,5 @@
 /** F-326 §2：HTTP 形态与候选态校验。类型、文本、编码和状态规则复用 S1。 */
+import { isDeepStrictEqual } from 'node:util';
 import {
   APP_IDS,
   defaultValueViolation,
@@ -84,14 +85,14 @@ function normalizedDefault(dataType: VariableDataType, value: unknown): unknown 
   return value ?? null;
 }
 
-export function validateVariableValues(value: VariableValues, validateDefault = true): VariableValues {
+export function validateVariableValues(value: VariableValues, previous?: VariableValues): VariableValues {
   const nameError = textViolation(value.name, VARIABLE_TEXT_FIELDS.variableName);
   if (nameError) invalid(nameError);
   const name = value.name.trim();
   if (!name) invalid('VARIABLE_NAME_REQUIRED');
-  let defaultValue = value.defaultValue;
-  if (validateDefault) {
-    defaultValue = normalizedDefault(value.dataType, defaultValue);
+  let defaultValue = normalizedDefault(value.dataType, value.defaultValue);
+  // F-326 §2.3 / §2.5：UTC 转换可能产生扩展年份，原样回传的已验证值仍须允许编辑。
+  if (!previous || !isDeepStrictEqual(defaultValue, previous.defaultValue)) {
     const defaultError = defaultValueViolation(value.dataType, defaultValue);
     if (defaultError) invalid(defaultError);
     if (value.dataType === 'datetime' && typeof defaultValue === 'string')

@@ -176,11 +176,8 @@ export async function updateVariable(tx: Tx, ctx: ApprovalContext, id: string, i
     if (input[key] !== undefined && input[key] !== before[key])
       throw approvalError('VALIDATION_FAILED', 'APPROVAL_VARIABLE_FIELD_LOCKED', '编码、类型和归属不可修改');
   }
-  // 未提交默认值时沿用已验证的存储值。UTC 转换跨过 0000 / 9999 年边界时会使用 ISO 扩展年份。
-  const value = validateVariableValues(
-    { ...valuesOf(before), ...input } as VariableValues,
-    Object.hasOwn(input, 'defaultValue'),
-  );
+  const previous = valuesOf(before);
+  const value = validateVariableValues({ ...previous, ...input } as VariableValues, previous);
   await checkPeople(tx, ctx, value, before.status === 'enabled');
   const [after] = await tx
     .update(table)
