@@ -254,9 +254,18 @@ const FUNCTION_CTX: Evidence = {
 };
 const EXIT_IMPORT_FILE = `${SRC}/employment/exit-import-file.ts`;
 const EXIT_IMPORT_DOWNLOAD = `${SRC}/employment/exit-import-download.ts`;
-/** F-493 S3c：模板与错误文件的下载入口权限链（设计 §3.1、§8.2）；错误文件另判提交人归属与人员 / 档案对象的“看全部”。 */
-function exitImportDownloadObligations(route: 'template' | 'error-file'): Obligation[] {
-  const path = route === 'template' ? '/exits/import/template' : '/exits/import/batches/:id/error-file';
+const EXIT_IMPORT_HISTORY = `${SRC}/employment/exit-import-history.ts`;
+const DOWNLOAD_PATH = {
+  template: '/exits/import/template',
+  'error-file': '/exits/import/batches/:id/error-file',
+  'source-file': '/exits/import/batches/:id/source-file',
+} as const;
+/**
+ * F-493 S3c / S3d：模板、错误文件、原文件的下载入口权限链（设计 §3.1、§8.2、§8.4）；
+ * 错误文件与原文件另判提交人归属与人员 / 档案对象的“看全部”（同一条 requireExitImportDownloadAccess）。
+ */
+function exitImportDownloadObligations(route: keyof typeof DOWNLOAD_PATH): Obligation[] {
+  const path = DOWNLOAD_PATH[route];
   const entry = at(EXIT, 'GET', path, "const ctx = await functionContext(c, deps, 'object.create')");
   const access = route === 'template' ? 'requireExitImportButton' : 'requireExitImportDownloadAccess';
   const call = (anchor: string) => fn(EXIT_IMPORT_FILE, access, anchor);
@@ -314,10 +323,56 @@ function exitImportDownloadObligations(route: 'template' | 'error-file'): Obliga
       'own:employment.exitImportBatchSubmitter',
       [],
       [
-        at(EXIT, 'GET', path, 'const file = await exitImportErrorFile(deps, ctx, uuidParam(c, '),
-        fn(EXIT_IMPORT_DOWNLOAD, 'exitImportErrorFile', 'eq(exitImportBatches.submittedBy, ctx.userId)'),
+        route === 'error-file'
+          ? at(EXIT, 'GET', path, 'const file = await exitImportErrorFile(deps, ctx, uuidParam(c, ')
+          : at(EXIT, 'GET', path, 'const file = await exitImportSourceFile(deps, ctx, uuidParam(c, '),
+        route === 'error-file'
+          ? fn(EXIT_IMPORT_DOWNLOAD, 'exitImportErrorFile', 'eq(exitImportBatches.submittedBy, ctx.userId)')
+          : fn(EXIT_IMPORT_DOWNLOAD, 'exitImportSourceFile', 'AND submitted_by='),
       ],
       '提交人归属：不是本人提交的批次（含他人、他租户的）一律 404，不泄露存在性',
+    ),
+  ];
+}
+
+/** F-493 S3d 导入历史列表（设计 §8.4）：功能权 + 导入按钮 + 提交人归属；不判数据范围（出参不含人员数据）。 */
+function exitImportHistoryObligations(): Obligation[] {
+  const path = '/exits/import/batches';
+  return [
+    ...withNeeds(
+      [
+        ob(
+          `obj:${RECORD}:create`,
+          ['objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+          [at(EXIT, 'GET', path, "const ctx = await functionContext(c, deps, 'object.create')"), FUNCTION_CTX],
+          '设计 §8.4：只验任职对象功能权，不解析数据范围（functionContext）',
+        ),
+        ob(
+          `btn:${RECORD}#Employment.DimissionImport@list`,
+          [],
+          [
+            at(EXIT, 'GET', path, 'await requireExitImportButton(ctx)'),
+            fn(
+              EXIT_IMPORT_FILE,
+              'requireExitImportButton',
+              "await requireEmploymentWrite(ctx, 'create', {}, EXIT_IMPORT_BUTTON, " +
+                'EMPLOYMENT_OBJECT, { commandOnly: true })',
+            ),
+            WRITE_BUTTON,
+          ],
+          '只判按钮的命令权',
+        ),
+      ],
+      { [`obj:${RECORD}:create`]: bound(NONE) },
+    ),
+    ob(
+      'own:employment.exitImportBatchSubmitter',
+      [],
+      [
+        at(EXIT, 'GET', path, 'return c.json(await listExitImportHistory(deps, ctx, '),
+        fn(EXIT_IMPORT_HISTORY, 'listExitImportHistory', 'b.submitted_by ='),
+      ],
+      '提交人归属：只列本人提交的批次，他人 / 他租户的批次不会出现',
     ),
   ];
 }
@@ -3711,6 +3766,9 @@ export const EMPLOYMENT: RequiredTable = {
   // F-493 S3c：模板与错误文件下载（设计 §3.1、§8.2、§10.1）；错误文件另判提交人归属，内容按当前字段权裁剪
   'GET /api/tenant/employment/exits/import/template': exitImportDownloadObligations('template'),
   'GET /api/tenant/employment/exits/import/batches/:id/error-file': exitImportDownloadObligations('error-file'),
+  // F-493 S3d：导入历史列表与原文件下载（设计 §8.4、§10.1）
+  'GET /api/tenant/employment/exits/import/batches': exitImportHistoryObligations(),
+  'GET /api/tenant/employment/exits/import/batches/:id/source-file': exitImportDownloadObligations('source-file'),
   'PATCH /api/tenant/employment/exits/:id': [
     ...exitBusinessCommand('/exits/:id', 'Employment.DimissionEdit', 'route'),
     linkage(

@@ -139,6 +139,16 @@ export function errorWorkbook(rows: readonly ErrorFileRow[], shown: ReadonlySet<
   return statWorkbook(sheet);
 }
 
+/** 一行的 25 个原始列：列字母 → 提交时的原文（B～Z；A 无来源）。 */
+function rawValues(row: typeof exitImportRows.$inferSelect): Record<string, string | null> {
+  return Object.fromEntries(
+    EXIT_IMPORT_COLUMNS.filter((column) => column.key !== null).map((column) => [
+      column.letter,
+      (row as unknown as Record<string, string | null>)[column.key!] ?? null,
+    ]),
+  );
+}
+
 /** 错误文件的数据行：failed / created_with_error，按 rowNo；列字母 → 原始值。 */
 export async function loadErrorFileRows(tx: Tx, tenantId: string, batchId: string): Promise<ErrorFileRow[]> {
   const rows = await tx
@@ -152,14 +162,28 @@ export async function loadErrorFileRows(tx: Tx, tenantId: string, batchId: strin
       ),
     )
     .orderBy(asc(exitImportRows.rowNo));
-  return rows.map((row) => ({
-    rowNo: row.rowNo,
-    errors: row.errors,
-    values: Object.fromEntries(
-      EXIT_IMPORT_COLUMNS.filter((column) => column.key !== null).map((column) => [
-        column.letter,
-        (row as unknown as Record<string, string | null>)[column.key!] ?? null,
-      ]),
-    ),
-  }));
+  return rows.map((row) => ({ rowNo: row.rowNo, errors: row.errors, values: rawValues(row) }));
+}
+
+/** 原文件的数据行：批次全部行（成功、失败都在），按 rowNo。 */
+export async function loadSourceFileRows(tx: Tx, tenantId: string, batchId: string): Promise<ErrorFileRow[]> {
+  const rows = await tx
+    .select()
+    .from(exitImportRows)
+    .where(and(eq(exitImportRows.tenantId, tenantId), eq(exitImportRows.batchId, batchId)))
+    .orderBy(asc(exitImportRows.rowNo));
+  return rows.map((row) => ({ rowNo: row.rowNo, errors: row.errors, values: rawValues(row) }));
+}
+
+/**
+ * 原文件（设计 §8.4）：由明细行重建，不是用户上传的原始字节。A 列「导入结果」留空；B～Z 写提交的原文，
+ * 日期列不规整（与错误文件不同，保持“所提交的样子”）；当前无查看权的列整列留空。
+ */
+export function sourceWorkbook(rows: readonly ErrorFileRow[], shown: ReadonlySet<string>): Buffer {
+  const sheet = headerSheet();
+  rows.forEach((row, index) => {
+    for (const column of EXIT_IMPORT_COLUMNS.slice(1))
+      if (shown.has(column.letter)) sheet.set(`${column.letter}${index + 2}`, row.values[column.letter] ?? null);
+  });
+  return statWorkbook(sheet);
 }
