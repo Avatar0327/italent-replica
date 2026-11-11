@@ -14,6 +14,7 @@ import {
   startExitImportScheduler,
 } from '../../apps/api/src/modules/employment/exit-import-worker.js';
 import { COLUMN_KEYS, importWorld, type ImportRow, type ImportWorld } from './AC-DM-30-support.js';
+import { allowAll } from './support/tenant-api.js';
 
 const database = useTestDb();
 afterEach(() => installExitImportTestHooks(database().db, {}));
@@ -69,7 +70,8 @@ async function seedQueued(x: ImportWorld, rows: readonly ImportRow[]) {
 
 const clock = () => new Date();
 const errors: unknown[] = [];
-const options = { clock, onError: (error: unknown) => void errors.push(error), intervalMs: 50 };
+// 与提交入口同一个授权器（测试世界用 allowAll）；真实授权器的复核口径由 AC-23④ 覆盖
+const options = { clock, onError: (error: unknown) => void errors.push(error), intervalMs: 50, authorize: allowAll };
 
 describe('AC-DM-30-F493-10② 唤醒丢失由调度器补偿', () => {
   it('批次停在 queued：启动调度器后一轮内 completed，stop() 之后不再有定时器', async () => {

@@ -281,7 +281,10 @@ function registerExitImportRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
         deps,
         ctx,
         body,
-        (tx, context) => submitExitImport(tx, context, body, (db) => wakeExitImports(db, context.tenantId, deps.clock)),
+        (tx, context) =>
+          submitExitImport(tx, context, body, (db) =>
+            wakeExitImports(db, context.tenantId, deps.clock, deps.authorize),
+          ),
         { guard: exitImportGuard(deps, ctx, body.rows), project: (receipt) => receipt },
       );
     });

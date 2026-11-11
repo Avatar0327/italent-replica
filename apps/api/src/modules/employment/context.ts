@@ -9,7 +9,7 @@ import { runCommand, type CommandGuard, type CommandResult } from '../../command
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { auditActor } from '../../system-actor.js';
-import { tenantOf, type TenantEnv } from '../../tenant-context.js';
+import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { businessDate } from './fields.js';
 import type { EmploymentContext, EmploymentScope } from './types.js';
 import {
@@ -45,7 +45,22 @@ export async function readContext(
   objectCode = EMPLOYMENT_OBJECT,
   pageCode?: string,
 ): Promise<EmploymentContext> {
-  const tenant = tenantOf(c);
+  return contextOf(tenantOf(c), deps, action, expectedRevision, resource, objectCode, pageCode);
+}
+
+/**
+ * readContext 去掉 Hono 的部分：按“某租户里的某用户”建同一份任职上下文。后台执行器在执行期复核提交者权限时用
+ * （F-493 S3b，设计 §16 A9）：与提交入口走同一个函数，权限口径不会分叉。
+ */
+export async function contextOf(
+  tenant: TenantContext,
+  deps: TenantRouteDeps,
+  action: string,
+  expectedRevision = 0,
+  resource?: string,
+  objectCode = EMPLOYMENT_OBJECT,
+  pageCode?: string,
+): Promise<EmploymentContext> {
   const operation = action === 'tenant.employment.read' ? 'object.view' : action;
   await requirePermission(deps.authorize, {
     ...tenant,

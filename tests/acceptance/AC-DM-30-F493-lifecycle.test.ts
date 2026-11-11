@@ -111,7 +111,8 @@ describe('AC-DM-30-F493-22 重聘已导入的人员', () => {
     expect((await x.errorOf(blocked)).details?.reason).toBe('EMAIL_TAKEN');
 
     const fresh = `syn.fresh.${uniqueSuffix()}@example.com`;
-    await x.q(sql`INSERT INTO personnel_employee_versions(tenant_id, employee_id, revision, command_id, created_by, name, email)
+    await x.q(sql`INSERT INTO personnel_employee_versions(tenant_id, employee_id, revision, command_id,
+        created_by, name, email)
       SELECT e.tenant_id, e.id, COALESCE(max(v.revision), 0) + 1, 'f493-s3b-fixture', ${x.session.user.id}::uuid,
         e.name, ${fresh}
       FROM employment_employees e
