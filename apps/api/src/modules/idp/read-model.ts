@@ -256,8 +256,11 @@ function templateSummary(row: TemplateRow): TemplateSummary {
   };
 }
 
+/** 模块视图用到的模块列（办理份捕获在一条 SELECT 里按这些列读出，F-476 P8）。 */
+export type ModuleSource = Omit<ModuleRow, 'tenantId' | 'templateId' | 'createdBy' | 'createdAt'>;
+
 /** 模块视图：只带本模块类型用到的配置；可按节点配置按钮的模块带 nodeSettings。 */
-export function moduleView(row: ModuleRow, nodeSettings: readonly NodeSettingView[]): ModuleView {
+export function moduleView(row: ModuleSource, nodeSettings: readonly NodeSettingView[]): ModuleView {
   const base = {
     id: row.id,
     moduleType: row.moduleType as ModuleType,

@@ -1,11 +1,12 @@
-import { Button, Input, Table, Tabs } from 'antd';
+import { Button, Input } from 'antd';
 import { useState } from 'react';
 import { newCommand } from '../foundation/client.js';
 import { FormOverlay } from '../foundation/FormOverlay.js';
 import { useApiClient } from '../foundation/Session.js';
 import { ListPage } from '../foundation/templates.js';
 import { base, type Profile } from './model.js';
-import { Facts, Notice, RemoteDetail } from './parts.js';
+import { Notice } from './parts.js';
+import { ProfileDetails } from './ProfileDetails.js';
 import type { SettingsProps } from './SettingsPage.js';
 import { useSettingsList, useListInstant } from './list-support.js';
 import { ListFilters } from './ListFilters.js';
@@ -18,6 +19,17 @@ export function ProfilesPage({ title, editable }: SettingsProps) {
   const instant = useListInstant();
   const [detail, setDetail] = useState<string>();
   const [create, setCreate] = useState(false);
+  if (detail)
+    return (
+      <ProfileDetails
+        id={detail}
+        editable={editable}
+        close={() => {
+          setDetail(undefined);
+          list.refresh();
+        }}
+      />
+    );
   return (
     <>
       <Notice text={m.profileNotice} />
@@ -57,7 +69,6 @@ export function ProfilesPage({ title, editable }: SettingsProps) {
         }
         columns={profileColumns(setDetail, instant)}
       />
-      {detail && <ProfileDetails detail={detail} close={() => setDetail(undefined)} />}
       {create && <ProfileForm close={() => setCreate(false)} refresh={list.refresh} editable={editable} />}
     </>
   );
@@ -118,56 +129,5 @@ function ProfileForm({ close, refresh, editable }: { close(): void; refresh(): v
         })
       }
     />
-  );
-}
-
-function ProfileDetails({ detail, close }: { detail: string; close(): void }) {
-  return (
-    <RemoteDetail<Profile> path={`${base}/profiles/${detail}`} title={m.profiles} close={close}>
-      {(profile) => (
-        <>
-          <Facts
-            items={[
-              [m.name, profile.name],
-              [m.code, profile.code],
-              [m.apps, profile.apps.join('、')],
-              [m.description, profile.description],
-              [m.revision, profile.revision],
-            ]}
-          />
-          <Tabs
-            items={(profile.objects ?? []).map((object) => ({
-              key: object.objectCode,
-              label: object.objectCode,
-              children: (
-                <>
-                  <h3>{m.fields}</h3>
-                  <Table
-                    rowKey="fieldCode"
-                    pagination={false}
-                    dataSource={object.fields}
-                    columns={[
-                      { title: m.field, dataIndex: 'fieldCode' },
-                      { title: m.read, dataIndex: 'view', render: (v: boolean) => (v ? m.yes : m.no) },
-                      { title: m.write, dataIndex: 'edit', render: (v: boolean) => (v ? m.yes : m.no) },
-                    ]}
-                  />
-                  <h3>{m.buttons}</h3>
-                  <Table
-                    rowKey={(row) => `${row.buttonCode}/${row.level}`}
-                    pagination={false}
-                    dataSource={object.buttons}
-                    columns={[
-                      { title: m.code, dataIndex: 'buttonCode' },
-                      { title: m.source, dataIndex: 'level' },
-                    ]}
-                  />
-                </>
-              ),
-            }))}
-          />
-        </>
-      )}
-    </RemoteDetail>
   );
 }

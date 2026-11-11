@@ -3315,6 +3315,7 @@ export const GRAPH: Graph = {
     '#departmentResolver',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-import-worker.ts#hasPendingRows': ['#pendingRows'],
   'apps/api/src/modules/employment/exit-import-worker.ts#judge': [
     'apps/api/src/modules/employment/exit-import-resolve.ts#resolveImportRow',
     'apps/api/src/modules/employment/exit-import-row.ts#profileFormatErrors',
@@ -3335,6 +3336,7 @@ export const GRAPH: Graph = {
     '#authorizerOf',
     '#failTerminally',
     '#finish',
+    '#hasPendingRows',
     '#pendingRows',
     '#processRow',
     '#recordFailure',

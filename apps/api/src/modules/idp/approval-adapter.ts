@@ -16,6 +16,7 @@ import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import type { BusinessAdapter, BusinessSnapshot } from '../approval/adapters.js';
 import type { ApprovalContext } from '../approval/context.js';
+import { activeInstanceOf } from '../approval/store.js';
 import { rowsOf } from './access.js';
 import { loadStage, requirePlanRow } from './plan-store.js';
 import { onStageApproved, onStageDisapproved } from './stage-service.js';
@@ -89,6 +90,14 @@ async function deletedInstance(tx: Tx, tenantId: string, stageId: string) {
   return row;
 }
 
+/**
+ * 在途实例发起时冻结的审批类型（approval_instances.approval_type 只在发起时写入）。子流程的类型可由流程维护在途改掉
+ * （PATCH /idp/processes/:id 只锁流程、不锁计划，无节点配置的段可换类型，K-28）：现值既对不上被办理的实例，也不和
+ * 办理份扩展内容同一快照（F-476 P8 第 4 轮返工）。只有发起新实例（尚无在途实例）时才取子流程现值。
+ */
+const activeType = async (tx: Tx, tenantId: string, stageId: string) =>
+  (await activeInstanceOf(tx, tenantId, 'idp', stageId, false))?.approvalType;
+
 const deletedType = async (tx: Tx, tenantId: string, stageId: string) =>
   (await deletedInstance(tx, tenantId, stageId)).approval_type;
 const deletedSubject = async (tx: Tx, tenantId: string, stageId: string) =>
@@ -111,7 +120,9 @@ export const idpAdapter: BusinessAdapter = {
   async snapshot(tx, ctx, stageId): Promise<BusinessSnapshot> {
     const stage = await loadStage(tx, ctx.tenantId, stageId);
     const plan = stage ? await requirePlanRow(tx, ctx.tenantId, stage.planId) : null;
-    const approvalType = (stage?.approvalType ?? (await deletedType(tx, ctx.tenantId, stageId))) as ApprovalTypeCode;
+    const approvalType = ((await activeType(tx, ctx.tenantId, stageId)) ??
+      stage?.approvalType ??
+      (await deletedType(tx, ctx.tenantId, stageId))) as ApprovalTypeCode;
     return {
       approvalType,
       businessType: 'idp',

@@ -566,10 +566,7 @@ function planWrite(
   ];
 }
 const VIEWER_FACT = 'or:idp.requireViewer';
-const SHOW_PLAN = call(
-  `${PLANS}#showPlan`,
-  'const viewer = await requireViewer(tx, ctx, hr, plan, await loadStages(tx, ctx.tenantId, [planId]))',
-);
+const SHOW_PLAN = call(`${PLANS}#showPlan`, 'const viewer = await requireViewer(tx, ctx, hr, plan, stages)');
 const notOwnPlan: Obligation = guard(
   'idp.notOwnPlan',
   [
@@ -706,7 +703,7 @@ const PLAN_ROUTES: RequiredTable = {
         planRoute(
           'GET',
           '/plans/:id',
-          'return respondPlan(c, deps, ctx, await hrScopeOf(c, deps, ctx), id, 200, true)',
+          'return respondPlan(c, deps, ctx, await hrScopeOf(c, deps, ctx), id, 200, true, instance)',
         ),
         HR_SCOPE,
         SHOW_PLAN,
