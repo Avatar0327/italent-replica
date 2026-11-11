@@ -4,15 +4,7 @@ import { ListPage } from '../foundation/templates.js';
 import type { SettingsProps } from './SettingsPage.js';
 import type { AdminRow } from './model.js';
 import { ListFilters } from './ListFilters.js';
-import {
-  useSettingsList,
-  useListInstant,
-  useRowSelection,
-  columnGear,
-  mouOptions,
-  mouText,
-  textValue,
-} from './list-support.js';
+import { useSettingsList, useListInstant, useRowSelection, columnGear, mouText, textValue } from './list-support.js';
 import { m } from './messages.js';
 export function AdminsPage({ title }: SettingsProps) {
   const list = useSettingsList<AdminRow>('admins');
@@ -39,7 +31,7 @@ export function AdminsPage({ title }: SettingsProps) {
               label: m.profileId,
               options: ADMIN_ROLES.map((role) => ({ value: role, label: ADMIN_ROLE_NAMES[role] })),
             },
-            { name: 'mouId', label: m.mous, pageCandidates: true, options: mouOptions(items) },
+            { name: 'mouId', label: m.mous, candidates: 'admins/mou-candidates' },
           ]}
         />
       }

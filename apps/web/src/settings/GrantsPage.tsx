@@ -12,16 +12,8 @@ import type { SettingsProps } from './SettingsPage.js';
 import { useResource } from './useResource.js';
 import { useWrite } from './useWrite.js';
 import { m } from './messages.js';
-import {
-  useSettingsList,
-  useRowSelection,
-  columnGear,
-  mouOptions,
-  mouText,
-  textValue,
-  uniqueOptions,
-} from './list-support.js';
-import { ListFilters } from './ListFilters.js';
+import { useSettingsList, useRowSelection, columnGear, mouText, textValue } from './list-support.js';
+import { ListFilters, type ListFilterValues } from './ListFilters.js';
 import { useGrantReceipt } from './grant-receipt.js';
 export function GrantsPage({ title, editable, canScope }: SettingsProps & { canScope: boolean }) {
   const receipt = useGrantReceipt();
@@ -31,7 +23,6 @@ export function GrantsPage({ title, editable, canScope }: SettingsProps & { canS
   const [selected, setSelected] = useState<Grant>();
   const [scopeUser, setScopeUser] = useState<string>();
   const [form, setForm] = useState<'create' | 'revoke'>();
-  const items = list.data?.items ?? [];
   return (
     <>
       <Notice text={m.grantNotice} />
@@ -45,7 +36,7 @@ export function GrantsPage({ title, editable, canScope }: SettingsProps & { canS
         error={list.error}
         retry={list.refresh}
         data={list.data ?? { items: [] }}
-        filters={<GrantFilters items={items} apply={list.apply} />}
+        filters={<GrantFilters apply={list.apply} />}
         actions={
           <>
             <Button onClick={list.refresh}>{m.refresh}</Button>
@@ -252,7 +243,7 @@ function GrantDetails({ selected, close }: { selected: Grant; close(): void }) {
   );
 }
 
-function GrantFilters({ items, apply }: { items: Grant[]; apply(values: Record<string, string>): void }) {
+function GrantFilters({ apply }: { apply(values: ListFilterValues): void }) {
   return (
     <ListFilters
       apply={apply}
@@ -261,10 +252,9 @@ function GrantFilters({ items, apply }: { items: Grant[]; apply(values: Record<s
         {
           name: 'profileId',
           label: m.profileId,
-          pageCandidates: true,
-          options: uniqueOptions(items.map((row) => ({ value: row.profileId, label: row.profileName || m.empty }))),
+          candidates: 'grants/profile-candidates',
         },
-        { name: 'mouId', label: m.mous, pageCandidates: true, options: mouOptions(items) },
+        { name: 'mouId', label: m.mous, candidates: 'grants/mou-candidates' },
         {
           name: 'status',
           label: m.status,
