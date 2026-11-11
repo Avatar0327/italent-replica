@@ -93,6 +93,7 @@ import {
   type DetailData,
   type Viewer,
 } from './disclosure.js';
+import { capViewable, profileCeilingOf } from './handling-content.js';
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
 import {
@@ -209,7 +210,8 @@ async function ownViewable(deps: TenantRouteDeps, ctx: TenantContext, data: Deta
   const base = await fields(data.snapshot.fieldObjectCode);
   const profileFields = data.snapshot.profileFields;
   if (!profileFields.length) return base;
-  const profile = await fields(PERSONNEL_OBJECT);
+  // 员工档案只读字段：当前字段权 ∩ 办理时上限（F-511，已办读冻结份时；现值读不设限）
+  const profile = capViewable(await fields(PERSONNEL_OBJECT), profileCeilingOf(data.content));
   if (base === undefined && profile === undefined) return undefined;
   const own = base ?? new Set(Object.keys(data.snapshot.values).filter((field) => !profileFields.includes(field)));
   return new Set([...own, ...profileFields.filter((field) => profile === undefined || profile.has(field))]);
