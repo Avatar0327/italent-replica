@@ -1,5 +1,5 @@
 export { pgErrorCode } from './pg-error.js';
-export { afterTransactionCommit } from './after-commit.js';
+export { afterTransactionCommit, beforeTransactionCommit } from './after-commit.js';
 export {
   type AuditEventInput,
   type AuditSource,
