@@ -120,7 +120,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-linkage-pg 兼职联动�
     const sub = await w.subordinate();
     const record = await w.create({ startDate: '2026-10-10', isDepartmentHead: true, addedSubordinateIds: [sub] });
     const versions = await w.orgVersions(w.partTimeOrg.id);
-    w.setNow('2026-10-10T01:00:00.000Z');
+    const ctx = w.context(0, '2026-10-10T01:00:00.000Z');
     const [firstId] = [w.employeeId, sub].sort();
     const outcomes: string[] = [];
     // 固定真实 SQL 的逐行取锁交错：实例一刚取到 UUID 最小行，实例二开始扫描同一个闭包。
@@ -132,15 +132,15 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-linkage-pg 兼职联动�
           tx.execute(sql`SELECT id FROM employment_employees
             WHERE tenant_id=${w.tenantId} AND id=${firstId}::uuid FOR NO KEY UPDATE`),
         afterRelease: async (tx) => {
-          const outcome = await lockTransferParticipants(tx, w.context(), w.employeeId, [], { skipLocked: true });
+          const outcome = await lockTransferParticipants(tx, ctx, w.employeeId, [], { skipLocked: true });
           outcomes.push(outcome);
-          if (outcome === 'acquired') await runDuePartTimeLinkage(tx, w.context(), w.employeeId);
+          if (outcome === 'acquired') await runDuePartTimeLinkage(tx, ctx, w.employeeId);
         },
       },
       async (first) => {
         await first.track(
           withTenant(w.db, w.tenantId, async (tx) => {
-            const outcome = await lockTransferParticipants(tx, w.context(), w.employeeId, [], { skipLocked: true });
+            const outcome = await lockTransferParticipants(tx, ctx, w.employeeId, [], { skipLocked: true });
             outcomes.push(outcome);
             // 保留实例二已经取到的行锁，直到实例一完成整组取锁，确定性暴露旧实现的 [busy, busy]。
             await first.release();
