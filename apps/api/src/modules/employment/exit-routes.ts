@@ -16,6 +16,8 @@ import {
   tenantLocalDate,
 } from '@italent/domain';
 import { withTenant } from '@italent/db';
+import { attachmentHeader } from '../analytics/stat-xlsx.js';
+import { XLSX_CONTENT_TYPE } from '../analytics/stat-report-export.js';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
@@ -31,6 +33,7 @@ import { registerSettingValidator } from '../tenant-settings/service.js';
 import {
   EMPLOYEE_OBJECT,
   EMPLOYMENT_OBJECT,
+  functionContext,
   jsonBody,
   pageQuery,
   readContext,
@@ -46,6 +49,8 @@ import {
 } from './context.js';
 import { rawImportRows, withFailedImportLog } from '../../audit/record.js';
 import { parseExitImportBody, requireExitImportAccess, submitExitImport } from './exit-import.js';
+import { exitImportErrorFile } from './exit-import-download.js';
+import { requireExitImportButton, TEMPLATE_FILE_NAME, templateWorkbook } from './exit-import-file.js';
 import { wakeExitImports } from './exit-import-worker.js';
 import { createExitApplication, parseExitPatch, updateExitFields } from './exit-application.js';
 import {
@@ -289,6 +294,27 @@ function registerExitImportRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
       );
     });
   });
+
+  // 模板：固定形状的只有表头的 xlsx；功能权 + 导入按钮（S3c，设计 §3.1）。
+  router.get('/exits/import/template', async (c) => {
+    const ctx = await functionContext(c, deps, 'object.create');
+    await requireExitImportButton(ctx);
+    return xlsxResponse(c, TEMPLATE_FILE_NAME, templateWorkbook());
+  });
+
+  // 错误文件：只给提交人，每次下载复核当前权限并按字段权裁剪（S3c，设计 §8.2）。
+  router.get('/exits/import/batches/:id/error-file', async (c) => {
+    const ctx = await functionContext(c, deps, 'object.create');
+    const file = await exitImportErrorFile(deps, ctx, uuidParam(c, 'id'));
+    return xlsxResponse(c, file.fileName, file.content);
+  });
+}
+
+function xlsxResponse(c: Context<TenantEnv>, fileName: string, content: Buffer) {
+  c.header('Content-Type', XLSX_CONTENT_TYPE);
+  c.header('Content-Disposition', attachmentHeader(fileName));
+  c.header('Cache-Control', 'no-store');
+  return c.body(new Uint8Array(content));
 }
 
 const batchSchema = z.strictObject({

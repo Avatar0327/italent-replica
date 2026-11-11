@@ -676,6 +676,43 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "GET /api/tenant/employment/exits/import/batches/:id/error-file": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "9ea95ece4f2b",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TenantBase.Education",
+      "fields:TenantBase.Employee",
+      "fields:TenantBase.EmployeeInformation",
+      "fields:TenantBase.EmploymentRecord"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Employee/-",
+      "scope:TenantBase/TenantBase.EmployeeInformation/-"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.DimissionImport@list",
+      "obj:TenantBase.EmploymentRecord:create"
+    ]
+  },
+  "GET /api/tenant/employment/exits/import/template": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.DimissionImport@list",
+      "obj:TenantBase.EmploymentRecord:create"
+    ]
+  },
   "GET /api/tenant/employment/interns": {
     "all": {
       "code": "VALIDATION_FAILED",

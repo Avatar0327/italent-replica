@@ -5488,6 +5488,60 @@
         ]
       }
     },
+    "GET /api/tenant/employment/exits/import/batches/:id/error-file": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create"
+        ],
+        "scope": [
+          "resolveModuleScope",
+          "scope.all"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/exits/import/template": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create"
+        ]
+      }
+    },
     "GET /api/tenant/employment/interns": {
       "edge": {
         "anonymous": {

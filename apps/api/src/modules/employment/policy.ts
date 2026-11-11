@@ -57,6 +57,7 @@ import {
   CONTRACT_OBJECT,
   EXIT_BUTTONS,
   EXIT_IMPORT_BUTTON,
+  PERSONNEL_OBJECT,
   HANDOVER_RESUBMIT_BUTTON,
   HANDOVER_ROW_SUBMIT_BUTTON,
   HANDOVER_BATCH_SUBMIT_BUTTON,
@@ -150,6 +151,25 @@ const importRecordCreate = (failureAudit?: FailureAuditPolicy) =>
     fields: noFields('回执是固定形状，不含任职字段目录内的字段'),
     rows: { path: 'rows[*]', fields: 'body', batch: 'atomic' },
     ...(failureAudit ? { failureAudit } : {}),
+  });
+const F_DOWNLOAD_SCOPE = denied(403, 'FORBIDDEN', '下载导入文件需要“全部数据”范围');
+/** F-493 S3c 导入文件下载：任职对象功能权（create）+ 导入按钮；按钮只判命令权，字段查看权不拦下载（按列置空）。 */
+const importFileButton = () =>
+  object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button(EXIT_IMPORT_BUTTON, 'list'),
+    scope: noScope('设计 §8.2：任职对象不查数据范围；模板不含数据，错误文件另判人员 / 档案对象的看全部并限提交人本人'),
+    fields: noFields('下载只判功能权与导入按钮；文件内容由下载处按当前字段权裁剪'),
+  });
+/** 人员 / 档案对象只判“看全部”范围（fail-closed）；字段查看权在文件里按列裁剪。 */
+const importFileScope = (objectCode: string) =>
+  object({
+    object: objectCode,
+    operation: 'view',
+    button: noButton('人员 / 档案对象只判范围，导入按钮在任职对象上'),
+    scope: seeAll(F_DOWNLOAD_SCOPE),
+    fields: noFields('只判范围；文件里的字段由下载处按当前字段权裁剪'),
   });
 /** `job/context.uuidParam`：路径标识非 UUID → 400 VALIDATION_FAILED「对象标识必须为 UUID」。 */
 const byId = { invalidId: BAD_REQUEST };
@@ -1922,6 +1942,24 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         { preconditions: ['requireExitImportProfileAccess'], controls: ['fileName', 'rows', 'profile'] },
       ),
     },
+  ),
+  // F-493 S3c 模板：固定形状只有 26 个列名的 xlsx；功能权 + 导入按钮（设计 §8.2 末条，文件不含任何租户数据，不查范围）。
+  'GET /exits/import/template': importFileButton(),
+  // F-493 S3c 错误文件（设计 §8.2）：只给提交人（批次不是本人的 / 他租户的一律 404）；每次下载复核当前功能权、导入按钮、
+  // 人员 / 档案两个对象的看全部范围（不豁免提交人；任职对象不查范围）；内容按提交人当前字段查看权逐列裁剪，无权的列置空、错误原文换成“无查看权限”文案。
+  'GET /exits/import/batches/:id/error-file': all(
+    [
+      importFileButton(),
+      importFileScope(EMPLOYEE),
+      importFileScope(PERSONNEL_OBJECT),
+      own({
+        predicate: 'employment.exitImportBatchSubmitter',
+        denied: denied(404, 'NOT_FOUND', '导入批次不存在'),
+        fields: noFields('归属只判批次提交人'),
+      }),
+    ],
+    projector('employment.exitImportErrorFile', 'employment.exitImportErrorFile'),
+    byId,
   ),
   // F-140b1：If-Match 必填；body = 离职扩展字段 + 计划日期 + 确认控制项；范围外与不存在均 404。
   // DimissionEdit，审批中的单另需 adminIntervene（B-65a）；已生效日期仍拒绝。

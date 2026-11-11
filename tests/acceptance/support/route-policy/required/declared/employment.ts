@@ -42,6 +42,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/retirement-rules/run',
     'POST /api/tenant/employment/interns',
     'POST /api/tenant/employment/exits/import',
+    'GET /api/tenant/employment/exits/import/batches/:id/error-file',
     'GET /api/tenant/employment/exit-account/settings',
     'GET /api/tenant/employment/blacklist-rules',
     'GET /api/tenant/employment/exit-handover-items',
