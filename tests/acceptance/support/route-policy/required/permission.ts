@@ -88,7 +88,7 @@ const personColumns = (file: string, path: string): Obligation => ({
   perm: 'obj:TenantBase.EmployeeInformation:view',
   purpose: 'disclosure:personColumns',
   need: { scope: 'list', predicate: 'personnel.personScope' },
-  facts: ['object:object.* 动作'],
+  facts: ['object:object.* 动作', 'scope:resolveModuleScope'],
   note: 'DEC-889：档案手机号、员工概要状态、主职部门按当前人员范围和字段查看权投影',
   at: [
     route(file, 'GET', path, 'const access = await listPersonAccess(deps, ctx)'),
