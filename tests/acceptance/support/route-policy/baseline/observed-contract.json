@@ -20461,7 +20461,6 @@
       "module": "employment",
       "primitives": {
         "command": [
-          "assertRevision",
           "runCommand / runWrite"
         ],
         "domain": [
@@ -20475,47 +20474,6 @@
         ],
         "fieldsOut": [
           "employment runWrite()"
-        ],
-        "guard": [
-          "employment.linkage"
-        ],
-        "object": [
-          "object.* 动作",
-          "readContext(object.*)"
-        ],
-        "objectOp": [
-          "TenantBase.Employee:create",
-          "TenantBase.EmploymentRecord:create"
-        ],
-        "scope": [
-          "employment scope",
-          "resolveModuleScope",
-          "scope.all"
-        ],
-        "scopePoint": [
-          "employment point"
-        ]
-      }
-    },
-    "POST /api/tenant/employment/exits/import/preview": {
-      "edge": {
-        "anonymous": {
-          "code": "UNAUTHENTICATED",
-          "status": 401
-        },
-        "member": {
-          "code": "FORBIDDEN",
-          "status": 403
-        },
-        "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
-        }
-      },
-      "module": "employment",
-      "primitives": {
-        "fieldsIn": [
-          "requireEmploymentWrite"
         ],
         "object": [
           "object.* 动作",

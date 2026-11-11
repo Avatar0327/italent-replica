@@ -166,7 +166,7 @@ export async function assertRestoredPredecessor(
         { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: disabled.disabledOn },
       );
   }
-  await validateRestoredReferences(tx, ctx, previous, window);
+  await validateRestoredReferences(tx, ctx, previous, window, options.delegateIntervalChecks === true);
   const moved = fields.departmentId !== deleted.fields.departmentId || fields.positionId !== deleted.fields.positionId;
   if (fields.departmentId && moved && !options.delegateIntervalChecks)
     await assertRestoredEstablishment(tx, ctx, previous, window);
@@ -194,10 +194,20 @@ async function validateRestoredReferences(
   ctx: EmploymentContext,
   previous: EmploymentRecord,
   window: ReportingWindow,
+  /** 离职撤销（F-493）：部门可用性交给 §6B 统一校验（409 EMPLOYMENT_DEPARTMENT_DISABLED），这里不再按恢复日单点拒绝为 400。 */
+  departmentChecked: boolean,
 ): Promise<void> {
   const { employeeId, fields } = previous;
   try {
-    await validateEmploymentReferences(tx, ctx, fields, window.from, { employeeId, window });
+    await validateEmploymentReferences(
+      tx,
+      ctx,
+      fields,
+      window.from,
+      { employeeId, window },
+      window.from,
+      departmentChecked,
+    );
   } catch (error) {
     const reason = error instanceof AppError && (error.details as { reason?: string } | undefined)?.reason;
     if (reason !== 'REPORTING_CYCLE' || !fields.directManagerId) throw error;
