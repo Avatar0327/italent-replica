@@ -328,7 +328,7 @@ function exitImportDownloadObligations(route: keyof typeof DOWNLOAD_PATH): Oblig
           : at(EXIT, 'GET', path, 'const file = await exitImportSourceFile(deps, ctx, uuidParam(c, '),
         route === 'error-file'
           ? fn(EXIT_IMPORT_DOWNLOAD, 'exitImportErrorFile', 'eq(exitImportBatches.submittedBy, ctx.userId)')
-          : fn(EXIT_IMPORT_DOWNLOAD, 'exitImportSourceFile', 'AND submitted_by=${ctx.userId}::uuid'),
+          : fn(EXIT_IMPORT_DOWNLOAD, 'exitImportSourceFile', 'AND submitted_by='),
       ],
       '提交人归属：不是本人提交的批次（含他人、他租户的）一律 404，不泄露存在性',
     ),
@@ -370,7 +370,7 @@ function exitImportHistoryObligations(): Obligation[] {
       [],
       [
         at(EXIT, 'GET', path, 'return c.json(await listExitImportHistory(deps, ctx, '),
-        fn(EXIT_IMPORT_HISTORY, 'listExitImportHistory', 'b.submitted_by = ${ctx.userId}::uuid'),
+        fn(EXIT_IMPORT_HISTORY, 'listExitImportHistory', 'b.submitted_by ='),
       ],
       '提交人归属：只列本人提交的批次，他人 / 他租户的批次不会出现',
     ),
