@@ -133,7 +133,7 @@ describe('AC-F474-6b0 收窄的自定义字段共享契约', () => {
     }
     for (const statement of [
       sql`DELETE FROM employment_custom_field_objects WHERE id=${id}`,
-      sql`TRUNCATE employment_custom_field_objects`,
+      sql`TRUNCATE employment_custom_field_objects CASCADE`,
     ]) {
       const error = await withTenant(w.db, w.tenant.id, async (tx) => {
         await tx.execute(sql`RESET ROLE`);
@@ -196,5 +196,71 @@ describe('AC-F474-6b0 收窄的自定义字段共享契约', () => {
       ),
     }));
     expect(state).toEqual({ fields: [], audit: [] });
+  });
+  it('AC-F474-08 每对象 200 上限独立计数，失败无新增审计，另一租户可创建', async () => {
+    const w = await seedPermissionWorld(database().db);
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`
+      INSERT INTO employment_custom_field_objects(tenant_id, code, name, object_type, value_type)
+      SELECT ${w.tenant.id}, 'limit-' || i, '合成上限字段', 'employment', 'text' FROM generate_series(1,200) i
+    `),
+    );
+    const command = randomUUID();
+    const blocked = await w.api.request('POST', base, {
+      ...w.asAdmin,
+      ifMatch: 0,
+      idempotencyKey: command,
+      body: input,
+    });
+    expect(blocked.status).toBe(503);
+    const state = await withTenant(w.db, w.tenant.id, async (tx) => ({
+      count: resultRows(await tx.execute(sql`SELECT count(*)::int AS n FROM employment_custom_field_objects`)),
+      audits: resultRows(
+        await tx.execute(sql`SELECT id FROM audit_events WHERE command_id=${command}
+        AND action='employment.custom_field.create'`),
+      ),
+    }));
+    expect(state).toEqual({ count: [{ n: 200 }], audits: [] });
+    const other = await seedPermissionWorld(database().db);
+    expect((await other.api.request('POST', base, { ...other.asAdmin, ifMatch: 0, body: input })).status).toBe(201);
+    expect(
+      (
+        await w.api.request('POST', base, {
+          ...w.asAdmin,
+          ifMatch: 0,
+          body: { ...input, objectType: 'contract' },
+        })
+      ).status,
+    ).toBe(201);
+  });
+
+  it('AC-F474-09 跨租户更新影响零行，其余头表仍绑定共用保护器', async () => {
+    const w = await seedPermissionWorld(database().db);
+    const other = await seedPermissionWorld(database().db);
+    const id = await seedDefinition(w.tenant.id, 'employment');
+    const changed = await withTenant(w.db, other.tenant.id, (tx) =>
+      tx.execute(sql`
+      UPDATE employment_custom_field_objects SET revision=2 WHERE id=${id} RETURNING id
+    `),
+    );
+    expect(resultRows(changed)).toEqual([]);
+    const names = resultRows(
+      await w.db.execute(sql`
+      SELECT p.proname AS name FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
+      WHERE t.tgname IN ('employment_employees_metadata_only',
+        'employment_business_objects_metadata_only', 'employment_settings_metadata_only')
+    `),
+    );
+    expect(names).toEqual(Array.from({ length: 3 }, () => ({ name: 'protect_employment_head_metadata' })));
+    for (const valueType of ['select', 'unknown']) {
+      const error = await seedDefinition(w.tenant.id, 'employment', valueType).catch((e: unknown) => e);
+      expect(pgErrorCode(error)).toBe('23514');
+    }
+    const unchanged = await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`
+      SELECT revision FROM employment_custom_field_objects WHERE id=${id}
+    `),
+    );
+    expect(resultRows(unchanged)).toEqual([{ revision: 1 }]);
   });
 });

@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
+import {
+  CUSTOM_FIELD_LIMIT,
+  CUSTOM_FIELD_NAME_MAX,
+  CUSTOM_FIELD_VALUE_TYPES,
+  CUSTOM_FIELD_WRITABLE_OBJECT_TYPES,
+  type CustomFieldObjectType,
+  type CustomFieldValueType,
+} from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { assertRevision, auditEmployment } from './context.js';
 import { checkPage, rowsOf } from './read-model.js';
@@ -10,17 +18,17 @@ export interface CustomFieldDefinition {
   readonly id: string;
   readonly code: string;
   readonly name: string;
-  readonly objectType: 'employment' | 'contract';
-  readonly valueType: 'text' | 'integer' | 'decimal' | 'boolean' | 'date';
+  readonly objectType: CustomFieldObjectType;
+  readonly valueType: CustomFieldValueType;
   readonly revision: number;
   readonly inherit: boolean;
 }
 
-const fieldInput = z
+export const fieldInput = z
   .object({
-    name: z.string().trim().min(1).max(200),
-    objectType: z.enum(['employment', 'contract']),
-    valueType: z.enum(['text', 'integer', 'decimal', 'boolean', 'date']),
+    name: z.string().trim().min(1).max(CUSTOM_FIELD_NAME_MAX),
+    objectType: z.enum(CUSTOM_FIELD_WRITABLE_OBJECT_TYPES),
+    valueType: z.enum(CUSTOM_FIELD_VALUE_TYPES),
   })
   .strict();
 const fieldSelect = sql`
@@ -86,7 +94,7 @@ export async function createCustomField(tx: Tx, ctx: EmploymentContext, input: z
   `),
   );
   // 有界读取的吞吐预算；不改变每个字段的继承规则。
-  if (count!.count >= 200) throw new AppError('SERVICE_UNAVAILABLE', '自定义字段数量超出当前处理预算');
+  if (count!.count >= CUSTOM_FIELD_LIMIT) throw new AppError('SERVICE_UNAVAILABLE', '自定义字段数量超出当前处理预算');
   const id = randomUUID();
   const code = `ext_${ctx.tenantId.replaceAll('-', '')}_${id.replaceAll('-', '')}`;
   const after: CustomFieldDefinition = { id, code, ...parsed.data, revision: 1, inherit: true };
@@ -112,12 +120,15 @@ export async function setCustomFieldInheritance(
     throw new AppError('VALIDATION_FAILED', '继承设置只能引用自定义字段');
   }
   await lockSettings(tx, ctx.tenantId);
-  const [head] = rowsOf<{ revision: number }>(
+  const [head] = rowsOf<{ revision: number; objectType: CustomFieldObjectType }>(
     await tx.execute(sql`
-    SELECT revision FROM employment_custom_field_objects WHERE tenant_id=${ctx.tenantId} AND id=${id} FOR UPDATE
+    SELECT revision, object_type AS "objectType" FROM employment_custom_field_objects WHERE tenant_id=${ctx.tenantId} AND id=${id} FOR UPDATE
   `),
   );
   if (!head) throw new AppError('NOT_FOUND', '自定义字段不存在');
+  if (head.objectType !== 'employment' && head.objectType !== 'contract') {
+    throw new AppError('VALIDATION_FAILED', '该对象不支持自定义字段继承设置');
+  }
   assertRevision(ctx.expectedRevision, head.revision);
   const [before] = rowsOf<CustomFieldDefinition>(
     await tx.execute(sql`
@@ -144,12 +155,7 @@ export async function setCustomFieldInheritance(
   return after;
 }
 
-export async function listCustomFields(
-  tx: Tx,
-  tenantId: string,
-  page: PageQuery,
-  objectType?: 'employment' | 'contract',
-) {
+export async function listCustomFields(tx: Tx, tenantId: string, page: PageQuery, objectType?: CustomFieldObjectType) {
   checkPage(page);
   return rowsOf<CustomFieldDefinition>(
     await tx.execute(sql`
