@@ -11,6 +11,35 @@ export interface ListFilterField {
   pattern?: RegExp;
   pageCandidates?: boolean;
 }
+
+function filterControl(field: ListFilterField) {
+  if (field.treeData)
+    return (
+      <TreeSelect
+        aria-label={field.label}
+        treeData={field.treeData}
+        loading={field.loading}
+        allowClear
+        showSearch
+        treeNodeFilterProp="title"
+        notFoundContent={m.noMatch}
+      />
+    );
+  if (field.options)
+    return (
+      <Select
+        aria-label={field.label}
+        allowClear
+        labelInValue
+        options={field.options}
+        showSearch
+        optionFilterProp="label"
+        notFoundContent={m.noMatch}
+      />
+    );
+  return <Input aria-label={field.label} maxLength={field.max ?? 100} />;
+}
+
 export function ListFilters({
   fields,
   apply,
@@ -43,29 +72,7 @@ export function ListFilters({
           tooltip={field.pageCandidates ? m.pageCandidates : undefined}
           rules={field.pattern ? [{ pattern: field.pattern, message: m.invalid }] : []}
         >
-          {field.treeData ? (
-            <TreeSelect
-              aria-label={field.label}
-              treeData={field.treeData}
-              loading={field.loading}
-              allowClear
-              showSearch
-              treeNodeFilterProp="title"
-              notFoundContent={m.noMatch}
-            />
-          ) : field.options ? (
-            <Select
-              aria-label={field.label}
-              allowClear
-              labelInValue
-              options={field.options}
-              showSearch
-              optionFilterProp="label"
-              notFoundContent={m.noMatch}
-            />
-          ) : (
-            <Input aria-label={field.label} maxLength={field.max ?? 100} />
-          )}
+          {filterControl(field)}
         </Form.Item>
       ))}
       <Button htmlType="submit" type="primary">
