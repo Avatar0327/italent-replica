@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { EMPLOYEE_STATUS_LABELS, type EmployeeStatusCode } from '@italent/domain';
 import { Button, Form, Input, InputNumber, Select } from 'antd';
 import { useEffect, type ReactNode } from 'react';
@@ -118,7 +119,7 @@ function displayFields(data: Values, email: ReactNode) {
   const displays: Record<string, ReactNode> = {
     入职日期: date || '--',
     入职类型: m.kind[data.kind as keyof typeof m.kind] ?? '--',
-    工号: String(data.code ?? '--'),
+    工号: codeText((data.code as string | null) ?? null),
     部门: reference('departmentId'),
     职务: reference('positionId'),
     任职职位: reference('postId'),

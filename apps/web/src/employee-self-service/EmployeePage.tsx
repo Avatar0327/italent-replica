@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { SelfServiceShell, EmploymentList as SharedEmploymentList } from '../self-service/shared/index.js';
 import { useEffect, useState } from 'react';
 import { requestError, transferRequest } from '../transfer/api.js';
@@ -260,7 +261,7 @@ function WorkspaceContent({ tenantId, state }: { tenantId: string; state: Return
           </h2>
           <a href="/account">{accountText.title}</a>
           <p>
-            {text.code}：{profile.employee.code}
+            {text.code}：{codeText(profile.employee.code)}
           </p>
           {profile.record ? <RecordDetails record={profile.record} /> : <p>{text.empty}</p>}
         </>

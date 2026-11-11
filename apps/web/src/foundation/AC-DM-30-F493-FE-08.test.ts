@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { createElement as h, act } from 'react';
+import { createElement as h, act, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MessageCenter } from './HeaderParts.js';
@@ -36,7 +36,7 @@ const click = async (label: string) => {
   await act(async () => button(label).click());
 };
 const render = async () => {
-  await act(async () => root.render(h(SessionProvider, { session }, h(MessageCenter))));
+  await act(async () => root.render(h(SessionProvider, { session, children: h(MessageCenter) })));
 };
 const deferred = () => {
   let resolve!: (response: Response) => void;
@@ -88,7 +88,7 @@ it('FE-08 打开请求一次，按后端顺序过滤，发送人、模板链接�
   expect(drawer.textContent).toContain('2026/11/06 04:30');
   const tabs = [...drawer.querySelectorAll<HTMLElement>('[role=tab]')];
   await act(() => tabs.find((el) => el.textContent === '@和回复我的')!.click());
-  expect(drawer.querySelector('.ant-tabs-tabpane-active')?.textContent).toContain('暂无消息');
+  expect(drawer.querySelector('.ant-tabs-tabpane-active')?.textContent).toContain('暂无新消息');
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
 
@@ -164,7 +164,13 @@ it('FE-08 blob 下载取响应文件名，重复点击只发一次，释放 URL'
   fetcher.mockResolvedValueOnce(reply([notice('batch')])).mockReturnValueOnce(pending.promise);
   const create = vi.fn(() => 'blob:synthetic');
   const revoke = vi.fn();
-  vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke }));
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static override createObjectURL = create;
+      static override revokeObjectURL = revoke;
+    },
+  );
   const downloads: string[] = [];
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
     downloads.push(this.download);
@@ -179,7 +185,8 @@ it('FE-08 blob 下载取响应文件名，重复点击只发一次，释放 URL'
       new Response('xlsx', {
         headers: {
           'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'content-disposition': `attachment; filename="fallback.xlsx"; filename*=UTF-8''${encodeURIComponent('下载导入错误报告.xlsx')}`,
+          'content-disposition':
+            `attachment; filename="fallback.xlsx"; filename*=UTF-8''` + encodeURIComponent('下载导入错误报告.xlsx'),
         },
       }),
     ),
@@ -199,5 +206,73 @@ it('FE-08 列表失败显示中文，可重试，空集显示空状态', async (
   expect(document.querySelector('[role=alert]')?.textContent).toContain('消息加载失败，请重试');
   expect(document.body.textContent).not.toContain('SERVER_ERROR');
   await click('重试');
-  expect(document.querySelector('.message-drawer')?.textContent).toContain('暂无消息');
+  expect(document.querySelector('.message-drawer')?.textContent).toContain('暂无新消息');
+});
+
+it('FE-08 正常入口 StrictMode 打开只请求一次', async () => {
+  await act(async () => root.render(h(StrictMode, {}, h(SessionProvider, { session, children: h(MessageCenter) }))));
+  await click('消息');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it('FE-08 第二页失败重试保留已加载条目，不跳页或重复追加', async () => {
+  fetcher
+    .mockResolvedValueOnce(reply([notice('1')], 1, 1))
+    .mockRejectedValueOnce(new Error('NETWORK_FAILURE'))
+    .mockResolvedValueOnce(reply([notice('2')], 2, 2));
+  await render();
+  await click('消息');
+  await click('加载更多');
+  expect(document.body.textContent).toContain('正文1');
+  expect(document.body.textContent).not.toContain('NETWORK_FAILURE');
+  await click('重试');
+  expect(fetcher.mock.calls.map((args) => args[0])).toEqual(
+    [1, 2, 2].map((p) => `/api/tenant/approval/notifications?page=${p}`),
+  );
+  expect(document.querySelector('.notification-list')?.textContent?.match(/正文1/g)).toHaveLength(1);
+  expect(document.body.textContent).toContain('正文2');
+});
+
+it('FE-08 关闭后下载响应丢弃，通知内容按纯文本展示', async () => {
+  const pending = deferred();
+  fetcher
+    .mockResolvedValueOnce(reply([notice('batch', { body: '<img src=x onerror=alert(1)>', sender: '<提交人>' })]))
+    .mockReturnValueOnce(pending.promise);
+  const anchor = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  await render();
+  await click('消息');
+  expect(document.querySelector('.notification-body img')).toBeNull();
+  expect(document.body.textContent).toContain('<img src=x onerror=alert(1)>');
+  await click('查看详情');
+  await act(() => document.querySelector<HTMLButtonElement>('.ant-drawer-close')!.click());
+  await act(async () =>
+    pending.resolve(
+      new Response('xlsx', {
+        headers: {
+          'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        },
+      }),
+    ),
+  );
+  expect(anchor).not.toHaveBeenCalled();
+});
+
+it('FE-08 切租户丢弃旧响应，读取与下载都携带当前租户', async () => {
+  const old = deferred();
+  fetcher
+    .mockReturnValueOnce(old.promise)
+    .mockResolvedValueOnce(reply([notice('新租户')]))
+    .mockResolvedValueOnce(Response.json({ error: { code: 'NOT_FOUND' } }, { status: 404 }));
+  await render();
+  await click('消息');
+  const nextSession = { ...session, tenantId: 'synthetic-other', identityKey: 'synthetic-other-user' };
+  await act(async () => root.render(h(SessionProvider, { session: nextSession, children: h(MessageCenter) })));
+  await act(async () => old.resolve(reply([notice('旧租户')])));
+  expect(document.body.textContent).not.toContain('正文旧租户');
+  expect(document.body.textContent).toContain('正文新租户');
+  await click('查看详情');
+  expect(new Headers(fetcher.mock.calls[1]![1].headers).get('x-tenant-id')).toBe('synthetic-other');
+  expect(new Headers(fetcher.mock.calls[2]![1].headers).get('x-tenant-id')).toBe('synthetic-other');
+  expect(document.querySelector('[role=alert]')?.textContent).toBe('下载失败，请重试');
+  expect(document.body.textContent).not.toContain('NOT_FOUND');
 });

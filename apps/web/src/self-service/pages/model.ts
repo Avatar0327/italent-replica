@@ -1,3 +1,4 @@
+import { codeText } from '../../foundation/code-text.js';
 import { EMPLOYEE_TRANSFER_BUTTONS } from '@italent/domain';
 import { pageQuery, type PageRequest } from '../../foundation/client.js';
 import type { OwnRecord } from '../../employee-self-service/types.js';
@@ -71,6 +72,7 @@ export function teamKeys(rows: TeamRow[]) {
 export function teamValue(row: TeamRow, key: string) {
   if (!Object.hasOwn(row, key)) return m.none;
   const value = row.display?.[key] ?? row[key];
+  if (key === 'code' || key === 'jobNumber') return codeText((value as string | null) ?? null);
   // AGENTS §10：仅未解析的引用 ID 用占位，业务编码即使形似 UUID 也须原样显示。
   if (key.endsWith('Id') && value === row[key] && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(String(value))) return m.none;
   const labels =

@@ -1,3 +1,4 @@
+import { codeText } from '../../foundation/code-text.js';
 import { Alert, Button, Descriptions, Space, Tabs, type TableColumnsType } from 'antd';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
@@ -66,7 +67,7 @@ function ProfilePage({ profile, refresh }: { profile: Profile; refresh(): void }
               : m.none}
           </p>
           <span>
-            {m.code}：{profile.employee.code}
+            {m.code}：{codeText(profile.employee.code)}
           </span>
         </div>
         <div className="service-profile-actions">
@@ -106,7 +107,7 @@ function PersonnelSections({ profile }: { profile: Profile }) {
             column={2}
             items={[
               { key: 'name', label: m.name, children: profile.employee.name },
-              { key: 'code', label: m.code, children: profile.employee.code },
+              { key: 'code', label: m.code, children: codeText(profile.employee.code) },
             ]}
           />
           <p className="service-muted">{m.profileReadonly}</p>

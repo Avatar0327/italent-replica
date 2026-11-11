@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import type { PageRequest } from '../foundation/client.js';
 import { pageQuery } from '../foundation/client.js';
 import { m } from './messages.js';
@@ -13,7 +14,7 @@ export interface Row {
   id: string;
   employeeId: string;
   serviceType?: string;
-  employeeCode?: string;
+  employeeCode?: string | null;
   employeeName?: string;
   kind?: string;
   effectiveDate?: string;
@@ -110,7 +111,7 @@ export function cell(row: Row, key: ColumnSpec['key']): string {
     case 'name':
       return text(row.employeeName);
     case 'code':
-      return text(row.employeeCode);
+      return codeText(row.employeeCode ?? null);
     case 'serviceType':
       return row.serviceType === 'primary' ? m.primary : text(row.serviceType);
     case 'org':

@@ -79,7 +79,7 @@ test('FE-05 真后端错误文件下载、保留 A 列改正 D 列再上传、�
   expect(sheet.rows).toHaveLength(2);
   expect(sheet.rows[1]!.cells[0]).toBe('[*部门编码]：*部门编码【SYNTHETIC-MISSING】不存在或者已被删除，请检查');
   sheet.rows[1]!.cells[3] = manifest.departmentCode;
-  await drawer.getByRole('button', { name: 'Close', exact: true }).click();
+  await drawer.locator('.ant-drawer-close').click();
   await upload(
     sheet.rows.map((row) => row.cells),
     '合成改正.xlsx',

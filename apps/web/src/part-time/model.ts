@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { PART_TIME_EXPIRING_DAYS } from '@italent/domain';
 import { EMPLOYMENT_TYPE_FIELD, employmentTypeLabel } from '../employment-types/labels.js';
 import { m } from './messages.js';
@@ -11,7 +12,7 @@ export const views = (['ongoing', 'expiring', 'not_started', 'ended', 'all', 'in
 export type View = (typeof views)[number]['key'];
 export interface Row {
   id: string;
-  employee?: { name?: string; code?: string };
+  employee?: { name?: string; code?: string | null };
   fields?: Record<string, unknown>;
   partTimeView?: readonly string[];
   terms?: Term[];
@@ -132,7 +133,8 @@ export function cellValue(row: Row, key: string, view: View): string {
   if (key === 'institution') return value(row.institutionId);
   if (key === 'pendingStatus') return m.statuses[String(row.pendingStatus)] ?? value(row.pendingStatus);
   if (key === 'pendingKind') return m.kinds[String(row.pendingKind)] ?? value(row.pendingKind);
-  if (key === 'name' || key === 'code') return value(row.employee?.[key]);
+  if (key === 'code') return codeText(row.employee?.code ?? null);
+  if (key === 'name') return value(row.employee?.name);
   if (key === 'current') {
     if (!row.partTimeView) return m.missing;
     return row.partTimeView.includes('ongoing') ? m.yes : m.no;

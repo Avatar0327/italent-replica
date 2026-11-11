@@ -10,26 +10,28 @@ import { fieldValue } from '../personnel/model.js';
 import { userColumns } from '../settings/user-columns.js';
 import type { User } from '../settings/model.js';
 
-it('FE-09 各列表空工号统一 --，非空工号原样保留', () => {
-  for (const code of [null, '合成001']) {
-    const expected = code ?? '--';
-    const row = { id: 'synthetic', employeeId: 'synthetic', code };
-    expect(exitCell(row, 'code')).toBe(expected);
-    expect(probationCell(row, 'code')).toBe(expected);
-    expect(internCell(row as never, 'code')).toBe(expected);
-    expect(retireCell(row, 'code')).toBe(expected);
-    expect(partCell({ ...row, employee: { code } } as never, 'code', 'all')).toBe(expected);
-    expect(contractCell(code, 'code')).toBe(expected);
-    expect(recordCell({ ...row, employeeCode: code } as never, 'code')).toBe(expected);
-    expect(fieldValue('code', code)).toBe(expected);
-  }
+it.each([
+  ['离职', (code: string | null) => exitCell({ id: 'synthetic', code }, 'code')],
+  ['试用', (code: string | null) => probationCell({ code }, 'code')],
+  ['实习', (code: string | null) => internCell({ id: 'synthetic', code }, 'code')],
+  ['退休', (code: string | null) => retireCell({ id: 'synthetic', code }, 'code')],
+  ['兼职', (code: string | null) => partCell({ id: 'synthetic', employee: { code } }, 'code', 'all')],
+  ['合同', (code: string | null) => contractCell(code, 'code')],
+  [
+    '任职记录',
+    (code: string | null) => recordCell({ id: 'synthetic', employeeId: 'synthetic', employeeCode: code }, 'code'),
+  ],
+  ['人员', (code: string | null) => fieldValue('code', code)],
+] as const)('FE-09 %s列表空工号统一 --，非空原样', (_, render) => {
+  expect(render(null)).toBe('--');
+  expect(render('合成001')).toBe('合成001');
 });
 
 it('FE-10 全部用户依次显示登录用户名与联系邮箱，空登录名 --', () => {
   const columns = userColumns(false, () => {}, undefined, true);
   const simple = columns.filter((column) => 'dataIndex' in column);
-  const login = simple.find((column) => column.dataIndex === 'email')!;
-  const contact = simple.find((column) => column.dataIndex === 'contactEmail')!;
+  const login = simple.find((column) => 'dataIndex' in column && column.dataIndex === 'email')!;
+  const contact = simple.find((column) => 'dataIndex' in column && column.dataIndex === 'contactEmail')!;
   expect(login?.title).toBe('登录用户名');
   expect(contact?.title).toBe('联系邮箱');
   expect(simple.indexOf(login)).toBeLessThan(simple.indexOf(contact));
