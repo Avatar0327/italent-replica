@@ -467,9 +467,13 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/permission/owner-units.ts#noUnit': ['#NO_UNIT_MESSAGE'],
   'apps/api/src/modules/permission/person-list-projection.ts#listContactEmailFilter': [
-    'apps/api/src/modules/permission/enterprise-lists.ts#likePattern',
-    '#listPersonSource',
+    '#listContactEmailMatch',
     '#requireListPersonField',
+  ],
+  'apps/api/src/modules/permission/person-list-projection.ts#listContactEmailMatch': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#likePattern',
+    '#listPersonField',
+    '#listPersonSource',
   ],
   'apps/api/src/modules/permission/person-list-projection.ts#listDepartmentFilter': [
     '#listPersonSource',
@@ -892,21 +896,30 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/object-permission.ts#ObjectCatalog',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#accountLogin': ['#accountsOf'],
+  'apps/api/src/modules/permission/tenant-users.ts#accountViewsOf': [
+    'apps/api/src/modules/avatar/references.ts#userAvatars',
+    '#accountsOf',
+  ],
   'apps/api/src/modules/permission/tenant-users.ts#accountsOf': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#contactEmails': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
   ],
-  'apps/api/src/modules/permission/tenant-users.ts#getTenantUser': ['#memberQuery', '#notFound', '#viewsOf'],
+  'apps/api/src/modules/permission/tenant-users.ts#getTenantUser': [
+    '#accountViewsOf',
+    '#contactEmails',
+    '#memberQuery',
+    '#notFound',
+  ],
   'apps/api/src/modules/permission/tenant-users.ts#listTenantUsers': [
     'apps/api/src/modules/permission/person-list-projection.ts#listContactEmailFilter',
     'apps/api/src/modules/permission/person-list-projection.ts#listPersonField',
     'apps/api/src/modules/permission/person-list-projection.ts#listPersons',
+    '#accountViewsOf',
     '#memberQuery',
     '#textMatch',
     '#typeFilter',
-    '#viewsOf',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#provisionAccount': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
@@ -923,7 +936,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/permission/tenant-users.ts#textMatch': [
     'apps/api/src/modules/permission/enterprise-lists.ts#accountMatch',
-    'apps/api/src/modules/permission/enterprise-lists.ts#likePattern',
+    'apps/api/src/modules/permission/person-list-projection.ts#listContactEmailMatch',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#updateExternalUser': [
     'apps/api/src/modules/permission/audit.ts#audit',
@@ -937,11 +950,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/http.ts#revisionConflict',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#userLabels': ['#accountsOf'],
-  'apps/api/src/modules/permission/tenant-users.ts#viewsOf': [
-    'apps/api/src/modules/avatar/references.ts#userAvatars',
-    '#accountsOf',
-    '#contactEmails',
-  ],
   'apps/api/src/modules/permission/user-provisioning.ts#keepBinding': [
     'apps/api/src/modules/permission/audit.ts#audit',
     'apps/api/src/modules/permission/tenant-users.ts#accountLogin',

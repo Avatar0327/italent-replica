@@ -66,6 +66,7 @@ function listPersonSource(access: ListPersonAccess): SQL {
 }
 
 export interface ListPerson {
+  readonly contactEmail?: string | null;
   readonly contactPhone?: string | null;
   readonly employeeStatus?: EmployeeStatus | null;
   readonly department?: { readonly id: string; readonly name: string | null } | null;
@@ -77,6 +78,7 @@ export async function listPersons(tx: Tx, access: ListPersonAccess, userIds: rea
   if (!userIds.length) return result;
   const rows = scopeRows<{
     user_id: string;
+    email: string | null;
     mobile_phone: string | null;
     employee_status: EmployeeStatus;
     department_id: string | null;
@@ -87,6 +89,7 @@ export async function listPersons(tx: Tx, access: ListPersonAccess, userIds: rea
   );
   for (const row of rows) {
     result.set(row.user_id, {
+      ...(listPersonField(access, 'email') ? { contactEmail: row.email } : {}),
       ...(listPersonField(access, 'mobilePhone') ? { contactPhone: row.mobile_phone } : {}),
       ...(listPersonField(access, 'employeeStatus') ? { employeeStatus: row.employee_status } : {}),
       ...(listPersonField(access, 'orgFullName')
@@ -112,6 +115,12 @@ export async function listDepartmentFilter(tx: Tx, access: ListPersonAccess, use
 /** 联系邮箱独立于既有混合 q，按当前可查看人员筛选，通配符按字面匹配。 */
 export function listContactEmailFilter(access: ListPersonAccess, userId: object, email: string): SQL {
   requireListPersonField(access, 'email');
+  return listContactEmailMatch(access, userId, email);
+}
+
+/** F-516a P2-1：混合 q 只匹配可投影的档案邮箱；不影响姓名、登录邮箱分支。 */
+export function listContactEmailMatch(access: ListPersonAccess, userId: object, email: string): SQL {
+  if (!listPersonField(access, 'email')) return sql`false`;
   return sql`${userId} IN (SELECT p.user_id FROM (${listPersonSource(access)}) p
     WHERE lower(coalesce(p.email,'')) LIKE ${likePattern(email)})`;
 }
