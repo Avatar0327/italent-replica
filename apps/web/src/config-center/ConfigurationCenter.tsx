@@ -1,9 +1,11 @@
+import { APP_IDS, type AppId } from '@italent/domain';
 import { Empty } from 'antd';
 import { useState } from 'react';
 import { Link, Navigate, Route, Routes, matchRoutes, useLocation } from 'react-router';
 import {
   CONFIGURATION_ROOT,
   CONFIGURATION_SECTIONS,
+  configurationSectionPath,
   type ConfigurationRoute,
   type ConfigurationSection,
 } from '../foundation/configuration-registry.js';
@@ -43,15 +45,17 @@ function ConfigurationPage({
   );
 }
 
-function ConfigurationNavigation({
-  visible,
+interface ApplicationConfigurations {
+  app: AppId;
+  routes: readonly ConfigurationRoute[];
+}
+
+function ApplicationNavigation({
+  app,
+  routes,
   activeSection,
   activePath,
-}: {
-  visible: readonly ConfigurationRoute[];
-  activeSection?: ConfigurationSection;
-  activePath?: string;
-}) {
+}: ApplicationConfigurations & { activeSection?: ConfigurationSection; activePath?: string }) {
   const [expanded, setExpanded] = useState(true);
   const [sections, setSections] = useState<string[]>(activeSection ? [activeSection] : []);
   const toggle = (section: string) =>
@@ -59,20 +63,21 @@ function ConfigurationNavigation({
       current.includes(section) ? current.filter((item) => item !== section) : [...current, section],
     );
   return (
-    <nav className="configuration-navigation" aria-label={text.navigation}>
+    <>
       <button
         type="button"
         className="configuration-application"
         aria-expanded={expanded}
-        aria-controls="configuration-sections"
+        aria-controls={`configuration-sections-${app}`}
         onClick={() => setExpanded(!expanded)}
       >
-        <span aria-hidden="true">{expanded ? '▾' : '▸'}</span> {text.application}
+        <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>{' '}
+        {app === 'staff' ? text.application : PAGES.apps.find((entry) => entry.id === app)?.label}
       </button>
-      <ul id="configuration-sections" hidden={!expanded}>
+      <ul id={`configuration-sections-${app}`} hidden={!expanded}>
         {CONFIGURATION_SECTIONS.map((section) => {
-          const children = visible.filter((route) => route.section === section);
-          const path = `${CONFIGURATION_ROOT}/${section}`;
+          const children = routes.filter((route) => route.section === section);
+          const path = configurationSectionPath(app, section);
           return (
             <li key={section}>
               {children.length ? (
@@ -80,12 +85,12 @@ function ConfigurationNavigation({
                   <button
                     type="button"
                     aria-expanded={sections.includes(section)}
-                    aria-controls={`configuration-${section}`}
+                    aria-controls={`configuration-${app}-${section}`}
                     onClick={() => toggle(section)}
                   >
                     <span aria-hidden="true">{sections.includes(section) ? '▾' : '▸'}</span> {text.sections[section]}
                   </button>
-                  <ul id={`configuration-${section}`} hidden={!sections.includes(section)}>
+                  <ul id={`configuration-${app}-${section}`} hidden={!sections.includes(section)}>
                     {children.map((route) => (
                       <li key={route.id}>
                         <Link to={route.path} aria-current={activePath === route.path ? 'page' : undefined}>
@@ -104,7 +109,25 @@ function ConfigurationNavigation({
           );
         })}
       </ul>
-    </nav>
+    </>
+  );
+}
+
+function GlobalNavigation({ routes, activePath }: { routes: readonly ConfigurationRoute[]; activePath?: string }) {
+  if (!routes.length) return null;
+  return (
+    <section aria-label={text.global}>
+      <h2 className="configuration-global">{text.global}</h2>
+      <ul>
+        {routes.map((route) => (
+          <li key={route.id}>
+            <Link to={route.path} aria-current={activePath === route.path ? 'page' : undefined}>
+              {route.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -114,16 +137,30 @@ export function ConfigurationCenter() {
   const location = useLocation();
   const visible = PAGES.configurations.filter((route) => snapshot.configurationPages?.includes(route.id));
   if (!visible.length) return <PageState kind="forbidden" refresh={refresh} />;
+  const globals = visible.filter((route) => route.placement.kind === 'global');
+  const applications = APP_IDS.map((app) => ({
+    app,
+    routes: visible.filter((route) => route.placement.kind === 'app' && route.placement.app === app),
+  })).filter(({ routes }) => routes.length);
+  const sections = applications.flatMap(({ app, routes }) =>
+    CONFIGURATION_SECTIONS.map((section) => ({
+      app,
+      section,
+      path: configurationSectionPath(app, section),
+      first: routes.find((route) => route.section === section),
+    })),
+  );
   const matched = matchRoutes(
     [
       ...visible.map((route) => ({
         path: `${route.path}${route.page ? '/*' : ''}`,
-        handle: { section: route.section, path: route.path },
+        handle: {
+          app: route.placement.kind === 'app' ? route.placement.app : undefined,
+          section: route.section,
+          path: route.path,
+        },
       })),
-      ...CONFIGURATION_SECTIONS.map((section) => ({
-        path: `${CONFIGURATION_ROOT}/${section}`,
-        handle: { section, path: `${CONFIGURATION_ROOT}/${section}` },
-      })),
+      ...sections.map(({ app, section, path }) => ({ path, handle: { app, section, path } })),
     ],
     location.pathname,
   )?.[0]?.route.handle;
@@ -133,31 +170,31 @@ export function ConfigurationCenter() {
         <h1>{text.title}</h1>
       </header>
       <div className="configuration-body">
-        <ConfigurationNavigation
-          key={matched?.section ?? ''}
-          visible={visible}
-          activeSection={matched?.section}
-          activePath={matched?.path}
-        />
+        <nav className="configuration-navigation" aria-label={text.navigation}>
+          <GlobalNavigation routes={globals} activePath={matched?.path} />
+          {applications.map((application) => (
+            <ApplicationNavigation
+              key={`${application.app}/${matched?.app}/${matched?.section}`}
+              {...application}
+              activeSection={matched?.app === application.app ? matched.section : undefined}
+              activePath={matched?.path}
+            />
+          ))}
+        </nav>
         <div className="configuration-content">
           <Routes>
             <Route index element={<Navigate replace to={visible[0]!.path} />} />
-            {CONFIGURATION_SECTIONS.map((section) => {
-              const first = visible.find((route) => route.section === section);
-              return (
-                <Route
-                  key={section}
-                  path={section}
-                  element={
-                    first ? <Navigate replace to={first.path} /> : <Placeholder label={text.sections[section]} />
-                  }
-                />
-              );
-            })}
+            {sections.map(({ section, path, first }) => (
+              <Route
+                key={path}
+                path={path.slice(CONFIGURATION_ROOT.length + 1)}
+                element={first ? <Navigate replace to={first.path} /> : <Placeholder label={text.sections[section]} />}
+              />
+            ))}
             {PAGES.configurations.map((route) => (
               <Route
                 key={route.id}
-                path={`${route.section}/${route.id}${route.page ? '/*' : ''}`}
+                path={`${route.path.slice(CONFIGURATION_ROOT.length + 1)}${route.page ? '/*' : ''}`}
                 element={<ConfigurationPage route={route} allowed={visible.includes(route)} refresh={refresh} />}
               />
             ))}
