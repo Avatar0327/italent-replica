@@ -4,8 +4,8 @@
 // 错误信封按 apps/api/src/errors.ts（{ error: { code, message, details } }）；数据全部为合成值。
 import { act, createElement as h, Suspense } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter, Route, Routes, useNavigate, type NavigateFunction } from 'react-router';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionProvider, type Session } from '../foundation/Session.js';
 import { pages } from './pages.js';
 
@@ -96,18 +96,25 @@ const settle = async () => {
   for (let i = 0; i < 8; i++) await act(async () => new Promise((resolve) => setTimeout(resolve, 5)));
 };
 const entry = () => pages.entries.find((route) => route.id === 'exit-import-history');
+let navigate: NavigateFunction;
+function Navigator() {
+  navigate = useNavigate();
+  return null;
+}
 async function render() {
   const Page = entry()?.page.Component;
   expect(Page, '应在 exit/pages.ts 登记导入历史页').toBeDefined();
+  const routes = h(
+    Routes,
+    null,
+    h(Route, { path: '/exit-import-history', element: h(Suspense, { fallback: null }, h(Page!)) }),
+    h(Route, { path: '/exits', element: h('p', null, '离职管理') }),
+  );
   await act(async () =>
     root.render(
       h(SessionProvider, {
         session,
-        children: h(
-          MemoryRouter,
-          { initialEntries: ['/exit-import-history'] },
-          h(Suspense, { fallback: null }, h(Page!)),
-        ),
+        children: h(MemoryRouter, { initialEntries: ['/exit-import-history'] }, h(Navigator), routes),
       }),
     ),
   );
@@ -146,6 +153,21 @@ async function choose(label: string) {
   await act(async () => option!.click());
   await settle();
 }
+
+// 懒加载首次要转译 antd 等整棵依赖（负载高时二十余秒），经登记项先挂一次等它就绪；主线没有登记项时跳过，用例按行为失败。
+beforeAll(async () => {
+  const Page = entry()?.page.Component;
+  if (!Page) return;
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  access.loading = true; // 只停在权限加载态，不发请求
+  const shell = document.createElement('div');
+  const warm = createRoot(shell);
+  const page = h(Suspense, { fallback: h('i', { 'data-warming': '' }) }, h(Page));
+  await act(async () => warm.render(h(SessionProvider, { session, children: h(MemoryRouter, null, page) })));
+  for (let i = 0; i < 2400 && shell.querySelector('[data-warming]'); i++)
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+  await act(async () => warm.unmount());
+}, 150_000);
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -211,7 +233,15 @@ describe('AC-DM-30-F493-FE-11 导入历史页', () => {
         '下载导入错误报告',
         '合成历史离职3.xlsx',
       ],
-      ['离职人员', '2026/11/0604:30', '合成导入人', '成功', '尝试导入5条记录，出现0个错误。', '--', '合成历史离职4.xlsx'],
+      [
+        '离职人员',
+        '2026/11/0604:30',
+        '合成导入人',
+        '成功',
+        '尝试导入5条记录，出现0个错误。',
+        '--',
+        '合成历史离职4.xlsx',
+      ],
     ]);
     expect(host.textContent).not.toMatch(/\b(running|succeeded|failed|exit|EXIT_[A-Z_]+)\b/);
     for (const label of ['取消', '删除', '重试']) expect(button(label)).toBeUndefined();
@@ -370,6 +400,29 @@ describe('AC-DM-30-F493-FE-11 导入历史页', () => {
     await settle();
     expect(host.textContent).toContain('合成回来后.xlsx');
     expect(host.textContent).not.toContain('合成离开前.xlsx');
+  });
+
+  it('后退再前进：离开时未到的响应不复活，每次回到页面都重新读第 1 页', async () => {
+    const late = deferred();
+    fetcher.mockReturnValueOnce(late.promise);
+    await render();
+    await act(async () => navigate('/exits'));
+    await settle();
+    fetcher.mockResolvedValueOnce(listOf([item('2', { fileName: '合成后退回来.xlsx' })]));
+    await act(async () => navigate(-1));
+    await settle();
+    await act(async () => late.resolve(listOf([item('1', { fileName: '合成离开前.xlsx' })])));
+    await settle();
+    expect(host.textContent).toContain('合成后退回来.xlsx');
+    await act(async () => navigate(1));
+    await settle();
+    expect(host.textContent).toBe('离职管理');
+    fetcher.mockResolvedValueOnce(listOf([item('3', { fileName: '合成再次回来.xlsx' })]));
+    await act(async () => navigate(-1));
+    await settle();
+    expect(host.textContent).toContain('合成再次回来.xlsx');
+    expect(host.textContent).not.toContain('合成离开前.xlsx');
+    expect(listCalls().map(query)).toEqual([{ page: '1' }, { page: '1' }, { page: '1' }]);
   });
 
   it('列表形状不符时显示中文读取失败，不渲染半截表格', async () => {
