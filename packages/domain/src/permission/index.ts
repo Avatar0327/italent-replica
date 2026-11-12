@@ -47,3 +47,5 @@ export {
   type ObjectPermissionViolation,
   validateObjectPermission,
 } from './object-permission.js';
+
+export { PAGE_CATALOG, PAGE_CARRIERS, isPageCarrier, type PageDefinition } from './page-catalog.js';

@@ -1,4 +1,5 @@
-import { Button, Input, Space, Table, type TableColumnsType } from 'antd';
+import { isPageCarrier } from '@italent/domain';
+import { Button, Descriptions, Input, Space, Table, Tabs, type TableColumnsType } from 'antd';
 import { useState } from 'react';
 import { PageState } from '../foundation/PageState.js';
 import { type DialogMode, type ProfileDetail, profilePath } from './object-dialog-model.js';
@@ -6,6 +7,9 @@ import { ObjectPermissionDialog } from './ObjectPermissionDialog.js';
 import { useResource } from './useResource.js';
 import { om } from './object-messages.js';
 import './object-permissions.css';
+import { PagePermissions, ProfileMenus } from './PagePermissions.js';
+import { pm } from './page-messages.js';
+import { m } from './messages.js';
 type ObjectRow = ProfileDetail['objects'][number];
 type Target = { objectCode: string; mode: DialogMode };
 export function ProfileDetails({ id, editable, close }: { id: string; editable: boolean; close(): void }) {
@@ -17,11 +21,45 @@ export function ProfileDetails({ id, editable, close }: { id: string; editable: 
         <h1>{resource.data?.name ?? om.objects}</h1>
         <Button onClick={close}>{om.back}</Button>
       </header>
-      <h2>{om.objects}</h2>
+      {resource.data && (
+        <Descriptions
+          title={pm.basic}
+          size="small"
+          items={[
+            { key: 'code', label: m.code, children: resource.data.code },
+            { key: 'apps', label: m.apps, children: resource.data.apps.join('、') },
+            { key: 'description', label: m.description, children: resource.data.description },
+          ]}
+        />
+      )}
       {resource.error ? (
         <PageState kind="error" error={resource.error} retry={resource.refresh} />
       ) : (
-        <ObjectTable rows={resource.data?.objects ?? []} loading={resource.loading} open={setDialog} />
+        <Tabs
+          defaultActiveKey="objects"
+          destroyOnHidden
+          items={[
+            { key: 'menus', label: pm.menus, children: resource.data && <ProfileMenus profile={resource.data} /> },
+            {
+              key: 'pages',
+              label: pm.pages,
+              children: resource.data && (
+                <PagePermissions profile={resource.data} editable={editable} refresh={resource.refresh} />
+              ),
+            },
+            {
+              key: 'objects',
+              label: om.objects,
+              children: (
+                <ObjectTable
+                  rows={(resource.data?.objects ?? []).filter((row) => !isPageCarrier(row.objectCode))}
+                  loading={resource.loading}
+                  open={setDialog}
+                />
+              ),
+            },
+          ]}
+        />
       )}
       {dialog && (
         <ObjectPermissionDialog
