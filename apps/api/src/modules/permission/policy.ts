@@ -79,7 +79,7 @@ export const PERMISSION_POLICIES = defineTable('permission', {
   [`GET ${BASE}/grant-prefill/:userId/:profileId`]: otherSettingsById,
   // ---- user-routes.ts：用户管理（user_manage；停用 / 移出走平台流程，platformCommandId 平台台账 + 租户审计）----
   [`GET ${BASE}/users`]: admin('user_manage', personColumns),
-  [`GET ${BASE}/users/:userId`]: admin('user_manage', byId),
+  [`GET ${BASE}/users/:userId`]: admin('user_manage', { ...byId, ...personColumns }),
   [`POST ${BASE}/users`]: admin('user_manage', { write: platformUserWrite('外部用户登记 DTO，无字段目录') }),
   [`PUT ${BASE}/users/:userId`]: admin('user_manage', { ...byId, write: adminCommand }),
   [`POST ${BASE}/users/:userId/status`]: admin('user_manage', { ...byId, write: platformUserWrite('status 开关') }),
