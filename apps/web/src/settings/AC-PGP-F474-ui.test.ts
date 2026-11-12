@@ -252,7 +252,10 @@ describe('AC-PGP-F474 页面权限与菜单组交互', () => {
     profile.objects = [granted];
     await open();
     await click('对象权限', 'tab');
-    expect(ui.host.querySelector('tbody')?.textContent ?? '').not.toContain(carrier);
+    // 只看当前激活的对象权限面板：表格须已渲染，且不列载体对象。
+    const objects = ui.host.querySelector('.ant-tabs-tabpane-active');
+    expect(objects?.querySelector('.profile-object-filter')).not.toBeNull();
+    expect(objects?.textContent ?? '').not.toContain(carrier);
     await click('菜单组', 'tab');
     expect(ui.host.textContent).toContain('由对象权限推导，调整请在对象权限中修改');
     expect(ui.host.textContent).toContain(carrier);
