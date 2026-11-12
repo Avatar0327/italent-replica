@@ -138,6 +138,68 @@ afterEach(async () => {
 });
 
 describe('AC-FE-F4746b0 定义管理', () => {
+  it('AC-F474-0BFE01 新建单选时编辑选项，以稳定编码提交 options', async () => {
+    permission = {
+      ...permissionFixture,
+      viewableFields: [...permissionFixture.viewableFields, 'options'],
+      editableFields: [...permissionFixture.editableFields, 'options'],
+    };
+    await render();
+    await click('新建');
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    type(dialog.querySelector<HTMLInputElement>('input[id$="name"]')!, '合成下拉');
+    await act(() =>
+      dialog
+        .querySelector('input[id$="valueType"]')!
+        .closest('.ant-select')!
+        .querySelector('.ant-select-selector')!
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true })),
+    );
+    await settle();
+    const select = [...document.querySelectorAll<HTMLElement>('.ant-select-item-option')].find(
+      (node) => node.textContent === '单选下拉',
+    );
+    expect(select, '第六种类型为单选下拉').toBeDefined();
+    await act(() => select!.click());
+    await settle();
+    await click('新增选项', dialog);
+    type(dialog.querySelector<HTMLInputElement>('[aria-label="选项名称 1"]')!, '合成东区');
+    await settle();
+    await click('保存', dialog);
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.body).toEqual({
+      name: '合成下拉',
+      objectType: 'employment',
+      valueType: 'select',
+      options: [{ value: expect.any(String), label: '合成东区', enabled: true }],
+    });
+  });
+
+  it('AC-F474-0BFE02 选项结果未知，重开锁定编辑器并复用原命令', async () => {
+    permission = {
+      ...permissionFixture,
+      viewableFields: [...permissionFixture.viewableFields, 'options'],
+      editableFields: [...permissionFixture.editableFields, 'options'],
+    };
+    Object.assign(currentRow, { valueType: 'select', options: [{ value: 'east', label: '合成东区', enabled: true }] });
+    mode = 'unknown';
+    await render();
+    await click('编辑选项');
+    const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
+    type(dialog().querySelector<HTMLInputElement>('[aria-label="选项名称 1"]')!, '合成新区');
+    await settle();
+    await click('保存', dialog());
+    await click('取消', dialog());
+    await click('编辑选项');
+    expect(dialog().querySelector<HTMLInputElement>('[aria-label="选项名称 1"]')!.disabled).toBe(true);
+    mode = 'success';
+    await click('按原命令重试', dialog());
+    expect(posts).toHaveLength(2);
+    expect(posts[1]!.body).toEqual({ options: [{ value: 'east', label: '合成新区', enabled: true }] });
+    expect(posts[1]!.url).toContain('/options');
+    expect([...posts[1]!.headers]).toEqual([...posts[0]!.headers]);
+  });
+
   it('AC-F474-FE01 通过登记入口展示字段，配置对象按数据操作授权，无按钮码依赖', async () => {
     expect(entry()).toMatchObject({ app: 'settings', objectCode: OBJECT, label: '自定义字段' });
     await render();
