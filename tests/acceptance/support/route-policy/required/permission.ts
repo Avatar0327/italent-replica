@@ -39,6 +39,26 @@ const guarded = (capability: string, method: string, path: string): Obligation =
   facts: ADMIN_FACTS,
   at: [route(ROUTES, method, path, `await guard(c, deps, '${capability}')`), ADMIN_GUARD],
 });
+const candidates = (capability: string, path: string, kind: 'profile' | 'mou'): Obligation => {
+  const admission = guarded(capability, 'GET', path);
+  return {
+    ...admission,
+    need: { scope: 'list', predicate: 'permission.candidateVisibility' },
+    at: [
+      ...admission.at,
+      {
+        role: 'scope',
+        unit: `${DIR}/filter-candidates.ts#${kind}Candidates`,
+        anchor: `await candidateVisibility(tx, actorUserId, '${kind}')`,
+      },
+      {
+        role: 'impl',
+        unit: `${DIR}/filter-candidates.ts#candidateVisibility`,
+        anchor: 'const { heldRoles, profiles } = await grantableSetsOf(tx, actorUserId)',
+      },
+    ],
+  };
+};
 const users = (
   method: string,
   path: string,
@@ -138,9 +158,11 @@ export const PERMISSION: RequiredTable = {
   ],
   'GET /api/tenant/permission/grantable-profiles': [guarded('user_grant', 'GET', '/grantable-profiles')],
   'GET /api/tenant/permission/grants': [guarded('user_grant', 'GET', '/grants')],
-  'GET /api/tenant/permission/grants/profile-candidates': [guarded('user_grant', 'GET', '/grants/profile-candidates')],
-  'GET /api/tenant/permission/grants/mou-candidates': [guarded('user_grant', 'GET', '/grants/mou-candidates')],
-  'GET /api/tenant/permission/admins/mou-candidates': [guarded('admin_manage', 'GET', '/admins/mou-candidates')],
+  'GET /api/tenant/permission/grants/profile-candidates': [
+    candidates('user_grant', '/grants/profile-candidates', 'profile'),
+  ],
+  'GET /api/tenant/permission/grants/mou-candidates': [candidates('user_grant', '/grants/mou-candidates', 'mou')],
+  'GET /api/tenant/permission/admins/mou-candidates': [candidates('admin_manage', '/admins/mou-candidates', 'mou')],
   'POST /api/tenant/permission/grants': [
     guarded('user_grant', 'POST', '/grants'),
     {

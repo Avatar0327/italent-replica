@@ -244,7 +244,7 @@ function grantRoutes(router: Router, deps: TenantRouteDeps): void {
       limit: c.req.query('limit'),
       offset: c.req.query('offset'),
     });
-    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => mouCandidates(tx, query)));
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => mouCandidates(tx, ctx.userId, query)));
   });
   router.get(`${BASE}/grants/profile-candidates`, async (c) => {
     const ctx = await guard(c, deps, 'user_grant');
@@ -253,7 +253,7 @@ function grantRoutes(router: Router, deps: TenantRouteDeps): void {
       limit: c.req.query('limit'),
       offset: c.req.query('offset'),
     });
-    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => profileCandidates(tx, query)));
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => profileCandidates(tx, ctx.userId, query)));
   });
   router.get(`${BASE}/grantable-profiles`, async (c) => {
     const ctx = await guard(c, deps, 'user_grant');
@@ -296,7 +296,7 @@ function adminRoutes(router: Router, deps: TenantRouteDeps): void {
       limit: c.req.query('limit'),
       offset: c.req.query('offset'),
     });
-    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => mouCandidates(tx, query)));
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => mouCandidates(tx, ctx.userId, query)));
   });
   router.get(`${BASE}/admins`, async (c) => {
     const ctx = await guard(c, deps, 'admin_manage');

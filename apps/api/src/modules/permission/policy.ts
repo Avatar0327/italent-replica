@@ -12,6 +12,7 @@ import {
   configWrite,
   fixed,
   member,
+  listScope,
   noFields,
   none,
   NOT_FOUND,
@@ -92,9 +93,11 @@ export const PERMISSION_POLICIES = defineTable('permission', {
   }),
   [`GET ${BASE}/grantable-profiles`]: admin('user_grant'),
   [`GET ${BASE}/grants`]: admin('user_grant'),
-  [`GET ${BASE}/grants/profile-candidates`]: admin('user_grant'),
-  [`GET ${BASE}/grants/mou-candidates`]: admin('user_grant'),
-  [`GET ${BASE}/admins/mou-candidates`]: admin('admin_manage'),
+  [`GET ${BASE}/grants/profile-candidates`]: admin('user_grant', {
+    scope: listScope('permission.candidateVisibility'),
+  }),
+  [`GET ${BASE}/grants/mou-candidates`]: admin('user_grant', { scope: listScope('permission.candidateVisibility') }),
+  [`GET ${BASE}/admins/mou-candidates`]: admin('admin_manage', { scope: listScope('permission.candidateVisibility') }),
   // body.scopes 非空须另有 other_settings（附加守卫）
   [`POST ${BASE}/grants`]: admin('user_grant', {
     guards: ['permission.grantScopesRequireOtherSettings'],

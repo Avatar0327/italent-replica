@@ -152,7 +152,8 @@ describe('AC-PRM-F516 独立筛选候选', () => {
   });
 
   it.each(['/grants/mou-candidates', '/admins/mou-candidates'])('%s 包含停用但排除删除管理单元', async (path) => {
-    const result = await get(`${path}?q=${tag}`);
+    const actor = await memberWithAdminRole(world, 'user_admin', `管理单元读者-${uniqueSuffix()}`);
+    const result = await get(`${path}?q=${tag}`, actor.as);
     expect(result.status).toBe(200);
     expect(result.body.items).toEqual([
       { id: mous[0], name: `${tag}-单元0` },
