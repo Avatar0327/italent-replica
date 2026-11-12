@@ -260,4 +260,73 @@ describe('AC-PGP-F474 页面权限与菜单组交互', () => {
     expect(ui.host.textContent).not.toContain('保存');
     expect(writes).toHaveLength(0);
   });
+  it('AC-PGP-F474-09 页面结果未知时切到对象数据操作弹窗仍锁定', async () => {
+    profile.objects = [{ ...granted, objectCode: 'Qualification.X', buttons: [] }];
+    await open();
+    mode = 'unknown';
+    await add();
+    await click('取消');
+    await click('对象权限', 'tab');
+    await click('数据操作权限');
+    expect(confirm().disabled).toBe(true);
+    expect(document.querySelector('.ant-modal')?.textContent).toContain('未确认的其他操作');
+    expect(writes).toHaveLength(1);
+  });
+  it('AC-PGP-F474-09 删除冲突重读后继续显式删除，保留空选择并使用新版本', async () => {
+    profile.objects = [granted];
+    await open();
+    mode = 'conflict';
+    await click('删除');
+    await click('确定');
+    await click('重读最新版本');
+    await click('已核对差异，继续编辑');
+    mode = 'ok';
+    await click('确定');
+    expect(writes[1]!.body.buttons).toEqual([]);
+    expect(writes[1]!.headers.get('if-match')?.replaceAll('"', '')).toBe('5');
+  });
+  it('AC-PGP-F474-09 删除回执丢失后重开保持锁，先回查再重放同一空按钮请求', async () => {
+    profile.objects = [granted];
+    await open();
+    mode = 'unknown';
+    await click('删除');
+    await click('确定');
+    await click('取消');
+    await click('删除');
+    expect(confirm().disabled).toBe(true);
+    await click('回查原单');
+    mode = 'ok';
+    await click('按原请求重试');
+    expect(writes).toHaveLength(2);
+    expect(writes[1]!.body).toEqual(writes[0]!.body);
+    expect(writes[1]!.headers.get('idempotency-key')).toBe(writes[0]!.headers.get('idempotency-key'));
+  });
+  it('AC-PGP-F474-09 离开后迟到成功不关闭新页面，回来读取已保存配置', async () => {
+    await open();
+    let resolve!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((done) => {
+            resolve = done;
+          }),
+      ),
+    );
+    await click('新增');
+    await act(() => document.querySelector<HTMLInputElement>('.ant-modal input[type="checkbox"]')!.click());
+    await click('确定');
+    await ui.close();
+    profile = { ...profile, revision: 5, objects: [granted] };
+    await act(async () => {
+      resolve(Response.json(profile));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(close).not.toHaveBeenCalled();
+    ui = uiHarness();
+    await open();
+    expect(ui.host.textContent).toContain('已授予');
+    await click('删除');
+    expect(confirm().disabled).toBe(false);
+  });
 });

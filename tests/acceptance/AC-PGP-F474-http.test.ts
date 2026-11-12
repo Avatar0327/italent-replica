@@ -5,8 +5,18 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { employeePageGranted } from '../../apps/api/src/modules/employee-self-service/page-permission.js';
 import { approvalWorld, permissionAdmin } from './AC-APV-support.js';
-import { BASE, createProfile, grant, makeGrantable, type PermissionWorld, type ProfileBody } from './AC-PRM-support.js';
+import {
+  addMember,
+  BASE,
+  createProfile,
+  grant,
+  makeGrantable,
+  type PermissionWorld,
+  type ProfileBody,
+} from './AC-PRM-support.js';
 import { provisionWorld, runBackfill, ledger } from './support/f061.js';
+import { profileMenuGroups } from '../../apps/web/src/settings/page-permission-model.js';
+import type { ProfileDetail } from '../../apps/web/src/settings/object-dialog-model.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
@@ -203,5 +213,30 @@ describe('AC-PGP-F474 页面权限真实 HTTP 与页面闸门', () => {
       const latest = (await (await w.api.request('GET', `${BASE}/profiles/${id}`, w.asAdmin)).json()) as Detail;
       expect(latest.objects.find((o) => o.objectCode === carrier)?.buttons).toEqual([]);
     }
+  });
+  it('AC-PGP-F474-11 菜单组与真实 me-snapshot 入口集合一致，撤销对象查看后同时消失', async () => {
+    const p = await newProfile();
+    expect((await put(p, body())).status).toBe(200);
+    const holder = await addMember(admin, '合成菜单用户');
+    await makeGrantable(admin, [p.id]);
+    expect((await grant(admin, holder.id, p.id)).status).toBe(201);
+    const snapshot = async () => {
+      const response = await admin.api.request('GET', `${BASE}/me/snapshot`, {
+        tenant: admin.tenant.id,
+        user: holder.id,
+      });
+      expect(response.status).toBe(200);
+      const result = (await response.json()) as { apps: { app: string; entryObjects: string[] }[] };
+      return result.apps.find((a) => a.app === 'qualification')!.entryObjects;
+    };
+    const detail = (await (await admin.api.request('GET', path(p), admin.asAdmin)).json()) as ProfileDetail;
+    expect(profileMenuGroups(detail)[0]!.objects).toEqual(await snapshot());
+    expect(await snapshot()).toEqual([carrier]);
+    await withTenant(admin.db, admin.tenant.id, (tx) =>
+      tx.delete(permissionProfileObjects).where(eq(permissionProfileObjects.profileId, p.id)),
+    );
+    const removed = (await (await admin.api.request('GET', path(p), admin.asAdmin)).json()) as ProfileDetail;
+    expect(profileMenuGroups(removed)[0]!.objects).toEqual([]);
+    expect(await snapshot()).toEqual([]);
   });
 });
