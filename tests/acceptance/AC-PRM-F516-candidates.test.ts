@@ -1,4 +1,12 @@
-import { permissionMous, permissionProfiles, permissionAdmins, withTenant, eq } from '@italent/db';
+import {
+  permissionMous,
+  permissionProfiles,
+  permissionAdmins,
+  permissionGrants,
+  permissionAdminGrantableProfiles,
+  withTenant,
+  eq,
+} from '@italent/db';
 import { createTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BASE, createProfile, seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
@@ -30,7 +38,7 @@ const get = async (path: string, as = reader) => {
 
 beforeAll(async () => {
   world = await seedPermissionWorld(database().db);
-  const actor = await memberWithAdminRole(world, 'user_admin', '候选读者');
+  const actor = await memberWithAdminRole(world, 'system_admin', '候选读者');
   reader = { user: actor.user.id, tenant: world.tenant.id };
   for (let index = 0; index < 3; index++) {
     profiles.push((await createProfile(world, `${tag}-${index}`)).id);
@@ -49,7 +57,7 @@ beforeAll(async () => {
 });
 
 describe('AC-PRM-F516 独立筛选候选', () => {
-  it('身份候选包含未授权身份，独立于列表当页与可授权集合', async () => {
+  it('有身份目录查看权时，身份候选包含未授权身份，独立于列表当页与可授权集合', async () => {
     expect((await get('/grantable-profiles')).body.items).toEqual([]);
     expect((await get('/grants')).body.items).toEqual([]);
     const result = await get(`/grants/profile-candidates?q=${tag}&limit=200`);
@@ -57,6 +65,75 @@ describe('AC-PRM-F516 独立筛选候选', () => {
     expect(result.body.total).toBe(3);
     expect(result.body.items.map((item) => item.id)).toEqual(profiles);
     expect(result.body.items[0]).toEqual({ id: profiles[0], name: `身份${tag}-0` });
+  });
+
+  it('无目录查看权且既有可见集合为空时，候选、搜索及 total 不披露身份', async () => {
+    const actor = await memberWithAdminRole(world, 'user_admin', `受限读者-${uniqueSuffix()}`);
+    expect((await get('/profiles', actor.as)).status).toBe(403);
+    expect((await get(`/profiles/${profiles[0]}`, actor.as)).status).toBe(403);
+    expect((await get('/grantable-profiles', actor.as)).body.items).toEqual([]);
+    expect((await get('/grants', actor.as)).body.items).toEqual([]);
+    for (const query of ['', `?q=${tag}`, `?q=${tag}&limit=1&offset=1`]) {
+      const result = await get(`/grants/profile-candidates${query}`, actor.as);
+      expect(result.status).toBe(200);
+      expect(result.body).toEqual({ items: [], total: 0 });
+      expect(JSON.stringify(result.body)).not.toContain(`身份${tag}-0`);
+    }
+  });
+
+  it('受限读者按既有授权列表与可授予集合取并集，先裁剪再搜索分页计数，目录撤权立即收窄', async () => {
+    const local = await seedPermissionWorld(world.db);
+    const actor = await memberWithAdminRole(local, 'user_admin', `可见集合-${uniqueSuffix()}`);
+    const ids: string[] = [];
+    const prefix = `F516-R2-${uniqueSuffix()}`;
+    for (let index = 0; index < 3; index++) ids.push((await createProfile(local, `${prefix}-${index}`)).id);
+    const request = async (path: string) => {
+      const response = await local.api.request('GET', `${BASE}${path}`, actor.as);
+      expect(response.status).toBe(200);
+      return (await response.json()) as { items: { id: string; name: string }[]; total: number };
+    };
+    let adminId: string;
+    await withTenant(local.db, local.tenant.id, async (tx) => {
+      const [record] = await tx.select().from(permissionAdmins).where(eq(permissionAdmins.userId, actor.user.id));
+      adminId = record!.id;
+      await tx.insert(permissionAdminGrantableProfiles).values({
+        tenantId: local.tenant.id,
+        adminId,
+        profileId: ids[2]!,
+      });
+      await tx.insert(permissionGrants).values(
+        [actor.user.id, local.admin.id].map((userId) => ({
+          tenantId: local.tenant.id,
+          userId,
+          profileId: ids[1]!,
+          status: 'revoked' as const,
+        })),
+      );
+    });
+    expect((await request('/grantable-profiles')).items.map((item) => item.id)).toEqual([ids[2]]);
+    expect((await request('/grants?status=revoked')).total).toBe(2);
+    const first = await request('/grants/profile-candidates?limit=1');
+    const second = await request('/grants/profile-candidates?limit=1&offset=1');
+    expect(first).toEqual({ items: [{ id: ids[1], name: `身份${prefix}-1` }], total: 2 });
+    expect(second).toEqual({ items: [{ id: ids[2], name: `身份${prefix}-2` }], total: 2 });
+    expect(await request('/grants/profile-candidates?offset=2')).toEqual({ items: [], total: 2 });
+    expect(await request(`/grants/profile-candidates?q=${prefix}-0`)).toEqual({ items: [], total: 0 });
+    expect(await request(`/grants/profile-candidates?q=${prefix}-2`)).toEqual({ items: second.items, total: 1 });
+    await withTenant(local.db, local.tenant.id, async (tx) => {
+      await tx.delete(permissionAdminGrantableProfiles).where(eq(permissionAdminGrantableProfiles.adminId, adminId!));
+    });
+    expect(await request('/grants/profile-candidates')).toEqual({ items: first.items, total: 1 });
+    const directory = await local.api.request('POST', `${BASE}/admins`, {
+      ...local.asAdmin,
+      body: { userId: actor.user.id, role: 'system_admin', grantableAdminRoles: [], grantableProfileIds: [] },
+    });
+    expect(directory.status).toBe(201);
+    const directoryId = ((await directory.json()) as { id: string }).id;
+    expect((await request('/grants/profile-candidates')).total).toBe(3);
+    await withTenant(local.db, local.tenant.id, async (tx) => {
+      await tx.update(permissionAdmins).set({ status: 'revoked' }).where(eq(permissionAdmins.id, directoryId));
+    });
+    expect(await request('/grants/profile-candidates')).toEqual({ items: first.items, total: 1 });
   });
 
   it.each(paths)('%s 名称搜索、稳定分页与空集', async (path) => {
