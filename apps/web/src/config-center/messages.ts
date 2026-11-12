@@ -2,6 +2,7 @@ export const configurationUi = {
   title: '配置中心',
   navigation: '配置中心目录',
   application: '组织员工',
+  global: '全局项',
   flow: '流程',
   pending: '此配置页尚未开放',
   pendingHint: '当前仅提供导航占位，暂不支持配置操作。',
