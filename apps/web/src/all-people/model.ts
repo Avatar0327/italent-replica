@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import type { PageRequest } from '../foundation/client.js';
 import { pageQuery } from '../foundation/client.js';
 
@@ -68,5 +69,6 @@ export const columnWidth = (key: string) => WIDTHS[key] ?? 140;
 
 export function cell(row: Row, key: string): string {
   const value = row[key];
+  if (key === 'code') return codeText((value as string | null) ?? null);
   return value === null || value === undefined || value === '' ? '—' : String(value);
 }

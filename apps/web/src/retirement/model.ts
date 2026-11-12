@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import {
   RETIREMENT_BUTTONS,
   RETIREMENT_INTENTION_BUTTON,
@@ -73,6 +74,7 @@ const text = (input: unknown) =>
 
 /** 被裁剪的字段缺键，单元格显示占位，不拿别的字段拼值（claude_fe_rules d）。 */
 export function cellValue(row: Row, key: string): string {
+  if (key === 'code') return codeText((row[key] as string | null) ?? null);
   const value = row[key];
   if (key === 'status') return m.states[String(value)] ?? text(value);
   if (key === 'retireType') return m.retireTypes[String(value)] ?? text(value);

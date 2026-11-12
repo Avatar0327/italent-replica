@@ -395,6 +395,35 @@ const ADMIN_LOG_KEYS = [
 
 export const APPROVAL_POLICIES = defineTable('approval', {
   // ---- registerProcessRoutes：流程定义（DEC-102）------------------------------------------------------------------
+  'GET /matrices': admin('process_matrix', {
+    fields: fixed(['items', 'offset', 'limit', 'hasMore'], 'F-326 §4.3 管理员矩阵头部列表'),
+  }),
+  'GET /matrices/:id': admin('process_matrix', {
+    ...byId,
+    fields: fixed(
+      [
+        'id',
+        'code',
+        'name',
+        'description',
+        'status',
+        'revision',
+        'createdBy',
+        'createdAt',
+        'updatedBy',
+        'updatedAt',
+        'columns',
+        'rows',
+        'referenceNames',
+      ],
+      'F-326 §4.3 矩阵详情及名称',
+    ),
+  }),
+  'POST /matrices': processAdmin({ write: processConfig }),
+  'PATCH /matrices/:id': processAdmin({ ...byId, write: processConfig }),
+  'PUT /matrices/:id/structure': processAdmin({ ...byId, write: processConfig }),
+  'POST /matrices/:id/enable': processAdmin({ ...byId, write: processCommand }),
+  'POST /matrices/:id/disable': processAdmin({ ...byId, write: processCommand }),
   'GET /designer/source-candidates': admin('process_matrix', {
     fields: fixed(['id', 'name', 'enabled', 'parentId'], 'DEC-691 / DEC-686①'),
   }),

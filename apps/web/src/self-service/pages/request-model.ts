@@ -3,7 +3,7 @@ import type { ObjectPermission } from '../../foundation/permission-model.js';
 import { messages as kernel } from '../../foundation/forms/messages.js';
 export type RequestKind = 'exit' | 'partTime';
 export interface RequestFormData {
-  employee: { id: string; name: string; code: string; revision: number };
+  employee: { id: string; name: string; code: string | null; revision: number };
   dataOperations: { create: boolean; update: boolean };
   fieldModes: Record<string, string>;
   updateFieldModes: Record<string, string>;

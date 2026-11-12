@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { m } from './messages.js';
 export type Row = Record<string, unknown>;
 export type View = 'expiring' | 'missing' | 'expired_unrenewed' | 'in_review' | 'valid' | 'all';
@@ -101,6 +102,7 @@ export function canOpenRecord(row: Row, view: View) {
   );
 }
 export function value(input: unknown, key: string): string {
+  if (key === 'code') return codeText((input as string | null) ?? null);
   if (input === undefined || input === null || input === '') return '--';
   if (typeof input === 'boolean') return input ? '是' : '否';
   if (Array.isArray(input)) return input.length ? input.map((item) => value(item, key)).join('、') : '--';
