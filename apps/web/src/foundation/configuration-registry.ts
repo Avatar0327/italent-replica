@@ -1,4 +1,4 @@
-import { APP_OBJECT_DIRECTORY, type AppId } from '../../../../packages/domain/src/permission/app-directory.js';
+import { APP_IDS, APP_OBJECT_DIRECTORY, type AppId } from '../../../../packages/domain/src/permission/app-directory.js';
 import { matchRoutes } from 'react-router';
 import type { ModulePage } from './page-registry.js';
 import type { ServerSnapshot } from './permission-snapshot.js';
@@ -20,30 +20,58 @@ export const CONFIGURATION_SECTIONS = [
 export type ConfigurationSection = (typeof CONFIGURATION_SECTIONS)[number];
 /** 只引用既有服务端入口，不以角色名或前端按钮猜权限。 */
 export type ConfigurationAccess = { app: AppId; objectCode: string } | { adminMenu: string };
-export interface ConfigurationPageDeclaration {
+interface ConfigurationPage {
   readonly id: string;
   readonly label: string;
-  readonly section: ConfigurationSection;
   readonly access: ConfigurationAccess;
   /** 未挂载时为只读占位；后续页面可在该路径下继续声明详情等子路由。 */
   readonly page?: ModulePage;
 }
-export type ConfigurationRoute = ConfigurationPageDeclaration & { readonly path: string; readonly module: string };
+export type ConfigurationPlacement = { readonly kind: 'global' } | { readonly kind: 'app'; readonly app: AppId };
+/** F-326 §4.4：未声明 placement 的既有项仍属于组织员工。 */
+export type ConfigurationPageDeclaration = ConfigurationPage &
+  (
+    | { readonly placement: { readonly kind: 'global' }; readonly section?: never }
+    | { readonly placement?: { readonly kind: 'app'; readonly app: AppId }; readonly section: ConfigurationSection }
+  );
+export type ConfigurationRoute = ConfigurationPage & {
+  readonly section?: ConfigurationSection;
+  readonly placement: ConfigurationPlacement;
+  readonly path: string;
+  readonly module: string;
+};
+
+export function configurationSectionPath(app: AppId, section: ConfigurationSection): string {
+  const root = app === 'staff' ? CONFIGURATION_ROOT : `${CONFIGURATION_ROOT}/apps/${app}`;
+  return `${root}/${section}`;
+}
 
 export function collectConfigurations(
   declarations: readonly { module: string; configurations?: readonly ConfigurationPageDeclaration[] }[],
 ): ConfigurationRoute[] {
-  const found = declarations.flatMap(({ module, configurations }) =>
-    (configurations ?? []).map((entry) => ({
-      ...entry,
-      module,
-      path: `${CONFIGURATION_ROOT}/${entry.section}/${entry.id}`,
-    })),
+  if (CONFIGURATION_SECTIONS.some((section: string) => section === 'global' || section === 'apps'))
+    throw new Error('配置页目录无效：global / apps 为保留字');
+  const found: ConfigurationRoute[] = declarations.flatMap(({ module, configurations }) =>
+    (configurations ?? []).map((entry) => {
+      const placement = entry.placement ?? { kind: 'app', app: 'staff' };
+      const validPlacement =
+        placement.kind === 'global'
+          ? !('section' in entry)
+          : placement.kind === 'app' &&
+            APP_IDS.includes(placement.app) &&
+            entry.section !== undefined &&
+            CONFIGURATION_SECTIONS.includes(entry.section);
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.id) || !validPlacement)
+        throw new Error(`配置页登记无效：${module}/${entry.id}`);
+      const parent =
+        placement.kind === 'global'
+          ? `${CONFIGURATION_ROOT}/global`
+          : configurationSectionPath(placement.app, entry.section!);
+      return { ...entry, placement, module, path: `${parent}/${entry.id}` };
+    }),
   );
   const seen = new Set<string>();
   for (const entry of found) {
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.id) || !CONFIGURATION_SECTIONS.includes(entry.section))
-      throw new Error(`配置页登记无效：${entry.module}/${entry.id}`);
     if (seen.has(entry.id)) throw new Error(`配置页登记重复：${entry.id}`);
     seen.add(entry.id);
     if ('app' in entry.access && !APP_OBJECT_DIRECTORY[entry.access.app]?.includes(entry.access.objectCode))
@@ -51,8 +79,11 @@ export function collectConfigurations(
     if ('adminMenu' in entry.access && !entry.access.adminMenu) throw new Error(`配置页须引用后台菜单：${entry.id}`);
   }
   return found.sort((a, b) => {
-    const section = CONFIGURATION_SECTIONS.indexOf(a.section) - CONFIGURATION_SECTIONS.indexOf(b.section);
-    return section || Number(a.id > b.id) - Number(a.id < b.id);
+    const appOrder = (route: ConfigurationRoute) =>
+      route.placement.kind === 'global' ? -1 : APP_IDS.indexOf(route.placement.app);
+    const sectionOrder = (route: ConfigurationRoute) =>
+      route.section === undefined ? -1 : CONFIGURATION_SECTIONS.indexOf(route.section);
+    return appOrder(a) - appOrder(b) || sectionOrder(a) - sectionOrder(b) || Number(a.id > b.id) - Number(a.id < b.id);
   });
 }
 
