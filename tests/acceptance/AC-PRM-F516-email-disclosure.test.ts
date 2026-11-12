@@ -104,4 +104,14 @@ describe('AC-PRM-F516 联系邮箱列与混合搜索使用相同的人员权限'
       expect(body.items.map((item) => item.userId)).toEqual(visible ? [target.userId] : []);
     }
   });
+
+  /** DEC-901：详情与列表同口径，人员对象查看 + 邮箱字段 + 数据范围缺一，都不披露档案联系邮箱。 */
+  it.each(cases)('%s：用户详情的联系邮箱与列表口径一致', async (kind) => {
+    const response = await api.request('GET', `${BASE}/users/${target.userId}`, readers.get(kind)!);
+    expect(response.status, await response.clone().text()).toBe(200);
+    const body = (await response.json()) as F516Row;
+    expect(body.userId).toBe(target.userId);
+    expect(body.email).toBe(loginEmail);
+    expect(body.contactEmail ?? null).toBe(kind === '有权且范围内' ? contactEmail : null);
+  });
 });
