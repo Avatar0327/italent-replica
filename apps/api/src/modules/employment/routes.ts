@@ -1,3 +1,5 @@
+import { CUSTOM_FIELD_OBJECT_TYPES } from '@italent/domain';
+import { customFieldWriteGuard } from './custom-field-guard.js';
 import { composeBusiness, disclosedBy, selectEmploymentRead, type EmploymentRead } from './approval-content.js';
 import { registerEmploymentFormRoutes } from './employment-form-routes.js';
 import { registerEmploymentTypeRoutes } from './employment-type-routes.js';
@@ -20,6 +22,7 @@ import {
   readSettings,
   updateSettings,
   createCustomField,
+  fieldInput,
   setCustomFieldInheritance,
   listCustomFields,
 } from './configuration.js';
@@ -787,24 +790,24 @@ function registerCustomFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       undefined,
       'TenantBase.EmploymentCustomField',
     );
-    const input = parse(
-      z.strictObject({
-        name: z.string().trim().min(1).max(200),
-        valueType: z.enum(['text', 'integer', 'decimal', 'boolean', 'date']),
-        objectType: z.enum(['employment', 'contract']),
-      }),
-      await jsonBody(c),
-    );
+    const input = parse(fieldInput, await jsonBody(c));
     await requireEmploymentWrite(ctx, 'create', input, undefined, 'TenantBase.EmploymentCustomField');
-    return runWrite(c, deps, ctx, input, async (tx, context) => ({
-      status: 201,
-      body: await createCustomField(tx, context, input),
-    }));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, context) => ({
+        status: 201,
+        body: await createCustomField(tx, context, input),
+      }),
+      { guard: customFieldWriteGuard(deps, ctx, 'create', input) },
+    );
   });
   router.get('/custom-fields', async (c) => {
     const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentCustomField');
     const page = pageQuery(c);
-    const objectType = parse(z.enum(['employment', 'contract']).optional(), c.req.query('objectType'));
+    const objectType = parse(z.enum(CUSTOM_FIELD_OBJECT_TYPES).optional(), c.req.query('objectType'));
     const items = await withTenant(deps.db, ctx.tenantId, (tx) => listCustomFields(tx, ctx.tenantId, page, objectType));
     return c.json({
       items: await trimEmploymentResponse(deps, ctx, items),
@@ -825,10 +828,17 @@ function registerCustomFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const id = uuidParam(c);
     const input = parse(z.strictObject({ inherit: z.boolean() }), await jsonBody(c));
     await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentCustomField');
-    return runWrite(c, deps, ctx, input, async (tx, context) => ({
-      status: 200,
-      body: await setCustomFieldInheritance(tx, context, id, input),
-    }));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, context) => ({
+        status: 200,
+        body: await setCustomFieldInheritance(tx, context, id, input),
+      }),
+      { guard: customFieldWriteGuard(deps, ctx, 'update', input) },
+    );
   });
 }
 

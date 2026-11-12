@@ -1171,6 +1171,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#assertRevision',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'packages/domain/src/employment/custom-field-definitions.ts#CUSTOM_FIELD_LIMIT',
+  ],
+  'apps/api/src/modules/employment/configuration.ts#fieldInput': [
+    'packages/domain/src/employment/custom-field-definitions.ts#CUSTOM_FIELD_NAME_MAX',
+    'packages/domain/src/employment/custom-field-definitions.ts#CUSTOM_FIELD_VALUE_TYPES',
+    'packages/domain/src/employment/custom-field-definitions.ts#CUSTOM_FIELD_WRITABLE_OBJECT_TYPES',
   ],
   'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance': [
     '#fieldSelect',
@@ -1306,6 +1312,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/context.ts#withReplayRecheck': [
     '#commandContext',
     'apps/api/src/modules/permission/employment-replay.ts#authorizeEmploymentResult',
+  ],
+  'apps/api/src/modules/employment/custom-field-guard.ts#customFieldWriteGuard': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#commandContext',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
   ],
   'apps/api/src/modules/employment/cycles.ts#assertNotBeforeCurrentCycle': [
     '#DATE_LABELS',
@@ -7832,6 +7843,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     '#parse',
     'apps/api/src/modules/job/context.ts#pageQuery',
+    'packages/domain/src/employment/custom-field-definitions.ts#CUSTOM_FIELD_OBJECT_TYPES',
   ],
   'apps/api/src/modules/employment/routes.ts#route:GET /employees': [
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
@@ -7926,10 +7938,12 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/routes.ts#route:POST /custom-fields': [
     'apps/api/src/modules/employment/configuration.ts#createCustomField',
+    'apps/api/src/modules/employment/configuration.ts#fieldInput',
     'apps/api/src/modules/employment/context.ts#jsonBody',
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/custom-field-guard.ts#customFieldWriteGuard',
     '#parse',
     'apps/api/src/modules/job/context.ts#revision',
   ],
@@ -8035,6 +8049,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/custom-field-guard.ts#customFieldWriteGuard',
     '#parse',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
