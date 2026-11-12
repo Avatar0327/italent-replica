@@ -5676,6 +5676,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/permission/tenant-users.ts#accountsOf': ['4535a1bff86f', 'd1092d231581'],
   'apps/api/src/modules/permission/tenant-users.ts#contactEmails': ['7d87ef552e64', '4012a844499d'],
   'apps/api/src/modules/permission/tenant-users.ts#getTenantUser': ['42f862c0c044', '957583094591'],
+  'apps/api/src/modules/permission/tenant-users.ts#getTenantUserFor': ['5e927aa552ba', 'e4c9bd2fad31'],
   'apps/api/src/modules/permission/tenant-users.ts#insertMembership': ['9e260844b6e5', '1e2ae550ccef'],
   'apps/api/src/modules/permission/tenant-users.ts#internalUserByProfile': ['8a183bc3e3bc', '583ee92c250c'],
   'apps/api/src/modules/permission/tenant-users.ts#listTenantUsers': ['aca5eaf5ed24', 'e517a6f8a517'],

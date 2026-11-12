@@ -9498,6 +9498,12 @@
       "primitives": {
         "admin": [
           "adminGuard"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope"
         ]
       }
     },

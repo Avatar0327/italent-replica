@@ -394,15 +394,20 @@
       "error": "a8d16da3a3ca",
       "status": 404
     },
-    "fieldQueries": [],
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation"
+    ],
     "invalidId": {
       "code": "NOT_FOUND",
       "error": "d40a65b9992b",
       "status": 404
     },
-    "scopeQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
     "trace": [
-      "admin:user_manage"
+      "admin:user_manage",
+      "obj:TenantBase.EmployeeInformation:view"
     ]
   },
   "POST /api/tenant/permission/admins": {

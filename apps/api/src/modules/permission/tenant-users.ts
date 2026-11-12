@@ -268,6 +268,13 @@ export async function getTenantUser(tx: Tx, userId: string): Promise<TenantUserV
   };
 }
 
+/** 详情接口的出参：档案联系邮箱与列表同口径，需人员对象查看 + 邮箱字段 + 数据范围（DEC-901）。 */
+export async function getTenantUserFor(tx: Tx, userId: string, access: ListPersonAccess): Promise<TenantUserView> {
+  const user = await getTenantUser(tx, userId);
+  const people = await listPersons(tx, access, [userId]);
+  return { ...user, contactEmail: people.get(userId)?.contactEmail ?? null };
+}
+
 export interface ExternalUserInput {
   readonly email: string;
   readonly displayName: string;

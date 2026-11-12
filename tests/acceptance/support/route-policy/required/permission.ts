@@ -135,7 +135,7 @@ export const PERMISSION: RequiredTable = {
     scopeRoute(SCOPES, 'GET', '/grant-prefill/:userId/:profileId'),
   ],
   'GET /api/tenant/permission/users': [users('GET', '/users'), personColumns(USERS, '/users')],
-  'GET /api/tenant/permission/users/:userId': [users('GET', '/users/:userId')],
+  'GET /api/tenant/permission/users/:userId': [users('GET', '/users/:userId'), personColumns(USERS, '/users/:userId')],
   'POST /api/tenant/permission/users': [users('POST', '/users')],
   'PUT /api/tenant/permission/users/:userId': [users('PUT', '/users/:userId')],
   'POST /api/tenant/permission/users/:userId/status': [users('POST', '/users/:userId/status')],

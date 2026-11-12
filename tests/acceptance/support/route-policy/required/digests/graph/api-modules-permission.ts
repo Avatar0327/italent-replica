@@ -912,6 +912,10 @@ export const GRAPH: Graph = {
     '#memberQuery',
     '#notFound',
   ],
+  'apps/api/src/modules/permission/tenant-users.ts#getTenantUserFor': [
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersons',
+    '#getTenantUser',
+  ],
   'apps/api/src/modules/permission/tenant-users.ts#listTenantUsers': [
     'apps/api/src/modules/permission/person-list-projection.ts#listContactEmailFilter',
     'apps/api/src/modules/permission/person-list-projection.ts#listPersonField',
@@ -1008,9 +1012,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
     'apps/api/src/modules/permission/http.ts#etag',
     'apps/api/src/modules/permission/http.ts#idParam',
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersonAccess',
+    'apps/api/src/modules/permission/tenant-users.ts#getTenantUserFor',
     '#BASE',
     '#CAPABILITY',
-    '#currentUser',
   ],
   'apps/api/src/modules/permission/user-routes.ts#route:POST /api/tenant/permission/users': [
     'apps/api/src/modules/permission/admin-http.ts#adminCommand',

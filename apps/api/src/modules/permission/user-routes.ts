@@ -23,6 +23,7 @@ import { listPage, parseQuery, textFilter } from './enterprise-lists.js';
 import { etag, idParam, ifMatch, parseBody } from './http.js';
 import {
   getTenantUser,
+  getTenantUserFor,
   internalUserByProfile,
   listTenantUsers,
   registerExternalUser,
@@ -70,7 +71,9 @@ export function registerUserRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
   });
   router.get(`${BASE}/:userId`, async (c) => {
     const ctx = await adminGuard(c, deps, CAPABILITY);
-    const user = await currentUser(deps, ctx, idParam(c, 'userId'));
+    const userId = idParam(c, 'userId');
+    const access = await listPersonAccess(deps, ctx);
+    const user = await withTenant(deps.db, ctx.tenantId, (tx) => getTenantUserFor(tx, userId, access));
     etag(c, user.membershipRevision);
     return c.json(user);
   });
