@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { Alert, Button, Descriptions, Modal, Space } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { NameOf, refPaths } from '../contracts/references.js';
@@ -124,7 +125,7 @@ export function RehirePrompt({ match }: { match: ReturnType<typeof useRehireChec
         column={1}
         items={[
           { key: 'name', label: c.oldName, children: person.name ?? '--' },
-          { key: 'code', label: c.oldCode, children: person.code ?? '--' },
+          { key: 'code', label: c.oldCode, children: codeText((person.code as string | null) ?? null) },
           {
             key: 'end',
             label: c.endKind,

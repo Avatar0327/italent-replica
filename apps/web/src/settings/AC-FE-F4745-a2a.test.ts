@@ -66,7 +66,8 @@ describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
       [`${base}/users/${id}`]: row,
     });
     const cells = ui.host.querySelectorAll('tbody .ant-table-row td');
-    expect(cells[3]?.textContent).toBe(expected);
+    expect(cells[3]?.textContent).toBe(user.email);
+    expect(cells[4]?.textContent).toBe(contactEmail ?? '--');
     const name = Array.from(ui.host.querySelectorAll<HTMLButtonElement>('tbody button')).find(
       (button) => button.textContent === user.displayName,
     );
@@ -93,6 +94,7 @@ describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
     expect(ui.headers().slice(1)).toEqual([
       '姓名',
       '登录手机号',
+      '登录用户名',
       '联系邮箱',
       '联系手机号',
       '用户类型',
@@ -104,9 +106,11 @@ describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
       '员工状态',
       '',
     ]);
-    expect(ui.widths()).toEqual([30, 128, 128, 188, 128, 128, 128, 128, 118, 146, 128, 128, 24].map((n) => `${n}px`));
+    expect(ui.widths()).toEqual(
+      [30, 128, 128, 188, 188, 128, 128, 128, 128, 118, 146, 128, 128, 24].map((n) => `${n}px`),
+    );
     expect(ui.host.textContent).toContain('contact@example.com');
-    expect(ui.host.textContent).not.toContain('login@example.com');
+    expect(ui.host.textContent).toContain('login@example.com');
     expect(ui.host.querySelector('tbody')?.textContent).toContain('启用');
     expect(ui.host.querySelector('tbody')?.textContent).not.toContain('已撤销');
     const select = ui.host.querySelector<HTMLInputElement>('input[aria-label="选择此行"]');

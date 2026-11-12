@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { Descriptions } from 'antd';
 import { useInfoReferences, ReferenceError } from '../idp/info-references.js';
 import { apiRoot, type Row } from './model.js';
@@ -22,7 +23,10 @@ export function RequestInformation({ employeeId, request }: { employeeId: unknow
         items={['name', 'code'].map((key) => ({
           key,
           label: m.fields[key],
-          children: String((person as Record<string, unknown> | undefined)?.[key] ?? m.missing),
+          children:
+            key === 'code'
+              ? codeText(((person as Record<string, unknown> | undefined)?.code as string | null) ?? null)
+              : String((person as Record<string, unknown> | undefined)?.[key] ?? m.missing),
         }))}
       />
       <h3>{r.primary}</h3>

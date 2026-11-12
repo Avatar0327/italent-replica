@@ -1,3 +1,4 @@
+import { codeText } from '../../foundation/code-text.js';
 import { Alert, Button, Descriptions, Form, Space } from 'antd';
 import { useState } from 'react';
 import { Link } from 'react-router';
@@ -68,7 +69,7 @@ function RequestEditor({
         <Link to="/self/applications">{q.back}</Link>
       </ServiceHeading>
       <p>
-        {q.employee}：{opening.employee.name}（{opening.employee.code}）
+        {q.employee}：{opening.employee.name}（{codeText(opening.employee.code)}）
       </p>
       <CommandStatus
         submission={state.command}

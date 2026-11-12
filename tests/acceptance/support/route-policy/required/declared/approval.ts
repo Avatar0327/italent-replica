@@ -4,6 +4,10 @@ import type { ModuleDeclared } from '../../module-declared.js';
 export const APPROVAL_DECLARED: ModuleDeclared = {
   /** 状态码相同、错误体不同，由实际行为证明非法标识声明适用的端点 */
   sameStatusInvalidId: [
+    'PATCH /api/tenant/approval/matrices/:id',
+    'PUT /api/tenant/approval/matrices/:id/structure',
+    'POST /api/tenant/approval/matrices/:id/enable',
+    'POST /api/tenant/approval/matrices/:id/disable',
     'POST /api/tenant/approval/processes/:id/simulate',
     'POST /api/tenant/approval/tasks/:id/add-sign',
     'POST /api/tenant/approval/tasks/:id/edit',

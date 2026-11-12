@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import {
   PERSONNEL_REPORTS,
   reportCellLabel,
@@ -78,6 +79,7 @@ export function errorText(error: unknown, exporting = false): string {
   return exporting ? m.exportFailed : m.failed;
 }
 export function cellText(key: string, value: unknown) {
+  if (key === 'code') return codeText((value as string | null) ?? null);
   if (value === null || value === undefined) return '—';
   if (key === 'rate' && typeof value === 'number')
     return new Intl.NumberFormat('zh-CN', { style: 'percent', maximumFractionDigits: 2 }).format(value);

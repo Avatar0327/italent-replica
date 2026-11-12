@@ -1,6 +1,6 @@
 {
   "byModule": {
-    "approval": 37,
+    "approval": 44,
     "attachments": 5,
     "audit": 4,
     "avatar": 5,
@@ -40,5 +40,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 891
+  "total": 898
 }
