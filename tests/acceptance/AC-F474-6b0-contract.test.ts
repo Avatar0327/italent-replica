@@ -43,11 +43,11 @@ describe('AC-F474-6b0 收窄的自定义字段共享契约', () => {
     expect((await a.api.request('GET', `${base}?objectType=unknown`, a.asAdmin)).status).toBe(400);
   });
 
-  it('AC-F474-02 组织人员写入口保持关闭，继承设置不能写入这两类定义', async () => {
+  it('AC-F474-02 DEC-896 组织人员可创建，继承设置不能写入这两类定义', async () => {
     const w = await seedPermissionWorld(database().db);
     for (const objectType of ['organization', 'personnel']) {
       const create = await w.api.request('POST', base, { ...w.asAdmin, ifMatch: 0, body: { ...input, objectType } });
-      expect(create.status).toBe(400);
+      expect(create.status).toBe(201);
       const id = await seedDefinition(w.tenant.id, objectType);
       const change = await w.api.request('PUT', `${base}/${id}/inheritance`, {
         ...w.asAdmin,
@@ -98,7 +98,7 @@ describe('AC-F474-6b0 收窄的自定义字段共享契约', () => {
     }
   });
 
-  it('AC-F474-04 专用触发器只放开 revision，列级授权与元数据保护都生效', async () => {
+  it('AC-F474-04 专用触发器保护元数据，列级授权与元数据保护都生效', async () => {
     const w = await seedPermissionWorld(database().db);
     const id = await seedDefinition(w.tenant.id, 'employment');
     const trigger = resultRows<{ name: string }>(

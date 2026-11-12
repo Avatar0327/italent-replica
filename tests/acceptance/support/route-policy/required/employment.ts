@@ -3248,6 +3248,20 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     customFieldWrite('PUT', '/custom-fields/:id/inheritance', 'update'),
   ],
+  'PUT /api/tenant/employment/custom-fields/:id/options': [
+    ...configWrite(
+      at(EMP, 'PUT', '/custom-fields/:id/options', "'tenant.employment.configuration.write'"),
+      'TenantBase.EmploymentCustomField',
+      'update',
+      at(
+        EMP,
+        'PUT',
+        '/custom-fields/:id/options',
+        "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentCustomField')",
+      ),
+    ),
+    customFieldWrite('PUT', '/custom-fields/:id/options', 'update'),
+  ],
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（办理入职 / 取消 / 改期 / 删除）-------------------------------
   'POST /api/tenant/employment/pending-entries/:id/complete': [
     ...entryUpdate(

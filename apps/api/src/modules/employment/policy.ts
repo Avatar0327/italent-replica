@@ -1727,7 +1727,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     SETTINGS_FIELDS,
     auditedConfigWrite('employment_settings'),
   ),
-  // body 严格 { name, valueType, objectType }（400）；If-Match 须为 0（createCustomField 断言）；每类型上限 200 → 503；
+  // body 严格 { name, valueType, objectType, options? }（400）；If-Match 须为 0（createCustomField 断言）；每类型上限 200 → 503；
   // 审计 employment.custom_field.create / employment_custom_field
   'POST /custom-fields': configuration(
     CUSTOM_FIELD,
@@ -1736,12 +1736,19 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     auditedConfigWrite('employment_custom_field'),
     { guards: ['employment.customFieldWrite'] },
   ),
-  // DEC-893：objectType 查询支持四类，创建仍限任职 / 合同；五种值类型。
+  // DEC-896：四类对象共用配置权限，支持五种基础值类型与 select。
   // objectType 查询非法 → 400；hasDataPermission 恒 true（配置对象无范围）
   'GET /custom-fields': configurationView(CUSTOM_FIELD, CUSTOM_FIELD_FIELDS),
   // 管理员别名先于 uuidParam（非 UUID → 400）；body 严格 { inherit }（400）；字段不存在 → 404「自定义字段不存在」；
   // 审计 employment.custom_field.inheritance / employment_custom_field
   'PUT /custom-fields/:id/inheritance': configuration(
+    CUSTOM_FIELD,
+    'update',
+    CUSTOM_FIELD_FIELDS,
+    auditedConfigWrite('employment_custom_field'),
+    { ...byId, guards: ['employment.customFieldWrite'] },
+  ),
+  'PUT /custom-fields/:id/options': configuration(
     CUSTOM_FIELD,
     'update',
     CUSTOM_FIELD_FIELDS,

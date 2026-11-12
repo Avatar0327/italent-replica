@@ -1,3 +1,4 @@
+import type { CustomFieldOption } from '@italent/domain';
 export type FieldValue = string | number | boolean | readonly string[] | null;
 export type FieldValues = Readonly<Record<string, FieldValue>>;
 export type FieldMode = 'editable' | 'readonly' | 'hidden' | 'absent';
@@ -30,7 +31,12 @@ export interface TransferPreview {
     readonly isStandard: boolean;
     readonly excludedAutofillFields: readonly string[];
     readonly fieldModes: Readonly<Record<string, FieldMode>>;
-    readonly customFields: readonly { id: string; name: string; valueType: string }[];
+    readonly customFields: readonly {
+      id: string;
+      name: string;
+      valueType: string;
+      options?: readonly CustomFieldOption[];
+    }[];
   };
   readonly fields: FieldValues;
   readonly customFields: FieldValues;

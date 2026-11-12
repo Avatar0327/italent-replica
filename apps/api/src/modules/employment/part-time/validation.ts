@@ -210,6 +210,7 @@ export async function validatePartTimeCustomFields(
   tx: Tx,
   ctx: EmploymentContext,
   given: Readonly<Record<string, unknown>>,
+  previous: Readonly<Record<string, unknown>> = {},
 ): Promise<{
   readonly customFields: Record<string, ReturnType<typeof validateCustomValue>>;
   readonly codes: string[];
@@ -223,7 +224,7 @@ export async function validatePartTimeCustomFields(
     const definition = definitions.find((field) => field.id === id);
     if (!definition)
       throw new AppError('VALIDATION_FAILED', '自定义字段不属于本租户任职对象', { field: `custom:${id}` });
-    customFields[id] = validateCustomValue(value, definition.valueType);
+    customFields[id] = validateCustomValue(value, definition.valueType, definition.options, previous[id]);
   }
   return { customFields, codes: Object.keys(customFields).map((id) => `custom:${id}`) };
 }

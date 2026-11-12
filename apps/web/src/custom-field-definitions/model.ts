@@ -1,4 +1,9 @@
-import { CUSTOM_FIELD_LIMIT, type CustomFieldObjectType, type CustomFieldValueType } from '@italent/domain';
+import {
+  CUSTOM_FIELD_LIMIT,
+  type CustomFieldObjectType,
+  type CustomFieldValueType,
+  type CustomFieldOption,
+} from '@italent/domain';
 import type { ObjectPermission } from '../foundation/permission-model.js';
 import { m } from './messages.js';
 
@@ -11,6 +16,7 @@ export type Definition = {
   objectType?: CustomFieldObjectType;
   valueType?: CustomFieldValueType;
   inherit?: boolean;
+  options?: readonly CustomFieldOption[];
 };
 export const listPath = (objectType: CustomFieldObjectType) =>
   `${PATH}?objectType=${objectType}&page=1&pageSize=${CUSTOM_FIELD_LIMIT}`;
@@ -37,6 +43,7 @@ export function actions(permission: ObjectPermission | undefined) {
   return {
     create: loaded?.dataOperations.create === true && ['name', 'valueType', 'objectType'].every(editable),
     inherit: loaded?.dataOperations.update === true && editable('inherit'),
+    options: loaded?.dataOperations.update === true && editable('options'),
     editable,
   };
 }

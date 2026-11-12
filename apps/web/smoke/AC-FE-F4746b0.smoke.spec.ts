@@ -33,8 +33,8 @@ async function setup(page: Page) {
         objectCode,
         dataOperations: { read: true, create: true, update: true },
         buttons: [],
-        viewableFields: ['id', 'revision', 'name', 'objectType', 'valueType', 'inherit'],
-        editableFields: ['name', 'objectType', 'valueType', 'inherit'],
+        viewableFields: ['id', 'revision', 'name', 'objectType', 'valueType', 'inherit', 'options'],
+        editableFields: ['name', 'objectType', 'valueType', 'inherit', 'options'],
       },
     }),
   );
@@ -62,7 +62,7 @@ async function setup(page: Page) {
   return state;
 }
 
-test('AC-F474-SM01 五种类型选择、真实请求格式、列表刷新与组织人员只读', async ({ page }) => {
+test('AC-F474-SM01 六种类型选择、真实请求格式、列表刷新与组织人员创建', async ({ page }) => {
   const state = await setup(page);
   await expect(page.locator('th')).toHaveText(['名称', '类型', '对象', '是否继承', '操作']);
   await actionButton(page, '新建').click();
@@ -74,7 +74,7 @@ test('AC-F474-SM01 五种类型选择、真实请求格式、列表刷新与组�
     .locator('.ant-select-selector')
     .click();
   const choices = page.locator('.ant-select-dropdown:visible .ant-select-item-option-content');
-  await expect(choices).toHaveText(['文本', '整数', '小数', '布尔', '日期']);
+  await expect(choices).toHaveText(['文本', '整数', '小数', '布尔', '日期', '单选下拉']);
   await choices.filter({ hasText: /^整数$/ }).click();
   await actionButton(form, '保存').click();
   await expect(form).toHaveCount(0);
@@ -86,8 +86,8 @@ test('AC-F474-SM01 五种类型选择、真实请求格式、列表刷新与组�
       .locator('.ant-select-dropdown:visible .ant-select-item-option-content')
       .filter({ hasText: new RegExp(`^${name}$`) })
       .click();
-    await expect(actionButton(page, '新建')).toHaveCount(0);
-    await expect(page.locator('th')).toHaveText(['名称', '类型', '对象']);
+    await expect(actionButton(page, '新建')).toHaveCount(1);
+    await expect(page.locator('th')).toHaveText(['名称', '类型', '对象', '操作']);
   }
 });
 

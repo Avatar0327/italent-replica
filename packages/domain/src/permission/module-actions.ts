@@ -441,9 +441,12 @@ export const MODULE_OBJECTS = {
     [button(ASSESSMENT_BUTTONS.create, 'detail', 'create'), button(ASSESSMENT_BUTTONS.update, 'detail', 'update')],
     ASSESSMENT_SYSTEM_FIELDS,
   ),
-  employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [
-    'code',
-  ]),
+  employmentCustomField: object(
+    'EmploymentCustomField',
+    ['name', 'objectType', 'valueType', 'inherit', 'options'],
+    crud,
+    ['code'],
+  ),
   // F-323（DEC-706，17 §F-323）：设置 / 员工 / 人员类别租户字典；列表“新建”、详情“编辑 / 停用 / 删除”按原站，
   // “启用”原站停用视图为空未见到，按对称补齐（🟡）；启停只经两个按钮写，登记为系统字段
   employmentType: object(
