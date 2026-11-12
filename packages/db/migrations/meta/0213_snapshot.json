@@ -1,5 +1,5 @@
 {
-  "id": "e2e525a2-79c5-4e13-afae-2e4ca6bc063b",
+  "id": "fdf2f5fc-d442-4732-8668-3ee032c9683b",
   "prevId": "d52be194-f2c7-4a3c-a1ce-e1075c36de5a",
   "version": "7",
   "dialect": "postgresql",
@@ -10364,7 +10364,7 @@
         },
         "employment_custom_field_objects_object_type": {
           "name": "employment_custom_field_objects_object_type",
-          "value": "\"employment_custom_field_objects\".\"object_type\" IN ('employment', 'contract')"
+          "value": "\"employment_custom_field_objects\".\"object_type\" IN ('employment', 'contract', 'organization', 'personnel')"
         },
         "employment_custom_field_objects_value_type": {
           "name": "employment_custom_field_objects_value_type",
@@ -69405,66 +69405,6 @@
         "esign_templates_revision": {
           "name": "esign_templates_revision",
           "value": "\"esign_templates\".\"revision\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.admin_regions": {
-      "name": "admin_regions",
-      "schema": "",
-      "columns": {
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "parent_code": {
-          "name": "parent_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "level": {
-          "name": "level",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "admin_regions_parent_code_admin_regions_code_fk": {
-          "name": "admin_regions_parent_code_admin_regions_code_fk",
-          "tableFrom": "admin_regions",
-          "tableTo": "admin_regions",
-          "columnsFrom": [
-            "parent_code"
-          ],
-          "columnsTo": [
-            "code"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "admin_regions_level_check": {
-          "name": "admin_regions_level_check",
-          "value": "\"admin_regions\".\"level\" BETWEEN 1 AND 3"
-        },
-        "admin_regions_level_parent": {
-          "name": "admin_regions_level_parent",
-          "value": "(\"admin_regions\".\"level\" = 1) = (\"admin_regions\".\"parent_code\" IS NULL)"
         }
       },
       "isRLSEnabled": false
