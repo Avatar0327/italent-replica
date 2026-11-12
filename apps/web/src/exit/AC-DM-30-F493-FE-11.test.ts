@@ -95,14 +95,14 @@ let fetcher: ReturnType<typeof vi.fn>;
 const settle = async () => {
   for (let i = 0; i < 8; i++) await act(async () => new Promise((resolve) => setTimeout(resolve, 5)));
 };
-const entry = () => pages.entries.find((route) => route.id === 'exit-import-history');
+const entry = () => pages.entries?.find((route) => route.id === 'exit-import-history');
 let navigate: NavigateFunction;
 function Navigator() {
   navigate = useNavigate();
   return null;
 }
 async function render() {
-  const Page = entry()?.page.Component;
+  const Page = entry()?.page?.Component;
   expect(Page, '应在 exit/pages.ts 登记导入历史页').toBeDefined();
   const routes = h(
     Routes,
@@ -156,7 +156,7 @@ async function choose(label: string) {
 
 // 懒加载首次要转译 antd 等整棵依赖（负载高时二十余秒），经登记项先挂一次等它就绪；主线没有登记项时跳过，用例按行为失败。
 beforeAll(async () => {
-  const Page = entry()?.page.Component;
+  const Page = entry()?.page?.Component;
   if (!Page) return;
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   access.loading = true; // 只停在权限加载态，不发请求
