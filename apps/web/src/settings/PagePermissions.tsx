@@ -1,6 +1,6 @@
 import { Button, Table } from 'antd';
 import { useState } from 'react';
-import { PAGE_CATALOG, PAGE_CARRIERS } from '@italent/domain';
+import { PAGE_CATALOG, PAGE_CARRIERS, type PageDefinition } from '@italent/domain';
 import type { ProfileDetail } from './object-dialog-model.js';
 import { pageState, profileMenuGroups } from './page-permission-model.js';
 import { PagePermissionDialog } from './PagePermissionDialog.js';
@@ -38,19 +38,7 @@ export function PagePermissions({
                 { title: pm.name, dataIndex: 'name' },
                 { title: pm.code, dataIndex: 'pageCode' },
                 { title: pm.app, render: (_, row) => pageAppName(row.appCode) },
-                {
-                  title: pm.status,
-                  render: (_, row) =>
-                    row.missingApp ? (
-                      <span>
-                        {pm.missing} · {pm.needsApp(pageAppName(row.appCode))}
-                      </span>
-                    ) : row.implicit ? (
-                      pm.defaultGranted
-                    ) : (
-                      pm.granted
-                    ),
-                },
+                { title: pm.status, render: (_, row) => pageStatus(row) },
                 ...(editable
                   ? [
                       {
@@ -85,6 +73,10 @@ export function PagePermissions({
       )}
     </>
   );
+}
+function pageStatus(row: PageDefinition & { missingApp: boolean; implicit: boolean }) {
+  if (row.missingApp) return `${pm.missing} · ${pm.needsApp(pageAppName(row.appCode))}`;
+  return row.implicit ? pm.defaultGranted : pm.granted;
 }
 export function ProfileMenus({ profile }: { profile: ProfileDetail }) {
   return (

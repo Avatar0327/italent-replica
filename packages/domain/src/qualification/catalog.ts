@@ -92,7 +92,12 @@ export const QUALIFICATION_OBJECTS = {
  * 没有字段，按钮即页面。**不放进** QUALIFICATION_OBJECTS——后者被审计可见性、任职资格策略和“任职资格系统管理员 = 全部对象”遍历，
  * 混进去会给它们带来无意义的对象；只在 permission/catalog.ts 的对象目录里追加登记。
  */
-export { QUALIFICATION_PAGES } from '../permission/page-catalog.js';
+export const QUALIFICATION_PAGES: ObjectDefinition = {
+  code: `${QUALIFICATION_APP}.Pages`,
+  application: QUALIFICATION_APP,
+  fields: [],
+  buttons: [{ code: 'EmployeeDevelopmentChannel', level: 'app_page' }],
+};
 
 export type QualificationObject = keyof typeof QUALIFICATION_OBJECTS;
 
