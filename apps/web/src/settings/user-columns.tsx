@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { Button, Tooltip, type TableColumnsType } from 'antd';
 import { internalUserGaps } from '../demo-stubs/settings-columns.js';
 import type { User } from './model.js';
@@ -8,6 +9,7 @@ export function userColumns(
   internal: boolean,
   detail: (id: string) => void,
   instant: (value?: string) => string = textValue,
+  all = false,
 ): TableColumnsType<User> {
   const identity: TableColumnsType<User> = [
     {
@@ -22,6 +24,7 @@ export function userColumns(
       ),
     },
   ];
+  const accountText = (value: string | null) => value || '--';
   const email = { title: m.email, dataIndex: 'email', width: 188 };
   const status = {
     title: m.status,
@@ -33,7 +36,7 @@ export function userColumns(
     ...column,
     render: () => (
       <Tooltip title={m.fieldPending}>
-        <span>{m.empty}</span>
+        <span>{column.key === 'employeeCode' ? codeText(null) : m.empty}</span>
       </Tooltip>
     ),
   }));
@@ -41,7 +44,8 @@ export function userColumns(
     return [
       ...identity,
       { title: m.loginPhone, width: 128, render: () => m.empty },
-      { ...email, dataIndex: 'contactEmail', render: textValue },
+      ...(all ? [{ title: m.loginName, dataIndex: 'email', width: 188, render: accountText }] : []),
+      { title: m.contactEmail, width: 188, dataIndex: 'contactEmail', render: all ? accountText : textValue },
       { title: m.contactPhone, width: 128, render: () => m.empty },
       {
         title: m.userType,

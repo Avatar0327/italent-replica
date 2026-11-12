@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { managerText as labels } from './manager-messages.js';
 import { useEffect, useState } from 'react';
 import { TransferApplication, SelfServiceShell, EmploymentList } from '../self-service/shared/index.js';
@@ -183,6 +184,7 @@ function avatarReference(value: unknown): AvatarReference | null {
 function displayCell(row: Row, key: string, tenantId: string) {
   const display = row.display && typeof row.display === 'object' ? row.display : row;
   const value = key === 'tenure' ? row.tenure : display[key];
+  if (key === 'code') return codeText((value as string | null) ?? null);
   if (value == null) return '—';
   if (key === 'name')
     return (

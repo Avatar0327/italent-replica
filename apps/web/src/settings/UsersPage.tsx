@@ -66,7 +66,7 @@ export function UsersPage({ code, title, editable }: SettingsProps) {
         }
         columns={[
           ...(code === 'users.all' ? selection : []),
-          ...userColumns(code === 'users.internal', setDetail, instant),
+          ...userColumns(code === 'users.internal', setDetail, instant, code === 'users.all'),
         ]}
       />
       {detail && (

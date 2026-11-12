@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { Select } from 'antd';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
@@ -73,7 +74,7 @@ function editFields(full: Values, p: ReturnType<typeof useEntryAccess>, allowed:
   });
   return [
     readOnly(m.person, String(full.name ?? '--')),
-    readOnly(m.code, String(full.code ?? '--')),
+    readOnly(m.code, codeText((full.code as string | null) ?? null)),
     readOnly(
       m.department,
       <NameOf path={refPaths.departmentId} id={full.departmentId} asOf={String(full.effectiveDate)} />,

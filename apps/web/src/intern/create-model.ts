@@ -7,7 +7,7 @@ import { c } from './create-messages.js';
 export interface Candidate extends Values {
   employeeId: string;
   name?: string;
-  code?: string;
+  code?: string | null;
   email?: string | null;
   endKind?: 'leave' | 'retirement';
   lastWorkDate?: string | null;
