@@ -3,6 +3,7 @@ import { sql, withTenant, grantMembership } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { cmd, seedTenantWithMember } from './support/tenant-api.js';
+import { asUuid, tryAdvisoryLock } from '../../apps/api/src/advisory-lock.js';
 import { GRAPH, graphWorld, graphInput, record } from './support/job-graph.js';
 
 const testDb = useTestDb();
@@ -73,11 +74,14 @@ describe('AC-F474-JG 后端快照', () => {
     const w = await graphWorld(db);
     expect((await w.rebuild()).status).toBe(200);
     const before = await (await w.api.request('GET', GRAPH, w.as)).json();
-    await withTenant(db, w.tenant.id, (tx) =>
-      tx.execute(sql`CREATE FUNCTION reject_job_graph_test() RETURNS trigger
-      LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic write failure'; END $$;
-      CREATE TRIGGER reject_graph BEFORE UPDATE ON job_graph_snapshots
-      FOR EACH ROW EXECUTE FUNCTION reject_job_graph_test();`),
+    // DDL 不属于租户数据读写，用建库连接直接执行（同 AC-AUD-command-failures 的做法）
+    await db.execute(
+      sql.raw(`CREATE FUNCTION reject_job_graph_test() RETURNS trigger
+        LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic write failure' USING ERRCODE = '53100'; END $$`),
+    );
+    await db.execute(
+      sql.raw(`CREATE TRIGGER reject_graph BEFORE UPDATE ON job_graph_snapshots
+        FOR EACH ROW EXECUTE FUNCTION reject_job_graph_test()`),
     );
     try {
       expect((await w.rebuild(1)).status).toBe(503);
@@ -89,10 +93,8 @@ describe('AC-F474-JG 后端快照', () => {
         expect(rows(await tx.execute(sql`SELECT id FROM job_graph_issues`))).toEqual([]);
       });
     } finally {
-      await withTenant(db, w.tenant.id, (tx) =>
-        tx.execute(sql`DROP TRIGGER reject_graph ON job_graph_snapshots;
-        DROP FUNCTION reject_job_graph_test();`),
-      );
+      await db.execute(sql.raw('DROP TRIGGER reject_graph ON job_graph_snapshots'));
+      await db.execute(sql.raw('DROP FUNCTION reject_job_graph_test()'));
     }
     expect((await w.rebuild(1)).status).toBe(200);
   });
@@ -132,5 +134,31 @@ describe('AC-F474-JG 后端快照', () => {
     expect(
       (await w.api.request('POST', `${GRAPH}/rebuild`, { ...w.as, ifMatch: 0, body: { asOf: '2020-01-01' } })).status,
     ).toBe(400);
+  });
+});
+
+// PGlite 单连接无法并发，只在真 PostgreSQL 上跑
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-F474-JG-05 同租户并发生成', () => {
+  it('另一事务持有生成锁时，生成 409 GRAPH_GENERATING；锁释放后可正常生成', async () => {
+    const db = testDb().db;
+    const w = await graphWorld(db);
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let locked: () => void = () => {};
+    const ready = new Promise<void>((resolve) => (locked = resolve));
+    const holder = withTenant(db, w.tenant.id, async (tx) => {
+      expect(await tryAdvisoryLock(tx, 'job-graph:', asUuid(w.tenant.id))).toBe(true);
+      locked();
+      await held;
+    });
+    await ready;
+    const blocked = await w.rebuild(0);
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({
+      error: { code: 'CONFLICT', details: { reason: 'GRAPH_GENERATING' } },
+    });
+    release();
+    await holder;
+    expect((await w.rebuild(0)).status).toBe(200);
   });
 });

@@ -8,6 +8,8 @@ import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const ROUTES = 'apps/api/src/modules/job/routes.ts';
 const SEQUENCE = 'apps/api/src/modules/job/sequence-routes.ts';
+const GRAPH = 'apps/api/src/modules/job/graph-routes.ts';
+const GRAPH_SOURCES = 'apps/api/src/modules/job/graph-sources.ts';
 const RESOURCE_SETS = 'apps/api/src/modules/job/resource-set-candidates.ts';
 const ACCESS = 'apps/api/src/modules/permission/module-route-access.ts';
 const KINDS =
@@ -137,6 +139,51 @@ const syncSequence = (kind: 'posts' | 'positions', code: string): Obligation[] =
     linkage(call('const taskId = await queueSequenceSync(tx, writeCtx, sources, {')),
   ];
 };
+/** 图谱（F-474-7b）：五个源对象整体校验由 requireGraphAccess 承载（缺任何一项统一 403）；命令重放出口经 guard.before 复核。 */
+const GRAPH_GUARD = {
+  role: 'impl',
+  unit: `${GRAPH_SOURCES}#requireGraphAccess`,
+  anchor: "throw new AppError('FORBIDDEN', '无权访问职务职级图谱')",
+} as const;
+const GRAPH_SOURCE_CONSTS = {
+  'TenantBase.JobGrade': 'jobGrade',
+  'TenantBase.JobLevel': 'jobLevel',
+  'TenantBase.JobLevelType': 'jobLevelType',
+  'TenantBase.JobPost': 'jobPost',
+  'TenantBase.JobSequence': 'jobSequence',
+} as const;
+/** 五个源对象的查看权：守卫内部必需项（看全部范围 + 字段清单由同一守卫判定，缺任何一项统一 403）。 */
+const graphSources = (): Obligation[] =>
+  Object.entries(GRAPH_SOURCE_CONSTS).map(([code, key]) => ({
+    perm: `obj:${code}:view`,
+    purpose: 'guard:job.graphSources',
+    inner: { role: 'required' },
+    at: [
+      {
+        role: 'call',
+        unit: `${GRAPH_SOURCES}#sourcesAllowed`,
+        anchor: 'if (!(await view(source.code))) return false;',
+      },
+      { role: 'const', unit: `${GRAPH_SOURCES}#GRAPH_SOURCES`, anchor: `code: MODULE_OBJECTS.${key}.code` },
+    ],
+  }));
+const REBUILD_BUTTON = {
+  role: 'impl',
+  unit: `${GRAPH_SOURCES}#requireGraphRebuild`,
+  anchor: "throw new AppError('FORBIDDEN', '无权访问职务职级图谱')",
+} as const;
+const graphAccess = (method: string, path: string, anchor: string): Obligation[] => [
+  {
+    perm: 'obj:TenantBase.JobPostAndJobLevelGraph:view',
+    facts: ['object:object.* 动作'],
+    at: [route(method, path, anchor, GRAPH), GRAPH_GUARD],
+  },
+  {
+    perm: 'guard:job.graphSources',
+    at: [route(method, path, anchor, GRAPH), GRAPH_GUARD],
+  },
+  ...graphSources(),
+];
 const receipts = (path: string, anchor: string): Obligation[] => [
   {
     perm: 'own:job.sequenceReceiptRecipient',
@@ -237,6 +284,16 @@ export const JOB: RequiredTable = {
   ),
   'POST /api/tenant/job/posts/sync-sequence': syncSequence('posts', 'TenantBase.JobPost'),
   'POST /api/tenant/job/positions/sync-sequence': syncSequence('positions', 'TenantBase.Position'),
+  'GET /api/tenant/job/graph': graphAccess('GET', '/graph', 'await requireGraphAccess(deps, ctx)'),
+  'GET /api/tenant/job/graph/issues': graphAccess('GET', '/graph/issues', 'await requireGraphAccess(deps, ctx)'),
+  'POST /api/tenant/job/graph/rebuild': [
+    ...graphAccess('POST', '/graph/rebuild', 'await requireGraphRebuild(deps, tenant)'),
+    {
+      perm: 'btn:TenantBase.JobPostAndJobLevelGraph#rebuild@list',
+      facts: ['button:buttonResource', 'button:object.button'],
+      at: [route('POST', '/graph/rebuild', 'await requireGraphRebuild(deps, tenant)', GRAPH), REBUILD_BUTTON],
+    },
+  ],
   'GET /api/tenant/job/:kind': [
     {
       perm: `obj:${KINDS}:view`,
