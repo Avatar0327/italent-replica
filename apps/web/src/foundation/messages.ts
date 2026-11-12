@@ -1,4 +1,10 @@
 export const ui = {
+  emptyCode: '--',
+  noticeSender: (sender: string) => `发送人：${sender}`,
+  noticeDetails: '查看详情',
+  noticeMore: '加载更多',
+  noticeFailed: '消息加载失败，请重试',
+  noticeRetry: '重试',
   pageSize: '每页条数',
   brand: 'iTalent',
   tenant: '租户',

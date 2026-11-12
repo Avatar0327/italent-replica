@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import {
   ASSESSMENT_TYPES,
   EMPLOYEE_STATUS_LABELS,
@@ -36,7 +37,7 @@ type Codes = 'regularizationState' | 'regularizationMode' | 'probationResult' | 
 export interface Row extends Partial<Record<Dates | References | Codes, string | null>> {
   id: string;
   employeeId?: string;
-  code?: string;
+  code?: string | null;
   name?: string;
   employeeStatus?: number;
   revision?: number;
@@ -86,6 +87,7 @@ const labels: Record<string, Record<string, string>> = {
 
 /** 被裁剪的字段缺键，单元格显示占位，不拿别的字段拼值。 */
 export function cellValue(row: object, key: string): string {
+  if (key === 'code') return codeText(((row as Values)[key] as string | null) ?? null);
   const value = (row as Values)[key];
   if (typeof value === 'boolean') return value ? m.yes : m.no;
   return labels[key]?.[String(value)] ?? text(value);
