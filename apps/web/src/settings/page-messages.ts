@@ -1,7 +1,6 @@
 export const pm = {
   pages: '页面权限',
   menus: '菜单组',
-  basic: '基础信息',
   name: '页面名称',
   code: '页面编码',
   app: '所属应用',

@@ -1,5 +1,5 @@
 import { isPageCarrier } from '@italent/domain';
-import { Button, Descriptions, Input, Space, Table, Tabs, type TableColumnsType } from 'antd';
+import { Button, Input, Space, Table, Tabs, type TableColumnsType } from 'antd';
 import { useState } from 'react';
 import { PageState } from '../foundation/PageState.js';
 import { type DialogMode, type ProfileDetail, profilePath } from './object-dialog-model.js';
@@ -9,7 +9,6 @@ import { om } from './object-messages.js';
 import './object-permissions.css';
 import { PagePermissions, ProfileMenus } from './PagePermissions.js';
 import { pm } from './page-messages.js';
-import { m } from './messages.js';
 type ObjectRow = ProfileDetail['objects'][number];
 type Target = { objectCode: string; mode: DialogMode };
 export function ProfileDetails({ id, editable, close }: { id: string; editable: boolean; close(): void }) {
@@ -21,17 +20,6 @@ export function ProfileDetails({ id, editable, close }: { id: string; editable: 
         <h1>{resource.data?.name ?? om.objects}</h1>
         <Button onClick={close}>{om.back}</Button>
       </header>
-      {resource.data && (
-        <Descriptions
-          title={pm.basic}
-          size="small"
-          items={[
-            { key: 'code', label: m.code, children: resource.data.code },
-            { key: 'apps', label: m.apps, children: resource.data.apps.join('、') },
-            { key: 'description', label: m.description, children: resource.data.description },
-          ]}
-        />
-      )}
       {resource.error ? (
         <PageState kind="error" error={resource.error} retry={resource.refresh} />
       ) : (
