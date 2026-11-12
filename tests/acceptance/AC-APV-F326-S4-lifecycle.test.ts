@@ -150,7 +150,7 @@ describe.each<Status>(['running', 'returned', 'withdrawn'])('AC-APV-F326-18 åœ¨é
           dimension: column.kind === 'role' ? null : 'department',
           includeChildren: false,
           name: column.kind,
-          allowMultiple: true,
+          allowMultiple: column.kind === 'role',
         })),
         rows: [{ id: row.id, cells: { c: [], r: [replacement.userId] } }],
       },

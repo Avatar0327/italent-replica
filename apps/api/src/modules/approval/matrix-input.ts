@@ -36,7 +36,10 @@ export const matrixCreateSchema = z.strictObject({
   enable: z.boolean().default(false),
 });
 export const matrixUpdateSchema = z.strictObject({ ...head, name: head.name.optional(), revision });
-export const matrixStatusSchema = z.strictObject({ revision });
+export const matrixStatusSchema = z.strictObject({
+  revision,
+  acknowledgedReferenceCount: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+});
 export const matrixListSchema = z.object({
   status: z.enum(['active', 'disabled']).default('active'),
   q: z.string().trim().max(100).default(''),

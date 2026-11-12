@@ -456,7 +456,7 @@ describe('AC-APV-F326-17 停用 / 编辑影响检查与删角色列', () => {
     const w = await s4World(database().db, 'ack-race');
     const v = await referencedVariable(w);
     const shown = await references(w, 'variables', v.id);
-    await w.publishedProcess({ nodes: [counter([varSource('public_variable', v.id)])] });
+    await w.publishedProcess({ priority: 1, nodes: [counter([varSource('public_variable', v.id)])] });
     await rejected(
       await variableCommand(w, v, 'disable', { acknowledgedReferenceCount: shown.total }),
       409,

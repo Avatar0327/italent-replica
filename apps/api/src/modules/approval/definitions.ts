@@ -370,7 +370,10 @@ async function writeVersionContent(
         throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_SOURCE_USER_INVALID', error.message);
       throw error;
     }
-    await assertSourceReferences(tx, tenantId, sources);
+    await assertSourceReferences(tx, tenantId, sources, {
+      approvalType: type,
+      singleApprover: isCountersign(node) ? undefined : node.approver,
+    });
     const typed = nodeTypeColumns(node);
     const { approve, disagree } = typed.custom;
     await tx.execute(sql`INSERT INTO approval_process_nodes

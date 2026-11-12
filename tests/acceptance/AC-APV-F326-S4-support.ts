@@ -115,7 +115,8 @@ function structureBody(spec: MatrixSpec, revision: number, existing?: MatrixHand
 const handle = (view: MatrixView): MatrixHandle => ({
   ...view,
   conditionId: view.columns.find((column) => column.kind === 'condition')!.id,
-  roleId: view.columns.find((column) => column.kind === 'role')!.id,
+  // 删掉角色列后的矩阵没有 roleId，读回时给空串而不是抛错
+  roleId: view.columns.find((column) => column.kind === 'role')?.id ?? '',
 });
 
 /** 一条条件列 + 一条角色列的矩阵，按行顺序决定 seq。 */
