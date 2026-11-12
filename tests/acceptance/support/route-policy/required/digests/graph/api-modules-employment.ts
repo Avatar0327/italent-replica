@@ -1177,6 +1177,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/custom-field-definitions.ts#CUSTOM_FIELD_NAME_MAX',
     'packages/domain/src/employment/custom-field-definitions.ts#CUSTOM_FIELD_VALUE_TYPES',
     'packages/domain/src/employment/custom-field-definitions.ts#CUSTOM_FIELD_WRITABLE_OBJECT_TYPES',
+    'packages/domain/src/employment/custom-field-definitions.ts#isCustomFieldOptions',
   ],
   'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance': [
     '#fieldSelect',
@@ -1190,6 +1191,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/configuration.ts#lockSettings': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/configuration.ts#optionsInput': [
+    'packages/domain/src/employment/custom-field-definitions.ts#isCustomFieldOptions',
+  ],
   'apps/api/src/modules/employment/configuration.ts#readEmploymentSettings': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
@@ -1197,6 +1201,13 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/configuration.ts#setCustomFieldInheritance': [
     '#fieldSelect',
     '#lockSettings',
+    'apps/api/src/modules/employment/context.ts#assertRevision',
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/configuration.ts#setCustomFieldOptions': [
+    '#fieldSelect',
+    '#optionsInput',
     'apps/api/src/modules/employment/context.ts#assertRevision',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
@@ -4403,6 +4414,9 @@ export const GRAPH: Graph = {
     '#owns',
     '#setField',
   ],
+  'apps/api/src/modules/employment/inheritance.ts#employeeCode': [
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch': [
     'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     '#prepareInheritance',
@@ -4418,13 +4432,14 @@ export const GRAPH: Graph = {
     '#NEW_CYCLES',
     '#applyCustomInheritance',
     '#applyExplicitPresetFields',
+    '#employeeCode',
+    '#frozenFormModes',
     '#resolveForm',
     '#selfServiceForm',
     '#setField',
     '#snapshotForm',
     '#validateInheritedEmploymentType',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
-    'apps/api/src/modules/employment/read-model.ts#rowsOf',
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
     'apps/api/src/modules/transfer/initiator-fields.ts#applyInitiatorFieldModes',
   ],
@@ -8045,6 +8060,18 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/routes.ts#route:PUT /custom-fields/:id/inheritance': [
     'apps/api/src/modules/employment/configuration.ts#setCustomFieldInheritance',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/custom-field-guard.ts#customFieldWriteGuard',
+    '#parse',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/routes.ts#route:PUT /custom-fields/:id/options': [
+    'apps/api/src/modules/employment/configuration.ts#optionsInput',
+    'apps/api/src/modules/employment/configuration.ts#setCustomFieldOptions',
     'apps/api/src/modules/employment/context.ts#jsonBody',
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
