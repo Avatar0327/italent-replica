@@ -61,7 +61,19 @@ describe('AC-FE-F4745-A2a 真后端响应进入列表', () => {
     ui = uiHarness();
     await ui.render(h(UsersPage, { code: 'users.all', title: '全部用户', editable: false }), '/', undefined, responses);
     expect(ui.headers()).toContain('账号状态');
-    expect(ui.host.querySelector('tbody')?.textContent).not.toContain('@example.com');
+    const headers = ui.headers();
+    const login = headers.indexOf('登录用户名');
+    const contact = headers.indexOf('联系邮箱');
+    expect(login).toBeGreaterThan(-1);
+    expect(contact).toBe(login + 1);
+    const body = responses[`${BASE}/users`] as { items: { email: string; contactEmail: string | null }[] };
+    const rows = ui.host.querySelectorAll('tbody .ant-table-row');
+    expect(rows).toHaveLength(body.items.length);
+    body.items.forEach((user, index) => {
+      const cells = rows[index]!.querySelectorAll('td');
+      expect(cells[login]?.textContent).toBe(user.email || '--');
+      expect(cells[contact]?.textContent).toBe(user.contactEmail || '--');
+    });
   });
   it('身份真实修改人与授权数显示，不依赖截图合成', async () => {
     ui = uiHarness();

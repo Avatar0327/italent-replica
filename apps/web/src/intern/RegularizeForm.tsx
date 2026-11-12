@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { Alert, Button, Descriptions, Form, Modal, Radio, Select, Space, message } from 'antd';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NameOf, RefSelect } from '../contracts/references.js';
@@ -416,7 +417,7 @@ function EmployeeSection({ row }: { row: Row }) {
         column={2}
         items={[
           { key: 'name', label: m.fields.name, children: row.name ?? m.missing },
-          { key: 'code', label: m.fields.code, children: row.code ?? m.missing },
+          { key: 'code', label: m.fields.code, children: codeText(row.code ?? null) },
           {
             key: 'departmentId',
             label: m.fields.departmentId,

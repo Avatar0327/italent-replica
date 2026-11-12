@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { EMPLOYEE_FIELDS, SUBSETS, type PersonnelField } from '@italent/domain';
 import type { PageRequest } from '../foundation/client.js';
 import { m } from './messages.js';
@@ -120,6 +121,7 @@ const dateFields = new Set([
   'stopDate',
 ]);
 export function fieldValue(key: string, value: unknown, format?: 'long') {
+  if (key === 'code' || key === 'jobNumber') return codeText((value as string | null) ?? null);
   if (key === 'employeeStatus' && typeof value === 'number') return m.statuses[value] ?? displayValue(value);
   if (key === 'employType' && typeof value === 'string') return m.employTypes[value] ?? displayValue(value);
   if (format === 'long' && dateFields.has(key) && typeof value === 'string') return longDate(value);

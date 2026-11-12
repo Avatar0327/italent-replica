@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { Avatar, Space } from 'antd';
 import { ApiError } from '../foundation/client.js';
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
@@ -71,7 +72,7 @@ export function StaffDetail({
                 <Space>
                   {permission.field('code').visible && (
                     <span>
-                      {m.jobNumber}：{displayValue(row?.code)}
+                      {m.jobNumber}：{codeText((row?.code as string | null) ?? null)}
                     </span>
                   )}
                   {permission.field('email').visible && (
