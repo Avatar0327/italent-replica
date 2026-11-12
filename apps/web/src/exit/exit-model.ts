@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 /**
  * 离职管理（FE-R2c2）的纯规则：列表投影、入口推导、提交前检查、请求体与回执校验。
  * 后端口径：employment/exit-routes.ts（GET /exits、详情、新建、PATCH、撤销）、exit-preview.ts、exit-handover*.ts。
@@ -76,6 +77,7 @@ const named: Record<string, string> = {
 };
 /** 被裁剪的键显示占位，不拿别的字段拼值；字典项显示保存时的名称。 */
 export function cellValue(row: Row, key: string): string {
+  if (key === 'code') return codeText((row[key] as string | null) ?? null);
   if (!(key in row)) return x.missing;
   if (key === 'status') return x.statuses[String(row.status)] ?? text(row.status);
   if (key === 'mode') return x.modes[String(row.mode)] ?? text(row.mode);

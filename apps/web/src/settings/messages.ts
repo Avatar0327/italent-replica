@@ -47,6 +47,8 @@ export const m = {
   name: '名称',
   displayName: '姓名',
   email: '联系邮箱',
+  loginName: '登录用户名',
+  contactEmail: '联系邮箱',
   businessIdentity: '业务身份',
   status: '状态',
   code: '编码',

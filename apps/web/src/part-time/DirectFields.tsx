@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { Alert, Button, Descriptions, Form, Input, Select, type FormInstance } from 'antd';
 import { useEffect, useState, type MutableRefObject } from 'react';
 import { RefSelect, NameOf } from '../contracts/references.js';
@@ -187,7 +188,8 @@ export function ReadonlyPerson({ id }: { id: string }) {
         items={['name', 'code', 'email', 'gender', 'birthday'].map((key) => ({
           key,
           label: d.labels[key] ?? key,
-          children: value(current?.person?.[key]),
+          children:
+            key === 'code' ? codeText((current?.person?.code as string | null) ?? null) : value(current?.person?.[key]),
         }))}
       />
     </>

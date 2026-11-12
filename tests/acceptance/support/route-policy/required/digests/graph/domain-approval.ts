@@ -394,4 +394,10 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/approval/types.ts#personnelFormFields': ['packages/domain/src/personnel/fields.ts#SUBSETS'],
   'packages/domain/src/approval/types.ts#subsetProcessCode': ['#SUBSET_PROCESS_CODES'],
+  'packages/domain/src/approval/variables.ts#matrixCodeViolation': ['#MATRIX_CODE'],
+  'packages/domain/src/approval/variables.ts#textViolation': [
+    '#CONTROL_MULTI_LINE',
+    '#CONTROL_SINGLE_LINE',
+    '#LONE_SURROGATE',
+  ],
 };

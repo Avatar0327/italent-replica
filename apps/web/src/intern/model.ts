@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import {
   EMPLOYEE_STATUS_LABELS,
   expectedProbationEndDate,
@@ -37,7 +38,7 @@ export interface ApplicationDestination {
 export interface Row {
   id: string;
   employeeId?: string;
-  code?: string;
+  code?: string | null;
   name?: string;
   kind?: string;
   effectiveDate?: string;
@@ -121,6 +122,7 @@ const text = (input: unknown) =>
 
 /** 被裁剪的字段缺键，单元格显示占位，不拿别的字段拼值（claude_fe_rules d）。 */
 export function cellValue(row: Row, key: string): string {
+  if (key === 'code') return codeText(row.code ?? null);
   const probation = { probationStartDate: 'startDate', probationMonths: 'months', probationEndDate: 'endDate' };
   if (key in probation) return text(row.probation?.[probation[key as keyof typeof probation] as 'startDate']);
   if (key === 'state') return m.states[String(row.state)] ?? text(row.state);

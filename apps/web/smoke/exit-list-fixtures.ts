@@ -53,8 +53,11 @@ function exitItem(id: string, employeeId: string, name: string, extra: Record<st
   } as Record<string, unknown> & { id: string; revision: number; status: string };
 }
 /** 详情 = 列表条目 + 原定 / 最终日期块 + 扩展字段（未登记的扩展字段对查看人裁剪，这里只留一个）。 */
+// S3c 的公开投影：导入仍在服务端内部记 import，列表与详情统一输出 direct / null。
+const publicRow = (row: Record<string, unknown>) =>
+  row.mode === 'import' ? { ...row, mode: 'direct', batchId: null } : row;
 const detailOf = (row: Record<string, unknown>, server: ExitServer) => ({
-  ...row,
+  ...publicRow(row),
   addToBlacklist: server.blacklisted.includes(String(row.id)),
   // F-393：加黑三项按字段权投影；缺省 = 查看人无这三项字段权（键整体缺席），给了才如实返回
   ...server.blacklistDetail[String(row.id)],
@@ -276,7 +279,11 @@ function read(server: ExitServer, path: string, query: URLSearchParams) {
     const items = server.rows.filter((row) => !viewStatuses[view] || viewStatuses[view].includes(row.status));
     const rowActions = (row: { id: string }) => server.rowActions[row.id] ?? [];
     return {
-      items: items.map((row) => ({ ...row, actions: actionsOf(server, row, true), rowActions: rowActions(row) })),
+      items: items.map((row) => ({
+        ...publicRow(row),
+        actions: actionsOf(server, row, true),
+        rowActions: rowActions(row),
+      })),
       total: items.length,
       page: 1,
       pageSize: 30,
