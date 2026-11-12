@@ -276,11 +276,17 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/enterprise-lists.ts#listPage',
     'apps/api/src/modules/permission/enterprise-lists.ts#textFilter',
   ],
+  'apps/api/src/modules/permission/filter-candidates.ts#candidateVisibility': [
+    'apps/api/src/modules/permission/admins.ts#grantableSetsOf',
+    'packages/domain/src/permission/admin-roles.ts#hasAdminCapability',
+  ],
   'apps/api/src/modules/permission/filter-candidates.ts#mouCandidates': [
     'apps/api/src/modules/permission/enterprise-lists.ts#likePattern',
+    '#candidateVisibility',
   ],
   'apps/api/src/modules/permission/filter-candidates.ts#profileCandidates': [
     'apps/api/src/modules/permission/enterprise-lists.ts#likePattern',
+    '#candidateVisibility',
   ],
   'apps/api/src/modules/permission/grants.ts#assertGrantable': [
     'apps/api/src/modules/permission/admins.ts#grantableSetsOf',
