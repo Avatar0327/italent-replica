@@ -342,30 +342,30 @@ test('AC-FE-ATT-10 三载体只走 blob、下载与新标签打开；切换租�
 });
 
 /**
- * AC-FE-ATT-09（S6）：第一轮已办审批人 X 仍见驳回前的两张并可下载；第二轮待办的 lead 在浏览器里只见剩下的一张。
- * 已办列表现在是演示桩（TodoCenter completedGap，approval/api.ts 的 completed 分支不请求后端），浏览器打不开真实已办单，
- * 所以 X 一侧经同一真实后端与同一详情 / 下载接口断言（不是浏览器渲染），lead 一侧走真实待办页面（PR 记为假设）。
+ * AC-FE-ATT-09（S6）：第一轮已办审批人 X 在浏览器里打开“已处理”列表里自己办过的那张单，页面仍渲染驳回前的两张
+ * 并能下载被本人删去的那张（读的是办理时冻结的份）；第二轮待办的 lead 在浏览器里只见剩下的一张。
+ * 已办列表走真实接口（/approval/todos?view=completed，DEC-799），入口与真实用户一致，不绕过页面。
  */
+async function openHandled(page: Page) {
+  await page.goto('/approval/todos?view=completed');
+  await page.locator('.approval-card-action').first().click();
+}
+
 test('AC-FE-ATT-09 已办审批人仍见办理时的两张并可下载；待办审批人在浏览器里只见剩下的', async ({
   context,
   page,
   baseURL,
 }) => {
   const { c } = manifest;
-  const base = `${manifest.url}/api/tenant/approval/instances/${c.instanceId}`;
-  const asHandled = { 'x-tenant-id': c.tenant, 'x-smoke-user': c.handled.userId };
-  const detail = await context.request.get(base, { headers: asHandled });
-  expect(detail.status(), await detail.text()).toBe(200);
-  const body = (await detail.json()) as {
-    contentView: { mode: string };
-    form: { values: { attachments?: { id: string; filename: string }[] } };
-  };
-  expect(body.contentView.mode).toBe('frozen');
-  expect(body.form.values.attachments?.map((item) => item.filename)).toEqual(NAMES_C);
-  const dropped = await context.request.get(`${base}/attachments/${c.dropped}/content`, { headers: asHandled });
-  expect(dropped.status()).toBe(200);
-  expect(dropped.headers()['content-disposition']).toMatch(/^attachment;/);
-  expect((await dropped.body()).length).toBeGreaterThan(0);
+  const handled = { ...c.handled, tenant: c.tenant };
+  const reads = await signIn(context, baseURL!, handled);
+  await openHandled(page);
+  await expect(page.getByText(FIELD, { exact: true })).toBeVisible();
+  await expect(thumbs(page)).toHaveCount(2);
+  for (const name of NAMES_C) await expect(field(page).getByText(name, { exact: true })).toBeVisible();
+  // 下载第一张：它是第二轮里已被本人删去的 P（detached），只有冻结读者才读得到
+  await expectDownload(page, field(page), reads, NAMES_C[0]!);
+  await expectBlobOnly(page, reads, handled, '/api/tenant/approval/instances/');
 
   const pending = { ...c.pending, tenant: c.tenant };
   await signIn(context, baseURL!, pending);
@@ -374,8 +374,10 @@ test('AC-FE-ATT-09 已办审批人仍见办理时的两张并可下载；待办�
   await expect(thumbs(page)).toHaveCount(1);
   await expect(page.getByText(NAMES_C[0]!, { exact: true })).toHaveCount(0);
   expect(strip(await field(page).textContent())).not.toContain(strip(NAMES_C[0]!));
-  const live = await context.request.get(`${base}/attachments/${c.dropped}/content`, {
-    headers: { 'x-tenant-id': c.tenant, 'x-smoke-user': c.pending.userId },
-  });
+  // 待办读者（现值）读不到被删去的 P：浏览器同一身份直接取内容，404
+  const live = await context.request.get(
+    `${manifest.url}/api/tenant/approval/instances/${c.instanceId}/attachments/${c.dropped}/content`,
+    { headers: { 'x-tenant-id': c.tenant, 'x-smoke-user': c.pending.userId } },
+  );
   expect(live.status()).toBe(404);
 });
