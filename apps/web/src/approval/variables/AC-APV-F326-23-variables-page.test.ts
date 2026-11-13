@@ -400,6 +400,58 @@ describe('AC-APV-F326-23 公共变量管理页', () => {
     expect(text()).toContain('引用该对象的流程节点已变化，请重新查看影响后再确认');
     expect(listReads().length).toBeGreaterThan(before);
   });
+
+  it('编辑 409：重读最新版本后把名称改回原值再提交，带重读后的版本，不自动重提', async () => {
+    const latest = { ...enabled, name: '合成他人改名', revision: enabled.revision + 1 };
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url.endsWith(`${API}/${enabled.id}`) && method === 'GET') return Response.json(latest);
+      if (method !== 'PATCH') return original(input, init);
+      const headers = new Headers(init?.headers);
+      writes.push({ url, method, body: JSON.parse(String(init!.body)), headers });
+      if (writes.length === 1)
+        return Response.json({ error: { code: 'REVISION_CONFLICT', message: '版本冲突' } }, { status: 409 });
+      const body = writes.at(-1)!.body as object;
+      return Response.json({ ...latest, ...body, revision: Number(headers.get('if-match')) + 1 });
+    });
+    await render(PUBLIC_PATH, 'public-variables');
+    await click('编辑', rowOf(enabled.id)!);
+    type(field(lastDialog(), 'name')!, '合成改名变量');
+    await settle();
+    await click('保存', lastDialog());
+    expect(writes).toHaveLength(1);
+    await click('重读最新版本', lastDialog());
+    await click('已核对差异，继续编辑', lastDialog());
+    expect(writes).toHaveLength(1);
+    type(field(lastDialog(), 'name')!, enabled.name);
+    await settle();
+    await click('保存', lastDialog());
+    expect(writes.map((item) => [item.body, item.headers.get('if-match')])).toEqual([
+      [{ name: '合成改名变量' }, String(enabled.revision)],
+      [{ name: enabled.name }, String(latest.revision)],
+    ]);
+  });
+
+  it('停用结果未知：本行锁定，编辑 / 停用都不可点，不生成新命令', async () => {
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (!String(input).endsWith('/disable')) return original(input, init);
+      writes.push({ url: String(input), method: 'POST', body: JSON.parse(String(init!.body)), headers: new Headers() });
+      throw new TypeError('synthetic network failure');
+    });
+    await render(PUBLIC_PATH, 'public-variables');
+    await click('停用', rowOf(enabled.id)!);
+    await click('确定', lastDialog());
+    expect(writes).toHaveLength(1);
+    expect(text()).toContain('处理中 / 结果待确认');
+    const rowButton = (label: string) =>
+      [...rowOf(enabled.id)!.querySelectorAll<HTMLButtonElement>('button')].find((node) => squash(node) === label);
+    expect(rowButton('编辑')?.disabled).toBe(true);
+    expect(rowButton('停用')?.disabled).toBe(true);
+    expect(writes).toHaveLength(1);
+  });
 });
 
 describe('AC-APV-F326-23 应用变量管理页', () => {
@@ -413,6 +465,26 @@ describe('AC-APV-F326-23 应用变量管理页', () => {
     expect(cells(appRow.id).slice(0, 5)).toEqual(['B.SynthApp', '合成应用变量', '字符串', '合成默认值', '草稿']);
     await click('停用的应用变量');
     expect(listReads().at(-1)).toMatchObject({ scope: 'application', appId: 'transfer', status: 'disabled' });
+  });
+
+  it('边界：空页签显示暂无变量；超过一页（50）时翻到第 2 页按 offset=50 读取', async () => {
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = new URL(String(input), 'http://localhost');
+      if (url.pathname !== API || url.searchParams.get('status') !== 'active') return original(input, init);
+      reads.push(String(input));
+      return Response.json({ ...page([appRow], Number(url.searchParams.get('offset'))), total: 51 });
+    });
+    await render(TRANSFER_PATH, 'app-variables-transfer');
+    expect(listReads()[0]).toMatchObject({ offset: '0', limit: '50' });
+    const second = document.querySelector<HTMLElement>('.ant-pagination-item-2');
+    expect(second, '第 2 页').not.toBeNull();
+    await act(async () => second!.click());
+    await settle();
+    expect(listReads().at(-1)).toMatchObject({ status: 'active', offset: '50', limit: '50' });
+    await click('停用的应用变量');
+    expect(listReads().at(-1)).toMatchObject({ status: 'disabled', offset: '0' });
+    expect(text()).toContain('暂无变量');
   });
 
   it('组织员工路径按 staff 读取', async () => {
