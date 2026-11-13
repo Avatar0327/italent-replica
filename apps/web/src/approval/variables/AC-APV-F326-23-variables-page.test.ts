@@ -148,7 +148,12 @@ beforeEach(() => {
     }
     reads.push(url);
     if (url.endsWith('/permission/me/snapshot'))
-      return Response.json({ session: { tenantId: 'synthetic-tenant' }, apps: [], scope: [], adminMenus: [] });
+      return Response.json({
+        session: { tenantId: 'synthetic-tenant', timezone: 'Asia/Shanghai' },
+        apps: [],
+        scope: [],
+        adminMenus: [],
+      });
     if (url.startsWith(PEOPLE))
       return Response.json({
         items: [{ userId: ADMIN_USER, name: '合成管理员', code: 'A001', departmentId: null, departmentName: null }],

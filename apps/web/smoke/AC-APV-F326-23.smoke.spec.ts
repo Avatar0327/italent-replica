@@ -42,6 +42,10 @@ test.beforeAll(async () => {
     backend.once('exit', (code) => reject(new Error(`F326F1 backend exited ${code}: ${errors}`)));
   });
 });
+// 上一项结束时可能仍有代理请求在途，卸载路由避免其在下一项里报错
+test.afterEach(async ({ context }) => {
+  await context.unrouteAll({ behavior: 'ignoreErrors' });
+});
 test.afterAll(async () => {
   if (!backend || backend.exitCode !== null) return;
   const exited = new Promise<void>((resolve) => backend.once('exit', () => resolve()));
