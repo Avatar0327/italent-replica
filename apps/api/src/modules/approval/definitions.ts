@@ -340,12 +340,22 @@ async function assertFallbackUsers(tx: Tx, tenantId: string, node: ApprovalNode)
     );
 }
 
+/**
+ * copyOfExisting：内容是原样复制的既有版本（编辑最新版本），不是用户提交的新配置。来源（变量 / 矩阵 / 适用范围）
+ * 在复制之前可能已按影响清单停用或移出范围，复制时若按“保存”规则校验，管理员连替换失效来源的修复草稿都建不出来
+ * （设计 §3.5、§6.2）；草稿上保存用户提交的配置（createProcess / replaceDraft）仍逐项校验。
+ */
+interface WriteOptions {
+  copyOfExisting?: boolean;
+}
+
 async function writeVersionContent(
   tx: Tx,
   tenantId: string,
   id: string,
   definition: ProcessDefinition,
   type: ApprovalTypeCode,
+  options: WriteOptions = {},
 ) {
   assertEmptyApproverPolicies(definition, type);
   assertRoutesValid(definition.nodes, type);
@@ -370,10 +380,11 @@ async function writeVersionContent(
         throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_SOURCE_USER_INVALID', error.message);
       throw error;
     }
-    await assertSourceReferences(tx, tenantId, sources, {
-      approvalType: type,
-      singleApprover: isCountersign(node) ? undefined : node.approver,
-    });
+    if (!options.copyOfExisting)
+      await assertSourceReferences(tx, tenantId, sources, {
+        approvalType: type,
+        singleApprover: isCountersign(node) ? undefined : node.approver,
+      });
     const typed = nodeTypeColumns(node);
     const { approve, disagree } = typed.custom;
     await tx.execute(sql`INSERT INTO approval_process_nodes
@@ -413,6 +424,7 @@ async function insertVersion(
   versionNo: number,
   definition: ProcessDefinition,
   type: ApprovalTypeCode,
+  options: WriteOptions = {},
 ): Promise<string> {
   const id = randomUUID();
   await tx.execute(sql`INSERT INTO approval_process_versions
@@ -422,7 +434,7 @@ async function insertVersion(
       ${definition.description},${definition.priority},${definition.isFallback},${definition.exceptionAdminUserId},
       ${definition.urgeEnabled},${definition.hideRecordsFromInitiator},${definition.conditions.expression},
       ${ctx.userId},${ctx.now.toISOString()})`);
-  await writeVersionContent(tx, ctx.tenantId, id, definition, type);
+  await writeVersionContent(tx, ctx.tenantId, id, definition, type, options);
   return id;
 }
 
@@ -543,7 +555,7 @@ export async function newVersion(tx: Tx, ctx: ApprovalContext, id: string) {
     throw approvalError('CONFLICT', 'APPROVAL_DRAFT_EXISTS', '最新版本已是草稿，请直接编辑');
   }
   const next = Number(row.latest_version_no) + 1;
-  await insertVersion(tx, ctx, id, next, before.latestVersion, before.approvalType);
+  await insertVersion(tx, ctx, id, next, before.latestVersion, before.approvalType, { copyOfExisting: true });
   await bump(tx, ctx, id, sql`,latest_version_no=${next}`);
   return audited(tx, ctx, 'version.create', before, id);
 }

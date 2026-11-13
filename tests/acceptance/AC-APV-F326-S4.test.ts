@@ -615,6 +615,7 @@ describe('AC-APV-F326-17 来源失效后的修复入口（设计 §3.5、§6.2�
     expect(created.status, await created.clone().text()).toBe(201);
     const draft = await w.json<{ revision: number; latestVersion: Record<string, unknown> & { status: string } }>(
       created,
+      201,
     );
     expect(draft.latestVersion.status).toBe('draft');
     const version = draft.latestVersion;
