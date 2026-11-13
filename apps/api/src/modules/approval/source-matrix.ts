@@ -11,11 +11,19 @@ import { ancestors, orgGraph, subjectPrimaryJob } from './source-relations.js';
 import { variablePersonIds } from './variable-input.js';
 
 export async function resolveVariable(tx: Tx, subject: RoutingSubject, source: ApproverSource): Promise<Candidate[]> {
-  const [row] = rowsOf<{ status: string; data_type: string; value: string | null }>(
-    await tx.execute(sql`SELECT status, data_type, default_value::text AS value FROM approval_variables
-      WHERE tenant_id=${subject.tenantId}::uuid AND id=${source.value}::uuid`),
+  const [row] = rowsOf<{
+    status: string;
+    scope: string;
+    usage_scopes: string[];
+    data_type: string;
+    value: string | null;
+  }>(
+    await tx.execute(sql`SELECT status, scope, usage_scopes, data_type, default_value::text AS value
+      FROM approval_variables WHERE tenant_id=${subject.tenantId}::uuid AND id=${source.value}::uuid`),
   );
   if (!row || row.status !== 'enabled') return [];
+  // 设计 §3.5：公共变量移出“流程”适用范围后，已发布流程运行时按“没有人”走空人策略（应用变量没有适用范围）
+  if (row.scope === 'public' && !row.usage_scopes.includes('process')) return [];
   const defaultValue = row.value === null ? null : JSON.parse(row.value);
   return resolveFallbackCandidates(
     tx,
