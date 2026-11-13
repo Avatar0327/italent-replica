@@ -4,16 +4,18 @@ import {
   CUSTOM_FIELD_WRITABLE_OBJECT_TYPES,
   isCustomFieldOptions,
   type CustomFieldObjectType,
+  type CustomFieldOption,
 } from '@italent/domain';
 import { Button, Input, Select, Switch } from 'antd';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { useApiClient } from '../foundation/Session.js';
 import { useConflictCommand, type Sending } from '../foundation/forms/ConflictCommands.js';
-import { listPath, parseRows, PATH, receipt, type actions, type Definition } from './model.js';
+import { listPath, mergeOptions, parseRows, PATH, receipt, type actions, type Definition } from './model.js';
 import { m } from './messages.js';
 import { OptionsEditor } from './OptionsEditor.js';
 import { sameValue } from '../foundation/forms/values.js';
+import type { CommandForm } from '../foundation/forms/useCommandForm.js';
 
 type Props = {
   objectType: CustomFieldObjectType;
@@ -46,7 +48,10 @@ export function DefinitionForm({ objectType, row, mode = 'inheritance', access, 
       : undefined,
     { action: row ? mode : 'create' },
   );
-  const fields = fieldsFor(row, access, mode, valueType, setValueType);
+  const submission = useMergedOptions(writer.form);
+  // 编辑器的“已保存”集合跟随最新版本：重读后他人新存的选项同样不可移除。
+  const stored = writer.full.options as readonly CustomFieldOption[] | undefined;
+  const fields = fieldsFor(row, access, mode, valueType, setValueType, stored);
   const send = async ({ command }: Sending) => {
     const body = row ? command.body : { ...command.body, name: String(command.body.name).trim() };
     const response = await api.request(row ? `${PATH}/${row.id}/${mode}` : PATH, {
@@ -60,7 +65,7 @@ export function DefinitionForm({ objectType, row, mode = 'inheritance', access, 
       open
       recordKey={row?.id ?? PATH}
       title={row ? (mode === 'options' ? m.editOptions : m.edit) : `${m.create}${m.title}`}
-      submission={writer.form}
+      submission={submission}
       initialValues={row ? { [fieldName]: row[fieldName] } : { objectType, valueType: 'text' }}
       groups={[{ title: m.basic, fields }]}
       onClose={() => {
@@ -99,18 +104,40 @@ export function DefinitionForm({ objectType, row, mode = 'inheritance', access, 
   );
 }
 
+/**
+ * 409 重读后把选项草稿按编码并入最新版本（mergeOptions），交给表单回填与差异表；内核状态本身不改。
+ * 只认重读时算出的差异：差异、草稿、最新三者引用在“继续编辑”后不变，合并结果稳定、不覆盖继续输入的内容；
+ * 再次提交时内核新状态不带差异，合并随之结束。结果未知、处理中的命令原样显示，不改其钉住的请求体。
+ */
+function useMergedOptions(form: CommandForm): CommandForm {
+  const { state } = form;
+  const pending = state?.status === 'unknown' || state?.status === 'submitting';
+  const { values, latest, differences } = state ?? {};
+  const merged = useMemo(() => {
+    const diff = differences?.find((item) => item.field === 'options');
+    if (pending || !values || !latest || !diff) return undefined;
+    const options = mergeOptions(diff.before, values.options, latest.values.options);
+    return {
+      values: { ...values, options },
+      differences: differences!.map((item) => (item === diff ? { ...item, mine: options } : item)),
+    };
+  }, [pending, values, latest, differences]);
+  return merged && state ? { ...form, state: { ...state, ...merged } } : form;
+}
+
 function fieldsFor(
   row: Definition | undefined,
   access: ReturnType<typeof actions>,
   mode: string,
   valueType: string,
   setType: (value: NonNullable<Definition['valueType']>) => void,
+  stored: readonly CustomFieldOption[] | undefined,
 ): FormField[] {
   const required = [{ required: true, message: m.required }];
   const options: FormField = {
     name: 'options',
     label: m.options,
-    control: <OptionsEditor existing={row?.options} />,
+    control: <OptionsEditor existing={stored} />,
     access: { visible: access.editable('options'), editable: access.editable('options') },
     rules: [
       {

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CustomFieldDefinitionsPage } from './CustomFieldDefinitionsPage.js';
 import { pages } from './pages.js';
+import { mergeOptions } from './model.js';
 import { SessionProvider } from '../foundation/Session.js';
 import { PermissionsProvider } from '../foundation/Permissions.js';
 
@@ -408,5 +409,38 @@ describe('AC-FE-F4746b0 定义管理', () => {
     );
     expect(save?.disabled).toBe(true);
     expect(posts).toHaveLength(1);
+  });
+});
+
+describe('AC-FE-F4746b0 选项冲突合并规则（mergeOptions）', () => {
+  const option = (value: string, label = value, enabled = true) => ({ value, label, enabled });
+  it('本人改名保留本人，他人新增照收并排在最新顺序', () => {
+    expect(mergeOptions([option('a')], [option('a', 'A2')], [option('a'), option('b')])).toEqual([
+      option('a', 'A2'),
+      option('b'),
+    ]);
+  });
+  it('本人未改的项取最新（他人改名 / 停用），本人新增项接在最后', () => {
+    const base = [option('a'), option('b')];
+    expect(
+      mergeOptions(base, [...base, option('x')], [option('a', 'A9'), option('b', 'b', false), option('c')]),
+    ).toEqual([option('a', 'A9'), option('b', 'b', false), option('c'), option('x')]);
+  });
+  it('本人改回基线原值的项视为未改，取他人最新', () => {
+    expect(mergeOptions([option('a')], [option('a')], [option('a', 'A9')])).toEqual([option('a', 'A9')]);
+  });
+  it('本人调过顺序时按本人顺序，他人新增项接在后面', () => {
+    expect(
+      mergeOptions(
+        [option('a'), option('b')],
+        [option('b'), option('a', 'A2')],
+        [option('a'), option('b', 'B9'), option('c')],
+      ),
+    ).toEqual([option('b', 'B9'), option('a', 'A2'), option('c')]);
+  });
+  it('他人调序、本人未调序时按最新顺序', () => {
+    expect(
+      mergeOptions([option('a'), option('b')], [option('a', 'A2'), option('b')], [option('b'), option('a')]),
+    ).toEqual([option('b'), option('a', 'A2')]);
   });
 });
