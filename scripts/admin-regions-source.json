@@ -1,0 +1,26 @@
+{
+  "version": "2023",
+  "originalUrl": "https://www.mca.gov.cn/mzsj/xzqh/2023/202301xzqh.html",
+  "archiveUrl": "https://web.archive.org/web/20250730184306/https://www.mca.gov.cn/mzsj/xzqh/2023/202301xzqh.html",
+  "sha256": "4909c8bc2384429a5da76c954c13bc3c7dec4bf2153b4a6dabaf0d1ce332771f",
+  "note": "取自存档副本，SHA-256 对应 id_ 模式原始响应 202301xzqh.raw.html；来源文件在仓库外保存。",
+  "coverage": "遵循原页公布范围。台湾省、香港特别行政区和澳门特别行政区暂缺地市和区县信息；开发区、园区等功能区不在公布范围。",
+  "hierarchy": "直辖市的区县直接归省级直辖市；原页带星号的 90 汇总码县级单位直接归省级，名称去掉脚注星号。其余按六位代码关联真实父级。",
+  "total": 3209,
+  "levels": [34, 333, 2842],
+  "sliceSize": 1900,
+  "slices": [
+    {
+      "count": 1900,
+      "firstCode": "110000",
+      "lastCode": "420703",
+      "sha256": "20889a4336b131db5d952076507e3b188155d5f62e266ee1bcbd815fb2cb0b7b"
+    },
+    {
+      "count": 1309,
+      "firstCode": "420704",
+      "lastCode": "659012",
+      "sha256": "4d290456c5924e77219d4e608026d1f01edf10e0a3fd810b76620b1cb6d784de"
+    }
+  ]
+}

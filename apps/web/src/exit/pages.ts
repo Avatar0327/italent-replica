@@ -1,5 +1,5 @@
 import { lazyPage, type ModulePages } from '../foundation/page-registry.js';
-import { m, x } from './messages.js';
+import { m, x, xh } from './messages.js';
 
 // 原站在组织员工设置 > 离职退休（与“调动管理 > 调动类型”同层）；本系统没有组织员工设置菜单，
 // 按 DEC-577 最保守做法挂在任职应用下、与入职管理 / Offer管理同层的独立入口；读取按任职记录查看权，入口对象同。
@@ -23,6 +23,15 @@ export const pages: ModulePages = {
       group: 'people',
       objectCode: 'TenantBase.EmploymentRecord',
       page: lazyPage('ExitPage', () => import('./ExitPage.js')),
+    },
+    {
+      // F-493 §9.5 / 差异 D15：北森在 组织员工 > 设置 > 公共设置 > 导入历史；同上按 DEC-577 挂在任职应用下、与离职管理同层。
+      id: 'exit-import-history',
+      app: 'transfer',
+      label: xh.title,
+      group: 'people',
+      objectCode: 'TenantBase.EmploymentRecord',
+      page: lazyPage('ExitImportHistoryPage', () => import('./ExitImportHistoryPage.js')),
     },
   ],
 };

@@ -51,7 +51,9 @@ for (const [code, title] of menus) {
     if (code === 'users.internal') await page.screenshot({ path: '/tmp/fe-r1d2-users.png', fullPage: true });
     await page.locator('.ant-table-tbody .ant-btn-link').first().click();
     if (code === 'permission.profiles') {
-      await expect(page.getByRole('heading', { name: '对象权限', exact: true })).toBeVisible();
+      // F-474-9b：对象权限改为身份详情的默认页签（与菜单组、页面权限并列），不再单列标题。
+      const objects = page.getByRole('tab', { name: '对象权限', exact: true });
+      await expect(objects).toHaveAttribute('aria-selected', 'true');
       await page.getByRole('button', { name: /^返\s*回$/ }).click();
     } else {
       await expect(page.getByRole('dialog')).toBeVisible();
