@@ -30,6 +30,7 @@ export function usePagePermissionDialog(
   const keys = allowed ? [...pages.map((p) => p.pageCode), 'catalogDigest'] : [];
   useDraftRefill(command, keys, form);
   const { initial, catalogError } = initialValues(data.current, objectCode);
+  const removal = remove ? { [remove]: false } : {};
   const send = pageSender(api, profile.id, objectCode);
   const finish = (status?: string) => {
     if (status !== 'done') return;
@@ -39,7 +40,9 @@ export function usePagePermissionDialog(
   const locked = command.locked || !!command.blocked || !allowed || data.loading || !!data.error || !!catalogError;
   const submit = async () => {
     if (locked) return;
-    const values = form.getFieldsValue(true) as Values;
+    // 新增与删除共用身份恢复槽：恢复的新增草稿可能把目标页回填为 true，删除提交须以删除目标为准。
+    // 结果未知的原请求重放走 replay，不经此处，保持原 body。
+    const values = { ...(form.getFieldsValue(true) as Values), ...removal };
     const request = { values, baseline: initial, revision: data.current.revision, businessId: profile.id };
     finish((await command.submit({ ...request, editableFields: keys, send })).status);
   };
@@ -55,7 +58,7 @@ export function usePagePermissionDialog(
     locked,
     loading: data.loading,
     error: data.error ?? catalogError,
-    initial: { ...initial, ...(remove ? { [remove]: false } : {}) },
+    initial: { ...initial, ...removal },
     submit,
     replay,
     reload: data.reload,
