@@ -6,7 +6,7 @@
  */
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   drainExitImports,
   installExitImportTestHooks,
@@ -14,6 +14,15 @@ import {
 } from '../../apps/api/src/modules/employment/exit-import-worker.js';
 import { importWorld, type ImportWorld } from './AC-DM-30-support.js';
 import { EMPLOYEE_OBJECT_CODE, importOperator, RECORD_OBJECT_CODE } from './support/exit-import-operator.js';
+
+/**
+ * F-520：本文件的用例与钩子超时放宽到 120 秒（只作用于本文件；vitest.config.ts 的全局 30 秒不动，断言与用例不动）。
+ * 为什么：每个用例都要先建一个完整租户世界（importWorld 约 5～11 秒）、导入操作员（importOperator 约 17 秒，要逐对象 PUT 权限），
+ * 导入执行器按行串行（约 1.2 秒 / 行）；“A 的 4 批”一个用例就建两个世界 + 一个操作员 + 五批导入，
+ * 本机真 PG16 负载 15～20 时合计远超 30 秒，而每一步都在做必须的真实准备，共享夹具（AC-DM-30-support 等）被多个文件共用，
+ * 本单不动它们。取值：本机真 PG16 负载 15～22 时最慢单条 44.1 秒（“A 的 4 批”），× 约 2.7 ≈ 120 秒。
+ */
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 const database = useTestDb();
 afterEach(() => installExitImportTestHooks(database().db, {}));
