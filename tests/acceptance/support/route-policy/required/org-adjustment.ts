@@ -260,7 +260,7 @@ const DISC_OBJECT: Evidence = { role: 'const', unit: `${DISC}#OBJECT`, anchor: '
 const CAN_OPEN_CALL: Evidence = {
   role: 'impl',
   unit: `${DISC}#orgAdjustmentDisclosure`,
-  anchor: 'const data = instance ? await openApprovalDetail(tx, bound, ctx, instance, live) : null;',
+  anchor: 'const data = instance ? await openApprovalDetail(tx, bound, ctx, instance) : null;',
 };
 /**
  * 路由 13～15 共用 orgAdjustmentDisclosure：HR（对象查看权 + 主体组织在 OrganizationApproval 范围），或可打开最新审批实例
@@ -311,7 +311,7 @@ function reader(path: string, anchor: string): Obligation[] {
         {
           role: 'impl',
           unit: OPEN_DETAIL,
-          anchor: 'return await readDetail(tx, command, instance.id, viewer, false, live)',
+          anchor: 'return await readDetail(tx, command, instance.id, viewer, false)',
         },
         {
           role: 'impl',
@@ -339,8 +339,6 @@ function reader(path: string, anchor: string): Obligation[] {
   ];
 }
 const READER_ANCHOR = 'await orgAdjustmentDisclosure(tx, deps, ctx, id)';
-// 预览 / 导出读现值（F-476 P2 才冻结），多传 live = true
-const LIVE_READER_ANCHOR = 'await orgAdjustmentDisclosure(tx, deps, ctx, id, true)';
 
 export const ORG_ADJUSTMENT: RequiredTable = {
   [`POST ${BASE}`]: [
@@ -469,6 +467,6 @@ export const ORG_ADJUSTMENT: RequiredTable = {
   [`GET ${BASE}`]: LIST,
   [`GET ${BASE}/:id`]: reader(`${BASE}/:id`, READER_ANCHOR),
   [`GET ${BASE}/:id/items/:section`]: reader(`${BASE}/:id/items/:section`, READER_ANCHOR),
-  [`GET ${BASE}/:id/preview`]: reader(`${BASE}/:id/preview`, LIVE_READER_ANCHOR),
-  [`GET ${BASE}/:id/preview/export`]: reader(`${BASE}/:id/preview/export`, LIVE_READER_ANCHOR),
+  [`GET ${BASE}/:id/preview`]: reader(`${BASE}/:id/preview`, READER_ANCHOR),
+  [`GET ${BASE}/:id/preview/export`]: reader(`${BASE}/:id/preview/export`, READER_ANCHOR),
 };

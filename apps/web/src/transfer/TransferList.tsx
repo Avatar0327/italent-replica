@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import {
   Alert,
   Button,
@@ -208,6 +209,7 @@ const fixedOf = (column: TransferColumn) => {
   return column === 'operation' ? ('right' as const) : undefined;
 };
 function cell(column: TransferColumn, row: TransferListRow, onOpen: (row: TransferListRow) => void) {
+  if (column === 'code') return codeText(row.code);
   if (column === 'name' || column === 'effectiveDate')
     return (
       <Button type="link" className="transfer-name-link" onClick={() => onOpen(row)}>
@@ -239,7 +241,7 @@ function TransferExampleDetail({ selected, onClose }: { selected: TransferListRo
           <Alert type="info" message={m.demo} description={m.listGap} showIcon />
           <Space>
             <Tag>{statusLabels[selected.status]}</Tag>
-            {selected.code}
+            {codeText(selected.code)}
           </Space>
         </>
       }

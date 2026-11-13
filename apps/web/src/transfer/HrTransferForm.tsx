@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import type { ReactNode } from 'react';
 import { EmploymentFields, SelectionFields, transferBlocked } from '../self-service/shared/TransferForm.js';
 import {
@@ -90,7 +91,7 @@ function InfoSection(props: HrTransferFormProps) {
         {employee && (
           <div className="hr-readonly-field">
             <span>{h.jobNumber}</span>
-            <output name="jobNumber">{employee.code}</output>
+            <output name="jobNumber">{codeText(employee.code)}</output>
           </div>
         )}
         {draft && <InfoLinkage {...props} draft={draft} change={change} />}

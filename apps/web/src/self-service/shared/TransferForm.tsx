@@ -1,3 +1,4 @@
+import { codeText } from '../../foundation/code-text.js';
 import { useState } from 'react';
 import { LinkageFields } from '../../transfer/LinkageFields.js';
 import { missingTransferRequiredFields, requiredTransferFields } from '@italent/domain';
@@ -82,7 +83,7 @@ export function SelectionFields({ model, onSelection }: TransferFormProps) {
             <option value="">{text.employeePlaceholder}</option>
             {model.employees.map((employee) => (
               <option key={employee.id} value={employee.id}>
-                {employee.name} · {employee.code}
+                {employee.name} · {codeText(employee.code)}
               </option>
             ))}
           </select>

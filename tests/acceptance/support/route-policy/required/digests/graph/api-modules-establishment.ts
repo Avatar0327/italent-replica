@@ -19,7 +19,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/establishment/capacity-overlap.ts#overlapMessage': ['#genericOverlapMessage'],
   'apps/api/src/modules/establishment/capacity-read.ts#batchLocalSums': [
+    '#withoutSeqScan',
     'apps/api/src/modules/establishment/store.ts#rowsOf',
+    'apps/api/src/modules/org/read-model.ts#plannedTenant',
   ],
   'apps/api/src/modules/establishment/capacity-read.ts#capacityFor': ['#readCapacity'],
   'apps/api/src/modules/establishment/capacity-read.ts#listCapacities': [
@@ -40,6 +42,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/establishment/capacity-read.ts#sumLocal': [
     'apps/api/src/modules/establishment/org-reader.ts#subtreeIds',
+    'apps/api/src/modules/establishment/store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/establishment/capacity-read.ts#withoutSeqScan': [
     'apps/api/src/modules/establishment/store.ts#rowsOf',
   ],
   'apps/api/src/modules/establishment/capacity-service.ts#append': [
