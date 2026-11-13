@@ -20,6 +20,7 @@ interface Manifest {
   url: string;
   a: { tenant: string; employee: Persona; approver: Persona; blind: Persona; hr: Persona; blindInstance: string };
   b: { tenant: string; employee: Persona; draft: string };
+  c: { tenant: string; handled: Persona; pending: Persona; instanceId: string; dropped: string; kept: string };
   images: string[];
 }
 interface ContentRead {
@@ -31,6 +32,8 @@ interface ContentRead {
 
 const NAMES = ['手写甲.png', '手写乙.png'];
 const FIELD = '手写离职申请附件';
+// 租户 C 的文件名由夹具 uploads 按序号生成（手写1 = 被删去的 P，手写2 = 留下的 Q）
+const NAMES_C = ['手写1.png', '手写2.png'];
 const HR_FIELDS = ['id', 'employeeId', 'name', 'code', 'status', 'revision', 'lastWorkDate', 'attachmentRefs'];
 const CONTENT = /\/attachments\/[^/]+\/content$/;
 let backend: ChildProcess;
@@ -336,4 +339,43 @@ test('AC-FE-ATT-10 三载体只走 blob、下载与新标签打开；切换租�
   await expect(page.getByText(NAMES[0]!, { exact: true })).toBeVisible();
   await expect(page.getByText('手写1.png', { exact: true })).toHaveCount(0);
   await expectBlobOnly(page, reads, me, `/api/tenant/self-service/exit-requests/${exitId}/`);
+});
+
+/**
+ * AC-FE-ATT-09（S6）：第一轮已办审批人 X 仍见驳回前的两张并可下载；第二轮待办的 lead 在浏览器里只见剩下的一张。
+ * 已办列表现在是演示桩（TodoCenter completedGap，approval/api.ts 的 completed 分支不请求后端），浏览器打不开真实已办单，
+ * 所以 X 一侧经同一真实后端与同一详情 / 下载接口断言（不是浏览器渲染），lead 一侧走真实待办页面（PR 记为假设）。
+ */
+test('AC-FE-ATT-09 已办审批人仍见办理时的两张并可下载；待办审批人在浏览器里只见剩下的', async ({
+  context,
+  page,
+  baseURL,
+}) => {
+  const { c } = manifest;
+  const base = `${manifest.url}/api/tenant/approval/instances/${c.instanceId}`;
+  const asHandled = { 'x-tenant-id': c.tenant, 'x-smoke-user': c.handled.userId };
+  const detail = await context.request.get(base, { headers: asHandled });
+  expect(detail.status(), await detail.text()).toBe(200);
+  const body = (await detail.json()) as {
+    contentView: { mode: string };
+    form: { values: { attachments?: { id: string; filename: string }[] } };
+  };
+  expect(body.contentView.mode).toBe('frozen');
+  expect(body.form.values.attachments?.map((item) => item.filename)).toEqual(NAMES_C);
+  const dropped = await context.request.get(`${base}/attachments/${c.dropped}/content`, { headers: asHandled });
+  expect(dropped.status()).toBe(200);
+  expect(dropped.headers()['content-disposition']).toMatch(/^attachment;/);
+  expect((await dropped.body()).length).toBeGreaterThan(0);
+
+  const pending = { ...c.pending, tenant: c.tenant };
+  await signIn(context, baseURL!, pending);
+  await openTodo(page);
+  await expect(page.getByText(FIELD, { exact: true })).toBeVisible();
+  await expect(thumbs(page)).toHaveCount(1);
+  await expect(page.getByText(NAMES_C[0]!, { exact: true })).toHaveCount(0);
+  expect(strip(await field(page).textContent())).not.toContain(strip(NAMES_C[0]!));
+  const live = await context.request.get(`${base}/attachments/${c.dropped}/content`, {
+    headers: { 'x-tenant-id': c.tenant, 'x-smoke-user': c.pending.userId },
+  });
+  expect(live.status()).toBe(404);
 });

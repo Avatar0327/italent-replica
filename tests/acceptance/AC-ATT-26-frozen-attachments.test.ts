@@ -12,6 +12,7 @@ import { sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { keepLiveAttachments } from '../../apps/api/src/modules/employment/approval-content.js';
 import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
 import { png } from './AC-ATT-support.js';
 import { APPROVAL, exitWorld } from './AC-ATT-S2-support.js';
@@ -158,5 +159,16 @@ describe('AC-ATT-26 已办审批人读冻结附件：办理当时那一份，复
     ]);
     const text = JSON.stringify(exit);
     expect(text).not.toMatch(/base64|uploadedAt|\/attachments\/|content"?:\s*"/);
+  });
+});
+
+describe('AC-ATT-26 HR 载体的已办详情：办理份里后来不再是 bound 的附件整项缺席', () => {
+  it('只留现值详情里仍是 bound 的摘要，保持办理份的顺序，不回显旧文件名', () => {
+    const meta = (id: string, filename: string) => ({ id, filename, contentType: 'image/png', byteSize: 71 });
+    const frozen = { lastWorkDate: '2026-12-01', attachments: [meta('A1', '手写1.png'), meta('B2', '手写2.png')] };
+    const kept = keepLiveAttachments(frozen, { attachments: [{ id: 'b2' }] });
+    expect(kept.attachments).toEqual([meta('B2', '手写2.png')]);
+    expect(JSON.stringify(kept)).not.toContain('手写1.png');
+    expect(keepLiveAttachments({ lastWorkDate: '2026-12-01' }, {})).toEqual({ lastWorkDate: '2026-12-01' });
   });
 });

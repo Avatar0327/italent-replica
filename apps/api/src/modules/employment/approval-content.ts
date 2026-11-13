@@ -11,6 +11,7 @@
 import { withTenant, type Tx } from '@italent/db';
 import { sql } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
+import { captureAttachments, type AttachmentSummary } from '../attachments/carrier-read.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { approvalError } from '../approval/context.js';
@@ -129,8 +130,18 @@ export async function loadEmploymentContent(
         : null;
   return {
     business: contentOf(business as unknown as Row, BUSINESS_FACTS),
-    exit: exit ? contentOf(exit as unknown as Row, EXIT_FACTS) : null,
+    exit: exit ? withCapturedAttachments(contentOf(exit as unknown as Row, EXIT_FACTS)) : null,
   };
+}
+
+/**
+ * F-479 §2.3 附件字段的捕获契约：办理份里 attachmentRefs 是有序 ID 列表（已在内容里），attachments 只存展示元数据
+ * [{id, filename, contentType, byteSize}]；不存字节、下载地址与上传时间。退休单没有附件键，原样返回。
+ */
+function withCapturedAttachments(exit: Row): Row {
+  const listed = exit.attachments;
+  if (!Array.isArray(listed)) return exit;
+  return { ...exit, attachments: captureAttachments(listed as AttachmentSummary[]) };
 }
 
 /** 办理份里的业务日期：YYYY-MM-DD 且是真实存在的日子（投影会做日期运算，非法值会在投影里抛错）。 */
@@ -221,6 +232,17 @@ export function composeExit(live: object, content: EmploymentContent): Row {
     ...frozen,
     dutyTransfer: { ...duty, timing: frozen.dutyTransferTiming },
   };
+}
+
+/**
+ * 已办读离职详情时附件只留“现在仍是 bound 的”：HR 载体下载只认 bound（设计 §3.3），办理份里后来被删去 / 清理的文件
+ * 整项缺席，不回显办理时的旧文件名。`live` 是同一请求取的现值详情（只含 bound 摘要）。
+ */
+export function keepLiveAttachments(frozen: Row, live: { readonly attachments?: readonly { id: string }[] }): Row {
+  if (!Array.isArray(frozen.attachments)) return frozen;
+  const current = new Set((live.attachments ?? []).map((item) => item.id.toLowerCase()));
+  const kept = (frozen.attachments as readonly { id: string }[]).filter((item) => current.has(item.id.toLowerCase()));
+  return { ...frozen, attachments: kept };
 }
 
 /**

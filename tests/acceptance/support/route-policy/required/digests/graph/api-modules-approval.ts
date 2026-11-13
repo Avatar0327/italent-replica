@@ -1106,6 +1106,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#adminCovers',
   ],
+  'apps/api/src/modules/approval/disclosure.ts#capturedAttachmentsOf': [
+    'apps/api/src/modules/attachments/carrier-read.ts#capturedFromExt',
+  ],
   'apps/api/src/modules/approval/disclosure.ts#ccNodeOf': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/disclosure.ts#detailView': [
     'apps/api/src/modules/approval/detail-path.ts#NO_PATH_FACTS',
@@ -1129,6 +1132,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/handling-content.ts#capViewable',
     'packages/domain/src/approval/policies.ts#disclosedFieldNames',
   ],
+  'apps/api/src/modules/approval/disclosure.ts#expandAttachments': [
+    '#capturedAttachmentsOf',
+    'apps/api/src/modules/attachments/carrier-read.ts#attachmentSummaries',
+    'apps/api/src/modules/attachments/carrier-read.ts#frozenAttachmentSummaries',
+  ],
   'apps/api/src/modules/approval/disclosure.ts#formFields': ['#disclosedFields'],
   'apps/api/src/modules/approval/disclosure.ts#formValuesView': ['#formFields', '#frozenValues', '#pick'],
   'apps/api/src/modules/approval/disclosure.ts#frozenValues': [
@@ -1140,8 +1148,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
   ],
   'apps/api/src/modules/approval/disclosure.ts#namedForm': [
+    '#expandAttachments',
     'apps/api/src/modules/approval/reference-names.ts#referenceNames',
-    'apps/api/src/modules/attachments/carrier-read.ts#attachmentSummaries',
     'apps/api/src/modules/employment/employment-types.ts#employmentTypeNames',
   ],
   'apps/api/src/modules/approval/disclosure.ts#readDetail': [
@@ -2151,6 +2159,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#MAX_ADD_SIGNERS',
   ],
   'apps/api/src/modules/approval/routes.ts#respondAttachment': [
+    'apps/api/src/modules/approval/disclosure.ts#capturedAttachmentsOf',
     '#detailViewOf',
     '#uuidParam',
     'apps/api/src/modules/attachments/carrier-read.ts#readCarrierAttachment',
