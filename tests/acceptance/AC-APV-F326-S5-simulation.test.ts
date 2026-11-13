@@ -96,7 +96,7 @@ describe('AC-APV-F326-15 模拟：虚拟路径与当前值路径', () => {
 
   it('① 给了虚拟值时以虚拟值为准（仍不读真实值）', async () => {
     const s = await scene('sim-viewer-virtual');
-    const sources = { [sourceKey(s.process.currentVersion!.nodes[0]!.approvers[0]!)]: [s.virtual] };
+    const sources = { [sourceKey(s.process.currentVersion!.nodes[0]!.approvers![0]!)]: [s.virtual] };
     const { text, body } = await run(
       await s.simulate(s.viewer, { scope: 'published', data: { values: {}, sourceRelations: sources } }),
     );
@@ -137,7 +137,7 @@ describe('AC-APV-F326-15 模拟：虚拟路径与当前值路径', () => {
     const s = await scene('sim-admin-flag-object');
     const response = await s.simulate(
       s.w.hr.id,
-      { scope: 'published', data: { values: {} }, resolveCurrentSources: true },
+      { scope: 'published', data: { values: { processCode: 'TransferProcessNew' } }, resolveCurrentSources: true },
       true,
     );
     const { body } = (await run(response)) as unknown as { body: { replicaStartable: boolean } };
@@ -154,9 +154,9 @@ describe('AC-APV-F326-15 模拟：虚拟路径与当前值路径', () => {
     expect(await counts(s.w)).toEqual(before);
   });
 
-  it('当前值路径：虚拟值优先；停用变量与矩阵按没有人；矩阵条件取虚拟部门，不读真实任职', async () => {
+  it('当前值路径：虚拟值优先；矩阵条件取虚拟部门，不读真实任职', async () => {
     const s = await scene('sim-admin-details');
-    const [varRef] = s.process.currentVersion!.nodes[0]!.approvers;
+    const [varRef] = s.process.currentVersion!.nodes[0]!.approvers!;
     const sourceRelations = { [sourceKey(varRef!)]: [s.virtual] };
     const { body } = await run(
       await s.simulate(s.w.hr.id, {
@@ -169,7 +169,10 @@ describe('AC-APV-F326-15 模拟：虚拟路径与当前值路径', () => {
 
     // 条件列限定到某个部门：虚拟输入的部门命中才给人
     const conditional = await matrix(s.w, { rows: [{ cond: [s.w.child], role: [s.w.head.userId] }] });
-    const scoped = await s.w.publishedProcess({ nodes: [counter([matrixSource(conditional, conditional.roleId)])] });
+    const scoped = await s.w.publishedProcess({
+      priority: 5,
+      nodes: [counter([matrixSource(conditional, conditional.roleId)])],
+    });
     const hit = await s.w.request(s.w.hr.id, 'POST', `${APPROVAL}/processes/${scoped.id}/simulate`, {
       body: {
         scope: 'published',

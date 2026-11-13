@@ -61,6 +61,15 @@ export async function isProcessAdmin(deps: TenantRouteDeps, ctx: TenantContext):
   return deps.authorize({ ...ctx, action: PROCESS_ADMIN });
 }
 
+/**
+ * F-326 §3.7：模拟读变量 / 矩阵当前值会披露真实人员，只有流程管理员可用；路由声明仍是 processView，
+ * 所以这里在处理器内二次校验（不是管理员即拒绝，不返回部分结果）。
+ */
+export async function requireCurrentSourcesAdmin(deps: TenantRouteDeps, ctx: TenantContext): Promise<void> {
+  if (await isProcessAdmin(deps, ctx)) return;
+  throw approvalError('FORBIDDEN', 'APPROVAL_SIMULATION_CURRENT_ADMIN_ONLY', '读取变量与矩阵当前值仅限流程管理员');
+}
+
 /** 查看 / 仿真：流程管理员，或身份对象权限可查看流程。 */
 export async function requireProcessView(deps: TenantRouteDeps, ctx: TenantContext): Promise<void> {
   if (await isProcessAdmin(deps, ctx)) return;

@@ -54,6 +54,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/access.ts#orgAdjustmentOwner': [
     'apps/api/src/modules/org-adjustment/submission.ts#authorizeOwnerOf',
   ],
+  'apps/api/src/modules/approval/access.ts#requireCurrentSourcesAdmin': [
+    '#isProcessAdmin',
+    'apps/api/src/modules/approval/context.ts#approvalError',
+  ],
   'apps/api/src/modules/approval/access.ts#requireIdpOwnerRight': [
     'apps/api/src/authorization.ts#requirePermission',
     '#IDP_PLAN_OBJECT',
@@ -1032,9 +1036,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/designer-people.ts#querySchema': [
     'apps/api/src/modules/approval/context.ts#canonicalId',
   ],
+  'apps/api/src/modules/approval/designer-sources.ts#candidateId': [
+    'apps/api/src/modules/approval/context.ts#canonicalId',
+  ],
   'apps/api/src/modules/approval/designer-sources.ts#candidateRows': [
     'apps/api/src/modules/approval/context.ts#approvalError',
+    '#matrixRows',
     '#namedRows',
+    '#variableRows',
     'apps/api/src/modules/approval/source-reference.ts#dimensionEnabled',
     'apps/api/src/modules/approval/source-reference.ts#jobReferenceRows',
     'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows',
@@ -1044,16 +1053,21 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/designer-sources.ts#listDesignerSources': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#candidateRows',
+    '#isMultipleSource',
   ],
   'apps/api/src/modules/approval/designer-sources.ts#namedRows': [
     'packages/domain/src/approval/definition.ts#allowsSubjectEmployee',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'apps/api/src/modules/approval/designer-sources.ts#querySchema': [
-    'apps/api/src/modules/approval/context.ts#canonicalId',
+    '#VARIABLE_TYPES',
+    '#candidateId',
     'apps/api/src/modules/org/read-model.ts#validIsoDate',
     'packages/domain/src/approval/sources.ts#RELATION_SOURCE_TYPES',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
+  'apps/api/src/modules/approval/designer-sources.ts#variableRows': [
+    'packages/domain/src/approval/type-apps.ts#APPROVAL_TYPE_APPS',
   ],
   'apps/api/src/modules/approval/detail-path.ts#activatedExits': [
     '#decisionExits',
@@ -2296,7 +2310,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#parseBody',
   ],
   'apps/api/src/modules/approval/routes.ts#route:POST /processes/:id/simulate': [
+    'apps/api/src/modules/approval/access.ts#requireCurrentSourcesAdmin',
     'apps/api/src/modules/approval/access.ts#requireProcessButton',
+    '#currentSourcesFlag',
     '#readCtx',
     '#scope',
     '#simulationData',
@@ -2305,8 +2321,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#parseBody',
   ],
   'apps/api/src/modules/approval/routes.ts#route:POST /simulate': [
+    'apps/api/src/modules/approval/access.ts#requireCurrentSourcesAdmin',
     'apps/api/src/modules/approval/access.ts#requireProcessButton',
     'apps/api/src/modules/approval/definition-input.ts#approvalTypeOf',
+    '#currentSourcesFlag',
     '#readCtx',
     '#scope',
     '#simulationData',
@@ -2443,6 +2461,24 @@ export const GRAPH: Graph = {
     '#addSignLink',
     'packages/domain/src/approval/policies.ts#addSignerVotes',
   ],
+  'apps/api/src/modules/approval/simulation-current.ts#currentUsers': [
+    '#virtualValues',
+    'apps/api/src/modules/approval/source-matrix.ts#resolveMatrixWith',
+    'apps/api/src/modules/approval/source-matrix.ts#resolveVariable',
+  ],
+  'apps/api/src/modules/approval/simulation-current.ts#virtualSubject': [
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/approval/simulation-current.ts#virtualValues': [
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
+  'apps/api/src/modules/approval/simulation-current.ts#withCurrentSources': [
+    '#CURRENT_TYPES',
+    '#currentUsers',
+    '#virtualSubject',
+    'packages/domain/src/approval/sources.ts#approverSourcesOf',
+    'packages/domain/src/approval/sources.ts#sourceKey',
+  ],
   'apps/api/src/modules/approval/simulation.ts#conditionContext': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     '#UUID',
@@ -2484,6 +2520,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/matching.ts#noProcessMessage',
     'apps/api/src/modules/approval/matching.ts#originalSiteMatch',
     'apps/api/src/modules/approval/matching.ts#replicaMatch',
+    'apps/api/src/modules/approval/simulation-current.ts#withCurrentSources',
     '#conditionContext',
     '#preflight',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
@@ -2502,6 +2539,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/simulation.ts#simulateProcess': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/definitions.ts#loadProcess',
+    'apps/api/src/modules/approval/simulation-current.ts#withCurrentSources',
     '#conditionContext',
     '#preflight',
     '#simulateNodes',
@@ -2555,11 +2593,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/source-relations.ts#ancestors',
     'apps/api/src/modules/approval/source-relations.ts#orgGraph',
   ],
-  'apps/api/src/modules/approval/source-matrix.ts#resolveMatrix': [
+  'apps/api/src/modules/approval/source-matrix.ts#resolveMatrix': ['#conditionValues', '#resolveMatrixWith'],
+  'apps/api/src/modules/approval/source-matrix.ts#resolveMatrixWith': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/approval/matrix-structure.ts#loadMatrixStructure',
     'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates',
-    '#conditionValues',
     '#hits',
     'packages/domain/src/approval/sources.ts#matrixSourceParts',
   ],
