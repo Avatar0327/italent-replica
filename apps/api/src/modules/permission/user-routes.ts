@@ -1,3 +1,4 @@
+import { listPersonAccess } from './person-list-projection.js';
 /**
  * 企业设置 · 用户管理接口（R1-T15；DEC-128；06 §7.1「用户管理」= 租户 / 系统 / 员工 / 用户管理员，能力 user_manage）：
  *   GET  /users?type=internal|external|all&membershipStatus&q&limit&offset   内部员工 / 外部用户 / 全部用户，带 total
@@ -22,6 +23,7 @@ import { listPage, parseQuery, textFilter } from './enterprise-lists.js';
 import { etag, idParam, ifMatch, parseBody } from './http.js';
 import {
   getTenantUser,
+  getTenantUserFor,
   internalUserByProfile,
   listTenantUsers,
   registerExternalUser,
@@ -45,6 +47,8 @@ const statusBody = z.strictObject({ status: z.enum(['active', 'disabled']) });
 const listQuery = z.strictObject({
   type: z.enum(['internal', 'external', 'all']).default('all'),
   membershipStatus: z.enum(['active', 'revoked']).optional(),
+  accountStatus: z.enum(['active', 'disabled']).optional(),
+  contactEmail: textFilter.optional(),
   q: textFilter.optional(),
   ...listPage,
 });
@@ -55,16 +59,21 @@ export function registerUserRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
     const query = parseQuery(listQuery, {
       type: c.req.query('type'),
       membershipStatus: c.req.query('membershipStatus'),
+      accountStatus: c.req.query('accountStatus'),
+      contactEmail: c.req.query('contactEmail'),
       q: c.req.query('q'),
       limit: c.req.query('limit'),
       offset: c.req.query('offset'),
     });
-    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listTenantUsers(tx, query));
+    const access = await listPersonAccess(deps, ctx);
+    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listTenantUsers(tx, query, access));
     return c.json({ ...page, unrecorded: USER_LIST_UNRECORDED });
   });
   router.get(`${BASE}/:userId`, async (c) => {
     const ctx = await adminGuard(c, deps, CAPABILITY);
-    const user = await currentUser(deps, ctx, idParam(c, 'userId'));
+    const userId = idParam(c, 'userId');
+    const access = await listPersonAccess(deps, ctx);
+    const user = await withTenant(deps.db, ctx.tenantId, (tx) => getTenantUserFor(tx, userId, access));
     etag(c, user.membershipRevision);
     return c.json(user);
   });

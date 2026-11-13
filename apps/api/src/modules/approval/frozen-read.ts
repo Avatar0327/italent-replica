@@ -34,14 +34,13 @@ export const LIVE_VIEW: ContentView = { mode: 'live', instanceId: null, taskId: 
 
 /**
  * 审批中心同一判定（参与人或范围内的流程管理员）与同一份详情数据（含业务快照、查看人任务与抄送）；打不开返回 null。
- * 管理员范围在本事务内解析（PGlite 单连接）。`live`：不做内容选择，读现值。
+ * 管理员范围在本事务内解析（PGlite 单连接）。
  */
 export async function openApprovalDetail(
   tx: Tx,
   deps: FrozenReadDeps,
   ctx: TenantContext,
   instance: InstanceRow,
-  live = false,
 ): Promise<DetailData | null> {
   // 授权器在自己的租户事务里判断：这里已占着 withTenant 的连接，必须绑到当前事务，否则管理员按钮判断会重入根事务而卡死
   const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
@@ -57,7 +56,7 @@ export async function openApprovalDetail(
   };
   const command = { ...ctx, now: bound.clock(), commandId: '', expectedRevision: 0 };
   try {
-    return await readDetail(tx, command, instance.id, viewer, false, live);
+    return await readDetail(tx, command, instance.id, viewer, false);
   } catch (error) {
     if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
     throw error;

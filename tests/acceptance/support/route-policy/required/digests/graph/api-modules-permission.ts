@@ -34,6 +34,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/enterprise-lists.ts#accountMatch',
     'apps/api/src/modules/permission/enterprise-lists.ts#hasMou',
     'apps/api/src/modules/permission/enterprise-lists.ts#mousOfUsers',
+    'apps/api/src/modules/permission/person-list-projection.ts#listDepartmentFilter',
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersonField',
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersons',
     'apps/api/src/modules/permission/tenant-users.ts#userLabels',
   ],
   'apps/api/src/modules/permission/admins.ts#updateAdmin': [
@@ -62,9 +65,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/evaluation/flow-catalog.ts#EVALUATION_FLOW_OBJECTS',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/permission/object-permission.ts#ObjectCatalog',
+    'packages/domain/src/permission/page-catalog.ts#PAGE_CARRIERS',
     'packages/domain/src/platform/employee-self-service.ts#SELF_APPLICATION_OBJECTS',
     'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS',
-    'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS',
   ],
   'apps/api/src/modules/permission/data-scope-admin.ts#applyGrantScopes': ['#assignUserAppScope'],
@@ -293,6 +296,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/enterprise-lists.ts#hasMou',
     'apps/api/src/modules/permission/enterprise-lists.ts#mousOfUsers',
     '#view',
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersonField',
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersons',
     'apps/api/src/modules/permission/tenant-users.ts#userLabels',
   ],
   'apps/api/src/modules/permission/grants.ts#revokeGrant': [
@@ -461,6 +466,36 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/permission/owner-units.ts#noUnit': ['#NO_UNIT_MESSAGE'],
+  'apps/api/src/modules/permission/person-list-projection.ts#listContactEmailFilter': [
+    '#listContactEmailMatch',
+    '#requireListPersonField',
+  ],
+  'apps/api/src/modules/permission/person-list-projection.ts#listContactEmailMatch': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#likePattern',
+    '#listPersonField',
+    '#listPersonSource',
+  ],
+  'apps/api/src/modules/permission/person-list-projection.ts#listDepartmentFilter': [
+    '#listPersonSource',
+    '#requireListPersonField',
+    'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/permission/person-list-projection.ts#listPersonAccess': [
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+  ],
+  'apps/api/src/modules/permission/person-list-projection.ts#listPersonSource': [
+    'apps/api/src/modules/personnel/access.ts#personScope',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/permission/person-list-projection.ts#listPersons': [
+    '#listPersonField',
+    '#listPersonSource',
+    'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
+  ],
+  'apps/api/src/modules/permission/person-list-projection.ts#requireListPersonField': ['#listPersonField'],
   'apps/api/src/modules/permission/profiles.ts#createProfile': [
     'apps/api/src/modules/permission/audit.ts#audit',
     '#view',
@@ -491,6 +526,7 @@ export const GRAPH: Graph = {
     'apps/api/src/seeds/grant-ledger.ts#recordTenantSave',
     'packages/domain/src/permission/object-permission.ts#isWithinProfileApps',
     'packages/domain/src/permission/object-permission.ts#validateObjectPermission',
+    'packages/domain/src/permission/page-catalog.ts#isPageCarrier',
     'packages/domain/src/platform/standard-grants.ts#objectCatalogDigest',
   ],
   'apps/api/src/modules/permission/profiles.ts#view': [
@@ -516,6 +552,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/admins.ts#ADMIN_LIST_UNRECORDED',
     'apps/api/src/modules/permission/admins.ts#listAdmins',
     'apps/api/src/modules/permission/enterprise-lists.ts#parseQuery',
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersonAccess',
     '#BASE',
     'apps/api/src/modules/permission/schemas.ts#adminListQuery',
   ],
@@ -536,6 +573,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/enterprise-lists.ts#parseQuery',
     'apps/api/src/modules/permission/grants.ts#GRANT_LIST_UNRECORDED',
     'apps/api/src/modules/permission/grants.ts#listGrants',
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersonAccess',
     '#BASE',
     'apps/api/src/modules/permission/schemas.ts#grantListQuery',
   ],
@@ -695,6 +733,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/permission/scope-audit.ts#creatorSql': ['#firstCreatorSql'],
   'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeOrgSet': ['#MAX_SCOPE_IDS', '#scopeRows'],
+  'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots': ['#scopeHierarchyReader'],
+  'apps/api/src/modules/permission/scope-hierarchy.ts#scopeHierarchyReader': ['#MAX_SCOPE_IDS', '#scopeRows'],
   'apps/api/src/modules/permission/scope-persons.ts#managedPersonsSql': ['#currentPersons'],
   'apps/api/src/modules/permission/scope-persons.ts#reportingPersonsSql': ['#currentPersons'],
   'apps/api/src/modules/permission/scope-policy-routes.ts#appParam': [
@@ -857,18 +897,34 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/object-permission.ts#ObjectCatalog',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#accountLogin': ['#accountsOf'],
+  'apps/api/src/modules/permission/tenant-users.ts#accountViewsOf': [
+    'apps/api/src/modules/avatar/references.ts#userAvatars',
+    '#accountsOf',
+  ],
   'apps/api/src/modules/permission/tenant-users.ts#accountsOf': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#contactEmails': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
   ],
-  'apps/api/src/modules/permission/tenant-users.ts#getTenantUser': ['#memberQuery', '#notFound', '#viewsOf'],
+  'apps/api/src/modules/permission/tenant-users.ts#getTenantUser': [
+    '#accountViewsOf',
+    '#contactEmails',
+    '#memberQuery',
+    '#notFound',
+  ],
+  'apps/api/src/modules/permission/tenant-users.ts#getTenantUserFor': [
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersons',
+    '#getTenantUser',
+  ],
   'apps/api/src/modules/permission/tenant-users.ts#listTenantUsers': [
+    'apps/api/src/modules/permission/person-list-projection.ts#listContactEmailFilter',
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersonField',
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersons',
+    '#accountViewsOf',
     '#memberQuery',
     '#textMatch',
     '#typeFilter',
-    '#viewsOf',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#provisionAccount': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
@@ -885,7 +941,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/permission/tenant-users.ts#textMatch': [
     'apps/api/src/modules/permission/enterprise-lists.ts#accountMatch',
-    'apps/api/src/modules/permission/enterprise-lists.ts#likePattern',
+    'apps/api/src/modules/permission/person-list-projection.ts#listContactEmailMatch',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#updateExternalUser': [
     'apps/api/src/modules/permission/audit.ts#audit',
@@ -899,11 +955,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/http.ts#revisionConflict',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#userLabels': ['#accountsOf'],
-  'apps/api/src/modules/permission/tenant-users.ts#viewsOf': [
-    'apps/api/src/modules/avatar/references.ts#userAvatars',
-    '#accountsOf',
-    '#contactEmails',
-  ],
   'apps/api/src/modules/permission/user-provisioning.ts#keepBinding': [
     'apps/api/src/modules/permission/audit.ts#audit',
     'apps/api/src/modules/permission/tenant-users.ts#accountLogin',
@@ -951,6 +1002,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/user-routes.ts#route:GET /api/tenant/permission/users': [
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
     'apps/api/src/modules/permission/enterprise-lists.ts#parseQuery',
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersonAccess',
     'apps/api/src/modules/permission/tenant-users.ts#USER_LIST_UNRECORDED',
     'apps/api/src/modules/permission/tenant-users.ts#listTenantUsers',
     '#BASE',
@@ -961,9 +1013,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
     'apps/api/src/modules/permission/http.ts#etag',
     'apps/api/src/modules/permission/http.ts#idParam',
+    'apps/api/src/modules/permission/person-list-projection.ts#listPersonAccess',
+    'apps/api/src/modules/permission/tenant-users.ts#getTenantUserFor',
     '#BASE',
     '#CAPABILITY',
-    '#currentUser',
   ],
   'apps/api/src/modules/permission/user-routes.ts#route:POST /api/tenant/permission/users': [
     'apps/api/src/modules/permission/admin-http.ts#adminCommand',

@@ -80,10 +80,10 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/disclosure.ts': {
     assertCanOpen: 'd0a07eb26026',
-    readDetail: '31bc71ca48fd',
+    readDetail: 'c7cb079aa298',
   },
   'apps/api/src/modules/approval/frozen-read.ts': {
-    openApprovalDetail: '53784ffc9491',
+    openApprovalDetail: '949c13120ab3',
   },
   'apps/api/src/modules/approval/matrix-routes.ts': {
     matrixCommand: 'f6a870329972',
@@ -1029,7 +1029,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/org-adjustment/disclosure.ts': {
     OBJECT: 'b007f3f6067a',
     hrDisclosure: 'e95fadfbd629',
-    orgAdjustmentDisclosure: '550cc3612ba0',
+    orgAdjustmentDisclosure: '675d01292ce4',
   },
   'apps/api/src/modules/org-adjustment/queries.ts': {
     listAdjustments: '4d3bcb00cad6',
@@ -1039,8 +1039,8 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/org-adjustment/adjustments': '1ffdb77dda79',
     'route:GET /api/tenant/org-adjustment/adjustments/:id': '2c2e854986da',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section': 'b4c22d15149d',
-    'route:GET /api/tenant/org-adjustment/adjustments/:id/preview': '3994ae9514b5',
-    'route:GET /api/tenant/org-adjustment/adjustments/:id/preview/export': '762a3e1385d9',
+    'route:GET /api/tenant/org-adjustment/adjustments/:id/preview': '75a523e0af2c',
+    'route:GET /api/tenant/org-adjustment/adjustments/:id/preview/export': 'd217289095cb',
   },
   'apps/api/src/modules/org-adjustment/routes.ts': {
     OBJECT: 'b007f3f6067a',
@@ -1116,12 +1116,17 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/permission/owner-units.ts': {
     chooseUnit: '3d6641abf858',
   },
+  'apps/api/src/modules/permission/person-list-projection.ts': {
+    listPersonAccess: '6cfe25939d9a',
+    listPersonField: '9ba50ae1e32b',
+    listPersonSource: '87ad3b174e25',
+  },
   'apps/api/src/modules/permission/routes.ts': {
     'route:GET /api/tenant/permission/admin-roles': 'd1748d513636',
-    'route:GET /api/tenant/permission/admins': 'be74fe701664',
+    'route:GET /api/tenant/permission/admins': '5006275bbb4c',
     'route:GET /api/tenant/permission/admins/:id': '7ef20d0775e2',
     'route:GET /api/tenant/permission/grantable-profiles': '9a5b3f8e188e',
-    'route:GET /api/tenant/permission/grants': '5f19ff77b8c9',
+    'route:GET /api/tenant/permission/grants': '4e0619bec1ed',
     'route:GET /api/tenant/permission/licenses': '21a9f3e0abad',
     'route:GET /api/tenant/permission/licenses/:licenseType/seats': 'de2cfcf8393b',
     'route:GET /api/tenant/permission/profiles': '2314d9583ec0',
@@ -1150,8 +1155,8 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/permission/user-routes.ts': {
     CAPABILITY: 'd88cc26e2f8a',
     lifecycleRequest: '9deb8aac7f8a',
-    'route:GET /api/tenant/permission/users': '3e7cdfd2177c',
-    'route:GET /api/tenant/permission/users/:userId': '50d1f8e60281',
+    'route:GET /api/tenant/permission/users': '83974bc4091e',
+    'route:GET /api/tenant/permission/users/:userId': 'd12d02754aae',
     'route:POST /api/tenant/permission/users': '76c0e18799c0',
     'route:PUT /api/tenant/permission/users/:userId': '29cdfa555efe',
   },
@@ -2799,11 +2804,14 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/permission/module-route-access.ts#writeFields': 'ddd53bba7f76',
   'apps/api/src/modules/permission/object-write.ts#requireObjectWrite': '23de1c1cd72f',
   'apps/api/src/modules/permission/owner-units.ts#chooseUnit': '01d1f2d1ad36',
+  'apps/api/src/modules/permission/person-list-projection.ts#listPersonAccess': 'b7968a034fd2',
+  'apps/api/src/modules/permission/person-list-projection.ts#listPersonField': '33b9a70ec0bc',
+  'apps/api/src/modules/permission/person-list-projection.ts#listPersonSource': '064ae781d4e1',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admin-roles': '7a11d0289c9b',
-  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins': '99e04dcbbfe8',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins': '3583af936971',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins/:id': '76a428b4f6df',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grantable-profiles': '7e4f35c521e5',
-  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants': 'e76637809bc2',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants': '56044bdd6e77',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/licenses': 'b684105aaeb1',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/licenses/:licenseType/seats':
     '76a5e8a06263',
@@ -2835,8 +2843,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/permission/scope-resolver.ts#personnelCreationScope': 'f265096ec1b2',
   'apps/api/src/modules/permission/user-routes.ts#CAPABILITY': 'e3b0c44298fc',
   'apps/api/src/modules/permission/user-routes.ts#lifecycleRequest': '9c5c8f50d1c3',
-  'apps/api/src/modules/permission/user-routes.ts#route:GET /api/tenant/permission/users': '95e66cf90ff5',
-  'apps/api/src/modules/permission/user-routes.ts#route:GET /api/tenant/permission/users/:userId': '064fa968e716',
+  'apps/api/src/modules/permission/user-routes.ts#route:GET /api/tenant/permission/users': 'a92502bd7c37',
+  'apps/api/src/modules/permission/user-routes.ts#route:GET /api/tenant/permission/users/:userId': 'fc3b7fdf1471',
   'apps/api/src/modules/permission/user-routes.ts#route:POST /api/tenant/permission/users': '11be7368f104',
   'apps/api/src/modules/permission/user-routes.ts#route:PUT /api/tenant/permission/users/:userId': '2c4e0a1ad4fb',
   'apps/api/src/modules/personnel/access.ts#access': '8c2c9e76e362',

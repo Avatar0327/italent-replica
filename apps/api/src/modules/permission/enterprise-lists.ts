@@ -2,7 +2,7 @@
  * 企业设置三张列表（用户 / 用户授权 / 管理员）的共用投影与筛选（F-474-5 #21～23，R1bd §2.8～2.10）。
  * 只读：不新增写入口、不新增权限操作；账号信息只经受限函数 tenant_member_accounts 读取（迁移 0032），
  * 总数与当页用同一过滤口径（同一个 where），分页只在排序稳定的前提下取窗口。
- * 原站有而本系统没有记录的列（登录手机号、来源、创建人 / 部门等）不伪造，见各列表的 unrecorded。
+ * 原站有而本系统没有记录的列（登录手机号、来源、创建人等）不伪造，见各列表的 unrecorded。
  */
 import { permissionMous, permissionUserAppScopes, sql, type Tx } from '@italent/db';
 import { and, eq, inArray, type SQL } from 'drizzle-orm';

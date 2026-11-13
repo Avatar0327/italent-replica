@@ -2,7 +2,7 @@ import { Form, type FormInstance } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, type Command } from '../foundation/client.js';
 import { forAction } from '../foundation/forms/action.js';
-import { createFormStore, type Values } from '../foundation/forms/store.js';
+import { type Values } from '../foundation/forms/store.js';
 import { changedFields } from '../foundation/forms/values.js';
 import { useCommandForm, useDraftRefill, type CommandForm } from '../foundation/forms/useCommandForm.js';
 import { useApiClient } from '../foundation/Session.js';
@@ -18,8 +18,7 @@ import {
 } from './object-dialog-model.js';
 import { readDialog, saveDialog } from './object-dialog-api.js';
 import { om } from './object-messages.js';
-// 页面导航会卸载详情，未确认命令仍由内核按租户、身份及整份配置身份隔离保存。
-const store = createFormStore();
+import { profileCommandStore } from './profile-command-store.js';
 export function useObjectDialog(
   id: string,
   objectCode: string,
@@ -29,7 +28,7 @@ export function useObjectDialog(
 ) {
   const api = useApiClient();
   const [form] = Form.useForm();
-  const command: CommandForm = forAction(useCommandForm(profilePath(id), store), { objectCode, mode });
+  const command: CommandForm = forAction(useCommandForm(profilePath(id), profileCommandStore), { objectCode, mode });
   const data = useDialogRead(id, objectCode, mode, form, command);
   const [notice, setNotice] = useState('');
   const keys = editable ? writableKeys(data.snapshot, mode) : [];
