@@ -72,6 +72,8 @@ export function HeadForm(props: {
     useHeadRead(head),
     head ? { action: 'edit' } : {},
   );
+  // 编辑时只读的两项：编码原样显示，状态显示中文标签。
+  const readonlyText = (name: string) => (name === 'code' ? head?.code : m.statusLabel[head?.status ?? '']);
   const field = (name: string, control: ReactNode, rules: FormField['rules'], editable = true): FormField => ({
     name,
     label: headLabels[name]!,
@@ -79,7 +81,7 @@ export function HeadForm(props: {
     access: { visible: true, editable },
     rules,
     requiredMark: name === 'name' || name === 'code',
-    display: editable ? undefined : name === 'code' ? head?.code : m.statusLabel[head?.status ?? ''],
+    display: editable ? undefined : readonlyText(name),
   });
   const statusOptions = [
     { value: 'draft', label: m.statusLabel.draft },
