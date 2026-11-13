@@ -3606,7 +3606,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/transfer-linkage.ts#propagateDepartmentHead': ['c3cfcc65c2f3', '77c8acdf26cd'],
   'apps/api/src/modules/employment/transfer-linkage.ts#queueTransferLinkage': ['a8f586d50c21', '369506dc860b'],
   'apps/api/src/modules/employment/transfer-linkage.ts#validateTransferSubordinates': ['cee32e40d2ce', '07eb584bc5c6'],
-  'apps/api/src/modules/employment/transfer-locks.ts#acquire': ['023ce6506428', '976b63c320e6'],
+  'apps/api/src/modules/employment/transfer-locks.ts#acquire': ['f82b17a84a05', '976b63c320e6'],
   'apps/api/src/modules/employment/transfer-locks.ts#array': ['5ceb8cb22ba8', '7a645dc8391f'],
   'apps/api/src/modules/employment/transfer-locks.ts#assertEmployeeLocksHeld': ['df57cfc4389c', '455227cde954'],
   'apps/api/src/modules/employment/transfer-locks.ts#employeeExists': ['8dc30f321606', 'f3b71127b550'],
