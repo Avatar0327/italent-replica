@@ -169,6 +169,24 @@
       "admin:process_matrix"
     ]
   },
+  "GET /api/tenant/approval/matrices/:id/references": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3bb836dee6f5",
+      "reason": "APPROVAL_MATRIX_NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
   "GET /api/tenant/approval/notifications": {
     "all": {
       "status": 200
@@ -238,6 +256,24 @@
     ]
   },
   "GET /api/tenant/approval/variables/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "8433662e079e",
+      "reason": "APPROVAL_VARIABLE_NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "GET /api/tenant/approval/variables/:id/references": {
     "all": {
       "code": "NOT_FOUND",
       "error": "8433662e079e",

@@ -11,6 +11,7 @@ import {
 import { requireNew } from '../job/context.js';
 import { approvalError, assertRevision, auditApproval, emitOutbox, type ApprovalContext } from './context.js';
 import { eligibleDesignerPeople } from './designer-people.js';
+import { assertReferencesAcknowledged } from './source-usages.js';
 import {
   checkVariableCode,
   validateVariableValues,
@@ -176,9 +177,13 @@ export async function updateVariable(tx: Tx, ctx: ApprovalContext, id: string, i
     if (input[key] !== undefined && input[key] !== before[key])
       throw approvalError('VALIDATION_FAILED', 'APPROVAL_VARIABLE_FIELD_LOCKED', '编码、类型和归属不可修改');
   }
+  const { acknowledgedReferenceCount, ...changes } = input;
   const previous = valuesOf(before);
-  const value = validateVariableValues({ ...previous, ...input } as VariableValues, previous);
+  const value = validateVariableValues({ ...previous, ...changes } as VariableValues, previous);
   await checkPeople(tx, ctx, value, before.status === 'enabled');
+  // F-326 §6：从公共变量的适用范围里去掉“流程”，等于让现有流程节点失去这个变量，须确认影响
+  if (previous.usageScopes.includes('process') && !value.usageScopes.includes('process'))
+    await assertReferencesAcknowledged(tx, ctx.tenantId, { kind: 'variable', id }, acknowledgedReferenceCount);
   const [after] = await tx
     .update(table)
     .set({
@@ -210,13 +215,21 @@ async function changeStatus(tx: Tx, ctx: ApprovalContext, before: VariableRow, s
   await audited(tx, ctx, action, before, after!);
 }
 
-export async function setVariableStatus(tx: Tx, ctx: ApprovalContext, id: string, action: 'enable' | 'disable') {
+export async function setVariableStatus(
+  tx: Tx,
+  ctx: ApprovalContext,
+  id: string,
+  action: 'enable' | 'disable',
+  acknowledgedReferenceCount?: number,
+) {
   const before = await loadVariable(tx, ctx.tenantId, id, true);
   assertRevision(ctx.expectedRevision, before.revision);
   const status = statusAfter(before.status as VariableStatus, action);
   if (!status) throw approvalError('CONFLICT', 'APPROVAL_VARIABLE_STATUS_INVALID', '当前状态不允许此操作');
   if (action === 'enable') await checkPeople(tx, ctx, valuesOf(before), true);
-  // S4 前流程不能引用变量（设计 §8）；影响检查在 S4 与引用能力同时接入。
+  // 停用不被引用挡住（设计 §6）：运行时按“没有人”走节点空人策略；但必须确认看过引用清单的总数
+  if (action === 'disable')
+    await assertReferencesAcknowledged(tx, ctx.tenantId, { kind: 'variable', id }, acknowledgedReferenceCount);
   await changeStatus(tx, ctx, before, status, action);
   return variableDetail(tx, ctx.tenantId, id);
 }

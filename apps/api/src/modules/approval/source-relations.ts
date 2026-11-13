@@ -1,4 +1,5 @@
 /** DEC-691：业务日关系取人；实时资格复核后交既有路由，来源层不做人数截断。 */
+import type { SQL } from 'drizzle-orm';
 import { sql, type Tx } from '@italent/db';
 import { relationSource, type ApproverSource, type Candidate } from '@italent/domain';
 import { findCurrentRecord } from '../employment/read-model.js';
@@ -19,7 +20,7 @@ interface OrgLink {
 }
 
 /** 有限集合 UNION 消除环：先找所选子树，再补足各分支的祖先，不读取其它维度或其它租户。 */
-async function orgGraph(
+export async function orgGraph(
   tx: Tx,
   subject: RoutingSubject,
   root: string,
@@ -39,7 +40,7 @@ async function orgGraph(
       FROM graph g JOIN ancestors a ON a.id=g.id ORDER BY g.id`),
   );
 }
-function* ancestors(
+export function* ancestors(
   graph: Map<string, OrgLink>,
   start: string,
   tenantRoot: string,
@@ -98,21 +99,33 @@ async function organization(tx: Tx, subject: RoutingSubject, ref: Reference): Pr
 }
 
 /** 主职时间轴 + 最新不可变快照；兼职不在该时间轴中，也显式限定 primary，清空值不得回退旧列。 */
+const primaryRecords = (subject: RoutingSubject, extra: SQL) => sql`
+    FROM employment_timeline t JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+    LEFT JOIN LATERAL (SELECT to_jsonb(v) AS body FROM employment_payload_versions v
+      WHERE v.tenant_id=r.tenant_id AND v.business_id=r.id AND v.employee_id=r.employee_id AND v.is_record_snapshot
+      ORDER BY v.version_no DESC LIMIT 1) p ON true
+    WHERE t.tenant_id=${subject.tenantId} AND t.valid_during @> ${subject.businessDate}::date
+      AND r.service_type='primary' AND r.kind NOT IN ('leave','retirement') AND ${extra}`;
+const recordField = (column: SQL) => sql`(CASE WHEN p.body IS NULL THEN to_jsonb(r) ELSE p.body END)->>${column}`;
 async function jobPeople(tx: Tx, subject: RoutingSubject, ref: Reference) {
   const column = ref.type === 'position' ? sql`'position_id'` : sql`'post_id'`;
   return rowsOf<{ employee_id: string; department_id: string | null }>(
     await tx.execute(sql`
     SELECT r.employee_id,(CASE WHEN p.body IS NULL THEN r.department_id::text
       ELSE p.body->>'department_id' END)::uuid AS department_id
-    FROM employment_timeline t JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-    LEFT JOIN LATERAL (SELECT to_jsonb(v) AS body FROM employment_payload_versions v
-      WHERE v.tenant_id=r.tenant_id AND v.business_id=r.id AND v.employee_id=r.employee_id AND v.is_record_snapshot
-      ORDER BY v.version_no DESC LIMIT 1) p ON true
-    WHERE t.tenant_id=${subject.tenantId} AND t.valid_during @> ${subject.businessDate}::date
-      AND r.service_type='primary' AND r.kind NOT IN ('leave','retirement')
-      AND (CASE WHEN p.body IS NULL THEN to_jsonb(r) ELSE p.body END)->>${column}=${ref.id}
+    ${primaryRecords(subject, sql`${recordField(column)}=${ref.id}`)}
     ORDER BY r.employee_id`),
   );
+}
+/** F-326 §3.3：申请对象在业务日的主职职位 / 职务（矩阵条件列取值）；没有主职或未填写为 null。 */
+export async function subjectPrimaryJob(tx: Tx, subject: RoutingSubject, type: 'position' | 'job') {
+  if (!subject.subjectEmployeeId || !subject.businessDate) return null;
+  const column = type === 'position' ? sql`'position_id'` : sql`'post_id'`;
+  const [row] = rowsOf<{ value: string | null }>(
+    await tx.execute(sql`SELECT ${recordField(column)} AS value
+    ${primaryRecords(subject, sql`r.employee_id=${subject.subjectEmployeeId}::uuid`)} LIMIT 1`),
+  );
+  return row?.value ?? null;
 }
 async function jobHolders(tx: Tx, subject: RoutingSubject, ref: Reference): Promise<Candidate[]> {
   const object = await loadJobObject(
