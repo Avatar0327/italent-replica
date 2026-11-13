@@ -288,6 +288,51 @@ describe('AC-PGP-F474 页面权限与菜单组交互', () => {
     expect(writes[1]!.body.buttons).toEqual([]);
     expect(writes[1]!.headers.get('if-match')?.replaceAll('"', '')).toBe('5');
   });
+  it('AC-PGP-F474-09 新增冲突后取消退出，再进详情删除该页，提交空按钮并撤销权限', async () => {
+    await open();
+    // 管理员 B 在 A 打开新增后授予了同一页面：A 读到 revision 4，提交时服务端已是 5。
+    profile = { ...profile, objects: [granted] };
+    mode = 'conflict';
+    await add();
+    expect(writes).toHaveLength(1);
+    await click('取消');
+    await ui.close();
+    ui = uiHarness();
+    mode = 'ok';
+    await open();
+    await click('删除');
+    // 删除弹窗沿用同一身份恢复槽：按冲突恢复重读、核对后确定，新增草稿里的勾选不得盖过删除目标。
+    await click('重读最新版本');
+    await click('已核对差异，继续编辑');
+    await click('确定');
+    expect(writes.map((w) => w.body.buttons)).toEqual([[{ buttonCode: pageCode, level: 'app_page' }], []]);
+    expect(writes[1]!.headers.get('if-match')?.replaceAll('"', '')).toBe('5');
+    expect(profile.objects[0]!.buttons).toEqual([]);
+    expect(document.querySelector('.ant-modal')).toBeNull();
+    expect(ui.host.textContent).toContain('暂无已授予页面');
+  });
+  it('AC-PGP-F474-09 新增结果未知时删除入口仍锁定，按原请求重放不被删除目标改写', async () => {
+    await open();
+    mode = 'unknown';
+    await add();
+    await click('取消');
+    // 重进详情时该页已显示为已授予（有删除入口）；删除入口须仍被那条未确认的新增锁住。
+    await ui.close();
+    ui = uiHarness();
+    profile = { ...profile, objects: [granted] };
+    await open();
+    await click('删除');
+    expect(confirm().disabled).toBe(true);
+    await click('回查原单');
+    mode = 'ok';
+    await click('按原请求重试');
+    await tick();
+    expect(writes).toHaveLength(2);
+    expect(writes[1]!.body).toEqual(writes[0]!.body);
+    expect(writes[1]!.body.buttons).toEqual([{ buttonCode: pageCode, level: 'app_page' }]);
+    expect(writes[1]!.headers.get('idempotency-key')).toBe(writes[0]!.headers.get('idempotency-key'));
+    expect(writes[1]!.headers.get('if-match')).toBe(writes[0]!.headers.get('if-match'));
+  });
   it('AC-PGP-F474-09 删除回执丢失后重开保持锁，先回查再重放同一空按钮请求', async () => {
     profile.objects = [granted];
     await open();
