@@ -118,6 +118,15 @@ beforeEach(() => {
         currentRow = conflictRow ?? { ...row, revision: 2, inherit: false };
         return Response.json({ error: { code: 'REVISION_CONFLICT' } }, { status: 409 });
       }
+      // 与后端 setCustomFieldOptions 同一规则（configuration.ts）：已保存的选项编码缺一个即 400。
+      const saved = currentRow.options.map((option) => option.value);
+      const sent = (body as { options?: { value: string }[] }).options?.map((option) => option.value);
+      if (url.endsWith('/options') && saved.some((value) => !sent?.includes(value))) {
+        return Response.json(
+          { error: { code: 'VALIDATION_FAILED', message: '已有选项不可删除或修改编码' } },
+          { status: 400 },
+        );
+      }
       return Response.json(
         {
           ...currentRow,
@@ -231,6 +240,73 @@ describe('AC-FE-F4746b0 定义管理', () => {
     expect(posts[1]!.url).toContain(`/${row.id}/options`);
     expect(posts[1]!.body).toEqual({ options: [east] });
     expect(posts[1]!.headers.get('if-match')).toBe('2');
+  });
+
+  it('AC-F474-0BFE04 他人新增选项后本人改名 409，重读合并他人新增项并以新 revision 保存成功', async () => {
+    permission = {
+      ...permissionFixture,
+      viewableFields: [...permissionFixture.viewableFields, 'options'],
+      editableFields: [...permissionFixture.editableFields, 'options'],
+    };
+    const east = { value: 'east', label: '合成东区', enabled: true };
+    const west = { value: 'west', label: '合成西区', enabled: true };
+    Object.assign(currentRow, { valueType: 'select', options: [east] });
+    conflictRow = { ...currentRow, revision: 2, options: [east, west] };
+    mode = 'conflict';
+    await render();
+    await click('编辑选项');
+    const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
+    const label = (index: number) =>
+      dialog().querySelector<HTMLInputElement>(`[aria-label="选项名称 ${index}"]`) ?? undefined;
+    type(label(1)!, '合成新区');
+    await settle();
+    await click('保存', dialog());
+    expect(posts[0]!.body).toEqual({ options: [{ ...east, label: '合成新区' }] });
+    await click('重读最新版本', dialog());
+    await click('已核对差异，继续编辑', dialog());
+    expect(label(1)!.value).toBe('合成新区');
+    expect(label(2)?.value, '他人新增的选项进入编辑器').toBe('合成西区');
+    expect(buttons(dialog()), '他人新增项已保存，不可移除').not.toContain('移除');
+    await click('保存', dialog());
+    expect(posts).toHaveLength(2);
+    expect(posts[1]!.url).toContain(`/${row.id}/options`);
+    expect(posts[1]!.body).toEqual({ options: [{ ...east, label: '合成新区' }, west] });
+    expect(posts[1]!.headers.get('if-match')).toBe('2');
+    expect(document.querySelector('[role="dialog"]'), '保存成功后关闭').toBeNull();
+  });
+
+  it('AC-F474-0BFE05 他人改名并新增选项后本人只新增 409，重读保留他人改名与新增项', async () => {
+    permission = {
+      ...permissionFixture,
+      viewableFields: [...permissionFixture.viewableFields, 'options'],
+      editableFields: [...permissionFixture.editableFields, 'options'],
+    };
+    const east = { value: 'east', label: '合成东区', enabled: true };
+    const renamed = { ...east, label: '合成他人改名' };
+    const west = { value: 'west', label: '合成西区', enabled: false };
+    Object.assign(currentRow, { valueType: 'select', options: [east] });
+    conflictRow = { ...currentRow, revision: 2, options: [renamed, west] };
+    mode = 'conflict';
+    await render();
+    await click('编辑选项');
+    const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
+    await click('新增选项', dialog());
+    type(dialog().querySelector<HTMLInputElement>('[aria-label="选项名称 2"]')!, '合成本人新增');
+    await settle();
+    await click('保存', dialog());
+    expect(posts[0]!.body).toEqual({
+      options: [east, { value: expect.any(String), label: '合成本人新增', enabled: true }],
+    });
+    const mine = (posts[0]!.body as { options: { value: string }[] }).options[1]!.value;
+    await click('重读最新版本', dialog());
+    await click('已核对差异，继续编辑', dialog());
+    await click('保存', dialog());
+    expect(posts).toHaveLength(2);
+    expect(posts[1]!.body).toEqual({
+      options: [renamed, west, { value: mine, label: '合成本人新增', enabled: true }],
+    });
+    expect(posts[1]!.headers.get('if-match')).toBe('2');
+    expect(document.querySelector('[role="dialog"]'), '保存成功后关闭').toBeNull();
   });
 
   it('AC-F474-FE01 通过登记入口展示字段，配置对象按数据操作授权，无按钮码依赖', async () => {
