@@ -33,16 +33,19 @@ export const createVariableSchema = z.strictObject({
   description: editable.description.optional(),
   enable: z.boolean().default(false),
 });
+/** 引用数确认值：来自“查看引用”的总数，省略按 0 计（F-326 §6）。 */
+const acknowledgedReferenceCount = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional();
 export const updateVariableSchema = z
   .strictObject({
     ...editable,
+    acknowledgedReferenceCount,
     code: z.string(),
     scope: z.enum(VARIABLE_SCOPES),
     appId: z.enum(APP_IDS).nullable(),
     dataType: z.enum(VARIABLE_DATA_TYPES),
   })
   .partial();
-export const variableCommandSchema = z.strictObject({});
+export const variableCommandSchema = z.strictObject({ acknowledgedReferenceCount });
 export const variableQuerySchema = z
   .object({
     scope: z.enum(VARIABLE_SCOPES),

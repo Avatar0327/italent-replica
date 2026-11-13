@@ -179,15 +179,20 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org/people.ts#submittedPeople': ['apps/api/src/modules/org/validation.ts#ORG_PERSON_FIELDS'],
   'apps/api/src/modules/org/read-model.ts#countOrgSnapshot': ['#currentOrgVersions', '#snapshotConditions'],
   'apps/api/src/modules/org/read-model.ts#currentOrgVersions': [
+    '#plannedTenant',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
     'apps/api/src/modules/permission/scope-audit.ts#creatorSql',
   ],
-  'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot': ['#orgSnapshotQuery', '#resolveOrgPaths'],
+  'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot': [
+    '#assembleOrgRecords',
+    '#orgSnapshotQuery',
+    '#resolveOrgPaths',
+  ],
   'apps/api/src/modules/org/read-model.ts#orgSnapshotQuery': ['#currentOrgVersions', '#snapshotConditions'],
-  'apps/api/src/modules/org/read-model.ts#resolveOrgPaths': ['#MAX_PATH_DEPTH', '#rowsOf'],
+  'apps/api/src/modules/org/read-model.ts#resolveOrgPaths': ['#MAX_PATH_DEPTH', '#plannedTenant', '#rowsOf'],
   'apps/api/src/modules/org/read-views.ts#readOrgChartNodes': [
-    'apps/api/src/modules/org-adjustment/preview.ts#establishmentByOrg',
-    'apps/api/src/modules/org-adjustment/preview.ts#headNames',
+    'apps/api/src/modules/org-adjustment/preview-input.ts#establishmentByOrg',
+    'apps/api/src/modules/org-adjustment/preview-input.ts#headNames',
     '#readOrgTreeNodes',
   ],
   'apps/api/src/modules/org/read-views.ts#readOrgPage': [
