@@ -23,6 +23,19 @@ const SOURCES = [
   MODULE_OBJECTS.jobPost,
 ];
 
+/**
+ * 五个源对象的必查字段清单（设计 §4.4 的投影清单，写死、不从产品代码导入：产品侧漏登记时本清单仍会红）。
+ * 每项 = [对象编码, 字段编码]，共 35 项：公共 5（id/name/enabled/startDate/stopDate）× 5 对象 + 各对象专有字段 10。
+ */
+const COMMON_FIELDS = ['id', 'name', 'enabled', 'startDate', 'stopDate'];
+const REQUIRED_FIELDS: [string, string][] = [
+  [MODULE_OBJECTS.jobGrade.code, [...COMMON_FIELDS, 'grade']],
+  [MODULE_OBJECTS.jobLevelType.code, COMMON_FIELDS],
+  [MODULE_OBJECTS.jobLevel.code, [...COMMON_FIELDS, 'levelTypeId', 'minGradeId', 'maxGradeId']],
+  [MODULE_OBJECTS.jobSequence.code, [...COMMON_FIELDS, 'parentId']],
+  [MODULE_OBJECTS.jobPost.code, [...COMMON_FIELDS, 'sequenceId', 'minLevelId', 'maxLevelId', 'displayOrder', 'code']],
+].flatMap(([object, list]) => (list as string[]).map((field): [string, string] => [object as string, field]));
+
 /** 真实授权器：成员 + 身份 + 五个源对象 / 图谱对象的权限，每个测试自选缺哪一项（AC-F474-JG-06）。 */
 async function caller(options: { skip?: string; hideField?: [string, string]; button?: boolean; seeAll?: boolean }) {
   const { db } = testDb();
@@ -31,6 +44,11 @@ async function caller(options: { skip?: string; hideField?: [string, string]; bu
   const profile: ProfileBody = await createProfile(w, `graph-${randomUUID()}`);
   const define = async (definition: (typeof SOURCES)[number] | typeof MODULE_OBJECTS.jobGraph, buttons: string[]) => {
     const hidden = options.hideField?.[0] === definition.code ? options.hideField[1] : undefined;
+    if (hidden)
+      expect(
+        definition.fields.map((f) => f.code),
+        `${definition.code} 无字段 ${hidden}`,
+      ).toContain(hidden);
     const result = await setObjectPermission(
       w,
       profile,
@@ -98,36 +116,34 @@ describe('AC-F474-JG-06 五个源对象整体授权', () => {
     expect((await c.get()).status).toBe(200);
     expect(await code(await c.rebuild())).toBe('FORBIDDEN');
   });
-  it('源对象的任一字段不可见都 403（逐字段）', async () => {
-    const fields: [string, string][] = [
-      [MODULE_OBJECTS.jobGrade.code, 'grade'],
-      [MODULE_OBJECTS.jobLevel.code, 'maxGradeId'],
-      [MODULE_OBJECTS.jobSequence.code, 'parentId'],
-      [MODULE_OBJECTS.jobPost.code, 'displayOrder'],
-      [MODULE_OBJECTS.jobPost.code, 'code'],
-    ];
-    for (const hideField of fields) {
-      const c = await caller({ hideField });
-      expect((await c.get()).status, hideField.join()).toBe(403);
-      expect((await c.rebuild()).status, hideField.join()).toBe(403);
-    }
+  it('必查字段清单恰为 35 项（与设计 §4.4 的投影清单一致）', () => {
+    expect(REQUIRED_FIELDS).toHaveLength(35);
+    expect(new Set(REQUIRED_FIELDS.map(([object, field]) => `${object}.${field}`)).size).toBe(35);
   });
-  it('撤权后命令重放同样 403，不返回台账里的旧快照', async () => {
+  it.each(REQUIRED_FIELDS)('%s 的 %s 字段不可见：三个入口统一 403', async (objectCode, field) => {
+    const c = await caller({ hideField: [objectCode, field] });
+    for (const res of [await c.get(), await c.get('/issues'), await c.rebuild()])
+      expect(res.status, `${field} ${res.url}`).toBe(403);
+  });
+  it.each(REQUIRED_FIELDS)('撤掉 %s 的 %s 字段查看权后：命令重放与读入口同样 403', async (objectCode, field) => {
     const c = await caller({});
     const key = randomUUID();
     expect((await c.rebuild(0, key)).status).toBe(200);
+    const definition = SOURCES.find((source) => source.code === objectCode)!;
     const revoke = await setObjectPermission(
       c.w,
       c.profile,
       {
         dataOperations: { create: false, update: false, delete: false },
-        fields: MODULE_OBJECTS.jobPost.fields.map((f) => ({ fieldCode: f.code, view: f.code !== 'code', edit: false })),
+        fields: definition.fields.map((f) => ({ fieldCode: f.code, view: f.code !== field, edit: false })),
         buttons: [],
       },
-      MODULE_OBJECTS.jobPost.code,
+      objectCode,
     );
     expect(revoke.status, await revoke.clone().text()).toBe(200);
-    expect((await c.rebuild(0, key)).status).toBe(403);
-    expect((await c.get()).status).toBe(403);
+    expect((await c.rebuild(0, key)).status, '重放').toBe(403);
+    expect((await c.rebuild(0)).status, '换键新提交').toBe(403);
+    expect((await c.get()).status, 'GET').toBe(403);
+    expect((await c.get('/issues')).status, 'issues').toBe(403);
   });
 });
