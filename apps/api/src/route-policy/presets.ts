@@ -89,6 +89,14 @@ export function write(
 ): WritePolicy {
   return { fields, footprint, result, ...extra };
 }
+/** F-474-6a §4.4：组织 / 人员的平铺正文与自定义字段使用同一写足迹及返回后守卫。 */
+export function customFieldsWrite(
+  footprint: WritePolicy['footprint'],
+  result: WritePolicy['result'],
+  extra: WriteExtra = {},
+): WritePolicy {
+  return write('body+customFields', footprint, result, extra);
+}
 /** 配置类写入口的现状：请求体是配置 DTO（无字段目录），事务内只有审计写入，配置对象无范围故返回后不复核。 */
 export function configWrite(footprint: string, extra: WriteExtra = {}): WritePolicy {
   return write(none('配置 DTO，无字段目录'), footprint, none('配置对象无范围，返回后只投影'), extra);

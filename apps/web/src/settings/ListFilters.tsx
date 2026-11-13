@@ -1,4 +1,4 @@
-import { Button, Form, Input, Select } from 'antd';
+import { Button, Form, Input, Select, TreeSelect, type TreeSelectProps } from 'antd';
 import { FilterCandidates } from './FilterCandidates.js';
 import { m } from './messages.js';
 export type ListFilterValues = Record<string, string | string[]>;
@@ -6,10 +6,43 @@ export interface ListFilterField {
   name: string;
   label: string;
   options?: { value: string; label: string }[];
+  defaultValue?: string;
+  treeData?: TreeSelectProps['treeData'];
+  loading?: boolean;
   max?: number;
   pattern?: RegExp;
   candidates?: string;
 }
+
+function filterControl(field: ListFilterField) {
+  if (field.candidates) return <FilterCandidates resource={field.candidates} label={field.label} />;
+  if (field.treeData)
+    return (
+      <TreeSelect
+        aria-label={field.label}
+        treeData={field.treeData}
+        loading={field.loading}
+        allowClear
+        showSearch
+        treeNodeFilterProp="title"
+        notFoundContent={m.noMatch}
+      />
+    );
+  if (field.options)
+    return (
+      <Select
+        aria-label={field.label}
+        allowClear
+        labelInValue
+        options={field.options}
+        showSearch
+        optionFilterProp="label"
+        notFoundContent={m.noMatch}
+      />
+    );
+  return <Input aria-label={field.label} maxLength={field.max ?? 100} />;
+}
+
 export function ListFilters({ fields, apply }: { fields: ListFilterField[]; apply(values: ListFilterValues): void }) {
   const [form] = Form.useForm();
   return (
@@ -26,7 +59,7 @@ export function ListFilters({ fields, apply }: { fields: ListFilterField[]; appl
             if (ids.length) result[field.name] = ids;
             continue;
           }
-          const value = String((field.options ? raw?.value : raw) ?? '').trim();
+          const value = String((field.options ? raw?.value : raw) ?? field.defaultValue ?? '').trim();
           if (value) result[field.name] = value;
         }
         apply(result);
@@ -36,6 +69,7 @@ export function ListFilters({ fields, apply }: { fields: ListFilterField[]; appl
         <Form.Item
           key={field.name}
           name={field.name}
+          initialValue={field.defaultValue ? { value: field.defaultValue } : undefined}
           label={field.label}
           rules={field.pattern ? [{ pattern: field.pattern, message: m.invalid }] : []}
         >
@@ -48,28 +82,15 @@ export function ListFilters({ fields, apply }: { fields: ListFilterField[]; appl
       <Button
         onClick={() => {
           form.resetFields();
-          apply({});
+          apply(
+            Object.fromEntries(
+              fields.filter((field) => field.defaultValue).map((field) => [field.name, field.defaultValue!]),
+            ),
+          );
         }}
       >
         {m.clear}
       </Button>
     </Form>
   );
-}
-
-function filterControl(field: ListFilterField) {
-  if (field.candidates) return <FilterCandidates resource={field.candidates} label={field.label} />;
-  if (field.options)
-    return (
-      <Select
-        aria-label={field.label}
-        allowClear
-        labelInValue
-        options={field.options}
-        showSearch
-        optionFilterProp="label"
-        notFoundContent={m.noMatch}
-      />
-    );
-  return <Input aria-label={field.label} maxLength={field.max ?? 100} />;
 }

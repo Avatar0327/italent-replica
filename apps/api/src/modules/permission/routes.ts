@@ -1,3 +1,4 @@
+import { listPersonAccess } from './person-list-projection.js';
 import { tenantLocalDate } from '@italent/domain';
 /**
  * 权限接口（R1-T01；企业设置 R1-T15）。全部在 /api/tenant/permission 之下，经租户上下文中间件；写请求带
@@ -270,7 +271,8 @@ function grantRoutes(router: Router, deps: TenantRouteDeps): void {
       limit: c.req.query('limit'),
       offset: c.req.query('offset'),
     });
-    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listGrants(tx, query));
+    const access = await listPersonAccess(deps, ctx);
+    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listGrants(tx, query, access));
     return c.json({ ...page, unrecorded: GRANT_LIST_UNRECORDED });
   });
   router.post(`${BASE}/grants`, async (c) => {
@@ -301,13 +303,15 @@ function adminRoutes(router: Router, deps: TenantRouteDeps): void {
   router.get(`${BASE}/admins`, async (c) => {
     const ctx = await guard(c, deps, 'admin_manage');
     const query = parseQuery(adminListQuery, {
+      departmentId: c.req.query('departmentId'),
       role: c.req.query('role'),
       mouId: c.req.queries('mouId'),
       q: c.req.query('q'),
       limit: c.req.query('limit'),
       offset: c.req.query('offset'),
     });
-    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listAdmins(tx, query));
+    const access = await listPersonAccess(deps, ctx);
+    const page = await withTenant(deps.db, ctx.tenantId, (tx) => listAdmins(tx, query, access));
     return c.json({ ...page, unrecorded: ADMIN_LIST_UNRECORDED });
   });
   router.get(`${BASE}/admins/:id`, async (c) => {

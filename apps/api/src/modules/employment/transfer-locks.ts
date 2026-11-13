@@ -81,12 +81,20 @@ async function acquire(
   if (!needed.length) return 'acquired';
   if (held.length && needed[0]! < held.at(-1)!)
     throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
-  const rows = rowsOf<{ id: string }>(
-    await tx.execute(sql`
-    SELECT id FROM employment_employees WHERE tenant_id=${ctx.tenantId} AND id=ANY(${array(needed)})
+  // F-519 的双退让源于 SKIP LOCKED 整组扫描越过忙行抢后续行，两个实例各持半组。
+  // 非阻塞路径按 UUID 逐行取锁，首个缺锁即停。阻塞路径整组按同一顺序取锁（兼职设计 §7.1）。
+  const groups = skipLocked ? needed.map((id) => [id]) : [needed];
+  const rows: { id: string }[] = [];
+  for (const ids of groups) {
+    const locked = rowsOf<{ id: string }>(
+      await tx.execute(sql`
+    SELECT id FROM employment_employees WHERE tenant_id=${ctx.tenantId} AND id=ANY(${array(ids)})
     ORDER BY id FOR NO KEY UPDATE ${skipLocked ? sql`SKIP LOCKED` : sql``}
   `),
-  );
+    );
+    rows.push(...locked);
+    if (locked.length !== ids.length) break;
+  }
   if (rows.length !== needed.length) {
     if (skipLocked) return (await employeeExists(tx, ctx, employeeId, rows)) ? 'busy' : 'missing';
     if (!held.includes(employeeId) && !rows.some((row) => row.id === employeeId))

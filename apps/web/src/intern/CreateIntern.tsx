@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { Alert, Button, Form, Input, InputNumber, Modal, Select, Space, message } from 'antd';
 import { useState, type ReactNode } from 'react';
 import { RefSelect, refPaths as contractRefs, useToday } from '../contracts/references.js';
@@ -231,7 +232,7 @@ function CreateFields({ editor }: { editor: Editor }) {
       <div className="intern-form-grid">
         {field('effectiveDate', <TenantDatePicker />, true)}
         {selected ? (
-          <Form.Item label={c.labels.code}>{selected.candidate.code ?? '--'}</Form.Item>
+          <Form.Item label={c.labels.code}>{codeText(selected.candidate.code ?? null)}</Form.Item>
         ) : (
           input('code', true)
         )}

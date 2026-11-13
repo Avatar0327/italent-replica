@@ -58,6 +58,7 @@ export const grantListQuery = z.strictObject({
 
 /** 管理员列表（F-474-5 #23）。 */
 export const adminListQuery = z.strictObject({
+  departmentId: z.uuid().optional(),
   role: z.enum(ADMIN_ROLES).optional(),
   mouId: idFilter,
   q: textFilter.optional(),

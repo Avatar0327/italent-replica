@@ -1,7 +1,7 @@
 export interface TransferListRow {
   id: string;
   name: string;
-  code: string;
+  code: string | null;
   effectiveDate: string;
   type: string;
   beforeDepartment: string;

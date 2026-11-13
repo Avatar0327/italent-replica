@@ -67,7 +67,7 @@ export const x = {
     voided: '已作废',
     deleted: '已删除',
   } as Record<string, string>,
-  modes: { direct: '直接离职', application: '离职申请', import: '导入' } as Record<string, string>,
+  modes: { direct: '直接离职', application: '离职申请' } as Record<string, string>,
   entries: {
     submit: '提交审批',
     application: '离职申请',
@@ -188,42 +188,20 @@ export const x = {
   unconfirmed: '已提交，但未能确认最新结果，请刷新后核对',
 };
 
-/** F-139b 历史离职人员导入（设计 §2.2、§10）：列名中文取后端 SHAPE_RULES / NOTE_RULES；原站模板未取证（§13 #U1）。 */
+/** F-493 §9.1：通用帮助说明与文件级提示，列名取 domain 的模板契约。 */
 export const xi = {
+  fileExpired: '文件已过期',
+  fileDownloadFailed: '下载失败，请重试',
+  errorFileName: '下载导入错误报告.xlsx',
   entry: '导入历史离职人员',
   pick: '选择 Excel 文件',
-  hint:
-    '首行为列名，工号、姓名、入职日期、部门编码、最后工作日必填；日期填 YYYY-MM-DD 或 Excel 日期；' +
-    '离职类型 / 原因 / 去向填字典编码；每次最多 100 行。',
-  reading: '正在读取并检查…',
-  columns: {
-    employeeNo: '工号',
-    name: '姓名',
-    entryDate: '入职日期',
-    departmentCode: '部门编码',
-    lastWorkDate: '最后工作日',
-    positionCode: '职位编码',
-    postCode: '岗位编码',
-    exitTypeCode: '离职类型',
-    exitReasonCode: '离职原因',
-    exitDestinationCode: '离职去向',
-    addToBlacklist: '加入黑名单',
-    blacklistReason: '加黑原因',
-    blacklistExpiryDate: '加黑到期日',
-    blacklistNote: '加黑说明',
-  } as Record<string, string>,
-  table: { rowNo: 'Excel 行号', employeeNo: '工号', name: '姓名', result: '校验结果', detail: '说明' },
-  results: { ok: '通过', failed: '不通过', warned: '超编提示' },
-  summary: (s: { total: number; ok: number; failed: number; warned: number }) =>
-    `共 ${s.total} 行：通过 ${s.ok} 行，不通过 ${s.failed} 行，有超编提示 ${s.warned} 行`,
-  warning: (from: string, to: string, peak: number | null, limit: number | null) =>
-    `${from} 至 ${to} 超出编制（峰值 ${peak ?? '—'}，编制 ${limit ?? '—'}）`,
-  hidden: (count: number) => `另有 ${count} 条超编提示无权查看`,
-  fixFirst: '有不通过的行，整批不能导入；请修改文件后重新选择',
-  submit: '导入',
+  hint: '首行为列名，必填列以「*」标识；每次最多导入 1000 行。',
+  template: '下载模板',
+  templateName: '历史离职人员导入模板.xlsx',
+  submit: '保存',
   replay: '按原命令重新提交',
   close: '关闭',
-  success: (count: number) => `已导入 ${count} 人`,
+  success: '导入进行中，执行结果请关注消息通知',
   errors: {
     unreadable: '文件无法读取，请选择 .xlsx 格式的 Excel 文件',
     tooBig: '文件内容过大或单元格过多，无法读取；请只保留需要导入的行后重试',
@@ -232,7 +210,8 @@ export const xi = {
     missing: (labels: string) => `缺少必填列：${labels}`,
     unknown: (labels: string) => `无法识别的列：${labels}`,
     duplicate: (label: string) => `列名重复：${label}`,
-    blacklist: (rowNo: number) => `第 ${rowNo} 行“加入黑名单”只能填写“是”或“否”`,
-    tooLarge: (kb: number) => `文件内容超过单次导入上限（${kb} KB），请减少行数或缩短内容后分批导入`,
+    tooLarge: '文件过大，请分批导入',
+    invalid: '文件内容不符合导入要求，请检查后重试',
+    download: '模板下载失败，请重试',
   },
 };

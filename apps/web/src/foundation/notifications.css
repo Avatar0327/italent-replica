@@ -1,0 +1,20 @@
+.notification-list article {
+  padding: 16px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.notification-list h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.notification-list p {
+  margin: 0 0 8px;
+}
+.notification-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.notification-list time {
+  display: block;
+  color: #777;
+  font-size: 12px;
+}
