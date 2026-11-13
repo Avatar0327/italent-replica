@@ -84,6 +84,28 @@ const personLinksReadOnly: Obligation = {
   ],
 };
 
+const personColumns = (file: string, path: string): Obligation => ({
+  perm: 'obj:TenantBase.EmployeeInformation:view',
+  purpose: 'disclosure:personColumns',
+  need: { scope: 'list', predicate: 'personnel.personScope' },
+  facts: ['object:object.* 动作', 'scope:resolveModuleScope'],
+  note: 'DEC-889 / F-516a P2-1：档案邮箱、手机号、员工概要状态、主职部门按当前人员范围和字段查看权投影',
+  at: [
+    route(file, 'GET', path, 'const access = await listPersonAccess(deps, ctx)'),
+    {
+      role: 'impl',
+      unit: `${DIR}/person-list-projection.ts#listPersonAccess`,
+      anchor: "const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: PERSONNEL_OBJECT })",
+    },
+    { role: 'scope', unit: `${DIR}/person-list-projection.ts#listPersonSource`, anchor: 'personScope(ctx)' },
+    {
+      role: 'impl',
+      unit: `${DIR}/person-list-projection.ts#listPersonField`,
+      anchor: 'access.canView && (access.fields === undefined || access.fields.has(field))',
+    },
+  ],
+});
+
 export const PERMISSION: RequiredTable = {
   'GET /api/tenant/permission/profiles/:id/data-scopes/:appCode': [
     scopeRoute(POLICIES, 'GET', '/profiles/:id/data-scopes/:appCode'),
@@ -112,8 +134,8 @@ export const PERMISSION: RequiredTable = {
   'GET /api/tenant/permission/grant-prefill/:userId/:profileId': [
     scopeRoute(SCOPES, 'GET', '/grant-prefill/:userId/:profileId'),
   ],
-  'GET /api/tenant/permission/users': [users('GET', '/users')],
-  'GET /api/tenant/permission/users/:userId': [users('GET', '/users/:userId')],
+  'GET /api/tenant/permission/users': [users('GET', '/users'), personColumns(USERS, '/users')],
+  'GET /api/tenant/permission/users/:userId': [users('GET', '/users/:userId'), personColumns(USERS, '/users/:userId')],
   'POST /api/tenant/permission/users': [users('POST', '/users')],
   'PUT /api/tenant/permission/users/:userId': [users('PUT', '/users/:userId')],
   'POST /api/tenant/permission/users/:userId/status': [users('POST', '/users/:userId/status')],
@@ -137,7 +159,7 @@ export const PERMISSION: RequiredTable = {
     guarded('profile_manage', 'PUT', '/profiles/:id/objects/:objectCode/fields'),
   ],
   'GET /api/tenant/permission/grantable-profiles': [guarded('user_grant', 'GET', '/grantable-profiles')],
-  'GET /api/tenant/permission/grants': [guarded('user_grant', 'GET', '/grants')],
+  'GET /api/tenant/permission/grants': [guarded('user_grant', 'GET', '/grants'), personColumns(ROUTES, '/grants')],
   'POST /api/tenant/permission/grants': [
     guarded('user_grant', 'POST', '/grants'),
     {
@@ -170,7 +192,7 @@ export const PERMISSION: RequiredTable = {
     },
   ],
   'POST /api/tenant/permission/grants/:id/revoke': [guarded('user_grant', 'POST', '/grants/:id/revoke')],
-  'GET /api/tenant/permission/admins': [guarded('admin_manage', 'GET', '/admins')],
+  'GET /api/tenant/permission/admins': [guarded('admin_manage', 'GET', '/admins'), personColumns(ROUTES, '/admins')],
   'GET /api/tenant/permission/admins/:id': [guarded('admin_manage', 'GET', '/admins/:id')],
   'POST /api/tenant/permission/admins': [guarded('admin_manage', 'POST', '/admins')],
   'PUT /api/tenant/permission/admins/:id': [guarded('admin_manage', 'PUT', '/admins/:id')],
