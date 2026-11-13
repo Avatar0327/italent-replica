@@ -1,3 +1,4 @@
+import { codeText } from '../../foundation/code-text.js';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Form } from 'antd';
 import type { ApprovalNode } from '@italent/domain';
@@ -10,11 +11,11 @@ import { m } from './messages.js';
 import { s } from './source-messages.js';
 
 const endpoint = '/api/tenant/approval/designer/person-candidates';
-type Person = { userId: string; name: string; code: string; departmentName: string | null };
+type Person = { userId: string; name: string; code: string | null; departmentName: string | null };
 type Result = { items: Person[]; hasMore: boolean };
 const choice = (person: Person): Choice => ({
   value: person.userId,
-  label: [person.name, person.code, person.departmentName].filter(Boolean).join(' · '),
+  label: [person.name, codeText(person.code), person.departmentName].filter(Boolean).join(' · '),
 });
 export function FallbackHandlers({ node, approvalType }: { node: ApprovalNode; approvalType: string }) {
   if (!supportsFallback(node, approvalType)) return null;

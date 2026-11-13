@@ -1,3 +1,5 @@
+import { registerVariableRoutes } from './variable-routes.js';
+import { registerMatrixRoutes } from './matrix-routes.js';
 import { listMyApplications, myApplicationsQuery } from './my-applications.js';
 import { readCarrierAttachment, respondAttachment as respondAttachmentBytes } from '../attachments/carrier-read.js';
 import { listTodoCards, todoCardsQuery } from './todo-cards.js';
@@ -311,6 +313,8 @@ export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
   // 审批通过后的任职联动可能撞到组织调整的执行暂停：编号按查看人的调整单可见性披露（F-342 / F-355）
   module.onError(pauseDisclosureHandler(deps));
   registerProcessRoutes(module, deps);
+  registerVariableRoutes(module, deps);
+  registerMatrixRoutes(module, deps);
   registerTenantConfigRoutes(module, deps);
   registerSimulationRoutes(module, deps);
   registerReadRoutes(module, deps);

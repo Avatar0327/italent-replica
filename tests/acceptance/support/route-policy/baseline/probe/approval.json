@@ -141,6 +141,34 @@
       "btn:TenantBase.ApprovalInstance#adminTransfer@detail"
     ]
   },
+  "GET /api/tenant/approval/matrices": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "GET /api/tenant/approval/matrices/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3bb836dee6f5",
+      "reason": "APPROVAL_MATRIX_NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
   "GET /api/tenant/approval/notifications": {
     "all": {
       "status": 200
@@ -192,6 +220,72 @@
       "status": 200
     },
     "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "GET /api/tenant/approval/variables": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "dce49dfad53d",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "GET /api/tenant/approval/variables/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "8433662e079e",
+      "reason": "APPROVAL_VARIABLE_NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "PATCH /api/tenant/approval/matrices/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "a1493a72c72c",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PATCH /api/tenant/approval/variables/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "8433662e079e",
+      "reason": "APPROVAL_VARIABLE_NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
     "scopeQueries": [],
     "trace": [
       "admin:process_matrix"
@@ -295,6 +389,55 @@
       "status": 404
     },
     "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/matrices": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "b576fe0a676f",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/matrices/:id/disable": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "a1493a72c72c",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/matrices/:id/enable": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "a1493a72c72c",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",
@@ -579,6 +722,72 @@
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "0918b13a16bc",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/variables": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ba3722c2e4db",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "POST /api/tenant/approval/variables/:id/disable": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "8433662e079e",
+      "reason": "APPROVAL_VARIABLE_NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "POST /api/tenant/approval/variables/:id/enable": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "8433662e079e",
+      "reason": "APPROVAL_VARIABLE_NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "PUT /api/tenant/approval/matrices/:id/structure": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "3704e2cba35a",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],

@@ -23,6 +23,7 @@ import { assertNotAutoHeld } from './auto-held.js';
 import { accountMatch, hasMou, mousOfUsers, type UserMou } from './enterprise-lists.js';
 import { revisionConflict } from './http.js';
 import { assertActiveMember } from './members.js';
+import { listDepartmentFilter, listPersonField, listPersons, type ListPersonAccess } from './person-list-projection.js';
 import { userLabels } from './tenant-users.js';
 
 export interface PermissionAdminView {
@@ -70,6 +71,7 @@ export async function grantableSetsOf(
 
 /** 管理员列表行：管理员记录 + 用户 / 创建信息 / 管理单元投影（F-474-5 #23）。 */
 export interface AdminListRow extends PermissionAdminView {
+  readonly department?: { readonly id: string; readonly name: string | null } | null;
   readonly displayName: string;
   readonly email: string;
   readonly mous: UserMou[];
@@ -77,10 +79,10 @@ export interface AdminListRow extends PermissionAdminView {
   readonly createdBy: { readonly userId: string; readonly displayName: string } | null;
 }
 
-/** 原站管理员列表有、本系统未记录的列 / 筛选：部门（账号与管理员记录都不带部门，不跨模块拼接）。 */
-export const ADMIN_LIST_UNRECORDED = ['department'] as const;
+export const ADMIN_LIST_UNRECORDED = [] as const;
 
 export interface AdminListQuery {
+  readonly departmentId?: string;
   readonly role?: AdminRole;
   readonly mouId?: string;
   readonly q?: string;
@@ -89,9 +91,16 @@ export interface AdminListQuery {
 }
 
 /** 总数与当页同一个 where（只含有效管理员记录）。 */
-export async function listAdmins(tx: Tx, query: AdminListQuery): Promise<{ items: AdminListRow[]; total: number }> {
+export async function listAdmins(
+  tx: Tx,
+  query: AdminListQuery,
+  access: ListPersonAccess,
+): Promise<{ items: AdminListRow[]; total: number }> {
   const where = and(
     eq(permissionAdmins.status, 'active'),
+    query.departmentId
+      ? await listDepartmentFilter(tx, access, permissionAdmins.userId, query.departmentId)
+      : undefined,
     query.role ? eq(permissionAdmins.role, query.role) : undefined,
     query.mouId ? hasMou(permissionAdmins.userId, query.mouId) : undefined,
     query.q ? accountMatch(permissionAdmins.userId, query.q) : undefined,
@@ -115,11 +124,17 @@ export async function listAdmins(tx: Tx, query: AdminListQuery): Promise<{ items
     tx,
     rows.map((r) => r.userId),
   );
+  const people = await listPersons(
+    tx,
+    access,
+    rows.map((row) => row.userId),
+  );
   // 同一事务连接上逐条查询，不并发；条数 = 本页行数，有界
   const items: AdminListRow[] = [];
   for (const row of rows) {
     items.push({
       ...(await viewOf(tx, row)),
+      ...(listPersonField(access, 'orgFullName') ? { department: people.get(row.userId)?.department ?? null } : {}),
       displayName: labels.get(row.userId)?.displayName ?? '',
       email: labels.get(row.userId)?.email ?? '',
       mous: mous.get(row.userId) ?? [],

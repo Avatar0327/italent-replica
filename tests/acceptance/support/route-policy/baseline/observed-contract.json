@@ -3921,6 +3921,50 @@
         ]
       }
     },
+    "GET /api/tenant/approval/matrices": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ]
+      }
+    },
+    "GET /api/tenant/approval/matrices/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ]
+      }
+    },
     "GET /api/tenant/approval/notifications": {
       "edge": {
         "anonymous": {
@@ -4055,6 +4099,50 @@
       "primitives": {
         "or": [
           "approval.requireProcessView"
+        ]
+      }
+    },
+    "GET /api/tenant/approval/variables": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "requireProcessButton"
+        ]
+      }
+    },
+    "GET /api/tenant/approval/variables/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "requireProcessButton"
         ]
       }
     },
@@ -8885,6 +8973,12 @@
       "primitives": {
         "admin": [
           "adminGuard"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope"
         ]
       }
     },
@@ -8997,6 +9091,12 @@
       "primitives": {
         "admin": [
           "adminGuard"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope"
         ]
       }
     },
@@ -9370,6 +9470,12 @@
       "primitives": {
         "admin": [
           "adminGuard"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope"
         ]
       }
     },
@@ -9392,6 +9498,12 @@
       "primitives": {
         "admin": [
           "adminGuard"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope"
         ]
       }
     },
@@ -13746,6 +13858,60 @@
       "module": "root",
       "primitives": {}
     },
+    "PATCH /api/tenant/approval/matrices/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "PATCH /api/tenant/approval/variables/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*",
+          "requireProcessButton"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
     "PATCH /api/tenant/employment/businesses/:id": {
       "edge": {
         "anonymous": {
@@ -17372,6 +17538,83 @@
         ]
       }
     },
+    "POST /api/tenant/approval/matrices": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "command": [
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "POST /api/tenant/approval/matrices/:id/disable": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "POST /api/tenant/approval/matrices/:id/enable": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ]
+      }
+    },
     "POST /api/tenant/approval/presets/install": {
       "edge": {
         "anonymous": {
@@ -17994,6 +18237,89 @@
         "relation": [
           "currentAssignee（assertOpen / openTask）",
           "instanceOfTask"
+        ]
+      }
+    },
+    "POST /api/tenant/approval/variables": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*",
+          "requireProcessButton"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "POST /api/tenant/approval/variables/:id/disable": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*",
+          "requireProcessButton"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "POST /api/tenant/approval/variables/:id/enable": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*",
+          "requireProcessButton"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
         ]
       }
     },
@@ -28744,6 +29070,32 @@
       "primitives": {
         "command": [
           "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "PUT /api/tenant/approval/matrices/:id/structure": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "command": [
+          "assertRevision",
           "runCommand / runWrite"
         ]
       }

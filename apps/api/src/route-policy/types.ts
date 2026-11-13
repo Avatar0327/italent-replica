@@ -88,6 +88,8 @@ export type ScopePolicy =
 
 export type FieldsFrom =
   | 'body'
+  /** 正文标准键（去掉 controls）与 customFields 的 custom:<id> 键，由业务模块执行字段校验。 */
+  | 'body+customFields'
   | 'body.fields+customFields'
   /** 只取本次输入 body.fields，不含继承字段（第 3 轮 P2-1 ②）。 */
   | 'contracts.fields+customFields'

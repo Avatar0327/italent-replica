@@ -195,7 +195,7 @@ function grantColumns(
       ),
     },
     { title: m.listEmail, dataIndex: 'userEmail', width: 218, render: textValue },
-    { title: m.phone, width: 158, render: () => m.empty },
+    { title: m.phone, dataIndex: 'phone', width: 158, render: textValue },
     { title: m.profileId, dataIndex: 'profileName', width: 158, render: textValue },
     { title: m.mous, dataIndex: 'mous', width: 158, render: mouText },
     { title: m.product, dataIndex: 'apps', width: 158, render: (apps?: string[]) => apps?.join('、') || m.empty },

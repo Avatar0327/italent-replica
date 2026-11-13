@@ -234,7 +234,79 @@ const adminTarget = (code: 'adminTransfer' | 'adminIntervene'): Obligation => ({
   ],
 });
 
+const VARIABLE_ROUTES = `${DIR}/variable-routes.ts`;
+function variableAdmin(method: string, path: string, writing = false): Obligation[] {
+  const obligation = processWrite(fn('context', "await requireProcessButton(deps, ctx, 'update')", VARIABLE_ROUTES));
+  return [
+    {
+      ...obligation,
+      facts: writing ? [...(obligation.facts ?? []), 'admin:admin.*'] : obligation.facts,
+      at: [
+        {
+          role: 'call',
+          unit: `${VARIABLE_ROUTES}#route:${method} ${path}`,
+          anchor: writing ? 'variableWrite(c, deps,' : 'await context(c, deps)',
+        },
+        ...obligation.at,
+        ...(writing
+          ? [
+              {
+                role: 'impl' as const,
+                unit: `${VARIABLE_ROUTES}#variableWrite`,
+                anchor: "action: 'admin.process_matrix'",
+              },
+            ]
+          : []),
+      ],
+    },
+  ];
+}
+
+const MATRIX_ROUTES = `${DIR}/matrix-routes.ts`;
+function matrixAdmin(method: string, path: string): Obligation[] {
+  return [
+    {
+      perm: 'admin:process_matrix',
+      facts: ['admin:admin.*'],
+      at: [
+        {
+          role: 'call',
+          unit: `${MATRIX_ROUTES}#route:${method} ${path}`,
+          anchor: method === 'GET' ? 'await requireMatrixAdmin(deps, ctx, tx)' : 'matrixCommand(c, deps,',
+        },
+        {
+          role: 'impl',
+          unit: `${MATRIX_ROUTES}#requireMatrixAdmin`,
+          anchor: "tenantId: ctx.tenantId, userId: ctx.userId, action: 'admin.process_matrix'",
+        },
+        ...(method === 'GET'
+          ? []
+          : [
+              {
+                role: 'call' as const,
+                unit: `${MATRIX_ROUTES}#matrixCommand`,
+                anchor: 'guard: { before: (tx) => requireMatrixAdmin(deps, ctx, tx) }',
+              },
+            ]),
+      ],
+    },
+  ];
+}
+
 export const APPROVAL: RequiredTable = {
+  'GET /api/tenant/approval/variables': variableAdmin('GET', '/variables'),
+  'GET /api/tenant/approval/variables/:id': variableAdmin('GET', '/variables/:id'),
+  'POST /api/tenant/approval/variables': variableAdmin('POST', '/variables', true),
+  'PATCH /api/tenant/approval/variables/:id': variableAdmin('PATCH', '/variables/:id', true),
+  'POST /api/tenant/approval/variables/:id/enable': variableAdmin('POST', '/variables/:id/enable', true),
+  'POST /api/tenant/approval/variables/:id/disable': variableAdmin('POST', '/variables/:id/disable', true),
+  'GET /api/tenant/approval/matrices': matrixAdmin('GET', '/matrices'),
+  'GET /api/tenant/approval/matrices/:id': matrixAdmin('GET', '/matrices/:id'),
+  'POST /api/tenant/approval/matrices': matrixAdmin('POST', '/matrices'),
+  'PATCH /api/tenant/approval/matrices/:id': matrixAdmin('PATCH', '/matrices/:id'),
+  'PUT /api/tenant/approval/matrices/:id/structure': matrixAdmin('PUT', '/matrices/:id/structure'),
+  'POST /api/tenant/approval/matrices/:id/enable': matrixAdmin('POST', '/matrices/:id/enable'),
+  'POST /api/tenant/approval/matrices/:id/disable': matrixAdmin('POST', '/matrices/:id/disable'),
   'GET /api/tenant/approval/designer/source-candidates': [
     processWrite(route('GET', '/designer/source-candidates', "await requireProcessButton(deps, ctx, 'update')")),
   ],

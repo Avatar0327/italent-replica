@@ -7,6 +7,7 @@ import { appRoute } from './routes.js';
 import { currentApp, searchMenus, type MenuHit } from './menu-nav.js';
 import type { MenuNode } from './permission-snapshot.js';
 import { CONFIGURATION_ROOT } from './configuration-registry.js';
+import { Notifications } from './Notifications.js';
 import { ui } from './messages.js';
 import { MenuIcon } from './ViewHeading.js';
 
@@ -145,8 +146,9 @@ function MenuGroups({ menus, onNavigate }: { menus: MenuNode[]; onNavigate: () =
   ));
 }
 
-/** 原站消息为信封图标，从右侧打开抽屉，分“通知”“@和回复我的”；复刻暂无消息接口（见后端缺口）。 */
+/** 原站消息为信封图标，从右侧打开抽屉，分“通知”“@和回复我的”；通知接入站内通知列表（F-493 §9.2）。 */
 export function MessageCenter() {
+  const session = useSession();
   const [open, setOpen] = useState(false);
   const empty = <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={ui.noMessages} />;
   return (
@@ -168,7 +170,11 @@ export function MessageCenter() {
       >
         <Tabs
           items={[
-            { key: 'notice', label: ui.notices, children: empty },
+            {
+              key: 'notice',
+              label: ui.notices,
+              children: open && <Notifications key={`${session.tenantId}/${session.identityKey}`} />,
+            },
             { key: 'mention', label: ui.mentions, children: empty },
           ]}
         />

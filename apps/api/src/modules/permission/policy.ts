@@ -1,3 +1,4 @@
+import { PERSONNEL_OBJECT } from '@italent/domain';
 /**
  * 权限模块路由的现状声明（F-039 PR-A；附录 A「/api/tenant/permission」43 条：routes 17 / data-scope 8 /
  * scope-policy 12 / user-routes 6）。企业设置类接口按 8 类管理员能力鉴权（06 §7.1），权限配置 DTO 没有字段目录，
@@ -8,6 +9,10 @@
 import { defineTable, type RoutePolicy } from '../../route-policy/index.js';
 import {
   admin,
+  object,
+  noButton,
+  listScope,
+  projector,
   commandWrite,
   configWrite,
   fixed,
@@ -19,6 +24,17 @@ import {
 } from '../../route-policy/presets.js';
 
 const BASE = '/api/tenant/permission';
+const personColumns = {
+  optional: {
+    personColumns: object({
+      object: PERSONNEL_OBJECT,
+      operation: 'view',
+      button: noButton('档案附加投影只按对象和字段查看权'),
+      scope: listScope('personnel.personScope'),
+      fields: projector('permission.listPersons', 'permission.listPersonColumns'),
+    }),
+  },
+};
 /** `permission/http.idParam`：路径标识非法 → 404 NOT_FOUND。 */
 const byId = { invalidId: NOT_FOUND };
 const adminCommand = configWrite('permission.adminCommand');
@@ -62,8 +78,8 @@ export const PERMISSION_POLICIES = defineTable('permission', {
   [`PUT ${BASE}/scopes/:userId/:appCode`]: otherSettingsWriteById,
   [`GET ${BASE}/grant-prefill/:userId/:profileId`]: otherSettingsById,
   // ---- user-routes.ts：用户管理（user_manage；停用 / 移出走平台流程，platformCommandId 平台台账 + 租户审计）----
-  [`GET ${BASE}/users`]: admin('user_manage'),
-  [`GET ${BASE}/users/:userId`]: admin('user_manage', byId),
+  [`GET ${BASE}/users`]: admin('user_manage', personColumns),
+  [`GET ${BASE}/users/:userId`]: admin('user_manage', { ...byId, ...personColumns }),
   [`POST ${BASE}/users`]: admin('user_manage', { write: platformUserWrite('外部用户登记 DTO，无字段目录') }),
   [`PUT ${BASE}/users/:userId`]: admin('user_manage', { ...byId, write: adminCommand }),
   [`POST ${BASE}/users/:userId/status`]: admin('user_manage', { ...byId, write: platformUserWrite('status 开关') }),
@@ -91,7 +107,7 @@ export const PERMISSION_POLICIES = defineTable('permission', {
     write: write(none('字段权限 DTO（只含被改字段）'), 'permission.adminCommand', none('配置对象无范围')),
   }),
   [`GET ${BASE}/grantable-profiles`]: admin('user_grant'),
-  [`GET ${BASE}/grants`]: admin('user_grant'),
+  [`GET ${BASE}/grants`]: admin('user_grant', personColumns),
   // body.scopes 非空须另有 other_settings（附加守卫）
   [`POST ${BASE}/grants`]: admin('user_grant', {
     guards: ['permission.grantScopesRequireOtherSettings'],
@@ -102,7 +118,7 @@ export const PERMISSION_POLICIES = defineTable('permission', {
     ...byId,
     write: commandWrite('permission.adminCommand', none('配置对象无范围')),
   }),
-  [`GET ${BASE}/admins`]: admin('admin_manage'),
+  [`GET ${BASE}/admins`]: admin('admin_manage', personColumns),
   [`GET ${BASE}/admins/:id`]: admin('admin_manage', byId),
   [`POST ${BASE}/admins`]: admin('admin_manage', { write: adminCommand }),
   [`PUT ${BASE}/admins/:id`]: admin('admin_manage', { ...byId, write: adminCommand }),
