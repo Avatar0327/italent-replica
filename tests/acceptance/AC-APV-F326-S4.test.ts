@@ -558,3 +558,86 @@ describe('AC-APV-F326-17 停用 / 编辑影响检查与删角色列', () => {
     expect(response.status, await response.clone().text()).toBe(200);
   });
 });
+
+describe('AC-APV-F326-17 来源失效后的修复入口（设计 §3.5、§6.2）', () => {
+  /** 来源按影响清单失效后的三种情形；repair 是失效后可以替换成的有效来源。 */
+  const cases = [
+    {
+      name: '变量停用',
+      invalid: VARIABLE_INVALID,
+      async setup(w: S4World) {
+        const v = await variable(w);
+        const source = varSource('public_variable', v.id);
+        const process = await w.publishedProcess({ nodes: [counter([source])] });
+        const { total } = await references(w, 'variables', v.id);
+        expect((await variableCommand(w, v, 'disable', { acknowledgedReferenceCount: total })).status).toBe(200);
+        return { process, source };
+      },
+    },
+    {
+      name: '矩阵停用',
+      invalid: MATRIX_INVALID,
+      async setup(w: S4World) {
+        const m = await matrix(w, { rows: [{ cond: [], role: [w.head.userId] }] });
+        const source = matrixSource(m, m.roleId);
+        const process = await w.publishedProcess({ nodes: [counter([source])] });
+        const { total } = await references(w, 'matrices', m.id);
+        expect((await matrixStatus(w, m, 'disable', { acknowledgedReferenceCount: total })).status).toBe(200);
+        return { process, source };
+      },
+    },
+    {
+      name: '公共变量移出“流程”适用范围',
+      invalid: VARIABLE_INVALID,
+      async setup(w: S4World) {
+        const v = await variable(w);
+        const source = varSource('public_variable', v.id);
+        const process = await w.publishedProcess({ nodes: [counter([source])] });
+        const { total } = await references(w, 'variables', v.id);
+        const moved = await w.request(w.hr.id, 'PATCH', `${VARIABLES}/${v.id}`, {
+          ifMatch: v.revision,
+          body: { usageScopes: ['business_rule'], acknowledgedReferenceCount: total },
+        });
+        expect(moved.status, await moved.clone().text()).toBe(200);
+        return { process, source };
+      },
+    },
+  ];
+
+  it.each(cases)('$name：编辑最新版本能建草稿；保存仍引用失效来源的配置 422，换成有效来源后可保存', async (item) => {
+    const w = await s4World(database().db, 'repair');
+    const { process, source } = await item.setup(w);
+    const base = `/api/tenant/approval/processes/${process.id}`;
+    const current = await w.json<{ revision: number }>(await w.request(w.hr.id, 'GET', base));
+
+    // 复制既有版本以便修复：不因已失效的引用被拒
+    const created = await w.request(w.hr.id, 'POST', `${base}/versions`, { ifMatch: current.revision, body: {} });
+    expect(created.status, await created.clone().text()).toBe(201);
+    const draft = await w.json<{ revision: number; latestVersion: Record<string, unknown> & { status: string } }>(
+      created,
+    );
+    expect(draft.latestVersion.status).toBe('draft');
+    const version = draft.latestVersion;
+    const save = (revision: number, nodes: ReturnType<typeof counter>[]) =>
+      w.request(w.hr.id, 'PUT', `${base}/draft`, {
+        ifMatch: revision,
+        body: {
+          name: version.name,
+          priority: version.priority,
+          isFallback: version.isFallback,
+          exceptionAdminUserId: version.exceptionAdminUserId,
+          conditions: version.conditions,
+          nodes: nodes.map((node) => ({ ...node, actions: { avoidSelf: true } })),
+        },
+      });
+
+    // 保存用户提交的新配置：仍引用失效来源照旧 422，草稿不变
+    await rejected(await save(draft.revision, [counter([source])]), 422, item.invalid);
+    const unchanged = await w.json<{ revision: number }>(await w.request(w.hr.id, 'GET', base));
+    expect(unchanged.revision).toBe(draft.revision);
+
+    // 换成有效来源后可保存
+    const fixed = await save(draft.revision, [counter([{ type: 'specified', value: w.head.userId }])]);
+    expect(fixed.status, await fixed.clone().text()).toBe(200);
+  });
+});
