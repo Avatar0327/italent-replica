@@ -48,7 +48,7 @@ export interface Disclosure {
   /** HR 路径的任职对象（人员）范围，逐员工失败按它裁剪（F-414③）；审批人路径为 null（不展示逐员工行）。 */
   readonly employmentScope: ModuleScope | null;
   readonly instanceId: string | null;
-  /** 内容源：已办读办理时冻结份；null = 读现值（F-476 §5.4）。预览 / 导出本片仍只读现值。 */
+  /** 内容源：已办读办理时冻结份；null = 读现值（F-476 §5.4）。预览 / 导出同样按它选（P2）。 */
   readonly source: OrgContent | null;
   /** 内容来源说明（与审批中心详情的 contentView 同形）；无审批实例时为现值（F-476 §5.4）。 */
   readonly contentView: ContentView;
@@ -67,14 +67,13 @@ export function canSee(fields: ReadonlySet<string> | undefined, code: string): b
  * 读接口共用的披露判定；不存在、范围外、不可打开实例都抛同一 404。
  * 先取审批参与上下文再按所选内容来源授权（F-476 §5.4）：本人已办且有办理份 → 读冻结份，走审批人路径（办理时的披露上限 ∩
  * 办理节点表单 ∩ 当前权限）；否则保持原顺序（HR → 审批人）读现值。缺份 503，不退回现值。
- * `live`：预览 / 导出（P2 才改）不做内容选择，行为与改动前一致。
  */
-export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantContext, id: string, live = false) {
+export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantContext, id: string) {
   const view = await loadAdjustment(tx, ctx.tenantId, id);
   if (!view) throw notFound();
   const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
   const instance = await latestInstanceOf(tx, ctx.tenantId, 'org_adjustment', id);
-  const data = instance ? await openApprovalDetail(tx, bound, ctx, instance, live) : null;
+  const data = instance ? await openApprovalDetail(tx, bound, ctx, instance) : null;
   if (instance && data?.content.mode === 'frozen') {
     const source = data.content.frozen.content.ext as OrgContent | null;
     if (!source) throw new AppError('SERVICE_UNAVAILABLE', '办理记录暂不可读取，请稍后重试');
