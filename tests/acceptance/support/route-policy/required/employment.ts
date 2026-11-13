@@ -619,6 +619,27 @@ const configWriteBase = (
   ob(`obj:${object}:${operation}`, [`objectOp:${object}:${operation}`], [write, WRITE_OBJECT]),
 ];
 
+/** F-474-6b-0：同一配置写判定在 CommandGuard.before 重验。 */
+const customFieldWrite = (method: 'POST' | 'PUT', path: string, operation: 'create' | 'update') =>
+  ob(
+    'guard:employment.customFieldWrite',
+    [],
+    [
+      at(EMP, method, path, `customFieldWriteGuard(deps, ctx, '${operation}', input)`),
+      {
+        role: 'impl',
+        unit: `${SRC}/employment/custom-field-guard.ts#customFieldWriteGuard`,
+        anchor:
+          "await requireEmploymentWrite(current, operation, input, undefined, 'TenantBase.EmploymentCustomField')",
+      },
+      {
+        role: 'impl',
+        unit: `${SRC}/employment/custom-field-guard.ts#customFieldWriteGuard`,
+        anchor: "action: 'tenant.employment.configuration.write'",
+      },
+    ],
+  );
+
 // ---- R2-T03 B2b 离职办理入口（exit-routes.ts）：按钮 / 范围 / 字段在入口与命令内（exitCommandGuard）各判一次 -------------
 const EXIT_PERMISSION: Evidence = {
   role: 'impl',
@@ -3184,17 +3205,20 @@ export const EMPLOYMENT: RequiredTable = {
       "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings')",
     ),
   ),
-  'POST /api/tenant/employment/custom-fields': configWrite(
-    at(EMP, 'POST', '/custom-fields', "'tenant.employment.configuration.write'"),
-    'TenantBase.EmploymentCustomField',
-    'create',
-    at(
-      EMP,
-      'POST',
-      '/custom-fields',
-      "await requireEmploymentWrite(ctx, 'create', input, undefined, 'TenantBase.EmploymentCustomField')",
+  'POST /api/tenant/employment/custom-fields': [
+    ...configWrite(
+      at(EMP, 'POST', '/custom-fields', "'tenant.employment.configuration.write'"),
+      'TenantBase.EmploymentCustomField',
+      'create',
+      at(
+        EMP,
+        'POST',
+        '/custom-fields',
+        "await requireEmploymentWrite(ctx, 'create', input, undefined, 'TenantBase.EmploymentCustomField')",
+      ),
     ),
-  ),
+    customFieldWrite('POST', '/custom-fields', 'create'),
+  ],
   'GET /api/tenant/employment/custom-fields': [
     ob(
       'obj:TenantBase.EmploymentCustomField:view',
@@ -3210,17 +3234,20 @@ export const EMPLOYMENT: RequiredTable = {
       ],
     ),
   ],
-  'PUT /api/tenant/employment/custom-fields/:id/inheritance': configWrite(
-    at(EMP, 'PUT', '/custom-fields/:id/inheritance', "'tenant.employment.configuration.write'"),
-    'TenantBase.EmploymentCustomField',
-    'update',
-    at(
-      EMP,
-      'PUT',
-      '/custom-fields/:id/inheritance',
-      "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentCustomField')",
+  'PUT /api/tenant/employment/custom-fields/:id/inheritance': [
+    ...configWrite(
+      at(EMP, 'PUT', '/custom-fields/:id/inheritance', "'tenant.employment.configuration.write'"),
+      'TenantBase.EmploymentCustomField',
+      'update',
+      at(
+        EMP,
+        'PUT',
+        '/custom-fields/:id/inheritance',
+        "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentCustomField')",
+      ),
     ),
-  ),
+    customFieldWrite('PUT', '/custom-fields/:id/inheritance', 'update'),
+  ],
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（办理入职 / 取消 / 改期 / 删除）-------------------------------
   'POST /api/tenant/employment/pending-entries/:id/complete': [
     ...entryUpdate(

@@ -10,10 +10,35 @@ import { base, type User } from './model.js';
 import { Facts, Notice, RemoteDetail, Status } from './parts.js';
 import type { SettingsProps } from './SettingsPage.js';
 import { useSettingsList, useListInstant, useRowSelection } from './list-support.js';
-import { ListFilters } from './ListFilters.js';
+import { ListFilters, type ListFilterField } from './ListFilters.js';
 import { m } from './messages.js';
+const userFilterFields: ListFilterField[] = [
+  { name: 'q', label: m.accountSearch },
+  { name: 'contactEmail', label: m.email },
+  {
+    name: 'accountStatus',
+    label: m.accountStatus,
+    defaultValue: 'active',
+    options: [
+      { value: 'active', label: m.active },
+      { value: 'disabled', label: m.disabled },
+    ],
+  },
+  {
+    name: 'type',
+    label: m.userType,
+    options: [
+      { value: 'internal', label: m.users },
+      { value: 'external', label: m.external },
+    ],
+  },
+];
+
 export function UsersPage({ code, title, editable }: SettingsProps) {
-  const list = useSettingsList<User>('users', { type: code.split('.')[1]! });
+  const list = useSettingsList<User>('users', {
+    type: code.split('.')[1]!,
+    ...(code === 'users.all' ? { accountStatus: 'active' } : {}),
+  });
   const { page, setPage } = list;
   const instant = useListInstant();
   const selection = useRowSelection(list.data?.items ?? [], (row) => row.userId);
@@ -31,24 +56,7 @@ export function UsersPage({ code, title, editable }: SettingsProps) {
         loading={list.loading}
         error={list.error}
         retry={list.refresh}
-        filters={
-          code === 'users.all' && (
-            <ListFilters
-              apply={list.apply}
-              fields={[
-                { name: 'q', label: m.accountSearch },
-                {
-                  name: 'type',
-                  label: m.userType,
-                  options: [
-                    { value: 'internal', label: m.users },
-                    { value: 'external', label: m.external },
-                  ],
-                },
-              ]}
-            />
-          )
-        }
+        filters={code === 'users.all' && <ListFilters apply={list.apply} fields={userFilterFields} />}
         actions={
           <>
             <Button onClick={list.refresh}>{m.refresh}</Button>

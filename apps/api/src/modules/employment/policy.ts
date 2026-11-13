@@ -1734,7 +1734,9 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     'create',
     CUSTOM_FIELD_FIELDS,
     auditedConfigWrite('employment_custom_field'),
+    { guards: ['employment.customFieldWrite'] },
   ),
+  // DEC-893：objectType 查询支持四类，创建仍限任职 / 合同；五种值类型。
   // objectType 查询非法 → 400；hasDataPermission 恒 true（配置对象无范围）
   'GET /custom-fields': configurationView(CUSTOM_FIELD, CUSTOM_FIELD_FIELDS),
   // 管理员别名先于 uuidParam（非 UUID → 400）；body 严格 { inherit }（400）；字段不存在 → 404「自定义字段不存在」；
@@ -1744,7 +1746,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     'update',
     CUSTOM_FIELD_FIELDS,
     auditedConfigWrite('employment_custom_field'),
-    byId,
+    { ...byId, guards: ['employment.customFieldWrite'] },
   ),
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（34 EN-R8 / R9 / R10 / R14）---------------------------------
   // 办理入职：If-Match = 业务 revision；body 严格 { probation, contract? }（400；contract = 合同字段白名单，BE-2b，同事务调
