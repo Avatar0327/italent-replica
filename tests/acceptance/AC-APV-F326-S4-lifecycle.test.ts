@@ -189,3 +189,38 @@ describe.each<Status>(['running', 'returned', 'withdrawn'])('AC-APV-F326-18 在�
     ).toHaveLength(1);
   });
 });
+
+describe('AC-APV-F326-11 公共变量移出“流程”适用范围（设计 §3.5）', () => {
+  it('实例停在第一节点时移出范围：第二节点按“没有人”走空人策略，不再派给原人员', async () => {
+    const w = await s4World(database().db, 'scope-out');
+    const v = await variable(w, { defaultValue: w.head.userId });
+    const source = varSource('public_variable', v.id);
+    await w.publishedProcess({
+      nodes: [
+        counter([{ type: 'specified', value: w.near.userId }], { key: 'a' }),
+        counter([source], { key: 'b', noAssignee: 'exception_admin' }),
+      ],
+    });
+    const instance = await w.submit(await w.application(w.subject.employeeId, { departmentId: w.staff }));
+    const first = w.pending(instance);
+    expect(first.map((task) => [task.nodeKey, task.assigneeUserId])).toEqual([['a', w.near.userId]]);
+
+    const { total } = await references(w, 'variables', v.id);
+    const moved = await w.request(w.hr.id, 'PATCH', `/api/tenant/approval/variables/${v.id}`, {
+      ifMatch: v.revision,
+      body: { usageScopes: ['business_rule'], acknowledgedReferenceCount: total },
+    });
+    expect(moved.status, await moved.clone().text()).toBe(200);
+
+    const done = await w.taskAction(w.near.userId, first[0]!.id, 'approve', instance.revision, {});
+    expect(done.status, await done.clone().text()).toBe(200);
+    const after = await w.detail(instance.id);
+    const tasks = w.pending(after);
+    expect(tasks.map((task) => [task.nodeKey, task.assigneeUserId, task.isExceptionAdmin])).toEqual([
+      ['b', w.exceptionAdmin, true],
+    ]);
+    expect(after.logs.filter((log) => log.event === 'no_assignee_exception_admin' && log.nodeKey === 'b')).toHaveLength(
+      1,
+    );
+  });
+});
