@@ -74,13 +74,14 @@ async function enableMatrix(w: S4World, id: string) {
 }
 
 async function currentAdmin(w: S4World, db: Parameters<typeof withTenant>[0], processId: string) {
-  return withTenant(db, w.tenant.id, async (tx) =>
-    rowsOf<{ exception_admin_user_id: string; version_no: number }>(
-      await tx.execute(sql`SELECT v.exception_admin_user_id::text, v.version_no FROM approval_processes p
+  const rows = await withTenant(db, w.tenant.id, async (tx) =>
+    rowsOf<{ exception_admin_user_id: string }>(
+      await tx.execute(sql`SELECT v.exception_admin_user_id::text FROM approval_processes p
         JOIN approval_process_versions v ON v.tenant_id=p.tenant_id AND v.id=p.current_version_id
         WHERE p.tenant_id=${w.tenant.id} AND p.id=${processId}::uuid`),
-    ).then((rows) => rows[0]!),
+    ),
   );
+  return rows[0]!;
 }
 
 describe('AC-APV-F326-S5 异常管理员交接重发不被失效来源挡住（交接入口）', () => {
