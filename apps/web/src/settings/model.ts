@@ -78,6 +78,8 @@ export function scopeInput(values: Record<string, unknown>) {
   throw new ApiError(400, 'VALIDATION_ERROR', 'fields', m.invalid);
 }
 export interface User {
+  contactPhone?: string | null;
+  employeeStatus?: string | null;
   contactEmail?: string | null;
   accountStatus?: string;
   createdAt?: string;
@@ -109,6 +111,7 @@ export interface Profile {
   }[];
 }
 export interface Grant {
+  phone?: string | null;
   userName?: string;
   userEmail?: string;
   profileName?: string;
@@ -172,6 +175,7 @@ export interface UserMou {
   name: string;
 }
 export interface AdminRow {
+  department?: { id: string; name: string | null } | null;
   id: string;
   userId: string;
   displayName: string;

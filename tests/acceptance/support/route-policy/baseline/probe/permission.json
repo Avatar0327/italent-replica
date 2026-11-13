@@ -72,10 +72,15 @@
     "all": {
       "status": 200
     },
-    "fieldQueries": [],
-    "scopeQueries": [],
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
     "trace": [
-      "admin:admin_manage"
+      "admin:admin_manage",
+      "obj:TenantBase.EmployeeInformation:view"
     ]
   },
   "GET /api/tenant/permission/admins/:id": {
@@ -144,10 +149,15 @@
     "all": {
       "status": 200
     },
-    "fieldQueries": [],
-    "scopeQueries": [],
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
     "trace": [
-      "admin:user_grant"
+      "admin:user_grant",
+      "obj:TenantBase.EmployeeInformation:view"
     ]
   },
   "GET /api/tenant/permission/licenses": {
@@ -367,10 +377,15 @@
     "all": {
       "status": 200
     },
-    "fieldQueries": [],
-    "scopeQueries": [],
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
     "trace": [
-      "admin:user_manage"
+      "admin:user_manage",
+      "obj:TenantBase.EmployeeInformation:view"
     ]
   },
   "GET /api/tenant/permission/users/:userId": {
@@ -379,15 +394,20 @@
       "error": "a8d16da3a3ca",
       "status": 404
     },
-    "fieldQueries": [],
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation"
+    ],
     "invalidId": {
       "code": "NOT_FOUND",
       "error": "d40a65b9992b",
       "status": 404
     },
-    "scopeQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
     "trace": [
-      "admin:user_manage"
+      "admin:user_manage",
+      "obj:TenantBase.EmployeeInformation:view"
     ]
   },
   "POST /api/tenant/permission/admins": {

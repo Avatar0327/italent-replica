@@ -46,7 +46,7 @@ export function userColumns(
       { title: m.loginPhone, width: 128, render: () => m.empty },
       ...(all ? [{ title: m.loginName, dataIndex: 'email', width: 188, render: accountText }] : []),
       { title: m.contactEmail, width: 188, dataIndex: 'contactEmail', render: all ? accountText : textValue },
-      { title: m.contactPhone, width: 128, render: () => m.empty },
+      { title: m.contactPhone, dataIndex: 'contactPhone', width: 128, render: textValue },
       {
         title: m.userType,
         dataIndex: 'userType',
@@ -65,7 +65,12 @@ export function userColumns(
         render: (value?: string) =>
           (({ active: m.active, disabled: m.disabled }) as Record<string, string>)[value ?? ''] ?? m.empty,
       },
-      { title: m.employeeStatus, width: 128, render: () => m.empty },
+      {
+        title: m.employeeStatus,
+        dataIndex: 'employeeStatus',
+        width: 128,
+        render: (value?: string | null) => m.employeeStatuses[value as keyof typeof m.employeeStatuses] ?? m.empty,
+      },
       columnGear,
     ];
   return [...identity, gaps[0]!, email, ...gaps.slice(1), status];

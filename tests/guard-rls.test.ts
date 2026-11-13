@@ -101,8 +101,9 @@ describe('守卫：带 tenant_id 的表必须启用并强制 RLS', () => {
   });
 
   it('不含 tenant_id 的表都在平台表豁免清单内（新增平台表必须在此登记理由）', async () => {
-    // 豁免理由：这些表描述平台本身或跨租户的全局对象，不属于任何租户；只授予 app_platform，app_user 无权访问
+    // 豁免理由：这些表描述平台本身或跨租户的全局对象；除下方 tenantReadable 白名单外，app_user 无权访问
     const platformTables: Record<string, string> = {
+      admin_regions: '公开行政区划、无租户数据、仅 SELECT',
       tenants: '租户本身',
       users: '全局身份，一人可属多租户',
       system_settings: '系统级预置，租户只读',
@@ -123,8 +124,8 @@ describe('守卫：带 tenant_id 的表必须启用并强制 RLS', () => {
     const tables = rowsOf<{ table: string }>(result).map((r) => r.table);
     expect(tables).toEqual(Object.keys(platformTables).sort());
 
-    // 租户角色只读的两张：系统预置、凭据密钥版本登记（均不含租户数据与秘密）
-    const tenantReadable = new Set(['system_settings', 'survey360_credential_key_versions']);
+    // 租户角色只读：公开行政区划、系统预置、凭据密钥版本登记（均不含租户数据与秘密）
+    const tenantReadable = new Set(['admin_regions', 'system_settings', 'survey360_credential_key_versions']);
     for (const table of tables.filter((t) => !tenantReadable.has(t))) {
       const [row] = rowsOf<{ ok: boolean }>(
         await testDb().db.execute(sql`SELECT has_table_privilege(${APP_ROLE.tenant}, ${table}, 'SELECT') AS ok`),

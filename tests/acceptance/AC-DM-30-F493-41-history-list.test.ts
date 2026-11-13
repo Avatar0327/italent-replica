@@ -43,9 +43,14 @@ const listOf = async (request: Promise<Response>): Promise<HistoryPage> => {
 };
 const adminList = (x: ImportWorld, query = '') => listOf(x.session.request('GET', `/exits/import/batches${query}`));
 
-/** 把批次的提交时间固定成“现在 - minutes 分钟”，让倒序断言不依赖提交的先后间隔。 */
+// F-518：固定在北京时间 00:20，持续复现回退 40 / 30 分钟跨到前一天的边界。
+const historyReferenceTime = '2026-11-11T00:20:00+08:00';
+
+/** 以基准日期的北京中午减去 minutes，保证四批同日且排序不依赖实际运行时刻。 */
 const stamp = (x: ImportWorld, batchId: string, minutes: number) =>
-  x.q(x.sql`UPDATE exit_import_batches SET created_at = now() - make_interval(mins => ${minutes})
+  x.q(x.sql`UPDATE exit_import_batches
+    SET created_at = (((${historyReferenceTime}::timestamptz AT TIME ZONE 'Asia/Shanghai')::date
+      + time '12:00') AT TIME ZONE 'Asia/Shanghai') - make_interval(mins => ${minutes})
     WHERE tenant_id=${x.tenantId} AND id=${batchId}::uuid`);
 
 /** 不经执行器直接落一个终态批次（只测列表，列表不读行数据）。 */
@@ -161,9 +166,11 @@ describe('AC-DM-30-F493-41 导入历史列表', () => {
         'running',
       ]);
       expect((await x.session.request('GET', '/exits/import/batches?status=queued')).status).toBe(400);
-      const today = (await x.q<{ d: string }>(x.sql`SELECT (now() AT TIME ZONE 'Asia/Shanghai')::date::text AS d`))[0]!
-        .d;
-      expect((await adminList(x, `?from=${today}&to=${today}`)).items).toHaveLength(4);
+      const historyDate = (
+        await x.q<{ d: string }>(x.sql`SELECT
+          (${historyReferenceTime}::timestamptz AT TIME ZONE 'Asia/Shanghai')::date::text AS d`)
+      )[0]!.d;
+      expect((await adminList(x, `?from=${historyDate}&to=${historyDate}`)).items).toHaveLength(4);
       expect((await adminList(x, '?from=2020-01-01&to=2020-01-31')).items).toHaveLength(0);
 
       // B 的列表看不到 A 的批次；T2 看不到 A 的批次
