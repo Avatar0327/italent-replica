@@ -1,4 +1,4 @@
-/** F-474-8b §3.1 / AC-INS-16：公开行政区划只读字典，首片父级优先。 */
+/** F-474-8b §3.1 / AC-INS-16：公开行政区划只读字典，首片父级优先（读取只取首片 1900 条，第二片见 8c1）。 */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { pgErrorCode, useTestDb } from '@italent/testkit';
@@ -9,11 +9,6 @@ const tenants = [randomUUID(), randomUUID()];
 const rows = <T>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 const read = (tenantId: string) =>
   withTenant(testDb().db, tenantId, async (tx) =>
-    rows(await tx.execute(sql`SELECT code, parent_code, level, name FROM admin_regions ORDER BY level, code`)),
-  );
-// 首片 = 按层级、代码排序的前 1900 条；第二片（8c-1）之后表内行数不止首片。
-const readFirstSlice = (tenantId: string) =>
-  withTenant(testDb().db, tenantId, async (tx) =>
     rows(
       await tx.execute(sql`SELECT code, parent_code, level, name FROM admin_regions ORDER BY level, code LIMIT 1900`),
     ),
@@ -21,9 +16,9 @@ const readFirstSlice = (tenantId: string) =>
 
 describe('AC-F474-8c0 字典迁移与数据库只读契约', () => {
   it('AC-F474-8c0-01 两个租户经 app_user 读取相同的 1900 条公开首片', async () => {
-    const a = await readFirstSlice(tenants[0]!);
+    const a = await read(tenants[0]!);
     expect(a).toHaveLength(1900);
-    expect(await readFirstSlice(tenants[1]!)).toEqual(a);
+    expect(await read(tenants[1]!)).toEqual(a);
     expect(a).toEqual(
       expect.arrayContaining([
         { code: '110000', parent_code: null, level: 1, name: '北京市' },
@@ -41,8 +36,7 @@ describe('AC-F474-8c0 字典迁移与数据库只读契约', () => {
     const result = await withTenant(testDb().db, tenants[0]!, (tx) =>
       tx.execute(sql`
       SELECT level, count(*)::int AS count
-      FROM (SELECT level FROM admin_regions ORDER BY level, code LIMIT 1900) first_slice
-      GROUP BY level ORDER BY level`),
+      FROM (SELECT level FROM admin_regions ORDER BY level, code LIMIT 1900) f GROUP BY level ORDER BY level`),
     );
     expect(rows(result)).toEqual([
       { level: 1, count: 34 },
