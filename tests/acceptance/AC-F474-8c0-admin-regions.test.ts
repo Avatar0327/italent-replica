@@ -11,12 +11,19 @@ const read = (tenantId: string) =>
   withTenant(testDb().db, tenantId, async (tx) =>
     rows(await tx.execute(sql`SELECT code, parent_code, level, name FROM admin_regions ORDER BY level, code`)),
   );
+// 首片 = 按层级、代码排序的前 1900 条；第二片（8c-1）之后表内行数不止首片。
+const readFirstSlice = (tenantId: string) =>
+  withTenant(testDb().db, tenantId, async (tx) =>
+    rows(
+      await tx.execute(sql`SELECT code, parent_code, level, name FROM admin_regions ORDER BY level, code LIMIT 1900`),
+    ),
+  );
 
 describe('AC-F474-8c0 字典迁移与数据库只读契约', () => {
   it('AC-F474-8c0-01 两个租户经 app_user 读取相同的 1900 条公开首片', async () => {
-    const a = await read(tenants[0]!);
+    const a = await readFirstSlice(tenants[0]!);
     expect(a).toHaveLength(1900);
-    expect(await read(tenants[1]!)).toEqual(a);
+    expect(await readFirstSlice(tenants[1]!)).toEqual(a);
     expect(a).toEqual(
       expect.arrayContaining([
         { code: '110000', parent_code: null, level: 1, name: '北京市' },
@@ -33,7 +40,9 @@ describe('AC-F474-8c0 字典迁移与数据库只读契约', () => {
   it('AC-F474-8c0-02 首片含全部省市，所有父级已存在且层级在先', async () => {
     const result = await withTenant(testDb().db, tenants[0]!, (tx) =>
       tx.execute(sql`
-      SELECT level, count(*)::int AS count FROM admin_regions GROUP BY level ORDER BY level`),
+      SELECT level, count(*)::int AS count
+      FROM (SELECT level FROM admin_regions ORDER BY level, code LIMIT 1900) first_slice
+      GROUP BY level ORDER BY level`),
     );
     expect(rows(result)).toEqual([
       { level: 1, count: 34 },
