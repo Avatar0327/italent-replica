@@ -12,7 +12,7 @@ export interface ContractChoice {
   readonly name: string | null;
 }
 export interface EmployeeChoice extends Choice {
-  readonly code: string;
+  readonly code: string | null;
   readonly revision: number;
 }
 export interface TransferCatalog {

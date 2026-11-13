@@ -1,3 +1,11 @@
+import type { EmployeeStatus } from '../employment/employees.js';
+import {
+  listContactEmailFilter,
+  listContactEmailMatch,
+  listPersonField,
+  listPersons,
+  type ListPersonAccess,
+} from './person-list-projection.js';
 /**
  * 企业设置 · 用户管理（R1-T15；DEC-128；06 §9、§7.1）。租户内的用户 = 成员关系（tenant_memberships），
  * 全局登录账号（users）只经迁移 0032 的两个受限定义者函数访问：按登录邮箱找到或新建账号、读取本租户成员的账号。
@@ -21,7 +29,7 @@ import {
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { audit, type WriteContext } from './audit.js';
-import { accountMatch, likePattern } from './enterprise-lists.js';
+import { accountMatch } from './enterprise-lists.js';
 import { revisionConflict } from './http.js';
 import { scopeRows } from './scope-hierarchy.js';
 import { userAvatars, type AvatarReference } from '../avatar/references.js';
@@ -46,7 +54,12 @@ export interface TenantUserView {
 }
 
 /** 原站用户列表有、本系统未记录的列：不伪造，前端不显示或显示「--」（F-474-5 #21）。 */
-export const USER_LIST_UNRECORDED = ['loginPhone', 'source', 'createdBy', 'contactPhone', 'employeeStatus'] as const;
+export const USER_LIST_UNRECORDED = ['loginPhone', 'source', 'createdBy'] as const;
+
+export interface TenantUserListView extends TenantUserView {
+  readonly contactPhone?: string | null;
+  readonly employeeStatus?: EmployeeStatus | null;
+}
 
 export type UserTypeFilter = UserType | 'all';
 
@@ -148,7 +161,7 @@ function memberQuery(tx: Tx, where: SQL | undefined) {
 
 type MemberRow = { membership: TenantMembership; employeeId: string | null };
 
-async function viewsOf(tx: Tx, rows: readonly MemberRow[]): Promise<TenantUserView[]> {
+async function accountViewsOf(tx: Tx, rows: readonly MemberRow[]): Promise<Omit<TenantUserView, 'contactEmail'>[]> {
   const accounts = await accountsOf(
     tx,
     rows.map((r) => r.membership.userId),
@@ -160,17 +173,12 @@ async function viewsOf(tx: Tx, rows: readonly MemberRow[]): Promise<TenantUserVi
         rows.map((r) => r.membership.userId),
       )
     : new Map();
-  const contacts = await contactEmails(
-    tx,
-    rows.flatMap((r) => (r.employeeId ? [r.employeeId] : [])),
-  );
   return rows.map(({ membership: m, employeeId }) => {
     const account = accounts.get(m.userId);
     return {
       userId: m.userId,
       avatar: avatars.get(m.userId) ?? null,
       email: account?.email ?? '',
-      contactEmail: (employeeId ? contacts.get(employeeId) : null) ?? null,
       displayName: account?.displayName ?? '',
       // 档案绑定由早期夹具 / 导入直接写入时尚未登记类型，按绑定视为内部员工
       userType: employeeId ? 'internal' : m.userType,
@@ -186,18 +194,16 @@ async function viewsOf(tx: Tx, rows: readonly MemberRow[]): Promise<TenantUserVi
 }
 
 /** 姓名 / 登录邮箱（账号）或联系邮箱（绑定档案最新版本）包含 q。 */
-function textMatch(q: string): SQL {
-  const pattern = likePattern(q);
-  return sql`(${accountMatch(tenantMemberships.userId, q)} OR EXISTS (
-    SELECT 1 FROM personnel_employee_versions v
-    WHERE v.employee_id = ${permissionUserPersonLinks.employeeId}
-      AND v.revision = (SELECT max(m.revision) FROM personnel_employee_versions m WHERE m.employee_id = v.employee_id)
-      AND lower(coalesce(v.email, '')) LIKE ${pattern}))`;
+function textMatch(q: string, access: ListPersonAccess): SQL {
+  return sql`(${accountMatch(tenantMemberships.userId, q)}
+    OR ${listContactEmailMatch(access, tenantMemberships.userId, q)})`;
 }
 
 export interface UserListQuery {
   readonly type: UserTypeFilter;
   readonly membershipStatus?: TenantMembership['status'];
+  readonly accountStatus?: 'active' | 'disabled';
+  readonly contactEmail?: string;
   readonly q?: string;
   readonly limit: number;
   readonly offset: number;
@@ -207,11 +213,19 @@ export interface UserListQuery {
 export async function listTenantUsers(
   tx: Tx,
   query: UserListQuery,
-): Promise<{ items: TenantUserView[]; total: number }> {
+  access: ListPersonAccess,
+): Promise<{ items: TenantUserListView[]; total: number }> {
+  const accountStatus = query.accountStatus ?? (query.type === 'all' ? 'active' : undefined);
   const where = and(
     typeFilter(query.type),
+    accountStatus
+      ? sql`${tenantMemberships.userId} IN (
+      SELECT a.account_id FROM tenant_member_accounts(ARRAY(SELECT m.user_id FROM tenant_memberships m)) a
+      WHERE a.status=${accountStatus})`
+      : undefined,
+    query.contactEmail ? listContactEmailFilter(access, tenantMemberships.userId, query.contactEmail) : undefined,
     query.membershipStatus ? eq(tenantMemberships.status, query.membershipStatus) : undefined,
-    query.q ? textMatch(query.q) : undefined,
+    query.q ? textMatch(query.q, access) : undefined,
   );
   const rows = await memberQuery(tx, where)
     .orderBy(asc(tenantMemberships.createdAt), asc(tenantMemberships.id))
@@ -228,13 +242,37 @@ export async function listTenantUsers(
       ),
     )
     .where(where);
-  return { items: await viewsOf(tx, rows), total: count?.total ?? 0 };
+  const people = await listPersons(
+    tx,
+    access,
+    rows.map((row) => row.membership.userId),
+  );
+  const items = (await accountViewsOf(tx, rows)).map((row) => ({
+    ...row,
+    contactEmail: people.get(row.userId)?.contactEmail ?? null,
+    ...(listPersonField(access, 'mobilePhone') ? { contactPhone: people.get(row.userId)?.contactPhone ?? null } : {}),
+    ...(listPersonField(access, 'employeeStatus')
+      ? { employeeStatus: people.get(row.userId)?.employeeStatus ?? null }
+      : {}),
+  }));
+  return { items, total: count?.total ?? 0 };
 }
 
 export async function getTenantUser(tx: Tx, userId: string): Promise<TenantUserView> {
   const [row] = await memberQuery(tx, eq(tenantMemberships.userId, userId));
   if (!row) throw notFound();
-  return (await viewsOf(tx, [row]))[0]!;
+  const contacts = await contactEmails(tx, row.employeeId ? [row.employeeId] : []);
+  return {
+    ...(await accountViewsOf(tx, [row]))[0]!,
+    contactEmail: (row.employeeId ? contacts.get(row.employeeId) : null) ?? null,
+  };
+}
+
+/** 详情接口的出参：档案联系邮箱与列表同口径，需人员对象查看 + 邮箱字段 + 数据范围（DEC-901）。 */
+export async function getTenantUserFor(tx: Tx, userId: string, access: ListPersonAccess): Promise<TenantUserView> {
+  const user = await getTenantUser(tx, userId);
+  const people = await listPersons(tx, access, [userId]);
+  return { ...user, contactEmail: people.get(userId)?.contactEmail ?? null };
 }
 
 export interface ExternalUserInput {
