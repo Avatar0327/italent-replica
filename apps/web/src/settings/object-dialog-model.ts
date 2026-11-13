@@ -5,7 +5,7 @@ import type { Profile } from './model.js';
 import { base } from './model.js';
 import { om } from './object-messages.js';
 export type DialogMode = 'data-operations' | 'fields';
-export type ProfileDetail = Omit<Profile, 'objects'> & { objects: ObjectPermission[] };
+export type ProfileDetail = Omit<Profile, 'objects'> & { objects: (ObjectPermission & { catalogDigest?: string })[] };
 export interface FieldRow {
   fieldCode: string;
   system: boolean;

@@ -65,9 +65,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/evaluation/flow-catalog.ts#EVALUATION_FLOW_OBJECTS',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/permission/object-permission.ts#ObjectCatalog',
+    'packages/domain/src/permission/page-catalog.ts#PAGE_CARRIERS',
     'packages/domain/src/platform/employee-self-service.ts#SELF_APPLICATION_OBJECTS',
     'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS',
-    'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS',
   ],
   'apps/api/src/modules/permission/data-scope-admin.ts#applyGrantScopes': ['#assignUserAppScope'],
@@ -526,6 +526,7 @@ export const GRAPH: Graph = {
     'apps/api/src/seeds/grant-ledger.ts#recordTenantSave',
     'packages/domain/src/permission/object-permission.ts#isWithinProfileApps',
     'packages/domain/src/permission/object-permission.ts#validateObjectPermission',
+    'packages/domain/src/permission/page-catalog.ts#isPageCarrier',
     'packages/domain/src/platform/standard-grants.ts#objectCatalogDigest',
   ],
   'apps/api/src/modules/permission/profiles.ts#view': [
