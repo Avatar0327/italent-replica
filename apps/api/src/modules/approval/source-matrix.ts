@@ -58,9 +58,11 @@ const hits = (cell: readonly string[], values: readonly string[]) =>
 export async function resolveMatrix(tx: Tx, subject: RoutingSubject, source: ApproverSource): Promise<Candidate[]> {
   const parts = matrixSourceParts(source);
   if (!parts) return [];
+  // 表头取共享锁并持到事务结束：与管理员整体保存 / 停用（FOR UPDATE）串行，状态、列、行、单元格来自同一份结构
+  // （矩阵详情入口同口径）；否则交错时会读到新行的单元格而旧行表里没有它，推进抛 TypeError
   const [head] = rowsOf<{ status: string }>(
     await tx.execute(sql`SELECT status FROM approval_matrices
-      WHERE tenant_id=${subject.tenantId}::uuid AND id=${parts.matrixId}::uuid`),
+      WHERE tenant_id=${subject.tenantId}::uuid AND id=${parts.matrixId}::uuid FOR SHARE`),
   );
   if (head?.status !== 'enabled') return [];
   const { columns, rows } = await loadMatrixStructure(tx, subject.tenantId, parts.matrixId);
