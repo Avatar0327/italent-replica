@@ -50,6 +50,14 @@ const radio = (label: string) =>
   [...dialog()!.querySelectorAll('label.ant-radio-wrapper')].find((node) => text(node) === label);
 const disabled = (label: string) => (find(label) as HTMLButtonElement | undefined)?.disabled;
 const reset = async () => ui.remount();
+/** 结果未知会把命令钉在模块级存储里（设计如此），锁定类用例各用一条独有矩阵，排在列表首位，不影响别的用例。 */
+let lockSeq = 0;
+function lone() {
+  lockSeq += 1;
+  const id = `81000000-0000-4000-8000-0000000005${String(lockSeq).padStart(2, '0')}`;
+  backend.db.set(id, head({ id, code: `A0_LOCK${lockSeq}`, name: '合成锁定矩阵', revision: 3 }));
+  return id;
+}
 
 describe('AC-APV-F326-24 矩阵列表', () => {
   it('启用的 / 停用的两个页签按服务端状态过滤，默认选中第一项并显示头部', async () => {
@@ -222,6 +230,7 @@ describe('AC-APV-F326-24 头部编辑弹窗', () => {
   });
 
   it('编辑结果未知：弹窗与启停锁定，离开再回来仍锁定；回查原单不生成新命令', async () => {
+    const id = lone();
     await ui.render();
     await click('编辑');
     await type(field('name'), '未知改名');
@@ -240,16 +249,17 @@ describe('AC-APV-F326-24 头部编辑弹窗', () => {
     expect(text(dialog())).toContain('结果待确认');
     expect(disabled('保存')).toBe(true);
     await click('回查原单', dialog());
-    expect(backend.reads.at(-1)!.pathname).toBe(`${BASE}/${ids.a}`);
+    expect(backend.reads.at(-1)!.pathname).toBe(`${BASE}/${id}`);
     expect(text(dialog())).toContain('结果待确认');
     expect(backend.writes).toHaveLength(1);
   });
 
   it('回执与命令不符（revision 不是原值 + 1）按结果未知锁定', async () => {
+    const id = lone();
     await ui.render();
     await click('编辑');
     await type(field('name'), '坏回执');
-    backend.state.fail = () => Response.json({ ...backend.db.get(ids.a)!, name: '坏回执', revision: 99 });
+    backend.state.fail = () => Response.json({ ...backend.db.get(id)!, name: '坏回执', revision: 99 });
     await click('保存', dialog());
     expect(text(dialog())).toContain('结果待确认');
     expect(disabled('保存')).toBe(true);
@@ -337,7 +347,7 @@ describe('AC-APV-F326-24 启停', () => {
     backend.db.set(ids.a, { ...backend.db.get(ids.a)!, name: '他人改名', revision: 5 });
     await click('停用');
     await click('确定', dialog());
-    expect(text()).toContain('审批数据已变更');
+    expect(text()).toContain('记录已被更新');
     expect(headText()).toContain('他人改名');
     await click('停用');
     await click('确定', dialog());
@@ -346,6 +356,7 @@ describe('AC-APV-F326-24 启停', () => {
   });
 
   it('停用结果未知：启停与编辑锁定，离开再回来仍锁定，不生成新命令', async () => {
+    const id = lone();
     await ui.render();
     await click('停用');
     backend.state.fail = () => {
@@ -359,7 +370,7 @@ describe('AC-APV-F326-24 启停', () => {
     expect(text()).toContain('结果待确认');
     expect(disabled('停用')).toBe(true);
     await click('回查原单');
-    expect(backend.reads.at(-1)!.pathname).toBe(`${BASE}/${ids.a}`);
+    expect(backend.reads.at(-1)!.pathname).toBe(`${BASE}/${id}`);
     expect(disabled('停用')).toBe(true);
     expect(backend.writes).toHaveLength(1);
   });

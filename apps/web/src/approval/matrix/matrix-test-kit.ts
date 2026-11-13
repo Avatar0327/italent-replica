@@ -76,6 +76,32 @@ export interface Write {
 }
 type Fail = (write: Write) => Response | Promise<Response> | undefined;
 
+function list(db: Map<string, Head>, url: URL) {
+  const status = url.searchParams.get('status') ?? 'active';
+  const q = (url.searchParams.get('q') ?? '').toLowerCase();
+  const offset = Number(url.searchParams.get('offset') ?? 0);
+  const limit = Number(url.searchParams.get('limit') ?? 50);
+  const rows = [...db.values()]
+    .filter((item) => (status === 'active' ? item.status !== 'disabled' : item.status === 'disabled'))
+    .filter((item) => !q || item.code.toLowerCase().includes(q) || item.name.toLowerCase().includes(q))
+    .sort((x, y) => x.code.localeCompare(y.code));
+  return { items: rows.slice(offset, offset + limit), offset, limit, hasMore: rows.length > offset + limit };
+}
+function seed(db: Map<string, Head>, refs: Map<string, { items: Reference[]; total?: number }>) {
+  for (const item of [
+    head({ id: ids.a, code: 'APPROVE_A', name: '合成矩阵甲', description: '合成描述', revision: 3 }),
+    head({ id: ids.b, code: 'BUDGET_B', name: '合成矩阵乙', status: 'draft' }),
+    head({ id: ids.c, code: 'COST_C', name: '合成矩阵丙', status: 'disabled', revision: 2 }),
+  ])
+    db.set(item.id, item);
+  refs.set(ids.a, {
+    items: [
+      reference(),
+      reference({ versionKind: 'in_flight', nodeKey: 'n2', nodeName: '复核节点', instanceCount: 3 }),
+    ],
+  });
+}
+
 /** 合成后端：按真实契约维护矩阵头部、版本与引用；fail 可截下一次写请求（409、结果未知、坏回执）。 */
 export function fakeBackend() {
   const db = new Map<string, Head>();
@@ -87,17 +113,6 @@ export function fakeBackend() {
   const error = (status: number, code: string, message: string, details: Record<string, unknown> = {}) =>
     Response.json({ error: { code, message, details } }, { status });
   const references = (id: string) => refs.get(id) ?? { items: [] };
-  function list(url: URL) {
-    const status = url.searchParams.get('status') ?? 'active';
-    const q = (url.searchParams.get('q') ?? '').toLowerCase();
-    const offset = Number(url.searchParams.get('offset') ?? 0);
-    const limit = Number(url.searchParams.get('limit') ?? 50);
-    const rows = [...db.values()]
-      .filter((item) => (status === 'active' ? item.status !== 'disabled' : item.status === 'disabled'))
-      .filter((item) => !q || item.code.toLowerCase().includes(q) || item.name.toLowerCase().includes(q))
-      .sort((x, y) => x.code.localeCompare(y.code));
-    return { items: rows.slice(offset, offset + limit), offset, limit, hasMore: rows.length > offset + limit };
-  }
   function write(item: Head, body: Record<string, unknown>, change: Partial<Head>) {
     if (body.revision !== item.revision) return error(409, 'REVISION_CONFLICT', '审批数据已变更，请刷新后显式重提');
     const next = { ...item, ...change, revision: item.revision + 1 };
@@ -112,7 +127,7 @@ export function fakeBackend() {
     const [, id, action] = url.pathname.slice(BASE.length).split('/');
     if (method === 'GET') {
       reads.push(url);
-      if (!id) return Response.json(list(url));
+      if (!id) return Response.json(list(db, url));
       const item = db.get(id);
       if (!item) return error(404, 'NOT_FOUND', '审批矩阵不存在');
       if (action === 'references') {
@@ -154,23 +169,7 @@ export function fakeBackend() {
       return error(409, 'CONFLICT', '引用该对象的流程节点已变化，请重新查看影响后再确认', { referenceCount: total });
     return write(item, body, { status: 'disabled' });
   }
-  const seed = () => {
-    db.clear();
-    refs.clear();
-    for (const item of [
-      head({ id: ids.a, code: 'APPROVE_A', name: '合成矩阵甲', description: '合成描述', revision: 3 }),
-      head({ id: ids.b, code: 'BUDGET_B', name: '合成矩阵乙', status: 'draft' }),
-      head({ id: ids.c, code: 'COST_C', name: '合成矩阵丙', status: 'disabled', revision: 2 }),
-    ])
-      db.set(item.id, item);
-    refs.set(ids.a, {
-      items: [
-        reference(),
-        reference({ versionKind: 'in_flight', nodeKey: 'n2', nodeName: '复核节点', instanceCount: 3 }),
-      ],
-    });
-  };
-  seed();
+  seed(db, refs);
   return { db, refs, writes, reads, state, handle, error };
 }
 export type FakeBackend = ReturnType<typeof fakeBackend>;
@@ -241,15 +240,12 @@ export function harness(backend: FakeBackend) {
         h(
           MemoryRouter,
           { initialEntries: [path] },
-          h(
-            SessionProvider,
-            { session },
-            h(
-              PermissionsProvider,
-              {},
-              h(App, {}, h(Routes, {}, h(Route, { path: '/settings/menu/:code', element: h(SettingsPage) }))),
-            ),
-          ),
+          h(SessionProvider, {
+            session,
+            children: h(PermissionsProvider, {
+              children: h(App, {}, h(Routes, {}, h(Route, { path: '/settings/menu/:code', element: h(SettingsPage) }))),
+            }),
+          }),
         ),
       ),
     );
