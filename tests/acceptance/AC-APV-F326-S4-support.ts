@@ -175,6 +175,22 @@ export function dropRoleColumn(w: S4World, m: MatrixHandle) {
   });
 }
 
+/** 管理员整体保存：保留两列，删掉旧行、换成新行（行无 ID = 新行）。 */
+export function replaceMatrixRows(w: S4World, m: MatrixHandle, rows: RowSpec[]) {
+  const columns = m.columns.map((column) => ({
+    id: column.id,
+    key: column.kind === 'role' ? 'r' : 'c',
+    kind: column.kind,
+    dimension: column.kind === 'role' ? null : 'department',
+    includeChildren: false,
+    name: column.kind === 'role' ? '角色' : '条件',
+    allowMultiple: column.kind === 'role',
+  }));
+  return w.request(w.hr.id, 'PUT', `${MATRICES}/${m.id}/structure`, {
+    body: { revision: m.revision, columns, rows: rows.map((row) => ({ cells: { c: row.cond, r: row.role } })) },
+  });
+}
+
 export const varSource = (type: 'public_variable' | 'application_variable', id: string): ApproverSource => ({
   type,
   value: id,
