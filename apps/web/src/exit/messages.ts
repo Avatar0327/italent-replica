@@ -190,6 +190,9 @@ export const x = {
 
 /** F-493 §9.1：通用帮助说明与文件级提示，列名取 domain 的模板契约。 */
 export const xi = {
+  fileExpired: '文件已过期',
+  fileDownloadFailed: '下载失败，请重试',
+  errorFileName: '下载导入错误报告.xlsx',
   entry: '导入历史离职人员',
   pick: '选择 Excel 文件',
   hint: '首行为列名，必填列以「*」标识；每次最多导入 1000 行。',

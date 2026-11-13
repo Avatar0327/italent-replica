@@ -1,3 +1,4 @@
+import { listPersonField, listPersons, type ListPersonAccess } from './person-list-projection.js';
 /**
  * 用户授权（L2 授予 L3 身份；06 §1.1）：一条 = 一个用户 × 一个身份。
  * 授予须同时满足：操作者有「用户授权」能力（路由层）、身份在操作者的可授权业务身份内（R1）、
@@ -41,6 +42,7 @@ export interface GrantView {
 
 /** 授权列表行：授权本身 + 用户 / 身份 / 管理单元投影（F-474-5 #22）。 */
 export interface GrantListRow extends GrantView {
+  readonly phone?: string | null;
   readonly userName: string;
   readonly userEmail: string;
   readonly profileCode: string;
@@ -51,8 +53,7 @@ export interface GrantListRow extends GrantView {
   readonly createdAt: string;
 }
 
-/** 原站授权列表有、本系统未记录的列：手机号码（账号无手机号）；产品用身份关联应用代替。 */
-export const GRANT_LIST_UNRECORDED = ['phone'] as const;
+export const GRANT_LIST_UNRECORDED = [] as const;
 
 export interface GrantListQuery {
   readonly userId?: string;
@@ -65,7 +66,11 @@ export interface GrantListQuery {
 }
 
 /** 总数与当页同一个 where；撤销身份后行仍在（status=revoked），不连带动用户的管理单元（DEC-043）。 */
-export async function listGrants(tx: Tx, query: GrantListQuery): Promise<{ items: GrantListRow[]; total: number }> {
+export async function listGrants(
+  tx: Tx,
+  query: GrantListQuery,
+  access: ListPersonAccess,
+): Promise<{ items: GrantListRow[]; total: number }> {
   const where = and(
     query.userId ? eq(permissionGrants.userId, query.userId) : undefined,
     query.profileId ? eq(permissionGrants.profileId, query.profileId) : undefined,
@@ -95,7 +100,13 @@ export async function listGrants(tx: Tx, query: GrantListQuery): Promise<{ items
     .select()
     .from(permissionProfileApps)
     .where(inArray(permissionProfileApps.profileId, [...new Set(rows.map((r) => r.profile.id))]));
+  const people = await listPersons(
+    tx,
+    access,
+    rows.map((row) => row.grant.userId),
+  );
   const items = rows.map(({ grant: g, profile }) => ({
+    ...(listPersonField(access, 'mobilePhone') ? { phone: people.get(g.userId)?.contactPhone ?? null } : {}),
     ...view(g),
     userName: labels.get(g.userId)?.displayName ?? '',
     userEmail: labels.get(g.userId)?.email ?? '',

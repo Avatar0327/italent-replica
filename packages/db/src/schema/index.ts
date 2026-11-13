@@ -38,3 +38,4 @@ export * from './org-adjustment.js';
 export * from './duty-transfer.js';
 export * from './esign.js';
 export * from './job-graph.js';
+export * from './admin-regions.js';

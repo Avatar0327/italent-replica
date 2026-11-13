@@ -3,10 +3,20 @@
  * email = 账号登录名（登录名为空显示空串）；contactEmail = 绑定人员档案最新版本里的电子邮件；外部用户为 null。
  */
 import { eq, sql, users, withPlatform, withTenant } from '@italent/db';
+import { PERSONNEL_OBJECT } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { BASE, type PermissionWorld, seedPermissionWorld } from './AC-PRM-support.js';
-import { hrApi, syntheticEmail, type TenantUserBody } from './AC-PRM-users-support.js';
+import {
+  BASE,
+  createProfile,
+  grant,
+  makeGrantable,
+  type PermissionWorld,
+  seedPermissionWorld,
+  setObjectPermission,
+} from './AC-PRM-support.js';
+import { hrApi, memberWithAdminRole, syntheticEmail, type TenantUserBody } from './AC-PRM-users-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -19,22 +29,54 @@ function rowsOf<T>(result: unknown): T[] {
 describe('AC-DM-30-F493-35 用户管理：登录名与档案联系邮箱分开', () => {
   let world: PermissionWorld;
   let hr: ReturnType<typeof hrApi>;
+  /** DEC-901：档案联系邮箱需人员对象查看 + 邮箱字段 + 数据范围，读取者按此授权（租户管理员本身不免权限）。 */
+  let viewer: { user: string; tenant: string };
+  let orgId: string;
 
   beforeAll(async () => {
     world = await seedPermissionWorld(testDb().db);
     hr = hrApi(world);
+    orgId = await hr.org('联系邮箱范围内');
+    const reader = await memberWithAdminRole(world, 'user_admin', 'f493-viewer');
+    viewer = reader.as;
+    const profile = await createProfile(world, `F493_${uniqueSuffix()}`);
+    const permission = await setObjectPermission(
+      world,
+      profile,
+      {
+        dataOperations: { create: false, update: false, delete: false },
+        fields: ['name', 'email'].map((fieldCode) => ({ fieldCode, view: true, edit: false })),
+        buttons: [],
+      },
+      PERSONNEL_OBJECT,
+    );
+    expect(permission.status, await permission.clone().text()).toBe(200);
+    await makeGrantable(world, [profile.id]);
+    expect((await grant(world, reader.user.id, profile.id)).status).toBe(201);
+    const scope = await world.api.request('PUT', `${BASE}/scopes/${reader.user.id}/TenantBase`, {
+      ...world.asAdmin,
+      ifMatch: 0,
+      body: { kind: 'org_range', orgRanges: [{ orgId, includeDescendants: false }] },
+    });
+    expect(scope.status, await scope.clone().text()).toBe(200);
   });
 
   const list = async () => {
-    const response = await world.api.request('GET', `${BASE}/users?type=all&limit=200`, world.asAdmin);
+    const response = await world.api.request('GET', `${BASE}/users?type=all&limit=200`, viewer);
     expect(response.status, await response.clone().text()).toBe(200);
     return ((await response.json()) as { items: UserWithContact[] }).items;
   };
   const detail = async (userId: string) => {
-    const response = await world.api.request('GET', `${BASE}/users/${userId}`, world.asAdmin);
+    const response = await world.api.request('GET', `${BASE}/users/${userId}`, viewer);
     expect(response.status, await response.clone().text()).toBe(200);
     return (await response.json()) as UserWithContact;
   };
+  /** 建档并入职到读取者数据范围内的组织，档案才对读取者可见。 */
+  async function hired(name: string, login: string) {
+    const employee = await hr.employee(name, login);
+    expect((await hr.hire(employee, orgId)).status).toBe(201);
+    return employee;
+  }
   const boundUser = async (employeeId: string) =>
     (
       await withTenant(testDb().db, world.tenant.id, async (tx) =>
@@ -55,7 +97,7 @@ describe('AC-DM-30-F493-35 用户管理：登录名与档案联系邮箱分开',
 
   it('绑定账号：email = 虚拟登录名，contactEmail = 档案电子邮件；列表与详情一致', async () => {
     const login = syntheticEmail('virtual-login');
-    const employee = await hr.employee('联系邮箱人员', login);
+    const employee = await hired('联系邮箱人员', login);
     await setArchiveEmail(employee.id, 'syn.d@example.com');
     const userId = await boundUser(employee.id);
     const row = (await list()).find((u) => u.userId === userId)!;
@@ -64,7 +106,7 @@ describe('AC-DM-30-F493-35 用户管理：登录名与档案联系邮箱分开',
   });
 
   it('登录名为空的账号：email = 空串（只作显示），contactEmail 仍取档案', async () => {
-    const employee = await hr.employee('空登录名人员', syntheticEmail('null-login'));
+    const employee = await hired('空登录名人员', syntheticEmail('null-login'));
     await setArchiveEmail(employee.id, 'syn.f@example.com');
     const userId = await boundUser(employee.id);
     await withPlatform(testDb().db, (tx) => tx.update(users).set({ email: null }).where(eq(users.id, userId)));

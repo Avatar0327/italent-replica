@@ -1,5 +1,5 @@
 import { eq, employmentCustomFieldObjects, type Tx } from '@italent/db';
-import { MODULE_OBJECTS, ObjectCatalog } from '@italent/domain';
+import { MODULE_OBJECTS, ObjectCatalog, type CustomFieldObjectType } from '@italent/domain';
 
 /**
  * 租户动态字段来源：返回该对象在当前租户追加的可配置字段编码（如任职自定义字段 `custom:<id>`、盘点字段
@@ -19,8 +19,8 @@ export function registerTenantFieldSource(objectCode: string, source: TenantFiel
   sources.set(objectCode, source);
 }
 
-const customFields =
-  (objectType: 'employment' | 'contract'): TenantFieldSource =>
+export const customFields =
+  (objectType: CustomFieldObjectType): TenantFieldSource =>
   async (tx, limit) =>
     (
       await tx

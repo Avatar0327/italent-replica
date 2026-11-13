@@ -6,7 +6,7 @@
  */
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   drainExitImports,
   installExitImportTestHooks,
@@ -14,6 +14,15 @@ import {
 } from '../../apps/api/src/modules/employment/exit-import-worker.js';
 import { importWorld, type ImportWorld } from './AC-DM-30-support.js';
 import { EMPLOYEE_OBJECT_CODE, importOperator, RECORD_OBJECT_CODE } from './support/exit-import-operator.js';
+
+/**
+ * F-520：本文件的用例与钩子超时放宽到 120 秒（只作用于本文件；vitest.config.ts 的全局 30 秒不动，断言与用例不动）。
+ * 为什么：每个用例都要先建一个完整租户世界（importWorld 约 5～11 秒）、导入操作员（importOperator 约 17 秒，要逐对象 PUT 权限），
+ * 导入执行器按行串行（约 1.2 秒 / 行）；“A 的 4 批”一个用例就建两个世界 + 一个操作员 + 五批导入，
+ * 本机真 PG16 负载 15～20 时合计远超 30 秒，而每一步都在做必须的真实准备，共享夹具（AC-DM-30-support 等）被多个文件共用，
+ * 本单不动它们。取值：本机真 PG16 负载 15～22 时最慢单条 44.1 秒（“A 的 4 批”），× 约 2.7 ≈ 120 秒。
+ */
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 const database = useTestDb();
 afterEach(() => installExitImportTestHooks(database().db, {}));
@@ -43,9 +52,14 @@ const listOf = async (request: Promise<Response>): Promise<HistoryPage> => {
 };
 const adminList = (x: ImportWorld, query = '') => listOf(x.session.request('GET', `/exits/import/batches${query}`));
 
-/** 把批次的提交时间固定成“现在 - minutes 分钟”，让倒序断言不依赖提交的先后间隔。 */
+// F-518：固定在北京时间 00:20，持续复现回退 40 / 30 分钟跨到前一天的边界。
+const historyReferenceTime = '2026-11-11T00:20:00+08:00';
+
+/** 以基准日期的北京中午减去 minutes，保证四批同日且排序不依赖实际运行时刻。 */
 const stamp = (x: ImportWorld, batchId: string, minutes: number) =>
-  x.q(x.sql`UPDATE exit_import_batches SET created_at = now() - make_interval(mins => ${minutes})
+  x.q(x.sql`UPDATE exit_import_batches
+    SET created_at = (((${historyReferenceTime}::timestamptz AT TIME ZONE 'Asia/Shanghai')::date
+      + time '12:00') AT TIME ZONE 'Asia/Shanghai') - make_interval(mins => ${minutes})
     WHERE tenant_id=${x.tenantId} AND id=${batchId}::uuid`);
 
 /** 不经执行器直接落一个终态批次（只测列表，列表不读行数据）。 */
@@ -161,9 +175,11 @@ describe('AC-DM-30-F493-41 导入历史列表', () => {
         'running',
       ]);
       expect((await x.session.request('GET', '/exits/import/batches?status=queued')).status).toBe(400);
-      const today = (await x.q<{ d: string }>(x.sql`SELECT (now() AT TIME ZONE 'Asia/Shanghai')::date::text AS d`))[0]!
-        .d;
-      expect((await adminList(x, `?from=${today}&to=${today}`)).items).toHaveLength(4);
+      const historyDate = (
+        await x.q<{ d: string }>(x.sql`SELECT
+          (${historyReferenceTime}::timestamptz AT TIME ZONE 'Asia/Shanghai')::date::text AS d`)
+      )[0]!.d;
+      expect((await adminList(x, `?from=${historyDate}&to=${historyDate}`)).items).toHaveLength(4);
       expect((await adminList(x, '?from=2020-01-01&to=2020-01-31')).items).toHaveLength(0);
 
       // B 的列表看不到 A 的批次；T2 看不到 A 的批次

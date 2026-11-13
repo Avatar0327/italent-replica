@@ -647,7 +647,10 @@ export const employmentCustomFieldObjects = pgTable(
     unique('employment_custom_field_objects_tenant_code').on(t.tenantId, t.code),
     index('employment_custom_field_objects_tenant_type').on(t.tenantId, t.objectType, t.id),
     check('employment_custom_field_objects_revision_positive', sql`${t.revision} > 0`),
-    check('employment_custom_field_objects_object_type', sql`${t.objectType} IN ('employment', 'contract')`),
+    check(
+      'employment_custom_field_objects_object_type',
+      sql`${t.objectType} IN ('employment', 'contract', 'organization', 'personnel')`,
+    ),
     check(
       'employment_custom_field_objects_value_type',
       sql`${t.valueType} IN ('text', 'integer', 'decimal', 'boolean', 'date')`,

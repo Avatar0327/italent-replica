@@ -1,3 +1,4 @@
+import { codeText } from '../foundation/code-text.js';
 import { Alert, Button, Drawer, Empty, Input, Space, Steps, Tabs, Tag, Timeline, Tooltip } from 'antd';
 import { useEffect, useState } from 'react';
 import { DecisionNote, FormOverlay, PageState, useApiClient, useSession } from '../foundation/index.js';
@@ -30,6 +31,11 @@ export function displayValue(value: unknown): string {
   if (Array.isArray(value)) return value.map(displayValue).join('、');
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
 }
+function fieldText(values: Readonly<Record<string, unknown>>, key: string): string {
+  const value = namedValue(values, key);
+  if (key === 'code' || key === 'jobNumber') return codeText((value as string | null) ?? null);
+  return displayValue(value);
+}
 /** 原站申请信息：标签 + 值；改变后的值橙色显示，下方浅灰“原：旧值”。 */
 export function ApprovalFields({ detail, grouped }: { detail: Detail; grouped?: boolean }) {
   const rows = Object.keys(detail.form.values).filter((key) => !NAME_KEYS.has(key));
@@ -60,8 +66,8 @@ function FieldList({ detail, fields }: { detail: Detail; fields: { key: string; 
           <div key={key} className="approval-field">
             <dt>{label}</dt>
             <dd className={changed ? 'approval-changed' : undefined}>
-              <span>{displayValue(namedValue(detail.form.values, key))}</span>
-              {changed && <small>{d.original(displayValue(namedValue(originals, key)))}</small>}
+              <span>{fieldText(detail.form.values, key)}</span>
+              {changed && <small>{d.original(fieldText(originals, key))}</small>}
             </dd>
           </div>
         );
