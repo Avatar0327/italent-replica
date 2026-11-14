@@ -33,7 +33,7 @@ describe('AC-APV-F318c 保存及候选契约', () => {
       expect(await resolved(w, value)).toEqual([]);
     }
   });
-  it('D7 无业务日的类型拒存新值；D8 关闭维度拒存，已有来源运行为空；F326 不开放，随机身份 ID 不存在即 422', async () => {
+  it('D7 无业务日的类型拒存新值；D8 关闭维度拒存，已有来源运行为空；F326 三类与身份引用的随机 ID 不存在即 422', async () => {
     const w = await relationWorld(database().db, 'c-rejections');
     const unsupported = await save(w, [source('department', w.root)], 'idp_plan');
     expect(unsupported.status).toBe(422);
@@ -47,8 +47,11 @@ describe('AC-APV-F318c 保存及候选契约', () => {
       await dimensions(w, false);
       expect(await resolved(w, source(type, w.root))).toEqual([]);
     }
-    for (const type of ['public_variable', 'application_variable', 'matrix', 'identity'] as const)
-      expect((await save(w, [source(type, randomUUID())])).status).toBe(422);
+    for (const type of ['public_variable', 'application_variable', 'matrix', 'identity'] as const) {
+      const response = await save(w, [source(type, randomUUID(), type === 'matrix' ? `:${randomUUID()}` : '')]);
+      expect(response.status).toBe(422);
+      expect((await response.json()).error.message).toContain('不存在');
+    }
     expect((await save(w, [source('identity', 'handover_hr_admin')])).status).toBe(422);
   });
   it('候选仅流程编辑者可读，最少字段、分页搜索、停用显式选择、跨租户不回显', async () => {

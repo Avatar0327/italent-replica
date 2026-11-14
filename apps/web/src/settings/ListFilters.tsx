@@ -1,5 +1,7 @@
 import { Button, Form, Input, Select, TreeSelect, type TreeSelectProps } from 'antd';
+import { FilterCandidates } from './FilterCandidates.js';
 import { m } from './messages.js';
+export type ListFilterValues = Record<string, string | string[]>;
 export interface ListFilterField {
   name: string;
   label: string;
@@ -9,10 +11,11 @@ export interface ListFilterField {
   loading?: boolean;
   max?: number;
   pattern?: RegExp;
-  pageCandidates?: boolean;
+  candidates?: string;
 }
 
 function filterControl(field: ListFilterField) {
+  if (field.candidates) return <FilterCandidates resource={field.candidates} label={field.label} />;
   if (field.treeData)
     return (
       <TreeSelect
@@ -40,13 +43,7 @@ function filterControl(field: ListFilterField) {
   return <Input aria-label={field.label} maxLength={field.max ?? 100} />;
 }
 
-export function ListFilters({
-  fields,
-  apply,
-}: {
-  fields: ListFilterField[];
-  apply(values: Record<string, string>): void;
-}) {
+export function ListFilters({ fields, apply }: { fields: ListFilterField[]; apply(values: ListFilterValues): void }) {
   const [form] = Form.useForm();
   return (
     <Form
@@ -54,9 +51,14 @@ export function ListFilters({
       layout="inline"
       className="settings-list-filters"
       onFinish={(values) => {
-        const result: Record<string, string> = {};
+        const result: ListFilterValues = {};
         for (const field of fields) {
           const raw = values[field.name];
+          if (field.candidates) {
+            const ids = (raw ?? []).map((item: { value: string }) => item.value);
+            if (ids.length) result[field.name] = ids;
+            continue;
+          }
           const value = String((field.options ? raw?.value : raw) ?? field.defaultValue ?? '').trim();
           if (value) result[field.name] = value;
         }
@@ -69,7 +71,6 @@ export function ListFilters({
           name={field.name}
           initialValue={field.defaultValue ? { value: field.defaultValue } : undefined}
           label={field.label}
-          tooltip={field.pageCandidates ? m.pageCandidates : undefined}
           rules={field.pattern ? [{ pattern: field.pattern, message: m.invalid }] : []}
         >
           {filterControl(field)}

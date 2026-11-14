@@ -6,6 +6,7 @@ import { approvalError, assertRevision, auditApproval, emitOutbox, type Approval
 import type { matrixCreateSchema, matrixUpdateSchema, matrixListSchema, MatrixStructureInput } from './matrix-input.js';
 import { loadMatrixStructure, replaceMatrixStructure } from './matrix-structure.js';
 import { matrixReferenceNames } from './matrix-names.js';
+import { assertReferencesAcknowledged, assertRoleColumnsUnused } from './source-usages.js';
 
 type Head = typeof approvalMatrices.$inferSelect;
 const where = (tenantId: string, id: string) =>
@@ -17,6 +18,11 @@ export async function lockMatrixHead(tx: Tx, tenantId: string, id: string): Prom
   const [head] = await query.for('update');
   if (!head) throw approvalError('NOT_FOUND', 'APPROVAL_MATRIX_NOT_FOUND', '审批矩阵不存在');
   return head;
+}
+
+export async function assertMatrixExists(tx: Tx, tenantId: string, id: string) {
+  const [head] = await tx.select({ id: approvalMatrices.id }).from(approvalMatrices).where(where(tenantId, id));
+  if (!head) throw approvalError('NOT_FOUND', 'APPROVAL_MATRIX_NOT_FOUND', '审批矩阵不存在');
 }
 
 export async function matrixDetail(tx: Tx, ctx: ApprovalContext, id: string) {
@@ -135,10 +141,19 @@ export async function updateMatrix(
   return matrixDetail(tx, ctx, id);
 }
 
-export async function changeMatrixStatus(tx: Tx, ctx: ApprovalContext, id: string, action: VariableStatusAction) {
+export async function changeMatrixStatus(
+  tx: Tx,
+  ctx: ApprovalContext,
+  id: string,
+  action: VariableStatusAction,
+  acknowledgedReferenceCount?: number,
+) {
   const before = await locked(tx, ctx, id);
   const status = statusAfter(before.status as VariableStatus, action);
   if (!status) throw approvalError('CONFLICT', 'APPROVAL_MATRIX_STATUS_INVALID', '矩阵当前状态不支持该操作');
+  // 停用不被引用挡住（F-326 §6）：运行时按“没有人”走空人策略；须确认引用清单总数
+  if (action === 'disable')
+    await assertReferencesAcknowledged(tx, ctx.tenantId, { kind: 'matrix', id }, acknowledgedReferenceCount);
   const after = await changedHead(tx, ctx, before, { status });
   await audited(tx, ctx, action, before, after);
   await event(tx, ctx, after, action);
@@ -147,6 +162,17 @@ export async function changeMatrixStatus(tx: Tx, ctx: ApprovalContext, id: strin
 
 export async function saveMatrixStructure(tx: Tx, ctx: ApprovalContext, id: string, input: MatrixStructureInput) {
   const before = await locked(tx, ctx, id);
+  // F-326 §6：在用版本引用的角色列不能删；条件列删除后运行时按“缺少条件”处理，不挡
+  const kept = new Set(input.columns.flatMap((column) => (column.id && column.kind === 'role' ? column.id : [])));
+  const removedRoles = (await loadMatrixStructure(tx, ctx.tenantId, id)).columns.filter(
+    (column) => column.kind === 'role' && !kept.has(column.id),
+  );
+  await assertRoleColumnsUnused(
+    tx,
+    ctx.tenantId,
+    id,
+    removedRoles.map((column) => column.id),
+  );
   await replaceMatrixStructure(tx, ctx, before, input);
   const after = await changedHead(tx, ctx, before, {});
   await event(tx, ctx, after, 'structure');

@@ -1,6 +1,6 @@
 {
   "byModule": {
-    "approval": 50,
+    "approval": 52,
     "attachments": 5,
     "audit": 4,
     "avatar": 5,
@@ -22,7 +22,7 @@
     "offers": 21,
     "org": 16,
     "org-adjustment": 16,
-    "permission": 49,
+    "permission": 52,
     "personnel": 18,
     "platform": 9,
     "qualification": 55,
@@ -40,5 +40,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 904
+  "total": 909
 }

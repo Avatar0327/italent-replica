@@ -465,6 +465,8 @@ function scopeBindingWeakenings(
         const original = node?.['scope'] as Node | undefined;
         if (!node || !original || typeof original !== 'object') continue;
         const at = `${label}备选${i + 1}:${path || 'root'}`;
+        // DEC-903：没有对象选择器的 admin 节点无对象可绑，byObject 弱化无意义（perms.scopesOf 会把全部条目当自身范围）
+        if (node['object'] === undefined) continue;
         push('scope→foreign-object', at, expected, (root) => {
           locate(root, path)!['scope'] = { byObject: { 'Fixture.Unrelated': original } };
         });

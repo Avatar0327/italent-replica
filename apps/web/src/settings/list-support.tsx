@@ -4,17 +4,19 @@ import type { PageResult } from '../foundation/client.js';
 import { useSession } from '../foundation/Session.js';
 import { base, type UserMou } from './model.js';
 import { useResource } from './useResource.js';
+import type { ListFilterValues } from './ListFilters.js';
 import { m } from './messages.js';
 
 export function useSettingsList<T>(resource: string, fixed: Record<string, string> = {}) {
   const [page, setPage] = useState({ page: 1, pageSize: 15 });
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [filters, setFilters] = useState<ListFilterValues>({});
   const query = new URLSearchParams({
-    ...fixed,
-    ...filters,
     limit: String(page.pageSize),
     offset: String((page.page - 1) * page.pageSize),
   });
+  for (const [key, value] of Object.entries({ ...fixed, ...filters })) {
+    for (const item of typeof value === 'string' ? [value] : value) query.append(key, item);
+  }
   const list = useResource<PageResult<T>>(`${base}/${resource}?${query}`);
   useEffect(() => {
     const total = list.data?.total;
@@ -25,7 +27,7 @@ export function useSettingsList<T>(resource: string, fixed: Record<string, strin
     ...list,
     page,
     setPage,
-    apply: (values: Record<string, string>) => {
+    apply: (values: ListFilterValues) => {
       setFilters(values);
       setPage((current) => ({ ...current, page: 1 }));
     },
@@ -84,8 +86,3 @@ export const textValue = (value?: string | null) => value || m.empty;
 export const columnGear = { key: 'columns', title: '', width: 24, render: () => <span aria-hidden>⚙</span> };
 export const mouText = (values?: UserMou[]) =>
   values?.map((row) => `${row.appCode}：${row.name}`).join('、') || m.empty;
-export const mouOptions = (items: { mous?: UserMou[] }[]) =>
-  uniqueOptions(items.flatMap((item) => (item.mous ?? []).map((row) => ({ value: row.mouId, label: row.name }))));
-export function uniqueOptions(items: { value: string; label: string }[]) {
-  return [...new Map(items.map((row) => [row.value, row])).values()];
-}
