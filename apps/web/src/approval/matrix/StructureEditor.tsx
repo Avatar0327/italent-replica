@@ -3,7 +3,7 @@
 // 结果未知锁定草稿与本单其他动作，只能按原命令重试（DEC-067）。
 import { MATRIX_LIMITS } from '@italent/domain';
 import { Alert, Button, ConfigProvider, Space, Typography } from 'antd';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, type ApiClient, type Command } from '../../foundation/client.js';
 import { PageState } from '../../foundation/PageState.js';
 import { useApiClient } from '../../foundation/Session.js';
@@ -11,12 +11,14 @@ import { CommandStatus } from '../../foundation/forms/CommandStatus.js';
 import { useConflictCommand } from '../../foundation/forms/ConflictCommands.js';
 import type { Values } from '../../foundation/forms/store.js';
 import { useLabels, type Labels } from './CellPicker.js';
+import { mergeStructure, type Change } from './structure-merge.js';
 import { m } from './messages.js';
 import { MATRICES, matrixPath, parseReceipt, type MatrixHead, type MatrixStatus } from './model.js';
 import { StructureColumns } from './StructureColumns.js';
 import { sm } from './structure-messages.js';
 import {
   kindFull,
+  kindOf,
   newRef,
   normalized,
   parseStructure,
@@ -27,6 +29,7 @@ import {
   structureIssues,
   structureSummary,
   type ColumnKind,
+  type DraftColumn,
   type Issue,
   type Loaded,
   type Structure,
@@ -109,16 +112,14 @@ const addColumn = (kind: ColumnKind) => (structure: Structure) => {
   };
 };
 
-/** 状态区的冲突核对只摆列名（类型）与行数，不把整份结构的 JSON 摆给用户。 */
-const project = (own: Writer['form']['state']) =>
+/**
+ * 状态区：冲突核对逐处列出服务端的改动（structure-merge.ts，原值 / 最新值 / 我的输入与处理结果），没有改动也要确认；
+ * 结果未知的原单读回只摆列名（类型）与行数，不把整份结构的 JSON 摆给用户。
+ */
+const project = (own: Writer['form']['state'], changes: Change[] = []) =>
   own && {
     ...own,
-    differences: own.differences?.map((diff) => ({
-      ...diff,
-      before: structureSummary(diff.before),
-      latest: structureSummary(diff.latest),
-      mine: structureSummary(diff.mine),
-    })),
+    differences: changes.map(({ field, before, latest, mine }) => ({ field, before, latest, mine })),
     latest: own.latest && { ...own.latest, values: { structure: structureSummary(own.latest.values.structure) } },
   };
 
@@ -269,7 +270,19 @@ function useWriter(head: MatrixHead, loaded: Loaded, labels: Labels) {
   );
   const own = writer.form.state;
   pending.current = own && own.status !== 'done' ? (own.values.structure as Structure | undefined) : undefined;
-  return { api, state, setState, writer };
+  // 409 重读后：原基线（命令的 baseline）、最新版本、我提交的草稿三方合并；草稿换成合并结果，确认后据此重提
+  const merge = useMemo(() => {
+    if (own?.status !== 'conflict' || !own.latest) return undefined;
+    const show = (column: DraftColumn, ids: readonly string[]) =>
+      ids.map((id) => labels.label(kindOf(column), id)).join('、') || sm.emptyCell;
+    const value = (values: Values) => values.structure as Structure;
+    return mergeStructure(value(own.baseline), value(own.latest.values), value(own.values), show);
+    // labels 每次渲染都是新对象，名称缓存本身是模块级的；只在内核状态变化（重读完成）时重算
+  }, [own]);
+  useEffect(() => {
+    if (merge) setState((value) => value && { ...value, draft: merge.structure });
+  }, [merge, setState]);
+  return { api, state, setState, writer, changes: merge?.changes };
 }
 
 function Editor(props: {
@@ -281,7 +294,7 @@ function Editor(props: {
   labels: Labels;
 }) {
   const { head, editable, labels } = props;
-  const { api, state, setState, writer } = useWriter(head, props.loaded, labels);
+  const { api, state, setState, writer, changes } = useWriter(head, props.loaded, labels);
   const [selected, setSelected] = useState<string[]>([]);
   const [server, setServer] = useState<Issue[]>([]);
   const locked = writer.form.locked || writer.invalid;
@@ -318,7 +331,10 @@ function Editor(props: {
   return (
     <section className="matrix-structure">
       <Typography.Title level={5}>{sm.title}</Typography.Title>
-      <CommandStatus submission={{ ...writer.form, state: project(own) }} labels={{ structure: sm.structureLabel }} />
+      <CommandStatus
+        submission={{ ...writer.form, state: project(own, changes) }}
+        labels={{ structure: sm.structureLabel, ...Object.fromEntries((changes ?? []).map((c) => [c.field, c.label])) }}
+      />
       {own?.status === 'unknown' && (
         <Button onClick={() => void save.replay(draft)} disabled={own.reading}>
           {sm.replay}

@@ -292,23 +292,23 @@ test('AC-APV-F326-25 他人先改：保存得 409，锁定草稿；重读最新�
   await expect(nameInput(page, 2)).toBeDisabled();
   await expect(button(page, '保存结构')).toBeDisabled();
 
-  // 重读最新版本：看到他人的改动；核对后继续编辑，自己的草稿保留
+  // 重读最新版本：冲突区逐处列出他人的改动；他人改了、我没改的列名回填，我改的列名保留
   await button(page, '重读最新版本').click();
-  await expect(editor(page)).toContainText('他人改的条件');
+  await expect(editor(page)).toContainText('列「条件」·列名（已采用最新值）');
+  await expect(nameInput(page, 0)).toHaveValue('他人改的条件');
   await button(page, '已核对差异，继续编辑').click();
   await expect(nameInput(page, 2)).toBeEnabled();
   await expect(nameInput(page, 2)).toHaveValue('二级复核人');
   expect(puts()).toHaveLength(1);
 
-  // 显式重提：新 revision、新命令 ID。结构是一个整体字段，核对差异后以本人草稿为准（他人的列名被覆盖，
-  // 是用户看过差异后的显式选择；行 / 列级合并不在本片，见 PR 未决）
+  // 显式重提：新 revision、新命令 ID；落库同时带着他人的列名与我的列名（第 2 轮：三方合并，不再整份覆盖）
   await button(page, '保存结构').click();
   await saved(page, puts, 2);
   expect(puts()[1]).toMatchObject({ status: 200, body: { revision: latest.revision } });
   expect(puts()[1]!.key).not.toBe(puts()[0]!.key);
   const stored = await direct(request).read();
   expect([...stored.columns].sort((a, b) => a.seq - b.seq).map((column) => column.name)).toEqual([
-    '条件',
+    '他人改的条件',
     '一级审批人',
     '二级复核人',
   ]);

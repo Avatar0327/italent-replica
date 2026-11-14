@@ -4,7 +4,7 @@ import { MATRIX_LIMITS } from '@italent/domain';
 import { Button, Space, Table } from 'antd';
 import { CellPicker, type Labels } from './CellPicker.js';
 import { sm } from './structure-messages.js';
-import { newRef, type DraftColumn, type DraftRow, type Structure } from './structure-model.js';
+import { kindOf, newRef, type DraftColumn, type DraftRow, type Structure } from './structure-model.js';
 
 type Update = (change: (structure: Structure) => Structure) => void;
 const ROW_PAGE_SIZE = 50;
@@ -39,8 +39,6 @@ const cellMax = (column: DraftColumn) => {
   if (column.kind === 'condition') return MATRIX_LIMITS.conditionCellIds;
   return column.allowMultiple ? MATRIX_LIMITS.roleCellIds : 1;
 };
-const kindOf = (column: DraftColumn) => (column.kind === 'role' ? 'person' : column.dimension!);
-
 type Props = {
   structure: Structure;
   invalid: ReadonlySet<string>;

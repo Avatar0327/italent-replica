@@ -106,6 +106,8 @@ export const normalized = (structure: Structure): Structure => ({
   rows: structure.rows,
 });
 export const sameStructure = (a: Structure, b: Structure) => sameValue(normalized(a), normalized(b));
+/** 单元格值的名称类别：角色列是人员，条件列是它的维度。 */
+export const kindOf = (column: DraftColumn) => (column.kind === 'role' ? 'person' : column.dimension!);
 
 /** PUT structure 请求体：列按数组顺序（后端据此写 seq），短键 c1..cn 按位置分配，每行带全部列的单元格。 */
 export function structureBody(structure: Structure, revision?: number) {
@@ -191,7 +193,7 @@ export function serverIssues(errors: readonly FieldError[], structure: Structure
   });
 }
 
-/** 冲突核对用的摘要：列名（类型）与行数，不把整份结构的 JSON 摆给用户。 */
+/** 结果未知时原单读回的只读摘要：列名（类型）与行数，不把整份结构的 JSON 摆给用户（冲突核对另见 structure-merge.ts）。 */
 export function structureSummary(value: unknown) {
   const structure = value as Structure | undefined;
   if (!structure?.columns) return '—';
