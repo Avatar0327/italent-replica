@@ -341,7 +341,7 @@ async function assertFallbackUsers(tx: Tx, tenantId: string, node: ApprovalNode)
 }
 
 /**
- * copyOfExisting：内容是原样复制的既有版本（编辑最新版本），不是用户提交的新配置。来源（变量 / 矩阵 / 适用范围）
+ * copyOfExisting：内容是原样复制的既有版本（编辑最新版本、异常管理员交接重发），不是用户提交的新配置。来源（变量 / 矩阵 / 适用范围）
  * 在复制之前可能已按影响清单停用或移出范围，复制时若按“保存”规则校验，管理员连替换失效来源的修复草稿都建不出来
  * （设计 §3.5、§6.2）；草稿上保存用户提交的配置（createProcess / replaceDraft）仍逐项校验。
  */
@@ -618,6 +618,8 @@ export async function republishWithExceptionAdmin(tx: Tx, ctx: ApprovalContext, 
     next,
     { ...before.currentVersion, exceptionAdminUserId: userId },
     before.approvalType,
+    // 与 newVersion 同理：原样复制当前版本，只换异常管理员，来源停用不应让交接 / 恢复对账 422（F-326 S5）
+    { copyOfExisting: true },
   );
   await tx.execute(sql`UPDATE approval_process_versions SET status='published',published_by=${ctx.userId},
       published_at=${ctx.now.toISOString()}

@@ -416,6 +416,8 @@ export const MODULE_OBJECTS = {
   // R2 BE-12b 人事分析 - 人事看板（规格 35 §2.1）：只读聚合查询，无业务字段、无按钮；数据范围按人员 / 组织裁剪，
   // 看全部默认给本模块的预置管理员（DEC-415）
   // 目录要求每个对象至少登记一个按钮：“指标明细”是列表级的钻取入口，只登记不授予（看板的准入只认对象查看权）
+  /** F-474-7b：职务职级图谱（派生缓存）。只读对象 + 重新生成 / 导出两个列表按钮，没有数据操作；原站菜单只授系统管理员。 */
+  jobGraph: object('JobPostAndJobLevelGraph', [], [button('rebuild', 'list'), button('export', 'list')]),
   hrDashboard: object('HrDashboard', [], [button('detail', 'list')]),
   // R2 BE-13c 人事分析 - 人事流程看板（规格 35 B51）：同人事看板，只读聚合、无业务字段；“查看详情”只登记不授予
   hrProcessDashboard: object('HrProcessDashboard', [], [button('detail', 'list')]),

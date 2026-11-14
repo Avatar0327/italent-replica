@@ -1,5 +1,5 @@
 {
-  "id": "9f8cc2bd-f556-40f0-b55f-1f8d7829be20",
+  "id": "28c76d2f-ce09-4f57-908b-e42a7175e83c",
   "prevId": "e2e525a2-79c5-4e13-afae-2e4ca6bc063b",
   "version": "7",
   "dialect": "postgresql",
@@ -10285,13 +10285,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "options": {
-          "name": "options",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -10375,15 +10368,7 @@
         },
         "employment_custom_field_objects_value_type": {
           "name": "employment_custom_field_objects_value_type",
-          "value": "\"employment_custom_field_objects\".\"value_type\" IN ('text', 'integer', 'decimal', 'boolean', 'date', 'select')"
-        },
-        "employment_custom_field_options_array": {
-          "name": "employment_custom_field_options_array",
-          "value": "jsonb_typeof(\"employment_custom_field_objects\".\"options\") = 'array'"
-        },
-        "employment_custom_field_select_options": {
-          "name": "employment_custom_field_select_options",
-          "value": "(\"employment_custom_field_objects\".\"value_type\" = 'select') = (jsonb_array_length(\"employment_custom_field_objects\".\"options\") > 0)"
+          "value": "\"employment_custom_field_objects\".\"value_type\" IN ('text', 'integer', 'decimal', 'boolean', 'date')"
         },
         "employment_custom_field_objects_code_nonempty": {
           "name": "employment_custom_field_objects_code_nonempty",
@@ -69420,6 +69405,229 @@
         "esign_templates_revision": {
           "name": "esign_templates_revision",
           "value": "\"esign_templates\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.job_graph_issues": {
+      "name": "job_graph_issues",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_name": {
+          "name": "object_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reasons": {
+          "name": "reasons",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_key": {
+          "name": "sort_key",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "job_graph_issues_tenant_kind": {
+          "name": "job_graph_issues_tenant_kind",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sort_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "job_graph_issues_tenant_id_tenants_id_fk": {
+          "name": "job_graph_issues_tenant_id_tenants_id_fk",
+          "tableFrom": "job_graph_issues",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "job_graph_issues_tenant_id_id_pk": {
+          "name": "job_graph_issues_tenant_id_id_pk",
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "job_graph_issues_kind": {
+          "name": "job_graph_issues_kind",
+          "value": "\"job_graph_issues\".\"kind\" IN ('level','post')"
+        },
+        "job_graph_issues_reasons_array": {
+          "name": "job_graph_issues_reasons_array",
+          "value": "jsonb_typeof(\"job_graph_issues\".\"reasons\") = 'array' AND jsonb_array_length(\"job_graph_issues\".\"reasons\") > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.job_graph_snapshots": {
+      "name": "job_graph_snapshots",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "generated_at": {
+          "name": "generated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generated_by": {
+          "name": "generated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "as_of_date": {
+          "name": "as_of_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contains_error": {
+          "name": "contains_error",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "empty": {
+          "name": "empty",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issue_count": {
+          "name": "issue_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "layout": {
+          "name": "layout",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "job_graph_snapshots_tenant_id_tenants_id_fk": {
+          "name": "job_graph_snapshots_tenant_id_tenants_id_fk",
+          "tableFrom": "job_graph_snapshots",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "job_graph_snapshots_generated_by_users_id_fk": {
+          "name": "job_graph_snapshots_generated_by_users_id_fk",
+          "tableFrom": "job_graph_snapshots",
+          "tableTo": "users",
+          "columnsFrom": [
+            "generated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "job_graph_snapshots_revision_positive": {
+          "name": "job_graph_snapshots_revision_positive",
+          "value": "\"job_graph_snapshots\".\"revision\" > 0"
+        },
+        "job_graph_snapshots_issue_count": {
+          "name": "job_graph_snapshots_issue_count",
+          "value": "\"job_graph_snapshots\".\"issue_count\" >= 0"
+        },
+        "job_graph_layout_object": {
+          "name": "job_graph_layout_object",
+          "value": "jsonb_typeof(\"job_graph_snapshots\".\"layout\") = 'object'"
         }
       },
       "isRLSEnabled": false

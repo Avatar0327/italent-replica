@@ -55,6 +55,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECTS',
     '#CONFIG_OBJECTS',
+    '#JOB_GRAPH_PRESET_OBJECTS',
   ],
   'packages/domain/src/platform/standard-presets.ts#CONFIG_OBJECTS': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
@@ -103,6 +104,9 @@ export const GRAPH: Graph = {
     '#full',
     '#readOnly',
   ],
+  'packages/domain/src/platform/standard-presets.ts#JOB_GRAPH_PRESET_OBJECTS': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
   'packages/domain/src/platform/standard-presets.ts#MANAGER_OBJECTS': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECTS',
@@ -146,6 +150,7 @@ export const GRAPH: Graph = {
     '#ORG_ADJUSTMENT_SEE_ALL',
     '#QUALIFICATION_PROFILES',
     '#SUCCESSION_PROFILES',
+    '#fieldSubset',
     '#full',
     '#grant',
     '#readOnly',
