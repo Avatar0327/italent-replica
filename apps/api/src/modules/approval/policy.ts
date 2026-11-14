@@ -114,10 +114,14 @@ function processView(adminFields: FieldsPolicy, objectFields: FieldsPolicy, extr
 }
 const PROCESS_SHAPE = shape('approval.process');
 const DICTIONARY = noFields('APPROVAL_TYPES 枚举字典，不是业务对象字段');
-const SIMULATION = noFields('仿真路径与虚拟输入（清单 7），不是持久对象字段');
+const SIMULATION = noFields(
+  '仿真路径与虚拟输入（清单 7），不是持久对象字段；默认只收虚拟数据，resolveCurrentSources 仅流程管理员可用，处理器内二次校验 admin.process_matrix',
+);
 /** 仿真是只读 POST（readCtx，无 If-Match）：不开命令事务、不落库、不进台账。 */
 const simulationWrite = write(
-  none('仿真只收虚拟数据，不提取业务字段'),
+  none(
+    '默认只收虚拟数据，不提取业务字段；resolveCurrentSources 仅流程管理员可用，处理器内二次校验 admin.process_matrix',
+  ),
   none('只读仿真：不开命令事务、不落库'),
   none('仿真结果不是持久对象，无返回后复核'),
 );
@@ -461,7 +465,7 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   'POST /matrices/:id/enable': processAdmin({ ...byId, write: processCommand }),
   'POST /matrices/:id/disable': processAdmin({ ...byId, write: processCommand }),
   'GET /designer/source-candidates': admin('process_matrix', {
-    fields: fixed(['id', 'name', 'enabled', 'parentId'], 'DEC-691 / DEC-686①'),
+    fields: fixed(['id', 'name', 'enabled', 'parentId', 'multiple'], 'DEC-691 / DEC-686① / F-326 §5.3'),
   }),
   'GET /designer/person-candidates': admin('process_matrix', {
     fields: fixed(['userId', 'name', 'code', 'departmentId', 'departmentName'], 'DEC-686① / DEC-135'),
@@ -504,7 +508,8 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   'POST /presets/install': processAdmin({
     write: write(none('无请求体，预置流程清单来自代码（DEC-018 / DEC-094）'), PROCESS_CONFIG, noProcessScope),
   }),
-  // ---- registerSimulationRoutes：仿真只收虚拟数据（清单 7），requireProcessButton('simulate*') = requireProcessView ----
+  // ---- registerSimulationRoutes：默认只收虚拟数据（清单 7），requireProcessButton('simulate*') = requireProcessView；
+  // resolveCurrentSources 仅流程管理员可用，处理器内二次校验 admin.process_matrix（F-326 §3.7）----
   'POST /processes/:id/simulate': processView(SIMULATION, SIMULATION, { ...byId, write: simulationWrite }),
   // approvalType 未知 → 400 VALIDATION_FAILED / APPROVAL_TYPE_UNKNOWN（approvalTypeOf），不是路径标识
   'POST /simulate': processView(SIMULATION, SIMULATION, { write: simulationWrite }),
