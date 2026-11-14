@@ -64,20 +64,26 @@ function useMatrices() {
   };
 }
 
-/** 右侧展示的矩阵：当前页里选中的那条；保存后的回执对象不在当前页时单独读详情，读不到才回退到第一条。 */
+/**
+ * 右侧展示的矩阵：当前页里选中的那条，没有选中时取第一条。
+ * 保存后的回执对象不在当前页时单独读详情；读取失败或响应无效时报错并给重试，不回退到其他矩阵。
+ */
 function useShown(list: ReturnType<typeof useMatrices>, selected?: string) {
   const items = list.page?.items ?? [];
   const inPage = items.find((item) => item.id === selected);
   const outside = list.page && !inPage && selected && list.pinned === selected ? selected : undefined;
   const read = useRead<unknown>(outside ? matrixPath(outside) : null);
+  if (!outside) return { head: inPage ?? items[0], refresh: read.refresh };
   let found: MatrixHead | undefined;
+  let error = read.error;
   try {
     found = read.data === undefined ? undefined : parseHead(read.data);
-  } catch {
+    if (found && found.id !== outside) throw new Error('matrix detail id mismatch');
+  } catch (cause) {
     found = undefined;
+    error = cause;
   }
-  const fallback = read.loading ? undefined : items[0];
-  return { head: inPage ?? (found?.id === outside ? found : undefined) ?? fallback, refresh: read.refresh };
+  return { head: found, error, refresh: read.refresh };
 }
 
 export function MatrixPage({ editable }: { editable: boolean }) {
@@ -116,8 +122,9 @@ function Matrices({ editable }: { editable: boolean }) {
         create={editable ? () => setForm({}) : undefined}
       />
       <section className="matrix-head">
+        {!!shown.error && <PageState kind="error" error={shown.error} retry={shown.refresh} />}
         {head && <HeadPanel head={head} editable={editable} edit={() => setForm({ head })} saved={saved} />}
-        {!head && !list.loading && <Empty description={m.pick} />}
+        {!head && !shown.error && !list.loading && <Empty description={m.pick} />}
       </section>
       {form && <HeadForm head={form.head} close={() => setForm(undefined)} saved={saved} />}
     </div>
