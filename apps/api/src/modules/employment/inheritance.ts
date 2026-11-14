@@ -146,6 +146,7 @@ function applyCustomInheritance(
   customFields: Record<string, CustomValue>,
   explicitFieldCodes: string[],
   deferredFieldCodes: string[],
+  previousCustomFields?: CustomFields,
 ): void {
   const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
   const explicitCustom = input.customFields ?? {};
@@ -158,7 +159,12 @@ function applyCustomInheritance(
   }
   for (const field of definitions) {
     if (owns(explicitCustom, field.id)) {
-      customFields[field.id] = validateCustomValue(explicitCustom[field.id], field.valueType);
+      const value = explicitCustom[field.id];
+      // 设计 §4：select 停用项只可沿用；修改已保存申请时本单旧值与前驱版本的值都算沿用。
+      const retained = [previousCustomFields?.[field.id], eligible?.customFields[field.id]].includes(
+        value as CustomValue,
+      );
+      customFields[field.id] = validateCustomValue(value, field.valueType, field.options, retained ? value : undefined);
       explicitFieldCodes.push(`custom:${field.id}`);
     } else if (!metadata.startsNewCycle) {
       const mode = fieldMode(`custom:${field.id}`);
@@ -212,11 +218,32 @@ async function validateInheritedEmploymentType(
     await validateSelectedEmploymentType(tx, tenantId, fields.employmentType, eligible?.fields.employmentType);
 }
 
+function frozenFormModes(frozenForm: TrustedFormSnapshot) {
+  return {
+    grouped: frozenForm.group !== null,
+    customMode: frozenForm.customMode,
+    fieldModes: frozenForm.fieldModes,
+    autoPopulate: frozenForm.autoPopulate ?? true,
+    excludedAutofillFields: frozenForm.excludedAutofillFields ?? [],
+  };
+}
+
+async function employeeCode(tx: Tx, tenantId: string, employeeId: string) {
+  const [employee] = rowsOf<{ code: string | null }>(
+    await tx.execute(sql`
+      SELECT code FROM employment_employees WHERE tenant_id=${tenantId} AND id=${employeeId} LIMIT 1
+    `),
+  );
+  if (!employee) throw new AppError('NOT_FOUND', '员工不存在');
+  return employee;
+}
+
 export async function prepareInheritance(
   tx: Tx,
   ctx: EmploymentContext,
   input: InheritanceInput,
   frozenForm?: TrustedFormSnapshot,
+  previousCustomFields?: CustomFields,
 ): Promise<PreparedInheritance> {
   businessDate(input.effectiveDate);
   let configured =
@@ -224,21 +251,8 @@ export async function prepareInheritance(
       ? await applyInitiatorFieldModes(tx, ctx, await resolveTransferForm(tx, ctx.tenantId, input.formId))
       : resolveForm(input.formId);
   configured = await selfServiceForm(tx, ctx, input, configured);
-  const form = frozenForm
-    ? {
-        grouped: frozenForm.group !== null,
-        customMode: frozenForm.customMode,
-        fieldModes: frozenForm.fieldModes,
-        autoPopulate: frozenForm.autoPopulate ?? true,
-        excludedAutofillFields: frozenForm.excludedAutofillFields ?? [],
-      }
-    : configured;
-  const [employee] = rowsOf<{ code: string | null }>(
-    await tx.execute(sql`
-      SELECT code FROM employment_employees WHERE tenant_id=${ctx.tenantId} AND id=${input.employeeId} LIMIT 1
-    `),
-  );
-  if (!employee) throw new AppError('NOT_FOUND', '员工不存在');
+  const form = frozenForm ? frozenFormModes(frozenForm) : configured;
+  const employee = await employeeCode(tx, ctx.tenantId, input.employeeId);
   const parsedFields = presetFieldsSchema.safeParse(input.fields ?? {});
   if (!parsedFields.success) throw new AppError('VALIDATION_FAILED', '任职预置字段不合法');
   const fields = emptyFields();
@@ -279,7 +293,16 @@ export async function prepareInheritance(
     employee.code,
   );
   await validateInheritedEmploymentType(tx, ctx.tenantId, fields, eligible, frozenForm);
-  applyCustomInheritance(input, metadata, definitions, eligible, customFields, explicitFieldCodes, deferredFieldCodes);
+  applyCustomInheritance(
+    input,
+    metadata,
+    definitions,
+    eligible,
+    customFields,
+    explicitFieldCodes,
+    deferredFieldCodes,
+    previousCustomFields,
+  );
   const explicit = new Set(explicitFieldCodes);
   for (const origin of derivedOrigins) explicit.add(`preset:${derivationFields(origin).field}`);
   return {
@@ -302,7 +325,7 @@ export async function prepareEmploymentPatch(
   previous: PreparedInheritance,
 ): Promise<PreparedInheritance> {
   // 已保存申请的字段策略随申请冻结；修改表单配置不能把原单只读字段变成可伪造写入。
-  const prepared = await prepareInheritance(tx, ctx, input, previous.formSnapshot);
+  const prepared = await prepareInheritance(tx, ctx, input, previous.formSnapshot, previous.customFields);
   const merged =
     input.effectiveDate === previous.effectiveDate ? restoreFrozenDefaults(input, previous, prepared) : prepared;
   // F-323 第 2 轮 P2-2：字段最终合并后，以锁内本单旧值为沿用基准判断是否改选，不以前驱类别为准；

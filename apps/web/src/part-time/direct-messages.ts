@@ -1,4 +1,5 @@
 export const d = {
+  disabledOption: '（已停用）',
   yes: '是',
   no: '否',
   add: '新增兼职',

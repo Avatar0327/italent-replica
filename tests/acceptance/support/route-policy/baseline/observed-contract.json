@@ -29797,6 +29797,42 @@
         ]
       }
     },
+    "PUT /api/tenant/employment/custom-fields/:id/options": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentCustomField:update"
+        ]
+      }
+    },
     "PUT /api/tenant/employment/employees/:id/probation": {
       "edge": {
         "anonymous": {

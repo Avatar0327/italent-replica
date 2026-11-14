@@ -678,6 +678,7 @@ export const DIGESTS: Digests = {
     'route:POST /records/:id/forward-update-preview': '435a1e5f4369',
     'route:POST /records/batch-edit': '2b2c280f3522',
     'route:PUT /custom-fields/:id/inheritance': '9503bb63b315',
+    'route:PUT /custom-fields/:id/options': 'c0670bae7e66',
     'route:PUT /settings': '7a84582006c4',
   },
   'apps/api/src/modules/employment/transition-access.ts': {
@@ -937,7 +938,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/job/graph-export.ts': {
     'route:GET /api/tenant/job/graph/export': '136c4ac11f20',
-    'route:GET /api/tenant/job/graph/issues/export': '735854e30898',
+    'route:GET /api/tenant/job/graph/issues/export': '525cce8995d4',
   },
   'apps/api/src/modules/job/graph-routes.ts': {
     'route:GET /api/tenant/job/graph': 'e8bafb1f0777',
@@ -2500,6 +2501,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/routes.ts#route:POST /records/:id/forward-update-preview': '502cd30c2ed8',
   'apps/api/src/modules/employment/routes.ts#route:POST /records/batch-edit': 'dcae97fe5fea',
   'apps/api/src/modules/employment/routes.ts#route:PUT /custom-fields/:id/inheritance': 'cc3726417668',
+  'apps/api/src/modules/employment/routes.ts#route:PUT /custom-fields/:id/options': '12b335ef4449',
   'apps/api/src/modules/employment/routes.ts#route:PUT /settings': 'fcfd4017c2bb',
   'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite': '413b0e4e2c2a',
   'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure': '573e99887edc',
@@ -2683,7 +2685,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/job/context.ts#readContext': '9d063f8ea5e6',
   'apps/api/src/modules/job/employment-port.ts#employmentJobPersonnel': '6a624377b0cf',
   'apps/api/src/modules/job/graph-export.ts#route:GET /api/tenant/job/graph/export': '3b81a2a2e37a',
-  'apps/api/src/modules/job/graph-export.ts#route:GET /api/tenant/job/graph/issues/export': '5d50a6a89276',
+  'apps/api/src/modules/job/graph-export.ts#route:GET /api/tenant/job/graph/issues/export': 'b1368fe0b498',
   'apps/api/src/modules/job/graph-routes.ts#route:GET /api/tenant/job/graph': 'fdba8a8163a1',
   'apps/api/src/modules/job/graph-routes.ts#route:GET /api/tenant/job/graph/issues': 'c038fc6cc426',
   'apps/api/src/modules/job/graph-routes.ts#route:POST /api/tenant/job/graph/rebuild': '9285e2380c6c',

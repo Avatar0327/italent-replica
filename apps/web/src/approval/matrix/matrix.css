@@ -19,3 +19,21 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+.matrix-structure {
+  margin-top: 16px;
+}
+.matrix-structure-body {
+  width: 100%;
+}
+.matrix-picker {
+  min-width: 180px;
+  width: 100%;
+}
+.matrix-issues ul {
+  margin: 0;
+  padding-left: 16px;
+}
+.matrix-columns .matrix-invalid > td,
+.matrix-rows .matrix-invalid > td {
+  background: #fff2f0;
+}

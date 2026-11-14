@@ -4,6 +4,7 @@ import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { withPreExitRoutesSchema } from './support/pre-exit-routes-schema.js';
+import { withPreCustomFieldOptionsSchema } from './support/pre-custom-field-options-schema.js';
 import { withPreInternCycleSchema } from './support/pre-intern-cycle-schema.js';
 import { api, definition, publish, reach, view, world } from './AC-EXIT-F316-support.js';
 
@@ -14,19 +15,21 @@ it('DEC-678 升级不回填新策略，旧发布版的兜底配置与在途行�
   // 旧结构没有出口路由 / 激活台账 / decision_exit，前置步骤期间临时补上，升级前撤掉（同 pre-blacklist-schema 先例）
   // 当前接口建入职周期会写 employment_cycles.trainee_start_date，旧结构没有，同样临时补列（F-480，support/pre-intern-cycle-schema.ts）
   const { x, process, run } = await withPreInternCycleSchema(handle.db, () =>
-    withPreExitRoutesSchema(handle.db, async () => {
-      const x = await world(handle.db, 'upgrade', false);
-      const process = await publish(
-        x,
-        definition(x, {
-          work_handover: { fallbackUserIds: [x.workOwner.userId] },
-          other_handover: { fallbackUserIds: [x.hrbp.userId] },
-        }),
-      );
-      const run = await reach(x, 'work_handover', false);
-      expect((await x.pendingNode(run.instanceId))?.userId).toBe(x.workOwner.userId);
-      return { x, process, run };
-    }),
+    withPreCustomFieldOptionsSchema(handle.db, () =>
+      withPreExitRoutesSchema(handle.db, async () => {
+        const x = await world(handle.db, 'upgrade', false);
+        const process = await publish(
+          x,
+          definition(x, {
+            work_handover: { fallbackUserIds: [x.workOwner.userId] },
+            other_handover: { fallbackUserIds: [x.hrbp.userId] },
+          }),
+        );
+        const run = await reach(x, 'work_handover', false);
+        expect((await x.pendingNode(run.instanceId))?.userId).toBe(x.workOwner.userId);
+        return { x, process, run };
+      }),
+    ),
   );
   await handle.migrate();
   const loaded = await view(await api(x, 'GET', `/${process.id}`));
