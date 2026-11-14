@@ -851,4 +851,83 @@ describe('AC-APV-F326-25 409 冲突：结构三方核对与回填', () => {
     expect(putRows().map((row) => row.id)).toContain('89000000-0000-4000-8000-000000000099');
     expect(putRows().map((row) => row.id)).not.toContain(rows[0]!.id);
   });
+
+  /*
+   * 第 4 轮（审查 P2-1）：乙经 PUT structure 改了某列的类型（沿用 id）。两边类型不同的列不论甲动没动都列入结构冲突，
+   * 整列只取一边（类型、维度、开关、列名与全部格值），按最终类型排列；提交里每一格的值都属于该列的类别。
+   */
+  const catalogOf: Record<string, Set<string>> = {
+    person: new Set(catalog.people.map((item) => item.userId)),
+    department: new Set(catalog.departments.map((item) => item.id)),
+    position: new Set(catalog.positions.map((item) => item.id)),
+  };
+  /** 提交的每一列：格值都属于该列的类别（角色列是人员，条件列是它的维度），人员格里没有部门 / 职位 ID。 */
+  const consistent = () =>
+    putColumns().every((column) => {
+      const known = catalogOf[column.kind === 'role' ? 'person' : String(column.dimension)];
+      return !!known && putRows().every((row) => row.cells[column.key as string]!.every((ref) => known.has(ref)));
+    });
+  const putColumn = (columnId: string) => putColumns().find((column) => column.id === columnId)!;
+  const cellsOf = (columnId: string) => putRows().map((row) => row.cells[putColumn(columnId).key as string]);
+  const swaps = {
+    // 乙把未被引用的复核人角色列改成部门条件列并改名、填部门；甲在该列第 1 行选了人
+    roleToCondition: {
+      column: ROLE2,
+      mine: () => choose(cell(0, 2), PICK_P1),
+      change: { kind: 'condition' as const, dimension: 'department', name: '复核部门' },
+      cells: [[D1], [], []],
+    },
+    // 乙把部门条件列改成允许多人的角色列并改名、填人员；甲没动这一列，只改了审批人列名
+    conditionToRole: {
+      column: COND,
+      mine: () => type(nameInput(1), '一级审批人'),
+      change: { kind: 'role' as const, dimension: null, allowMultiple: true, name: '部门负责人' },
+      cells: [[P1, P2], [P2], []],
+    },
+  };
+  async function swap(which: keyof typeof swaps, choice: '采用最新版本' | '保留我的修改') {
+    const { column, mine, change, cells } = swaps[which];
+    id = lone();
+    await ui.render();
+    await mine();
+    otherSaves((columns, rows) => ({
+      columns: columns.map((item) => (item.id === column ? { ...item, ...change } : item)),
+      rows: rows.map((row, index) => ({ ...row, cells: { ...row.cells, [column]: cells[index]! } })),
+    }));
+    await save();
+    await click('重读最新版本', structure());
+    await click('已核对差异，继续编辑', structure());
+    const blocked = disabledIn('保存结构');
+    const handled = await resolveAll(choice);
+    await save();
+    accepted();
+    expect([blocked, handled, consistent()]).toEqual([true, 1, true]);
+  }
+
+  it('乙把复核人角色列改成部门条件列，甲在该列选了人：列入结构冲突；采用最新版本整列取乙的，排进条件列', async () => {
+    await swap('roleToCondition', '采用最新版本');
+    expect(putColumn(ROLE2)).toMatchObject({ kind: 'condition', dimension: 'department', name: '复核部门' });
+    expect(cellsOf(ROLE2)).toEqual([[D1], [], []]);
+    expect(putColumns().map((column) => column.id)).toEqual([COND, ROLE2, ROLE]);
+  });
+
+  it('乙把复核人角色列改成部门条件列，甲在该列选了人：保留我的修改整列取甲的（角色、列名与人员）', async () => {
+    await swap('roleToCondition', '保留我的修改');
+    expect(putColumn(ROLE2)).toMatchObject({ kind: 'role', dimension: null, allowMultiple: false, name: '复核人' });
+    expect(cellsOf(ROLE2)).toEqual([[P1], [P1], []]);
+  });
+
+  it('乙把部门条件列改成多人角色列，甲没动这一列：仍列入结构冲突；采用最新版本整列取乙的角色与人员', async () => {
+    await swap('conditionToRole', '采用最新版本');
+    expect(putColumn(COND)).toMatchObject({ kind: 'role', dimension: null, allowMultiple: true, name: '部门负责人' });
+    expect(cellsOf(COND)).toEqual([[P1, P2], [P2], []]);
+    expect(putColumns().map((column) => column.name)).toEqual(['部门负责人', '一级审批人', '复核人']);
+  });
+
+  it('乙把部门条件列改成多人角色列，甲没动这一列：保留我的修改整列取甲的部门条件列与部门值', async () => {
+    await swap('conditionToRole', '保留我的修改');
+    expect(putColumn(COND)).toMatchObject({ kind: 'condition', dimension: 'department', allowMultiple: false });
+    expect(putColumns().map((column) => column.name)).toEqual(['部门', '一级审批人', '复核人']);
+    expect(cellsOf(COND)).toEqual([[D1], [D2], []]);
+  });
 });

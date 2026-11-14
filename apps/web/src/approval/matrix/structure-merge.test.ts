@@ -1,7 +1,8 @@
-// 结构三方合并的删除、新增、维度与行顺序规则及结构冲突按处理结果重算（页面级回填与结构冲突见 AC-APV-F326-25.test.ts）。
+// 结构三方合并的删除、新增、维度与行顺序规则及结构冲突按处理结果重算（页面级回填与结构冲突见 AC-APV-F326-25.test.ts），
+// 以及格值类别与列类型一致的兜底校验。
 import { describe, expect, it } from 'vitest';
 import { mergeStructure, type Decided } from './structure-merge.js';
-import type { DraftColumn, DraftRow, Structure } from './structure-model.js';
+import { structureIssues, type DraftColumn, type DraftRow, type Structure } from './structure-model.js';
 
 const column = (ref: string, kind: DraftColumn['kind'] = 'role'): DraftColumn => ({
   ref,
@@ -110,5 +111,32 @@ describe('structure-merge 三方合并', () => {
     expect(result.structure).toEqual(mine);
     expect(result.changes).toEqual([]);
     expect(result.open).toEqual([]);
+  });
+
+  it('只有服务端把条件列改成职位并删了第1行，我改过第1行并保留：该行这一列的部门值不带进职位列', () => {
+    const position = { ...C, dimension: 'position' as const };
+    const latest = { columns: [position, column('R')], rows: [row('r2', { C: ['j1'], R: ['p2'] })] };
+    const mine = { ...base, rows: [row('r1', { C: ['d1'], R: ['p9'] }), base.rows[1]!] };
+    const result = merge(latest, mine, { 'row:r1': false });
+    expect([result.open, result.structure.columns[0]]).toEqual([[], position]);
+    expect(result.structure.rows.map((item) => item.cells)).toEqual([
+      { C: [], R: ['p9'] },
+      { C: ['j1'], R: ['p2'] },
+    ]);
+  });
+});
+
+describe('structureIssues 一致性兜底', () => {
+  it('格值只在别的类别登记过（部门 ID 进了人员格、人员 ID 进了部门格）：报类型不一致；没登记过的不报', () => {
+    const registered = new Set(['department:d1', 'person:p1', 'person:p2']);
+    const known = (kind: string, id: string) => registered.has(`${kind}:${id}`);
+    const draft: Structure = {
+      columns: [C, column('R')],
+      rows: [row('r1', { C: ['p1'], R: ['d1'] }), row('r2', { C: ['d1', 'x1'], R: ['p2'] })],
+    };
+    expect(structureIssues(draft, known).map((issue) => [issue.text, issue.row])).toEqual([
+      ['第1行「C」：格值与列类型不一致', 'r1'],
+      ['第1行「R」：格值与列类型不一致', 'r1'],
+    ]);
   });
 });
