@@ -16,7 +16,10 @@ export const listPage = {
 /** 文本筛选：去空白、非空、有上限；包含匹配、不区分大小写，% _ \ 按字面处理。 */
 export const textFilter = z.string().trim().min(1).max(100);
 
-export function parseQuery<T extends z.ZodType>(schema: T, raw: Record<string, string | undefined>): z.infer<T> {
+export function parseQuery<T extends z.ZodType>(
+  schema: T,
+  raw: Record<string, string | string[] | undefined>,
+): z.infer<T> {
   const present = Object.fromEntries(Object.entries(raw).filter(([, value]) => value !== undefined));
   const parsed = schema.safeParse(present);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '查询参数不合法', parsed.error.issues);
@@ -70,7 +73,10 @@ export async function mousOfUsers(tx: Tx, userIds: readonly string[]): Promise<M
 }
 
 /** 有指定管理单元分配的用户（任一应用）。 */
-export function hasMou(userId: SQL | object, mouId: string): SQL {
+export function hasMou(userId: SQL | object, mouId: string | readonly string[]): SQL {
   return sql`${userId} IN (SELECT s.user_id FROM permission_user_app_scopes s
-    WHERE s.kind = 'mou' AND s.mou_id = ${mouId}::uuid)`;
+    WHERE s.kind = 'mou' AND s.mou_id IN (${sql.join(
+      (typeof mouId === 'string' ? [mouId] : mouId).map((id) => sql`${id}::uuid`),
+      sql`, `,
+    )}))`;
 }

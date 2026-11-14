@@ -124,6 +124,8 @@ export async function settingsFixtures(page: Page, editable = true) {
       body = path.endsWith('/mous/tree')
         ? { items: [{ ...rows.mou, matched: true, children: [] }], total: 1 }
         : collection('mous', rows.mou);
+    if (path.endsWith('/profile-candidates')) body = { items: [rows.profile], total: 1 };
+    if (path.endsWith('/mou-candidates')) body = { items: [rows.mou], total: 1 };
     if (path.includes('/scopes/'))
       body = { userId: user, appCode: 'TenantBase', kind: 'default', revision: 6, mouId: null, orgRanges: [] };
     return body ? route.fulfill({ json: body }) : route.fallback();

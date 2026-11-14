@@ -260,6 +260,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       51: '43a1b3e881b76d7c',
       // F-474-2a（DEC-776 / DEC-778）：职位职责说明 / 任职要求，职级资源集合与薪资上中下限的字段授权；版本为 main + 1 占位，合并时重算。
       52: 'acbafd07e26b55e1',
+      // F-474-7b（DEC-896 U1/U8）：职务职级图谱对象的查看与 rebuild / export 按钮，仅授给系统管理员；main + 1 占位，合并时重算。
+      53: 'c0f9b17371601828',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,
