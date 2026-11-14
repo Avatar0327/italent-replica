@@ -13,10 +13,12 @@ interface Manifest {
   admin: string;
   member: string;
   referenced: { id: string; code: string };
+  scoped: { id: string; code: string };
 }
 const PUBLIC_PATH = '/config-center/global/public-variables';
 const TRANSFER_PATH = '/config-center/apps/transfer/workflow/app-variables-transfer';
 const WARNING = '以下流程引用了该变量，停用后这些节点将视为审批人为空，按节点空人策略处理';
+const SCOPE_WARNING = '以下流程引用了该变量，去掉「流程」适用范围后这些节点将视为审批人为空，按节点空人策略处理';
 const VARIABLES = /\/api\/tenant\/approval\/variables/;
 let backend: ChildProcess;
 let manifest: Manifest;
@@ -82,11 +84,12 @@ async function save(page: Page) {
   await form.getByRole('button', { name: /^保\s*存$/ }).click();
   await expect(form).toBeHidden();
 }
-async function create(page: Page, suffix: string, name: string) {
+async function create(page: Page, suffix: string, name: string, status: '草稿' | '启用' = '草稿') {
   await page.getByRole('button', { name: /^新\s*建$/ }).click();
   const form = dialog(page);
   await form.locator('[id$="codeSuffix"]').fill(suffix);
   await form.locator('[id$="name"]').first().fill(name);
+  if (status === '启用') await form.getByRole('radio', { name: '启用', exact: true }).check();
   await save(page);
 }
 
@@ -171,6 +174,70 @@ test('AC-APV-F326-22/23 应用变量：按路由应用读写，调动管理下�
   await page.goto('/config-center/workflow/app-variables-staff');
   await expect(page.getByRole('tab', { name: '启用的应用变量' })).toBeVisible();
   await expect(page.locator('tbody')).not.toContainText('B.SmokeApp');
+});
+
+// 第 2 轮 P2-1：新建并启用时后端先建草稿（revision 1）再启用（revision 2），回执须按实际创建模式核对
+test('AC-APV-F326-23 新建并启用：公共变量与应用变量弹窗成功关闭，下一次新建仍可用', async ({
+  context,
+  page,
+  baseURL,
+}) => {
+  test.setTimeout(120_000);
+  await signIn(context, baseURL!, manifest.admin);
+  await page.goto(PUBLIC_PATH);
+  await create(page, 'SmokeOn', '合成新建即启用', '启用');
+  await expect(row(page, 'Global.B.SmokeOn')).toContainText('启用');
+  await expect(row(page, 'Global.B.SmokeOn').getByRole('button', { name: /^停\s*用$/ })).toBeVisible();
+  await expect(page.getByText('原单回执无效')).toHaveCount(0);
+  await create(page, 'SmokeOnNext', '合成下一次新建');
+  await expect(row(page, 'Global.B.SmokeOnNext')).toContainText('草稿');
+
+  await page.goto(TRANSFER_PATH);
+  await create(page, 'SmokeAppOn', '合成应用新建即启用', '启用');
+  await expect(row(page, 'B.SmokeAppOn')).toContainText('启用');
+  await create(page, 'SmokeAppNext', '合成应用下一次新建');
+  await expect(row(page, 'B.SmokeAppNext')).toContainText('草稿');
+});
+
+// 第 2 轮 P2-2：A 打开只含「业务规则」的变量改范围；B 加入「流程」并保存流程建立引用；A 409 重读后提交去掉了「流程」，
+// 须先读引用、展示影响并带正确引用数提交
+test('AC-APV-F326-23 并发加入「流程」并被引用后，409 重读再提交先展示引用、确认后带引用数提交', async ({
+  context,
+  page,
+  baseURL,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await signIn(context, baseURL!, manifest.admin);
+  await page.goto(PUBLIC_PATH);
+  const scoped = row(page, manifest.scoped.code);
+  await expect(scoped).toContainText('业务规则');
+  await scoped.getByRole('button', { name: /^编\s*辑$/ }).click();
+  const form = dialog(page);
+  await expect(form.getByRole('radio', { name: '指定范围' })).toBeChecked();
+  await form.getByRole('checkbox', { name: '消息模板' }).check();
+
+  const linked = await request.post(`${manifest.url}/__smoke/link-process`, { data: { id: manifest.scoped.id } });
+  expect(linked.status()).toBe(204);
+
+  await form.getByRole('button', { name: /^保\s*存$/ }).click();
+  await form.getByRole('button', { name: '重读最新版本' }).click();
+  await form.getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  await expect(form.getByRole('checkbox', { name: '流程', exact: true })).not.toBeChecked();
+  const patch = page.waitForRequest(
+    (sent) => sent.method() === 'PATCH' && sent.url().endsWith(`/variables/${manifest.scoped.id}`),
+  );
+  await form.getByRole('button', { name: /^保\s*存$/ }).click();
+  const impact = dialog(page);
+  await expect(impact).toContainText(SCOPE_WARNING);
+  await expect(impact).toContainText('合成来源流程');
+  await ok(impact).click();
+  expect((await patch).postDataJSON()).toEqual({
+    usageScopes: ['business_rule', 'message_template'],
+    acknowledgedReferenceCount: 1,
+  });
+  await expect(form).toBeHidden();
+  await expect(scoped).toContainText('业务规则、消息模板');
 });
 
 test('AC-APV-F326-22 无流程矩阵菜单的成员：目录不出现变量入口，直达路径无权且不读变量接口', async ({

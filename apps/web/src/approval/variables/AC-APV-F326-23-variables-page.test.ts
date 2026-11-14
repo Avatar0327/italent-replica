@@ -272,6 +272,7 @@ describe('AC-APV-F326-23 公共变量管理页', () => {
     await click('取消', lastDialog());
     expect(writes).toEqual([]);
     await click('停用', rowOf(enabled.id)!);
+    for (let i = 0; i < 100 && !lastDialog()?.textContent?.includes('确定停用'); i += 1) await settle();
     await click('确定', lastDialog());
     expect(writes.map((item) => [item.method, item.url])).toEqual([['POST', `${API}/${enabled.id}/disable`]]);
     expect(writes[0]!.body).toEqual({ acknowledgedReferenceCount: 2 });
@@ -434,6 +435,50 @@ describe('AC-APV-F326-23 公共变量管理页', () => {
     ]);
   });
 
+  // 第 2 轮 P2-3：打开时适用范围为「全部」，他人改成部分范围；409 重读回填后单选须跟着变成「指定范围」
+  it('编辑 409：适用范围由全部变为部分，重读回填后显示「指定范围」与实际勾选，提交与显示一致', async () => {
+    const latest = { ...enabled, usageScopes: ['business_rule'], revision: enabled.revision + 1 };
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url.endsWith(`${API}/${enabled.id}`) && method === 'GET') return Response.json(latest);
+      if (method !== 'PATCH') return original(input, init);
+      const headers = new Headers(init?.headers);
+      writes.push({ url, method, body: JSON.parse(String(init!.body)), headers });
+      if (writes.length === 1)
+        return Response.json({ error: { code: 'REVISION_CONFLICT', message: '版本冲突' } }, { status: 409 });
+      const body = writes.at(-1)!.body as object;
+      return Response.json({ ...latest, ...body, revision: Number(headers.get('if-match')) + 1 });
+    });
+    await render(PUBLIC_PATH, 'public-variables');
+    await click('编辑', rowOf(enabled.id)!);
+    const radio = (value: string) =>
+      lastDialog().querySelector<HTMLInputElement>(`input[type="radio"][value="${value}"]`)!;
+    const box = (value: string) =>
+      lastDialog().querySelector<HTMLInputElement>(`input[type="checkbox"][value="${value}"]`);
+    expect(radio('all').checked).toBe(true);
+    type(field(lastDialog(), 'name')!, '合成改名变量');
+    await settle();
+    await click('保存', lastDialog());
+    await click('重读最新版本', lastDialog());
+    await click('已核对差异，继续编辑', lastDialog());
+    expect(radio('some').checked, '回填部分范围后显示「指定范围」').toBe(true);
+    expect(radio('all').checked).toBe(false);
+    expect(box('business_rule')?.checked).toBe(true);
+    expect(box('process')?.checked).toBe(false);
+    expect(box('message_template')?.checked).toBe(false);
+    await click('保存', lastDialog());
+    expect(
+      reads.filter((url) => url.endsWith('/references')),
+      '未去掉「流程」不读引用',
+    ).toEqual([]);
+    expect(writes.map((item) => [item.body, item.headers.get('if-match')])).toEqual([
+      [{ name: '合成改名变量' }, String(enabled.revision)],
+      [{ name: '合成改名变量' }, String(latest.revision)],
+    ]);
+  });
+
   it('停用结果未知：本行锁定，编辑 / 停用都不可点，不生成新命令', async () => {
     const original = vi.mocked(fetch).getMockImplementation()!;
     vi.mocked(fetch).mockImplementation(async (input, init) => {
@@ -451,6 +496,46 @@ describe('AC-APV-F326-23 公共变量管理页', () => {
     expect(rowButton('编辑')?.disabled).toBe(true);
     expect(rowButton('停用')?.disabled).toBe(true);
     expect(writes).toHaveLength(1);
+  });
+
+  // 第 2 轮 P2-4：51 条时第 2 页只剩 1 条，停用后总数变 50，页码须退回最后一页并重读，不留空列表
+  it('边界：最后一页唯一一条停用后总数缩减，自动退回上一页并显示剩余记录', async () => {
+    const last = publicVariable({
+      id: '50000000-0000-4000-8000-000000000051',
+      code: 'Global.B.SynthLast',
+      name: '合成末页变量',
+    });
+    references = { ...references, [last.id]: [] };
+    let total = 51;
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = new URL(String(input), 'http://localhost');
+      if (url.pathname === `${API}/${last.id}/disable`) {
+        writes.push({
+          url: String(input),
+          method: 'POST',
+          body: JSON.parse(String(init!.body)),
+          headers: new Headers(),
+        });
+        total = 50;
+        return Response.json({ ...last, status: 'disabled', revision: last.revision + 1 });
+      }
+      if (url.pathname !== API || url.searchParams.get('status') !== 'active') return original(input, init);
+      reads.push(String(input));
+      const offset = Number(url.searchParams.get('offset'));
+      const items = offset === 0 ? [draft] : total > 50 ? [last] : [];
+      return Response.json({ ...page(items, offset), total });
+    });
+    await render(PUBLIC_PATH, 'public-variables');
+    await act(async () => document.querySelector<HTMLElement>('.ant-pagination-item-2')!.click());
+    await settle();
+    expect(rowOf(last.id), '第 2 页唯一一条').not.toBeNull();
+    await click('停用', rowOf(last.id)!);
+    await click('确定', lastDialog());
+    expect(writes.map((item) => [item.method, item.url])).toEqual([['POST', `${API}/${last.id}/disable`]]);
+    expect(listReads().at(-1), '退回最后有效页重读').toMatchObject({ status: 'active', offset: '0' });
+    expect(rowOf(draft.id), '显示剩余记录').not.toBeNull();
+    expect(text()).not.toContain('暂无变量');
   });
 });
 

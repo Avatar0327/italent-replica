@@ -42,7 +42,27 @@ async function seed(db: Parameters<typeof s4World>[0]) {
     body: { userId: admin, role: 'matrix_admin', grantableAdminRoles: [], grantableProfileIds: [] },
   });
   if (granted.status !== 201) throw new Error(`admin grant failed ${granted.status}: ${await granted.text()}`);
-  return { w, referenced, admin };
+  // 第 2 轮 P2-2：只含「业务规则」的人员变量，并发场景里由另一人（夹具 HR）加入「流程」并保存流程建立引用
+  const scoped = await variable(w, {
+    codeSuffix: 'SmokeScoped',
+    name: '合成业务规则变量',
+    usageScopes: ['business_rule'],
+  });
+  return { w, referenced, scoped, admin };
+}
+
+/** 测试控制入口（不经浏览器代理）：另一人把变量加入「流程」适用范围，再经真实流程保存接口引用它。 */
+async function linkProcess(w: S4World, id: string) {
+  const { revision, usageScopes } = await w.json<{ revision: number; usageScopes: string[] }>(
+    await w.request(w.hr.id, 'GET', `/api/tenant/approval/variables/${id}`),
+  );
+  const patched = await w.request(w.hr.id, 'PATCH', `/api/tenant/approval/variables/${id}`, {
+    ifMatch: revision,
+    body: { usageScopes: ['process', ...usageScopes.filter((scope) => scope !== 'process')] },
+  });
+  if (patched.status !== 200) throw new Error(`variable patch failed ${patched.status}: ${await patched.text()}`);
+  const saved = await saveNodes(w, transferNodes([varSource('public_variable', id)]));
+  if (saved.status !== 201) throw new Error(`process save failed ${saved.status}: ${await saved.text()}`);
 }
 
 function handler(db: Parameters<typeof s4World>[0], w: S4World) {
@@ -50,6 +70,12 @@ function handler(db: Parameters<typeof s4World>[0], w: S4World) {
   return async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url!, 'http://127.0.0.1');
     const body = await bodyOf(req);
+    if (req.method === 'POST' && url.pathname === '/__smoke/link-process') {
+      await linkProcess(w, (body as { id: string }).id);
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     const headers = Object.fromEntries(
       Object.entries(req.headers).flatMap(([key, value]) =>
         forwarded(key) && typeof value === 'string' ? [[key, value]] : [],
@@ -71,7 +97,7 @@ function handler(db: Parameters<typeof s4World>[0], w: S4World) {
 export async function startVariablesBackend() {
   const handle = await createTestDb();
   try {
-    const { w, referenced, admin } = await seed(handle.db);
+    const { w, referenced, scoped, admin } = await seed(handle.db);
     const serve = handler(handle.db, w);
     const server = createServer((req, res) => {
       serve(req, res).catch((error: unknown) => {
@@ -87,6 +113,7 @@ export async function startVariablesBackend() {
         admin,
         member: w.near.userId,
         referenced: { id: referenced.id, code: referenced.code },
+        scoped: { id: scoped.id, code: scoped.code },
       },
       async close() {
         await new Promise<void>((resolve) => server.close(() => resolve()));
