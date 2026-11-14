@@ -92,6 +92,20 @@ describe('缴交方案种子脚本', () => {
     expect(await counts(tenantId)).toEqual(before);
   });
 
+  it('可选字段 enabled：未提供与显式 true 等价（重跑为已存在）；显式 false 与已有内容不同整批冲突；null 整批拒绝', async () => {
+    const tenantId = await newTenant('seed-enabled');
+    const code = `EN-${uniqueSuffix()}`;
+    const plan = (enabled?: boolean | null): PlanSeed[] => [
+      { code, versions: [{ name: 'v', regionCode: '440100', effectiveMonth: '2026-01-01', enabled } as never] },
+    ];
+    await seedInsurancePlans(testDb().db, tenantId, plan());
+    const before = await counts(tenantId);
+    expect((await seedInsurancePlans(testDb().db, tenantId, plan(true))).versions).toEqual({ created: 0, existing: 1 });
+    await expect(seedInsurancePlans(testDb().db, tenantId, plan(false))).rejects.toThrow(/内容不一致|冲突/);
+    await expect(seedInsurancePlans(testDb().db, tenantId, plan(null))).rejects.toThrow(/enabled/);
+    expect(await counts(tenantId)).toEqual(before);
+  });
+
   it('租户隔离：只写目标租户；别的租户同编码各自独立；非法租户 ID 拒绝', async () => {
     const [a, b] = [await newTenant('seed-a'), await newTenant('seed-b')];
     const seed = seedOf();

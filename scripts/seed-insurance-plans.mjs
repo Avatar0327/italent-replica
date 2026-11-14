@@ -38,6 +38,9 @@ function validate(plans) {
       if (typeof version.name !== 'string' || version.name.trim() === '') fail(`方案 ${code} 的版本名称不能为空`);
       if (!/^\d{6}$/.test(String(version.regionCode))) fail(`方案 ${code} 的缴交地必须是 6 位数字`);
       checkMonth(version.effectiveMonth, `方案 ${code} 的生效月`);
+      // 未提供 = 启用；显式 null / 非布尔不静默当成启用（整批拒绝）
+      if (version.enabled !== undefined && typeof version.enabled !== 'boolean')
+        fail(`方案 ${code} 的 enabled 只能省略或为布尔值`);
       if (version.stopMonth != null) {
         checkMonth(version.stopMonth, `方案 ${code} 的停用月`);
         if (version.stopMonth <= version.effectiveMonth) fail(`方案 ${code} 的停用月必须晚于生效月`);
