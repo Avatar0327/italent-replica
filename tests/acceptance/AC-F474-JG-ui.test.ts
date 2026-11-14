@@ -413,7 +413,7 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     });
   const rows = () =>
     Array.from(ui.host.querySelectorAll('tbody tr.ant-table-row')).map((row) =>
-      Array.from(row.querySelectorAll('td')).map((item) => item.textContent),
+      Array.from(row.querySelectorAll('td:not(.ant-table-selection-column)')).map((item) => item.textContent),
     );
   const issueCalls = () => ui.calls.filter((call) => call.url.pathname === ISSUES);
 
@@ -421,12 +421,9 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     serveIssues();
     await ui.render('/job?kind=graph-issues');
     expect(ui.host.querySelector('h1')?.getAttribute('aria-label')).toBe('待确认的职务职级记录');
-    expect(Array.from(ui.host.querySelectorAll('thead th')).map((item) => item.textContent)).toEqual([
-      '类型',
-      '名称',
-      '无法生成图谱原因',
-      '操作',
-    ]);
+    // 勾选列（F-474-7c 导出已选）无表头文案，不计入列序比对
+    const heads = ui.host.querySelectorAll('thead th:not(.ant-table-selection-column)');
+    expect(Array.from(heads).map((item) => item.textContent)).toEqual(['类型', '名称', '无法生成图谱原因', '操作']);
     expect(rows().map((row) => row.slice(0, 3))).toEqual([
       ['职级', '合成T1', '与同一类别的职级【合成T2】重叠'],
       ['职级', '合成T2', '与同一类别的职级【合成T1】重叠'],
@@ -581,7 +578,7 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     await ui.render('/job?kind=graph-issues');
     const rowOf = (name: string) =>
       Array.from(ui.host.querySelectorAll('tbody tr.ant-table-row')).find(
-        (row) => row.querySelectorAll('td')[1]?.textContent === name,
+        (row) => row.querySelectorAll('td:not(.ant-table-selection-column)')[1]?.textContent === name,
       )!;
     await click(button('编辑', rowOf('合成工程师')));
     await click(button('编辑', rowOf('合成缺项职务')));
@@ -615,7 +612,7 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     await ui.render('/job?kind=graph-issues');
     const rowOf = (name: string) =>
       Array.from(ui.host.querySelectorAll('tbody tr.ant-table-row')).find(
-        (row) => row.querySelectorAll('td')[1]?.textContent === name,
+        (row) => row.querySelectorAll('td:not(.ant-table-selection-column)')[1]?.textContent === name,
       )!;
     await click(button('编辑', rowOf('合成工程师')));
     await click(button('编辑', rowOf('合成缺项职务')));
@@ -661,7 +658,9 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
         disabled: item.classList.contains('ant-dropdown-menu-item-disabled'),
         item,
       }));
-    const checkboxes = () => Array.from(ui.host.querySelectorAll<HTMLInputElement>('tbody input[type="checkbox"]'));
+    // 只取数据行：antd 的量宽行（ant-table-measure-row）里也渲染一份表头勾选框
+    const checkboxes = () =>
+      Array.from(ui.host.querySelectorAll<HTMLInputElement>('tbody tr.ant-table-row input[type="checkbox"]'));
 
     it('下拉“导出已选（n 条）/ 导出全部（N 条）”：已选按对象 ID，全部带当前筛选；提示“导出成功”', async () => {
       const items = issueItems(allReasonsInput());

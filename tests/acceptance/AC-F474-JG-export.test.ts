@@ -7,7 +7,7 @@ import { sql, withTenant } from '@italent/db';
 import { buildJobGraph } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { GRAPH, graphInput, graphWorld, record } from './support/job-graph.js';
+import { GRAPH, graphInput, graphWorld, record, seedGraph } from './support/job-graph.js';
 import { readXlsx, valueAt, type Xlsx } from './support/xlsx-read.js';
 
 const testDb = useTestDb();
@@ -195,14 +195,14 @@ describe('AC-F474-JG-08 图谱导出', () => {
     const first = await values();
     expect(first).toContain('p');
     expect(first).not.toContain('合成无序列');
-    await withTenant(testDb().db, w.tenant.id, (tx) =>
-      tx.execute(sql`UPDATE job_post_versions SET name = '合成改名' WHERE tenant_id = ${w.tenant.id} AND code = 'P'`),
-    );
+    // 版本表只增不改：加一个新职等作为“源数据变化”
+    const extra = { grades: [record('g9', { name: '合成新职等', grade: 9 })], levelTypes: [], levels: [] };
+    await seedGraph(testDb().db, w.tenant.id, { ...extra, sequences: [], posts: [] });
     expect(await values()).toEqual(first);
     expect((await w.rebuild(1)).status).toBe(200);
     const next = await values();
-    expect(next).toContain('合成改名');
-    expect(next).not.toContain('p');
+    expect(next).toContain('合成新职等');
+    expect(next).not.toContain('合成无序列');
   });
 
   it('文本防公式注入与转义：= 开头仍是内联字符串，_xHHHH_ 与 XML 1.0 禁止字符按 R3-T02 规则编码', async () => {

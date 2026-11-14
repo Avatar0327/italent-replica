@@ -9,6 +9,7 @@ import { slotKey } from '../foundation/forms/slot.js';
 import type { Command } from '../foundation/client.js';
 import type { Submission, Values } from '../foundation/forms/store.js';
 import { useRemote, type PageAccess } from '../org/page-support.js';
+import { useGraphDownload } from './graph-download.js';
 import { GRAPH_ID, GRAPH_PATH, ISSUES_SEARCH, graphGrid, graphTime, type GraphSnapshot } from './graph-model.js';
 import { graphText as t, pageText as m, text } from './messages.js';
 import './job-graph.css';
@@ -148,6 +149,9 @@ function Toolbar(props: {
   const { snapshot, access, rebuild, refresh, ready } = props;
   const session = useSession();
   const issues = useHref({ search: ISSUES_SEARCH });
+  const download = useGraphDownload();
+  // 导出与重新生成互斥：导出进行中两者都不可点（原站提示），生成进行中也不导出。
+  const blocked = !ready || download.busy || rebuild.command.busy;
   return (
     <Space className="job-graph-toolbar">
       {snapshot && (
@@ -169,21 +173,21 @@ function Toolbar(props: {
           </a>
         </Tooltip>
       )}
+      {download.busy && <span role="status">{t.exporting}</span>}
       {access.can('export', 'list') && (
-        // 导出属 F-474-7c：本期按列表页同样的禁用占位，不发请求。
-        <Tooltip title={ui.exportPending}>
-          <Button disabled>{ui.export}</Button>
-        </Tooltip>
+        <Button disabled={blocked} onClick={() => void download.start(`${GRAPH_PATH}/export`)}>
+          {ui.export}
+        </Button>
       )}
       {access.can('rebuild', 'list') && (
         <Popconfirm
           title={t.confirmRebuild}
           okText={m.confirm}
           cancelText={m.cancel}
-          disabled={!ready || rebuild.command.locked}
+          disabled={blocked || rebuild.command.locked}
           onConfirm={() => void rebuild.start(refresh)}
         >
-          <Button type="primary" disabled={!ready || rebuild.command.locked}>
+          <Button type="primary" disabled={blocked || rebuild.command.locked}>
             {t.rebuild}
           </Button>
         </Popconfirm>
