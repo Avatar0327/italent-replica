@@ -437,7 +437,7 @@ export const APPROVAL: RequiredTable = {
   'GET /api/tenant/approval/instances/:id': canOpen(fn('detailViewOf', 'const viewer = await viewerOf(deps, ctx)')),
   // 探测器在本路由处直接观测到 assertCanOpen / retrievableTask（与详情不同：载体读在入口里再取一次值），显式承接
   'GET /api/tenant/approval/instances/:id/attachments/:fileId/content': canOpen(
-    fn('respondAttachment', 'const { ctx, view } = await detailViewOf(c, deps, instanceId)'),
+    fn('respondAttachment', 'const { ctx, data, view } = await detailViewOf(c, deps, instanceId)'),
   ).map((o, index) =>
     index === 0 ? { ...o, facts: ['relation:assertCanOpen', 'relation:retrievable（retrievableTask）'] } : o,
   ),
