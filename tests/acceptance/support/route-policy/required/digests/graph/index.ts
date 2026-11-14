@@ -45,6 +45,7 @@ import { GRAPH as domain_evaluation } from './domain-evaluation.js';
 import { GRAPH as domain_expression } from './domain-expression.js';
 import { GRAPH as domain_hr_analysis } from './domain-hr-analysis.js';
 import { GRAPH as domain_idp } from './domain-idp.js';
+import { GRAPH as domain_job } from './domain-job.js';
 import { GRAPH as domain_offer } from './domain-offer.js';
 import { GRAPH as domain_org_adjustment } from './domain-org-adjustment.js';
 import { GRAPH as domain_permission } from './domain-permission.js';
@@ -101,6 +102,7 @@ export const GRAPH: Graph = {
   ...domain_expression,
   ...domain_hr_analysis,
   ...domain_idp,
+  ...domain_job,
   ...domain_offer,
   ...domain_org_adjustment,
   ...domain_permission,

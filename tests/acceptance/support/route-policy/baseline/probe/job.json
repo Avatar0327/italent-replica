@@ -66,6 +66,60 @@
       "obj:TenantBase.JobLevel:create"
     ]
   },
+  "GET /api/tenant/job/graph": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.JobGrade",
+      "fields:TenantBase.JobLevel",
+      "fields:TenantBase.JobLevelType",
+      "fields:TenantBase.JobPost",
+      "fields:TenantBase.JobSequence"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.JobGrade/-",
+      "scope:TenantBase/TenantBase.JobLevel/-",
+      "scope:TenantBase/TenantBase.JobLevelType/-",
+      "scope:TenantBase/TenantBase.JobPost/-",
+      "scope:TenantBase/TenantBase.JobSequence/-"
+    ],
+    "trace": [
+      "obj:TenantBase.JobGrade:view",
+      "obj:TenantBase.JobLevel:view",
+      "obj:TenantBase.JobLevelType:view",
+      "obj:TenantBase.JobPost:view",
+      "obj:TenantBase.JobPostAndJobLevelGraph:view",
+      "obj:TenantBase.JobSequence:view"
+    ]
+  },
+  "GET /api/tenant/job/graph/issues": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.JobGrade",
+      "fields:TenantBase.JobLevel",
+      "fields:TenantBase.JobLevelType",
+      "fields:TenantBase.JobPost",
+      "fields:TenantBase.JobSequence"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.JobGrade/-",
+      "scope:TenantBase/TenantBase.JobLevel/-",
+      "scope:TenantBase/TenantBase.JobLevelType/-",
+      "scope:TenantBase/TenantBase.JobPost/-",
+      "scope:TenantBase/TenantBase.JobSequence/-"
+    ],
+    "trace": [
+      "obj:TenantBase.JobGrade:view",
+      "obj:TenantBase.JobLevel:view",
+      "obj:TenantBase.JobLevelType:view",
+      "obj:TenantBase.JobPost:view",
+      "obj:TenantBase.JobPostAndJobLevelGraph:view",
+      "obj:TenantBase.JobSequence:view"
+    ]
+  },
   "GET /api/tenant/job/sequence-sync/messages": {
     "all": {
       "status": 200
@@ -132,6 +186,36 @@
     "scopeQueries": [],
     "trace": [
       "obj:TenantBase.JobGrade:create"
+    ]
+  },
+  "POST /api/tenant/job/graph/rebuild": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "8967dbf5136e",
+      "status": 409
+    },
+    "fieldQueries": [
+      "fields:TenantBase.JobGrade",
+      "fields:TenantBase.JobLevel",
+      "fields:TenantBase.JobLevelType",
+      "fields:TenantBase.JobPost",
+      "fields:TenantBase.JobSequence"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.JobGrade/-",
+      "scope:TenantBase/TenantBase.JobLevel/-",
+      "scope:TenantBase/TenantBase.JobLevelType/-",
+      "scope:TenantBase/TenantBase.JobPost/-",
+      "scope:TenantBase/TenantBase.JobSequence/-"
+    ],
+    "trace": [
+      "btn:TenantBase.JobPostAndJobLevelGraph#rebuild@list",
+      "obj:TenantBase.JobGrade:view",
+      "obj:TenantBase.JobLevel:view",
+      "obj:TenantBase.JobLevelType:view",
+      "obj:TenantBase.JobPost:view",
+      "obj:TenantBase.JobPostAndJobLevelGraph:view",
+      "obj:TenantBase.JobSequence:view"
     ]
   },
   "POST /api/tenant/job/import": {

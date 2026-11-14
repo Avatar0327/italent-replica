@@ -935,6 +935,17 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/job/employment-port.ts': {
     employmentJobPersonnel: '0e8c771a5bff',
   },
+  'apps/api/src/modules/job/graph-routes.ts': {
+    'route:GET /api/tenant/job/graph': 'e8bafb1f0777',
+    'route:GET /api/tenant/job/graph/issues': 'f9f135eade51',
+    'route:POST /api/tenant/job/graph/rebuild': 'd36a453d77ff',
+  },
+  'apps/api/src/modules/job/graph-sources.ts': {
+    GRAPH_SOURCES: '6b4b07998e45',
+    requireGraphAccess: '4c3c969fb6f6',
+    requireGraphRebuild: '4ef4c695447e',
+    sourcesAllowed: '23b930a12d4c',
+  },
   'apps/api/src/modules/job/resource-set-candidates.ts': {
     registerResourceSetCandidates: '4d1048195491',
   },
@@ -2666,6 +2677,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/idp/template-service.ts#requireCopyViewable': '552c270650be',
   'apps/api/src/modules/job/context.ts#readContext': '9d063f8ea5e6',
   'apps/api/src/modules/job/employment-port.ts#employmentJobPersonnel': '6a624377b0cf',
+  'apps/api/src/modules/job/graph-routes.ts#route:GET /api/tenant/job/graph': 'fdba8a8163a1',
+  'apps/api/src/modules/job/graph-routes.ts#route:GET /api/tenant/job/graph/issues': 'fb7ad4a07606',
+  'apps/api/src/modules/job/graph-routes.ts#route:POST /api/tenant/job/graph/rebuild': '9285e2380c6c',
+  'apps/api/src/modules/job/graph-sources.ts#GRAPH_SOURCES': 'a367632c4679',
+  'apps/api/src/modules/job/graph-sources.ts#requireGraphAccess': '075ba76ebcdb',
+  'apps/api/src/modules/job/graph-sources.ts#requireGraphRebuild': 'a39231066c44',
+  'apps/api/src/modules/job/graph-sources.ts#sourcesAllowed': '44a0f1aacec5',
   'apps/api/src/modules/job/resource-set-candidates.ts#registerResourceSetCandidates': 'f6448e4c525b',
   'apps/api/src/modules/job/routes.ts#assignmentReferences': '27cf827a6ac1',
   'apps/api/src/modules/job/routes.ts#importJobRows': 'ba74b3d251c1',
