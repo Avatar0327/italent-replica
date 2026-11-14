@@ -46,6 +46,7 @@ import {
   adminScope,
   adminTargetScope,
   isProcessAdmin,
+  requireCurrentSourcesAdmin,
   requireProcessButton,
   requireProcessView,
   requireResubmitRight,
@@ -489,21 +490,40 @@ const simulationData = z.strictObject({
   subjectUserIds: z.array(userIdInput).max(50).optional(),
 });
 const scope = z.enum(['published', 'latest']).default('published');
+/** F-326 §3.7：显式要求读变量 / 矩阵当前值；处理器内再校验流程管理员，不靠前端隐藏按钮。 */
+const currentSourcesFlag = z.boolean().default(false);
 
 function registerSimulationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/processes/:id/simulate', async (c) => {
     const ctx = readCtx(c, deps);
     const id = uuidParam(c);
-    const input = await parseBody(c, z.strictObject({ scope, data: simulationData }));
+    const { resolveCurrentSources, ...input } = await parseBody(
+      c,
+      z.strictObject({ scope, data: simulationData, resolveCurrentSources: currentSourcesFlag }),
+    );
     await requireProcessButton(deps, ctx, 'simulate');
-    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => simulateProcess(tx, ctx, id, input)));
+    if (resolveCurrentSources) await requireCurrentSourcesAdmin(deps, ctx);
+    return c.json(
+      await withTenant(deps.db, ctx.tenantId, (tx) => simulateProcess(tx, ctx, id, input, resolveCurrentSources)),
+    );
   });
   router.post('/simulate', async (c) => {
     const ctx = readCtx(c, deps);
-    const input = await parseBody(c, z.strictObject({ approvalType: z.string(), scope, data: simulationData }));
+    const { resolveCurrentSources, ...input } = await parseBody(
+      c,
+      z.strictObject({
+        approvalType: z.string(),
+        scope,
+        data: simulationData,
+        resolveCurrentSources: currentSourcesFlag,
+      }),
+    );
     await requireProcessButton(deps, ctx, 'simulateByObject');
+    if (resolveCurrentSources) await requireCurrentSourcesAdmin(deps, ctx);
     const request = { ...input, approvalType: approvalTypeOf(input.approvalType) };
-    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => simulateByObject(tx, ctx, request)));
+    return c.json(
+      await withTenant(deps.db, ctx.tenantId, (tx) => simulateByObject(tx, ctx, request, resolveCurrentSources)),
+    );
   });
 }
 

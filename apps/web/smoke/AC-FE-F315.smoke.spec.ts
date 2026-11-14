@@ -248,16 +248,12 @@ test('AC-FE-F315-11 结果未知退出重开仍锁定，回查不解锁、不生
   await expect(page.getByText(kernel.unknown, { exact: true })).toBeVisible();
   await page.getByRole('link', { name: '返回流程列表', exact: true }).click();
   // 离开整个模块再回来，未知命令不依赖详情或页面组件的挂载寿命。
-  await page
-    .getByRole('navigation', { name: '配置中心目录' })
-    .getByRole('link', { name: '数据源', exact: true })
-    .click();
+  // 持流程矩阵菜单时各审批应用都有容器（F-326 F1 应用变量），目录定位限定在组织员工容器内。
+  const staff = page.getByRole('navigation', { name: '配置中心目录' }).locator('#configuration-sections-staff');
+  await staff.getByRole('link', { name: '数据源', exact: true }).click();
   state.flow = { ...state.flow, revision: 5 };
-  await page
-    .getByRole('navigation', { name: '配置中心目录' })
-    .getByRole('button', { name: '流程任务管理', exact: true })
-    .click();
-  await page.getByRole('navigation', { name: '配置中心目录' }).getByRole('link', { name: '流程', exact: true }).click();
+  await staff.getByRole('button', { name: '流程任务管理', exact: true }).click();
+  await staff.getByRole('link', { name: '流程', exact: true }).click();
   await page.getByRole('link', { name: '合成调动流程', exact: true }).click();
   await expect(page.getByRole('textbox', { name: '节点名称', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: kernel.original, exact: true }).click();

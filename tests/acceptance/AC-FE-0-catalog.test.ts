@@ -103,6 +103,7 @@ describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
             'all-people',
             'employment-records',
             'entries',
+            'exit-import-history',
             'exit-settings',
             'exits',
             'interns',
