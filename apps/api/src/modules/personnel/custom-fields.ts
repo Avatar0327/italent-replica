@@ -25,6 +25,24 @@ export function writePayload(input: Row): Row {
 }
 
 /**
+ * 授权第一道（对象编辑权 + 人员范围）用的载荷：只含预置字段，不含 custom:<id>。
+ * 自定义字段的两步检查放在 write() 里：先 requireLocalDefinitions（合法定义，否则 400），再按 custom:<id> 逐字段查编辑权
+ * （403）。若第一道就带上 custom:<id>，不在人员字段目录里的键会先被判 403，400 永远走不到（第 2 轮 P2-4）。
+ */
+export function presetPayload(input: Row): Row {
+  const { customFields: _custom, ...rest } = input;
+  return rest;
+}
+
+/** 提交的字段 ID 必须全是本租户的人员定义（他租户、其他对象、不存在的都按同一句话 400，不泄露存在性）。 */
+export async function requireLocalDefinitions(tx: Tx, tenantId: string, custom: PersonnelCustomFields | undefined) {
+  const ids = Object.keys(custom ?? {});
+  if (!ids.length) return;
+  const found = await personnelDefinitions(tx, tenantId, ids);
+  if (ids.some((id) => !found.has(id))) throw new AppError('VALIDATION_FAILED', '自定义字段不属于本租户人员对象');
+}
+
+/**
  * 把本次提交的值并入上一版：字段必须是本租户的人员定义（他租户、其他对象的 ID 在 RLS 与 object_type 下都查不到 → 400），
  * 值按定义类型校验，停用选项只可沿用上一版的值。返回整版 map 与审计用的“只含变化项”前后值。
  */

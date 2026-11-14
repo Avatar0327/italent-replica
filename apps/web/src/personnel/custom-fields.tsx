@@ -7,7 +7,8 @@ import { TenantDatePicker } from '../foundation/selectors.js';
 import { customKey, isCustomKey, selectOptions, type CustomDefinition } from './custom-model.js';
 import { useRead } from './useRead.js';
 
-const definitionsPath = '/api/tenant/employment/custom-fields?objectType=personnel&page=1&pageSize=200';
+// 业务侧只读目录（普通人员 HR 没有配置管理能力，读配置接口会 403）：已按 custom:<id> 查看权裁剪，最小字段。
+const definitionsPath = '/api/tenant/personnel/custom-field-definitions';
 
 /** 无任何 custom:* 查看权时不请求定义目录；有权限的定义才进入返回值，列表与档案共用。 */
 export function usePersonnelCustomFields() {

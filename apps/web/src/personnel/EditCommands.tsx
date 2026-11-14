@@ -127,7 +127,8 @@ function PersonForm({ row, editable, close, saved }: { row: Row; editable: strin
   const path = personPath(row.id);
   const writer = useConflictCommand(
     people,
-    { id: row.id, revision: Number(row.revision), values: row },
+    // 快照取平铺后的行：控件与差异比较都用 custom:<id> 键，嵌套的 customFields 对不上会把没改的字段当成改动（P2-1）。
+    { id: row.id, revision: Number(row.revision), values: flattenCustom(row) },
     reader(api, path, flattenCustom),
     { action: 'edit' },
   );

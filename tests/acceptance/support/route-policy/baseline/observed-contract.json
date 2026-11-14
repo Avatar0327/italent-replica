@@ -9710,6 +9710,34 @@
         ]
       }
     },
+    "GET /api/tenant/personnel/custom-field-definitions": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "personnel",
+      "primitives": {
+        "object": [
+          "personnel access"
+        ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view"
+        ],
+        "scope": [
+          "personnel access"
+        ]
+      }
+    },
     "GET /api/tenant/personnel/employees": {
       "edge": {
         "anonymous": {

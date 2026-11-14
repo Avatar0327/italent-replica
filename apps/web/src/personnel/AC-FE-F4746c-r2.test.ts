@@ -186,14 +186,14 @@ describe('AC-FE-F4746c-R2 编辑人员的自定义字段提交', () => {
 describe('AC-FE-F4746c-R2 定义目录与档案分区', () => {
   it('P2-2 人员页读业务侧目录，不碰需要配置管理能力的配置接口', async () => {
     await openEditor();
-    const paths = requests.map((request) => request.path.split('?')[0]);
+    const paths = requests.map((request) => request.path.split('?')[0]!);
     expect(paths).toContain('/api/tenant/personnel/custom-field-definitions');
     expect(paths.filter((path) => path.startsWith('/api/tenant/employment/custom-fields'))).toEqual([]);
   });
 
   it('P2-3 只有 custom:<id> 查看权（预置字段只有 id、revision）：基本信息分区仍显示该字段', async () => {
     permissions.current = permission(['id', 'revision', customKey(fieldId)], []);
-    await render(h(PersonnelProfile, { row: detail, employeeId }));
+    await render(h(PersonnelProfile, { row: { ...detail, id: employeeId }, employeeId }));
     const text = host.textContent ?? '';
     expect(text).toContain('合成文本');
     expect(text).toContain('合成旧值');

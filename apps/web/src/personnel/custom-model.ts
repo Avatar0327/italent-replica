@@ -1,7 +1,7 @@
 // F-474-6c：人员自定义字段的纯函数（不含界面）。键约定与任职侧一致：表单里平铺为 custom:<定义 ID>，
 // 接口里是 customFields: { <定义 ID>: 值 }（设计 docs/08_设计/F-474-6a §3）。
 import type { CustomFieldOption, CustomFieldValueType } from '@italent/domain';
-import type { Values } from '../foundation/forms/values.js';
+import { isBlank, type Values } from '../foundation/forms/values.js';
 import { longDate } from './model.js';
 import { m } from './messages.js';
 
@@ -10,6 +10,8 @@ export interface CustomDefinition {
   name: string;
   valueType: CustomFieldValueType;
   options?: readonly CustomFieldOption[];
+  /** 业务侧目录按当前身份的 custom:<id> 编辑权给出；控件是否可改仍以权限快照为准。 */
+  editable?: boolean;
 }
 const prefix = 'custom:';
 export const customKey = (id: string) => `${prefix}${id}`;
@@ -21,13 +23,13 @@ export function flattenCustom<T extends Record<string, unknown>>(row: T): Record
   const entries = Object.entries((customFields ?? {}) as Record<string, unknown>);
   return { ...rest, ...Object.fromEntries(entries.map(([id, value]) => [customKey(id), value])) };
 }
-/** 表单提交体 → 接口体：custom:<id> 收进 customFields，空值发 null（清空）。 */
+/** 表单提交体 → 接口体：custom:<id> 收进 customFields，空值（含文本清空得到的 ''）统一发 null 表示清空。 */
 export function customBody(body: unknown): unknown {
   if (!body || typeof body !== 'object') return body;
   const rest: Values = {};
   const custom: Values = {};
   for (const [key, value] of Object.entries(body as Values))
-    if (isCustomKey(key)) custom[key.slice(prefix.length)] = value ?? null;
+    if (isCustomKey(key)) custom[key.slice(prefix.length)] = isBlank(value) ? null : value;
     else rest[key] = value;
   return Object.keys(custom).length ? { ...rest, customFields: custom } : rest;
 }

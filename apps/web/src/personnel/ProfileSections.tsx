@@ -84,7 +84,11 @@ export function PersonnelProfile({ row, employeeId }: { row: Row; employeeId: st
   const access = useSubsetAccess();
   const custom = usePersonnelCustomFields();
   const flat = flattenCustom(row);
-  const sections = profileSections.filter((section) => section.fields.some((key) => allowed.includes(key)));
+  // 基本信息分区也要计入可见的自定义字段：只有 custom:<id> 查看权（预置字段仅 id、revision）的身份同样看得到（P2-3）。
+  const sections = profileSections.filter(
+    (section) =>
+      section.fields.some((key) => allowed.includes(key)) || (section.key === 'basic' && custom.keys.length > 0),
+  );
   const kinds = Object.keys(access.data ?? {}) as ProfileSubset[];
   const anchors = [
     ...sections.map(({ key, title }) => ({ key, title })),

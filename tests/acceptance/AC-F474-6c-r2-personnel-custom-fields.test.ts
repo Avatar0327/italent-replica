@@ -11,6 +11,7 @@ import { define, fixture } from './AC-F474-6c-support.js';
 
 const database = useTestDb();
 const definitions = '/api/tenant/personnel/custom-field-definitions';
+const east = [{ value: 'east', label: '东区', enabled: true }];
 const configList = '/api/tenant/employment/custom-fields?objectType=personnel&page=1&pageSize=200';
 
 describe('AC-F474-6c 第 2 轮：业务侧定义目录与写入校验顺序', () => {
@@ -18,7 +19,7 @@ describe('AC-F474-6c 第 2 轮：业务侧定义目录与写入校验顺序', ()
     const w = await fixture(database().db);
     const [viewOnly, editable, hidden] = [
       await define(w, 'text'),
-      await define(w, 'select', []),
+      await define(w, 'select', east),
       await define(w, 'text'),
     ];
     const employment = await define(w, 'text', [], 'employment');
@@ -34,7 +35,7 @@ describe('AC-F474-6c 第 2 轮：业务侧定义目录与写入校验顺序', ()
     expect(items.map((item) => item.id).sort()).toEqual([viewOnly, editable].sort());
     const byId = Object.fromEntries(items.map((item) => [item.id as string, item]));
     expect(byId[viewOnly]).toMatchObject({ valueType: 'text', editable: false });
-    expect(byId[editable]).toMatchObject({ valueType: 'select', editable: true, options: [] });
+    expect(byId[editable]).toMatchObject({ valueType: 'select', editable: true, options: east });
     // 只给展示所需的最小字段：不含编码、继承、版本号等配置信息
     for (const item of items)
       expect(Object.keys(item).sort()).toEqual(['editable', 'id', 'name', 'options', 'valueType']);
