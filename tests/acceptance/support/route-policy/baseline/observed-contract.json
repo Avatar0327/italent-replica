@@ -3965,6 +3965,28 @@
         ]
       }
     },
+    "GET /api/tenant/approval/matrices/:id/references": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ]
+      }
+    },
     "GET /api/tenant/approval/notifications": {
       "edge": {
         "anonymous": {
@@ -4125,6 +4147,28 @@
       }
     },
     "GET /api/tenant/approval/variables/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "requireProcessButton"
+        ]
+      }
+    },
+    "GET /api/tenant/approval/variables/:id/references": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
@@ -9004,6 +9048,28 @@
         ]
       }
     },
+    "GET /api/tenant/permission/admins/mou-candidates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "permission",
+      "primitives": {
+        "admin": [
+          "adminGuard"
+        ]
+      }
+    },
     "GET /api/tenant/permission/dynamic-org-grants/:grantId": {
       "edge": {
         "anonymous": {
@@ -9097,6 +9163,50 @@
         ],
         "scope": [
           "resolveModuleScope"
+        ]
+      }
+    },
+    "GET /api/tenant/permission/grants/mou-candidates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "permission",
+      "primitives": {
+        "admin": [
+          "adminGuard"
+        ]
+      }
+    },
+    "GET /api/tenant/permission/grants/profile-candidates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "permission",
+      "primitives": {
+        "admin": [
+          "adminGuard"
         ]
       }
     },

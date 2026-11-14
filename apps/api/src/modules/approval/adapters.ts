@@ -592,7 +592,8 @@ const personnelAdapter: BusinessAdapter = {
     const values = await currentChangeValues(tx, { ...ctx, expectedRevision: 0 }, businessId);
     const originals = await changeOriginals(tx, ctx.tenantId, change, subset, values);
     const employee = await employeeHeader(tx, ctx.tenantId, employeeId);
-    const current = await findCurrentRecord(tx, ctx.tenantId, employeeId, tenantLocalDate(ctx.now, ctx.timezone));
+    const today = tenantLocalDate(ctx.now, ctx.timezone);
+    const current = await findCurrentRecord(tx, ctx.tenantId, employeeId, today);
     const departmentId = current?.fields.departmentId ?? null;
     return {
       approvalType: 'personnel_change',
@@ -614,6 +615,8 @@ const personnelAdapter: BusinessAdapter = {
       },
       latestDepartmentId: departmentId,
       recordDepartmentId: departmentId,
+      // F-326 §3.4（偏离见 PR 描述）：员工信息变更没有任职申请业务日，矩阵条件按租户当天的任职求值
+      businessDate: today,
       version: `revision:${Number(change.revision)}`,
       processCode: subsetProcessCode(subset),
     };

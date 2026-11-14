@@ -95,4 +95,12 @@ export const GRAPH: Graph = {
     '#buttonViolations',
     '#fieldViolations',
   ],
+  'packages/domain/src/permission/page-catalog.ts#PAGE_CARRIERS': [
+    'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES',
+  ],
+  'packages/domain/src/permission/page-catalog.ts#PAGE_CATALOG': [
+    'packages/domain/src/permission/page-messages.ts#pageNames',
+    'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES',
+  ],
+  'packages/domain/src/permission/page-catalog.ts#isPageCarrier': ['#PAGE_CATALOG'],
 };

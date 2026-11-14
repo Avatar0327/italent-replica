@@ -1010,6 +1010,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#DEFAULT_AVOID_SUBJECTS_RESULT',
     'packages/domain/src/approval/types.ts#avoidsSelf',
     'packages/domain/src/approval/types.ts#avoidsSubjects',
+    'packages/domain/src/approval/types.ts#isCountersign',
     'packages/domain/src/approval/types.ts#jumpAllowed',
     'packages/domain/src/approval/types.ts#nodeExits',
     'packages/domain/src/approval/types.ts#rejectAllowed',
@@ -1662,6 +1663,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/matching.ts#originalSiteMatch': ['#byCode'],
   'apps/api/src/modules/approval/matching.ts#replicaMatch': ['#byCode'],
+  'apps/api/src/modules/approval/matrices.ts#assertMatrixExists': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    '#where',
+  ],
   'apps/api/src/modules/approval/matrices.ts#audited': [
     'apps/api/src/modules/approval/context.ts#auditApproval',
     '#auditHead',
@@ -1673,6 +1678,7 @@ export const GRAPH: Graph = {
     '#event',
     '#locked',
     '#matrixDetail',
+    'apps/api/src/modules/approval/source-usages.ts#assertReferencesAcknowledged',
     'packages/domain/src/approval/variables.ts#statusAfter',
   ],
   'apps/api/src/modules/approval/matrices.ts#changedHead': ['#where'],
@@ -1705,7 +1711,9 @@ export const GRAPH: Graph = {
     '#event',
     '#locked',
     '#matrixDetail',
+    'apps/api/src/modules/approval/matrix-structure.ts#loadMatrixStructure',
     'apps/api/src/modules/approval/matrix-structure.ts#replaceMatrixStructure',
+    'apps/api/src/modules/approval/source-usages.ts#assertRoleColumnsUnused',
   ],
   'apps/api/src/modules/approval/matrices.ts#updateMatrix': [
     '#audited',
@@ -1777,6 +1785,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/matrices.ts#matrixDetail',
     '#context',
     '#requireMatrixAdmin',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/approval/matrix-routes.ts#route:GET /matrices/:id/references': [
+    'apps/api/src/modules/approval/context.ts#canonicalId',
+    'apps/api/src/modules/approval/matrices.ts#assertMatrixExists',
+    '#context',
+    '#requireMatrixAdmin',
+    'apps/api/src/modules/approval/source-usages.ts#sourceUsagePage',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
   'apps/api/src/modules/approval/matrix-routes.ts#route:PATCH /matrices/:id': [
@@ -2540,14 +2556,45 @@ export const GRAPH: Graph = {
     '#uuidArray',
     'packages/domain/src/approval/sources.ts#identityProfileId',
   ],
+  'apps/api/src/modules/approval/source-matrix.ts#conditionValues': [
+    '#departmentValues',
+    'apps/api/src/modules/approval/source-relations.ts#subjectPrimaryJob',
+  ],
+  'apps/api/src/modules/approval/source-matrix.ts#departmentValues': [
+    'apps/api/src/modules/approval/source-relations.ts#ancestors',
+    'apps/api/src/modules/approval/source-relations.ts#orgGraph',
+  ],
+  'apps/api/src/modules/approval/source-matrix.ts#resolveMatrix': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/matrix-structure.ts#loadMatrixStructure',
+    'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates',
+    '#conditionValues',
+    '#hits',
+    'packages/domain/src/approval/sources.ts#matrixSourceParts',
+  ],
+  'apps/api/src/modules/approval/source-matrix.ts#resolveVariable': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates',
+    'apps/api/src/modules/approval/variable-input.ts#variablePersonIds',
+  ],
   'apps/api/src/modules/approval/source-reference.ts#assertSourceReferences': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#assertVariableAndMatrixSources',
     '#dimensionEnabled',
     '#orgDimensionMember',
     '#sourceTable',
     'packages/domain/src/approval/sources.ts#identityProfileId',
     'packages/domain/src/approval/sources.ts#relationSource',
+  ],
+  'apps/api/src/modules/approval/source-reference.ts#assertVariableAndMatrixSources': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#MATRIX_INVALID',
+    '#MISSING',
+    '#VARIABLE_INVALID',
+    '#sourceInvalid',
+    'packages/domain/src/approval/sources.ts#matrixSourceParts',
+    'packages/domain/src/approval/type-apps.ts#APPROVAL_TYPE_APPS',
   ],
   'apps/api/src/modules/approval/source-reference.ts#dimensionEnabled': [
     'apps/api/src/modules/org/settings.ts#readOrgSettings',
@@ -2555,6 +2602,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows': ['#historicalParent', '#orgDimensionMember'],
   'apps/api/src/modules/approval/source-reference.ts#sourceDimension': [
     'packages/domain/src/approval/sources.ts#SOURCE_DIMENSIONS',
+  ],
+  'apps/api/src/modules/approval/source-reference.ts#sourceInvalid': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
   ],
   'apps/api/src/modules/approval/source-reference.ts#sourceTable': ['#sourceDimension'],
   'apps/api/src/modules/approval/source-relations.ts#eligiblePerson': [
@@ -2570,7 +2620,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/job/read-model.ts#loadJobObject',
   ],
-  'apps/api/src/modules/approval/source-relations.ts#jobPeople': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/source-relations.ts#jobPeople': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#primaryRecords',
+    '#recordField',
+  ],
   'apps/api/src/modules/approval/source-relations.ts#orgGraph': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows',
@@ -2585,6 +2639,11 @@ export const GRAPH: Graph = {
     '#jobHolders',
     '#organization',
     'packages/domain/src/approval/sources.ts#relationSource',
+  ],
+  'apps/api/src/modules/approval/source-relations.ts#subjectPrimaryJob': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#primaryRecords',
+    '#recordField',
   ],
   'apps/api/src/modules/approval/source-resolver.ts#fixed': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -2612,11 +2671,29 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/source-resolver.ts#resolvers': [
     'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates',
     'apps/api/src/modules/approval/source-identity.ts#resolveIdentity',
+    'apps/api/src/modules/approval/source-matrix.ts#resolveMatrix',
+    'apps/api/src/modules/approval/source-matrix.ts#resolveVariable',
     'apps/api/src/modules/approval/source-relations.ts#resolveRelation',
     '#fixed',
     '#objectField',
     'packages/domain/src/approval/sources.ts#expressionValue',
   ],
+  'apps/api/src/modules/approval/source-usages.ts#assertReferencesAcknowledged': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    '#findSourceUsages',
+  ],
+  'apps/api/src/modules/approval/source-usages.ts#assertRoleColumnsUnused': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    '#USAGE_PAGE_LIMIT',
+    '#findSourceUsages',
+  ],
+  'apps/api/src/modules/approval/source-usages.ts#findSourceUsages': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#RESUMABLE_INSTANCE_STATUSES',
+    '#matches',
+    '#slots',
+  ],
+  'apps/api/src/modules/approval/source-usages.ts#sourceUsagePage': ['#USAGE_PAGE_LIMIT', '#findSourceUsages'],
   'apps/api/src/modules/approval/store.ts#activateTask': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#assertPendingRoom',
@@ -2769,6 +2846,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#canonicalId',
   ],
   'apps/api/src/modules/approval/variable-input.ts#updateVariableSchema': [
+    '#acknowledgedReferenceCount',
     '#editable',
     'packages/domain/src/approval/variables.ts#VARIABLE_DATA_TYPES',
     'packages/domain/src/approval/variables.ts#VARIABLE_SCOPES',
@@ -2782,6 +2860,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/variables.ts#textViolation',
     'packages/domain/src/approval/variables.ts#usageScopesViolation',
   ],
+  'apps/api/src/modules/approval/variable-input.ts#variableCommandSchema': ['#acknowledgedReferenceCount'],
   'apps/api/src/modules/approval/variable-input.ts#variableQuerySchema': [
     'packages/domain/src/approval/variables.ts#VARIABLE_SCOPES',
     'packages/domain/src/permission/app-directory.ts#APP_IDS',
@@ -2800,6 +2879,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#canonicalId',
     '#context',
     'apps/api/src/modules/approval/variables.ts#variableDetail',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/approval/variable-routes.ts#route:GET /variables/:id/references': [
+    'apps/api/src/modules/approval/context.ts#canonicalId',
+    'apps/api/src/modules/approval/source-usages.ts#sourceUsagePage',
+    '#context',
+    'apps/api/src/modules/approval/variables.ts#loadVariable',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
   'apps/api/src/modules/approval/variable-routes.ts#route:PATCH /variables/:id': [
@@ -2871,6 +2957,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/variables.ts#setVariableStatus': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#assertRevision',
+    'apps/api/src/modules/approval/source-usages.ts#assertReferencesAcknowledged',
     '#changeStatus',
     '#checkPeople',
     '#loadVariable',
@@ -2881,6 +2968,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/variables.ts#updateVariable': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#assertRevision',
+    'apps/api/src/modules/approval/source-usages.ts#assertReferencesAcknowledged',
     'apps/api/src/modules/approval/variable-input.ts#validateVariableValues',
     '#audited',
     '#byId',

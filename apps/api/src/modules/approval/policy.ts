@@ -414,6 +414,7 @@ const VARIABLE_FIELDS = fixed(
   ],
   'F-326 §4.3：管理员配置，人员回显仅姓名、工号、部门',
 );
+const REFERENCE_FIELDS = fixed(['items', 'total'], 'F-326 §6 引用清单：仅流程 / 节点名称与计数，不含审批人');
 const variableConfig = write(
   none('F-326 管理员变量 DTO，无字段目录'),
   PROCESS_CONFIG,
@@ -423,6 +424,7 @@ const variableConfig = write(
 export const APPROVAL_POLICIES = defineTable('approval', {
   'GET /variables': admin('process_matrix', { fields: VARIABLE_FIELDS }),
   'GET /variables/:id': admin('process_matrix', { fields: VARIABLE_FIELDS, ...byId }),
+  'GET /variables/:id/references': admin('process_matrix', { fields: REFERENCE_FIELDS, ...byId }),
   'POST /variables': processAdmin({ write: variableConfig }),
   'PATCH /variables/:id': processAdmin({ ...byId, write: variableConfig }),
   'POST /variables/:id/enable': processAdmin({ ...byId, write: variableConfig }),
@@ -452,6 +454,7 @@ export const APPROVAL_POLICIES = defineTable('approval', {
       'F-326 §4.3 矩阵详情及名称',
     ),
   }),
+  'GET /matrices/:id/references': admin('process_matrix', { fields: REFERENCE_FIELDS, ...byId }),
   'POST /matrices': processAdmin({ write: processConfig }),
   'PATCH /matrices/:id': processAdmin({ ...byId, write: processConfig }),
   'PUT /matrices/:id/structure': processAdmin({ ...byId, write: processConfig }),

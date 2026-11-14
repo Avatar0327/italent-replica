@@ -51,6 +51,7 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/approval/definition.ts#allowsSubjectEmployee': ['#MULTI_SUBJECT_ADAPTERS'],
   'packages/domain/src/approval/definition.ts#approverSourceViolations': [
+    '#MATRIX_ADAPTERS',
     '#offerApproverViolation',
     '#orgAdjustmentApproverViolation',
     '#subjectEmployeeViolations',
@@ -300,11 +301,13 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#APPROVER_EXPRESSIONS',
   ],
   'packages/domain/src/approval/sources.ts#identityProfileId': ['#UUID'],
+  'packages/domain/src/approval/sources.ts#matrixSourceParts': ['#UUID'],
   'packages/domain/src/approval/sources.ts#relationSource': ['#RELATION_SOURCE_TYPES', '#SOURCE_DIMENSIONS'],
   'packages/domain/src/approval/sources.ts#sourceViolation': [
     '#UUID',
     '#expressionValue',
     '#identityProfileId',
+    '#matrixSourceParts',
     '#relationSource',
   ],
   'packages/domain/src/approval/transfer-view.ts#TRANSFER_DETAIL_VIEW': ['#NO_MODEL', '#form', '#later'],
