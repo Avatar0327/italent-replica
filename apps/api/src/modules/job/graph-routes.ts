@@ -30,7 +30,7 @@ interface Snapshot {
   readonly layout: unknown;
 }
 
-async function readSnapshot(tx: Tx, tenantId: string): Promise<Snapshot | null> {
+export async function readSnapshot(tx: Tx, tenantId: string): Promise<Snapshot | null> {
   const [row] = rowsOf<Snapshot & { generatedAt: Date | string }>(
     await tx.execute(sql`
     SELECT revision, as_of_date::text AS "asOfDate", empty, contains_error AS "containsError",
@@ -126,14 +126,23 @@ function queryInteger(c: Context, name: string, fallback: number, maximum: numbe
   return value;
 }
 
-function issueQuery(c: Context) {
+/** 类型 / 名称筛选：列表与“导出全部”同一口径（graph-export.ts）。 */
+export function issueFilter(c: Context) {
   const kind = c.req.query('kind');
   if (kind !== undefined && !ISSUE_KINDS.includes(kind)) throw new AppError('VALIDATION_FAILED', 'kind 不合法');
   const name = c.req.query('name')?.trim();
   if (name !== undefined && name.length > 100) throw new AppError('VALIDATION_FAILED', 'name 过长');
+  return { kind, name: name || undefined };
+}
+
+export const issueWhere = (tenantId: string, kind?: string, name?: string) => sql`tenant_id = ${tenantId}
+  ${kind ? sql`AND kind = ${kind}` : sql``}
+  ${name ? sql`AND position(lower(${name}) in lower(object_name)) > 0` : sql``}`;
+
+function issueQuery(c: Context) {
   const page = queryInteger(c, 'page', 1, 1_000_000);
   const pageSize = queryInteger(c, 'pageSize', 15, 100);
-  return { kind, name: name || undefined, page, pageSize };
+  return { ...issueFilter(c), page, pageSize };
 }
 
 export function registerGraphRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -148,9 +157,7 @@ export function registerGraphRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
     const ctx = tenantOf(c);
     await requireGraphAccess(deps, ctx);
     const { kind, name, page, pageSize } = issueQuery(c);
-    const where = sql`tenant_id = ${ctx.tenantId}
-      ${kind ? sql`AND kind = ${kind}` : sql``}
-      ${name ? sql`AND position(lower(${name}) in lower(object_name)) > 0` : sql``}`;
+    const where = issueWhere(ctx.tenantId, kind, name);
     return c.json(
       await withTenant(deps.db, ctx.tenantId, async (tx) => {
         const [count] = rowsOf<{ total: number }>(

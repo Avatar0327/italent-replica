@@ -28,6 +28,8 @@ interface ListPageProps<T extends object> {
   onPageChange(page: PageRequest): void;
   filters?: ReactNode;
   actions?: ReactNode;
+  /** 页面自带的导出入口；不传 = 通用“导出功能准备中”占位，传 null = 无导出权时不出按钮。 */
+  exportAction?: ReactNode;
   loading?: boolean;
   error?: unknown;
   retry?: () => void;
@@ -51,9 +53,13 @@ export function ListPage<T extends object>(props: ListPageProps<T>) {
         <ViewHeading title={title} icon={props.icon} view={props.view} />
         <Space>
           {actions}
-          <Tooltip title={ui.exportPending}>
-            <Button disabled>{ui.export}</Button>
-          </Tooltip>
+          {props.exportAction === undefined ? (
+            <Tooltip title={ui.exportPending}>
+              <Button disabled>{ui.export}</Button>
+            </Tooltip>
+          ) : (
+            props.exportAction
+          )}
         </Space>
       </header>
       <div className="list-card">
