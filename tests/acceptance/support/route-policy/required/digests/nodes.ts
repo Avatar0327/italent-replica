@@ -4662,7 +4662,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/insurance/archive-fold.ts#NO_INSURANCE_ORIGIN': ['7a8df6a92a05', 'e3b0c44298fc'],
   'apps/api/src/modules/insurance/archive-fold.ts#foldInsuranceEvents': ['e254030a693f', 'b035b1b4efff'],
   'apps/api/src/modules/insurance/archive-fold.ts#foldInsuranceOrigin': ['0a43b21d720f', '9608cf20e8f7'],
-  'apps/api/src/modules/insurance/archive-fold.ts#insurancePosition': ['f9552fe059a9', '0ed7d5d2c088'],
+  'apps/api/src/modules/insurance/archive-fold.ts#insurancePosition': ['59ee7a8bd44b', '0af97135da92'],
   'apps/api/src/modules/insurance/routes.ts#COMPANY': ['236de889c655', '962a8dd9a03e'],
   'apps/api/src/modules/insurance/routes.ts#INSURANCE_BASE': ['10c3e7bdda9c', 'e3b0c44298fc'],
   'apps/api/src/modules/insurance/routes.ts#INSURANCE_ORIGIN_PATH': ['e611093ccd8d', 'e3b0c44298fc'],

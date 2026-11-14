@@ -935,8 +935,8 @@ export const DIGESTS: Digests = {
     PLAN: '615424889d75',
     PROFILE: 'c4c5eacfe0ec',
     requireView: 'f3963f9a9aa4',
-    'route:GET /api/tenant/insurance/companies': '231deb204957',
-    'route:GET /api/tenant/insurance/plans': 'd9425c629343',
+    'route:GET /api/tenant/insurance/companies': 'a259c382d31e',
+    'route:GET /api/tenant/insurance/plans': 'ede106f369da',
     'route:GET /api/tenant/transfer/insurance-origin': '5d012bf7f323',
   },
   'apps/api/src/modules/job/context.ts': {
