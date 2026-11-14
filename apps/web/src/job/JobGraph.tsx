@@ -152,6 +152,16 @@ function Toolbar(props: {
   const download = useGraphDownload();
   // 导出与重新生成互斥：导出进行中两者都不可点（原站提示），生成进行中也不导出。
   const blocked = !ready || download.busy || rebuild.command.busy;
+  // 确认气泡受控：已打开的气泡在导出开始时收起，确认入口再查一次（第 2 轮 P2-3）。
+  const [confirming, setConfirming] = useState(false);
+  const exportGraph = () => {
+    setConfirming(false);
+    void download.start(`${GRAPH_PATH}/export`);
+  };
+  const confirmRebuild = () => {
+    if (blocked || download.isRunning() || rebuild.command.locked) return;
+    void rebuild.start(refresh);
+  };
   return (
     <Space className="job-graph-toolbar">
       {snapshot && (
@@ -175,7 +185,7 @@ function Toolbar(props: {
       )}
       {download.busy && <span role="status">{t.exporting}</span>}
       {access.can('export', 'list') && (
-        <Button disabled={blocked} onClick={() => void download.start(`${GRAPH_PATH}/export`)}>
+        <Button disabled={blocked} onClick={exportGraph}>
           {ui.export}
         </Button>
       )}
@@ -185,7 +195,10 @@ function Toolbar(props: {
           okText={m.confirm}
           cancelText={m.cancel}
           disabled={blocked || rebuild.command.locked}
-          onConfirm={() => void rebuild.start(refresh)}
+          open={confirming && !blocked}
+          onOpenChange={(next) => setConfirming(next && !blocked)}
+          okButtonProps={{ disabled: blocked }}
+          onConfirm={confirmRebuild}
         >
           <Button type="primary" disabled={blocked || rebuild.command.locked}>
             {t.rebuild}

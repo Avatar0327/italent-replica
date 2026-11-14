@@ -373,13 +373,16 @@ describe('AC-F474-JG-08 图谱导出（前端）', () => {
     // 气泡开着时用键盘启动导出（不经过点外部关闭气泡）
     await click(button('导出', ui.host));
     expect(button('导出', ui.host)?.disabled).toBe(true);
+    // jsdom 不跑完离场动画：收起的气泡停在 leave 状态（pointer-events: none），不算“开着”
+    const shown = () => document.querySelector('.ant-popover:not(.ant-popover-hidden):not([class*="-leave"])');
+    expect(shown()).toBeNull();
     const confirm = button('确认');
     if (confirm) await click(confirm);
     expect(posts()).toEqual([]);
     await act(async () => finish());
     await settle(60);
     expect(posts()).toEqual([]);
-    expect(document.querySelector('.ant-popover:not(.ant-popover-hidden)')).toBeNull();
+    expect(shown()).toBeNull();
   });
 
   it('无快照 409 GRAPH_NOT_GENERATED 提示先重新生成；其余拒绝或非 xlsx 响应一律“导出失败”，不落盘', async () => {

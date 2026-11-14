@@ -67,5 +67,6 @@ export function useGraphDownload() {
       }
     }
   };
-  return { busy, start };
+  // running 是 ref：已收起的弹层可能留着旧渲染的回调，执行入口读它才不会拿到过期的 busy。
+  return { busy, start, isRunning: () => running.current };
 }

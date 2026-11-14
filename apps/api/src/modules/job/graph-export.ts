@@ -140,10 +140,14 @@ export function registerGraphExportRoutes(router: Hono<TenantEnv>, deps: TenantR
         await tx.execute(sql`SELECT count(*)::int AS total FROM job_graph_issues WHERE ${where}`),
       );
       boundedRows(count?.total ?? 0);
-      return rowsOf<{ kind: string; objectName: string; reasons: JobGraphReason[] }>(
+      // READ COMMITTED 下两条语句各看各的提交：数量检查后有人重新生成时，取数可能多出来。
+      // 多取一行再复核，超限同样整单 400，不静默截成 10000 行（第 2 轮 P2-1）。
+      const rows = rowsOf<{ kind: string; objectName: string; reasons: JobGraphReason[] }>(
         await tx.execute(sql`SELECT kind, object_name AS "objectName", reasons FROM job_graph_issues
-          WHERE ${where} ORDER BY sort_key, id LIMIT ${MAX_EXPORT_ROWS}`),
+          WHERE ${where} ORDER BY sort_key, id LIMIT ${MAX_EXPORT_ROWS + 1}`),
       );
+      boundedRows(rows.length);
+      return rows;
     });
     const header = [t.kind, t.name, t.reason];
     const rows = [
