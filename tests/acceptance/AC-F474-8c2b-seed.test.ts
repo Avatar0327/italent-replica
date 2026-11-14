@@ -23,7 +23,16 @@ const seedOf = (): PlanSeed[] => {
     },
     {
       code: `${code}-B`,
-      versions: [{ name: '停用方案', regionCode: '440100', effectiveMonth: '2026-01-01', enabled: false }],
+      versions: [
+        // 先到停用月再接新版：长期有效的版本不能再与后补的版本重叠（排他约束）
+        {
+          name: '停用方案',
+          regionCode: '440100',
+          effectiveMonth: '2026-01-01',
+          stopMonth: '2026-06-01',
+          enabled: false,
+        },
+      ],
     },
   ];
 };

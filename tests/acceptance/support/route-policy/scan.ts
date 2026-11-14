@@ -577,6 +577,9 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['org-adjustment', '/api/tenant/org-adjustment', [path.join(modules, 'org-adjustment')]],
     ['duty-transfer', '/api/tenant/duty-transfers', [path.join(modules, 'duty-transfer')]],
     ['esign', '/api/tenant/esign', [path.join(modules, 'esign')]],
+    // 社保读取（F-474-8c-2b）：原值读取挂在调动前缀下，两个前缀同属 insurance 模块
+    ['insurance', '/api/tenant/transfer/insurance-origin', [path.join(modules, 'insurance')]],
+    ['insurance', '/api/tenant/insurance', [path.join(modules, 'insurance')]],
   ];
   const hit = table.find(([, prefix]) => fullPath === prefix || fullPath.startsWith(prefix + '/'));
   return hit

@@ -8142,6 +8142,71 @@
         ]
       }
     },
+    "GET /api/tenant/insurance/companies": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "insurance",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope",
+          "scope.all"
+        ]
+      }
+    },
+    "GET /api/tenant/insurance/plans": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "insurance",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ]
+      }
+    },
+    "GET /api/tenant/insurance/regions": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "status": 200
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "insurance",
+      "primitives": {}
+    },
     "GET /api/tenant/job/:kind": {
       "edge": {
         "anonymous": {
@@ -14062,6 +14127,35 @@
         "scope": [
           "requestScope",
           "visible()"
+        ]
+      }
+    },
+    "GET /api/tenant/transfer/insurance-origin": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "insurance",
+      "primitives": {
+        "guard": [
+          "insurance.employeeScope"
+        ],
+        "object": [
+          "object.* 动作",
+          "readPageContext"
+        ],
+        "scope": [
+          "readPageContext"
         ]
       }
     },
