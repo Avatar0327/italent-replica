@@ -11,7 +11,7 @@ import {
   ObjectCatalog,
   type ObjectDefinition,
   QUALIFICATION_OBJECTS,
-  QUALIFICATION_PAGES,
+  PAGE_CARRIERS,
   survey360,
 } from '@italent/domain';
 
@@ -28,7 +28,7 @@ export const objectCatalog = new ObjectCatalog([
   ...Object.values(SELF_APPLICATION_OBJECTS),
   ...Object.values(survey360.SURVEY360_OBJECTS),
   ...Object.values(QUALIFICATION_OBJECTS),
-  QUALIFICATION_PAGES,
+  ...PAGE_CARRIERS,
   ...Object.values(EVALUATION_OBJECTS),
   ...Object.values(EVALUATION_FLOW_OBJECTS),
 ]);

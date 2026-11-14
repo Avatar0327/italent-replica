@@ -17,7 +17,15 @@ import {
   variableCommandSchema,
   variableQuerySchema,
 } from './variable-input.js';
-import { createVariable, listVariables, setVariableStatus, updateVariable, variableDetail } from './variables.js';
+import { sourceUsagePage } from './source-usages.js';
+import {
+  createVariable,
+  listVariables,
+  loadVariable,
+  setVariableStatus,
+  updateVariable,
+  variableDetail,
+} from './variables.js';
 
 async function context(c: Context<TenantEnv>, deps: TenantRouteDeps): Promise<ApprovalContext> {
   const tenant = tenantOf(c);
@@ -82,13 +90,23 @@ export function registerVariableRoutes(router: Hono<TenantEnv>, deps: TenantRout
     ),
   );
   router.post('/variables/:id/enable', (c) =>
-    variableWrite(c, deps, variableCommandSchema, (tx, ctx) =>
-      setVariableStatus(tx, ctx, canonicalId(uuidParam(c)), 'enable'),
+    variableWrite(c, deps, variableCommandSchema, (tx, ctx, input) =>
+      setVariableStatus(tx, ctx, canonicalId(uuidParam(c)), 'enable', input.acknowledgedReferenceCount),
     ),
   );
   router.post('/variables/:id/disable', (c) =>
-    variableWrite(c, deps, variableCommandSchema, (tx, ctx) =>
-      setVariableStatus(tx, ctx, canonicalId(uuidParam(c)), 'disable'),
+    variableWrite(c, deps, variableCommandSchema, (tx, ctx, input) =>
+      setVariableStatus(tx, ctx, canonicalId(uuidParam(c)), 'disable', input.acknowledgedReferenceCount),
     ),
   );
+  router.get('/variables/:id/references', async (c) => {
+    const ctx = await context(c, deps);
+    const id = canonicalId(uuidParam(c));
+    return c.json(
+      await withTenant(deps.db, ctx.tenantId, async (tx) => {
+        await loadVariable(tx, ctx.tenantId, id);
+        return sourceUsagePage(tx, ctx.tenantId, { kind: 'variable', id });
+      }),
+    );
+  });
 }

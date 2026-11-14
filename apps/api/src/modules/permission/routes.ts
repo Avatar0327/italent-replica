@@ -29,6 +29,7 @@ import { ADMIN_LIST_UNRECORDED, createAdmin, getAdmin, listAdmins, updateAdmin }
 import { registerDataScopeRoutes } from './data-scope-routes.js';
 import { objectCatalog } from './catalog.js';
 import { createGrant, GRANT_LIST_UNRECORDED, grantableProfiles, listGrants, revokeGrant } from './grants.js';
+import { candidateQuery, mouCandidates, profileCandidates } from './filter-candidates.js';
 import { parseQuery } from './enterprise-lists.js';
 import { etag, idParam, ifMatch, objectCodeParam, parseBody } from './http.js';
 import { listBalances, listSeats } from './licenses.js';
@@ -237,6 +238,24 @@ function objectDialogRoutes(router: Router, deps: TenantRouteDeps): void {
 }
 
 function grantRoutes(router: Router, deps: TenantRouteDeps): void {
+  router.get(`${BASE}/grants/mou-candidates`, async (c) => {
+    const ctx = await guard(c, deps, 'user_grant');
+    const query = parseQuery(candidateQuery, {
+      q: c.req.query('q'),
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+    });
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => mouCandidates(tx, ctx.userId, query)));
+  });
+  router.get(`${BASE}/grants/profile-candidates`, async (c) => {
+    const ctx = await guard(c, deps, 'user_grant');
+    const query = parseQuery(candidateQuery, {
+      q: c.req.query('q'),
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+    });
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => profileCandidates(tx, ctx.userId, query)));
+  });
   router.get(`${BASE}/grantable-profiles`, async (c) => {
     const ctx = await guard(c, deps, 'user_grant');
     return c.json({ items: await withTenant(deps.db, ctx.tenantId, (tx) => grantableProfiles(tx, ctx.userId)) });
@@ -245,8 +264,8 @@ function grantRoutes(router: Router, deps: TenantRouteDeps): void {
     const ctx = await guard(c, deps, 'user_grant');
     const query = parseQuery(grantListQuery, {
       userId: c.req.query('userId'),
-      profileId: c.req.query('profileId'),
-      mouId: c.req.query('mouId'),
+      profileId: c.req.queries('profileId'),
+      mouId: c.req.queries('mouId'),
       status: c.req.query('status'),
       q: c.req.query('q'),
       limit: c.req.query('limit'),
@@ -272,12 +291,21 @@ function grantRoutes(router: Router, deps: TenantRouteDeps): void {
 }
 
 function adminRoutes(router: Router, deps: TenantRouteDeps): void {
+  router.get(`${BASE}/admins/mou-candidates`, async (c) => {
+    const ctx = await guard(c, deps, 'admin_manage');
+    const query = parseQuery(candidateQuery, {
+      q: c.req.query('q'),
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+    });
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => mouCandidates(tx, ctx.userId, query)));
+  });
   router.get(`${BASE}/admins`, async (c) => {
     const ctx = await guard(c, deps, 'admin_manage');
     const query = parseQuery(adminListQuery, {
       departmentId: c.req.query('departmentId'),
       role: c.req.query('role'),
-      mouId: c.req.query('mouId'),
+      mouId: c.req.queries('mouId'),
       q: c.req.query('q'),
       limit: c.req.query('limit'),
       offset: c.req.query('offset'),

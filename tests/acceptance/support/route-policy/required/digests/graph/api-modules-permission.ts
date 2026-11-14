@@ -65,9 +65,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/evaluation/flow-catalog.ts#EVALUATION_FLOW_OBJECTS',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/permission/object-permission.ts#ObjectCatalog',
+    'packages/domain/src/permission/page-catalog.ts#PAGE_CARRIERS',
     'packages/domain/src/platform/employee-self-service.ts#SELF_APPLICATION_OBJECTS',
     'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS',
-    'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS',
   ],
   'apps/api/src/modules/permission/data-scope-admin.ts#applyGrantScopes': ['#assignUserAppScope'],
@@ -274,6 +274,22 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#visible',
     'apps/api/src/modules/permission/module-route-access.ts#writeFields',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'apps/api/src/modules/permission/filter-candidates.ts#candidateQuery': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#listPage',
+    'apps/api/src/modules/permission/enterprise-lists.ts#textFilter',
+  ],
+  'apps/api/src/modules/permission/filter-candidates.ts#candidateVisibility': [
+    'apps/api/src/modules/permission/admins.ts#grantableSetsOf',
+    'packages/domain/src/permission/admin-roles.ts#hasAdminCapability',
+  ],
+  'apps/api/src/modules/permission/filter-candidates.ts#mouCandidates': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#likePattern',
+    '#candidateVisibility',
+  ],
+  'apps/api/src/modules/permission/filter-candidates.ts#profileCandidates': [
+    'apps/api/src/modules/permission/enterprise-lists.ts#likePattern',
+    '#candidateVisibility',
   ],
   'apps/api/src/modules/permission/grants.ts#assertGrantable': [
     'apps/api/src/modules/permission/admins.ts#grantableSetsOf',
@@ -526,6 +542,7 @@ export const GRAPH: Graph = {
     'apps/api/src/seeds/grant-ledger.ts#recordTenantSave',
     'packages/domain/src/permission/object-permission.ts#isWithinProfileApps',
     'packages/domain/src/permission/object-permission.ts#validateObjectPermission',
+    'packages/domain/src/permission/page-catalog.ts#isPageCarrier',
     'packages/domain/src/platform/standard-grants.ts#objectCatalogDigest',
   ],
   'apps/api/src/modules/permission/profiles.ts#view': [
@@ -562,6 +579,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/http.ts#idParam',
     '#BASE',
   ],
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins/mou-candidates': [
+    'apps/api/src/modules/permission/admin-http.ts#adminGuard',
+    'apps/api/src/modules/permission/enterprise-lists.ts#parseQuery',
+    'apps/api/src/modules/permission/filter-candidates.ts#candidateQuery',
+    'apps/api/src/modules/permission/filter-candidates.ts#mouCandidates',
+    '#BASE',
+  ],
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grantable-profiles': [
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
     'apps/api/src/modules/permission/grants.ts#grantableProfiles',
@@ -575,6 +599,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/person-list-projection.ts#listPersonAccess',
     '#BASE',
     'apps/api/src/modules/permission/schemas.ts#grantListQuery',
+  ],
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants/mou-candidates': [
+    'apps/api/src/modules/permission/admin-http.ts#adminGuard',
+    'apps/api/src/modules/permission/enterprise-lists.ts#parseQuery',
+    'apps/api/src/modules/permission/filter-candidates.ts#candidateQuery',
+    'apps/api/src/modules/permission/filter-candidates.ts#mouCandidates',
+    '#BASE',
+  ],
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants/profile-candidates': [
+    'apps/api/src/modules/permission/admin-http.ts#adminGuard',
+    'apps/api/src/modules/permission/enterprise-lists.ts#parseQuery',
+    'apps/api/src/modules/permission/filter-candidates.ts#candidateQuery',
+    'apps/api/src/modules/permission/filter-candidates.ts#profileCandidates',
+    '#BASE',
   ],
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/licenses': [
     'apps/api/src/modules/permission/admin-http.ts#adminGuard',
@@ -700,6 +738,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/schemas.ts#adminListQuery': [
     'apps/api/src/modules/permission/enterprise-lists.ts#listPage',
     'apps/api/src/modules/permission/enterprise-lists.ts#textFilter',
+    '#idFilter',
     'packages/domain/src/permission/admin-roles.ts#ADMIN_ROLES',
   ],
   'apps/api/src/modules/permission/schemas.ts#adminSetsBody': [
@@ -717,6 +756,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/schemas.ts#grantListQuery': [
     'apps/api/src/modules/permission/enterprise-lists.ts#listPage',
     'apps/api/src/modules/permission/enterprise-lists.ts#textFilter',
+    '#idFilter',
   ],
   'apps/api/src/modules/permission/schemas.ts#objectPermissionBody': [
     '#ITEM_CODE',

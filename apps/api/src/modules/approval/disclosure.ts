@@ -100,8 +100,6 @@ export async function readDetail(
   instanceId: string,
   viewer: Viewer,
   withLogs = true,
-  /** true：不做内容选择，读现值（组织调整预览 / 导出本片保持原行为，P2 再改，F-476 §8）。 */
-  forceLive = false,
 ): Promise<DetailData> {
   const instance = await loadInstance(tx, ctx.tenantId, instanceId);
   await assertCanOpen(tx, ctx, instance, viewer);
@@ -112,9 +110,7 @@ export async function readDetail(
     intervene: await adminCovers(tx, ctx.tenantId, instanceId, viewer.interveneScope),
   };
   // F-476：先选内容来源（缺份 503，DEC-807），已办读冻结份里的快照，其余读现值
-  const content: ContentSelection = forceLive
-    ? { mode: 'live' }
-    : await selectContent(tx, ctx, instance, allTasks, viewer.userId);
+  const content: ContentSelection = await selectContent(tx, ctx, instance, allTasks, viewer.userId);
   // 当前流程事实始终读现值；冻结份只供展示（设计 §0.2），不得进入路径推演
   const live = await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId);
   return {

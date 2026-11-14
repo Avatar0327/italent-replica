@@ -18,7 +18,8 @@ import { readFrozenContract } from './support/route-policy/baseline.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { domainConstants, NO_SNAPSHOT_YET } from './support/route-policy/domains.js';
-import { WEAKENING_KINDS } from './support/route-policy/weakenings.js';
+import { REQUIRED } from './support/route-policy/required/index.js';
+import { disclosureWeakeningsOf, WEAKENING_KINDS } from './support/route-policy/weakenings.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -183,5 +184,31 @@ describe('AC-PRM-FW-02 审批任务业务域来自运行时适配器（含 IDP�
       expect(domains.length, key).toBeGreaterThan(0);
       for (const [, domain] of domains) expect([...(JSON.parse(domain!) as string[])].sort(), key).toEqual(expected);
     }
+  });
+});
+
+describe('AC-PRM-FW-02 scope→foreign-object 只对有对象选择器的节点生成（DEC-903）', () => {
+  const foreignOf = (key: string) =>
+    disclosureWeakeningsOf(route(key), REQUIRED).filter((w) => w.kind === 'scope→foreign-object');
+
+  it('无对象选择器的 admin 节点（F-516b 候选人列表）：不生成，但 need 仍在登记里', () => {
+    for (const key of [
+      'GET /api/tenant/permission/grants/profile-candidates',
+      'GET /api/tenant/permission/grants/mou-candidates',
+      'GET /api/tenant/permission/admins/mou-candidates',
+    ]) {
+      expect(route(key).policy.kind, key).toBe('admin');
+      expect(foreignOf(key), key).toEqual([]);
+      expect(
+        REQUIRED[key]?.some((o) => o.need),
+        key,
+      ).toBe(true);
+    }
+  });
+
+  it('有对象选择器的节点（列表人员投影的档案对象）：照常生成', () => {
+    const generated = foreignOf('GET /api/tenant/permission/grants');
+    expect(generated.length).toBeGreaterThan(0);
+    expect(generated.every((w) => w.at.startsWith('optional.personColumns.'))).toBe(true);
   });
 });

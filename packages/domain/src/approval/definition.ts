@@ -84,6 +84,8 @@ export function approverSourceViolations(node: ApprovalNode, type: ApprovalTypeD
       !['employment', 'part_time', 'exit_handover'].includes(type.adapter)
     )
       violations.push('该审批类型没有任职申请业务日');
+    // F-326 §3.4：矩阵条件按单一申请对象和申请业务日求值；多主体审批没有唯一对象，也不在白名单内。
+    if (source.type === 'matrix' && !MATRIX_ADAPTERS.has(type.adapter)) violations.push('该审批类型没有任职申请业务日');
   }
   if (node.emptyApproverSources?.length && node.emptyApproverPolicy !== 'specified')
     violations.push('空人候选只能用于指定人员策略');
@@ -110,6 +112,17 @@ export function approverSourceViolations(node: ApprovalNode, type: ApprovalTypeD
   if (orgAdjustmentViolation) violations.push(orgAdjustmentViolation);
   return violations;
 }
+
+/**
+ * F-326 §3.4：矩阵可用的审批类型。personnel_change 是对设计的偏离（PR 描述“未决/假设”）：AC-18 要求
+ * 撤回后可重提的真实实例，只有它和 idp 能重提；它的申请业务日取租户当天（与快照取当前任职一致）。
+ */
+const MATRIX_ADAPTERS: ReadonlySet<ApprovalTypeDefinition['adapter']> = new Set([
+  'employment',
+  'part_time',
+  'exit_handover',
+  'personnel_change',
+]);
 
 /** 多主体审批没有唯一的“主体员工本人”（F-048 批量、人才盘点、Offer、组织调整）。 */
 const MULTI_SUBJECT_ADAPTERS: ReadonlySet<ApprovalTypeDefinition['adapter']> = new Set([

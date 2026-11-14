@@ -22,7 +22,9 @@ import {
   saveMatrixStructure,
   matrixDetail,
   listMatrices,
+  assertMatrixExists,
 } from './matrices.js';
+import { sourceUsagePage } from './source-usages.js';
 
 type C = Context<TenantEnv>;
 function context(c: C, deps: TenantRouteDeps): ApprovalContext {
@@ -111,6 +113,19 @@ export function registerMatrixRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
   });
   router.post('/matrices/:id/disable', (c) => {
     const id = canonicalId(uuidParam(c));
-    return matrixCommand(c, deps, matrixStatusSchema, (tx, ctx) => changeMatrixStatus(tx, ctx, id, 'disable'));
+    return matrixCommand(c, deps, matrixStatusSchema, (tx, ctx, input) =>
+      changeMatrixStatus(tx, ctx, id, 'disable', input.acknowledgedReferenceCount),
+    );
+  });
+  router.get('/matrices/:id/references', async (c) => {
+    const ctx = context(c, deps);
+    const id = canonicalId(uuidParam(c));
+    return c.json(
+      await withTenant(deps.db, ctx.tenantId, async (tx) => {
+        await requireMatrixAdmin(deps, ctx, tx);
+        await assertMatrixExists(tx, ctx.tenantId, id);
+        return sourceUsagePage(tx, ctx.tenantId, { kind: 'matrix', id });
+      }),
+    );
   });
 }
