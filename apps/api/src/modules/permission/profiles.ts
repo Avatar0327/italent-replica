@@ -20,6 +20,7 @@ import {
 } from '@italent/db';
 import {
   isWithinProfileApps,
+  isPageCarrier,
   type ObjectCatalog,
   objectCatalogDigest,
   type ObjectPermission,
@@ -211,6 +212,10 @@ export async function setObjectPermission(
   // 先于权限语义校验：目录变化时旧页面提交的字段 / 按钮可能已不存在，要得到 409 CATALOG_CHANGED 而不是 400
   if (change.catalogDigest !== undefined && change.catalogDigest !== objectCatalogDigest(definition)) {
     throw new AppError('CATALOG_CHANGED', '对象目录已变化，请刷新后重新提交', { objectCode: definition.code });
+  }
+  // F-474-9a §4.4 R1：整对象与局部弹窗共用此出口，载体只能授予页面按钮。
+  if (isPageCarrier(permission.objectCode) && Object.values(permission.dataOperations).some(Boolean)) {
+    throw new AppError('VALIDATION_FAILED', '页面载体不可授予数据操作权限');
   }
   const violations = validateObjectPermission(definition, permission);
   if (violations.length > 0) throw new AppError('VALIDATION_FAILED', '对象权限配置不合法', violations);

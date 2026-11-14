@@ -4,8 +4,18 @@ import { useSession } from '../foundation/Session.js';
 import { xi } from './messages.js';
 import { importPath } from './exit-import-model.js';
 
-/** F-493 §9.2 / §9.5 共用下载入口，服务端重新验权与判断保留期。 */
-export function ImportFileDownload({ businessId, children }: { businessId: string; children: ReactNode }) {
+/** F-493 §9.2 / §9.5 共用下载入口，服务端重新验权与判断保留期；file 缺省为错误文件，导入历史页另下原文件。 */
+export function ImportFileDownload({
+  businessId,
+  file = 'error-file',
+  fallbackName = xi.errorFileName,
+  children,
+}: {
+  businessId: string;
+  file?: 'error-file' | 'source-file';
+  fallbackName?: string;
+  children: ReactNode;
+}) {
   const { tenantId, identityKey } = useSession();
   const running = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
@@ -14,7 +24,7 @@ export function ImportFileDownload({ businessId, children }: { businessId: strin
     setBusy(false);
     setError('');
     return () => running.current?.abort();
-  }, [tenantId, identityKey, businessId]);
+  }, [tenantId, identityKey, businessId, file]);
   const download = async () => {
     if (running.current && !running.current.signal.aborted) return;
     const controller = new AbortController();
@@ -22,7 +32,7 @@ export function ImportFileDownload({ businessId, children }: { businessId: strin
     setBusy(true);
     setError('');
     try {
-      const response = await fetch(`${importPath}/batches/${encodeURIComponent(businessId)}/error-file`, {
+      const response = await fetch(`${importPath}/batches/${encodeURIComponent(businessId)}/${file}`, {
         credentials: 'same-origin',
         headers: { 'x-tenant-id': tenantId },
         signal: controller.signal,
@@ -51,7 +61,7 @@ export function ImportFileDownload({ businessId, children }: { businessId: strin
       try {
         const anchor = document.createElement('a');
         anchor.href = url;
-        anchor.download = filename ?? xi.errorFileName;
+        anchor.download = filename ?? fallbackName;
         anchor.click();
       } finally {
         setTimeout(() => URL.revokeObjectURL(url), 0);

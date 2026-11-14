@@ -97,8 +97,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** DEC-691 D5/D6：身份来源的值是本租户身份 ID；存在性在保存时另校（需读库），命名值 handover_hr_admin 另走表达式。 */
 export const identityProfileId = (source: ApproverSource): string | null =>
   source.type === 'identity' && UUID.test(source.value) ? source.value : null;
+/** F-326 §3.1：变量来源的值是变量 id，矩阵来源是 `<矩阵 id>:<角色列 id>`；存在性与适用范围读库，放在保存校验。 */
+export function matrixSourceParts(source: ApproverSource): { matrixId: string; columnId: string } | null {
+  if (source.type !== 'matrix') return null;
+  const [matrixId, columnId, ...rest] = source.value.split(':');
+  if (rest.length || !matrixId || !columnId || !UUID.test(matrixId) || !UUID.test(columnId)) return null;
+  return { matrixId, columnId };
+}
 export function sourceViolation(source: ApproverSource): string | null {
-  if (['public_variable', 'application_variable', 'matrix'].includes(source.type)) return '暂不支持，后补 F-326';
+  if (source.type === 'public_variable' || source.type === 'application_variable')
+    return UUID.test(source.value) ? null : '审批人来源的值不合法';
+  if (source.type === 'matrix') return matrixSourceParts(source) ? null : '审批人来源的值不合法';
   if (expressionValue(source)) return null;
   if (relationSource(source)) return null;
   if (identityProfileId(source)) return null;

@@ -16,3 +16,7 @@
 .profile-permission-form .ant-form-item-label {
   min-width: 64px;
 }
+
+.page-permission-missing {
+  color: #8c8c8c;
+}

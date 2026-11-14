@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { test, expect, snapshotFixture } from './fixtures.js';
 import { settingsFixtures, rows, ids } from './settings-fixtures.js';
 
-test('AC-FE-F4745-A2a 授权筛选仅用已返回候选，页大小和选择状态一致', async ({ page }) => {
+test('AC-FE-F4745-A2a 授权筛选使用独立候选，页大小和选择状态一致', async ({ page }) => {
   await settingsFixtures(page, false);
   const queries: URLSearchParams[] = [];
   const extra: string[] = [];
@@ -18,6 +18,9 @@ test('AC-FE-F4745-A2a 授权筛选仅用已返回候选，页大小和选择状�
       },
     });
   });
+  await page.route('**/permission/grants/mou-candidates?*', (route) =>
+    route.fulfill({ json: { items: [{ id: ids.mou, name: '合成范围' }], total: 1 } }),
+  );
   await page.goto('/settings/menu/permission.user_grant');
   await expect(page.locator('.page-total')).toContainText('401');
   await page.getByRole('checkbox', { name: '选择此行', exact: true }).check();
