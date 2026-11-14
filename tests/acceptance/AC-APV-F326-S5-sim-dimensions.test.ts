@@ -59,17 +59,27 @@ describe('AC-APV-F326-16 模拟当前值路径：矩阵职位 / 职务虚拟值�
 
   it.each(cases)('命中：$type · $dimension 条件给命中值 → 取矩阵命中行的人（按对象 $byObject）', async (c) => {
     const s = await scene(`dim-hit-${c.type}-${c.dimension}-${c.byObject}`, c.type, c.dimension);
-    expect(await seats(await s.simulate({ [PATH[c.dimension]]: s.hit }, c.byObject))).toEqual([s.headUser]);
+    const response = await s.simulate({ [PATH[c.dimension]]: s.hit }, c.byObject);
+    if (!c.byObject) return expect(await seats(response)).toEqual([s.headUser]);
+    // 按对象的响应只给“能否提交”：命中行有人 → 预检通过（具体是谁由按流程那一路的用例锁定）
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ replicaStartable: true, replicaError: null });
   });
 
   it.each(cases)('未命中：$type · $dimension 条件给不在矩阵里的值 → 审批人为空（按对象 $byObject）', async (c) => {
     const s = await scene(`dim-miss-${c.type}-${c.dimension}-${c.byObject}`, c.type, c.dimension);
-    expect(await seats(await s.simulate({ [PATH[c.dimension]]: randomUUID() }, c.byObject))).toEqual([null]);
+    const response = await s.simulate({ [PATH[c.dimension]]: randomUUID() }, c.byObject);
+    if (!c.byObject) return expect(await seats(response)).toEqual([null]);
+    // 按对象：矩阵没命中 → 首节点无人，预检判不可提交（不是 400，也不是命中了别的行）
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { replicaStartable: boolean; replicaError?: string };
+    expect(body).toMatchObject({ replicaStartable: false, replicaError: '第一个审批节点没有审批人' });
   });
 
   it('不放宽无关输入校验：仍拒绝未知路径与非 UUID 的职位值', async () => {
     const s = await scene('dim-guard', 'part_time_add', 'position');
-    for (const values of [{ 'record.nonsense': randomUUID() }, { 'record.positionId': 'not-a-uuid' }]) {
+    const bad: Record<string, string>[] = [{ 'record.nonsense': randomUUID() }, { 'record.positionId': 'not-a-uuid' }];
+    for (const values of bad) {
       const response = await s.simulate(values, false);
       expect(response.status).toBe(400);
       expect(((await response.json()) as { error: { details: { reason?: string } } }).error.details.reason).toBe(

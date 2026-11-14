@@ -11,6 +11,7 @@ import { limitApprovers } from './source-resolver.js';
 import type { Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  type ConditionField,
   adminRecused,
   approverSourcesOf,
   expressionValue,
@@ -42,7 +43,7 @@ import { approvalError, type ApprovalContext } from './context.js';
 import { loadProcess, loadVersion, type VersionView } from './definitions.js';
 import { decideHandoverApprovers, type HandoverResolution, type ResolvedApprover } from './handover-empty.js';
 import { candidates, evaluate, noProcessMessage, originalSiteMatch, replicaMatch } from './matching.js';
-import { withCurrentSources } from './simulation-current.js';
+import { simulationFieldsOf, withCurrentSources } from './simulation-current.js';
 
 export interface SimulationData {
   readonly values: Readonly<Record<string, string | null>>;
@@ -64,7 +65,9 @@ const NOBODY: Candidate = { personId: null, userId: null };
 
 /** X-18：按条件字段类型校验输入（组织 / 引用须为标识，日期须为合法日期），不把虚拟值当主键查库。 */
 function conditionContext(type: ApprovalTypeCode, data: SimulationData): ConditionContext {
-  const fields = new Map(APPROVAL_TYPES[type].conditionFields.map((field) => [field.path, field.kind]));
+  // 同路径取类型自带的定义；矩阵虚拟维度（部门 / 职位 / 职务）对所有类型可用（F-326 §3.7）
+  const fields = new Map<string, ConditionField['kind']>();
+  for (const field of [...simulationFieldsOf(type)].reverse()) fields.set(field.path, field.kind);
   const orgAncestors: Record<string, readonly string[]> = {};
   for (const [path, value] of Object.entries(data.values)) {
     const kind = fields.get(path);
