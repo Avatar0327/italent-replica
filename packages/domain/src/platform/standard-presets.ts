@@ -185,8 +185,14 @@ const READ_ONLY_OBJECTS = new Set<string>([
 const grant = (definition: ObjectDefinition) =>
   READ_ONLY_OBJECTS.has(definition.code) ? readOnly(definition) : full(definition);
 
+/**
+ * F-474-7b（DEC-896 U8）：职务职级图谱原站菜单只授系统管理员，所以不进 BUSINESS_OBJECTS（人事管理员、专员、经理
+ * 等由它派生的身份都不含），仅由标准版系统管理员单独预置：查看 + 重新生成 / 导出按钮，没有数据操作。
+ */
+const JOB_GRAPH_PRESET_OBJECTS = new Set<string>([MODULE_OBJECTS.jobGraph.code]);
+
 const BUSINESS_OBJECTS: readonly ObjectDefinition[] = [
-  ...Object.values(MODULE_OBJECTS).filter((o) => !CONFIG_OBJECTS.has(o.code)),
+  ...Object.values(MODULE_OBJECTS).filter((o) => !CONFIG_OBJECTS.has(o.code) && !JOB_GRAPH_PRESET_OBJECTS.has(o.code)),
   ...APPROVAL_OBJECTS,
   ...PERSONNEL_OBJECTS,
 ];
@@ -459,7 +465,13 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '拥有组织员工的所有业务功能的权限',
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
-    objects: BUSINESS_OBJECTS.map(grant),
+    objects: [
+      ...BUSINESS_OBJECTS.map(grant),
+      fieldSubset(MODULE_OBJECTS.jobGraph, [], [], { create: false, update: false, delete: false }, [
+        { buttonCode: 'rebuild', level: 'list' },
+        { buttonCode: 'export', level: 'list' },
+      ]),
+    ],
     hr: true,
     seeAll: [
       BLACKLIST_SEE_ALL,

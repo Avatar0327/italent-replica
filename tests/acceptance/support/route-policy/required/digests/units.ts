@@ -935,6 +935,17 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/job/employment-port.ts': {
     employmentJobPersonnel: '0e8c771a5bff',
   },
+  'apps/api/src/modules/job/graph-routes.ts': {
+    'route:GET /api/tenant/job/graph': 'e8bafb1f0777',
+    'route:GET /api/tenant/job/graph/issues': 'f9f135eade51',
+    'route:POST /api/tenant/job/graph/rebuild': 'd36a453d77ff',
+  },
+  'apps/api/src/modules/job/graph-sources.ts': {
+    GRAPH_SOURCES: '6b4b07998e45',
+    requireGraphAccess: '4c3c969fb6f6',
+    requireGraphRebuild: '4ef4c695447e',
+    sourcesAllowed: '23b930a12d4c',
+  },
   'apps/api/src/modules/job/resource-set-candidates.ts': {
     registerResourceSetCandidates: '4d1048195491',
   },
@@ -1104,6 +1115,11 @@ export const DIGESTS: Digests = {
     'route:PUT /api/tenant/permission/scopes/:userId/:appCode': 'd479c4e766ce',
     scopeAdminGuard: '0eb402963b9c',
   },
+  'apps/api/src/modules/permission/filter-candidates.ts': {
+    candidateVisibility: 'f941c61fa887',
+    mouCandidates: '0a7990f472ab',
+    profileCandidates: 'c8666b4a3033',
+  },
   'apps/api/src/modules/permission/module-route-access.ts': {
     JOB_OBJECT_CODES: '3365e0cde1dc',
     button: 'acbcb4bfc6e7',
@@ -1123,10 +1139,13 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/permission/routes.ts': {
     'route:GET /api/tenant/permission/admin-roles': 'd1748d513636',
-    'route:GET /api/tenant/permission/admins': '5006275bbb4c',
+    'route:GET /api/tenant/permission/admins': '9bf266373e29',
     'route:GET /api/tenant/permission/admins/:id': '7ef20d0775e2',
+    'route:GET /api/tenant/permission/admins/mou-candidates': '5863fc882e60',
     'route:GET /api/tenant/permission/grantable-profiles': '9a5b3f8e188e',
-    'route:GET /api/tenant/permission/grants': '4e0619bec1ed',
+    'route:GET /api/tenant/permission/grants': '8ef9833ef189',
+    'route:GET /api/tenant/permission/grants/mou-candidates': 'af2a36aa6bf7',
+    'route:GET /api/tenant/permission/grants/profile-candidates': '3fbb6e7f1ffd',
     'route:GET /api/tenant/permission/licenses': '21a9f3e0abad',
     'route:GET /api/tenant/permission/licenses/:licenseType/seats': 'de2cfcf8393b',
     'route:GET /api/tenant/permission/profiles': '2314d9583ec0',
@@ -2658,6 +2677,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/idp/template-service.ts#requireCopyViewable': '552c270650be',
   'apps/api/src/modules/job/context.ts#readContext': '9d063f8ea5e6',
   'apps/api/src/modules/job/employment-port.ts#employmentJobPersonnel': '6a624377b0cf',
+  'apps/api/src/modules/job/graph-routes.ts#route:GET /api/tenant/job/graph': 'fdba8a8163a1',
+  'apps/api/src/modules/job/graph-routes.ts#route:GET /api/tenant/job/graph/issues': 'fb7ad4a07606',
+  'apps/api/src/modules/job/graph-routes.ts#route:POST /api/tenant/job/graph/rebuild': '9285e2380c6c',
+  'apps/api/src/modules/job/graph-sources.ts#GRAPH_SOURCES': 'a367632c4679',
+  'apps/api/src/modules/job/graph-sources.ts#requireGraphAccess': '075ba76ebcdb',
+  'apps/api/src/modules/job/graph-sources.ts#requireGraphRebuild': 'a39231066c44',
+  'apps/api/src/modules/job/graph-sources.ts#sourcesAllowed': '44a0f1aacec5',
   'apps/api/src/modules/job/resource-set-candidates.ts#registerResourceSetCandidates': 'f6448e4c525b',
   'apps/api/src/modules/job/routes.ts#assignmentReferences': '27cf827a6ac1',
   'apps/api/src/modules/job/routes.ts#importJobRows': 'ba74b3d251c1',
@@ -2798,6 +2824,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/permission/data-scope-routes.ts#route:PUT /api/tenant/permission/scopes/:userId/:appCode':
     '241977321c75',
   'apps/api/src/modules/permission/data-scope-routes.ts#scopeAdminGuard': '9d063f8ea5e6',
+  'apps/api/src/modules/permission/filter-candidates.ts#candidateVisibility': '56c9e7edc90c',
+  'apps/api/src/modules/permission/filter-candidates.ts#mouCandidates': '15b6895fd5a2',
+  'apps/api/src/modules/permission/filter-candidates.ts#profileCandidates': '107666ec6e78',
   'apps/api/src/modules/permission/module-route-access.ts#JOB_OBJECT_CODES': '1f397b8d369b',
   'apps/api/src/modules/permission/module-route-access.ts#button': 'a611aeeb43a0',
   'apps/api/src/modules/permission/module-route-access.ts#objectContext': '9d063f8ea5e6',
@@ -2810,8 +2839,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admin-roles': '7a11d0289c9b',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins': '3583af936971',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins/:id': '76a428b4f6df',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/admins/mou-candidates': '2085f522f261',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grantable-profiles': '7e4f35c521e5',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants': '56044bdd6e77',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants/mou-candidates': '2085f522f261',
+  'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/grants/profile-candidates':
+    '0f8723002740',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/licenses': 'b684105aaeb1',
   'apps/api/src/modules/permission/routes.ts#route:GET /api/tenant/permission/licenses/:licenseType/seats':
     '76a5e8a06263',

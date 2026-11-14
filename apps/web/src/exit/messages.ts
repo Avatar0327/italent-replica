@@ -215,3 +215,29 @@ export const xi = {
     download: '模板下载失败，请重试',
   },
 };
+
+/** F-493 §9.5：导入历史页（只列本人提交的批次，D16）。 */
+export const xh = {
+  title: '导入历史',
+  type: '离职人员',
+  columns: {
+    importType: '导入类型',
+    createdAt: '导入时间',
+    submitterName: '导入者',
+    status: '状态',
+    result: '导入结果',
+    errorFile: '附件',
+    sourceFile: '导入附件',
+  },
+  status: { running: '执行中', succeeded: '成功', failed: '失败' },
+  statusFilter: '状态',
+  timeFilter: '导入时间',
+  from: '开始日期',
+  to: '结束日期',
+  result: (total: number, errors: number) => `尝试导入${total}条记录，出现${errors}个错误。`,
+  none: '--',
+  errorFile: '下载导入错误报告',
+  expired: '已过期',
+  invalid: '导入历史读取结果无效，请刷新后重试',
+  page: (page: number) => `第 ${page} 页`,
+};
