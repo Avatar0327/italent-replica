@@ -1,6 +1,7 @@
 import { assertSourceReferences } from './source-reference.js';
 import {
   applyPendingAutoVariables,
+  lockSaveBatch,
   assertNoMergedDuplicate,
   enrichProcessView,
   materializeNode,
@@ -433,6 +434,8 @@ async function writeVersionContent(
     await insertConditionItem(tx, tenantId, id, { kind: 'initiation' }, item);
   }
   const scope = await materializeScope(tx, tenantId, processId, id, definition, options);
+  // 变量行一批取锁（按 id 升序，事务中段不升级，主设计 §5.5③④）：先于任何引用校验与收尾
+  if (!options.copyOfExisting) await lockSaveBatch(tx, ctx, scope, definition.nodes);
   for (const [index, original] of definition.nodes.entries()) {
     await assertFallbackUsers(tx, tenantId, original);
     const [violation] = approverSourceViolations(original, APPROVAL_TYPES[type]);
@@ -458,7 +461,7 @@ async function writeVersionContent(
       await assertSourceReferences(tx, tenantId, sources, {
         approvalType: type,
         singleApprover: isCountersign(node) ? undefined : node.approver,
-        owner: { versionId: id, nodeKey: node.key },
+        owner: { versionId: id, nodeKey: node.key, emptySources: node.emptyApproverSources ?? [] },
       });
     await insertNode(tx, tenantId, id, node, index);
   }

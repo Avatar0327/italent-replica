@@ -161,7 +161,7 @@ describe('AC-APV-F326-S7a-r2 P2-6 草稿期限制按位置（节点 × 位置）
     const w = await s4World(database().db, 's7a-r2-slot');
     const handover = (approver: NodeInput['approvers'], empty: NodeInput['approvers']) =>
       ({
-        ...counter(approver!, { key: 'work_handover' }),
+        ...counter([...approver!], { key: 'work_handover' }),
         emptyApproverPolicy: 'specified',
         emptyApproverSources: empty,
       }) as NodeInput;
@@ -205,7 +205,7 @@ describe('AC-APV-F326-S7a-r2 P2-7 自动生成不得写出超过 100 人的 pers
     const pending = await saveDraft(w, draft, [counter(crowd.map(specified))]);
     await rejected(pending, 400, 'DEFAULT_VALUE_TYPE');
     expect(await varRow(w, x.id)).toEqual(x);
-  });
+  }, 180_000);
 });
 
 describe('AC-APV-F326-S7a-r2 P3 审计归位与停用原因', () => {

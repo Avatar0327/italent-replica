@@ -7,6 +7,7 @@
 import { and, approvalVariables as table, eq, inArray, sql, type Tx } from '@italent/db';
 import {
   countersignDuplicate,
+  defaultValueViolation,
   isCountersign,
   isUnselectedSpecified,
   textViolation,
@@ -92,6 +93,12 @@ function sameSet(a: readonly string[] | null, b: readonly string[] | null): bool
 
 const valueFor = (dataType: string, people: readonly string[] | null) =>
   people === null ? null : dataType === 'person' ? people[0]! : [...people];
+
+/** 自动生成 / 更新 / 待生效写入前，人数与人工变量同口径（defaultValueViolation：persons 1～100，主设计 §2.3、§5.5②）。 */
+function assertHeadcount(dataType: string, people: readonly string[] | null) {
+  const violation = defaultValueViolation(dataType as 'person' | 'persons', valueFor(dataType, people));
+  if (violation) throw approvalError('VALIDATION_FAILED', violation, '指定人员数量超出变量允许的范围');
+}
 
 async function ownedVariable(tx: Tx, scope: MaterializeScope, nodeKey: string, slot: Slot) {
   const [row] = await tx
@@ -233,6 +240,7 @@ async function materializeSlot(tx: Tx, ctx: ApprovalContext, scope: MaterializeS
     ),
   ];
   const people = real.length ? real : null;
+  assertHeadcount(dataType, people);
   const stored = await decide(tx, ctx, scope, input, people, dataType);
   const out: ApproverSource[] = [];
   let placed = false;
@@ -258,7 +266,7 @@ async function decide(
   const owned = await ownedVariable(tx, scope, node.key, slot);
   if (owned) {
     if (owned.dataType !== dataType) {
-      await changeAuto(tx, ctx, owned, { status: 'disabled' }, 'auto_disable', { reason: '节点类型变化' });
+      await changeAuto(tx, ctx, owned, { status: 'disabled' }, 'auto_disable', { reason: RETIRE_REASON });
       return publicVariable((await createAuto(tx, ctx, scope, node, slot, dataType, people)).id);
     }
     if (!sameSet(peopleOfRow(owned), people))
@@ -346,16 +354,12 @@ const variableIdsOf = (nodes: Iterable<ApprovalNode>): string[] => {
 };
 
 /**
- * 候选 = 保存前草稿引用过的自动变量 + 本版本自己归属的未停用自动变量；
- * 全部在用版本（草稿 / 当前 / 仍有可恢复实例的旧版本）都不再引用才停用（DEC-859）。
+ * 收尾候选（主设计 §5.5③ 三类）：保存前草稿引用过的自动变量、本版本自己归属的未停用自动变量、
+ * 本流程内被管理员手工重新启用过的（有 enable 审计）自动变量——后者来源版本可能更早，前两类取不到（DEC-861⑧）。
  */
-export async function retireUnreferencedAutoVariables(
-  tx: Tx,
-  ctx: ApprovalContext,
-  scope: MaterializeScope,
-): Promise<void> {
+async function retireCandidates(tx: Tx, ctx: ApprovalContext, scope: MaterializeScope): Promise<string[]> {
   const referenced = variableIdsOf(scope.previous?.values() ?? []);
-  const candidates = await tx
+  const rows = await tx
     .select({ id: table.id })
     .from(table)
     .where(
@@ -365,11 +369,49 @@ export async function retireUnreferencedAutoVariables(
         eq(table.status, 'enabled'),
         sql`(${table.originVersionId} = ${scope.versionId}::uuid ${
           referenced.length ? sql`OR ${inArray(table.id, referenced)}` : sql``
-        })`,
+        } OR (${table.originProcessId} = ${scope.processId}::uuid AND EXISTS (
+          SELECT 1 FROM audit_events a WHERE a.tenant_id = ${ctx.tenantId}::uuid
+            AND a.object_type = 'approval-public-variable' AND a.action = 'approval.public_variable.enable'
+            AND a.object_id = ${table.id}::text)))`,
       ),
     )
     .orderBy(table.id);
-  for (const { id } of candidates) {
+  return rows.map((row) => row.id);
+}
+
+/**
+ * 保存一批取锁（主设计 §5.5③④、F-326-L §3.3）：收尾候选（FOR UPDATE）与本次保存引用的变量（FOR SHARE）合成一批，
+ * 按 id 升序一次取完；之后的引用校验与收尾对其中的行都是重入，不再升级锁，两个流程同时引用同一条变量不会互等。
+ */
+export async function lockSaveBatch(
+  tx: Tx,
+  ctx: ApprovalContext,
+  scope: MaterializeScope,
+  nodes: readonly ApprovalNode[],
+): Promise<void> {
+  const modes = new Map<string, 'update' | 'share'>();
+  for (const node of nodes)
+    for (const slot of ['approver', 'empty_approver'] as const)
+      for (const source of slotSources(node, slot))
+        if (source.type === 'public_variable' || source.type === 'application_variable')
+          modes.set(source.value, 'share');
+  for (const id of await retireCandidates(tx, ctx, scope)) modes.set(id, 'update');
+  for (const [id, mode] of [...modes].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    await tx.execute(
+      mode === 'update'
+        ? sql`SELECT id FROM approval_variables WHERE tenant_id=${ctx.tenantId}::uuid AND id=${id}::uuid FOR UPDATE`
+        : sql`SELECT id FROM approval_variables WHERE tenant_id=${ctx.tenantId}::uuid AND id=${id}::uuid FOR SHARE`,
+    );
+  }
+}
+
+/** 全部在用版本（草稿 / 当前 / 仍有可恢复实例的旧版本）都不再引用才停用（DEC-859）；行锁已由 lockSaveBatch 取得。 */
+export async function retireUnreferencedAutoVariables(
+  tx: Tx,
+  ctx: ApprovalContext,
+  scope: MaterializeScope,
+): Promise<void> {
+  for (const id of await retireCandidates(tx, ctx, scope)) {
     const current = await loadVariable(tx, ctx.tenantId, id, true);
     if (current.status !== 'enabled') continue;
     if ((await findSourceUsages(tx, ctx.tenantId, { kind: 'variable', id })).length) continue;
@@ -406,6 +448,33 @@ function pendingEntries(draft: VersionView): PendingEntry[] {
 
 const stripPending = (source: ApproverSource): ApproverSource => ({ type: source.type, value: source.value });
 
+/** 发布请求里的选择：每个变量至多一条、须对应草稿的待生效变量，条数不超过待生效位置数（F-326-L §5.4）。 */
+function assertResolutions(entries: readonly PendingEntry[], resolutions: readonly PendingResolution[]) {
+  const known = new Set(entries.map((entry) => entry.source.value));
+  const seen = new Set<string>();
+  const invalid = (message: string) =>
+    approvalError('VALIDATION_FAILED', 'APPROVAL_PENDING_RESOLUTION_INVALID', message);
+  if (resolutions.length > entries.length) throw invalid('处理项多于待生效位置');
+  for (const { variableId } of resolutions) {
+    if (!known.has(variableId)) throw invalid('处理项不对应任何待生效变量');
+    if (seen.has(variableId)) throw invalid('同一变量只能选择一次');
+    seen.add(variableId);
+  }
+}
+
+/**
+ * 待生效值是否需要发布人选择（读视图与发布同一判定，F-326-L §5.4、§5.5）：
+ * 变量仍启用、人员与待生效值不同、且草稿期间被改过（revision 与记录时不同）。变量已停用发布时新建，不需选择。
+ */
+function pendingNeedsChoice(
+  row: Pick<VariableRow, 'status' | 'revision' | 'defaultValue'>,
+  pending: { pendingUserIds?: readonly string[]; pendingRevision?: number },
+): boolean {
+  if (row.status === 'disabled') return false;
+  const people = pending.pendingUserIds?.length ? [...pending.pendingUserIds] : null;
+  return !sameSet(peopleOfRow(row), people) && row.revision !== pending.pendingRevision;
+}
+
 /**
  * 发布草稿时把节点上的待生效人员写进继承变量（同一事务，操作人为发布人）；没有待生效值返回 null，否则返回清理后的节点：
  * 变量在草稿期间被管理员改过（版本号与记录时不同）→ 409，由发布人逐个选择“采用设计器值 / 保留变量页值”后重提。
@@ -418,10 +487,7 @@ export async function applyPendingAutoVariables(
   resolutions: readonly PendingResolution[],
 ): Promise<ApprovalNode[] | null> {
   const entries = pendingEntries(draft);
-  const known = new Set(entries.map((entry) => entry.source.value));
-  for (const resolution of resolutions)
-    if (!known.has(resolution.variableId))
-      throw approvalError('VALIDATION_FAILED', 'APPROVAL_PENDING_RESOLUTION_INVALID', '处理项不对应任何待生效变量');
+  assertResolutions(entries, resolutions);
   if (!entries.length) return null;
   const replaced = new Map<string, string>();
   const conflicts: Record<string, unknown>[] = [];
@@ -429,19 +495,18 @@ export async function applyPendingAutoVariables(
   for (const entry of [...entries].sort((a, b) => a.source.value.localeCompare(b.source.value))) {
     const row = await loadVariable(tx, ctx.tenantId, entry.source.value, true);
     const people = entry.source.pendingUserIds!.length ? [...entry.source.pendingUserIds!] : null;
+    assertHeadcount(row.dataType, people);
     if (row.status === 'disabled') {
       writes.push({ entry, row: null, people });
       continue;
     }
-    if (sameSet(peopleOfRow(row), people)) continue;
-    if (row.revision === entry.source.pendingRevision) {
-      writes.push({ entry, row, people });
+    if (!pendingNeedsChoice(row, entry.source)) {
+      if (!sameSet(peopleOfRow(row), people)) writes.push({ entry, row, people });
       continue;
     }
+    // 草稿期间变量被手工改过：必须有选择，且选择带回的 revision 须仍是变量当前值（选择之后又被改则重新列出）
     const chosen = resolutions.find((item) => item.variableId === row.id);
-    if (chosen && chosen.revision !== row.revision)
-      throw approvalError('CONFLICT', 'APPROVAL_PENDING_VARIABLE_CONFLICT', '变量已再次变化，请重新选择');
-    if (!chosen)
+    if (!chosen || chosen.revision !== row.revision)
       conflicts.push({
         variableId: row.id,
         code: row.code,
@@ -476,8 +541,7 @@ export async function applyPendingAutoVariables(
       continue;
     }
     await changeAuto(tx, ctx, row, { defaultValue: valueFor(row.dataType, people) }, 'auto_update', {
-      trigger,
-      ...(resolution ? { resolution } : {}),
+      trigger: { ...trigger, ...(resolution ? { resolution } : {}) },
     });
   }
   return swapPending(draft.nodes, replaced);
@@ -555,7 +619,11 @@ export async function enrichProcessView(tx: Tx, tenantId: string, view: ProcessV
         revision: Number(row.revision),
         userIds: value === null ? null : Array.isArray(value) ? (value as string[]) : [value as string],
         ...(pendingUserIds ? { pendingUserIds: [...pendingUserIds] } : {}),
-        ...(pendingUserIds && pendingRevision !== undefined && pendingRevision !== Number(row.revision)
+        ...(pendingUserIds &&
+        pendingNeedsChoice(
+          { status: row.status as VariableRow['status'], revision: Number(row.revision), defaultValue: value },
+          { pendingUserIds, pendingRevision },
+        )
           ? { pendingConflict: true as const }
           : {}),
       };
