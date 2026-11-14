@@ -138,6 +138,16 @@ export const kindFull = (structure: Structure, kind: ColumnKind) =>
   countKind(structure, kind) >= (kind === 'condition' ? MATRIX_LIMITS.conditionColumns : MATRIX_LIMITS.roleColumns);
 export const rowsFull = (structure: Structure) => structure.rows.length >= MATRIX_LIMITS.rows;
 
+/** 列数、行数超上限（409 合并后两边新增可能超出；平时添加按钮到上限即禁用）。 */
+function countIssues(structure: Structure): Issue[] {
+  const counts = [
+    [countKind(structure, 'condition'), MATRIX_LIMITS.conditionColumns, sm.conditionsOver],
+    [countKind(structure, 'role'), MATRIX_LIMITS.roleColumns, sm.rolesOver],
+    [structure.rows.length, MATRIX_LIMITS.rows, sm.rowsOver],
+  ] as const;
+  return counts.filter(([count, max]) => count > max).map(([count, max, text]) => ({ text: text(max, count) }));
+}
+
 function columnIssues(columns: DraftColumn[]): Issue[] {
   const rule = VARIABLE_TEXT_FIELDS.matrixColumnName;
   const seen = new Set<string>();
@@ -162,7 +172,7 @@ function cellIssue(column: DraftColumn, ids: string[]) {
 
 /** 与 validateMatrixStructure 同口径的即时校验（同一领域上限），每条标出列 / 行位置；有问题时不能保存。 */
 export function structureIssues(structure: Structure): Issue[] {
-  const issues = columnIssues(structure.columns);
+  const issues = [...countIssues(structure), ...columnIssues(structure.columns)];
   let total = 0;
   structure.rows.forEach((row, index) => {
     for (const column of structure.columns) {

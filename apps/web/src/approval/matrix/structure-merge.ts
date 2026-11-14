@@ -1,6 +1,7 @@
 // 409 重读后的结构三方合并（F-123 设计「状态与恢复」：比较原基线与最新版本，只回填服务端改了、用户没改的部分，
-// 用户修改始终保留）。内核按字段比较，整份结构是一个字段；这里把它拆到列设置、列 / 行的有无、行顺序与单元格。
-// 两边都动过同一处时保留我的输入并列入冲突；行顺序、行 / 列删除设计没写细，同样按“两边都动过保留我的”处理。
+// 用户修改始终保留）。内核按字段比较，整份结构是一个字段；这里拆到列设置、列 / 行的有无、行顺序与单元格。
+// 结构上有歧义的（一边删、另一边在其上改或新增；两边都动过的条件列维度不同）不自动定夺：列为结构冲突，
+// 未处理时按我的草稿；用户逐项选“采用最新版本”或“保留我的修改”（decided）后按选择重算。
 import { sameValue } from '../../foundation/forms/values.js';
 import { sm } from './structure-messages.js';
 import type { DraftColumn, DraftRow, Structure } from './structure-model.js';
@@ -13,18 +14,31 @@ export interface Change {
   latest: string;
   mine: string;
 }
+/** 须用户逐项处理的结构冲突；key 即冲突区里那一行的 field。 */
+export interface Ambiguity {
+  key: string;
+  label: string;
+}
+/** 结构冲突的处理：true 采用最新版本，false 保留我的修改；没有的项尚未处理。 */
+export type Decided = Readonly<Record<string, boolean>>;
 /** 单元格的 id → 显示名（条件列按维度，角色列按人员）。 */
 export type Show = (column: DraftColumn, ids: readonly string[]) => string;
 
-type Side<T extends { ref: string }> = Map<string, T>;
+type Kind = 'column' | 'row';
 interface Sides {
-  columns: Side<DraftColumn>;
-  rows: Side<DraftRow>;
+  columns: Map<string, DraftColumn>;
+  rows: Map<string, DraftRow>;
 }
-const byRef = <T extends { ref: string }>(list: readonly T[]): Side<T> => new Map(list.map((item) => [item.ref, item]));
+const byRef = <T extends { ref: string }>(list: readonly T[]) => new Map(list.map((item) => [item.ref, item]));
+const refsOf = (list: readonly { ref: string }[]) => list.map((item) => item.ref);
 const SETTINGS = ['name', 'dimension', 'includeChildren', 'allowMultiple'] as const;
 type Setting = (typeof SETTINGS)[number];
 
+function setting(key: Setting, value: DraftColumn[Setting]) {
+  if (typeof value === 'boolean') return value ? sm.yes : sm.no;
+  if (key === 'dimension') return value ? sm.dimensionLabel[value]! : '—';
+  return value!.trim();
+}
 /** primary 的顺序为主；secondary 里多出来的项插在它在 secondary 中前一项之后（找不到前一项就放最前）。 */
 function weave(primary: readonly string[], secondary: readonly string[], kept: ReadonlySet<string>) {
   const result = primary.filter((ref) => kept.has(ref));
@@ -35,22 +49,23 @@ function weave(primary: readonly string[], secondary: readonly string[], kept: R
   });
   return result;
 }
-/** 三份里共有的项，各自的先后顺序。 */
-const orderOf = (list: readonly { ref: string }[], common: ReadonlySet<string>) =>
-  list.map((item) => item.ref).filter((ref) => common.has(ref));
 
 class Merger {
   readonly changes: Change[] = [];
+  readonly open: Ambiguity[] = [];
   private readonly b: Sides;
   private readonly l: Sides;
   private readonly m: Sides;
   private readonly rowName: Map<string, string>;
+  /** 维度冲突的条件列 → 是否采用最新版本：这一列的格值整列跟着选定的一边，不逐格合并。 */
+  private readonly clash = new Map<string, boolean>();
 
   constructor(
     private readonly base: Structure,
     private readonly latest: Structure,
     private readonly mine: Structure,
     private readonly show: Show,
+    private readonly decided: Decided,
   ) {
     const sides = (value: Structure) => ({ columns: byRef(value.columns), rows: byRef(value.rows) });
     [this.b, this.l, this.m] = [sides(base), sides(latest), sides(mine)];
@@ -61,55 +76,52 @@ class Merger {
     });
   }
 
-  /** both：两边都改了这一处（保留我的输入）；否则只有服务端改（已采用最新值，或我恰好改成同样的值）。 */
-  private record(field: string, label: string, values: [string, string, string], both: boolean) {
-    this.changes.push({
-      field,
-      label: `${label}（${both ? sm.keptMine : sm.tookLatest}）`,
-      before: values[0],
-      latest: values[1],
-      mine: values[2],
-    });
+  private record(field: string, label: string, values: string[], result: string) {
+    const [before, latest, mine] = values as [string, string, string];
+    this.changes.push({ field, label: `${label}（${result}）`, before, latest, mine });
+  }
+  /** 结构冲突：未处理的列入 open（草稿按我的）；返回 true 表示已选采用最新版本。 */
+  private ambiguous(field: string, label: string, values: string[], text: string) {
+    const take = this.decided[field];
+    if (take === undefined) this.open.push({ key: field, label: text });
+    const result = take ? sm.tookLatest : sm.keptMine;
+    this.record(field, label, values, take === undefined ? sm.ambiguous : result);
+    return take === true;
+  }
+  /** 三方取值：服务端没改取我的；只有服务端改了取最新（回填）；两边都改保留我的。服务端改过的列入冲突区。 */
+  private pick<T>(field: string, label: string, [b, l, m]: [T, T, T], text: (value: T) => string) {
+    if (sameValue(l, b)) return m;
+    const mine = !sameValue(m, b);
+    this.record(field, label, [b, l, m].map(text), mine && !sameValue(m, l) ? sm.keptMine : sm.tookLatest);
+    return mine ? m : l;
   }
   private columnName(ref: string) {
-    const column = this.m.columns.get(ref) ?? this.l.columns.get(ref) ?? this.b.columns.get(ref)!;
-    return column.name.trim();
+    return (this.m.columns.get(ref) ?? this.l.columns.get(ref) ?? this.b.columns.get(ref)!).name.trim();
   }
   private cell(side: Sides, row: string, column: string) {
     return side.rows.get(row)?.cells[column] ?? [];
   }
-  /** 某一边相对原基线动过这一列（设置或这一列的任一格）。 */
-  private columnTouched(side: Sides, ref: string) {
-    const column = side.columns.get(ref);
-    if (!column) return true;
-    const before = this.b.columns.get(ref)!;
-    if (SETTINGS.some((key) => !sameValue(column[key], before[key]))) return true;
-    return this.base.rows.some(
-      (row) => side.rows.has(row.ref) && !sameValue(this.cell(side, row.ref, ref), row.cells[ref]),
-    );
-  }
-  /** 某一边相对原基线动过这一行（该行在原基线列上的任一格）。 */
-  private rowTouched(side: Sides, ref: string) {
-    if (!side.rows.has(ref)) return true;
-    const row = this.b.rows.get(ref)!;
-    return this.base.columns.some(
-      (column) => side.columns.has(column.ref) && !sameValue(this.cell(side, ref, column.ref), row.cells[column.ref]),
-    );
+  /** 某一边相对原基线动过这一行 / 列：列设置或其中任一格（新增的行 / 列在原基线里是空格，填了值就算动过）。 */
+  private touched(side: Sides, kind: Kind, ref: string) {
+    const edited = (row: string, column: string) =>
+      !sameValue(this.cell(side, row, column), this.cell(this.b, row, column));
+    if (kind === 'row') return [...side.columns.keys()].some((column) => edited(ref, column));
+    if (!sameValue(side.columns.get(ref), this.b.columns.get(ref))) return true;
+    return [...side.rows.keys()].some((row) => edited(row, ref));
   }
 
-  /** 原基线里的项：两边都在就保留；只有一边删了，另一边没动它就跟着删，动过就保留我的选择（我删了就删）。 */
-  private keep(kind: 'column' | 'row', ref: string, label: string) {
-    const [l, m] = kind === 'column' ? [this.l.columns, this.m.columns] : [this.l.rows, this.m.rows];
-    const touched = (side: Sides) => (kind === 'column' ? this.columnTouched(side, ref) : this.rowTouched(side, ref));
+  /** 原基线里的行 / 列：两边都在就保留；一边删了，另一边没动就跟着删，动过（含新增行列里的格）列为结构冲突。 */
+  private keep(kind: Kind, ref: string, label: string) {
+    const has = (side: Sides) => (kind === 'column' ? side.columns : side.rows).has(ref);
+    const [inLatest, inMine] = [has(this.l), has(this.m)];
+    if (inLatest === inMine) return inMine;
     const field = `${kind}:${ref}`;
-    if (l.has(ref) && m.has(ref)) return true;
-    if (m.has(ref)) {
-      const mine = touched(this.m);
-      this.record(field, label, [sm.present, sm.removed, mine ? sm.changed : sm.present], mine);
-      return mine;
+    if (!this.touched(inMine ? this.m : this.l, kind, ref)) {
+      if (inMine) this.record(field, label, [sm.present, sm.removed, sm.present], sm.tookLatest);
+      return false;
     }
-    if (l.has(ref) && touched(this.l)) this.record(field, label, [sm.present, sm.changed, sm.removed], true);
-    return false;
+    const values = inMine ? [sm.present, sm.removed, sm.changed] : [sm.present, sm.changed, sm.removed];
+    return this.ambiguous(field, label, values, (inMine ? sm.goneThere : sm.goneHere)(label)) ? inLatest : inMine;
   }
 
   columns(): DraftColumn[] {
@@ -119,36 +131,36 @@ class Merger {
     for (const column of this.latest.columns)
       if (!this.b.columns.has(column.ref)) {
         kept.add(column.ref);
-        this.record(`column:${column.ref}`, sm.columnAt(column.name.trim()), [sm.absent, sm.added, sm.absent], false);
+        const label = sm.columnAt(column.name.trim());
+        this.record(`column:${column.ref}`, label, [sm.absent, sm.added, sm.absent], sm.tookLatest);
       }
     for (const column of this.mine.columns) if (!this.b.columns.has(column.ref)) kept.add(column.ref);
     // 本页不能调列序：列序以最新版本为准，我新增的列按我草稿里的位置插入；条件列始终在角色列之前
-    const order = weave(
-      this.latest.columns.map((column) => column.ref),
-      this.mine.columns.map((column) => column.ref),
-      kept,
-    );
-    const merged = order.map((ref) => this.column(ref));
+    const merged = weave(refsOf(this.latest.columns), refsOf(this.mine.columns), kept).map((r) => this.column(r));
     return [...merged.filter((column) => column.kind === 'condition'), ...merged.filter((c) => c.kind === 'role')];
   }
   private column(ref: string): DraftColumn {
     const [b, l, m] = [this.b.columns.get(ref), this.l.columns.get(ref), this.m.columns.get(ref)];
-    if (!b || !l || !m) return (m ?? l)!;
+    // 最新版本里没有的列（我新增的、服务端删了而我保留的）按新列提交，不带持久 id
+    if (!b || !l || !m) return { ...(m ?? l)!, id: l?.id ?? null };
+    const name = sm.columnAt(this.columnName(ref));
     const merged = { ...m };
+    // 两边都动过这一列且维度不同：维度、包含下级与整列格值作为一处结构冲突一起定（未处理按我的），不逐项合并
+    const touched = (side: Sides) => this.touched(side, 'column', ref);
+    if (l.dimension !== m.dimension && touched(this.l) && touched(this.m)) {
+      const texts = [b, l, m].map((column) => setting('dimension', column.dimension));
+      const field = `column:${ref}:dimension`;
+      const take = this.ambiguous(field, `${name}·${sm.setting.dimension}`, texts, sm.dimensionClash(name));
+      this.clash.set(ref, take);
+      Object.assign(merged, { dimension: (take ? l : m).dimension, includeChildren: (take ? l : m).includeChildren });
+    }
     for (const key of SETTINGS) {
-      const text = (column: DraftColumn) => this.setting(column, key);
-      if (sameValue(l[key], b[key])) continue;
-      const mine = !sameValue(m[key], b[key]);
-      if (!mine) Object.assign(merged, { [key]: l[key] });
-      const label = `${sm.columnAt(this.columnName(ref))}·${sm.setting[key]}`;
-      this.record(`column:${ref}:${key}`, label, [text(b), text(l), text(m)], mine && !sameValue(m[key], l[key]));
+      if (this.clash.has(ref) && (key === 'dimension' || key === 'includeChildren')) continue;
+      const label = `${name}·${sm.setting[key]}`;
+      const value = this.pick(`column:${ref}:${key}`, label, [b[key], l[key], m[key]], (item) => setting(key, item));
+      Object.assign(merged, { [key]: value });
     }
     return merged;
-  }
-  private setting(column: DraftColumn, key: Setting) {
-    if (key === 'name') return column.name.trim();
-    if (key === 'dimension') return column.dimension ? sm.dimensionLabel[column.dimension]! : '—';
-    return column[key] ? sm.yes : sm.no;
   }
 
   rows(columns: readonly DraftColumn[]): DraftRow[] {
@@ -158,55 +170,43 @@ class Merger {
       if (!this.b.rows.has(row.ref)) {
         kept.add(row.ref);
         if (this.l.rows.has(row.ref))
-          this.record(`row:${row.ref}`, this.rowName.get(row.ref)!, [sm.absent, sm.added, sm.absent], false);
+          this.record(`row:${row.ref}`, this.rowName.get(row.ref)!, [sm.absent, sm.added, sm.absent], sm.tookLatest);
       }
-    const order = this.order(kept);
-    return order.map((ref) => ({
+    return this.order(kept).map((ref) => ({
       ref,
-      id: (this.m.rows.get(ref) ?? this.l.rows.get(ref))!.id,
+      // 最新版本里没有的行（我新增的、服务端删了而我保留的）按新行提交
+      id: this.l.rows.get(ref)?.id ?? null,
       cells: Object.fromEntries(columns.map((column) => [column.ref, this.cellValue(ref, column)])),
     }));
   }
   /** 行顺序只比三份共有的行：只有服务端调过就按最新版本，否则按我的；新增的行按各自草稿里的位置插入。 */
   private order(kept: ReadonlySet<string>) {
-    const common = new Set(
-      this.base.rows.map((row) => row.ref).filter((ref) => this.l.rows.has(ref) && this.m.rows.has(ref)),
-    );
-    const [b, l, m] = [
-      orderOf(this.base.rows, common),
-      orderOf(this.latest.rows, common),
-      orderOf(this.mine.rows, common),
-    ];
-    const latestOrder = this.latest.rows.map((row) => row.ref);
-    const mineOrder = this.mine.rows.map((row) => row.ref);
-    if (sameValue(l, b)) return weave(mineOrder, latestOrder, kept);
-    const names = (refs: string[]) => refs.map((ref) => this.rowName.get(ref)).join('、');
-    const mine = !sameValue(m, b);
-    this.record('rows:order', sm.rowOrder, [names(b), names(l), names(m)], mine && !sameValue(m, l));
-    return mine ? weave(mineOrder, latestOrder, kept) : weave(latestOrder, mineOrder, kept);
+    const common = new Set(refsOf(this.base.rows).filter((ref) => this.l.rows.has(ref) && this.m.rows.has(ref)));
+    const [b, l, m] = [this.base, this.latest, this.mine].map((side) => refsOf(side.rows).filter((r) => common.has(r)));
+    const names = (refs: string[] = []) => refs.map((ref) => this.rowName.get(ref)).join('、');
+    const [latestOrder, mineOrder] = [refsOf(this.latest.rows), refsOf(this.mine.rows)];
+    // pick 取到最新版本那一份（只有服务端调过）时以最新顺序为主
+    if (this.pick('rows:order', sm.rowOrder, [b, l, m], names) === l) return weave(latestOrder, mineOrder, kept);
+    return weave(mineOrder, latestOrder, kept);
   }
+  /** 三份都有这一格才逐格三方合并；否则取我草稿里的，草稿里没有取最新版本的（都没有为空格）。 */
   private cellValue(row: string, column: DraftColumn) {
     const ref = column.ref;
-    const inAll = (side: Sides) => side.rows.has(row) && side.columns.has(ref);
-    const m = this.cell(this.m, row, ref);
-    const l = this.cell(this.l, row, ref);
-    // 一边新增的行 / 列、只在一边保留下来的行 / 列：取有它的那一边（另一边没有就是空格）
-    if (!inAll(this.b) || !inAll(this.l)) return inAll(this.m) || !this.l.rows.has(row) ? m : l;
-    if (!inAll(this.m)) return l;
-    const b = this.cell(this.b, row, ref);
-    if (sameValue(l, b)) return m;
+    const has = (side: Sides) => side.rows.has(row) && side.columns.has(ref);
+    const value = (side: Sides) => this.cell(side, row, ref);
+    const take = this.clash.get(ref);
+    if (take !== undefined) return value(take ? this.l : this.m);
+    if (!has(this.b) || !has(this.l) || !has(this.m)) return value(has(this.m) ? this.m : this.l);
+    const ids: [string[], string[], string[]] = [value(this.b), value(this.l), value(this.m)];
     const label = `${this.rowName.get(row)}「${this.columnName(ref)}」`;
-    const mine = !sameValue(m, b);
-    const texts = [b, l, m].map((ids) => this.show(column, ids)) as [string, string, string];
-    this.record(`cell:${row}:${ref}`, label, texts, mine && !sameValue(m, l));
-    return mine ? m : l;
+    return this.pick(`cell:${row}:${ref}`, label, ids, (item) => this.show(column, item));
   }
 }
 
-/** 原基线、最新版本、我的草稿 → 合并后的草稿与冲突区要列的服务端改动。 */
-export function mergeStructure(base: Structure, latest: Structure, mine: Structure, show: Show) {
-  const merger = new Merger(base, latest, mine, show);
+/** 原基线、最新版本、我的草稿与结构冲突的处理 → 合并后的草稿、冲突区要列的改动和尚未处理的结构冲突。 */
+export function mergeStructure(base: Structure, latest: Structure, mine: Structure, show: Show, decided: Decided = {}) {
+  const merger = new Merger(base, latest, mine, show, decided);
   const columns = merger.columns();
   const rows = merger.rows(columns);
-  return { structure: { columns, rows }, changes: merger.changes };
+  return { structure: { columns, rows }, changes: merger.changes, open: merger.open };
 }

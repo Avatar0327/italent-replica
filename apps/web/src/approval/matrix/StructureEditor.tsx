@@ -11,7 +11,7 @@ import { CommandStatus } from '../../foundation/forms/CommandStatus.js';
 import { useConflictCommand } from '../../foundation/forms/ConflictCommands.js';
 import type { Values } from '../../foundation/forms/store.js';
 import { useLabels, type Labels } from './CellPicker.js';
-import { mergeStructure, type Change } from './structure-merge.js';
+import { mergeStructure, type Ambiguity, type Change, type Decided } from './structure-merge.js';
 import { m } from './messages.js';
 import { MATRICES, matrixPath, parseReceipt, type MatrixHead, type MatrixStatus } from './model.js';
 import { StructureColumns } from './StructureColumns.js';
@@ -187,6 +187,31 @@ function Issues({ issues }: { issues: Issue[] }) {
   );
 }
 
+/** 结构冲突（structure-merge.ts）：逐项采用最新版本或保留我的修改；处理完之前草稿锁定、不能保存。 */
+function Ambiguities({ open, decide }: { open: Ambiguity[]; decide(key: string, take: boolean): void }) {
+  if (!open.length) return null;
+  const items = open.map(({ key, label }) => (
+    <li key={key}>
+      {label}
+      <Button type="link" onClick={() => decide(key, true)}>
+        {sm.takeLatest}
+      </Button>
+      <Button type="link" onClick={() => decide(key, false)}>
+        {sm.keepMine}
+      </Button>
+    </li>
+  ));
+  return (
+    <Alert
+      className="matrix-ambiguities"
+      type="warning"
+      showIcon
+      message={sm.ambiguousHint}
+      description={<ul>{items}</ul>}
+    />
+  );
+}
+
 /** 工具栏与上限提示；显式 disabled 会盖过 ConfigProvider 的 componentDisabled，锁定时要并进来。 */
 function Toolbar(props: { draft: Structure; locked: boolean; chosen: string[]; update: Update }) {
   const { draft, locked, chosen, update } = props;
@@ -270,19 +295,26 @@ function useWriter(head: MatrixHead, loaded: Loaded, labels: Labels) {
   );
   const own = writer.form.state;
   pending.current = own && own.status !== 'done' ? (own.values.structure as Structure | undefined) : undefined;
-  // 409 重读后：原基线（命令的 baseline）、最新版本、我提交的草稿三方合并；草稿换成合并结果，确认后据此重提
+  // 409 重读后：原基线、最新版本、我提交的草稿与结构冲突的处理（按这次重读到的最新版本记）四方合并；草稿换成
+  // 合并结果，确认后据此重提。确认后内核基线换成最新版本，原基线取冲突差异里的 before（store.ts rereadState）
+  const [picks, setPicks] = useState<{ latest?: unknown; decided: Decided }>({ decided: {} });
+  const decided = picks.latest === own?.latest ? picks.decided : undefined;
   const merge = useMemo(() => {
-    if (own?.status !== 'conflict' || !own.latest) return undefined;
+    if (!own?.latest || !['conflict', 'idle'].includes(own.status)) return undefined;
     const show = (column: DraftColumn, ids: readonly string[]) =>
       ids.map((id) => labels.label(kindOf(column), id)).join('、') || sm.emptyCell;
     const value = (values: Values) => values.structure as Structure;
-    return mergeStructure(value(own.baseline), value(own.latest.values), value(own.values), show);
-    // labels 每次渲染都是新对象，名称缓存本身是模块级的；只在内核状态变化（重读完成）时重算
-  }, [own]);
+    const latest = value(own.latest.values);
+    const before = own.differences?.find((change) => change.field === 'structure')?.before as Structure | undefined;
+    return mergeStructure(before ?? latest, latest, value(own.values), show, decided);
+    // labels 每次渲染都是新对象，名称缓存本身是模块级的；只在内核状态变化（重读完成、确认）或处理结构冲突时重算
+  }, [own, decided]);
   useEffect(() => {
     if (merge) setState((value) => value && { ...value, draft: merge.structure });
   }, [merge, setState]);
-  return { api, state, setState, writer, changes: merge?.changes };
+  const decide = (key: string, take: boolean) =>
+    setPicks({ latest: own?.latest, decided: { ...decided, [key]: take } });
+  return { api, state, setState, writer, changes: merge?.changes, open: merge?.open ?? [], decide };
 }
 
 function Editor(props: {
@@ -294,10 +326,11 @@ function Editor(props: {
   labels: Labels;
 }) {
   const { head, editable, labels } = props;
-  const { api, state, setState, writer, changes } = useWriter(head, props.loaded, labels);
+  const { api, state, setState, writer, changes, open, decide } = useWriter(head, props.loaded, labels);
   const [selected, setSelected] = useState<string[]>([]);
   const [server, setServer] = useState<Issue[]>([]);
-  const locked = writer.form.locked || writer.invalid;
+  // 结构冲突处理完之前草稿锁定：每处理一项都按选择重算合并结果、换掉草稿
+  const locked = writer.form.locked || writer.invalid || open.length > 0;
   const lockedRef = useRef(locked);
   lockedRef.current = locked;
   if (!state) return <section className="matrix-structure" />;
@@ -326,8 +359,7 @@ function Editor(props: {
       props.saved(receipt);
     },
   });
-  const kept = new Set(draft.rows.map((row) => row.ref));
-  const chosen = selected.filter((ref) => kept.has(ref));
+  const chosen = selected.filter((ref) => draft.rows.some((row) => row.ref === ref));
   return (
     <section className="matrix-structure">
       <Typography.Title level={5}>{sm.title}</Typography.Title>
@@ -340,6 +372,7 @@ function Editor(props: {
           {sm.replay}
         </Button>
       )}
+      <Ambiguities open={open} decide={decide} />
       <ConfigProvider componentDisabled={locked}>
         <Space direction="vertical" size="small" className="matrix-structure-body">
           {editable && <Toolbar draft={draft} locked={locked} chosen={chosen} update={update} />}

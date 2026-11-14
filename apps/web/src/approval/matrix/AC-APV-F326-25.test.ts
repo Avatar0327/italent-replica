@@ -841,11 +841,14 @@ describe('AC-APV-F326-25 409 冲突：结构三方核对与回填', () => {
     await click('已核对差异，继续编辑', structure());
     expect(issues()).toContain(`数据行最多${MATRIX_LIMITS.rows}行，当前${MATRIX_LIMITS.rows + 1}行`);
     expect(disabledIn('保存结构')).toBe(true);
-    expect(dataRows()).toHaveLength(MATRIX_LIMITS.rows + 1);
     await click('删除', dataRows()[0]);
     expect(issues()).toBe('');
     await save();
     accepted();
+    // 数据行分页显示：按提交结果核对两边新增的行都在（甲的新行无 id，乙的新行带 id），删掉的是原第 1 行
     expect(putRows()).toHaveLength(MATRIX_LIMITS.rows);
+    expect(putRows().filter((row) => !row.id)).toHaveLength(1);
+    expect(putRows().map((row) => row.id)).toContain('89000000-0000-4000-8000-000000000099');
+    expect(putRows().map((row) => row.id)).not.toContain(rows[0]!.id);
   });
 });
