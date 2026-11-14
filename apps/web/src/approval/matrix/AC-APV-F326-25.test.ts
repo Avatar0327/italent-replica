@@ -522,3 +522,151 @@ describe('AC-APV-F326-25 保存失败与恢复', () => {
     expect(puts()).toHaveLength(2);
   });
 });
+
+/**
+ * 第 2 轮（审查 P2-1）：409 后按 F-123 冲突规则在结构内部三方比较（原基线 / 最新版本 / 我的草稿）。
+ * 甲只改列名；乙改了单元格、行顺序或列设置并先保存。重读后冲突区要列出乙的真实改动（可定位），
+ * 乙改、甲没改的回填最新值，甲的改动保留；两边都改的列入冲突并保留甲的输入。确认后重提不覆盖乙的改动。
+ */
+describe('AC-APV-F326-25 409 冲突：结构三方核对与回填', () => {
+  /** 失败用例会把冲突留在模块级存储里，每例各用一条独有矩阵（lone，默认选中、revision 3）。 */
+  let id = '';
+  /** 乙先保存：改库里的列 / 行并把 revision 推到 4，本次 PUT 得 409。 */
+  function otherSaves(change: (columns: Column[], rows: Row[]) => { columns?: Column[]; rows?: Row[] }) {
+    backend.state.fail = () => {
+      const next = change(backend.columns.get(id)!, backend.rows.get(id)!);
+      if (next.columns) backend.columns.set(id, next.columns);
+      if (next.rows) backend.rows.set(id, next.rows);
+      backend.db.set(id, { ...backend.db.get(id)!, revision: 4 });
+      return backend.error(409, 'REVISION_CONFLICT', '审批数据已变更，请刷新后显式重提');
+    };
+  }
+  /** 冲突核对表（CommandStatus 里列定义、数据行以外的那张表）逐行文本。 */
+  const conflictRows = () =>
+    [...structure().querySelectorAll<HTMLElement>('.ant-table')]
+      .filter((node) => !node.closest('.matrix-columns, .matrix-rows'))
+      .flatMap((node) => [...node.querySelectorAll<HTMLElement>('tbody tr.ant-table-row')])
+      .map((row) => text(row));
+  const conflictRow = (label: string) => conflictRows().find((row) => row.includes(label)) ?? '';
+  const putRows = () => puts().at(-1)!.body.rows as { id?: string; cells: Record<string, string[]> }[];
+  const putColumns = () => puts().at(-1)!.body.columns as { name: string; [key: string]: unknown }[];
+  const checked = (row: HTMLElement, label: string) =>
+    [...row.querySelectorAll('label')].find((node) => text(node) === label)?.querySelector('input')?.checked;
+  /** 甲只改第 2 列列名，保存得 409，重读最新版本（尚未确认）。 */
+  async function mineRenameThenReread() {
+    await type(nameInput(1), '一级审批人');
+    await save();
+    expect(text(structure())).toContain('版本冲突');
+    await click('重读最新版本', structure());
+  }
+  async function confirmAndSave() {
+    await click('已核对差异，继续编辑', structure());
+    await save();
+    expect(puts()).toHaveLength(2);
+    expect(puts()[1]!.body.revision).toBe(4);
+    expect(backend.db.get(id)!.revision).toBe(5);
+  }
+
+  it('乙改人员格：冲突区列出该格原值与最新值，回填乙的人选，甲的列名保留；重提不覆盖乙的人选', async () => {
+    id = lone();
+    await ui.render();
+    otherSaves((_columns, rows) => ({
+      rows: rows.map((row) => (row.id === ROW1 ? { ...row, cells: { ...row.cells, [ROLE]: [P2!] } } : row)),
+    }));
+    await mineRenameThenReread();
+    const row = conflictRow('合成审批人乙');
+    expect(row).toContain('第1行');
+    expect(row).toContain('合成审批人甲');
+    expect(text(cell(0, 1))).toContain('合成审批人乙');
+    expect(nameInput(1)!.value).toBe('一级审批人');
+    await confirmAndSave();
+    expect(putRows()[0]).toEqual({ id: ROW1, cells: { c1: [D1], c2: [P2], c3: [] } });
+    expect(putColumns()[1]!.name).toBe('一级审批人');
+  });
+
+  it('乙改条件格：冲突区列出该格原值与最新值，回填乙的条件，甲的列名保留；重提带乙的条件', async () => {
+    id = lone();
+    await ui.render();
+    otherSaves((_columns, rows) => ({
+      rows: rows.map((row) => (row.id === ROW2 ? { ...row, cells: { ...row.cells, [COND]: [D1!] } } : row)),
+    }));
+    await mineRenameThenReread();
+    const row = conflictRow('第2行');
+    expect(row).toContain('合成测试部');
+    expect(row).toContain('合成研发部');
+    expect(text(cell(1, 0))).toContain('合成研发部');
+    expect(nameInput(1)!.value).toBe('一级审批人');
+    await confirmAndSave();
+    expect(putRows()[1]).toEqual({ id: ROW2, cells: { c1: [D1], c2: [P2], c3: [P1] } });
+    expect(putColumns()[1]!.name).toBe('一级审批人');
+  });
+
+  it('乙调行顺序：冲突区列出行顺序变化，按乙的顺序回填，甲的列名保留；重提按乙的行序', async () => {
+    id = lone();
+    await ui.render();
+    otherSaves((_columns, rows) => ({
+      rows: rows.map((row) => ({ ...row, seq: row.id === ROW3 ? 0 : row.seq })),
+    }));
+    await mineRenameThenReread();
+    expect(conflictRow('行顺序')).not.toBe('');
+    expect(text(dataRows()[1])).toContain('合成审批人甲');
+    expect(text(dataRows()[2])).toContain('合成审批人乙');
+    expect(nameInput(1)!.value).toBe('一级审批人');
+    await confirmAndSave();
+    expect(putRows().map((row) => row.id)).toEqual([ROW3, ROW1, ROW2]);
+    expect(putColumns()[1]!.name).toBe('一级审批人');
+  });
+
+  it('乙勾“包含下级”：冲突区列出该列设置变化并回填，甲的列名保留；重提带包含下级', async () => {
+    id = lone();
+    await ui.render();
+    otherSaves((columns) => ({
+      columns: columns.map((column) => (column.id === COND ? { ...column, includeChildren: true } : column)),
+    }));
+    await mineRenameThenReread();
+    const row = conflictRow('包含下级');
+    expect(row).toContain('部门');
+    expect(row).toContain('是');
+    expect(checked(columnRows()[0]!, '包含下级')).toBe(true);
+    expect(nameInput(1)!.value).toBe('一级审批人');
+    await confirmAndSave();
+    expect(putColumns()[0]!.includeChildren).toBe(true);
+    expect(putColumns()[1]!.name).toBe('一级审批人');
+  });
+
+  it('乙勾“允许多人”：冲突区列出该列设置变化并回填，甲的列名保留；重提带允许多人', async () => {
+    id = lone();
+    await ui.render();
+    otherSaves((columns) => ({
+      columns: columns.map((column) => (column.id === ROLE2 ? { ...column, allowMultiple: true } : column)),
+    }));
+    await mineRenameThenReread();
+    const row = conflictRow('允许多人');
+    expect(row).toContain('复核人');
+    expect(row).toContain('是');
+    expect(checked(columnRows()[2]!, '允许多人')).toBe(true);
+    expect(nameInput(1)!.value).toBe('一级审批人');
+    await confirmAndSave();
+    expect(putColumns()[2]!.allowMultiple).toBe(true);
+    expect(putColumns()[1]!.name).toBe('一级审批人');
+  });
+
+  it('两边都改同一格：列入冲突，显示原值、最新值和我的输入，保留我的人选；重提带我的人选', async () => {
+    id = lone();
+    await ui.render();
+    otherSaves((_columns, rows) => ({
+      rows: rows.map((row) => (row.id === ROW3 ? { ...row, cells: { ...row.cells, [ROLE]: [P2!] } } : row)),
+    }));
+    await choose(cell(2, 1), '合成审批人甲 · E001 · 合成研发部');
+    await save();
+    await click('重读最新版本', structure());
+    const row = conflictRow('第3行');
+    expect(row).toContain('两边都改');
+    expect(row).toContain('合成审批人乙');
+    expect(row).toContain('合成审批人甲');
+    expect(text(cell(2, 1))).toContain('合成审批人甲');
+    expect(text(cell(2, 1))).not.toContain('合成审批人乙');
+    await confirmAndSave();
+    expect(putRows()[2]).toEqual({ id: ROW3, cells: { c1: [], c2: [P1], c3: [] } });
+  });
+});
