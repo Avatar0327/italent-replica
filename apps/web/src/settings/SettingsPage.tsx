@@ -11,6 +11,7 @@ import { GrantsPage } from './GrantsPage.js';
 import { MousPage } from './MousPage.js';
 import { AdminsPage } from './AdminsPage.js';
 import { AuditPage } from './AuditPage.js';
+import { MatrixPage } from '../approval/matrix/MatrixPage.js';
 import { m } from './messages.js';
 import './settings.css';
 export function SettingsPage() {
@@ -56,6 +57,7 @@ export function SettingsPage() {
       {code === 'permission.admins' && <AdminsPage {...props} />}
       {code === 'permission.mous' && <MousPage {...props} />}
       {code === 'audit.business' && <AuditPage />}
+      {code === 'matrix.manage' && <MatrixPage editable={access.editable} />}
     </div>
   );
 }
