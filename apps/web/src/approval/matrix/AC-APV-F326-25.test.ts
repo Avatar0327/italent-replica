@@ -669,4 +669,183 @@ describe('AC-APV-F326-25 409 冲突：结构三方核对与回填', () => {
     await confirmAndSave();
     expect(putRows()[2]).toEqual({ id: ROW3, cells: { c1: [], c2: [P1], c3: [] } });
   });
+
+  /*
+   * 第 3 轮（审查 P2-1～P2-4）：结构类歧义不自动定夺。一边删、另一边在其上改或新增，维度与格值不一致，
+   * 都保留我的草稿、列入结构冲突，逐项处理前不能保存；保留下来、最新版本里已没有的行 / 列按新对象提交。
+   * 合并结果超上限时同样保留草稿、提示并禁用保存，由用户自行删减。
+   */
+  const ambiguities = () => [...structure().querySelectorAll<HTMLElement>('.matrix-ambiguities li')];
+  /** 逐项点同一种处理，返回处理了几项（每处理一项清单少一项）。 */
+  async function resolveAll(choice: '采用最新版本' | '保留我的修改') {
+    let count = 0;
+    for (; ambiguities().length && count < 10; count += 1) await click(choice, ambiguities()[0]);
+    return count;
+  }
+  /** 重提没有被候选态校验拒绝（行 / 列标识不属于当前矩阵、超上限），已落库。 */
+  function accepted() {
+    expect(text(structure())).not.toContain('不属于当前矩阵');
+    expect(text(structure())).not.toContain('矩阵结构超过上限');
+    expect(backend.db.get(id)!.revision).toBe(5);
+  }
+  const PICK_P1 = '合成审批人甲 · E001 · 合成研发部';
+  const withoutColumn = (rows: Row[], column: string) =>
+    rows.map(({ cells: { [column]: _gone, ...cells }, ...row }) => ({ ...row, cells }));
+
+  it('甲新增角色列并在第1行选人，乙删了第1行：甲的输入保留并列入结构冲突，处理前不能保存；保留后按新行提交', async () => {
+    id = lone();
+    await ui.render();
+    await click('添加审批角色列', structure());
+    await type(nameInput(3), '新增角色');
+    await choose(cell(0, 3), PICK_P1);
+    otherSaves((_columns, rows) => ({ rows: rows.filter((row) => row.id !== ROW1) }));
+    await save();
+    await click('重读最新版本', structure());
+    expect(text(cell(0, 3))).toContain('合成审批人甲');
+    expect(conflictRow('第1行')).toContain('须逐项处理');
+    await click('已核对差异，继续编辑', structure());
+    expect(text(ambiguities()[0])).toContain('第1行');
+    expect(disabledIn('保存结构')).toBe(true);
+    expect(await resolveAll('保留我的修改')).toBe(1);
+    await save();
+    accepted();
+    expect(putRows()[0]).toEqual({ cells: { c1: [D1], c2: [P1], c3: [], c4: [P1] } });
+  });
+
+  it('甲新增一行并在复核人列选人，乙删了复核人列：甲的输入保留并列入结构冲突；保留后该列按新列提交', async () => {
+    id = lone();
+    await ui.render();
+    await click('添加行', structure());
+    await choose(cell(3, 2), PICK_P1);
+    otherSaves((columns, rows) => ({
+      columns: columns.filter((column) => column.id !== ROLE2),
+      rows: withoutColumn(rows, ROLE2),
+    }));
+    await save();
+    await click('重读最新版本', structure());
+    expect(headers()).toEqual(['顺序', '部门', '审批人', '复核人', '操作']);
+    expect(text(cell(3, 2))).toContain('合成审批人甲');
+    expect(conflictRow('列「复核人」')).toContain('须逐项处理');
+    await click('已核对差异，继续编辑', structure());
+    expect(disabledIn('保存结构')).toBe(true);
+    expect(await resolveAll('保留我的修改')).toBe(1);
+    await save();
+    accepted();
+    expect(putColumns()[2]).not.toHaveProperty('id');
+    expect(putColumns()[2]!.name).toBe('复核人');
+    expect(putRows()[3]).toEqual({ cells: { c1: [], c2: [], c3: [P1] } });
+  });
+
+  it('甲改了第3行人员和复核人列名，乙删了该行和该列：保留后按新对象提交，后端接受（无失效行 / 列标识）', async () => {
+    id = lone();
+    await ui.render();
+    await type(nameInput(2), '终审人');
+    await choose(cell(2, 1), PICK_P1);
+    otherSaves((columns, rows) => ({
+      columns: columns.filter((column) => column.id !== ROLE2),
+      rows: withoutColumn(
+        rows.filter((row) => row.id !== ROW3),
+        ROLE2,
+      ),
+    }));
+    await save();
+    await click('重读最新版本', structure());
+    await click('已核对差异，继续编辑', structure());
+    const blocked = disabledIn('保存结构');
+    const handled = await resolveAll('保留我的修改');
+    await save();
+    accepted();
+    expect(puts()).toHaveLength(2);
+    expect(putColumns().map((column) => column.id)).toEqual([COND, ROLE, undefined]);
+    expect(putColumns()[2]!.name).toBe('终审人');
+    expect(putRows().map((row) => row.id)).toEqual([ROW1, ROW2, undefined]);
+    expect(putRows()[2]).toEqual({ cells: { c1: [], c2: [P1], c3: [] } });
+    expect([blocked, handled]).toEqual([true, 2]);
+  });
+
+  it('乙把部门条件列改成职位并清空格值，甲在该列加了部门：维度与格值列入结构冲突；不提交“职位维度＋部门 ID”', async () => {
+    id = lone();
+    await ui.render();
+    await type(nameInput(1), '一级审批人');
+    await choose(cell(1, 0), '合成研发部');
+    otherSaves((columns, rows) => ({
+      columns: columns.map((column) => (column.id === COND ? { ...column, dimension: 'position' } : column)),
+      rows: rows.map((row) => ({ ...row, cells: { ...row.cells, [COND]: [] } })),
+    }));
+    await save();
+    await click('重读最新版本', structure());
+    await click('已核对差异，继续编辑', structure());
+    const blocked = disabledIn('保存结构');
+    const handled = await resolveAll('采用最新版本');
+    await save();
+    const departments = new Set(catalog.departments.map((item) => item.id));
+    const mixed = puts().flatMap(({ body }) => {
+      const columns = body.columns as { key: string; dimension: string | null }[];
+      const rows = body.rows as { cells: Record<string, string[]> }[];
+      return columns
+        .filter((column) => column.dimension === 'position')
+        .flatMap((column) => rows.flatMap((row) => row.cells[column.key]!.filter((ref) => departments.has(ref))));
+    });
+    expect(mixed).toEqual([]);
+    accepted();
+    expect(putColumns()[0]!.dimension).toBe('position');
+    expect(putRows().map((row) => row.cells.c1)).toEqual([[], [], []]);
+    expect(putColumns()[1]!.name).toBe('一级审批人');
+    expect([blocked, handled]).toEqual([true, 1]);
+  });
+
+  it(`甲乙各加一个角色列，合并后 ${MATRIX_LIMITS.roleColumns + 1} 列超上限：保留草稿、提示并禁用保存，删减后可保存`, async () => {
+    id = lone();
+    const roles = Array.from({ length: MATRIX_LIMITS.roleColumns - 1 }, (_, i) =>
+      roleColumn(`83000000-0000-4000-8000-0000000003${String(i).padStart(2, '0')}`, `角色${i + 1}`, i + 2),
+    );
+    seed(id, [conditionColumn(COND, '部门', 1), ...roles], [{ id: ROW1, seq: 1, cells: {} }]);
+    await ui.render();
+    await click('添加审批角色列', structure());
+    await type(nameInput(MATRIX_LIMITS.roleColumns), '甲加的角色');
+    otherSaves((columns) => ({
+      columns: [...columns, roleColumn('83000000-0000-4000-8000-000000000399', '乙加的角色', columns.length + 1)],
+    }));
+    await save();
+    await click('重读最新版本', structure());
+    await click('已核对差异，继续编辑', structure());
+    expect(issues()).toContain(`审批角色列最多${MATRIX_LIMITS.roleColumns}列，当前${MATRIX_LIMITS.roleColumns + 1}列`);
+    expect(disabledIn('保存结构')).toBe(true);
+    expect(headers()).toContain('甲加的角色');
+    expect(headers()).toContain('乙加的角色');
+    await click('删除', columnRows()[MATRIX_LIMITS.roleColumns + 1]);
+    expect(issues()).toBe('');
+    await save();
+    accepted();
+    expect(putColumns().map((column) => column.name)).toContain('甲加的角色');
+  });
+
+  it(`甲乙各加一行，合并后 ${MATRIX_LIMITS.rows + 1} 行超上限：保留草稿、提示并禁用保存，删减后可保存`, async () => {
+    id = lone();
+    const rows = Array.from({ length: MATRIX_LIMITS.rows - 1 }, (_, i) => ({
+      id: `89000000-0000-4000-8000-${String(i + 100).padStart(12, '0')}`,
+      seq: i + 1,
+      cells: { [COND]: [] },
+    }));
+    seed(id, [conditionColumn(COND, '部门', 1)], rows);
+    await ui.render();
+    await click('添加行', structure());
+    otherSaves((_columns, current) => ({
+      rows: [
+        ...current,
+        { id: '89000000-0000-4000-8000-000000000099', seq: MATRIX_LIMITS.rows, cells: { [COND]: [] } },
+      ],
+    }));
+    await save();
+    await click('重读最新版本', structure());
+    await click('已核对差异，继续编辑', structure());
+    expect(issues()).toContain(`数据行最多${MATRIX_LIMITS.rows}行，当前${MATRIX_LIMITS.rows + 1}行`);
+    expect(disabledIn('保存结构')).toBe(true);
+    expect(dataRows()).toHaveLength(MATRIX_LIMITS.rows + 1);
+    await click('删除', dataRows()[0]);
+    expect(issues()).toBe('');
+    await save();
+    accepted();
+    expect(putRows()).toHaveLength(MATRIX_LIMITS.rows);
+  });
 });

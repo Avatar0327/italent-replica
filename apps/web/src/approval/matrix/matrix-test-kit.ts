@@ -5,6 +5,7 @@
  * matrix-names.ts（referenceNames 按 person / 维度分组，名称查不到为 null）；候选照 designer-sources.ts / designer-people.ts。
  * 真实接口另由 smoke/AC-APV-F326-24、25.smoke.spec.ts 经隔离库核对。数据全部合成。
  */
+import { MATRIX_LIMITS } from '@italent/domain';
 import { act, createElement as h } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -208,8 +209,13 @@ function structures() {
     }));
     return { ...item, columns: own, rows: filled, referenceNames: referenceNames(item.id) };
   };
-  /** matrix-structure.ts candidate()：按数组顺序重写 seq，新列 / 新行分配 id，单元格按短键映射到列 id。 */
+  /**
+   * matrix-structure.ts candidate()：候选态不合法时返回拒绝；
+   * 否则按数组顺序重写 seq，新列 / 新行分配 id，单元格按短键映射到列 id。
+   */
   function replace(item: Head, body: Record<string, unknown>) {
+    const invalid = candidateError(item, body);
+    if (invalid) return invalid;
     type InColumn = Omit<Column, 'id' | 'seq'> & { id?: string; key: string };
     type InRow = { id?: string; cells: Record<string, string[]> };
     const input = { columns: body.columns as InColumn[], rows: body.rows as InRow[] };
@@ -229,6 +235,26 @@ function structures() {
         cells: Object.fromEntries(keyed.map(([key, id]) => [id, row.cells[key] ?? []])),
       })),
     );
+    return undefined;
+  }
+  /** matrix-structure.ts candidate()：先按 validateMatrixStructure 查数量上限，再拒绝不属于当前矩阵的列 / 行标识。 */
+  function candidateError(item: Head, body: Record<string, unknown>) {
+    const [input, inRows] = [body.columns as { id?: string; kind: string }[], body.rows as { id?: string }[]];
+    const count = (kind: string) => input.filter((column) => column.kind === kind).length;
+    const limits = [
+      [count('condition'), MATRIX_LIMITS.conditionColumns, 'CONDITION_COLUMNS_LIMIT'],
+      [count('role'), MATRIX_LIMITS.roleColumns, 'ROLE_COLUMNS_LIMIT'],
+      [inRows.length, MATRIX_LIMITS.rows, 'ROWS_LIMIT'],
+    ] as const;
+    const over = limits.find(([actual, max]) => actual > max);
+    if (over) return error(400, 'VALIDATION_FAILED', '矩阵结构超过上限', { reason: over[2] });
+    const known = (list: { id: string }[] = []) => new Set(list.map((entry) => entry.id));
+    const [oldColumns, oldRows] = [known(columns.get(item.id)), known(rows.get(item.id))];
+    if (input.some((column) => column.id && !oldColumns.has(column.id)))
+      return error(400, 'VALIDATION_FAILED', '列标识不属于当前矩阵', { reason: 'COLUMN_ID_UNKNOWN' });
+    if (inRows.some((row) => row.id && !oldRows.has(row.id)))
+      return error(400, 'VALIDATION_FAILED', '行标识不属于当前矩阵', { reason: 'ROW_ID_UNKNOWN' });
+    return undefined;
   }
   return { columns, rows, detail, replace };
 }
@@ -276,8 +302,7 @@ export function fakeBackend() {
     const used = references(item.id).items.filter((usage) => usage.columnId && !kept.has(usage.columnId));
     const known = new Set((columns.get(item.id) ?? []).map((column) => column.id));
     if (used.some((usage) => known.has(usage.columnId!))) return referenced(used);
-    replace(item, body);
-    return write(item, body, {});
+    return replace(item, body) ?? write(item, body, {});
   }
   async function handle(raw: string, init?: RequestInit): Promise<Response> {
     const url = new URL(raw, 'http://localhost');
