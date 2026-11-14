@@ -105,7 +105,17 @@ describe('AC-INS-04 / 09 方案候选：启用、当月有效、按缴交地过�
     expect((await list('regionCode=440106&asOf=2026-10-15', { profile: false })).status).toBe(200);
     const trimmed = await items(await list('regionCode=440106&asOf=2026-10-15', { plan: ['code', 'name'] }));
     expect(trimmed.length).toBeGreaterThan(0);
-    for (const item of trimmed) expect(Object.keys(item).sort()).toEqual(['code', 'name', 'planId']);
+    for (const item of trimmed) expect(Object.keys(item).sort()).toEqual(['code', 'name']);
+  });
+
+  it('标识字段随对象目录的 id 查看权：关闭 id 则响应没有 planId（不泄露 UUID），开放则返回', async () => {
+    const hidden = await items(await list('regionCode=440106&asOf=2026-10-15', { plan: ['code', 'name'] }));
+    expect(hidden.length).toBeGreaterThan(0);
+    expect(JSON.stringify(hidden)).not.toMatch(/planId/);
+    for (const id of Object.values(ids)) expect(JSON.stringify(hidden)).not.toContain(id);
+    const shown = await items(await list('regionCode=440106&asOf=2026-10-15', { plan: ['id', 'code', 'name'] }));
+    expect(shown.map((p) => p.planId).sort()).toEqual([ids.district, ids.city, ids.province].sort());
+    for (const item of shown) expect(Object.keys(item).sort()).toEqual(['code', 'name', 'planId']);
   });
 
   it('AC-INS-10：别的租户的方案不出现；同一用户在别的租户里没有授权，读不到本租户方案', async () => {
@@ -135,6 +145,17 @@ describe('AC-INS-04 / 09 公司候选：合同公司主数据，沿用既有可�
     expect(got.map((i) => i.id)).not.toContain(off);
     expect(got.map((i) => i.id)).not.toContain(other.companyId);
     expect(got[0]).toEqual({ id: expect.any(String), code: expect.any(String), name: expect.any(String) });
+  });
+
+  it('标识字段随合同公司对象的 id 查看权：关闭 id 则公司响应没有 id，开放则返回', async () => {
+    const r = await insuranceReadWorld(testDb().db, 'ins-companies-id');
+    const id = await r.company('IDV');
+    const hidden = await items(await (await r.caller({ company: ['code', 'name'] })).get(COMPANIES));
+    expect(hidden.length).toBeGreaterThan(0);
+    for (const item of hidden) expect(Object.keys(item).sort()).toEqual(['code', 'name']);
+    expect(JSON.stringify(hidden)).not.toContain(id);
+    const shown = await items(await (await r.caller({ company: ['id', 'code', 'name'] })).get(COMPANIES));
+    expect(shown.map((i) => i.id)).toContain(id);
   });
 
   it('没有合同公司查看权 403；数据范围不是看全部时与合同公司主数据一致：读不到任何一家', async () => {

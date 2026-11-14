@@ -67,6 +67,15 @@ describe('AC-INS-02 原值 = 严格前驱事件按业务先后折叠', () => {
     expect(body).toEqual({ regionCode: '440100', planId: s.ids.p2, companyId: s.ids.c2 });
   });
 
+  it('已有业务的位置由服务端从单据解析：客户端生效日早于 / 等于 / 晚于单据日期，原值都不变', async () => {
+    const expected = { regionCode: '440100', planId: s.ids.p2, companyId: s.ids.c2 };
+    // 单据 B 的实际生效日是 DAY；10-03 在 A1 之前、10-06 在后序事件之后，旧实现分别得到全空与含后继的值
+    const reads = [];
+    for (const queryDate of ['2026-10-03', DAY, '2026-10-06']) reads.push(await read({}, queryDate, s.b.id));
+    expect(reads.map((r) => r.res.status)).toEqual([200, 200, 200]);
+    expect(reads.map((r) => r.body)).toEqual([expected, expected, expected]);
+  });
+
   it('不带业务编号：位置取当日最后一次操作，当日全部事件都计入', async () => {
     const { body } = await read();
     expect(body).toEqual({ regionCode: '110000', planId: s.ids.p3, companyId: s.ids.c2 });

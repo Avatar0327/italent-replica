@@ -29,7 +29,8 @@ export interface CallerSpec {
   profile?: false | readonly string[];
   /** 缴交方案对象的字段可见集合：缺省全部；false = 不授该对象。 */
   plan?: false | readonly string[];
-  company?: false;
+  /** 合同公司对象的字段可见集合：缺省全部；false = 不授该对象；数组 = 只可见这些字段。 */
+  company?: false | readonly string[];
   employment?: false;
   seeAll?: boolean;
 }
@@ -70,7 +71,7 @@ export async function insuranceReadWorld(db: Db, label: string) {
     if (spec.profile !== false) await define(profile, PROFILE, spec.profile ?? all(PROFILE));
     if (spec.plan !== false) await define(profile, PLAN, spec.plan ?? all(PLAN));
     if (spec.company !== false)
-      await define(profile, MODULE_OBJECTS.contractCompany, all(MODULE_OBJECTS.contractCompany));
+      await define(profile, MODULE_OBJECTS.contractCompany, spec.company ?? all(MODULE_OBJECTS.contractCompany));
     if (spec.employment !== false)
       await define(profile, MODULE_OBJECTS.employmentRecord, all(MODULE_OBJECTS.employmentRecord));
     if (spec.seeAll !== false) {
