@@ -40,6 +40,7 @@ export const m = {
   processCode: '流程编码',
   version: '版本',
   node: '节点',
+  roleColumn: '角色列',
   position: '引用位置',
   instances: '在途实例数',
   versionKind: { draft: '草稿', current: '当前', in_flight: '在途' } as Record<string, string>,

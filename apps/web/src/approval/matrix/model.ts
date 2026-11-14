@@ -28,6 +28,9 @@ export interface MatrixReference {
   nodeKey: string;
   nodeName: string;
   position: string;
+  /** 被引用的角色列（source-usages.ts columnId）；columnName 由矩阵详情的列定义补上。 */
+  columnId: string | null;
+  columnName?: string;
   instanceCount: number | null;
 }
 export interface MatrixReferences {
@@ -73,10 +76,23 @@ export function parseReferences(raw: unknown): MatrixReferences {
   if (!Array.isArray(body?.items) || !Number.isInteger(body.total)) fail();
   const items = body.items.map((raw) => {
     const item = record(raw);
+    const columnId = item?.columnId;
     if (typeof item?.processCode !== 'string' || typeof item.nodeKey !== 'string') fail();
+    if (!(columnId === null || typeof columnId === 'string')) fail();
     return item as unknown as MatrixReference;
   });
   return { items, total: body.total as number };
+}
+/** 矩阵详情里的列名（id → 名称），查看引用按 columnId 显示被引用的角色列。 */
+export function parseColumnNames(raw: unknown) {
+  const columns = record(raw)?.columns;
+  if (!Array.isArray(columns)) fail();
+  const names = new Map<string, string>();
+  for (const column of columns.map(record)) {
+    if (typeof column?.id !== 'string' || typeof column.name !== 'string') fail();
+    names.set(column.id, column.name);
+  }
+  return names;
 }
 /** 写回执：后端返回矩阵详情；id 与原单一致（新建不校验 id），revision 必须是提交时的版本 + 1（新建为 1）。 */
 export function parseReceipt(raw: unknown, expected: { id?: string; revision: number }) {
