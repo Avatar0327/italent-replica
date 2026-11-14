@@ -30,7 +30,7 @@ for (const [licenseType, balance] of [
     await page.getByText('合成人事身份 (DEMO_HR)', { exact: true }).click();
     await actionButton(dialog, '保存').click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.locator('.ant-table-tbody').getByText(user, { exact: true })).toBeVisible();
+    await expect(page.locator('.ant-table-tbody').getByText(rows.grant.userName, { exact: true })).toBeVisible();
     const warning = page.getByRole('alert').filter({ hasText: '授权已成功，但许可超额' });
     await expect(warning).toContainText(licenseType);
     await expect(warning).toContainText(`超出 ${-balance} 个`);
