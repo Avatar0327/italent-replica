@@ -265,4 +265,39 @@ describe('AC-FE-0-03 最小组件集', () => {
       expect(selected).toHaveBeenCalledWith([], []);
     }
   });
+  describe('无总数分页的每页条数选项', () => {
+    const sizeOptions = async (pageSizes?: number[], pageSize = 15) => {
+      const { ListPage } = await import(resolve('apps/web/src/foundation/templates.tsx'));
+      const change = vi.fn();
+      await act(() =>
+        root.render(
+          h(ListPage, {
+            title: '后端分页',
+            data: { items: [] },
+            rowKey: 'id',
+            columns: [],
+            page: { page: 1, pageSize },
+            onPageChange: change,
+            pageSizes,
+          }),
+        ),
+      );
+      const selector = host.querySelector('[aria-label="每页条数"]')!.closest('.ant-select')!;
+      await act(async () => {
+        selector.querySelector('.ant-select-selector')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      });
+      const labels = Array.from(document.querySelectorAll('.ant-select-item-option')).map((item) => item.textContent);
+      return { labels, change };
+    };
+    it('不传 pageSizes：仍是 15／30／50', async () => {
+      expect((await sizeOptions()).labels).toEqual(['15条/页', '30条/页', '50条/页']);
+    });
+    it('不传 pageSizes：当前页大小不在默认集合时并入（原行为）', async () => {
+      expect((await sizeOptions(undefined, 20)).labels).toEqual(['15条/页', '20条/页', '30条/页', '50条/页']);
+    });
+    it('显式传入 pageSizes：无总数分支也只用它，不混入 15／30／50', async () => {
+      const { labels } = await sizeOptions([15, 20, 50, 100]);
+      expect(labels).toEqual(['15条/页', '20条/页', '50条/页', '100条/页']);
+    });
+  });
 });

@@ -1,0 +1,21 @@
+.matrix-page {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.matrix-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.matrix-list .ant-table-row {
+  cursor: pointer;
+}
+.matrix-list .matrix-selected > td {
+  background: #e6f4ff;
+}
+.matrix-description {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
