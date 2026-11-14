@@ -16,6 +16,7 @@ import {
   head,
   ids,
   reference,
+  roleColumn,
   text,
   type,
   type FakeBackend,
@@ -461,5 +462,23 @@ describe('AC-APV-F326-24 第 1 轮审查回归', () => {
     expect(listText()).not.toContain('ZZ_LAST');
     expect(headText()).toContain('ZZ_LAST');
     expect(headText()).toContain('页外新矩阵');
+  });
+
+  it('P2-3 同一会签节点引用两个角色列：清单展示被引用的角色列，两行可区分、行键不重复', async () => {
+    const [leader, finance] = ['83000000-0000-4000-8000-000000000011', '83000000-0000-4000-8000-000000000012'];
+    backend.columns.set(ids.a, [roleColumn(leader, '合成直属上级列', 1), roleColumn(finance, '合成财务负责人列', 2)]);
+    backend.refs.set(ids.a, { items: [reference({ columnId: leader }), reference({ columnId: finance })] });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await ui.render();
+    await click('查看引用');
+    const rows = [...dialog()!.querySelectorAll('tbody tr.ant-table-row')].map((tr) => text(tr));
+    expect(text(dialog()!.querySelector('thead') ?? dialog()!)).toContain('角色列');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain('合成直属上级列');
+    expect(rows[1]).toContain('合成财务负责人列');
+    expect(new Set(rows).size).toBe(2);
+    const duplicate = errors.mock.calls.some((call) => call.some((arg) => String(arg).includes('same key')));
+    errors.mockRestore();
+    expect(duplicate).toBe(false);
   });
 });

@@ -68,6 +68,24 @@ export const reference = (over: Partial<Reference> = {}): Reference => ({
   instanceCount: null,
   ...over,
 });
+export interface Column {
+  id: string;
+  kind: 'condition' | 'role';
+  dimension: string | null;
+  includeChildren: boolean;
+  name: string;
+  seq: number;
+  allowMultiple: boolean;
+}
+export const roleColumn = (id: string, name: string, seq: number): Column => ({
+  id,
+  kind: 'role',
+  dimension: null,
+  includeChildren: false,
+  name,
+  seq,
+  allowMultiple: false,
+});
 export interface Write {
   method: string;
   path: string;
@@ -106,10 +124,12 @@ function seed(db: Map<string, Head>, refs: Map<string, { items: Reference[]; tot
 export function fakeBackend() {
   const db = new Map<string, Head>();
   const refs = new Map<string, { items: Reference[]; total?: number }>();
+  /** 矩阵结构里的列（详情 columns 的形状同 matrix-structure.ts MatrixColumn），查看引用按 columnId 取角色列名。 */
+  const columns = new Map<string, Column[]>();
   const writes: Write[] = [];
   const reads: URL[] = [];
   const state = { fail: undefined as Fail | undefined, created: 0 };
-  const detail = (item: Head) => ({ ...item, columns: [], rows: [], referenceNames: {} });
+  const detail = (item: Head) => ({ ...item, columns: columns.get(item.id) ?? [], rows: [], referenceNames: {} });
   const error = (status: number, code: string, message: string, details: Record<string, unknown> = {}) =>
     Response.json({ error: { code, message, details } }, { status });
   const references = (id: string) => refs.get(id) ?? { items: [] };
@@ -170,7 +190,7 @@ export function fakeBackend() {
     return write(item, body, { status: 'disabled' });
   }
   seed(db, refs);
-  return { db, refs, writes, reads, state, handle, error };
+  return { db, refs, columns, writes, reads, state, handle, error };
 }
 export type FakeBackend = ReturnType<typeof fakeBackend>;
 
