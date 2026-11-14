@@ -292,8 +292,10 @@ describe('AC-F474-JG-07 租户隔离（前端部分）', () => {
 
 describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
   const ISSUES = `${GRAPH}/issues`;
-  const serveIssues = (items = issueItems(allReasonsInput())) =>
-    ui.route(`GET ${ISSUES}`, (url) => {
+  /** wait 给定时，响应挂起到它兑现为止，用来观察列表请求未返回的加载期。 */
+  const serveIssues = (items = issueItems(allReasonsInput()), wait?: Promise<void>) =>
+    ui.route(`GET ${ISSUES}`, async (url) => {
+      await wait;
       const kind = url.searchParams.get('kind');
       const name = url.searchParams.get('name');
       const hits = items.filter((item) => (!kind || item.kind === kind) && (!name || item.objectName.includes(name)));
@@ -433,6 +435,32 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     expect(size >= 1 && size <= 100).toBe(true);
     expect(lastQuery().page).toBe('1');
     expect(rows().length).toBeGreaterThan(0);
+  });
+
+  it('列表请求未返回时每页条数也只给 15／20／50／100；此时切换页大小，所发请求与返回后保持的页大小都在集合内', async () => {
+    const items = manyIssues();
+    let release!: () => void;
+    serveIssues(items, new Promise<void>((done) => (release = done)));
+    await ui.render('/job?kind=graph-issues');
+    // 请求未返回：页面传入 { items: [] }，ListPage 走无总数分页分支。
+    expect(ui.host.querySelector('.page-total')).toBeNull();
+    const sizer = ui.host.querySelector('[aria-label="每页条数"]')!.closest('.ant-select')!;
+    await act(async () => {
+      sizer.querySelector('.ant-select-selector')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    await settle();
+    // 与 ISSUE_PAGE_SIZES 同一集合；旧实现在加载期给的是 15／30／50。
+    expect(openOptions().map((item) => item.textContent)).toEqual(['15条/页', '20条/页', '50条/页', '100条/页']);
+    await click(openOptions().find((item) => item.textContent === '20条/页'));
+    expect(lastQuery().pageSize).toBe('20');
+    await act(async () => release());
+    await settle(60);
+    const sizes = issueCalls().map((call) => Number(call.url.searchParams.get('pageSize')));
+    expect(sizes.every((size) => [15, 20, 50, 100].includes(size))).toBe(true);
+    expect(lastQuery().pageSize).toBe('20');
+    expect(text()).not.toContain('Oops');
+    expect(ui.host.querySelector('.ant-pagination-options')?.textContent).toContain('20条/页');
+    expect(rows()).toHaveLength(Math.min(20, items.length));
   });
 
   it('“编辑”迟到响应不覆盖当前表单：A→B 点击，B 先返回并填写，A 后返回仍保留 B 与输入', async () => {
