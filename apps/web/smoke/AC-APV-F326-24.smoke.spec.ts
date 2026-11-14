@@ -1,8 +1,8 @@
 /**
  * F-326 F2a 浏览器集成（AC-APV-F326-22 子项、AC-APV-F326-24）：真实后端（隔离库 + 合成数据）+ 真实浏览器。
  * 矩阵接口与权限快照一律代理到 f326f2a-live-server（真实 Hono、真实授权引擎），不造业务响应；
- * 快照只改 adminMenus 里 matrix.manage 一项：持有者一例按登记补齐后的形态（editable）给出（见【等决定】），
- * 无菜单一例去掉该项，验证入口隐藏与直达无权。
+ * 权限快照也来自真实后端（DEC-907：matrix.manage 登记 process_matrix 读写能力）：
+ * 持有者一例用合成矩阵管理员，非持有者一例用无企业管理员身份的合成员工，验证入口隐藏与直达无权。
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,7 @@ interface Manifest {
   url: string;
   tenant: string;
   user: string;
+  outsider: string;
   used: { id: string; code: string };
   idle: { id: string; code: string };
   process: string;
@@ -25,7 +26,6 @@ interface Call {
 }
 
 const MATRICES = '/api/tenant/approval/matrices';
-const MATRIX_MENU = { code: 'matrix.manage', path: '流程矩阵/矩阵管理', implemented: true, editable: true };
 let backend: ChildProcess;
 let manifest: Manifest;
 
@@ -58,20 +58,21 @@ test.afterAll(async () => {
 });
 
 /** 浏览器的 /api/tenant/** 全部转到真实后端；记录矩阵写请求的方法、路径、状态与命令 ID。 */
-async function live(context: BrowserContext, baseURL: string, withMenu = true) {
+async function live(context: BrowserContext, baseURL: string, user = manifest.user) {
   await context.addCookies([
     { name: 'italent_demo_tenant', value: manifest.tenant, url: baseURL },
-    { name: 'italent_demo_user', value: manifest.user, url: baseURL },
+    { name: 'italent_demo_user', value: user, url: baseURL },
   ]);
   const calls: Call[] = [];
-  const real: unknown[] = [];
+  /** 每次权限快照里的 matrix.manage 项（一次快照一个数组）。 */
+  const menus: unknown[][] = [];
   await context.route('**/api/tenant/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     expect(request.headers()['x-tenant-id']).toBe(manifest.tenant);
     const response = await context.request.fetch(`${manifest.url}${url.pathname}${url.search}`, {
       method: request.method(),
-      headers: request.headers(),
+      headers: { ...request.headers(), 'x-f2a-user': user },
       data: request.postData() ?? undefined,
     });
     if (url.pathname.startsWith(MATRICES))
@@ -84,16 +85,11 @@ async function live(context: BrowserContext, baseURL: string, withMenu = true) {
       });
     if (url.pathname.endsWith('/permission/me/snapshot')) {
       const json = (await response.json()) as { adminMenus: { code: string }[] };
-      real.push(...json.adminMenus.filter((menu) => menu.code === 'matrix.manage'));
-      const others = json.adminMenus.filter((menu) => menu.code !== 'matrix.manage');
-      // 【等决定】企业菜单登记里 matrix.manage 尚未挂 process_matrix 读写能力（真实快照 editable 恒为 false），
-      // 这里按登记补齐后的形态给出该项；矩阵接口本身仍由真实授权引擎判定。
-      const adminMenus = withMenu ? [...others, MATRIX_MENU] : others;
-      return route.fulfill({ json: { ...json, adminMenus } });
+      menus.push(json.adminMenus.filter((menu) => menu.code === 'matrix.manage'));
     }
     return route.fulfill({ response });
   });
-  return { calls, real };
+  return { calls, menus };
 }
 
 /** antd 两个汉字的按钮会插入空格（“保 存”）。 */
@@ -147,12 +143,17 @@ test('AC-APV-F326-24 持有者：列表、新建 / 编辑头部、查看引用�
   context,
   baseURL,
 }) => {
-  const { calls, real } = await live(context, baseURL!);
+  const { calls, menus } = await live(context, baseURL!);
   const lastWrite = () => calls.filter((call) => call.method !== 'GET').at(-1);
   await page.goto('/settings');
   await page.getByRole('button', { name: '流程矩阵', exact: true }).click();
   await expect(page).toHaveURL(/\/settings\/menu\/matrix\.manage$/);
-  console.log(`F2A_REAL_MENU ${JSON.stringify(real)}`);
+  expect(menus.flat()).toContainEqual({
+    code: 'matrix.manage',
+    path: '流程矩阵/矩阵管理',
+    implemented: true,
+    editable: true,
+  });
   await expect(row(page, '合成被引用矩阵')).toBeVisible();
   await expect(row(page, '合成空闲矩阵')).toContainText('草稿');
 
@@ -224,16 +225,18 @@ test('AC-APV-F326-24 持有者：列表、新建 / 编辑头部、查看引用�
   expect(new Set(writes.map((call) => call.key)).size).toBe(writes.length);
 });
 
-test('AC-APV-F326-22 无 matrix.manage 菜单：企业设置不出现「流程矩阵」，直达无权且不请求矩阵接口', async ({
+test('AC-APV-F326-22 非持有者（无 process_matrix）：企业设置不出现「流程矩阵」，直达无权且不请求矩阵接口', async ({
   page,
   context,
   baseURL,
 }) => {
-  const { calls } = await live(context, baseURL!, false);
+  const { calls, menus } = await live(context, baseURL!, manifest.outsider);
   await page.goto('/settings');
   await page.waitForLoadState('networkidle');
   await expect(page.getByRole('button', { name: '流程矩阵', exact: true })).toHaveCount(0);
   await page.goto('/settings/menu/matrix.manage');
   await expect(page.getByText('暂无访问权限')).toBeVisible();
   expect(calls).toEqual([]);
+  expect(menus.length).toBeGreaterThan(0);
+  expect(menus.flat()).toEqual([]);
 });

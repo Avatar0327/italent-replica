@@ -2,6 +2,7 @@
  * F-326 F2a 浏览器集成专用：全新隔离数据库、合成数据、真实矩阵路由（Hono + 授权引擎）；不连接开发库。
  * 预置：合成 HR 持 matrix_admin 身份；一条被已发布流程引用的启用矩阵、一条无引用的草稿矩阵；
  * 矩阵与流程都经真实 HTTP 入口创建（同 S4 夹具）。
+ * 请求身份由冒烟转发头 x-f2a-user 指定：合成 HR（矩阵管理员）或合成员工（无企业管理员身份）；其余一律拒绝。
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { permissionAdmins, withTenant } from '@italent/db';
@@ -15,8 +16,18 @@ import {
   type S4World,
 } from '../../../tests/acceptance/AC-APV-F326-S4-support.js';
 
-// 只转发业务头；浏览器的来源类头不进测试应用，身份按夹具 HR 重新签名
-const SKIPPED = new Set(['host', 'connection', 'content-length', 'content-type', 'cookie', 'origin', 'referer']);
+// 只转发业务头；浏览器的来源类头不进测试应用，身份按 x-f2a-user 在夹具用户中选取后重新签名
+const USER_HEADER = 'x-f2a-user';
+const SKIPPED = new Set([
+  'host',
+  'connection',
+  'content-length',
+  'content-type',
+  'cookie',
+  'origin',
+  'referer',
+  USER_HEADER,
+]);
 const forwarded = (key: string) => !SKIPPED.has(key) && !key.startsWith('sec-');
 
 async function bodyOf(req: IncomingMessage) {
@@ -59,7 +70,12 @@ function handler(w: S4World) {
       ),
     );
     const body = await bodyOf(req);
-    const response = await w.request(w.hr.id, req.method!, `${url.pathname}${url.search}`, {
+    const user = req.headers[USER_HEADER];
+    if (user !== w.hr.id && user !== w.subject.userId) {
+      res.writeHead(403, { 'content-type': 'text/plain' });
+      return res.end('F2a test backend: unknown synthetic user');
+    }
+    const response = await w.request(user, req.method!, `${url.pathname}${url.search}`, {
       headers,
       body,
       idempotencyKey: null,
@@ -87,6 +103,7 @@ export async function startMatrixBackend() {
         url: `http://127.0.0.1:${(server.address() as { port: number }).port}`,
         tenant: w.tenant.id,
         user: w.hr.id,
+        outsider: w.subject.userId,
         ...seeded,
       },
       async close() {
