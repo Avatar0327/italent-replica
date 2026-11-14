@@ -77,7 +77,9 @@ function useShown(list: ReturnType<typeof useMatrices>, selected?: string) {
   let found: MatrixHead | undefined;
   let error = read.error;
   try {
-    found = read.data === undefined ? undefined : parseHead(read.data);
+    // 读取已结束却没有正文（如 204）同样算无效响应：只在这里判，不改客户端对 204 的全局语义
+    if (!read.loading && !read.error && read.data == null) throw new Error('matrix detail empty');
+    found = read.data == null ? undefined : parseHead(read.data);
     if (found && found.id !== outside) throw new Error('matrix detail id mismatch');
   } catch (cause) {
     found = undefined;
