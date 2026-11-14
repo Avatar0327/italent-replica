@@ -403,3 +403,29 @@ describe('AC-APV-F326-24 查看引用', () => {
     expect(text(dialog())).toContain('暂无流程引用该矩阵');
   });
 });
+
+/** 弹窗里某个表单项（按标签）显示的文字。 */
+const formItem = (label: string) =>
+  [...dialog()!.querySelectorAll('.ant-form-item')].find(
+    (node) => text(node.querySelector('.ant-form-item-label') ?? node) === label,
+  );
+
+describe('AC-APV-F326-24 第 1 轮审查回归', () => {
+  it('P2-1 编辑 409：他人已停用，重读后只读状态显示停用；重提只带可编辑字段', async () => {
+    const id = lone();
+    await ui.render();
+    await click('编辑');
+    expect(text(formItem('状态'))).toContain('启用');
+    await type(field('name'), '我的改名');
+    backend.db.set(id, { ...backend.db.get(id)!, status: 'disabled', revision: 4 });
+    await click('保存', dialog());
+    expect(text(dialog())).toContain('版本冲突');
+    await click('重读最新版本', dialog());
+    await click('已核对差异，继续编辑', dialog());
+    expect(text(formItem('状态'))).toContain('停用');
+    expect(text(formItem('状态'))).not.toContain('启用');
+    await click('保存', dialog());
+    expect(backend.writes.at(-1)).toMatchObject({ method: 'PATCH', path: `${BASE}/${id}` });
+    expect(backend.writes.at(-1)!.body).toEqual({ name: '我的改名', revision: 4 });
+  });
+});
