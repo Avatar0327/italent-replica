@@ -82,7 +82,11 @@ function variableRows(tenantId: string, query: ReturnType<typeof designerSources
   return sql`SELECT id::text AS id,name||'（'||code||'）' AS name,
       (status='enabled' AND (scope='application' OR 'process'=ANY(usage_scopes))) AS enabled,
       NULL::uuid AS parent_id,(data_type='persons') AS multiple
-    FROM approval_variables WHERE tenant_id=${tenantId}::uuid AND ${scope} AND data_type IN ('person','persons')`;
+    FROM approval_variables WHERE tenant_id=${tenantId}::uuid AND ${scope} AND data_type IN ('person','persons')
+      -- S7a：来源版本还是草稿的自动变量不进候选，发布前只有来源节点自己能引用（DEC-860）
+      AND NOT (origin='auto' AND EXISTS (SELECT 1 FROM approval_process_versions pv
+        WHERE pv.tenant_id=approval_variables.tenant_id AND pv.id=approval_variables.origin_version_id
+          AND pv.status='draft'))`;
 }
 /** 矩阵头为一级（parentId=null），角色列为二级（id=`<矩阵>:<列>`，parentId=矩阵）；条件列不是审批人来源。 */
 function matrixRows(tenantId: string) {

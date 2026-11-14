@@ -98,13 +98,13 @@ export interface AuditRow {
   after: Record<string, unknown> | null;
 }
 
-/** 变量的审计，按动作名排序（同一事务内时间相同，动作名足以区分本组用例的先后断言）。 */
+/** 变量的审计，按写入先后排序（测试时钟固定、时间相同，用物理行序 ctid 还原先后；按动作名排会把 enable 排到 auto_disable 之后）。 */
 export async function audits(w: TenantDb, objectId: string, like = 'approval.public_variable.%'): Promise<AuditRow[]> {
   return withTenant(w.db, w.tenant.id, async (tx) =>
     rowsOf<AuditRow>(
       await tx.execute(sql`SELECT action, actor_user_id::text AS actor, before, after FROM audit_events
         WHERE tenant_id=${w.tenant.id} AND object_id=${objectId} AND action LIKE ${like}
-        ORDER BY occurred_at, action`),
+        ORDER BY occurred_at, ctid`),
     ),
   );
 }

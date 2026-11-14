@@ -4,6 +4,7 @@ import {
   BUSINESS_EXIT_CODES,
   approverSourceViolations,
   type ApproverSource,
+  UNSELECTED_SPECIFIED,
   AUTO_RESULTS,
   CONDITION_OPERATORS,
   definitionViolations,
@@ -82,7 +83,10 @@ const avoidSubjectsResult = z.union([
   z.custom<`exit:${string}`>((value) => typeof value === 'string' && /^exit:[A-Za-z][A-Za-z0-9_]{0,39}$/.test(value)),
 ]);
 
+/** 设计器“已选指定人员、尚未选人”的输入形态，只接受 value 恰为 null 的 specified（其余空值仍走原错误）。 */
+const unselectedSpecified = z.strictObject({ type: z.literal('specified'), value: z.null() });
 const sourceSchema = z.unknown().transform((value): ApproverSource => {
+  if (unselectedSpecified.safeParse(value).success) return UNSELECTED_SPECIFIED;
   const parsed = z.strictObject({ type: z.enum(APPROVER_SOURCE_TYPES), value: text(200) }).safeParse(value);
   if (!parsed.success)
     throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_SOURCE_INVALID', '审批人来源必须为类型和值');

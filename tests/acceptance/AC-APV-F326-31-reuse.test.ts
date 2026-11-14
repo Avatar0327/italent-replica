@@ -74,10 +74,14 @@ describe('AC-APV-F326-31 去重 / 复用', () => {
 
     const [stored] = await storedNodes(w, process.latestVersion.id);
     expect(stored!.approver_expressions).toEqual([{ type: 'public_variable', value: rows[0]!.id }, manager]);
-    const { tasks } = await dispatch(w);
-    const assignees = tasks.map(([, user]) => user);
-    for (const user of [w.near.userId, p2.userId, p3.userId]) expect(assignees).toContain(user);
-    expect(assignees.length).toBeGreaterThanOrEqual(3);
+    // 测试租户的申请对象没有直线经理，带“直线经理”的会签进不了第一个节点（与改造前一致，手建变量同样如此），
+    // 所以派单对照另用一个同样三名指定人员、不含直线经理的会签节点
+    const plain = await s4World(database().db, 's7a-reuse-merge-dispatch');
+    const [q2, q3] = [await plain.person('合成丙', plain.staff), await plain.person('合成丁', plain.staff)];
+    const people = [plain.near.userId, q2.userId, q3.userId];
+    await plain.publish(await create(plain, [counter(people.map((id) => specified(id)), { key: 'n1' })]));
+    const { tasks } = await dispatch(plain);
+    expect(tasks.map(([, user]) => user).sort()).toEqual([...people].sort());
   });
 
   it('⑤ 编辑最新版本 → v2 草稿引用 v1 同一变量；⑥ v2 改人不新建变量，发布前 v1 仍派原人员', async () => {

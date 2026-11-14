@@ -1,4 +1,13 @@
 import { assertSourceReferences } from './source-reference.js';
+import {
+  applyPendingAutoVariables,
+  assertNoMergedDuplicate,
+  enrichProcessView,
+  materializeNode,
+  retireUnreferencedAutoVariables,
+  type MaterializeScope,
+  type PendingResolution,
+} from './auto-variables.js';
 /**
  * 流程定义与版本（REQ-APV-001）：草稿可整体替换；发布后只读，只能“编辑最新版本”生成新草稿；废弃移出可用列表。
  * 发布校验见 publishViolations（DEC-018 / DEC-054）；出厂预置见 PRESET_PROCESSES（DEC-018）。
@@ -26,6 +35,7 @@ import {
   type ApprovalTypeCode,
   type ApproverSource,
   approverSourcesOf,
+  isUnselectedSpecified,
   approverSourceViolations,
   type ExitRule,
   type ExitRules,
@@ -347,16 +357,73 @@ async function assertFallbackUsers(tx: Tx, tenantId: string, node: ApprovalNode)
  */
 interface WriteOptions {
   copyOfExisting?: boolean;
+  /** 保存前同一草稿里的节点（replaceDraft）：继承变量与待生效值从这里找（S7a） */
+  previous?: readonly ApprovalNode[];
+}
+
+async function materializeScope(
+  tx: Tx,
+  tenantId: string,
+  processId: string,
+  versionId: string,
+  definition: ProcessDefinition,
+  options: WriteOptions,
+): Promise<MaterializeScope> {
+  const [process] = rowsOf<{ code: string }>(
+    await tx.execute(sql`SELECT code FROM approval_processes WHERE tenant_id=${tenantId} AND id=${processId}::uuid`),
+  );
+  return {
+    tenantId,
+    versionId,
+    processId,
+    processCode: process!.code,
+    processName: definition.name,
+    previous: options.previous ? new Map(options.previous.map((node) => [node.key, node])) : undefined,
+  };
+}
+
+/** 节点及其消息规则落库；节点表只增删，不 UPDATE。 */
+async function insertNode(tx: Tx, tenantId: string, id: string, node: ApprovalNode, index: number) {
+  const typed = nodeTypeColumns(node);
+  const { approve, disagree } = typed.custom;
+  await tx.execute(sql`INSERT INTO approval_process_nodes
+    (tenant_id,version_id,node_key,seq,name,node_type,approver_expression,approver_expressions,exits,
+     transition_rule_type,approve_rule_kind,approve_rule_value,disagree_rule_kind,disagree_rule_value,
+     no_assignee_policy,same_assignee_skip,
+     history_same_assignee_skip,same_assignee_result,history_same_assignee_result,form_fields,editable_fields,
+     edit_mode,allow_transfer,allow_add_sign,allow_copy_send,allow_retrieve,allow_reject,urge_mode,
+     reject_comment_required,hide_records,reject_resubmit_mode,avoid_self,allow_revoke,allow_reject_previous,
+     allow_jump,avoid_subjects,avoid_subjects_result,fallback_user_ids,empty_approver_policy,empty_approver_sources)
+    VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${typed.type},
+      ${typed.approver ? JSON.stringify(typed.approver) : null}::jsonb,
+      ${JSON.stringify(typed.approvers)}::jsonb,${textArray(nodeExits(node))},${typed.rule},${approve?.kind ?? null},
+      ${approve?.value ?? null},${disagree?.kind ?? null},${disagree?.value ?? null},${node.noAssignee},
+      ${node.sameAssigneeSkip},${node.historySameAssigneeSkip},${node.sameAssigneeResult},
+      ${node.historySameAssigneeResult},${textArray(node.formFields)},${textArray(node.editableFields)},
+      ${node.editMode},${node.actions.transfer},${node.actions.addSign},${node.actions.copySend},
+      ${node.actions.retrieve},${rejectAllowed(node)},${node.actions.urge},${node.rejectCommentRequired},
+      ${node.hideRecords},${node.rejectResubmit},${avoidsSelf(node)},${revokeAllowed(node)},
+      ${rejectToPreviousAllowed(node)},${jumpAllowed(node)},${avoidsSubjects(node)},
+      ${node.avoidSubjectsResult ?? DEFAULT_AVOID_SUBJECTS_RESULT},${uuidArray(node.fallbackUserIds ?? [])},
+      ${node.emptyApproverPolicy ?? null},${JSON.stringify(node.emptyApproverSources ?? [])}::jsonb)`);
+  for (const [ruleIndex, rule] of node.messageRules.entries()) {
+    await tx.execute(sql`INSERT INTO approval_node_message_rules
+      (tenant_id,version_id,node_key,rule_no,trigger,channels,template_code,recipient)
+      VALUES (${tenantId},${id}::uuid,${node.key},${ruleIndex + 1},${rule.trigger},${textArray(rule.channels)},
+        ${rule.template},${rule.recipient})`);
+  }
 }
 
 async function writeVersionContent(
   tx: Tx,
-  tenantId: string,
+  ctx: ApprovalContext,
+  processId: string,
   id: string,
   definition: ProcessDefinition,
   type: ApprovalTypeCode,
   options: WriteOptions = {},
 ) {
+  const tenantId = ctx.tenantId;
   assertEmptyApproverPolicies(definition, type);
   assertRoutesValid(definition.nodes, type);
   // F-048 R3-01：节点落库前统一复核，新建、草稿替换（含继承）、新版本复制、交接重发、预置各自独立拒绝开启（设计 §14）
@@ -365,56 +432,38 @@ async function writeVersionContent(
   for (const item of definition.conditions.items) {
     await insertConditionItem(tx, tenantId, id, { kind: 'initiation' }, item);
   }
-  for (const [index, node] of definition.nodes.entries()) {
-    await assertFallbackUsers(tx, tenantId, node);
-    const sources = [...approverSourcesOf(node), ...(node.emptyApproverSources ?? [])];
-    const [violation] = approverSourceViolations(node, APPROVAL_TYPES[type]);
+  const scope = await materializeScope(tx, tenantId, processId, id, definition, options);
+  for (const [index, original] of definition.nodes.entries()) {
+    await assertFallbackUsers(tx, tenantId, original);
+    const [violation] = approverSourceViolations(original, APPROVAL_TYPES[type]);
     if (violation) throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_DEFINITION_INVALID', violation);
+    // 指定人员先按原值核对成员（未选人占位没有人可核），再落成公共变量；后面的引用校验看的是落成后的来源
+    const specified = [...approverSourcesOf(original), ...(original.emptyApproverSources ?? [])].filter(
+      (s) => s.type === 'specified' && !isUnselectedSpecified(s),
+    );
     try {
       await assertFallbackUsers(tx, tenantId, {
-        ...node,
-        fallbackUserIds: [...new Set(sources.filter((s) => s.type === 'specified').map((s) => s.value))],
+        ...original,
+        fallbackUserIds: [...new Set(specified.map((s) => s.value))],
       });
     } catch (error) {
       if (error instanceof AppError && error.code === 'VALIDATION_FAILED')
         throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_SOURCE_USER_INVALID', error.message);
       throw error;
     }
+    const node = await materializeNode(tx, ctx, scope, original);
+    assertNoMergedDuplicate(node);
+    const sources = [...approverSourcesOf(node), ...(node.emptyApproverSources ?? [])];
     if (!options.copyOfExisting)
       await assertSourceReferences(tx, tenantId, sources, {
         approvalType: type,
         singleApprover: isCountersign(node) ? undefined : node.approver,
+        owner: { versionId: id, nodeKey: node.key },
       });
-    const typed = nodeTypeColumns(node);
-    const { approve, disagree } = typed.custom;
-    await tx.execute(sql`INSERT INTO approval_process_nodes
-      (tenant_id,version_id,node_key,seq,name,node_type,approver_expression,approver_expressions,exits,
-       transition_rule_type,approve_rule_kind,approve_rule_value,disagree_rule_kind,disagree_rule_value,
-       no_assignee_policy,same_assignee_skip,
-       history_same_assignee_skip,same_assignee_result,history_same_assignee_result,form_fields,editable_fields,
-       edit_mode,allow_transfer,allow_add_sign,allow_copy_send,allow_retrieve,allow_reject,urge_mode,
-       reject_comment_required,hide_records,reject_resubmit_mode,avoid_self,allow_revoke,allow_reject_previous,
-       allow_jump,avoid_subjects,avoid_subjects_result,fallback_user_ids,empty_approver_policy,empty_approver_sources)
-      VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${typed.type},
-        ${typed.approver ? JSON.stringify(typed.approver) : null}::jsonb,
-        ${JSON.stringify(typed.approvers)}::jsonb,${textArray(nodeExits(node))},${typed.rule},${approve?.kind ?? null},
-        ${approve?.value ?? null},${disagree?.kind ?? null},${disagree?.value ?? null},${node.noAssignee},
-        ${node.sameAssigneeSkip},${node.historySameAssigneeSkip},${node.sameAssigneeResult},
-        ${node.historySameAssigneeResult},${textArray(node.formFields)},${textArray(node.editableFields)},
-        ${node.editMode},${node.actions.transfer},${node.actions.addSign},${node.actions.copySend},
-        ${node.actions.retrieve},${rejectAllowed(node)},${node.actions.urge},${node.rejectCommentRequired},
-        ${node.hideRecords},${node.rejectResubmit},${avoidsSelf(node)},${revokeAllowed(node)},
-        ${rejectToPreviousAllowed(node)},${jumpAllowed(node)},${avoidsSubjects(node)},
-        ${node.avoidSubjectsResult ?? DEFAULT_AVOID_SUBJECTS_RESULT},${uuidArray(node.fallbackUserIds ?? [])},
-        ${node.emptyApproverPolicy ?? null},${JSON.stringify(node.emptyApproverSources ?? [])}::jsonb)`);
-    for (const [ruleIndex, rule] of node.messageRules.entries()) {
-      await tx.execute(sql`INSERT INTO approval_node_message_rules
-        (tenant_id,version_id,node_key,rule_no,trigger,channels,template_code,recipient)
-        VALUES (${tenantId},${id}::uuid,${node.key},${ruleIndex + 1},${rule.trigger},${textArray(rule.channels)},
-          ${rule.template},${rule.recipient})`);
-    }
+    await insertNode(tx, tenantId, id, node, index);
   }
   await writeRoutes(tx, tenantId, id, definition.nodes);
+  if (!options.copyOfExisting) await retireUnreferencedAutoVariables(tx, ctx, scope);
 }
 
 async function insertVersion(
@@ -434,7 +483,7 @@ async function insertVersion(
       ${definition.description},${definition.priority},${definition.isFallback},${definition.exceptionAdminUserId},
       ${definition.urgeEnabled},${definition.hideRecordsFromInitiator},${definition.conditions.expression},
       ${ctx.userId},${ctx.now.toISOString()})`);
-  await writeVersionContent(tx, ctx.tenantId, id, definition, type, options);
+  await writeVersionContent(tx, ctx, processId, id, definition, type, options);
   return id;
 }
 
@@ -459,7 +508,7 @@ async function audited(
     eventType: `approval.process.${action}`,
     revision: after.revision,
   });
-  return after;
+  return enrichProcessView(tx, ctx.tenantId, after);
 }
 
 function snapshot(view: ProcessView): Row {
@@ -525,7 +574,7 @@ export async function replaceDraft(tx: Tx, ctx: ApprovalContext, id: string, inp
       hide_records_from_initiator=${definition.hideRecordsFromInitiator},
       condition_expression=${definition.conditions.expression}
     WHERE tenant_id=${ctx.tenantId} AND id=${draft.id}::uuid`);
-  await writeVersionContent(tx, ctx.tenantId, draft.id, definition, before.approvalType);
+  await writeVersionContent(tx, ctx, id, draft.id, definition, before.approvalType, { previous: draft.nodes });
   await bump(tx, ctx, id);
   return audited(tx, ctx, 'draft.update', before, id);
 }
@@ -560,7 +609,26 @@ export async function newVersion(tx: Tx, ctx: ApprovalContext, id: string) {
   return audited(tx, ctx, 'version.create', before, id);
 }
 
-export async function publishProcess(tx: Tx, ctx: ApprovalContext, id: string) {
+const NODE_TABLES = [
+  'approval_node_exit_route_conditions',
+  'approval_node_exit_routes',
+  'approval_node_message_rules',
+  'approval_process_nodes',
+];
+
+async function rewriteNodes(tx: Tx, tenantId: string, versionId: string, nodes: readonly ApprovalNode[]) {
+  for (const table of NODE_TABLES)
+    await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE tenant_id=${tenantId} AND version_id=${versionId}::uuid`);
+  for (const [index, node] of nodes.entries()) await insertNode(tx, tenantId, versionId, node, index);
+  await writeRoutes(tx, tenantId, versionId, nodes);
+}
+
+export async function publishProcess(
+  tx: Tx,
+  ctx: ApprovalContext,
+  id: string,
+  resolutions: readonly PendingResolution[] = [],
+) {
   const { before } = await lockedForChange(tx, ctx, id);
   const draft = before.latestVersion;
   if (draft.status !== 'draft') throw approvalError('CONFLICT', 'APPROVAL_VERSION_PUBLISHED', '最新版本已发布');
@@ -573,6 +641,15 @@ export async function publishProcess(tx: Tx, ctx: ApprovalContext, id: string) {
   assertRoutesValid(draft.nodes, before.approvalType, true);
   await assertExceptionAdminMember(tx, ctx.tenantId, draft.exceptionAdminUserId!);
   if (!draft.isFallback) await assertUniquePriority(tx, ctx.tenantId, before, draft.priority);
+  // 继承变量在草稿里记的待生效人员，在同一事务里落到变量上（S7a，DEC-861⑤）；节点表不能 UPDATE，整体删了重写
+  const cleaned = await applyPendingAutoVariables(
+    tx,
+    ctx,
+    await materializeScope(tx, ctx.tenantId, id, draft.id, draft, {}),
+    draft,
+    resolutions,
+  );
+  if (cleaned) await rewriteNodes(tx, ctx.tenantId, draft.id, cleaned);
   await tx.execute(sql`UPDATE approval_process_versions SET status='published',published_by=${ctx.userId},
       published_at=${ctx.now.toISOString()}
     WHERE tenant_id=${ctx.tenantId} AND id=${draft.id}::uuid`);

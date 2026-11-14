@@ -57,6 +57,12 @@ export const approverSource = (value: ApproverExpression): ApproverSource => ({
   value,
 });
 export const sourceKey = (source: ApproverSource) => `${source.type}:${source.value}`;
+/**
+ * F-326 S7a / DEC-859：设计器选了“指定人员”但还没选人。只存在于一次保存请求的内存定义里（请求体 `value: null`），
+ * 保存时由服务端落成自动公共变量，库内与对外视图都不会出现；`value` 为空串不可能来自合法输入（来源值必须非空）。
+ */
+export const UNSELECTED_SPECIFIED: ApproverSource = Object.freeze({ type: 'specified', value: '' });
+export const isUnselectedSpecified = (source: ApproverSource) => source.type === 'specified' && source.value === '';
 export const approverSourcesOf = (node: ApprovalNode): readonly ApproverSource[] =>
   node.kind === 'countersign' ? node.approvers : [node.approver];
 export function expressionValue(source: ApproverSource): ApproverExpression | null {

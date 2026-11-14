@@ -44,13 +44,12 @@ describe('AC-APV-F326-40 未选人即生成', () => {
 
   it('② PUT draft：会签两个占位 + 直线经理；空人位置一个占位 → persons(null) + 直线经理，空人位置一条 empty_approver', async () => {
     const w = await s4World(database().db, 's7a-ph-2');
-    const process = await create(w, [single('seed', specified(w.near.userId))]);
+    // 空审批人处理方式只允许配在离职交接的交接会签节点上（emptyApproverPolicyViolation），所以用离职交接类型
+    const process = await create(w, [single('seed', specified(w.near.userId))], { approvalType: 'exit_handover' });
     const nodes = [
-      counter([placeholder, placeholder, manager], { key: 'n1' }),
+      counter([placeholder, placeholder, manager], { key: 'employee_confirm' }),
       {
-        key: 'n2',
-        name: '空人节点',
-        approver: manager,
+        ...counter([manager], { key: 'work_handover' }),
         emptyApproverPolicy: 'specified',
         emptyApproverSources: [placeholder],
       } as NodeInput,
@@ -60,15 +59,15 @@ describe('AC-APV-F326-40 未选人即生成', () => {
     const saved = await w.json<typeof process>(response);
     const rows = (await autoRows(w, process.id)).filter((row) => row.status === 'enabled');
     const byNode = Object.fromEntries(rows.map((row) => [`${row.origin_node_key}:${row.origin_slot}`, row]));
-    expect(byNode['n1:approver']).toMatchObject({ data_type: 'persons', default_value: null });
-    expect(byNode['n2:empty_approver']).toMatchObject({ data_type: 'persons', default_value: null });
+    expect(byNode['employee_confirm:approver']).toMatchObject({ data_type: 'persons', default_value: null });
+    expect(byNode['work_handover:empty_approver']).toMatchObject({ data_type: 'persons', default_value: null });
     const stored = await storedNodes(w, saved.latestVersion.id);
-    expect(stored.find((node) => node.node_key === 'n1')!.approver_expressions).toEqual([
-      { type: 'public_variable', value: byNode['n1:approver']!.id },
+    expect(stored.find((node) => node.node_key === 'employee_confirm')!.approver_expressions).toEqual([
+      { type: 'public_variable', value: byNode['employee_confirm:approver']!.id },
       manager,
     ]);
-    expect(stored.find((node) => node.node_key === 'n2')!.empty_approver_sources).toEqual([
-      { type: 'public_variable', value: byNode['n2:empty_approver']!.id },
+    expect(stored.find((node) => node.node_key === 'work_handover')!.empty_approver_sources).toEqual([
+      { type: 'public_variable', value: byNode['work_handover:empty_approver']!.id },
     ]);
     expectNoSpecified(stored);
   });
