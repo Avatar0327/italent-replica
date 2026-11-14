@@ -8,7 +8,16 @@ import { FormCommands } from '../../foundation/forms/useCommandForm.js';
 import { matrixStore } from './commands.js';
 import { HeadForm } from './HeadForm.js';
 import { m } from './messages.js';
-import { PAGE_SIZE, listPath, parseList, type MatrixHead, type MatrixStatus, type View } from './model.js';
+import {
+  PAGE_SIZE,
+  listPath,
+  matrixPath,
+  parseHead,
+  parseList,
+  type MatrixHead,
+  type MatrixStatus,
+  type View,
+} from './model.js';
 import { StatusActions } from './StatusActions.js';
 import './matrix.css';
 
@@ -24,6 +33,8 @@ function useMatrices() {
   const [view, setView] = useState<View>('active');
   const [q, setQ] = useState('');
   const [offset, setOffset] = useState(0);
+  // 保存后要定位的回执对象（可能不在当前筛选 / 当前页）；用户自己切页签、搜索、翻页即放开。
+  const [pinned, setPinned] = useState<string>();
   const read = useRead<unknown>(listPath(view, q, offset));
   let page: ReturnType<typeof parseList> | undefined;
   let error = read.error;
@@ -32,11 +43,41 @@ function useMatrices() {
   } catch (cause) {
     error = cause;
   }
-  const show = (next: View) => {
-    setView(next);
-    setOffset(0);
+  const move = (next: { view?: View; q?: string; offset: number }) => {
+    if (next.view) setView(next.view);
+    if (next.q !== undefined) setQ(next.q);
+    setOffset(next.offset);
+    setPinned(undefined);
   };
-  return { view, show, q, setQ, offset, setOffset, page, error, loading: read.loading, refresh: read.refresh };
+  return {
+    view,
+    offset,
+    page,
+    error,
+    loading: read.loading,
+    refresh: read.refresh,
+    pinned,
+    pin: setPinned,
+    show: (next: View) => move({ view: next, offset: 0 }),
+    search: (next: string) => move({ q: next, offset: 0 }),
+    turn: (next: number) => move({ offset: next }),
+  };
+}
+
+/** 右侧展示的矩阵：当前页里选中的那条；保存后的回执对象不在当前页时单独读详情，读不到才回退到第一条。 */
+function useShown(list: ReturnType<typeof useMatrices>, selected?: string) {
+  const items = list.page?.items ?? [];
+  const inPage = items.find((item) => item.id === selected);
+  const outside = list.page && !inPage && selected && list.pinned === selected ? selected : undefined;
+  const read = useRead<unknown>(outside ? matrixPath(outside) : null);
+  let found: MatrixHead | undefined;
+  try {
+    found = read.data === undefined ? undefined : parseHead(read.data);
+  } catch {
+    found = undefined;
+  }
+  const fallback = read.loading ? undefined : items[0];
+  return { head: inPage ?? (found?.id === outside ? found : undefined) ?? fallback, refresh: read.refresh };
 }
 
 export function MatrixPage({ editable }: { editable: boolean }) {
@@ -54,16 +95,17 @@ function Matrices({ editable }: { editable: boolean }) {
   const list = useMatrices();
   const [selected, setSelected] = useState<string>();
   const [form, setForm] = useState<{ head?: MatrixHead }>();
-  const items = list.page?.items ?? [];
-  const head = items.find((item) => item.id === selected) ?? items[0];
-  // 写成功后按回执状态切到所在页签并选中；结果未明或被拒时只刷新（回查）。
+  const shown = useShown(list, selected);
+  const head = shown.head;
+  // 写成功后按回执状态切到所在页签，并定位回执对象（不在当前页也展示）；结果未明或被拒时只刷新（回查）。
   const saved: Saved = (receipt) => {
-    if (receipt) {
-      setSelected(receipt.id);
-      const view: View = receipt.status === 'disabled' ? 'disabled' : 'active';
-      if (view !== list.view) return list.show(view);
-    }
-    list.refresh();
+    shown.refresh();
+    if (!receipt) return list.refresh();
+    setSelected(receipt.id);
+    const view: View = receipt.status === 'disabled' ? 'disabled' : 'active';
+    if (view !== list.view) list.show(view);
+    else list.refresh();
+    list.pin(receipt.id);
   };
   return (
     <div className="matrix-page">
@@ -98,10 +140,7 @@ function MatrixList(props: { list: Matrices; selected?: string; select(id: strin
         allowClear
         placeholder={m.search}
         maxLength={100}
-        onSearch={(value) => {
-          list.setQ(value.trim());
-          list.setOffset(0);
-        }}
+        onSearch={(value) => list.search(value.trim())}
       />
       {!!list.error && <PageState kind="error" error={list.error} retry={list.refresh} />}
       {!list.error && (
@@ -118,10 +157,10 @@ function MatrixList(props: { list: Matrices; selected?: string; select(id: strin
         />
       )}
       <Space className="matrix-pager">
-        <Button disabled={!list.offset} onClick={() => list.setOffset(Math.max(0, list.offset - PAGE_SIZE))}>
+        <Button disabled={!list.offset} onClick={() => list.turn(Math.max(0, list.offset - PAGE_SIZE))}>
           {m.prev}
         </Button>
-        <Button disabled={!list.page?.hasMore} onClick={() => list.setOffset(list.offset + PAGE_SIZE)}>
+        <Button disabled={!list.page?.hasMore} onClick={() => list.turn(list.offset + PAGE_SIZE)}>
           {m.next}
         </Button>
       </Space>
