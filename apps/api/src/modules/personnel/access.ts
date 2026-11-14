@@ -17,6 +17,7 @@ import {
 } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { firstCreatorSql } from '../permission/scope-audit.js';
+import { trimCustomFields } from './custom-fields.js';
 import { rows, type PersonnelContext, type Row } from './store.js';
 
 for (const object of PERSONNEL_OBJECTS) registerObjectDefinition(object);
@@ -113,7 +114,12 @@ export async function trim(deps: TenantRouteDeps, ctx: PersonnelContext, objectC
   return trimWithFields(value, fields);
 }
 export function trimWithFields(value: Row, fields: ReadonlySet<string> | undefined) {
-  return Object.fromEntries(
-    Object.entries(value).filter(([key]) => fields === undefined || fields.has(key === 'avatar' ? 'name' : key)),
+  const { customFields, ...plain } = value;
+  const trimmed = Object.fromEntries(
+    Object.entries(plain).filter(([key]) => fields === undefined || fields.has(key === 'avatar' ? 'name' : key)),
   );
+  // F-474-6c：customFields 是容器，键本身不是权限字段；逐个 custom:<id> 裁剪，没有可见值时连键都不返回。
+  if (customFields === undefined) return trimmed;
+  const visible = fields === undefined ? customFields : trimCustomFields(customFields, fields);
+  return visible === undefined ? trimmed : { ...trimmed, customFields: visible };
 }

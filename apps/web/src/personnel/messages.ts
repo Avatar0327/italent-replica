@@ -52,6 +52,8 @@ export const m = {
   yes: '是',
   no: '否',
   empty: '—',
+  /** F-474-6c：租户自定义字段（名称来自定义，这里只放固定文案）。 */
+  custom: { disabledOption: '（已停用）' },
   recordFields: '任职信息',
   chainHint: '按服务端版本链顺序展示；同日多条记录保留原顺序，当前生效标记以服务端为准。',
   referenceHint: '关联对象暂以可见 ID 展示，名称解析待后端补充。',

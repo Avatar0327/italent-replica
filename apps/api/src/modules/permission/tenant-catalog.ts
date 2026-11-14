@@ -1,5 +1,5 @@
 import { eq, employmentCustomFieldObjects, type Tx } from '@italent/db';
-import { MODULE_OBJECTS, ObjectCatalog, type CustomFieldObjectType } from '@italent/domain';
+import { MODULE_OBJECTS, ObjectCatalog, PERSONNEL_OBJECT, type CustomFieldObjectType } from '@italent/domain';
 
 /**
  * 租户动态字段来源：返回该对象在当前租户追加的可配置字段编码（如任职自定义字段 `custom:<id>`、盘点字段
@@ -32,6 +32,8 @@ export const customFields =
 
 registerTenantFieldSource(MODULE_OBJECTS.employmentRecord.code, customFields('employment'));
 registerTenantFieldSource(MODULE_OBJECTS.contract.code, customFields('contract'));
+// F-474-6c：人员自定义字段对任何身份默认不可见，授权后才进入 custom:<id> 字段目录。
+registerTenantFieldSource(PERSONNEL_OBJECT, customFields('personnel'));
 
 /** Tenant-local custom field definitions are ordinary configurable fields, never a writable JSON umbrella. */
 export async function tenantObjectCatalog(tx: Tx, catalog: ObjectCatalog, objectCode?: string): Promise<ObjectCatalog> {
