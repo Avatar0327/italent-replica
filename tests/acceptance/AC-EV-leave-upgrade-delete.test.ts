@@ -6,6 +6,7 @@ import { evaluationLeaveWorld, rowsOf, LEAVE_MIGRATION } from './AC-EV-leave-sup
 import { runEvaluationLeave } from '../../apps/api/src/modules/evaluation/leave-handler.js';
 import { addPreAssessmentTable } from './support/pre-assessment-schema.js';
 import { addPreBlacklistTable } from './support/pre-blacklist-schema.js';
+import { addPreCustomFieldOptionsColumn } from './support/pre-custom-field-options-schema.js';
 import { addPreInternCycleColumn } from './support/pre-intern-cycle-schema.js';
 import { addPrePartTimeTables } from './support/pre-part-time-schema.js';
 
@@ -20,6 +21,8 @@ it('AC-EV-leave-upgrade：补入未来离职后在生效前删除，立即 skipp
     const restoreAssessment = await addPreAssessmentTable(handle.db);
     // F-480：当前接口建入职周期会写 employment_cycles.trainee_start_date，旧结构没有，临时补列，升级迁移前撤掉（support/pre-intern-cycle-schema.ts）
     const restoreInternCycle = await addPreInternCycleColumn(handle.db);
+    // F-474-6b-0b：当前接口读自定义字段定义会取 options 列，旧结构没有，临时补列（support/pre-custom-field-options-schema.ts）
+    const restoreCustomFieldOptions = await addPreCustomFieldOptionsColumn(handle.db);
     const w = await evaluationLeaveWorld(handle.db);
     await restoreBlacklist();
     const id = await w.seed();
@@ -29,6 +32,7 @@ it('AC-EV-leave-upgrade：补入未来离职后在生效前删除，立即 skipp
     await restorePartTime();
     await restoreAssessment();
     await restoreInternCycle();
+    await restoreCustomFieldOptions();
     await handle.migrate();
     expect(await w.queue(leave.id)).toHaveLength(1);
     await w.remove(leave);

@@ -15,6 +15,7 @@ import {
 } from './AC-EV-leave-support.js';
 import { addPreAssessmentTable } from './support/pre-assessment-schema.js';
 import { addPreBlacklistTable } from './support/pre-blacklist-schema.js';
+import { addPreCustomFieldOptionsColumn } from './support/pre-custom-field-options-schema.js';
 import { addPreInternCycleColumn } from './support/pre-intern-cycle-schema.js';
 import { addPrePartTimeTables } from './support/pre-part-time-schema.js';
 
@@ -115,6 +116,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-pg：设计 §7.4 �
         // F-480：任职写入会读写 employment_cycles.trainee_start_date，旧结构没有，临时补列；writer_first 在升级迁移前撤掉，
         // migration_first 全程不跑完整迁移，随测试库销毁（同兼职表，support/pre-intern-cycle-schema.ts）
         const restoreInternCycle = await addPreInternCycleColumn(handle.db);
+        // F-474-6b-0b：当前接口读自定义字段定义会取 options 列，旧结构没有，临时补列（support/pre-custom-field-options-schema.ts）
+        const restoreCustomFieldOptions = await addPreCustomFieldOptionsColumn(handle.db);
         const w = await evaluationLeaveWorld(handle.db);
         await restoreBlacklist();
         const leave = await w.leave('2026-12-20');
@@ -123,6 +126,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-pg：设计 §7.4 �
           await restorePartTime();
           await restoreAssessment();
           await restoreInternCycle();
+          await restoreCustomFieldOptions();
         }
         let otherId = other?.id;
         const insert = async (pause: boolean) =>

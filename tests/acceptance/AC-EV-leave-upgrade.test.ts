@@ -8,6 +8,7 @@ import { removeEmploymentTimeline } from '../../apps/api/src/modules/employment/
 import { runEvaluationLeave } from '../../apps/api/src/modules/evaluation/leave-handler.js';
 import { addPreAssessmentTable } from './support/pre-assessment-schema.js';
 import { addPreBlacklistTable } from './support/pre-blacklist-schema.js';
+import { addPreCustomFieldOptionsColumn } from './support/pre-custom-field-options-schema.js';
 import { addPreInternCycleColumn } from './support/pre-intern-cycle-schema.js';
 import { addPrePartTimeTables } from './support/pre-part-time-schema.js';
 
@@ -22,6 +23,8 @@ it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周
     const restoreAssessment = await addPreAssessmentTable(handle.db);
     // F-480：当前接口建入职周期会写 employment_cycles.trainee_start_date，旧结构没有，临时补列，升级迁移前撤掉（support/pre-intern-cycle-schema.ts）
     const restoreInternCycle = await addPreInternCycleColumn(handle.db);
+    // F-474-6b-0b：当前接口读自定义字段定义会取 options 列，旧结构没有，临时补列（support/pre-custom-field-options-schema.ts）
+    const restoreCustomFieldOptions = await addPreCustomFieldOptionsColumn(handle.db);
     const w = await evaluationLeaveWorld(handle.db);
     const [date] = rowsOf<{ old: string; future: string; later: string }>(
       await handle.db.execute(sql`
@@ -56,6 +59,7 @@ it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周
     await restoreBlacklist();
     await restoreAssessment();
     await restoreInternCycle();
+    await restoreCustomFieldOptions();
     await handle.migrate();
     expect(await w.queue(oldLeave.id)).toHaveLength(1);
     expect(await w.queue(futureLeave.id)).toHaveLength(1);
