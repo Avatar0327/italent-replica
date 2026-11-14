@@ -30,10 +30,12 @@ export const headLabels: Record<string, string> = {
   description: m.description,
 };
 const EDITABLE = ['name', 'description'];
+// 快照带上只读展示的编码、状态：409 重读后弹窗按最新快照显示；请求体仍只取可编辑字段（内核 commandBody）。
+const SHOWN = [...EDITABLE, 'code', 'status'];
 export const headSnapshot = (head: MatrixHead) => ({
   id: head.id,
   revision: head.revision,
-  values: projectFields(head as unknown as Values, EDITABLE),
+  values: projectFields(head as unknown as Values, SHOWN),
 });
 /** 重读单条详情（回查原单 / 冲突重读共用）。 */
 export function useHeadRead(head?: MatrixHead) {
@@ -72,8 +74,9 @@ export function HeadForm(props: {
     useHeadRead(head),
     head ? { action: 'edit' } : {},
   );
-  // 编辑时只读的两项：编码原样显示，状态显示中文标签。
-  const readonlyText = (name: string) => (name === 'code' ? head?.code : m.statusLabel[head?.status ?? '']);
+  // 编辑时只读的两项跟随最新快照（重读后即为读回的那份）：编码原样显示，状态显示中文标签。
+  const readonlyText = (name: string) =>
+    name === 'code' ? String(writer.full.code ?? '') : m.statusLabel[String(writer.full.status ?? '')];
   const field = (name: string, control: ReactNode, rules: FormField['rules'], editable = true): FormField => ({
     name,
     label: headLabels[name]!,
