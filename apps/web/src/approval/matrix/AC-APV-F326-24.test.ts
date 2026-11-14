@@ -428,4 +428,38 @@ describe('AC-APV-F326-24 第 1 轮审查回归', () => {
     expect(backend.writes.at(-1)).toMatchObject({ method: 'PATCH', path: `${BASE}/${id}` });
     expect(backend.writes.at(-1)!.body).toEqual({ name: '我的改名', revision: 4 });
   });
+
+  async function create(code: string, name: string) {
+    await click('新建矩阵');
+    await type(field('name'), name);
+    await type(field('code'), code);
+    await click('保存', dialog());
+    expect(backend.writes.at(-1)).toMatchObject({ method: 'POST', body: { code, name } });
+    expect(document.querySelector('.ant-modal')).toBeNull();
+  }
+
+  it('P2-2 筛选下新建：新矩阵不在筛选结果里，右侧仍展示回执对象', async () => {
+    await ui.render();
+    await type(document.querySelector<HTMLInputElement>('.matrix-list input'), '合成矩阵甲');
+    await clickNode(document.querySelector('.matrix-list .ant-input-search-button'));
+    expect(listText()).toContain('APPROVE_A');
+    await create('NEW_FILTERED', '筛选外新矩阵');
+    expect(listText()).not.toContain('NEW_FILTERED');
+    expect(headText()).toContain('NEW_FILTERED');
+    expect(headText()).toContain('筛选外新矩阵');
+    expect(headText()).not.toContain('APPROVE_A');
+  });
+
+  it('P2-2 超过 50 条时新建：新矩阵排在第一页之外，右侧仍展示回执对象', async () => {
+    for (let i = 0; i < 60; i += 1) {
+      const id = `81000000-0000-4000-8000-2000000000${String(i).padStart(2, '0')}`;
+      backend.db.set(id, head({ id, code: `Z_${String(i).padStart(2, '0')}`, name: `批量矩阵${i}` }));
+    }
+    await ui.render();
+    await create('ZZ_LAST', '页外新矩阵');
+    expect(lastList().searchParams.get('offset')).toBe('0');
+    expect(listText()).not.toContain('ZZ_LAST');
+    expect(headText()).toContain('ZZ_LAST');
+    expect(headText()).toContain('页外新矩阵');
+  });
 });
