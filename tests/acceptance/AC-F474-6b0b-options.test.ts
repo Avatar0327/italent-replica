@@ -13,6 +13,13 @@ import { validateCustomValue } from '../../apps/api/src/modules/employment/field
 import { validatePartTimeCustomFields } from '../../apps/api/src/modules/employment/part-time/validation.js';
 import { addMember, seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { resultRows } from './AC-ORG-support.js';
+import {
+  activeGrantChanges,
+  checkGrantChanges,
+  EMPTY_GRANT_CHANGES,
+  GRANT_CHANGES_PATH,
+  type GrantChanges,
+} from '../../scripts/merge-main-lib.mjs';
 import { fileAt, fileNow, grantCodesAt, resolveGrantBase } from './support/grant-baseline.js';
 
 const database = useTestDb();
@@ -33,6 +40,37 @@ async function definition(w: PermissionWorld, body: object = input) {
   const response = await create(w, body);
   expect(response.status).toBe(201);
   return response.json();
+}
+
+const GRANTS_FILE = 'packages/domain/src/platform/standard-grants.ts';
+const GRANT_FILES = [GRANTS_FILE, 'packages/domain/src/platform/standard-presets.ts', GRANT_CHANGES_PATH] as const;
+const parseVersion = (text: string) => /STANDARD_GRANT_VERSION\s*=\s*(\d+)/.exec(text)?.[1];
+const parseDigest = (text: string) => /STANDARD_GRANT_DIGEST\s*=\s*'([0-9a-f]+)'/.exec(text)?.[1];
+
+interface GrantSnapshot {
+  readonly codes: readonly string[];
+  readonly version: string | number | undefined;
+  readonly digest: string | undefined;
+}
+
+/**
+ * 授权基线比较（与 AC-PLAT-F061-grants 同口径）：当前编码 = 基线编码 + 声明的 add − remove，由 checkGrantChanges 判定；
+ * 没有声明（changes.json 与基线相同或增删都为空）时，版本、指纹、预置文件还须与基线逐字相同；有声明才允许它们变化。
+ */
+function grantBaselineProblems(input: {
+  base: GrantSnapshot;
+  head: GrantSnapshot;
+  declared: GrantChanges;
+  files: readonly { file: string; base: string | undefined; head: string | undefined }[];
+}): string[] {
+  const { base, head, declared, files } = input;
+  const problems = [...checkGrantChanges({ baseCodes: base.codes, headCodes: head.codes, declared }).problems];
+  if (declared.add.length > 0 || declared.remove.length > 0) return problems;
+  if (String(head.version) !== String(base.version))
+    problems.push(`没有声明授权变更，版本不应变：${base.version} → ${head.version}`);
+  if (head.digest !== base.digest) problems.push(`没有声明授权变更，指纹不应变：${base.digest} → ${head.digest}`);
+  for (const f of files) if (f.head !== f.base) problems.push(`没有声明授权变更，${f.file} 应与基线逐字相同`);
+  return problems;
 }
 
 describe('AC-F474-6b0b options 与单选下拉', () => {
@@ -239,22 +277,49 @@ describe('AC-F474-6b0b options 与单选下拉', () => {
     expect(grantCodesDigest(STANDARD_GRANT_CODES)).toBe(STANDARD_GRANT_DIGEST);
   });
 
-  it('AC-F474-0B09b 本 PR 不改授权编码：编码集合、版本、指纹和预置文件与基线逐字相同（F-097 动态基线）', async (context) => {
+  it('AC-F474-0B09b 授权编码与分叉点基线一致：编码增删须在 changes.json 声明，没声明时版本、指纹、预置文件逐字相同（F-097 动态基线）', async (context) => {
     // 基线不写死提交：CI 浅克隆只有 HEAD / HEAD^1，写死的历史提交取不到。
     // CI 设了 GRANT_BASE_REV=HEAD^1，解析不到会抛错（不静默通过）；本地取 merge-base，取不到才跳过并写明原因。
+    // 口径与 AC-PLAT-F061-grants 一致：当前编码 = 基线编码 + 声明的 add − remove；授权类 PR 有声明才允许版本 / 指纹 / 预置变化。
     const base = resolveGrantBase();
     if ('skip' in base) return context.skip(`F-097 动态基线：${base.skip}`);
-    expect([...STANDARD_GRANT_CODES]).toEqual(await grantCodesAt(base.sha));
-    const grants = fileAt(base.sha, 'packages/domain/src/platform/standard-grants.ts') ?? '';
-    const version = /STANDARD_GRANT_VERSION\s*=\s*(\d+)/.exec(grants)?.[1];
-    const digest = /STANDARD_GRANT_DIGEST\s*=\s*'([0-9a-f]+)'/.exec(grants)?.[1];
-    expect(version, `基线 ${base.sha.slice(0, 8)} 上取不到 STANDARD_GRANT_VERSION`).toBeDefined();
-    expect(digest, `基线 ${base.sha.slice(0, 8)} 上取不到 STANDARD_GRANT_DIGEST`).toBeDefined();
-    expect(STANDARD_GRANT_VERSION).toBe(Number(version));
-    expect(STANDARD_GRANT_DIGEST).toBe(digest);
-    for (const path of ['standard-grants.ts', 'standard-presets.ts', 'standard-grant-changes.json']) {
-      const file = `packages/domain/src/platform/${path}`;
-      expect(fileNow(file), `${file} 与基线 ${base.how} 不一致`).toBe(fileAt(base.sha, file));
-    }
+    const baseGrants = fileAt(base.sha, GRANTS_FILE) ?? '';
+    expect(parseVersion(baseGrants), `基线 ${base.sha.slice(0, 8)} 上取不到 STANDARD_GRANT_VERSION`).toBeDefined();
+    expect(parseDigest(baseGrants), `基线 ${base.sha.slice(0, 8)} 上取不到 STANDARD_GRANT_DIGEST`).toBeDefined();
+    const problems = grantBaselineProblems({
+      base: { codes: await grantCodesAt(base.sha), version: parseVersion(baseGrants), digest: parseDigest(baseGrants) },
+      head: { codes: STANDARD_GRANT_CODES, version: STANDARD_GRANT_VERSION, digest: STANDARD_GRANT_DIGEST },
+      declared: activeGrantChanges(fileAt(base.sha, GRANT_CHANGES_PATH), fileNow(GRANT_CHANGES_PATH)),
+      files: GRANT_FILES.map((file) => ({ file, base: fileAt(base.sha, file), head: fileNow(file) })),
+    });
+    expect(problems, `基线 ${base.how}（${base.sha.slice(0, 8)}）`).toEqual([]);
+  });
+
+  it('AC-F474-0B09b 反例：没声明授权变更时，编码、版本、指纹、预置文件任一变化都判红；有声明才放行', () => {
+    const same = { codes: ['a/x/op:view'], version: 7, digest: 'd1' };
+    const input = (head: Partial<typeof same>, declared: GrantChanges, headFile = 'same') => ({
+      base: same,
+      head: { ...same, ...head },
+      declared,
+      files: [{ file: 'presets.ts', base: 'same', head: headFile }],
+    });
+    const declares: GrantChanges = { reason: '合成授权类变更', add: ['a/y/*'], remove: [] };
+    // 没声明：什么都没变才通过
+    expect(grantBaselineProblems(input({}, EMPTY_GRANT_CHANGES))).toEqual([]);
+    // 没声明但编码多了 / 少了、版本、指纹、预置文件变了：各自判红（不是恒真）
+    expect(grantBaselineProblems(input({ codes: ['a/x/op:view', 'a/y/op:view'] }, EMPTY_GRANT_CHANGES))).not.toEqual(
+      [],
+    );
+    expect(grantBaselineProblems(input({ codes: [] }, EMPTY_GRANT_CHANGES))).not.toEqual([]);
+    expect(grantBaselineProblems(input({ version: 8 }, EMPTY_GRANT_CHANGES))).not.toEqual([]);
+    expect(grantBaselineProblems(input({ digest: 'd2' }, EMPTY_GRANT_CHANGES))).not.toEqual([]);
+    expect(grantBaselineProblems(input({}, EMPTY_GRANT_CHANGES, 'changed'))).not.toEqual([]);
+    // 有声明：声明覆盖的新增放行，版本 / 指纹 / 预置文件可以变；声明之外的增删仍判红，声明的没发生也判红
+    const changed = { codes: ['a/x/op:view', 'a/y/op:view'], version: 8, digest: 'd2' };
+    expect(grantBaselineProblems(input(changed, declares, 'changed'))).toEqual([]);
+    expect(
+      grantBaselineProblems(input({ ...changed, codes: [...changed.codes, 'a/z/op:view'] }, declares)),
+    ).not.toEqual([]);
+    expect(grantBaselineProblems(input({ version: 8 }, declares))).not.toEqual([]);
   });
 });
