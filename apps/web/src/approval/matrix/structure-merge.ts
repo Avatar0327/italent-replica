@@ -1,10 +1,10 @@
 // 409 重读后的结构三方合并（F-123 设计「状态与恢复」：比较原基线与最新版本，只回填服务端改了、用户没改的部分，
 // 用户修改始终保留）。内核按字段比较，整份结构是一个字段；这里拆到列设置、列 / 行的有无、行顺序与单元格。
-// 结构上有歧义的（一边删、另一边在其上改或新增；两边都动过的条件列维度不同）不自动定夺：列为结构冲突，
-// 未处理时按我的草稿；用户逐项选“采用最新版本”或“保留我的修改”（decided）后按选择重算。
+// 结构上有歧义的（一边删、另一边在其上改或新增；两边列类型不同；两边都动过的条件列维度不同）不自动定夺：
+// 列为结构冲突，未处理时按我的草稿；用户逐项选“采用最新版本”或“保留我的修改”（decided）后按选择重算。
 import { sameValue } from '../../foundation/forms/values.js';
 import { sm } from './structure-messages.js';
-import type { DraftColumn, DraftRow, Structure } from './structure-model.js';
+import { kindOf, type DraftColumn, type DraftRow, type Structure } from './structure-model.js';
 
 /** 冲突区的一行：服务端改过的一处，原值 / 最新值 / 我的输入都是给人看的文本。 */
 export interface Change {
@@ -39,6 +39,9 @@ function setting(key: Setting, value: DraftColumn[Setting]) {
   if (key === 'dimension') return value ? sm.dimensionLabel[value]! : '—';
   return value!.trim();
 }
+/** 列类型的文本：审批角色，或审批条件·维度。 */
+const typeText = (column: DraftColumn) =>
+  column.kind === 'role' ? sm.kindLabel.role! : `${sm.kindLabel.condition}·${setting('dimension', column.dimension)}`;
 /** primary 的顺序为主；secondary 里多出来的项插在它在 secondary 中前一项之后（找不到前一项就放最前）。 */
 function weave(primary: readonly string[], secondary: readonly string[], kept: ReadonlySet<string>) {
   const result = primary.filter((ref) => kept.has(ref));
@@ -57,8 +60,6 @@ class Merger {
   private readonly l: Sides;
   private readonly m: Sides;
   private readonly rowName: Map<string, string>;
-  /** 维度冲突的条件列 → 是否采用最新版本：这一列的格值整列跟着选定的一边，不逐格合并。 */
-  private readonly clash = new Map<string, boolean>();
 
   constructor(
     private readonly base: Structure,
@@ -145,19 +146,16 @@ class Merger {
     // 最新版本里没有的列（我新增的、服务端删了而我保留的）按新列提交，不带持久 id
     if (!b || !l || !m) return { ...(m ?? l)!, id: l?.id ?? null };
     const name = sm.columnAt(this.columnName(ref));
-    const merged = { ...m };
-    // 两边都动过这一列且维度不同：维度、包含下级与整列格值作为一处结构冲突一起定（未处理按我的），不逐项合并
+    // 两边列类型不同（不论我是否动过），或两边都动过且维度不同：整列是一个不可拆的整体，类型、维度、开关、列名
+    // 只取一边（未处理按我的）；格值随列类别取同一边（cellValue），不与另一边逐项拼接
     const touched = (side: Sides) => this.touched(side, 'column', ref);
-    if (l.dimension !== m.dimension && touched(this.l) && touched(this.m)) {
-      const texts = [b, l, m].map((column) => setting('dimension', column.dimension));
-      const field = `column:${ref}:dimension`;
-      const take = this.ambiguous(field, `${name}·${sm.setting.dimension}`, texts, sm.dimensionClash(name));
-      this.clash.set(ref, take);
-      const { dimension, includeChildren } = take ? l : m;
-      Object.assign(merged, { dimension, includeChildren });
+    if (l.kind !== m.kind || (l.dimension !== m.dimension && touched(this.l) && touched(this.m))) {
+      const field = `column:${ref}:type`;
+      const take = this.ambiguous(field, `${name}·${sm.kind}`, [b, l, m].map(typeText), sm.columnClash(name));
+      return { ...(take ? l : m) };
     }
+    const merged = { ...m };
     for (const key of SETTINGS) {
-      if (this.clash.has(ref) && (key === 'dimension' || key === 'includeChildren')) continue;
       const label = `${name}·${sm.setting[key]}`;
       const value = this.pick(`column:${ref}:${key}`, label, [b[key], l[key], m[key]], (item) => setting(key, item));
       Object.assign(merged, { [key]: value });
@@ -191,14 +189,21 @@ class Merger {
     if (this.pick('rows:order', sm.rowOrder, [b, l, m], names) === l) return weave(latestOrder, mineOrder, kept);
     return weave(mineOrder, latestOrder, kept);
   }
-  /** 三份都有这一格才逐格三方合并；否则取我草稿里的，草稿里没有取最新版本的（都没有为空格）。 */
+  /**
+   * 格值只取列类别（人员 / 维度）与合并后这一列相同的那一边：三份都相同才逐格三方合并；否则取我草稿里的，
+   * 我的不同类取最新版本的，都不同类为空格。类别不同的一边的值（改类型、改维度前的 ID）一律不带入。
+   */
   private cellValue(row: string, column: DraftColumn) {
     const ref = column.ref;
-    const has = (side: Sides) => side.rows.has(row) && side.columns.has(ref);
+    const fits = (side: Sides) => {
+      const own = side.columns.get(ref);
+      return side.rows.has(row) && !!own && kindOf(own) === kindOf(column);
+    };
     const value = (side: Sides) => this.cell(side, row, ref);
-    const take = this.clash.get(ref);
-    if (take !== undefined) return value(take ? this.l : this.m);
-    if (!has(this.b) || !has(this.l) || !has(this.m)) return value(has(this.m) ? this.m : this.l);
+    if (!fits(this.b) || !fits(this.l) || !fits(this.m)) {
+      const side = [this.m, this.l].find(fits);
+      return side ? value(side) : [];
+    }
     const ids: [string[], string[], string[]] = [value(this.b), value(this.l), value(this.m)];
     const label = `${this.rowName.get(row)}「${this.columnName(ref)}」`;
     return this.pick(`cell:${row}:${ref}`, label, ids, (item) => this.show(column, item));

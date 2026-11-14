@@ -339,7 +339,7 @@ function Editor(props: {
   const baseline = (writer.full.structure as Structure | undefined) ?? state.base.structure;
   const dirty = !sameStructure(draft, baseline);
   // 即时校验挡保存；服务端拒绝的明细只做标注，改草稿即清
-  const local = structureIssues(draft);
+  const local = structureIssues(draft, labels.has);
   const issues = [...local, ...server];
   const invalid = new Set(issues.flatMap((issue) => [issue.column, issue.row].filter(Boolean) as string[]));
   const update: Update = (change) => {

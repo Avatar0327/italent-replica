@@ -67,8 +67,8 @@ describe('structure-merge 三方合并', () => {
     const result = merge(latest, mine);
     expect(result.structure.columns[0]!.dimension).toBe('department');
     expect(result.structure.rows.map((item) => item.cells.C)).toEqual([['d1'], ['d2'], ['d3']]);
-    expect(result.open.map((item) => item.key)).toEqual(['column:C:dimension']);
-    const taken = merge(latest, mine, { 'column:C:dimension': true }).structure;
+    expect(result.open.map((item) => item.key)).toEqual(['column:C:type']);
+    const taken = merge(latest, mine, { 'column:C:type': true }).structure;
     expect(taken.columns[0]!.dimension).toBe('position');
     expect(taken.rows.map((item) => item.cells.C)).toEqual([['j1'], [], []]);
     // 我没动这一列：维度与格值都是“只有服务端改”，照常回填，不列为结构冲突

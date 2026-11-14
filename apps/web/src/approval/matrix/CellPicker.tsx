@@ -34,6 +34,8 @@ export function useLabels() {
       const name = known.get(`${kind}:${id}`);
       return name === undefined ? id : (name ?? sm.missing);
     },
+    /** 这个 id 在该类别下有登记的名称（structureIssues 据此查格值类别与列类型是否一致）。 */
+    has: (kind: string, id: string) => typeof known.get(`${kind}:${id}`) === 'string',
     remember(kind: string, choices: readonly Choice[]) {
       for (const choice of choices) known.set(`${kind}:${choice.value}`, choice.label);
     },

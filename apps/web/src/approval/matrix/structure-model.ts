@@ -163,22 +163,30 @@ function columnIssues(columns: DraftColumn[]): Issue[] {
   });
 }
 
-function cellIssue(column: DraftColumn, ids: string[]) {
+/** 名称缓存里这个 id 在该类别（person / 维度）下有没有登记的名称。 */
+export type Known = (kind: string, id: string) => boolean;
+const KINDS = ['person', ...MATRIX_DIMENSIONS];
+
+function cellIssue(column: DraftColumn, ids: string[], known: Known) {
   const max = column.kind === 'condition' ? MATRIX_LIMITS.conditionCellIds : MATRIX_LIMITS.roleCellIds;
   if (ids.length > max) return sm.cellLimit(max);
   if (column.kind === 'role' && !column.allowMultiple && new Set(ids).size > 1) return sm.singlePerson;
-  return undefined;
+  // 兜底：后端不核格值类别，部门 / 职位 ID 进了人员格（或反过来）会被原样保存。只认已登记在别的类别下的 ID，
+  // 查不到名称的（已失效、尚未回查）不算
+  const kind = kindOf(column);
+  const misfit = (id: string) => !known(kind, id) && KINDS.some((other) => other !== kind && known(other, id));
+  return ids.some(misfit) ? sm.cellMismatch : undefined;
 }
 
-/** 与 validateMatrixStructure 同口径的即时校验（同一领域上限），每条标出列 / 行位置；有问题时不能保存。 */
-export function structureIssues(structure: Structure): Issue[] {
+/** 与 validateMatrixStructure 同口径的即时校验（同一领域上限，另加格值类别兜底），每条标出列 / 行位置；有问题时不能保存。 */
+export function structureIssues(structure: Structure, known: Known): Issue[] {
   const issues = [...countIssues(structure), ...columnIssues(structure.columns)];
   let total = 0;
   structure.rows.forEach((row, index) => {
     for (const column of structure.columns) {
       const ids = row.cells[column.ref] ?? [];
       total += ids.length;
-      const problem = cellIssue(column, ids);
+      const problem = cellIssue(column, ids, known);
       if (problem) issues.push({ text: `${sm.cell(index, column.name.trim())}：${problem}`, row: row.ref });
     }
   });
