@@ -1,5 +1,5 @@
 {
-  "id": "c21cc8f2-7dc8-411d-b1cf-647ca40fef6e",
+  "id": "1ddfdfe4-1e1b-4fb0-81cd-0fe8ff0444fb",
   "prevId": "9f8cc2bd-f556-40f0-b55f-1f8d7829be20",
   "version": "7",
   "dialect": "postgresql",
@@ -16536,13 +16536,6 @@
           "notNull": true,
           "default": "now()"
         },
-        "custom_fields": {
-          "name": "custom_fields",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
         "daily_wage_standard": {
           "name": "daily_wage_standard",
           "type": "numeric",
@@ -17011,10 +17004,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "personnel_employee_custom_fields_object": {
-          "name": "personnel_employee_custom_fields_object",
-          "value": "jsonb_typeof(\"personnel_employee_versions\".\"custom_fields\") = 'object'"
-        },
         "personnel_employee_revision_positive": {
           "name": "personnel_employee_revision_positive",
           "value": "\"personnel_employee_versions\".\"revision\" > 0"

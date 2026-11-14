@@ -153,3 +153,129 @@ export function chartWorkbook(chart: ChartFileView, budget = { rows: 0, bytes: 0
   entries['xl/worksheets/sheet1.xml'] = opening + rows.join('') + closing;
   return zipFiles(Object.entries(entries).map(([name, data]) => ({ name, data: Buffer.from(data) })));
 }
+
+/**
+ * 带合并区与样式的单工作表 xlsx（F-474-7c，设计 §5）：仍是无依赖手写 zip 与 inlineStr（防公式注入）。
+ * 样式 0 是默认格；1 是细边框 #E6E8EB + 居中；2 + i 再加 fills[i] 底色（ARGB）。字体统一 Calibri 11。
+ * 只给 job/graph-export.ts 用；chartWorkbook（任职资格图谱）不变。
+ */
+export interface StyledCell {
+  /** 1 起的行号 / 列号。 */
+  readonly row: number;
+  readonly column: number;
+  readonly text: string;
+  readonly style?: number;
+}
+export interface StyledSheet {
+  readonly name: string;
+  readonly fills: readonly string[];
+  /** 按行给出（行内按列升序）；空文本格只写样式，不写内联字符串。 */
+  readonly rows: readonly (readonly StyledCell[])[];
+  /** 1 起的闭区间。 */
+  readonly merges?: readonly { fromRow: number; fromColumn: number; toRow: number; toColumn: number }[];
+}
+export const BORDERED = 1;
+export const fillStyle = (index: number) => 2 + index;
+
+function columnLetters(index: number): string {
+  let text = '';
+  for (let n = index; n > 0; n = Math.floor((n - 1) / 26)) text = String.fromCharCode(65 + ((n - 1) % 26)) + text;
+  return text;
+}
+const cellRef = (row: number, column: number) => `${columnLetters(column)}${row}`;
+
+/**
+ * 显示文本按 R3-T02 的编码规则：XML 1.0 禁止的 C0 控制字符、孤立代理项、FFFE / FFFF 写成 \uXXXX，
+ * `_xHHHH_` 开头的下划线写成 \u005f，避免读取器把它当 Excel 转义还原；不加 JSON 引号，名称照原样显示。
+ */
+export function sheetText(value: string): string {
+  return value
+    .replace(
+      // eslint-disable-next-line no-control-regex -- 编码 XML 1.0 禁止字符正是本函数的目的
+      /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDFFF]/gu,
+      (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`,
+    )
+    .replace(/_x[0-9a-f]{4}_/gi, (token) => `\\u005f${token.slice(1)}`);
+}
+
+function stylesXml(fills: readonly string[]) {
+  const edge = (side: string) => `<${side} style="thin"><color rgb="FFE6E8EB"/></${side}>`;
+  const center = '<alignment horizontal="center" vertical="center"/>';
+  const xf = (fill: number) =>
+    `<xf numFmtId="0" fontId="0" fillId="${fill}" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"` +
+    `${fill ? ' applyFill="1"' : ''}>${center}</xf>`;
+  return [
+    `<styleSheet xmlns="${NS}">`,
+    '<fonts count="1"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font></fonts>',
+    `<fills count="${2 + fills.length}"><fill><patternFill patternType="none"/></fill>`,
+    '<fill><patternFill patternType="gray125"/></fill>',
+    ...fills.map((rgb) => `<fill><patternFill patternType="solid"><fgColor rgb="${rgb}"/></patternFill></fill>`),
+    '</fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>',
+    `<border>${['left', 'right', 'top', 'bottom'].map(edge).join('')}<diagonal/></border></borders>`,
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>',
+    `<cellXfs count="${2 + fills.length}"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`,
+    xf(0),
+    ...fills.map((_, index) => xf(2 + index)),
+    '</cellXfs></styleSheet>',
+  ].join('');
+}
+
+/** 数据行（不含表头）超过 10000 行整单拒绝，不给半份文件。 */
+export function boundedRows(rows: number) {
+  if (rows > MAX_EXPORT_ROWS) throw exportLimit('EXPORT_ROW_LIMIT', '整批导出最多 10000 行');
+}
+
+/** 行数由调用方先按 boundedRows 校验；这里逐格累计字节、校验单格长度，超限整单 400。 */
+export function styledWorkbook(sheet: StyledSheet): Buffer {
+  const sheetType = 'application/vnd.openxmlformats-officedocument.spreadsheetml';
+  const entries: Record<string, string> = {
+    '[Content_Types].xml': `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+      <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+      <Default Extension="xml" ContentType="application/xml"/>
+      <Override PartName="/xl/workbook.xml" ContentType="${sheetType}.sheet.main+xml"/>
+      <Override PartName="/xl/worksheets/sheet1.xml" ContentType="${sheetType}.worksheet+xml"/>
+      <Override PartName="/xl/styles.xml" ContentType="${sheetType}.styles+xml"/>
+      </Types>`,
+    '_rels/.rels': `<Relationships xmlns="${PKG}"><Relationship Id="rId1" Type="${REL}/officeDocument"
+      Target="xl/workbook.xml"/></Relationships>`,
+    'xl/workbook.xml': `<workbook xmlns="${NS}" xmlns:r="${REL}"><sheets>
+      <sheet name="${xml(sheet.name)}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+    'xl/_rels/workbook.xml.rels': `<Relationships xmlns="${PKG}"><Relationship Id="rId1"
+      Type="${REL}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2"
+      Type="${REL}/styles" Target="styles.xml"/></Relationships>`,
+    'xl/styles.xml': stylesXml(sheet.fills),
+  };
+  let bytes = Object.values(entries).reduce((sum, part) => sum + Buffer.byteLength(part), 0);
+  const parts = [`<worksheet xmlns="${NS}"><sheetData>`];
+  const account = (text: string) => {
+    bytes += Buffer.byteLength(text);
+    boundedSize(bytes);
+    parts.push(text);
+  };
+  sheet.rows.forEach((cells, index) => {
+    account(`<row r="${cells[0]?.row ?? index + 1}">`);
+    for (const cell of cells) {
+      const style = cell.style ? ` s="${cell.style}"` : '';
+      const ref = cellRef(cell.row, cell.column);
+      if (!cell.text) {
+        account(`<c r="${ref}"${style}/>`);
+        continue;
+      }
+      const text = sheetText(cell.text);
+      if (text.length > 32767) throw exportLimit('EXPORT_CELL_LIMIT', '导出单元格超过 Excel 的 32767 字符上限');
+      account(`<c r="${ref}"${style} t="inlineStr"><is><t xml:space="preserve">${xml(text)}</t></is></c>`);
+    }
+    account('</row>');
+  });
+  account('</sheetData>');
+  const merges = sheet.merges ?? [];
+  if (merges.length) {
+    const refs = merges.map((m) => `${cellRef(m.fromRow, m.fromColumn)}:${cellRef(m.toRow, m.toColumn)}`);
+    account(
+      `<mergeCells count="${refs.length}">${refs.map((ref) => `<mergeCell ref="${ref}"/>`).join('')}</mergeCells>`,
+    );
+  }
+  account('</worksheet>');
+  entries['xl/worksheets/sheet1.xml'] = parts.join('');
+  return zipFiles(Object.entries(entries).map(([name, data]) => ({ name, data: Buffer.from(data) })));
+}

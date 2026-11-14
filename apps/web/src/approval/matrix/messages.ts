@@ -1,4 +1,4 @@
-// 流程矩阵（F-326 F2a）页面文案；原站依据见 docs/02_业务建模/30 「### F-326」一、审批矩阵。
+// 流程矩阵（F-326 F2a / F2b）页面文案；原站依据见 docs/02_业务建模/30 「### F-326」一、审批矩阵。
 export const m = {
   title: '流程矩阵',
   active: '启用的',
@@ -27,7 +27,6 @@ export const m = {
   descriptionTooLong: '描述不能超过255个字',
   textInvalid: '包含无法保存的字符（控制字符或不完整的文字），请删除后重试',
   nameSingleLine: '名称不能换行',
-  structureLater: '矩阵的条件列、角色列与数据行在后续版本中维护。',
   confirm: '确定',
   cancel: '取消',
   confirmEnable: (name: string) => `确定启用矩阵「${name}」吗？`,

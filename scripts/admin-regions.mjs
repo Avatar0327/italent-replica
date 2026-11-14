@@ -1,6 +1,8 @@
 /** F-474-8b §3.1 / §6，DEC-897：离线解析存档副本，按父级优先切片，原文件不入库。
  * node scripts/admin-regions.mjs generate|check <来源文件> <片号> <迁移.sql>
- * generate 追加或替换本工具的播种块；check 只校验，保留迁移中的建表、注释与授权 SQL。
+ * node scripts/admin-regions.mjs check-files <首片迁移.sql> <第二片迁移.sql> …
+ * generate 追加或替换本工具的播种块；check 只校验，保留迁移中的建表、注释与授权 SQL；
+ * check-files 不需要来源文件，按固定摘要整体校验各迁移的播种块。
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -66,6 +68,35 @@ export function verifySource(bytes) {
   return records;
 }
 
+function extractBlock(text) {
+  const blocks = text.match(blockPattern) ?? [];
+  if (blocks.length !== 1) throw new Error(`迁移须恰有一个播种块，实际 ${blocks.length} 个`);
+  return blocks[0];
+}
+
+/** 按片号顺序校验各迁移的播种块：每片对得上固定摘要与条数，合起来无重叠、父级在先、总数与分级吻合。 */
+export function verifySlices(blocks, plan = source) {
+  if (blocks.length !== plan.slices.length) throw new Error(`片数与分片计划不符：${blocks.length}`);
+  const seen = new Map();
+  blocks.forEach((block, index) => {
+    const want = plan.slices[index];
+    const label = `第 ${index + 1} 片`;
+    if (digest(block) !== want.sha256) throw new Error(`${label}播种块与固定分片摘要不符（SHA-256）`);
+    const rows = [...block.matchAll(/^\('(\d{6})', (?:NULL|'(\d{6})'), (\d),/gm)];
+    if (rows.length !== want.count) throw new Error(`${label}条数与固定摘要不符：${rows.length}`);
+    for (const [, code, parentCode, level] of rows) {
+      if (seen.has(code)) throw new Error(`${label}区划代码重复，与已播种记录重叠 ${code}`);
+      if (Number(level) > 1 && !(seen.get(parentCode) < Number(level)))
+        throw new Error(`${label}父级缺失或尚未播种 ${code}`);
+      seen.set(code, Number(level));
+    }
+  });
+  const levels = [1, 2, 3].map((level) => [...seen.values()].filter((value) => value === level).length);
+  if (seen.size !== plan.total) throw new Error(`合计总数与固定摘要不符：${seen.size}`);
+  if (JSON.stringify(levels) !== JSON.stringify(plan.levels)) throw new Error('合计分级数与固定摘要不符');
+  return { total: seen.size, levels, parts: blocks.length };
+}
+
 export function seedBlock(records, part, size = source.sliceSize) {
   if (!Number.isInteger(size) || size < 1 || size > 2000) throw new Error('分片上限为 2000 条');
   if (!Number.isInteger(part) || part < 1 || part > Math.ceil(records.length / size)) {
@@ -78,8 +109,14 @@ export function seedBlock(records, part, size = source.sliceSize) {
 
 function main() {
   const [mode, input, partText, output] = process.argv.slice(2);
+  if (mode === 'check-files') {
+    const blocks = process.argv.slice(3).map((file) => extractBlock(readFileSync(file, 'utf8')));
+    return console.log(JSON.stringify({ version: source.version, ...verifySlices(blocks) }));
+  }
   if (!['generate', 'check'].includes(mode) || !input || !partText || !output || process.argv.length !== 6) {
-    throw new Error('用法：node scripts/admin-regions.mjs generate|check <来源文件> <片号> <迁移.sql>');
+    throw new Error(
+      '用法：node scripts/admin-regions.mjs generate|check <来源文件> <片号> <迁移.sql>，或 check-files <迁移.sql>…',
+    );
   }
   const records = verifySource(readFileSync(input));
   const part = Number(partText);

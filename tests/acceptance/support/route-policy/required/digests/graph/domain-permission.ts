@@ -75,6 +75,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_DETAIL_OBJECT_CODE',
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_FORM_FIELDS',
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
+    '#INSURANCE_ADJUST_FIELDS',
     '#assignment',
     '#button',
     '#crud',

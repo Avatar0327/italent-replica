@@ -8340,6 +8340,36 @@
         ]
       }
     },
+    "GET /api/tenant/job/graph/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "job",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope",
+          "scope.all"
+        ]
+      }
+    },
     "GET /api/tenant/job/graph/issues": {
       "edge": {
         "anonymous": {
@@ -8357,6 +8387,36 @@
       },
       "module": "job",
       "primitives": {
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope",
+          "scope.all"
+        ]
+      }
+    },
+    "GET /api/tenant/job/graph/issues/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "job",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
         "object": [
           "object.* 动作"
         ],
