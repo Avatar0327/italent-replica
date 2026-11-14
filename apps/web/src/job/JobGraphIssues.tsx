@@ -1,9 +1,17 @@
-import { App, Button, Input, Select, Space } from 'antd';
-import { useState } from 'react';
-import { ListPage, tenantDate, useApiClient, useSession, type ListView } from '../foundation/index.js';
+import { App, Button } from 'antd';
+import { useEffect, useState } from 'react';
+import { ListPage, tenantDate, useSession, type ListView } from '../foundation/index.js';
 import { useRemote, type PageAccess } from '../org/page-support.js';
 import { JobEditor } from './JobEditor.js';
-import { GRAPH_PATH, issueQuery, reasonText, type GraphIssue, type GraphIssuePage } from './graph-model.js';
+import {
+  GRAPH_PATH,
+  ISSUE_PAGE_SIZES,
+  issueQuery,
+  reasonText,
+  type GraphIssue,
+  type GraphIssuePage,
+} from './graph-model.js';
+import { GraphIssueFilters, type IssueFilters } from './GraphIssueFilters.js';
 import type { JobKind, JobRow } from './page-model.js';
 import { graphText as t, pageText as m } from './messages.js';
 
@@ -14,31 +22,12 @@ const sources: Record<GraphIssue['kind'], JobKind> = { level: 'levels', post: 'p
  * “编辑”按源对象（职级 / 职务）的编辑权显示，打开职务体系同一个编辑弹窗。
  */
 export function JobGraphIssues({ view, accessOf }: { view: ListView; accessOf: (kind: JobKind) => PageAccess }) {
-  const api = useApiClient();
   const session = useSession();
-  const { message } = App.useApp();
-  const [page, setPage] = useState({ page: 1, pageSize: 15 });
-  const [kind, setKind] = useState('');
-  const [name, setName] = useState('');
-  const [editor, setEditor] = useState<{ kind: JobKind; original: JobRow; today: string }>();
-  const remote = useRemote<GraphIssuePage>(`${GRAPH_PATH}/issues?${issueQuery(page, kind, name)}`);
-  const open = async (issue: GraphIssue) => {
-    const source = sources[issue.kind];
-    const today = tenantDate(new Date(), session.timezone);
-    try {
-      const original = await api.request<JobRow>(
-        `/api/tenant/job/${source}/${encodeURIComponent(issue.objectId)}?asOf=${today}`,
-      );
-      setEditor({ kind: source, original, today });
-    } catch {
-      void message.error(t.editFailed);
-    }
-  };
-  const columns = issueColumns(accessOf, (issue) => void open(issue));
-  const filter = (apply: () => void) => {
-    apply();
-    setPage({ ...page, page: 1 });
-  };
+  const [page, setPage] = useState<{ page: number; pageSize: number }>({ page: 1, pageSize: ISSUE_PAGE_SIZES[0] });
+  const [filters, setFilters] = useState<IssueFilters>({ kind: '', name: '' });
+  const remote = useRemote<GraphIssuePage>(`${GRAPH_PATH}/issues?${issueQuery(page, filters.kind, filters.name)}`);
+  const editing = useEditTarget();
+  const columns = issueColumns(accessOf, (issue) => editing.open(issue, tenantDate(new Date(), session.timezone)));
   return (
     <>
       <ListPage<GraphIssue>
@@ -47,45 +36,62 @@ export function JobGraphIssues({ view, accessOf }: { view: ListView; accessOf: (
         rowKey={(issue) => `${issue.kind}:${issue.objectId}`}
         page={page}
         onPageChange={setPage}
+        pageSizes={ISSUE_PAGE_SIZES}
         data={remote.data ?? { items: [] }}
         loading={remote.loading}
         error={remote.error}
         retry={remote.refresh}
         filters={
-          <Space wrap>
-            <Select
-              aria-label={t.kind}
-              value={kind}
-              onChange={(value) => filter(() => setKind(value))}
-              options={[
-                { value: '', label: t.allKinds },
-                { value: 'level', label: t.kinds.level },
-                { value: 'post', label: t.kinds.post },
-              ]}
-            />
-            <Input.Search
-              aria-label={t.name}
-              placeholder={t.name}
-              allowClear
-              onSearch={(value) => filter(() => setName(value))}
-            />
-          </Space>
+          <GraphIssueFilters
+            value={filters}
+            onApply={(next) => {
+              setFilters(next);
+              setPage({ ...page, page: 1 });
+            }}
+          />
         }
         columns={columns}
       />
-      {editor && (
+      {editing.editor && (
         <JobEditor
-          kind={editor.kind}
-          original={editor.original}
-          date={editor.today}
-          today={editor.today}
-          access={accessOf(editor.kind)}
-          onClose={() => setEditor(undefined)}
-          onSaved={() => void message.success(m.saved)}
+          kind={editing.editor.kind}
+          original={editing.editor.original}
+          date={editing.editor.today}
+          today={editing.editor.today}
+          access={accessOf(editing.editor.kind)}
+          onClose={editing.close}
+          onSaved={editing.saved}
         />
       )}
     </>
   );
+}
+
+/**
+ * 编辑读取只认最近一次点击：读取走 useRemote，换目标、关闭、卸载都会让旧请求失效，
+ * 迟到的响应不会替换正在填写的表单。
+ */
+function useEditTarget() {
+  const { message } = App.useApp();
+  const [target, setTarget] = useState<{ kind: JobKind; id: string; today: string }>();
+  const remote = useRemote<JobRow>(
+    target ? `/api/tenant/job/${target.kind}/${encodeURIComponent(target.id)}?asOf=${target.today}` : null,
+  );
+  useEffect(() => {
+    if (!remote.error) return;
+    void message.error(t.editFailed);
+    setTarget(undefined);
+  }, [remote.error, message]);
+  return {
+    editor: target && remote.data ? { kind: target.kind, original: remote.data, today: target.today } : undefined,
+    open: (issue: GraphIssue, today: string) => {
+      setTarget({ kind: sources[issue.kind], id: issue.objectId, today });
+      // 每次点击都重新读取：同一条记录保存后再开，不沿用上次读到的旧版本。
+      remote.refresh();
+    },
+    close: () => setTarget(undefined),
+    saved: () => void message.success(m.saved),
+  };
 }
 
 function issueColumns(accessOf: (kind: JobKind) => PageAccess, open: (issue: GraphIssue) => void) {

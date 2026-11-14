@@ -53,6 +53,9 @@ export function reasonText(reasons: readonly JobGraphReason[]) {
   return reasons.map((reason) => texts[reason.code]?.(reason.params) ?? t.unknownReason).join(t.reasonSeparator);
 }
 
+/** 待确认记录每页条数：接口 pageSize 上限 100（graph-routes.ts issueQuery），默认 15（设计 §5）。 */
+export const ISSUE_PAGE_SIZES = [15, 20, 50, 100] as const;
+
 export function issueQuery(page: { page: number; pageSize: number }, kind: string, name: string) {
   const query = new URLSearchParams({ page: String(page.page), pageSize: String(page.pageSize) });
   if (kind) query.set('kind', kind);

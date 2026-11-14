@@ -32,7 +32,10 @@ interface ListPageProps<T extends object> {
   error?: unknown;
   retry?: () => void;
   selection?: { keys: Key[]; onChange(keys: Key[], rows: T[]): void; actions: ReactNode };
+  /** 每页条数选项；接口上限低于默认选项时由页面按接口范围传入，不传沿用默认。 */
+  pageSizes?: readonly number[];
 }
+const defaultPageSizes = [15, 20, 50, 100, 200] as const;
 export function ListPage<T extends object>(props: ListPageProps<T>) {
   const { title, data, columns, rowKey, page, onPageChange, filters, actions, loading, error, retry, selection } =
     props;
@@ -85,7 +88,13 @@ export function ListPage<T extends object>(props: ListPageProps<T>) {
               rowSelection={selection ? { selectedRowKeys: selection.keys, onChange: selection.onChange } : undefined}
             />
             <div className="page-toolbar">
-              <ListPagination data={data} page={page} changePage={changePage} loading={loading} />
+              <ListPagination
+                data={data}
+                page={page}
+                changePage={changePage}
+                loading={loading}
+                pageSizes={props.pageSizes ?? defaultPageSizes}
+              />
             </div>
           </>
         )}
@@ -146,11 +155,13 @@ function ListPagination({
   page,
   changePage,
   loading,
+  pageSizes,
 }: {
   data: Pick<PageResult<unknown>, 'total' | 'hasMore' | 'items'>;
   page: PageRequest;
   changePage(page: PageRequest): void;
   loading?: boolean;
+  pageSizes: readonly number[];
 }) {
   // 现有后端常只返回 items/page/pageSize：满页表示可能还有下一页，不据此捏造总数。
   const hasNext = data.hasMore ?? data.items.length >= page.pageSize;
@@ -167,7 +178,7 @@ function ListPagination({
               labelRender: ({ value }) => `${value}${ui.perPage}`,
               optionRender: ({ value }) => `${value}${ui.perPage}`,
             }}
-            pageSizeOptions={[15, 20, 50, 100, 200]}
+            pageSizeOptions={[...pageSizes]}
             onChange={(next, size) => changePage({ page: size === page.pageSize ? next : 1, pageSize: size })}
           />
         </>
