@@ -63,7 +63,12 @@ export function JobWorkspace() {
         <DecisionNote id="job" />
         {kind === 'graph' && <JobGraph key={kind} access={graph} view={view} />}
         {kind === 'graph-issues' && (
-          <JobGraphIssues key={kind} view={view} accessOf={(kind) => permissions.access(jobObjects[kind])} />
+          <JobGraphIssues
+            key={kind}
+            view={view}
+            accessOf={(kind) => permissions.access(jobObjects[kind])}
+            exportable={graph.can('export', 'list')}
+          />
         )}
         {!graphView && (
           <JobCatalog

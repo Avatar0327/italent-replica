@@ -936,14 +936,19 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/job/employment-port.ts': {
     employmentJobPersonnel: '0e8c771a5bff',
   },
+  'apps/api/src/modules/job/graph-export.ts': {
+    'route:GET /api/tenant/job/graph/export': '136c4ac11f20',
+    'route:GET /api/tenant/job/graph/issues/export': '525cce8995d4',
+  },
   'apps/api/src/modules/job/graph-routes.ts': {
     'route:GET /api/tenant/job/graph': 'e8bafb1f0777',
-    'route:GET /api/tenant/job/graph/issues': 'f9f135eade51',
+    'route:GET /api/tenant/job/graph/issues': 'e7dab6da070f',
     'route:POST /api/tenant/job/graph/rebuild': 'd36a453d77ff',
   },
   'apps/api/src/modules/job/graph-sources.ts': {
     GRAPH_SOURCES: '6b4b07998e45',
     requireGraphAccess: '4c3c969fb6f6',
+    requireGraphExport: '42ab68ed5d8c',
     requireGraphRebuild: '4ef4c695447e',
     sourcesAllowed: '23b930a12d4c',
   },
@@ -1191,6 +1196,9 @@ export const DIGESTS: Digests = {
     requireSelf: '50f3545b50d7',
     resubmitChangeInTransaction: '9cd09bdbc1fa',
   },
+  'apps/api/src/modules/personnel/custom-field-routes.ts': {
+    'route:GET /api/tenant/personnel/custom-field-definitions': 'e1e6f951a36d',
+  },
   'apps/api/src/modules/personnel/lists.ts': {
     listOptions: 'b46678e0057f',
     listSubsets: '786ed8e4a4a7',
@@ -1209,7 +1217,7 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/personnel/employees/:id': 'd5ccb9ca1aeb',
     'route:GET /api/tenant/personnel/employees/:id/history': '91fa9765d77c',
     'route:GET /api/tenant/personnel/employees/:id/tenure': '5cd53c71c374',
-    'route:PATCH /api/tenant/personnel/employees/:id': 'c2cd4af01010',
+    'route:PATCH /api/tenant/personnel/employees/:id': 'c869de2ed539',
     'route:POST /api/tenant/personnel/employees/:id/attachments': 'a58c9e435628',
   },
   'apps/api/src/modules/personnel/subset-policy.ts': {
@@ -2679,11 +2687,14 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/idp/template-service.ts#requireCopyViewable': '552c270650be',
   'apps/api/src/modules/job/context.ts#readContext': '9d063f8ea5e6',
   'apps/api/src/modules/job/employment-port.ts#employmentJobPersonnel': '6a624377b0cf',
+  'apps/api/src/modules/job/graph-export.ts#route:GET /api/tenant/job/graph/export': '3b81a2a2e37a',
+  'apps/api/src/modules/job/graph-export.ts#route:GET /api/tenant/job/graph/issues/export': 'b1368fe0b498',
   'apps/api/src/modules/job/graph-routes.ts#route:GET /api/tenant/job/graph': 'fdba8a8163a1',
-  'apps/api/src/modules/job/graph-routes.ts#route:GET /api/tenant/job/graph/issues': 'fb7ad4a07606',
+  'apps/api/src/modules/job/graph-routes.ts#route:GET /api/tenant/job/graph/issues': 'c038fc6cc426',
   'apps/api/src/modules/job/graph-routes.ts#route:POST /api/tenant/job/graph/rebuild': '9285e2380c6c',
   'apps/api/src/modules/job/graph-sources.ts#GRAPH_SOURCES': 'a367632c4679',
   'apps/api/src/modules/job/graph-sources.ts#requireGraphAccess': '075ba76ebcdb',
+  'apps/api/src/modules/job/graph-sources.ts#requireGraphExport': 'a39231066c44',
   'apps/api/src/modules/job/graph-sources.ts#requireGraphRebuild': 'a39231066c44',
   'apps/api/src/modules/job/graph-sources.ts#sourcesAllowed': '44a0f1aacec5',
   'apps/api/src/modules/job/resource-set-candidates.ts#registerResourceSetCandidates': 'f6448e4c525b',
@@ -2889,6 +2900,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/personnel/change-requests.ts#createChange': '117ca6e13d2d',
   'apps/api/src/modules/personnel/change-requests.ts#requireSelf': '52740292ae80',
   'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction': 'bb506cf15a3b',
+  'apps/api/src/modules/personnel/custom-field-routes.ts#route:GET /api/tenant/personnel/custom-field-definitions':
+    '86ea8ffffacc',
   'apps/api/src/modules/personnel/lists.ts#listOptions': '974e14f1d59d',
   'apps/api/src/modules/personnel/lists.ts#listSubsets': 'b0457a655ccb',
   'apps/api/src/modules/personnel/order-code-routes.ts#registerOrderCodeRoutes': '8b6b5b3fbb47',
@@ -2902,7 +2915,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/personnel/routes.ts#route:GET /api/tenant/personnel/employees/:id': 'f1a11815f32c',
   'apps/api/src/modules/personnel/routes.ts#route:GET /api/tenant/personnel/employees/:id/history': '113d1cb4db2b',
   'apps/api/src/modules/personnel/routes.ts#route:GET /api/tenant/personnel/employees/:id/tenure': 'ba994d6e2c21',
-  'apps/api/src/modules/personnel/routes.ts#route:PATCH /api/tenant/personnel/employees/:id': '6ba529beed40',
+  'apps/api/src/modules/personnel/routes.ts#route:PATCH /api/tenant/personnel/employees/:id': '9a181ede059d',
   'apps/api/src/modules/personnel/routes.ts#route:POST /api/tenant/personnel/employees/:id/attachments': '0a1b85a8a097',
   'apps/api/src/modules/personnel/subset-policy.ts#runSubsetRequestPolicy': '669777e317b8',
   'apps/api/src/modules/personnel/subset-policy.ts#runSubsetSavePolicy': '669777e317b8',

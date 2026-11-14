@@ -38,7 +38,7 @@ export interface MatrixReferences {
   total: number;
 }
 
-export const matrixPath = (id: string, action?: 'enable' | 'disable' | 'references') =>
+export const matrixPath = (id: string, action?: 'enable' | 'disable' | 'references' | 'structure') =>
   `${MATRICES}/${encodeURIComponent(id)}${action ? `/${action}` : ''}`;
 export function listPath(view: View, q: string, offset: number) {
   const query = new URLSearchParams({ status: view, offset: String(offset), limit: String(PAGE_SIZE) });

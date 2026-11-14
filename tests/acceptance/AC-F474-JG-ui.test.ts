@@ -3,9 +3,10 @@
 /**
  * F-474-7b-fe 职务职级图谱前端（设计 docs/08_设计/F-474-7a_职务职级图谱_设计.md §5，DEC-896 U1～U8 = A）。
  * 快照 / 待确认记录夹具用后端同一纯函数现算，外形照 apps/api/src/modules/job/graph-routes.ts。
- * 导出下载（JG-08、JG-09 导出）属 7c，本文件只断言占位按钮。
+ * 导出下载（F-474-7c，JG-08、JG-09 导出）：下载响应外形照 apps/api/src/modules/job/graph-export.ts
+ * （xlsx 内容类型 + filename* UTF-8 文件名；错误 → 统一错误信封）。
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GRAPH,
   GRAPH_CODE,
@@ -37,6 +38,37 @@ async function rebuild() {
   await click(button('确认'));
 }
 const matrix = () => ui.host.querySelector<HTMLTableElement>('table.job-graph-matrix');
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+/** 与后端同形的下载响应：ASCII 兜底名 + RFC 5987 的 UTF-8 文件名。 */
+const xlsxFile = (name: string) =>
+  new Response(new Uint8Array([0x50, 0x4b, 0x05, 0x06]), {
+    headers: {
+      'content-type': XLSX,
+      'cache-control': 'no-store',
+      'content-disposition': `attachment; filename="export.xlsx"; filename*=UTF-8''${encodeURIComponent(name)}`,
+    },
+  });
+/** 拦下浏览器下载：记下保存的文件名与 Blob，不真的导航。 */
+function captureDownloads() {
+  const saved: { name: string; blob: Blob }[] = [];
+  const blobs = new Map<string, Blob>();
+  let seq = 0;
+  vi.stubGlobal(
+    'URL',
+    Object.assign(class extends URL {}, {
+      createObjectURL: (blob: Blob) => {
+        const url = `blob:synthetic-${++seq}`;
+        blobs.set(url, blob);
+        return url;
+      },
+      revokeObjectURL: () => {},
+    }),
+  );
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+    if (this.download) saved.push({ name: this.download, blob: blobs.get(this.getAttribute('href') ?? '')! });
+  });
+  return { saved, restore: () => click.mockRestore() };
+}
 const cell = (label: string) =>
   Array.from(matrix()?.querySelectorAll<HTMLTableCellElement>('th, td') ?? []).find(
     (item) => item.textContent === label,
@@ -272,12 +304,110 @@ describe('AC-F474-JG-06 权限 fail-closed（前端部分）', () => {
     expect(matrix()).toBeNull();
     expect(button('重新生成', ui.host)).toBeUndefined();
   });
+});
 
-  it('导出属 7c：本期是禁用占位，提示“导出功能准备中”', async () => {
+describe('AC-F474-JG-08 图谱导出（前端）', () => {
+  const EXPORT = `${GRAPH}/export`;
+  let downloads: ReturnType<typeof captureDownloads>;
+  beforeEach(() => {
+    downloads = captureDownloads();
+  });
+  afterEach(() => downloads.restore());
+  const exports = () => ui.calls.filter((call) => call.url.pathname === EXPORT);
+
+  it('点“导出”直接下载：带当前租户头、不发写请求，文件名取服务端 filename*，提示“导出成功”', async () => {
     serveGraph(snapshot(3));
+    ui.route(`GET ${EXPORT}`, () => xlsxFile('职务职级图谱_20261112103005.xlsx'));
     await ui.render('/job?kind=graph');
-    expect(ui.host.querySelector('h1')?.getAttribute('aria-label')).toBe('职务职级图谱');
+    expect(button('导出', ui.host)?.disabled).toBe(false);
+    await click(button('导出', ui.host));
+    await settle(60);
+    expect(exports()).toHaveLength(1);
+    expect(exports()[0]!.headers.get('x-tenant-id')).toBe(session.tenantId);
+    expect(posts()).toEqual([]);
+    expect(downloads.saved.map((file) => file.name)).toEqual(['职务职级图谱_20261112103005.xlsx']);
+    expect(downloads.saved[0]!.blob.size).toBe(4);
+    expect(text()).toContain('导出成功');
+    expect(text()).not.toContain('导出功能准备中');
+  });
+
+  it('导出进行中：导出与重新生成都不可点，提示“正在导出图谱，请导出完成后再进行此操作”；完成后恢复', async () => {
+    serveGraph(snapshot(3));
+    let finish: () => void = () => {};
+    ui.route(
+      `GET ${EXPORT}`,
+      () =>
+        new Promise<Response>((done) => {
+          finish = () => done(xlsxFile('职务职级图谱_20261112103005.xlsx'));
+        }),
+    );
+    await ui.render('/job?kind=graph');
+    await click(button('导出', ui.host));
+    expect(text()).toContain('正在导出图谱，请导出完成后再进行此操作');
     expect(button('导出', ui.host)?.disabled).toBe(true);
+    expect(button('重新生成', ui.host)?.disabled).toBe(true);
+    await click(button('导出', ui.host));
+    expect(exports()).toHaveLength(1);
+    await act(async () => finish());
+    await settle(60);
+    expect(text()).not.toContain('正在导出图谱，请导出完成后再进行此操作');
+    expect(button('导出', ui.host)?.disabled).toBe(false);
+    expect(button('重新生成', ui.host)?.disabled).toBe(false);
+    expect(downloads.saved).toHaveLength(1);
+  });
+
+  it('先打开“重新生成”气泡再启动导出：导出期间气泡里的“确认”不能触发重新生成；完成后也不自行弹回', async () => {
+    serveGraph(snapshot(3));
+    let finish: () => void = () => {};
+    ui.route(
+      `GET ${EXPORT}`,
+      () =>
+        new Promise<Response>((done) => {
+          finish = () => done(xlsxFile('职务职级图谱_20261112103005.xlsx'));
+        }),
+    );
+    ui.route(`POST ${GRAPH}/rebuild`, () => Response.json(snapshot(4)));
+    await ui.render('/job?kind=graph');
+    await click(button('重新生成', ui.host));
+    expect(text()).toContain('确定执行此操作？');
+    // 气泡开着时用键盘启动导出（不经过点外部关闭气泡）
+    await click(button('导出', ui.host));
+    expect(button('导出', ui.host)?.disabled).toBe(true);
+    // jsdom 不跑完离场动画：收起的气泡停在 leave 状态（pointer-events: none），不算“开着”
+    const shown = () => document.querySelector('.ant-popover:not(.ant-popover-hidden):not([class*="-leave"])');
+    expect(shown()).toBeNull();
+    const confirm = button('确认');
+    if (confirm) await click(confirm);
+    expect(posts()).toEqual([]);
+    await act(async () => finish());
+    await settle(60);
+    expect(posts()).toEqual([]);
+    expect(shown()).toBeNull();
+  });
+
+  it('无快照 409 GRAPH_NOT_GENERATED 提示先重新生成；其余拒绝或非 xlsx 响应一律“导出失败”，不落盘', async () => {
+    const cases: [() => Response, string][] = [
+      [() => failure(409, 'CONFLICT', '尚未生成图谱', { reason: 'GRAPH_NOT_GENERATED' }), '请先重新生成图谱'],
+      [() => failure(403, 'FORBIDDEN', '无权访问职务职级图谱'), '导出失败'],
+      [() => failure(400, 'VALIDATION_FAILED', '超限', { reason: 'EXPORT_ROW_LIMIT' }), '导出失败'],
+      [() => failure(500, 'INTERNAL', 'boom'), '导出失败'],
+      [() => Response.json({ snapshot: null }), '导出失败'],
+    ];
+    for (const [index, [respond, message]] of cases.entries()) {
+      await ui.close();
+      ui = graphHarness();
+      downloads.restore();
+      downloads = captureDownloads();
+      serveGraph(snapshot(3));
+      ui.route(`GET ${EXPORT}`, respond);
+      await ui.render('/job?kind=graph');
+      await click(button('导出', ui.host));
+      await settle(60);
+      expect(text(), `case ${index}`).toContain(message);
+      expect(text(), `case ${index}`).not.toContain('导出成功');
+      expect(downloads.saved, `case ${index}`).toEqual([]);
+      expect(button('导出', ui.host)?.disabled, `case ${index}`).toBe(false);
+    }
   });
 });
 
@@ -312,7 +442,7 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     });
   const rows = () =>
     Array.from(ui.host.querySelectorAll('tbody tr.ant-table-row')).map((row) =>
-      Array.from(row.querySelectorAll('td')).map((item) => item.textContent),
+      Array.from(row.querySelectorAll('td:not(.ant-table-selection-column)')).map((item) => item.textContent),
     );
   const issueCalls = () => ui.calls.filter((call) => call.url.pathname === ISSUES);
 
@@ -320,12 +450,9 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     serveIssues();
     await ui.render('/job?kind=graph-issues');
     expect(ui.host.querySelector('h1')?.getAttribute('aria-label')).toBe('待确认的职务职级记录');
-    expect(Array.from(ui.host.querySelectorAll('thead th')).map((item) => item.textContent)).toEqual([
-      '类型',
-      '名称',
-      '无法生成图谱原因',
-      '操作',
-    ]);
+    // 勾选列（F-474-7c 导出已选）无表头文案，不计入列序比对
+    const heads = ui.host.querySelectorAll('thead th:not(.ant-table-selection-column)');
+    expect(Array.from(heads).map((item) => item.textContent)).toEqual(['类型', '名称', '无法生成图谱原因', '操作']);
     expect(rows().map((row) => row.slice(0, 3))).toEqual([
       ['职级', '合成T1', '与同一类别的职级【合成T2】重叠'],
       ['职级', '合成T2', '与同一类别的职级【合成T1】重叠'],
@@ -480,7 +607,7 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     await ui.render('/job?kind=graph-issues');
     const rowOf = (name: string) =>
       Array.from(ui.host.querySelectorAll('tbody tr.ant-table-row')).find(
-        (row) => row.querySelectorAll('td')[1]?.textContent === name,
+        (row) => row.querySelectorAll('td:not(.ant-table-selection-column)')[1]?.textContent === name,
       )!;
     await click(button('编辑', rowOf('合成工程师')));
     await click(button('编辑', rowOf('合成缺项职务')));
@@ -514,7 +641,7 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     await ui.render('/job?kind=graph-issues');
     const rowOf = (name: string) =>
       Array.from(ui.host.querySelectorAll('tbody tr.ant-table-row')).find(
-        (row) => row.querySelectorAll('td')[1]?.textContent === name,
+        (row) => row.querySelectorAll('td:not(.ant-table-selection-column)')[1]?.textContent === name,
       )!;
     await click(button('编辑', rowOf('合成工程师')));
     await click(button('编辑', rowOf('合成缺项职务')));
@@ -546,10 +673,76 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     expect(inputs.some((input) => input.value === '合成缺项职务')).toBe(true);
   });
 
-  it('导出属 7c：沿用列表的禁用占位', async () => {
-    serveIssues();
-    await ui.render('/job?kind=graph-issues');
-    expect(ui.host.querySelector('h1')?.getAttribute('aria-label')).toBe('待确认的职务职级记录');
-    expect(button('导出', ui.host)?.disabled).toBe(true);
+  describe('导出（F-474-7c）', () => {
+    const EXPORT = `${ISSUES}/export`;
+    let downloads: ReturnType<typeof captureDownloads>;
+    beforeEach(() => {
+      downloads = captureDownloads();
+    });
+    afterEach(() => downloads.restore());
+    const exports = () => ui.calls.filter((call) => call.url.pathname === EXPORT);
+    const menu = () =>
+      Array.from(document.querySelectorAll<HTMLElement>('.ant-dropdown-menu-item')).map((item) => ({
+        text: item.textContent,
+        disabled: item.classList.contains('ant-dropdown-menu-item-disabled'),
+        item,
+      }));
+    // 只取数据行：antd 的量宽行（ant-table-measure-row）里也渲染一份表头勾选框
+    const checkboxes = () =>
+      Array.from(ui.host.querySelectorAll<HTMLInputElement>('tbody tr.ant-table-row input[type="checkbox"]'));
+
+    it('下拉“导出已选（n 条）/ 导出全部（N 条）”：已选按对象 ID，全部带当前筛选；提示“导出成功”', async () => {
+      const items = issueItems(allReasonsInput());
+      serveIssues(items);
+      ui.route(`GET ${EXPORT}`, () => xlsxFile('待确认的职务职级记录_20261112103005.xlsx'));
+      await ui.render('/job?kind=graph-issues');
+      expect(button('导出', ui.host)?.disabled).toBe(false);
+      await click(button('导出', ui.host));
+      expect(menu().map(({ text, disabled }) => [text, disabled])).toEqual([
+        ['导出已选（0 条）', true],
+        [`导出全部（${items.length} 条）`, false],
+      ]);
+      await click(checkboxes()[1]);
+      await click(checkboxes()[3]);
+      await click(button('导出', ui.host));
+      expect(menu()[0]!.text).toBe('导出已选（2 条）');
+      await click(menu()[0]!.item);
+      await settle(60);
+      expect(Object.fromEntries(exports()[0]!.url.searchParams)).toEqual({
+        ids: [items[1]!.objectId, items[3]!.objectId].join(','),
+      });
+      expect(exports()[0]!.headers.get('x-tenant-id')).toBe(session.tenantId);
+      expect(downloads.saved.map((file) => file.name)).toEqual(['待确认的职务职级记录_20261112103005.xlsx']);
+      expect(text()).toContain('导出成功');
+      await click(button('导出', ui.host));
+      await click(menu()[1]!.item);
+      await settle(60);
+      expect(Object.fromEntries(exports()[1]!.url.searchParams)).toEqual({ all: 'true' });
+      expect(downloads.saved).toHaveLength(2);
+    });
+
+    it('导出全部沿用已应用的类型 / 名称筛选；拒绝时提示“导出失败”、不落盘', async () => {
+      serveIssues();
+      ui.route(`GET ${EXPORT}`, () => failure(403, 'FORBIDDEN', '无权访问职务职级图谱'));
+      await ui.render('/job?kind=graph-issues');
+      await click(button('高级筛选', ui.host));
+      await pick(drawer()!.querySelector('[aria-label="类型"]')!.closest('.ant-select')!, '职务');
+      await type(drawer()!.querySelector<HTMLInputElement>('input[aria-label="名称"]')!, '合成父');
+      await click(button('确定', drawer()!));
+      await click(button('导出', ui.host));
+      expect(menu()[1]!.text).toBe('导出全部（1 条）');
+      await click(menu()[1]!.item);
+      await settle(60);
+      expect(Object.fromEntries(exports()[0]!.url.searchParams)).toEqual({ all: 'true', kind: 'post', name: '合成父' });
+      expect(text()).toContain('导出失败');
+      expect(downloads.saved).toEqual([]);
+    });
+
+    it('无导出按钮权：不出“导出”（不再显示禁用占位）', async () => {
+      serveIssues();
+      await ui.render('/job?kind=graph-issues', { graphButtons: ['rebuild'] });
+      expect(ui.host.querySelector('h1')?.getAttribute('aria-label')).toBe('待确认的职务职级记录');
+      expect(button('导出', ui.host)).toBeUndefined();
+    });
   });
 });

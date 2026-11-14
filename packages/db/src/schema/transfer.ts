@@ -14,12 +14,14 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { contractRecords } from './contracts.js';
+import { contractCompanies, contractRecords } from './contracts.js';
 import { esignTemplates } from './esign.js';
 import { employmentBusinessObjects, employmentEmployees } from './employment.js';
 import { orgObjects } from './org.js';
 import { tenants, users } from './tenancy.js';
 import { establishmentObjects } from './establishment.js';
+import { adminRegions } from './admin-regions.js';
+import { socialInsurancePlans } from './social-insurance.js';
 
 const tenant = () =>
   uuid('tenant_id')
@@ -306,6 +308,10 @@ export const transferLinkageVersions = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::uuid[]`),
+    /** F-474-8c-2a：本调动填写的社保调整值（设计 F-474-8b §3.4），null = 未填写 / 沿用档案前驱；不存“变更前”。 */
+    adjustedInsuranceRegionCode: text('adjusted_insurance_region_code').references(() => adminRegions.code),
+    adjustedInsurancePlanId: uuid('adjusted_insurance_plan_id'),
+    adjustedInsuranceCompanyId: uuid('adjusted_insurance_company_id'),
     commandId: text('command_id').notNull(),
     createdAt: utc(),
   },
@@ -330,6 +336,16 @@ export const transferLinkageVersions = pgTable(
       name: 'transfer_linkage_versions_handover_fk',
       columns: [t.tenantId, t.handoverPersonId],
       foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
+    foreignKey({
+      name: 'transfer_linkage_versions_insurance_plan_fk',
+      columns: [t.tenantId, t.adjustedInsurancePlanId],
+      foreignColumns: [socialInsurancePlans.tenantId, socialInsurancePlans.id],
+    }),
+    foreignKey({
+      name: 'transfer_linkage_versions_insurance_company_fk',
+      columns: [t.tenantId, t.adjustedInsuranceCompanyId],
+      foreignColumns: [contractCompanies.tenantId, contractCompanies.id],
     }),
     check('transfer_linkage_versions_number_positive', sql`${t.versionNo} > 0`),
     check(

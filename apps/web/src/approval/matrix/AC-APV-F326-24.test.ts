@@ -499,7 +499,8 @@ describe('AC-APV-F326-24 第 1 轮审查回归', () => {
     await click('重新加载', document.querySelector('.matrix-head')!);
     expect(headText()).toContain('NEW_FAILED');
     expect(headText()).toContain('读详情失败新矩阵');
-    expect(backend.reads.filter((url) => url.pathname === `${BASE}/${created}`)).toHaveLength(2);
+    // 失败一次 + 重试一次，第 3 次是 F2b 结构编辑区读结构（列 / 行 / 名称）
+    expect(backend.reads.filter((url) => url.pathname === `${BASE}/${created}`)).toHaveLength(3);
     expect(backend.writes).toHaveLength(1);
   }
 

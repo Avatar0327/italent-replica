@@ -1,8 +1,10 @@
-import { App, Button } from 'antd';
+import { App, Button, Dropdown } from 'antd';
 import { useEffect, useState } from 'react';
 import { ListPage, tenantDate, useSession, type ListView } from '../foundation/index.js';
+import { ui } from '../foundation/messages.js';
 import { useRemote, type PageAccess } from '../org/page-support.js';
 import { JobEditor } from './JobEditor.js';
+import { useGraphDownload } from './graph-download.js';
 import {
   GRAPH_PATH,
   ISSUE_PAGE_SIZES,
@@ -21,10 +23,17 @@ const sources: Record<GraphIssue['kind'], JobKind> = { level: 'levels', post: 'p
  * 待确认的职务职级记录（设计 §5、DEC-896）：读生成时落下的不规范记录，原因按机器码现拼；
  * “编辑”按源对象（职级 / 职务）的编辑权显示，打开职务体系同一个编辑弹窗。
  */
-export function JobGraphIssues({ view, accessOf }: { view: ListView; accessOf: (kind: JobKind) => PageAccess }) {
+export function JobGraphIssues(props: {
+  view: ListView;
+  accessOf: (kind: JobKind) => PageAccess;
+  /** 图谱对象的「导出」按钮权（列表层）；没有就不出导出入口。 */
+  exportable: boolean;
+}) {
+  const { view, accessOf } = props;
   const session = useSession();
   const [page, setPage] = useState<{ page: number; pageSize: number }>({ page: 1, pageSize: ISSUE_PAGE_SIZES[0] });
   const [filters, setFilters] = useState<IssueFilters>({ kind: '', name: '' });
+  const [selected, setSelected] = useState<GraphIssue[]>([]);
   const remote = useRemote<GraphIssuePage>(`${GRAPH_PATH}/issues?${issueQuery(page, filters.kind, filters.name)}`);
   const editing = useEditTarget();
   const columns = issueColumns(accessOf, (issue) => editing.open(issue, tenantDate(new Date(), session.timezone)));
@@ -33,7 +42,7 @@ export function JobGraphIssues({ view, accessOf }: { view: ListView; accessOf: (
       <ListPage<GraphIssue>
         title={t.issuesTitle}
         view={view}
-        rowKey={(issue) => `${issue.kind}:${issue.objectId}`}
+        rowKey={issueKey}
         page={page}
         onPageChange={setPage}
         pageSizes={ISSUE_PAGE_SIZES}
@@ -41,10 +50,22 @@ export function JobGraphIssues({ view, accessOf }: { view: ListView; accessOf: (
         loading={remote.loading}
         error={remote.error}
         retry={remote.refresh}
+        selection={{
+          keys: selected.map(issueKey),
+          onChange: (_, rows) => setSelected(rows),
+          actions: null,
+        }}
+        exportAction={
+          props.exportable ? (
+            <IssueExport selected={selected} total={remote.data?.total ?? 0} filters={filters} />
+          ) : null
+        }
         filters={
           <GraphIssueFilters
             value={filters}
             onApply={(next) => {
+              // 换筛选后已选行可能不在结果里，清空，避免导出看不见的记录。
+              setSelected([]);
               setFilters(next);
               setPage({ ...page, page: 1 });
             }}
@@ -64,6 +85,38 @@ export function JobGraphIssues({ view, accessOf }: { view: ListView; accessOf: (
         />
       )}
     </>
+  );
+}
+
+const issueKey = (issue: GraphIssue) => `${issue.kind}:${issue.objectId}`;
+
+/** 「导出▾」：已选按对象 ID（本页勾选，≤ 每页条数），全部沿用已应用的类型 / 名称筛选（设计 §4.2）。 */
+function IssueExport({ selected, total, filters }: { selected: GraphIssue[]; total: number; filters: IssueFilters }) {
+  const download = useGraphDownload();
+  const pathOf = (key: string) => {
+    const query = new URLSearchParams();
+    if (key === 'selected') query.set('ids', selected.map((issue) => issue.objectId).join(','));
+    else {
+      query.set('all', 'true');
+      if (filters.kind) query.set('kind', filters.kind);
+      if (filters.name.trim()) query.set('name', filters.name.trim());
+    }
+    return `${GRAPH_PATH}/issues/export?${query.toString()}`;
+  };
+  return (
+    <Dropdown
+      trigger={['click']}
+      disabled={download.busy}
+      menu={{
+        items: [
+          { key: 'selected', label: t.exportSelected(selected.length), disabled: !selected.length },
+          { key: 'all', label: t.exportAll(total) },
+        ],
+        onClick: ({ key }) => void download.start(pathOf(key)),
+      }}
+    >
+      <Button disabled={download.busy}>{ui.export}</Button>
+    </Dropdown>
   );
 }
 

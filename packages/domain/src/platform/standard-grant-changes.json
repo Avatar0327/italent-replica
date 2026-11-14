@@ -1,9 +1,12 @@
 {
-  "reason": "F-474-7b（DEC-896 U8）：新增职务职级图谱对象 TenantBase.JobPostAndJobLevelGraph，只预置给标准版系统管理员：对象查看 + 重新生成 / 导出两个列表按钮；不含数据操作、字段、数据范围，人事管理员 / 专员 / 经理 / 看板身份均不含",
+  "reason": "F-474-8c-2a（DEC-896④，授权类变更）：新增 TenantBase.SocialSecurityProfile（社保档案）与 TenantBase.SocialInsurancePlan（社保方案）两个只读对象，只预置给标准版系统管理员与人事管理员（对象查看 + 全部系统字段可见，无按钮、无数据操作）；任职记录对象新增调整字段 adjustedInsuranceRegionCode / adjustedInsurancePlanId / adjustedInsuranceCompanyId，同样只给这两个身份；人事专员、经理、看板、员工等其它标准身份均不含",
   "add": [
-    "standard_org_system_admin/TenantBase.JobPostAndJobLevelGraph/op:view",
-    "standard_org_system_admin/TenantBase.JobPostAndJobLevelGraph/button:rebuild@list",
-    "standard_org_system_admin/TenantBase.JobPostAndJobLevelGraph/button:export@list"
+    "standard_org_system_admin/TenantBase.SocialSecurityProfile/*",
+    "standard_org_system_admin/TenantBase.SocialInsurancePlan/*",
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:adjustedInsurance*",
+    "standard_hr_admin/TenantBase.SocialSecurityProfile/*",
+    "standard_hr_admin/TenantBase.SocialInsurancePlan/*",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:adjustedInsurance*"
   ],
   "remove": []
 }

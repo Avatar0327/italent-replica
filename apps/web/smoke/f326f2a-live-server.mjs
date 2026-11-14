@@ -12,7 +12,9 @@ const loader = await createServer({
   appType: 'custom',
 });
 try {
-  const { startMatrixBackend } = await loader.ssrLoadModule('/apps/web/smoke/f326f2a-live-backend.ts');
+  // F2b 冒烟传自己的后端模块（同样导出 startMatrixBackend），缺省为 F2a
+  const entry = process.argv[2] ?? '/apps/web/smoke/f326f2a-live-backend.ts';
+  const { startMatrixBackend } = await loader.ssrLoadModule(entry);
   const backend = await startMatrixBackend();
   console.log(`F2A_READY ${JSON.stringify(backend.manifest)}`);
   const close = async () => {

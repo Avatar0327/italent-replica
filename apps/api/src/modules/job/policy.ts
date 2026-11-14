@@ -248,6 +248,23 @@ export const JOB_POLICIES = defineTable('job', {
       preconditions: ['job.graphAdvisoryLock', 'job.lockJobTenant', 'job.assertGraphRevision'],
     }),
   }),
+  // ---- graph-export.ts：两种 xlsx 导出（F-474-7c）。只读当前快照，不写台账 / 审计；每次请求同一五对象校验 + 导出按钮 ------
+  // 无快照 → 409 CONFLICT（details.reason GRAPH_NOT_GENERATED）；超限 → 400（details.reason EXPORT_*）
+  [`GET ${BASE}/graph/export`]: object({
+    object: MODULE_OBJECTS.jobGraph.code,
+    operation: 'view',
+    button: button('export', 'list'),
+    scope: guardScope('job.graphSources', FORBIDDEN),
+    fields: projector('job.graphExport', 'job.graph'),
+  }),
+  // ids（≤ 500）或 all=true（沿用类型 / 名称筛选）；≤ 10000 行
+  [`GET ${BASE}/graph/issues/export`]: object({
+    object: MODULE_OBJECTS.jobGraph.code,
+    operation: 'view',
+    button: button('export', 'list'),
+    scope: guardScope('job.graphSources', FORBIDDEN),
+    fields: projector('job.graphIssuesExport', 'job.graphIssue'),
+  }),
   // ---- registerObjects / registerObjectWrites：八种职务对象的列表 / 详情 / 新增 / 变更 ------------------------------
   // 列表：职位 scopeSql(org ∪ creator)；其余看全部 ∪ 创建人；orgId 查询参数只适用于职位
   [`GET ${BASE}/:kind`]: object({

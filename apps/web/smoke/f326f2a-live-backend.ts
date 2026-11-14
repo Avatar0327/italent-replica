@@ -37,11 +37,14 @@ async function bodyOf(req: IncomingMessage) {
   return raw ? (JSON.parse(raw) as unknown) : undefined;
 }
 
-async function seed(w: S4World) {
-  // 真实企业管理员身份：快照的企业设置菜单由 permission_admins 推出（matrix_admin 持有「流程矩阵」）
-  await withTenant(w.db, w.tenant.id, (tx) =>
+/** 真实企业管理员身份：快照的企业设置菜单由 permission_admins 推出（matrix_admin 持有「流程矩阵」）。 */
+export const grantMatrixAdmin = (w: S4World) =>
+  withTenant(w.db, w.tenant.id, (tx) =>
     tx.insert(permissionAdmins).values({ tenantId: w.tenant.id, userId: w.hr.id, role: 'matrix_admin' }),
   );
+
+async function seed(w: S4World) {
+  await grantMatrixAdmin(w);
   const used = await matrix(w, { rows: [{ cond: [], role: [w.head.userId] }] });
   const renamed = await w.json<{ code: string; revision: number }>(
     await w.request(w.hr.id, 'PATCH', `${MATRICES}/${used.id}`, {
@@ -85,11 +88,12 @@ function handler(w: S4World) {
   };
 }
 
-export async function startMatrixBackend() {
+/** F2b 复用本后端，换自己的预置（seedWith）；返回值并入 manifest。 */
+export async function startMatrixBackend(seedWith: (w: S4World) => Promise<object> = seed, label = 'f2a-browser') {
   const handle = await createTestDb();
   try {
-    const w = await s4World(handle.db, 'f2a-browser');
-    const seeded = await seed(w);
+    const w = await s4World(handle.db, label);
+    const seeded = await seedWith(w);
     const serve = handler(w);
     const server = createServer((req, res) => {
       serve(req, res).catch((error: unknown) => {

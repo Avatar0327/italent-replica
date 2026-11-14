@@ -1,5 +1,5 @@
-// 企业设置 › 流程矩阵（F-326 F2a）：左侧矩阵列表（启用的 / 停用的、关键字、翻页、底部新建），右侧选中矩阵的头部与操作。
-// 结构（条件列、角色列、数据行）的编辑归 F2b，本页不展示。
+// 企业设置 › 流程矩阵（F-326 F2a / F2b）：左侧矩阵列表（启用的 / 停用的、关键字、翻页、底部新建），
+// 右侧选中矩阵的头部、操作与结构（条件列、角色列、数据行，StructureEditor）。
 import { Button, Descriptions, Empty, Input, Space, Table, Tabs, Tag, Typography } from 'antd';
 import { useState } from 'react';
 import { useRead } from '../../contracts/useRead.js';
@@ -19,6 +19,7 @@ import {
   type View,
 } from './model.js';
 import { StatusActions } from './StatusActions.js';
+import { StructureEditor } from './StructureEditor.js';
 import './matrix.css';
 
 const statusColor: Record<string, string> = { enabled: 'green', draft: 'default', disabled: 'red' };
@@ -190,8 +191,8 @@ function HeadPanel(props: { head: MatrixHead; editable: boolean; edit(): void; s
           <span className="matrix-description">{head.description ?? '—'}</span>
         </Descriptions.Item>
       </Descriptions>
-      <Typography.Paragraph type="secondary">{m.structureLater}</Typography.Paragraph>
       <StatusActions key={`${head.id}@${head.revision}`} {...props} />
+      <StructureEditor key={head.id} head={head} editable={props.editable} saved={props.saved} />
     </>
   );
 }

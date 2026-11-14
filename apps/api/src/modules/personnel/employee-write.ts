@@ -6,6 +6,7 @@ import { audit, assertRevision, camel, insert, lockPerson, rows, type PersonnelC
 import { requireEnabledIdentityTypes } from './identity-types.js';
 import { normalizeDailyWageStandard, normalizeRetirementRange, validateDates } from './validation.js';
 import { validateAttachments } from './attachments.js';
+import { mergeCustomFields, type PersonnelCustomFields } from './custom-fields.js';
 
 export async function employeeSnapshot(tx: Tx, ctx: PersonnelContext, employeeId: string) {
   const [previous] = rows(
@@ -19,9 +20,11 @@ export async function appendEmployee(
   tx: Tx,
   ctx: PersonnelContext,
   employeeId: string,
-  patch: Row,
+  input: Row,
   checkRevision = true,
 ) {
+  // customFields 只在人员 PATCH 里带；其他调用方（子集同步、任职钩子）不带，整版沿用上一版（F-474-6c）。
+  const { customFields: customPatch = {}, ...patch } = input as Row & { customFields?: PersonnelCustomFields };
   const person = await lockPerson(tx, ctx, employeeId);
   await validateAttachments(tx, ctx, employeeId, patch);
   const previous = await employeeSnapshot(tx, ctx, employeeId);
@@ -45,9 +48,16 @@ export async function appendEmployee(
     );
     if (!person) throw new AppError('VALIDATION_FAILED', '重聘关联用户不属于本租户');
   }
+  const custom = await mergeCustomFields(
+    tx,
+    ctx.tenantId,
+    (previous?.customFields ?? {}) as PersonnelCustomFields,
+    customPatch,
+  );
   const revision = Number(previous?.revision ?? 0) + 1;
   await insert(tx, 'personnel_employee_versions', {
     ...after,
+    customFields: JSON.stringify(custom.merged),
     id: randomUUID(),
     employeeId,
     tenantId: ctx.tenantId,
@@ -57,6 +67,17 @@ export async function appendEmployee(
     createdBy: ctx.userId,
     createdAt: ctx.now.toISOString(),
   });
-  await audit(tx, ctx, PERSONNEL_OBJECT, employeeId, employeeId, revision, before, after);
+  // 审计只记变化的自定义字段 ID，前值取上一版；字段权限裁剪由审计读取端按 customFields.<id> 完成。
+  const changed = Object.keys(custom.after).length > 0;
+  await audit(
+    tx,
+    ctx,
+    PERSONNEL_OBJECT,
+    employeeId,
+    employeeId,
+    revision,
+    changed ? { ...before, customFields: custom.before } : before,
+    changed ? { ...after, customFields: custom.after } : after,
+  );
   return revision;
 }

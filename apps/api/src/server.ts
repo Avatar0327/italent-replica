@@ -9,6 +9,7 @@ import { startOfferSyncScheduler } from './modules/offer/sync-scheduler.js';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { databaseFromEnv, localPgliteDir } from './database.js';
+import { HTTP_SERVER_OPTIONS } from './middleware.js';
 import { identityResolverFromEnv } from './identity.js';
 import { startEmploymentActivationScheduler } from './modules/employment/activation-scheduler.js';
 import { startAuditRetentionScheduler } from './audit/retention.js';
@@ -43,9 +44,16 @@ if (handle) await assertNoKeyRollback(handle.db, credentialConfig);
 await dummyDigest(credentialConfig.kdf);
 const port = Number(process.env.PORT ?? 3000);
 
-serve({ fetch: createApp(handle ? { db: handle.db, identity } : { identity }).fetch, port }, (info) => {
-  console.log(`api listening on http://localhost:${info.port}`);
-});
+serve(
+  {
+    fetch: createApp(handle ? { db: handle.db, identity } : { identity }).fetch,
+    port,
+    serverOptions: HTTP_SERVER_OPTIONS,
+  },
+  (info) => {
+    console.log(`api listening on http://localhost:${info.port}`);
+  },
+);
 
 // R1-T08 定时生效：按租户时区到期落地（DEC-056）；多实例同时运行由员工行锁去重，可用环境变量关闭或调整间隔。
 if (handle && process.env.EMPLOYMENT_ACTIVATION_SCHEDULER !== 'off') {

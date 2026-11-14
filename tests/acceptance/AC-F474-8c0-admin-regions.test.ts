@@ -1,4 +1,4 @@
-/** F-474-8b §3.1 / AC-INS-16：公开行政区划只读字典，首片父级优先。 */
+/** F-474-8b §3.1 / AC-INS-16：公开行政区划只读字典，首片父级优先（读取只取首片 1900 条，第二片见 8c1）。 */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { pgErrorCode, useTestDb } from '@italent/testkit';
@@ -9,7 +9,9 @@ const tenants = [randomUUID(), randomUUID()];
 const rows = <T>(result: unknown): T[] => (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 const read = (tenantId: string) =>
   withTenant(testDb().db, tenantId, async (tx) =>
-    rows(await tx.execute(sql`SELECT code, parent_code, level, name FROM admin_regions ORDER BY level, code`)),
+    rows(
+      await tx.execute(sql`SELECT code, parent_code, level, name FROM admin_regions ORDER BY level, code LIMIT 1900`),
+    ),
   );
 
 describe('AC-F474-8c0 字典迁移与数据库只读契约', () => {
@@ -33,7 +35,8 @@ describe('AC-F474-8c0 字典迁移与数据库只读契约', () => {
   it('AC-F474-8c0-02 首片含全部省市，所有父级已存在且层级在先', async () => {
     const result = await withTenant(testDb().db, tenants[0]!, (tx) =>
       tx.execute(sql`
-      SELECT level, count(*)::int AS count FROM admin_regions GROUP BY level ORDER BY level`),
+      SELECT level, count(*)::int AS count
+      FROM (SELECT level FROM admin_regions ORDER BY level, code LIMIT 1900) f GROUP BY level ORDER BY level`),
     );
     expect(rows(result)).toEqual([
       { level: 1, count: 34 },

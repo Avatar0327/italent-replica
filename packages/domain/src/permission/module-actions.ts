@@ -44,6 +44,16 @@ const systemFields = [
   'updatedAt',
   'createdBy',
 ];
+/**
+ * F-474-8c-2a（设计 F-474-8b §3.4）：调动单上填写的社保调整值（缴交地 / 方案 / 公司），登记在任职记录对象上。
+ * 只登记定义；接入联动保存体与审批盲审（TRANSFER_LINKAGE_FIELDS）属 8c-2b，所以这里不并入联动字段白名单。
+ * 标准身份只预置给系统管理员与人事管理员（standard-presets.ts 的 withoutInsuranceAdjust）。
+ */
+export const INSURANCE_ADJUST_FIELDS = [
+  'adjustedInsuranceRegionCode',
+  'adjustedInsurancePlanId',
+  'adjustedInsuranceCompanyId',
+] as const;
 const button = (code: string, level: ButtonDefinition['level'], requires?: DataOperation): ButtonDefinition =>
   requires ? { code, level, requires } : { code, level };
 const crud = [
@@ -418,6 +428,23 @@ export const MODULE_OBJECTS = {
   // 目录要求每个对象至少登记一个按钮：“指标明细”是列表级的钻取入口，只登记不授予（看板的准入只认对象查看权）
   /** F-474-7b：职务职级图谱（派生缓存）。只读对象 + 重新生成 / 导出两个列表按钮，没有数据操作；原站菜单只授系统管理员。 */
   jobGraph: object('JobPostAndJobLevelGraph', [], [button('rebuild', 'list'), button('export', 'list')]),
+  /**
+   * F-474-8c-2a（DEC-896④，授权类）：员工社保档案的只读视图，字段是当前档案折叠出的缴交地 / 方案 / 公司，全是系统字段；
+   * 与看板同口径只登记“详情”列表按钮、不授予。数据范围不预置（默认空），读取口径在 8c-2b。
+   */
+  socialSecurityProfile: object(
+    'SocialSecurityProfile',
+    [],
+    [button('detail', 'list')],
+    ['insuranceRegionCode', 'insurancePlanId', 'insuranceCompanyId'],
+  ),
+  /** F-474-8c-2a（DEC-896④，授权类）：缴交方案（调动下拉的候选），只读；方案没有组织字段，数据范围同样不预置。 */
+  socialInsurancePlan: object(
+    'SocialInsurancePlan',
+    [],
+    [button('detail', 'list')],
+    ['code', 'name', 'regionCode', 'effectiveMonth', 'stopMonth', 'enabled'],
+  ),
   hrDashboard: object('HrDashboard', [], [button('detail', 'list')]),
   // R2 BE-13c 人事分析 - 人事流程看板（规格 35 B51）：同人事看板，只读聚合、无业务字段；“查看详情”只登记不授予
   hrProcessDashboard: object('HrProcessDashboard', [], [button('detail', 'list')]),
@@ -523,6 +550,8 @@ export const MODULE_OBJECTS = {
       'employType',
       // R1-T10 调动联动（`13` §7 表单区块）：审批披露、盲审与字段权限共用这些编码。
       ...TRANSFER_LINKAGE_FIELDS,
+      // F-474-8c-2a 调动社保调整值（定义先行，联动保存体接入在 8c-2b）
+      ...INSURANCE_ADJUST_FIELDS,
       // R2-T03 离职扩展字段（设计 §4A / §9，lastWorkDate / reasonCode 已在上面）
       ...EXIT_REQUEST_FIELDS,
       // BE-7 兼职（设计 §7.2）：兼职类型、结束日期、申请备注

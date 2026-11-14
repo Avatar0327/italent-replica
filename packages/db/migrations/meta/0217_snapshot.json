@@ -1,5 +1,5 @@
 {
-  "id": "520f0647-f507-4214-81b0-97721bb423f2",
+  "id": "1ddfdfe4-1e1b-4fb0-81cd-0fe8ff0444fb",
   "prevId": "9f8cc2bd-f556-40f0-b55f-1f8d7829be20",
   "version": "7",
   "dialect": "postgresql",
@@ -3176,13 +3176,6 @@
           "notNull": true,
           "default": 0
         },
-        "custom_fields": {
-          "name": "custom_fields",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3323,10 +3316,6 @@
         "org_versions_level_nonnegative": {
           "name": "org_versions_level_nonnegative",
           "value": "\"org_versions\".\"level\" >= 0"
-        },
-        "org_versions_custom_fields_object": {
-          "name": "org_versions_custom_fields_object",
-          "value": "jsonb_typeof(\"org_versions\".\"custom_fields\") = 'object'"
         }
       },
       "isRLSEnabled": false
