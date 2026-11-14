@@ -3,7 +3,7 @@
  * - GET /api/tenant/transfer/insurance-origin：调动表单“原值”= 业务位置之前的档案折叠（archive-fold.ts）；
  *   准入 = 社保档案对象查看权 + 三个字段全部可见（不给半截原值）+ 员工在任职数据范围内（范围外与不存在同一个 404）；
  * - GET /api/tenant/insurance/regions：缴交地逐级下钻，全局公开字典，登录即可；
- * - GET /api/tenant/insurance/plans：缴交方案候选，社保方案对象查看权；只出当月有效且启用、缴交地 = 所选地区或其上级的版本；
+ * - GET /api/tenant/insurance/plans：缴交方案候选，社保方案对象查看权（planId 随 id 字段查看权）；只出当月有效且启用、缴交地 = 所选地区或其上级的版本；
  * - GET /api/tenant/insurance/companies：合同公司主数据，沿用合同公司对象的可见性（DEC-121：只认看全部，无归属对象）。
  * 方案与档案表对运行时角色只读（迁移 0218），写入只经 scripts/seed-insurance-plans.mjs（U4-A）。
  */
@@ -127,9 +127,10 @@ function registerPlans(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           ORDER BY p.code, v.effective_month LIMIT ${LIST_LIMIT}`),
       );
     });
-    // 字段级可见：不可见的字段整列去掉；planId 是候选的标识，始终保留
+    // 字段级可见：不可见的字段整列去掉；planId 对应对象目录的系统字段 id，同样受 id 查看权约束（不豁免标识）
+    const catalogField = (key: string) => (key === 'planId' ? 'id' : key);
     const items = rows.map((row) =>
-      Object.fromEntries(Object.entries(row).filter(([key]) => key === 'planId' || !visible || visible.has(key))),
+      Object.fromEntries(Object.entries(row).filter(([key]) => !visible || visible.has(catalogField(key)))),
     );
     return c.json({ items });
   });
@@ -149,7 +150,7 @@ function registerCompanies(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ),
     );
     const items = rows.map((row) =>
-      Object.fromEntries(Object.entries(row).filter(([key]) => key === 'id' || !visible || visible.has(key))),
+      Object.fromEntries(Object.entries(row).filter(([key]) => !visible || visible.has(key))),
     );
     return c.json({ items });
   });
