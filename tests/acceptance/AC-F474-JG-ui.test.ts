@@ -389,11 +389,12 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     expect(lastQuery().page).toBe('2');
     await click(button('高级筛选', ui.host));
     expect(drawer()?.textContent).toContain('高级筛选');
+    const before = issueCalls().length;
     await pick(drawer()!.querySelector('[aria-label="类型"]')!.closest('.ant-select')!, '职务');
     await type(drawer()!.querySelector<HTMLInputElement>('input[aria-label="名称"]')!, '合成父');
-    const before = issueCalls().length;
+    // 抽屉里改条件不发请求，确定才应用。
     expect(issueCalls()).toHaveLength(before);
-    await click(button('确认', drawer()!));
+    await click(button('确定', drawer()!));
     expect(lastQuery()).toEqual({ page: '1', pageSize: '15', kind: 'post', name: '合成父' });
     expect(rows().map((row) => row[1])).toEqual(['合成父序列职务', '合成父序列职务', '合成父序列职务']);
     const applied = issueCalls().length;
@@ -427,7 +428,7 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     }
     await click(button('高级筛选', ui.host));
     await pick(drawer()!.querySelector('[aria-label="类型"]')!.closest('.ant-select')!, '职务');
-    await click(button('确认', drawer()!));
+    await click(button('确定', drawer()!));
     const size = Number(lastQuery().pageSize);
     expect(size >= 1 && size <= 100).toBe(true);
     expect(lastQuery().page).toBe('1');
