@@ -7,7 +7,8 @@ export const GRAPH_PATH = '/api/tenant/job/graph';
 /** 图谱每租户只有一份快照（DEC-896 U3）：命令内核的业务 ID 固定，回执与重读据此核对。 */
 export const GRAPH_ID = 'job-graph';
 export const graphViews = ['graph', 'graph-issues'] as const;
-export type GraphView = (typeof graphViews)[number];
+/** 待确认记录页与图谱同一路由，按 kind 区分（设计 §5：警示链接、弹框“去查看”新窗口打开）。 */
+export const ISSUES_SEARCH = '?kind=graph-issues';
 
 export interface GraphSnapshot {
   revision: number;

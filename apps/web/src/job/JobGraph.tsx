@@ -9,7 +9,7 @@ import { slotKey } from '../foundation/forms/slot.js';
 import type { Command } from '../foundation/client.js';
 import type { Submission, Values } from '../foundation/forms/store.js';
 import { useRemote, type PageAccess } from '../org/page-support.js';
-import { GRAPH_ID, GRAPH_PATH, graphGrid, graphTime, type GraphSnapshot } from './graph-model.js';
+import { GRAPH_ID, GRAPH_PATH, ISSUES_SEARCH, graphGrid, graphTime, type GraphSnapshot } from './graph-model.js';
 import { graphText as t, pageText as m, text } from './messages.js';
 import './job-graph.css';
 
@@ -147,7 +147,7 @@ function Toolbar(props: {
 }) {
   const { snapshot, access, rebuild, refresh, ready } = props;
   const session = useSession();
-  const issues = useHref({ search: '?kind=graph-issues' });
+  const issues = useHref({ search: ISSUES_SEARCH });
   return (
     <Space className="job-graph-toolbar">
       {snapshot && (
@@ -241,8 +241,7 @@ function GraphMatrix({ snapshot }: { snapshot: GraphSnapshot }) {
     row.map((cell) => {
       const Tag = header || cell.column === 0 ? 'th' : 'td';
       const color = cell.colorKey === undefined ? '' : ` job-graph-type-${cell.colorKey % 3}`;
-      const place =
-        cell.row === 0 ? 'job-graph-top' : header ? 'job-graph-head' : cell.column === 0 ? 'job-graph-grade' : '';
+      const place = cellPlace(cell.row, cell.column, header);
       return (
         <Tag key={cell.column} rowSpan={cell.rowSpan} colSpan={cell.colSpan} className={`${place}${color}`.trim()}>
           {cell.text}
@@ -267,8 +266,15 @@ function GraphMatrix({ snapshot }: { snapshot: GraphSnapshot }) {
   );
 }
 
+/** 取证底色（设计 §1 样式）：第 1 行、其余表头行、表体职等列各一种。 */
+function cellPlace(row: number, column: number, header: boolean) {
+  if (row === 0) return 'job-graph-top';
+  if (header) return 'job-graph-head';
+  return column === 0 ? 'job-graph-grade' : '';
+}
+
 function IssuesModal({ onClose }: { onClose: () => void }) {
-  const issues = useHref({ search: '?kind=graph-issues' });
+  const issues = useHref({ search: ISSUES_SEARCH });
   return (
     <Modal
       open
