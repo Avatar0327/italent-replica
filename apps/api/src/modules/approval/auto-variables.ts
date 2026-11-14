@@ -144,7 +144,11 @@ async function createAuto(
 ): Promise<VariableRow> {
   const name = autoVariableName(scope.processName, node.name, slot);
   if (textViolation(name, VARIABLE_TEXT_FIELDS.variableName))
-    throw approvalError('VALIDATION_FAILED', 'APPROVAL_AUTO_VARIABLE_NAME_INVALID', '无法由流程名与节点名生成合法的变量名称');
+    throw approvalError(
+      'VALIDATION_FAILED',
+      'APPROVAL_AUTO_VARIABLE_NAME_INVALID',
+      '无法由流程名与节点名生成合法的变量名称',
+    );
   const stem = autoVariableStem(scope.processCode);
   for (let step = 0; step < CODE_TRIES; step += 1) {
     const [row] = await tx
@@ -212,9 +216,22 @@ interface SlotInput {
 
 /** 一个位置内的全部“指定人员”（含未选人占位）合并成一条变量来源，放在第一个指定人员的位置上。 */
 async function materializeSlot(tx: Tx, ctx: ApprovalContext, scope: MaterializeScope, input: SlotInput) {
-  const { node, slot, dataType, sources, prior } = input;
-  if (!sources.some((source) => source.type === 'specified')) return [...sources];
-  const real = [...new Set(sources.filter((s) => s.type === 'specified' && !isUnselectedSpecified(s)).map((s) => canonicalId(s.value)))];
+  const { dataType, sources, prior } = input;
+  // 整份回存读视图时，自动变量来源原样带回（没有 specified）：保存前草稿里已记的待生效值随之保留，不静默丢失。
+  if (!sources.some((source) => source.type === 'specified'))
+    return sources.map((source) => {
+      const kept = prior.find(
+        (item) => item.type === 'public_variable' && item.value === source.value && item.pendingUserIds,
+      );
+      return source.type === 'public_variable' && kept
+        ? ({ ...source, pendingUserIds: kept.pendingUserIds, pendingRevision: kept.pendingRevision } as ApproverSource)
+        : source;
+    });
+  const real = [
+    ...new Set(
+      sources.filter((s) => s.type === 'specified' && !isUnselectedSpecified(s)).map((s) => canonicalId(s.value)),
+    ),
+  ];
   const people = real.length ? real : null;
   const stored = await decide(tx, ctx, scope, input, people, dataType);
   const out: ApproverSource[] = [];
@@ -463,12 +480,16 @@ export async function applyPendingAutoVariables(
       ...(resolution ? { resolution } : {}),
     });
   }
-  // 节点表只允许增删不允许 UPDATE：返回去掉待生效键、换好新变量的节点，由发布流程整体重写
+  return swapPending(draft.nodes, replaced);
+}
+
+/** 节点表只允许增删不允许 UPDATE：返回去掉待生效键、换好新变量的节点，由发布流程整体重写。 */
+function swapPending(nodes: readonly ApprovalNode[], replaced: ReadonlyMap<string, string>): ApprovalNode[] {
   const swap = (sources: readonly ApproverSource[]) =>
     sources.map((s) =>
       s.type === 'public_variable' && replaced.has(s.value) ? publicVariable(replaced.get(s.value)!) : stripPending(s),
     );
-  return draft.nodes.map((node) => {
+  return nodes.map((node) => {
     const next: ApprovalNode = isCountersign(node)
       ? { ...node, approvers: swap(node.approvers) }
       : { ...node, approver: swap([node.approver])[0]! };
@@ -502,7 +523,10 @@ export interface AutoVariableView {
 
 /** 本流程节点位置上的自动变量在视图里回显；对外不暴露库内的待生效键，改用 autoVariable.pendingUserIds。 */
 export async function enrichProcessView(tx: Tx, tenantId: string, view: ProcessView): Promise<ProcessView> {
-  const versions = [view.latestVersion, ...(view.currentVersion && view.currentVersion !== view.latestVersion ? [view.currentVersion] : [])];
+  const versions = [
+    view.latestVersion,
+    ...(view.currentVersion && view.currentVersion !== view.latestVersion ? [view.currentVersion] : []),
+  ];
   const ids = [...new Set(variableIdsOf(versions.flatMap((v) => v.nodes)))];
   const rows = ids.length
     ? rowsOf<AutoViewRow>(
@@ -510,28 +534,33 @@ export async function enrichProcessView(tx: Tx, tenantId: string, view: ProcessV
             origin_process_id::text, origin_node_key, origin_slot
           FROM approval_variables
           WHERE tenant_id=${tenantId}::uuid AND origin='auto' AND origin_process_id=${view.id}::uuid
-            AND id IN (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})`),
+            AND id IN (${sql.join(
+              ids.map((id) => sql`${id}::uuid`),
+              sql`, `,
+            )})`),
       )
     : [];
   const byId = new Map(rows.map((row) => [row.id, row]));
-  const enrichSource = (node: ApprovalNode, slot: Slot) => (source: ApproverSource): ApproverSource => {
-    const { pendingUserIds, pendingRevision, ...plain } = source as StoredSource;
-    const row = source.type === 'public_variable' ? byId.get(source.value) : undefined;
-    if (!row || row.origin_node_key !== node.key || row.origin_slot !== slot) return plain as ApproverSource;
-    const value: unknown = row.default_text === null ? null : JSON.parse(row.default_text);
-    const autoVariable: AutoVariableView = {
-      id: row.id,
-      code: row.code,
-      status: row.status,
-      revision: Number(row.revision),
-      userIds: value === null ? null : Array.isArray(value) ? (value as string[]) : [value as string],
-      ...(pendingUserIds ? { pendingUserIds: [...pendingUserIds] } : {}),
-      ...(pendingUserIds && pendingRevision !== undefined && pendingRevision !== Number(row.revision)
-        ? { pendingConflict: true as const }
-        : {}),
+  const enrichSource =
+    (node: ApprovalNode, slot: Slot) =>
+    (source: ApproverSource): ApproverSource => {
+      const { pendingUserIds, pendingRevision, ...plain } = source as StoredSource;
+      const row = source.type === 'public_variable' ? byId.get(source.value) : undefined;
+      if (!row || row.origin_node_key !== node.key || row.origin_slot !== slot) return plain as ApproverSource;
+      const value: unknown = row.default_text === null ? null : JSON.parse(row.default_text);
+      const autoVariable: AutoVariableView = {
+        id: row.id,
+        code: row.code,
+        status: row.status,
+        revision: Number(row.revision),
+        userIds: value === null ? null : Array.isArray(value) ? (value as string[]) : [value as string],
+        ...(pendingUserIds ? { pendingUserIds: [...pendingUserIds] } : {}),
+        ...(pendingUserIds && pendingRevision !== undefined && pendingRevision !== Number(row.revision)
+          ? { pendingConflict: true as const }
+          : {}),
+      };
+      return { ...plain, autoVariable } as ApproverSource;
     };
-    return { ...plain, autoVariable } as ApproverSource;
-  };
   const enrichNode = (node: ApprovalNode): ApprovalNode => {
     const approver = enrichSource(node, 'approver');
     const empty = enrichSource(node, 'empty_approver');

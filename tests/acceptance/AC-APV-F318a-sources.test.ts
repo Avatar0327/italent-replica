@@ -31,10 +31,12 @@ describe('AC-APV-F318a 来源统一模型', () => {
       }),
       201,
     );
+    // S7a：指定人员保存时落成公共变量，视图只在 autoVariable 上回显所选人员；两个位置仍各自独立（各一条变量）
+    const viaVariable = (userId: string) => ({ type: 'public_variable', autoVariable: { userIds: [userId] } });
     const expected = {
-      approvers: nodes[0]!.approvers,
+      approvers: [viaVariable(x.workOwner.userId)],
       emptyApproverPolicy: 'specified',
-      emptyApproverSources: nodes[0]!.emptyApproverSources,
+      emptyApproverSources: [viaVariable(x.hrbp.userId)],
     };
     expect(created.latestVersion.nodes).toMatchObject([expected]);
     expect(created.latestVersion.nodes[0]!.fallbackUserIds ?? []).toEqual([]);

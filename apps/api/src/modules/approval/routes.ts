@@ -331,6 +331,7 @@ export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
   // 审批通过后的任职联动可能撞到组织调整的执行暂停：编号按查看人的调整单可见性披露（F-342 / F-355）
   module.onError(pauseDisclosureHandler(deps));
   registerProcessRoutes(module, deps);
+  registerProcessLifecycleRoutes(module, deps);
   registerVariableRoutes(module, deps);
   registerMatrixRoutes(module, deps);
   registerTenantConfigRoutes(module, deps);
@@ -435,6 +436,10 @@ function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     });
     return processResponse(c, deps, result);
   });
+}
+
+/** 流程的发布、新版本与作废（发布可带待生效变量的逐项处理，S7a）。 */
+function registerProcessLifecycleRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // 发布可带“待生效变量冲突”的逐项处理（S7a）；不带请求体或空对象照旧
   router.post('/processes/:id/publish', async (c) => {
     const ctx = writeCtx(c, deps);

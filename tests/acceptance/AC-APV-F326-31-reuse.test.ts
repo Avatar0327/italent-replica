@@ -79,7 +79,14 @@ describe('AC-APV-F326-31 去重 / 复用', () => {
     const plain = await s4World(database().db, 's7a-reuse-merge-dispatch');
     const [q2, q3] = [await plain.person('合成丙', plain.staff), await plain.person('合成丁', plain.staff)];
     const people = [plain.near.userId, q2.userId, q3.userId];
-    await plain.publish(await create(plain, [counter(people.map((id) => specified(id)), { key: 'n1' })]));
+    await plain.publish(
+      await create(plain, [
+        counter(
+          people.map((id) => specified(id)),
+          { key: 'n1' },
+        ),
+      ]),
+    );
     const { tasks } = await dispatch(plain);
     expect(tasks.map(([, user]) => user).sort()).toEqual([...people].sort());
   });

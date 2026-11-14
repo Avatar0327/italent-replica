@@ -56,6 +56,7 @@ export const GRAPH: Graph = {
     '#orgAdjustmentApproverViolation',
     '#subjectEmployeeViolations',
     'packages/domain/src/approval/sources.ts#approverSourcesOf',
+    'packages/domain/src/approval/sources.ts#isUnselectedSpecified',
     'packages/domain/src/approval/sources.ts#relationSource',
     'packages/domain/src/approval/sources.ts#sourceViolation',
     'packages/domain/src/approval/types.ts#ASSESSMENT_ONLY_APPROVERS',
@@ -68,6 +69,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/routes.ts#hasApproveExit',
     'packages/domain/src/approval/types.ts#ENABLED_AVOID_SUBJECTS_RESULTS',
     'packages/domain/src/approval/types.ts#avoidsSubjects',
+    'packages/domain/src/approval/types.ts#isCountersign',
+  ],
+  'packages/domain/src/approval/definition.ts#countersignDuplicate': [
+    'packages/domain/src/approval/sources.ts#isUnselectedSpecified',
+    'packages/domain/src/approval/sources.ts#sourceKey',
     'packages/domain/src/approval/types.ts#isCountersign',
   ],
   'packages/domain/src/approval/definition.ts#definitionViolations': [
@@ -94,7 +100,7 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/approval/definition.ts#nodeShapeViolations': [
     'packages/domain/src/approval/countersign.ts#transitionRuleViolations',
-    'packages/domain/src/approval/sources.ts#sourceKey',
+    '#countersignDuplicate',
     'packages/domain/src/approval/types.ts#isCountersign',
     'packages/domain/src/approval/types.ts#nodeExits',
   ],
@@ -108,10 +114,6 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/sources.ts#expressionValue',
     'packages/domain/src/approval/types.ts#ORG_ADJUSTMENT_APPROVERS',
     'packages/domain/src/approval/types.ts#ORG_ADJUSTMENT_ONLY_APPROVERS',
-  ],
-  'packages/domain/src/approval/definition.ts#publishViolations': [
-    '#avoidSubjectsViolations',
-    'packages/domain/src/approval/routes.ts#hasApproveExit',
   ],
   'packages/domain/src/approval/definition.ts#subjectEmployeeViolations': [
     '#allowsSubjectEmployee',

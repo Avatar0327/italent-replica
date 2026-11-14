@@ -87,7 +87,12 @@ const avoidSubjectsResult = z.union([
 const unselectedSpecified = z.strictObject({ type: z.literal('specified'), value: z.null() });
 const sourceSchema = z.unknown().transform((value): ApproverSource => {
   if (unselectedSpecified.safeParse(value).success) return UNSELECTED_SPECIFIED;
-  const parsed = z.strictObject({ type: z.enum(APPROVER_SOURCE_TYPES), value: text(200) }).safeParse(value);
+  // 读视图在自动变量来源上回显只读的 autoVariable；设计器整份回存时带回来，这里丢掉，不当作格式错误。
+  const echoed = z
+    .looseObject({ type: z.literal('public_variable'), autoVariable: z.looseObject({}) })
+    .safeParse(value);
+  const bare = echoed.success ? { type: echoed.data.type, value: (value as { value?: unknown }).value } : value;
+  const parsed = z.strictObject({ type: z.enum(APPROVER_SOURCE_TYPES), value: text(200) }).safeParse(bare);
   if (!parsed.success)
     throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_SOURCE_INVALID', '审批人来源必须为类型和值');
   return {

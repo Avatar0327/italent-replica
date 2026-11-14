@@ -193,7 +193,8 @@ export async function createVariable(tx: Tx, ctx: ApprovalContext, input: Create
 
 /** S7a：自动变量只允许改名称、默认值与说明；编码、适用范围、来源不可改（DEC-858），人工变量的 origin 同样不可改。 */
 function assertAutoVariableUnlocked(before: VariableRow, input: UpdateVariableInput) {
-  if (input.origin !== undefined && input.origin !== before.origin)
+  // 来源是系统登记的，任何带 origin 的修改都拒绝（人工变量沿用原“字段不可改”，自动变量给专门的机读原因）
+  if (input.origin !== undefined)
     throw approvalError(
       'VALIDATION_FAILED',
       before.origin === 'auto' ? 'APPROVAL_AUTO_VARIABLE_FIELD_LOCKED' : 'APPROVAL_VARIABLE_FIELD_LOCKED',
@@ -205,7 +206,11 @@ function assertAutoVariableUnlocked(before: VariableRow, input: UpdateVariableIn
     (input.usageScopes.length === before.usageScopes.length &&
       input.usageScopes.every((scope) => before.usageScopes.includes(scope)));
   if ((input.code !== undefined && input.code !== before.code) || !sameScopes)
-    throw approvalError('VALIDATION_FAILED', 'APPROVAL_AUTO_VARIABLE_FIELD_LOCKED', '自动生成的变量不可修改编码和适用范围');
+    throw approvalError(
+      'VALIDATION_FAILED',
+      'APPROVAL_AUTO_VARIABLE_FIELD_LOCKED',
+      '自动生成的变量不可修改编码和适用范围',
+    );
 }
 
 export async function updateVariable(tx: Tx, ctx: ApprovalContext, id: string, input: UpdateVariableInput) {

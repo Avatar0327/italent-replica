@@ -25,7 +25,12 @@ it('100 个有效来源加空来源转异常管理员：运行和仿真均只有
   });
   const simulated = await w.json<{ nodes: { approvers?: { approverUserId: string }[] }[] }>(
     await w.request(w.hr.id, 'POST', `/api/tenant/approval/processes/${process.id}/simulate`, {
-      body: { scope: 'published', data: { values: { processCode: 'TransferProcessNew' } } },
+      // S7a 起指定人员存成公共变量，仿真需带“取当前值”才解析成虚拟账号
+      body: {
+        scope: 'published',
+        resolveCurrentSources: true,
+        data: { values: { processCode: 'TransferProcessNew' } },
+      },
     }),
   );
   expect.soft(simulated.nodes[1]!.approvers).toHaveLength(100);

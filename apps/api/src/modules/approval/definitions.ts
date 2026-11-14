@@ -618,7 +618,9 @@ const NODE_TABLES = [
 
 async function rewriteNodes(tx: Tx, tenantId: string, versionId: string, nodes: readonly ApprovalNode[]) {
   for (const table of NODE_TABLES)
-    await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE tenant_id=${tenantId} AND version_id=${versionId}::uuid`);
+    await tx.execute(
+      sql`DELETE FROM ${sql.identifier(table)} WHERE tenant_id=${tenantId} AND version_id=${versionId}::uuid`,
+    );
   for (const [index, node] of nodes.entries()) await insertNode(tx, tenantId, versionId, node, index);
   await writeRoutes(tx, tenantId, versionId, nodes);
 }
