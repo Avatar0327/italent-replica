@@ -3,11 +3,13 @@
  * DEC-896 U4 / U7 = A）。期望值手写：真解压文件，逐格核对工作表名、合并区、样式（底色 / 细边框 / 居中 / Calibri 11）
  * 与内联字符串内容；不拿被测写入器当参照。授权部分见 AC-F474-JG-access。
  */
-import { sql, withTenant } from '@italent/db';
+import { sql, withTenant, type Db, type Tx } from '@italent/db';
 import { buildJobGraph } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { GRAPH, graphInput, graphWorld, record, seedGraph } from './support/job-graph.js';
+import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
+import { GRAPH, GRAPH_NOW, graphInput, graphWorld, record, seedGraph } from './support/job-graph.js';
+import { tenantApi } from './support/tenant-api.js';
 import { readXlsx, valueAt, type Xlsx } from './support/xlsx-read.js';
 
 const testDb = useTestDb();
@@ -238,6 +240,49 @@ describe('AC-F474-JG-08 图谱导出', () => {
   });
 });
 
+/** 照重新生成的写法整表替换待确认记录：先删后插 count 条（合成名称）。 */
+const fillIssues = async (tx: Tx, tenantId: string, count: number) => {
+  await tx.execute(sql`DELETE FROM job_graph_issues WHERE tenant_id = ${tenantId}`);
+  await tx.execute(sql`INSERT INTO job_graph_issues (tenant_id, kind, object_id, object_name, reasons, sort_key)
+    SELECT ${tenantId}::uuid, 'post', gen_random_uuid(), '合成职务' || g,
+      '[{"code":"POST_SEQUENCE_EMPTY","params":[]}]'::jsonb, g FROM generate_series(1, ${count}::int) g`);
+};
+
+/**
+ * 在导出的“数量检查”与“取数”两条语句之间插入一步（P2-1 交错）。数量检查的结果只有一行一列 total，
+ * 按结果外形识别、不看 SQL 原文；只触发一次。
+ */
+function pauseAfterCount(db: Db, between: (tx: Tx) => Promise<void>) {
+  const state = { fired: false };
+  const passThrough = (target: object, key: string | symbol) => {
+    const value = Reflect.get(target, key, target) as unknown;
+    return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+  };
+  const wrap = (tx: Tx) =>
+    new Proxy(tx, {
+      get: (target, key) =>
+        key !== 'execute'
+          ? passThrough(target, key)
+          : async (query: Parameters<Tx['execute']>[0]) => {
+              const result = await target.execute(query);
+              const rows = rowsOf<Record<string, unknown>>(result);
+              if (!state.fired && rows.length === 1 && Object.keys(rows[0]!).join() === 'total') {
+                state.fired = true;
+                await between(target);
+              }
+              return result;
+            },
+    });
+  const proxied = new Proxy(db, {
+    get: (target, key) =>
+      key !== 'transaction'
+        ? passThrough(target, key)
+        : (fn: (tx: Tx) => Promise<unknown>, config?: Parameters<Db['transaction']>[1]) =>
+            target.transaction((tx) => fn(wrap(tx)), config),
+  });
+  return { db: proxied, state };
+}
+
 describe('AC-F474-JG-09 待确认记录导出', () => {
   const ISSUES = `${GRAPH}/issues`;
   async function issuesWorld() {
@@ -318,5 +363,22 @@ describe('AC-F474-JG-09 待确认记录导出', () => {
       'VALIDATION_FAILED',
       'EXPORT_ROW_LIMIT',
     );
+  });
+
+  it('数量检查通过后、取数前有人重新生成出 10001 条：整单 400（EXPORT_ROW_LIMIT），不静默截断成 10000 条', async () => {
+    const w = await graphWorld(testDb().db);
+    await withTenant(testDb().db, w.tenant.id, (tx) => fillIssues(tx, w.tenant.id, 10_000));
+    // 真 PG：另一连接提交，READ COMMITTED 下导出的下一条语句可见；PGlite 只有一个连接，
+    // 在导出事务里写入，对下一条语句的可见性相同。
+    const committed = Boolean(process.env.TEST_DATABASE_URL);
+    const paused = pauseAfterCount(testDb().db, (tx) =>
+      committed
+        ? withTenant(testDb().db, w.tenant.id, (other) => fillIssues(other, w.tenant.id, 10_001))
+        : fillIssues(tx, w.tenant.id, 10_001),
+    );
+    const api = tenantApi(paused.db, { clock: () => GRAPH_NOW });
+    const response = await api.request('GET', `${ISSUES}/export?all=true`, w.as);
+    expect(paused.state.fired).toBe(true);
+    await failure(response, 400, 'VALIDATION_FAILED', 'EXPORT_ROW_LIMIT');
   });
 });

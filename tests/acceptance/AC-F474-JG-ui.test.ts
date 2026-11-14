@@ -356,6 +356,32 @@ describe('AC-F474-JG-08 图谱导出（前端）', () => {
     expect(downloads.saved).toHaveLength(1);
   });
 
+  it('先打开“重新生成”气泡再启动导出：导出期间气泡里的“确认”不能触发重新生成；完成后也不自行弹回', async () => {
+    serveGraph(snapshot(3));
+    let finish: () => void = () => {};
+    ui.route(
+      `GET ${EXPORT}`,
+      () =>
+        new Promise<Response>((done) => {
+          finish = () => done(xlsxFile('职务职级图谱_20261112103005.xlsx'));
+        }),
+    );
+    ui.route(`POST ${GRAPH}/rebuild`, () => Response.json(snapshot(4)));
+    await ui.render('/job?kind=graph');
+    await click(button('重新生成', ui.host));
+    expect(text()).toContain('确定执行此操作？');
+    // 气泡开着时用键盘启动导出（不经过点外部关闭气泡）
+    await click(button('导出', ui.host));
+    expect(button('导出', ui.host)?.disabled).toBe(true);
+    const confirm = button('确认');
+    if (confirm) await click(confirm);
+    expect(posts()).toEqual([]);
+    await act(async () => finish());
+    await settle(60);
+    expect(posts()).toEqual([]);
+    expect(document.querySelector('.ant-popover:not(.ant-popover-hidden)')).toBeNull();
+  });
+
   it('无快照 409 GRAPH_NOT_GENERATED 提示先重新生成；其余拒绝或非 xlsx 响应一律“导出失败”，不落盘', async () => {
     const cases: [() => Response, string][] = [
       [() => failure(409, 'CONFLICT', '尚未生成图谱', { reason: 'GRAPH_NOT_GENERATED' }), '请先重新生成图谱'],
