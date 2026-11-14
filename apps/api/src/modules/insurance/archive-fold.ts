@@ -48,8 +48,10 @@ export function foldInsuranceEvents(events: readonly Partial<InsuranceOrigin>[])
 
 /**
  * 解析业务位置。带业务编号：服务端核对业务属于本租户且属于该员工（别的租户 / 别的员工 / 不存在同一个 404，不泄露存在性），
- * 位置 = （查询生效日、该业务的计划生效日、该业务的操作先后）；客户端不能自带排序号。
- * 不带业务编号：取查询日当天最后一次操作之后，即所有生效日不晚于查询日的事件都是前驱。
+ * 位置 = （单据自己的实际生效日、该业务的计划生效日、该业务的操作先后），全部取自服务端单据；
+ * 客户端的 effectiveDate 不得移动已有业务的前驱边界（与查询参数不一致时按单据位置，不报错，设计 §4.1）。
+ * 单据还没有任何载荷版本时才退回查询日，作为位置的兜底。
+ * 不带业务编号（新建预览）：取查询日当天最后一次操作之后，即所有生效日不晚于查询日的事件都是前驱。
  */
 export async function insurancePosition(
   tx: Tx,
@@ -64,11 +66,17 @@ export async function insurancePosition(
       WHERE tenant_id = ${tenantId} AND id = ${businessId}::uuid AND employee_id = ${employeeId}::uuid`),
   );
   if (!owned) throw new AppError('NOT_FOUND', NOT_FOUND_MESSAGE);
-  const plannedDate = await loadPlannedEffectiveDate(tx, tenantId, businessId, effectiveDate);
+  // 单据实际生效日 = 最新载荷版本（业务内 version_no 单调）的 effective_date，与计划生效日同一来源表
+  const [latest] = rowsOf<{ date: string }>(
+    await tx.execute(sql`SELECT effective_date::text AS date FROM employment_payload_versions
+      WHERE tenant_id = ${tenantId} AND business_id = ${businessId}::uuid ORDER BY version_no DESC LIMIT 1`),
+  );
+  const ownDate = latest?.date ?? effectiveDate;
+  const plannedDate = await loadPlannedEffectiveDate(tx, tenantId, businessId, ownDate);
   const [key] = rowsOf<{ seq: string | null }>(
     await tx.execute(sql`SELECT ${operationKey(tenantId, sql`${businessId}::uuid`)}::text AS seq`),
   );
-  return { effectiveDate, plannedDate, operationSeq: key?.seq ?? LATEST_SEQ };
+  return { effectiveDate: ownDate, plannedDate, operationSeq: key?.seq ?? LATEST_SEQ };
 }
 
 /** 读该员工在 position 之前的档案事件并折叠；必须在对应租户的 withTenant 事务内调用。 */
