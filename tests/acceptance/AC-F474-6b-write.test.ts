@@ -95,10 +95,10 @@ describe('AC-F474-6b 组织自定义字段写入', () => {
     const org = await w.seedOrg('隔离组织', top.id);
     const op = await w.operator(top.id, { [mine.id]: 'edit' });
     const unknownId = '00000000-0000-4000-8000-000000000001';
-    // 真实授权器：字段目录里没有的编码一律 403（先于定义校验，不区分“他租户的”和“不存在的”，不泄露存在性）；
-    // 全放行视角越过字段权限后，定义校验同样 400 拒绝。
+    // 第 2 轮 P2-2：对象权限与范围通过后，字段 ID 不是本租户组织定义一律 400（先于逐字段编辑权）；
+    // 全放行视角下定义校验同样 400。合法定义但无编辑权的 403 见 AC-02 与 AC-F474-6b-R2-05。
     for (const id of [foreign.id, unknownId]) {
-      expect((await patch(op, org, { customFields: { [id]: 'x' } })).status, id).toBe(403);
+      expect((await patch(op, org, { customFields: { [id]: 'x' } })).status, id).toBe(400);
       const viaAdmin = await w.admin('PATCH', `/organizations/${org.id}`, {
         ifMatch: org.revision,
         body: { effectiveDate: AT, customFields: { [id]: 1 } },
