@@ -1,11 +1,11 @@
 import type { Page } from '@playwright/test';
 import { test, expect, user } from './fixtures.js';
 
-// F-474-6b：组织自定义字段。接口形状照真实后端：定义目录 GET /employment/custom-fields，组织行 customFields 按字段 ID 嵌套。
+// F-474-6b：组织自定义字段。接口形状照真实后端：定义目录 GET /org/custom-field-definitions（业务侧，已按 custom:<id>
+// 查看权裁剪），组织行 customFields 按字段 ID 嵌套。
 const id = '40000000-0000-4000-8000-000000000474';
 const shown = '30000000-0000-4000-8000-0000000000c1';
 const empty = '30000000-0000-4000-8000-0000000000c2';
-const hidden = '30000000-0000-4000-8000-0000000000c3';
 const standard = [
   'name',
   'code',
@@ -27,15 +27,13 @@ const standard = [
   'headcount',
 ];
 const customKeys = [`custom:${shown}`, `custom:${empty}`];
-const definitions = [shown, empty, hidden].map((fieldId, index) => ({
+// 业务侧目录只回有查看权的定义，最小字段：id / name / valueType / options / editable（无权字段「合成无权字段」不在其中）
+const definitions = [shown, empty].map((fieldId, index) => ({
   id: fieldId,
-  code: `ext_${index}`,
-  name: ['合成备注甲', '合成备注乙', '合成无权字段'][index],
-  objectType: 'organization',
+  name: ['合成备注甲', '合成备注乙'][index],
   valueType: 'text',
-  revision: 1,
-  inherit: false,
   options: [],
+  editable: true,
 }));
 
 async function setup(page: Page, baseURL: string | undefined) {
@@ -59,8 +57,8 @@ async function setup(page: Page, baseURL: string | undefined) {
       },
     }),
   );
-  await page.route('**/api/tenant/employment/custom-fields**', (route) =>
-    route.fulfill({ json: { items: definitions, page: 1, pageSize: 200, hasDataPermission: true } }),
+  await page.route('**/api/tenant/org/custom-field-definitions', (route) =>
+    route.fulfill({ json: { items: definitions } }),
   );
   await page.route('**/api/tenant/org/person-candidates**', (route) => route.fulfill({ json: { items: [] } }));
   const row = {
@@ -75,7 +73,7 @@ async function setup(page: Page, baseURL: string | undefined) {
     displayOrder: 1,
     establishedOn: '2026-01-01',
     parents: { admin: { parentId: null, sequence: null } },
-    // 服务端按查看权裁剪：无权字段 hidden 不在其中，乙没有值
+    // 服务端按查看权裁剪：无权字段不在其中，乙没有值
     customFields: { [shown]: '甲的值' },
   };
   await page.route('**/api/tenant/org/organizations**', (route) => {

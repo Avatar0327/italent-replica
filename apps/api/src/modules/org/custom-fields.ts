@@ -1,7 +1,9 @@
-import { and, employmentCustomFieldObjects, eq, inArray, type Tx } from '@italent/db';
-import type { CustomFieldOption } from '@italent/domain';
+import { and, employmentCustomFieldObjects, eq, inArray, type Tx, withTenant } from '@italent/db';
+import { MODULE_OBJECTS, type CustomFieldOption } from '@italent/domain';
+import type { TenantRouteDeps } from '../../routes.js';
 import { validateCustomValue } from '../employment/fields.js';
 import { getModuleViewableFields, trimModuleResponse } from '../permission/module-access.js';
+import { writeFields } from '../permission/module-route-access.js';
 import { invalid } from './validation.js';
 
 /** 提交值：键为字段定义 ID；null 表示清空（docs/08_设计/F-474-6a §3.2）。 */
@@ -21,6 +23,44 @@ export function withCustomFieldKeys<T extends { customFields?: OrgCustomInput }>
     ...rest,
     ...Object.fromEntries(Object.entries(customFields ?? {}).map(([id, value]) => [`custom:${id}`, value])),
   };
+}
+
+/** 授权第一道（对象编辑权 + 标准字段编辑权）用的载荷：只含标准字段，自定义字段留到范围检查之后（见 authorizeCustomFields）。 */
+export function presetFields<T extends { customFields?: OrgCustomInput }>(input: T): Omit<T, 'customFields'> {
+  const { customFields: _customFields, ...rest } = input;
+  return rest;
+}
+
+/**
+ * 自定义字段的两步检查，放在对象权限与数据范围之后（与人员 6c 的 write precheck 同一顺序）：
+ * 先确认每个字段 ID 都是本租户组织对象的定义（否则 400，不区分未知、他租户、非组织对象），
+ * 再按 `custom:<id>` 逐字段查编辑权（合法定义但无权 → 403）。
+ * 若第一道就带上 custom:<id>，不在字段目录里的 ID 会先被判 403，400 永远走不到。
+ */
+export async function authorizeCustomFields(
+  deps: Pick<TenantRouteDeps, 'db' | 'authorize'>,
+  ctx: Parameters<typeof writeFields>[1],
+  operation: 'create' | 'update',
+  customFields: OrgCustomInput | undefined,
+): Promise<void> {
+  const ids = Object.keys(customFields ?? {});
+  if (!ids.length) return;
+  await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const found = await tx
+      .select({ id: employmentCustomFieldObjects.id })
+      .from(employmentCustomFieldObjects)
+      .where(
+        and(
+          eq(employmentCustomFieldObjects.tenantId, ctx.tenantId),
+          eq(employmentCustomFieldObjects.objectType, 'organization'),
+          inArray(employmentCustomFieldObjects.id, ids),
+        ),
+      );
+    const known = new Set(found.map((definition) => definition.id));
+    const unknown = ids.find((id) => !known.has(id));
+    if (unknown) throw invalid(`customFields.${unknown}`, '自定义字段不存在或不属于组织');
+  });
+  await writeFields(deps, ctx, MODULE_OBJECTS.organization.code, operation, withCustomFieldKeys({ customFields }));
 }
 
 /**

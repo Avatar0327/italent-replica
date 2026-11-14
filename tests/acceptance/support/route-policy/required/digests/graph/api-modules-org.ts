@@ -39,6 +39,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/deactivation.ts#assertParentAvailable',
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
   ],
+  'apps/api/src/modules/org/custom-fields.ts#authorizeCustomFields': [
+    '#withCustomFieldKeys',
+    'apps/api/src/modules/org/validation.ts#invalid',
+    'apps/api/src/modules/permission/module-route-access.ts#writeFields',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
   'apps/api/src/modules/org/custom-fields.ts#resolveCustomFields': [
     'apps/api/src/modules/employment/fields.ts#validateCustomValue',
     'apps/api/src/modules/org/validation.ts#invalid',
@@ -296,6 +302,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#requestScope',
     'apps/api/src/modules/permission/module-route-access.ts#visible',
   ],
+  'apps/api/src/modules/org/routes.ts#route:GET /api/tenant/org/custom-field-definitions': [
+    '#BASE',
+    '#OBJECT',
+    '#context',
+    'apps/api/src/modules/personnel/custom-field-directory.ts#listVisibleCustomFields',
+  ],
   'apps/api/src/modules/org/routes.ts#route:GET /api/tenant/org/organizations': [
     'apps/api/src/modules/org/custom-fields.ts#trimOrganization',
     'apps/api/src/modules/org/read-views.ts#readOrgPage',
@@ -362,7 +374,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
   ],
   'apps/api/src/modules/org/routes.ts#route:PATCH /api/tenant/org/organizations/:id': [
-    'apps/api/src/modules/org/custom-fields.ts#withCustomFieldKeys',
+    'apps/api/src/modules/org/custom-fields.ts#authorizeCustomFields',
+    'apps/api/src/modules/org/custom-fields.ts#presetFields',
     '#BASE',
     '#OBJECT',
     '#body',
@@ -426,7 +439,8 @@ export const GRAPH: Graph = {
     '#revision',
   ],
   'apps/api/src/modules/org/routes.ts#route:POST /api/tenant/org/organizations': [
-    'apps/api/src/modules/org/custom-fields.ts#withCustomFieldKeys',
+    'apps/api/src/modules/org/custom-fields.ts#authorizeCustomFields',
+    'apps/api/src/modules/org/custom-fields.ts#presetFields',
     '#BASE',
     '#OBJECT',
     '#body',
@@ -442,7 +456,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#writeFields',
   ],
   'apps/api/src/modules/org/routes.ts#route:POST /api/tenant/org/organizations/:id/employment-preview': [
-    'apps/api/src/modules/org/custom-fields.ts#withCustomFieldKeys',
+    'apps/api/src/modules/org/custom-fields.ts#authorizeCustomFields',
+    'apps/api/src/modules/org/custom-fields.ts#presetFields',
     'apps/api/src/modules/org/employment-linkage.ts#hasPendingOrgEmployment',
     'apps/api/src/modules/org/employment-linkage.ts#validateEmploymentChoice',
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
@@ -460,7 +475,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/org/routes.ts#route:POST /api/tenant/org/validate': [
-    'apps/api/src/modules/org/custom-fields.ts#withCustomFieldKeys',
+    'apps/api/src/modules/org/custom-fields.ts#authorizeCustomFields',
+    'apps/api/src/modules/org/custom-fields.ts#presetFields',
     '#BASE',
     '#OBJECT',
     '#body',

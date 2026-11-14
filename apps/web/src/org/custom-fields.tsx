@@ -11,11 +11,14 @@ export interface OrgCustomDefinition {
   valueType: CustomFieldValueType;
   options?: readonly CustomFieldOption[];
 }
-/** 服务端组织自定义字段上限与任职一致（200）；没有任何自定义字段查看权时不请求定义目录。 */
-const DEFINITIONS = '/api/tenant/employment/custom-fields?objectType=organization&page=1&pageSize=200';
+/**
+ * 业务侧只读目录（普通组织用户没有配置管理能力，读配置接口会 403）：服务端已按 custom:<id> 查看权裁剪，最小字段。
+ * 没有任何自定义字段查看权时不请求。
+ */
+const DEFINITIONS = '/api/tenant/org/custom-field-definitions';
 
 /**
- * 租户定义 × 查看人的 custom:<id> 查看权：只返回有查看权的字段；定义读取失败（无配置对象查看权等）时按无字段处理，
+ * 租户定义 × 查看人的 custom:<id> 查看权：只返回有查看权的字段；定义读取失败时按无字段处理，
  * 不渲染占位，也不影响组织页本身（fail-closed，docs/08_设计/F-474-6a §5）。
  */
 export function useOrgCustomFields(access: PageAccess) {

@@ -27,9 +27,10 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { type TenantEnv, tenantOf } from '../../tenant-context.js';
 import { listOrgPersonCandidates } from '../employment/org-people.js';
+import { listVisibleCustomFields } from '../personnel/custom-field-directory.js';
 import { pageQuery } from '../job/context.js';
 import { releaseCode, reserveCode } from './codes.js';
-import { trimOrganization, withCustomFieldKeys } from './custom-fields.js';
+import { authorizeCustomFields, presetFields, trimOrganization } from './custom-fields.js';
 import { authorizeOrgImportRows, importOrganizations, type OrgImportRow } from './import-service.js';
 import { displayOrganization, loadOrgSnapshot, type OrgRecord, validIsoDate } from './read-model.js';
 import { readOrgChartNodes, readOrgPage, readOrgTreeNodes } from './read-views.js';
@@ -206,6 +207,14 @@ function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     const ctx = await context(c, deps, 'configuration');
     return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => readOrgSettings(tx, ctx.tenantId)));
   });
+  // F-474-6b 第 2 轮：组织页读自定义字段定义的业务侧只读目录（普通组织用户没有配置管理能力，读配置接口得 403）。
+  // 准入 = 组织对象查看权；裁剪与最小字段由人员侧 6c 的同一个函数处理，配置接口的准入不放宽。
+  router.get(`${BASE}/custom-field-definitions`, async (c) => {
+    const ctx = await context(c, deps, 'read');
+    return c.json({
+      items: await listVisibleCustomFields(deps, ctx, { objectType: 'organization', objectCode: OBJECT }),
+    });
+  });
   router.get(`${BASE}/views`, async (c) => {
     const ctx = await context(c, deps, 'read');
     // TODO(需取证 Q-M0-09): 界面任务接入四视图目录；本车道不含 apps/web。
@@ -339,10 +348,11 @@ function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   router.post(`${BASE}/validate`, async (c) => {
     const ctx = await context(c, deps, 'create');
     const input = await body(c, creation);
-    await writeFields(deps, ctx, OBJECT, 'create', withCustomFieldKeys(input));
+    await writeFields(deps, ctx, OBJECT, 'create', presetFields(input));
     await button(deps, ctx, OBJECT, 'validate', 'detail');
     const scope = await requestScope(c, deps, ctx, OBJECT);
     await visibleParents(deps, ctx, input.parents, scope);
+    await authorizeCustomFields(deps, ctx, 'create', input.customFields);
     const result = await withTenant(deps.db, ctx.tenantId, (tx) => validateOrganization(tx, ctx, input));
     return c.json(await trimModuleResponse(deps, ctx, OBJECT, result));
   });
@@ -350,9 +360,10 @@ function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     const ctx = await context(c, deps, 'create', revision(c));
     requireNew(ctx);
     const input = await body(c, creation);
-    await writeFields(deps, ctx, OBJECT, 'create', withCustomFieldKeys(input));
+    await writeFields(deps, ctx, OBJECT, 'create', presetFields(input));
     const scope = await requestScope(c, deps, ctx, OBJECT);
     await visibleParents(deps, ctx, input.parents, scope);
+    await authorizeCustomFields(deps, ctx, 'create', input.customFields);
     return write(
       c,
       deps,
@@ -584,7 +595,7 @@ function registerEmploymentPreview(router: Hono<TenantEnv>, deps: TenantRouteDep
     const id = orgId(c);
     const input = await body(c, update);
     const { addEmployment: _choice, ...changedFields } = input;
-    await writeFields(deps, ctx, OBJECT, 'update', withCustomFieldKeys(changedFields));
+    await writeFields(deps, ctx, OBJECT, 'update', presetFields(changedFields));
     const scope = await requestScope(c, deps, ctx, OBJECT);
     const employmentScope = await resolveModuleScope(
       deps,
@@ -600,6 +611,8 @@ function registerEmploymentPreview(router: Hono<TenantEnv>, deps: TenantRouteDep
         ? hasPendingOrgEmployment(tx, { ...ctx, scope: employmentScope }, id, input.effectiveDate)
         : false;
     });
+    // 目标组织的范围复核在事务里；自定义字段的两步检查排在它之后，范围外的组织不会借字段 ID 的 400 / 403 探测定义。
+    await authorizeCustomFields(deps, ctx, 'update', input.customFields);
     return c.json({ hasPendingEmployment });
   });
 }
@@ -612,7 +625,7 @@ function registerUpdate(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     const id = orgId(c);
     const input = await body(c, update);
     const { addEmployment: _choice, ...changedFields } = input;
-    await writeFields(deps, ctx, OBJECT, 'update', withCustomFieldKeys(changedFields));
+    await writeFields(deps, ctx, OBJECT, 'update', presetFields(changedFields));
     const scope = await requestScope(c, deps, ctx, OBJECT);
     await withTenant(deps.db, ctx.tenantId, async (tx) =>
       visible(
@@ -623,6 +636,7 @@ function registerUpdate(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
       ),
     );
     if (input.parents) await visibleParents(deps, ctx, input.parents, scope);
+    await authorizeCustomFields(deps, ctx, 'update', input.customFields);
     const employmentScope =
       input.addEmployment === true
         ? await resolveModuleScope(deps, ctx, tenantLocalDate(ctx.now, ctx.timezone), 'TenantBase.EmploymentRecord')

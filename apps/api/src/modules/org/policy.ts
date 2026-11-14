@@ -124,6 +124,15 @@ export const ORG_POLICIES = defineTable('org', {
   [`GET ${BASE}/settings`]: admin('other_settings', { fields: settingFields }),
   // 静态四视图目录（Q-M0-09 待接入界面）：items 仍经 trimModuleResponse 按 Organization 查看权裁剪
   // （resource / dimension 是目录系统字段，label 不在目录内——现状）
+  // F-474-6b 第 2 轮：业务侧自定义字段定义目录。只按组织对象查看权准入（与 views 同一 context(read)），
+  // 定义是租户配置、不含组织行，故无数据范围；每项再按 custom:<id> 查看权裁剪，只回 id / name / valueType / options / editable
+  [`GET ${BASE}/custom-field-definitions`]: object({
+    object: ORG,
+    operation: 'view',
+    button: noButton('定义目录只按组织对象查看权，无按钮'),
+    scope: noScope('定义是租户配置，不含组织行，不查数据范围'),
+    fields: shape('org.customFieldDefinitions'),
+  }),
   [`GET ${BASE}/views`]: object({
     object: ORG,
     operation: 'view',
@@ -233,7 +242,7 @@ export const ORG_POLICIES = defineTable('org', {
     scope: orgPoint({ param: 'id' }),
     fields: fixed(['hasPendingEmployment'], 'DEC-137（employment-linkage.ts hasPendingOrgEmployment：只返回布尔）'),
     // 不进命令 / 台账；预检事务内仍按 authorizeOrgResult（created = false，即 org.byId 范围）复核目标组织
-    write: write('body', 'org.result', none('只读预检，无返回对象（单个布尔）'), {
+    write: customFieldsWrite('org.result', none('只读预检，无返回对象（单个布尔）'), {
       controls: UPDATE_CONTROLS,
       preconditions: ['validateEmploymentChoice'],
     }),

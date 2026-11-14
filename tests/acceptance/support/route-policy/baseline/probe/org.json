@@ -19,6 +19,18 @@
       "obj:TenantBase.Organization:delete"
     ]
   },
+  "GET /api/tenant/org/custom-field-definitions": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.Organization"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.Organization:view"
+    ]
+  },
   "GET /api/tenant/org/organizations": {
     "all": {
       "status": 200

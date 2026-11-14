@@ -5355,6 +5355,8 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/org/correction.ts#earliest': ['11cb5e08cbfb', 'c175034620fb'],
   'apps/api/src/modules/org/correction.ts#planEstablishedOnCorrection': ['6d1441739776', 'a6e61c69e0e8'],
   'apps/api/src/modules/org/correction.ts#rejected': ['befa891be0e9', '583ee92c250c'],
+  'apps/api/src/modules/org/custom-fields.ts#authorizeCustomFields': ['07bb6e342dab', 'a6931a737b0a'],
+  'apps/api/src/modules/org/custom-fields.ts#presetFields': ['751850796b48', 'e3b0c44298fc'],
   'apps/api/src/modules/org/custom-fields.ts#resolveCustomFields': ['a303a8d0db22', '152fb50b8bad'],
   'apps/api/src/modules/org/custom-fields.ts#trimOrganization': ['7f053294dffb', 'b5133db50490'],
   'apps/api/src/modules/org/custom-fields.ts#withCustomFieldKeys': ['eb058034851a', 'bb1117e3491d'],

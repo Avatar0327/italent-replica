@@ -153,6 +153,7 @@ describe('AC-F474-6b-R2 写入校验顺序（P2-2）', () => {
     const outside = await w.seedOrg('范围外组织', w.world.tenant.id);
     const org = await w.seedOrg('范围内组织', top.id);
     const op = await w.operator(top.id, { [editable.id]: 'edit', [viewOnly.id]: 'view' });
+    const nobody = await addMember(w.world, 'nobody');
     const before = await counts(w);
     // 合法定义但无编辑权：403
     for (const r of routes(w, org, top.id, { [viewOnly.id]: 'x' })) {
@@ -160,7 +161,6 @@ describe('AC-F474-6b-R2 写入校验顺序（P2-2）', () => {
       expect(res.status, `${r.label} ${await res.clone().text()}`).toBe(403);
     }
     // 没有组织对象权限的成员：非法 ID 也先被对象权限拒绝，不能借 400 探测定义是否存在
-    const nobody = await addMember(w.world, 'nobody');
     for (const r of routes(w, org, top.id, { [unknownId]: 'x' })) {
       const res = await w.real.request(r.method, `/api/tenant/org${r.path}`, {
         tenant: w.world.tenant.id,
