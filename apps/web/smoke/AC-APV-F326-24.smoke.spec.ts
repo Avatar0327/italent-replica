@@ -176,6 +176,9 @@ test('AC-APV-F326-24 持有者：列表、新建 / 编辑头部、查看引用�
   await expect(refs).toContainText(manifest.process);
   await expect(refs).toContainText('合成矩阵节点');
   await expect(refs).toContainText('当前 v1');
+  // 被引用的角色列按真实详情的列名显示（S4 夹具角色列名为“角色”）
+  await expect(refs.getByRole('columnheader', { name: '角色列' })).toBeVisible();
+  await expect(refs.getByRole('cell', { name: '角色', exact: true })).toBeVisible();
   await refs.getByRole('button', { name: 'Close' }).click();
 
   // 停用前影响清单：确认后带引用数提交，切到“停用的”
