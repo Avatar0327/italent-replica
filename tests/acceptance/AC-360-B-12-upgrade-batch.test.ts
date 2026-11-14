@@ -17,6 +17,7 @@ import type { QuestionnaireView } from './AC-360-support.js';
 import { DATA_CHANGED, errorOf, key, outbox, reportLink, sceneB, type SceneB } from './AC-360-B-support.js';
 import { withPreAssessmentSchema } from './support/pre-assessment-schema.js';
 import { withPreBlacklistSchema } from './support/pre-blacklist-schema.js';
+import { withPreCustomFieldOptionsSchema } from './support/pre-custom-field-options-schema.js';
 import { withPreInternCycleSchema } from './support/pre-intern-cycle-schema.js';
 import { withPrePartTimeSchema } from './support/pre-part-time-schema.js';
 import { withPreProfileUpdatedBySchema } from './support/pre-profile-updated-by-schema.js';
@@ -201,13 +202,15 @@ it('PR-A 历史计分批次升级后：不能凭它生成报告；重新计分�
     withPreBlacklistSchema(handle.db, () =>
       withPrePartTimeSchema(handle.db, () =>
         withPreInternCycleSchema(handle.db, () =>
-          withPreProfileUpdatedBySchema(handle.db, () =>
-            withPreAssessmentSchema(handle.db, async () => {
-              const list: Legacy[] = [];
-              for (const kind of ['content', 'weights', 'scoreMethod'] as const)
-                list.push(await legacy(handle.db, kind));
-              return list;
-            }),
+          withPreCustomFieldOptionsSchema(handle.db, () =>
+            withPreProfileUpdatedBySchema(handle.db, () =>
+              withPreAssessmentSchema(handle.db, async () => {
+                const list: Legacy[] = [];
+                for (const kind of ['content', 'weights', 'scoreMethod'] as const)
+                  list.push(await legacy(handle.db, kind));
+                return list;
+              }),
+            ),
           ),
         ),
       ),

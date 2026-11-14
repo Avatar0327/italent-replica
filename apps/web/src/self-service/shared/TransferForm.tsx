@@ -1,7 +1,7 @@
 import { codeText } from '../../foundation/code-text.js';
 import { useState } from 'react';
 import { LinkageFields } from '../../transfer/LinkageFields.js';
-import { missingTransferRequiredFields, requiredTransferFields } from '@italent/domain';
+import { missingTransferRequiredFields, requiredTransferFields, type CustomFieldOption } from '@italent/domain';
 import { text, presetLabels, jobReferences } from '../../transfer/messages.js';
 import type { Choice, FieldValue, TransferFormModel, TransferFormProps } from '../../transfer/types.js';
 import { EMPLOYMENT_TYPE_FIELD } from '../../employment-types/labels.js';
@@ -186,6 +186,7 @@ export function EmploymentFields(props: TransferFormProps) {
               }
               required={source === 'preset' && required.has(code)}
               valueType={custom?.valueType}
+              options={custom?.options}
             />
           );
         })}
@@ -201,13 +202,20 @@ interface PairProps extends TransferFormProps {
   readonly: boolean;
   required: boolean;
   valueType?: string;
+  options?: readonly CustomFieldOption[];
 }
 function FieldPair(props: PairProps) {
   const { model, source, code, label, required } = props;
   const preview = model.preview!;
   const key = source === 'preset' ? 'fields' : 'customFields';
   const value = Object.hasOwn(model[key], code) ? model[key][code] : preview[key][code];
-  const choices = source === 'preset' ? choicesFor(model, code) : undefined;
+  // 非 select 自定义字段也带 options: []，只有 select 才按选项集取名称，否则会被误当作引用选择。
+  const choices =
+    source === 'preset'
+      ? choicesFor(model, code)
+      : props.valueType === 'select'
+        ? props.options?.map((option) => ({ id: option.value, name: option.label }))
+        : undefined;
   return (
     <div className="transfer-field-pair">
       <div className="transfer-before">
@@ -230,6 +238,27 @@ function FieldPair(props: PairProps) {
 function FieldControl(props: PairProps & { value: FieldValue; choices?: readonly Choice[] }) {
   const { code, source, value, readonly, required, onField, valueType, choices } = props;
   const onChange = (next: FieldValue) => onField?.(source, code, next);
+  // 设计 §5：停用选项只在已选（本单当前值或调整前的原值）时出现，且不可新选。
+  const before = props.model.preview?.before?.customFields?.[code];
+  if (!readonly && valueType === 'select')
+    return (
+      <select
+        name={code}
+        required={required}
+        value={value == null ? '' : String(value)}
+        onChange={(event) => onChange(event.target.value || null)}
+      >
+        <option value="">{text.choose}</option>
+        {(props.options ?? [])
+          .filter((option) => option.enabled || option.value === value || option.value === before)
+          .map((option) => (
+            <option key={option.value} value={option.value} disabled={!option.enabled}>
+              {option.label}
+              {!option.enabled && text.disabledOption}
+            </option>
+          ))}
+      </select>
+    );
   const boolean =
     valueType === 'boolean' || code === 'isDepartmentHead' || code === 'isStoreManager' || code === 'isKeyPerson';
   if (!readonly && choices) return <ReferenceControl {...props} choices={choices} />;

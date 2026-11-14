@@ -311,6 +311,7 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   state: '状态',
   status: '状态',
   name: '名称',
+  options: '选项',
   shortName: '简称',
   code: '编码',
   // F-326 变量字段（设计 §4.5）：编码、名称、状态已在上方

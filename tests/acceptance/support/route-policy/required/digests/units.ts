@@ -678,6 +678,7 @@ export const DIGESTS: Digests = {
     'route:POST /records/:id/forward-update-preview': '435a1e5f4369',
     'route:POST /records/batch-edit': '2b2c280f3522',
     'route:PUT /custom-fields/:id/inheritance': '9503bb63b315',
+    'route:PUT /custom-fields/:id/options': 'c0670bae7e66',
     'route:PUT /settings': '7a84582006c4',
   },
   'apps/api/src/modules/employment/transition-access.ts': {
@@ -2495,6 +2496,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/routes.ts#route:POST /records/:id/forward-update-preview': '502cd30c2ed8',
   'apps/api/src/modules/employment/routes.ts#route:POST /records/batch-edit': 'dcae97fe5fea',
   'apps/api/src/modules/employment/routes.ts#route:PUT /custom-fields/:id/inheritance': 'cc3726417668',
+  'apps/api/src/modules/employment/routes.ts#route:PUT /custom-fields/:id/options': '12b335ef4449',
   'apps/api/src/modules/employment/routes.ts#route:PUT /settings': 'fcfd4017c2bb',
   'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite': '413b0e4e2c2a',
   'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure': '573e99887edc',
