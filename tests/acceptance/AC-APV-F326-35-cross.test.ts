@@ -6,7 +6,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
-import type { NodeInput } from './AC-APV-support.js';
+import type { NodeInput, ProcessView } from './AC-APV-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import {
   actionsOf,
@@ -198,60 +198,74 @@ describe('AC-APV-F326-41 草稿期限制', () => {
   });
 });
 
-describe('AC-APV-F326-43 权限', () => {
+describe('AC-APV-F326-43 权限（DEC-908：生成不在流程配置入口之外另加权限）', () => {
   const api = (w: S4World, allow: (action: string) => boolean) =>
     tenantApi(w.db, { authorize: (q) => allow(q.action), clock: w.clock });
-  const body = (w: S4World) => ({
+  const as = (w: S4World) => ({ user: w.hr.id, tenant: w.tenant.id });
+  const body = (w: S4World, nodes: NodeInput[] = [single('n1', w.near.userId)]) => ({
     code: `P43${Date.now()}`,
     name: '合成权限流程',
     approvalType: 'transfer',
     isFallback: true,
     exceptionAdminUserId: w.exceptionAdmin,
     conditions: { items: [] },
-    nodes: [{ ...single('n1', w.near.userId), actions: { avoidSelf: true } }],
+    nodes: nodes.map((node) => ({ ...node, actions: { avoidSelf: true } })),
   });
-
-  it('生成不增加额外权限判定：只放行 admin.process_matrix 的账号保存即生成，created_by 为该账号', async () => {
-    const w = await s4World(database().db, 's7a-perm');
-    const response = await api(w, (action) => action === 'admin.process_matrix').request(
-      'POST',
-      `${APPROVAL}/processes`,
-      {
-        ifMatch: 0,
-        body: body(w),
-        user: w.hr.id,
-        tenant: w.tenant.id,
-      },
-    );
-    expect(response.status, await response.clone().text()).toBe(201);
-    const process = (await response.json()) as { id: string };
-    const row = await firstAuto(w, process.id);
-    expect(row).toMatchObject({ created_by: w.hr.id, updated_by: w.hr.id });
-  });
-
-  it('没有 admin.process_matrix 的账号：流程接口与公共变量管理接口都 403，不写任何变量', async () => {
-    const w = await s4World(database().db, 's7a-perm-deny');
-    const total = await variableCount(w);
-    const denied = api(w, (action) => action !== 'admin.process_matrix');
-    const create403 = await denied.request('POST', `${APPROVAL}/processes`, {
-      ifMatch: 0,
-      body: body(w),
-      user: w.hr.id,
-      tenant: w.tenant.id,
-    });
-    expect(create403.status).toBe(403);
-    const variables = await denied.request('GET', `${APPROVAL}/variables?scope=public`, {
-      user: w.hr.id,
-      tenant: w.tenant.id,
-    });
-    expect(variables.status).toBe(403);
-    expect(await variableCount(w)).toBe(total);
-    const rows = await withTenant(w.db, w.tenant.id, async (tx) =>
+  const draftBody = (w: S4World, nodes: NodeInput[]) => {
+    const { code: _code, approvalType: _type, ...rest } = body(w, nodes);
+    return rest;
+  };
+  const autoTotal = async (w: S4World) =>
+    withTenant(w.db, w.tenant.id, async (tx) =>
       rowsOf<{ n: number }>(
         await tx.execute(sql`SELECT count(*)::int AS n FROM approval_variables WHERE tenant_id=${w.tenant.id}
           AND origin='auto'`),
       ),
+    ).then((rows) => rows[0]!.n);
+
+  it('流程管理员（admin.process_matrix，如 matrix_admin）：新建流程、保存草稿指定人员都照常生成，created_by 为该账号', async () => {
+    const w = await s4World(database().db, 's7a-perm');
+    const admin = api(w, (action) => action === 'admin.process_matrix');
+    const created = await admin.request('POST', `${APPROVAL}/processes`, { ifMatch: 0, body: body(w), ...as(w) });
+    expect(created.status, await created.clone().text()).toBe(201);
+    const process = (await created.json()) as ProcessView;
+    expect(await firstAuto(w, process.id)).toMatchObject({ created_by: w.hr.id, updated_by: w.hr.id });
+
+    const second = (await w.person('合成第二人', w.staff)).userId;
+    const nodes = [single('n1', w.near.userId), single('n2', second)];
+    const saved = await admin.request('PUT', `${APPROVAL}/processes/${process.id}/draft`, {
+      ifMatch: process.revision,
+      body: draftBody(w, nodes),
+      ...as(w),
+    });
+    expect(saved.status, await saved.clone().text()).toBe(200);
+    expect(await autoAt(w, process.id, 'n2')).toMatchObject({ created_by: w.hr.id, updated_by: w.hr.id });
+  });
+
+  it('只有流程对象按钮、没有 admin.process_matrix 的账号：新建与保存草稿 403 且不写变量，公共变量管理接口 403', async () => {
+    const w = await s4World(database().db, 's7a-perm-deny');
+    const seeded = await api(w, (action) => action === 'admin.process_matrix').request(
+      'POST',
+      `${APPROVAL}/processes`,
+      { ifMatch: 0, body: body(w), ...as(w) },
     );
-    expect(rows[0]!.n).toBe(0);
+    const process = (await seeded.json()) as ProcessView;
+    const total = await autoTotal(w);
+    const buttonOnly = api(w, (action) => action !== 'admin.process_matrix');
+    const create403 = await buttonOnly.request('POST', `${APPROVAL}/processes`, {
+      ifMatch: 0,
+      body: body(w),
+      ...as(w),
+    });
+    expect(create403.status).toBe(403);
+    const draft403 = await buttonOnly.request('PUT', `${APPROVAL}/processes/${process.id}/draft`, {
+      ifMatch: process.revision,
+      body: draftBody(w, [single('n1', w.near.userId), single('n2', w.near.userId)]),
+      ...as(w),
+    });
+    expect(draft403.status).toBe(403);
+    const variables = await buttonOnly.request('GET', `${APPROVAL}/variables?scope=public`, as(w));
+    expect(variables.status).toBe(403);
+    expect(await autoTotal(w)).toBe(total);
   });
 });
