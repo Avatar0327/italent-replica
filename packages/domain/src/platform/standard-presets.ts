@@ -16,7 +16,7 @@ import {
   EMPLOYEE_SELF_SERVICE_BUTTONS,
   EMPLOYEE_SELF_SERVICE_CODE,
 } from './employee-self-service.js';
-import { MODULE_OBJECTS, ORG_EMPLOYEE_APP } from '../permission/module-actions.js';
+import { INSURANCE_ADJUST_FIELDS, MODULE_OBJECTS, ORG_EMPLOYEE_APP } from '../permission/module-actions.js';
 import type { ButtonGrant, ObjectDefinition, ObjectPermission } from '../permission/object-permission.js';
 import { EVALUATION_APP, EVALUATION_OBJECTS } from '../evaluation/catalog.js';
 import { EVALUATION_FLOW_OBJECTS } from '../evaluation/flow-catalog.js';
@@ -191,8 +191,20 @@ const grant = (definition: ObjectDefinition) =>
  */
 const JOB_GRAPH_PRESET_OBJECTS = new Set<string>([MODULE_OBJECTS.jobGraph.code]);
 
+/**
+ * F-474-8c-2a（DEC-896④）：社保档案 / 方案两个新对象只预置给系统管理员与人事管理员（只读），人事专员、经理等
+ * 由 BUSINESS_OBJECTS 派生的身份都不含，所以同样不进 BUSINESS_OBJECTS，由这两个身份单独加上。
+ */
+const SOCIAL_INSURANCE_VIEW_OBJECTS = [MODULE_OBJECTS.socialSecurityProfile, MODULE_OBJECTS.socialInsurancePlan];
+const SOCIAL_INSURANCE_PRESET_OBJECTS = new Set<string>(SOCIAL_INSURANCE_VIEW_OBJECTS.map((o) => o.code));
+
 const BUSINESS_OBJECTS: readonly ObjectDefinition[] = [
-  ...Object.values(MODULE_OBJECTS).filter((o) => !CONFIG_OBJECTS.has(o.code) && !JOB_GRAPH_PRESET_OBJECTS.has(o.code)),
+  ...Object.values(MODULE_OBJECTS).filter(
+    (o) =>
+      !CONFIG_OBJECTS.has(o.code) &&
+      !JOB_GRAPH_PRESET_OBJECTS.has(o.code) &&
+      !SOCIAL_INSURANCE_PRESET_OBJECTS.has(o.code),
+  ),
   ...APPROVAL_OBJECTS,
   ...PERSONNEL_OBJECTS,
 ];
@@ -223,6 +235,13 @@ function readOnly(definition: ObjectDefinition): ObjectPermission {
 function withoutDailyWage(permission: ObjectPermission): ObjectPermission {
   if (permission.objectCode !== PERSONNEL_OBJECT) return permission;
   return { ...permission, fields: permission.fields.filter((f) => f.fieldCode !== 'dailyWageStandard') };
+}
+
+/** F-474-8c-2a：调动社保调整值只给系统管理员与人事管理员，专员 / 经理从全字段模板里去掉。 */
+function withoutInsuranceAdjust(permission: ObjectPermission): ObjectPermission {
+  if (permission.objectCode !== MODULE_OBJECTS.employmentRecord.code) return permission;
+  const adjust: readonly string[] = INSURANCE_ADJUST_FIELDS;
+  return { ...permission, fields: permission.fields.filter((f) => !adjust.includes(f.fieldCode)) };
 }
 
 /** 指定数据操作与按钮（按钮编码，含全部级别）；字段全部可见、非系统字段可编辑。 */
@@ -467,6 +486,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     apps: [ORG_EMPLOYEE_APP],
     objects: [
       ...BUSINESS_OBJECTS.map(grant),
+      ...SOCIAL_INSURANCE_VIEW_OBJECTS.map(readOnly),
       fieldSubset(MODULE_OBJECTS.jobGraph, [], [], { create: false, update: false, delete: false }, [
         { buttonCode: 'rebuild', level: 'list' },
         { buttonCode: 'export', level: 'list' },
@@ -492,7 +512,10 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     apps: [ORG_EMPLOYEE_APP],
     // DEC-767：看板类对象与看板类看全部归 HR 专员 / HR 经理；员工结构报表、流动情况报表保留查看，不预置看全部，
     // 取数按管理单元（F-466）。
-    objects: BUSINESS_OBJECTS.filter((o) => !HR_BOARD_OBJECT_CODES.includes(o.code)).map(grant),
+    objects: [
+      ...BUSINESS_OBJECTS.filter((o) => !HR_BOARD_OBJECT_CODES.includes(o.code)).map(grant),
+      ...SOCIAL_INSURANCE_VIEW_OBJECTS.map(readOnly),
+    ],
     hr: true,
     seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, ORG_ADJUSTMENT_SEE_ALL, DUTY_TRANSFER_SEE_ALL],
   },
@@ -514,7 +537,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
           MODULE_OBJECTS.orgAdjustment.code,
           MODULE_OBJECTS.orgAdjustmentDetail.code,
         ].includes(o.code),
-    ).map((o) => withoutDailyWage(grant(o))),
+    ).map((o) => withoutInsuranceAdjust(withoutDailyWage(grant(o)))),
     hr: true,
   },
   // DEC-767：看板专用身份，只带五个看板类对象（只读）并预置看全部，不含名册、任职等其它能力；数据范围仍不预置其它对象。
@@ -579,7 +602,9 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '经理若要查看并使用组织人事产品的经理自助端功能，须对此身份配置相应权限',
     licenseType: null,
     apps: [ORG_EMPLOYEE_APP],
-    objects: BUSINESS_OBJECTS.filter((o) => MANAGER_OBJECTS.has(o.code)).map((o) => withoutDailyWage(readOnly(o))),
+    objects: BUSINESS_OBJECTS.filter((o) => MANAGER_OBJECTS.has(o.code)).map((o) =>
+      withoutInsuranceAdjust(withoutDailyWage(readOnly(o))),
+    ),
     hr: false,
   },
   // DEC-280①②：三类内置 360 身份，由企业管理员在“用户授权”里授予；不消耗许可，数据范围不预置
