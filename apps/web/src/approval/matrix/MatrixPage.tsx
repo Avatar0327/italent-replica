@@ -136,12 +136,7 @@ function MatrixList(props: { list: Matrices; selected?: string; select(id: strin
           { key: 'disabled', label: m.disabled },
         ]}
       />
-      <Input.Search
-        allowClear
-        placeholder={m.search}
-        maxLength={100}
-        onSearch={(value) => list.search(value.trim())}
-      />
+      <Input.Search allowClear placeholder={m.search} maxLength={100} onSearch={(value) => list.search(value.trim())} />
       {!!list.error && <PageState kind="error" error={list.error} retry={list.refresh} />}
       {!list.error && (
         <Table
