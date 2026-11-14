@@ -2466,12 +2466,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/source-matrix.ts#resolveMatrixWith',
     'apps/api/src/modules/approval/source-matrix.ts#resolveVariable',
   ],
+  'apps/api/src/modules/approval/simulation-current.ts#simulationFieldsOf': [
+    '#MATRIX_VIRTUAL_FIELDS',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
   'apps/api/src/modules/approval/simulation-current.ts#virtualSubject': [
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/approval/simulation-current.ts#virtualValues': [
-    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
-  ],
+  'apps/api/src/modules/approval/simulation-current.ts#virtualValues': ['#simulationFieldsOf'],
   'apps/api/src/modules/approval/simulation-current.ts#withCurrentSources': [
     '#CURRENT_TYPES',
     '#currentUsers',
@@ -2481,9 +2483,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/simulation.ts#conditionContext': [
     'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/simulation-current.ts#simulationFieldsOf',
     '#UUID',
     'apps/api/src/modules/org/read-model.ts#validIsoDate',
-    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'apps/api/src/modules/approval/simulation.ts#countersignSummary': [
     '#STATUS_RANK',
