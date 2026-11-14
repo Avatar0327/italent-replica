@@ -235,6 +235,13 @@ function structures() {
 
 const error = (status: number, code: string, message: string, details: Record<string, unknown> = {}) =>
   Response.json({ error: { code, message, details } }, { status });
+/** source-usages.ts assertRoleColumnsUnused 的拒绝形状（approvalError：details 带 reason / total / items）。 */
+const referenced = (items: Reference[]) =>
+  error(409, 'CONFLICT', '角色列正被流程引用，不能删除', {
+    reason: 'APPROVAL_MATRIX_COLUMN_REFERENCED',
+    total: items.length,
+    items,
+  });
 const createdHead = (body: Record<string, unknown>, seq: number) =>
   head({
     id: `81000000-0000-4000-8000-0000000009${String(seq).padStart(2, '0')}`,
@@ -268,8 +275,7 @@ export function fakeBackend() {
     const kept = new Set((body.columns as { id?: string }[]).map((column) => column.id));
     const used = references(item.id).items.filter((usage) => usage.columnId && !kept.has(usage.columnId));
     const known = new Set((columns.get(item.id) ?? []).map((column) => column.id));
-    if (used.some((usage) => known.has(usage.columnId!)))
-      return error(409, 'CONFLICT', '角色列正被流程引用，不能删除', { total: used.length, items: used });
+    if (used.some((usage) => known.has(usage.columnId!))) return referenced(used);
     replace(item, body);
     return write(item, body, {});
   }
@@ -301,8 +307,9 @@ export function fakeBackend() {
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     const entry = { method, path: url.pathname, body, key: new Headers(init?.headers).get('idempotency-key') };
     writes.push(entry);
-    const failed = await state.fail?.(entry);
-    state.fail = undefined;
+    const fail = state.fail;
+    state.fail = undefined; // 一次性：先摘下再调用，fail 抛错（模拟断网）时也不留到下一次请求
+    const failed = await fail?.(entry);
     if (failed) return failed;
     if (!id) {
       const created = createdHead(body, (state.created += 1));
