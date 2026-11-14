@@ -129,6 +129,18 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     fields: noFields('只返回计数（revision / changed / businessDate / outcome）'),
     write: orderCommand('请求体只接受空对象 {}，无字段'),
   }),
+  // ---- custom-field-routes.ts：自定义字段定义的业务侧只读目录（F-474-6c 第 2 轮 P2-2）-----------------------------
+  // 准入 = 人员对象查看权（页面 list）；返回的定义已按 custom:<id> 查看权裁剪，只含 id / name / valueType / options /
+  // editable（custom-field-directory.ts）；不是配置接口，不要求配置管理能力。
+  // 范围：access 仍按页面 list 解析 personScope（与员工列表同一入口），但目录不含任何人员行，不把它注入查询；
+  // 登记沿用列表谓词只是对齐 access 的现状，目录内容与人员范围无关。
+  [`GET ${BASE}/custom-field-definitions`]: object({
+    object: PERSONNEL_OBJECT,
+    operation: 'view',
+    button: listButton,
+    scope: employeeList,
+    fields: shape('personnel.customFieldDefinitions'),
+  }),
   // ---- routes.ts：员工信息（EmployeeInformation）---------------------------------------------------------------
   [`GET ${EMPLOYEES}`]: object({
     object: PERSONNEL_OBJECT,
@@ -164,7 +176,7 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     button: button('update', 'detail'),
     scope: employeePoint('id'),
     fields: employeeShape,
-    write: personnelWrite('body', 'id', ['lockPerson', 'validateAttachments', 'assertRevision']),
+    write: personnelWrite('body+customFields', 'id', ['lockPerson', 'validateAttachments', 'assertRevision']),
     ...byUuid,
   }),
   [`POST ${EMPLOYEES}/:id/attachments`]: object({

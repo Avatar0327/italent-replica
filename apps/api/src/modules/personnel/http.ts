@@ -26,9 +26,12 @@ export async function write(
   execute: (tx: Tx, ctx: AccessContext) => Promise<Row>,
   button: string = operation,
   fingerprint: unknown = input,
+  precheck?: (tx: Tx) => Promise<void>,
 ) {
   await withTenant(deps.db, ctx.tenantId, async (tx) => {
     await requirePerson(tx, ctx, employeeId);
+    // 对象权限与人员范围已过，逐字段编辑权之前：先判输入本身是否合法（P2-4 的校验顺序）。
+    await precheck?.(tx);
     await authorizeTx(tx, deps, ctx, operation, input, button);
   });
   const result = await runCommand(deps.db, ctx, {

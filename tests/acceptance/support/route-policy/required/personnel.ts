@@ -183,6 +183,16 @@ export const PERSONNEL: RequiredTable = {
   'GET /api/tenant/personnel/order-code/settings': [orderCode('GET')],
   'PUT /api/tenant/personnel/order-code/settings': [orderCode('PUT')],
   'POST /api/tenant/personnel/order-code/recompute': [orderCode('POST')],
+  'GET /api/tenant/personnel/custom-field-definitions': [
+    op(
+      (anchor) =>
+        call('apps/api/src/modules/personnel/custom-field-routes.ts', 'GET', '/custom-field-definitions', anchor),
+      `obj:${PERSON}:view`,
+      "const ctx = await access(c, deps, PERSONNEL_OBJECT, 'view', {}, undefined, 0, 'list')",
+      PERSON_FACTS,
+      PERSON_CONST,
+    ),
+  ],
   'GET /api/tenant/personnel/employees': [
     op(
       person('GET', ''),
@@ -226,14 +236,14 @@ export const PERSONNEL: RequiredTable = {
     op(
       person('PATCH', '/:id'),
       `obj:${PERSON}:update`,
-      "const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', input, 'update', revision(c))",
+      "const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', presetPayload(input), 'update', revision(c))",
       ['object:personnel access', `objectOp:${PERSON}:update`],
       PERSON_CONST,
     ),
     btn(
       person('PATCH', '/:id'),
       `btn:${PERSON}#update@detail`,
-      "const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', input, 'update', revision(c))",
+      "const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', presetPayload(input), 'update', revision(c))",
       PERSON_CONST,
     ),
   ],

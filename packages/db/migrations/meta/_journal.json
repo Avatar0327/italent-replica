@@ -1534,6 +1534,13 @@
       "when": 1794678471631,
       "tag": "0218_f474_social_insurance",
       "breakpoints": true
+    },
+    {
+      "idx": 219,
+      "version": "7",
+      "when": 1794678471632,
+      "tag": "0219_f474_6c_person_custom_fields",
+      "breakpoints": true
     }
   ]
 }

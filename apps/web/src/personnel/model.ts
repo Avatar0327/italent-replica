@@ -44,9 +44,11 @@ export const columnChoices = [
   'politicalStatus',
 ];
 /** 列表与设置显示字段用原站列名（如“首次参加工作日期”），档案里用原站字段名（“参加工作日期”）。 */
-export function columnLabel(key: string) {
-  return m.columnLabels[key] ?? m.labels[key] ?? key;
+export function columnLabel(key: string, custom: Readonly<Record<string, string>> = {}) {
+  return custom[key] ?? m.columnLabels[key] ?? m.labels[key] ?? key;
 }
+/** F-474-6c：自定义列的键 custom:<id> 不在静态候选里；可否选用由调用方按字段权限与定义目录先过滤。 */
+const selectable = (key: string) => columnChoices.includes(key) || key.startsWith('custom:');
 /** 员工姓名是列表打开档案的入口，原站在“设置显示字段”里锁定首位，不可取消、不可拖动。 */
 export const lockedColumn = 'name';
 export function visibleColumns(selected: readonly string[], allowed: readonly string[]) {
@@ -54,13 +56,13 @@ export function visibleColumns(selected: readonly string[], allowed: readonly st
 }
 /** 原站“设置显示字段”：新勾选的字段排到已选末尾，顺序由右栏拖拽决定。 */
 export function toggleColumn(selected: readonly string[], key: string, checked: boolean): string[] {
-  if (key === lockedColumn || !columnChoices.includes(key)) return [...selected];
+  if (key === lockedColumn || !selectable(key)) return [...selected];
   if (!checked) return selected.filter((item) => item !== key);
   return selected.includes(key) ? [...selected] : [...selected, key];
 }
 export function toggleColumnGroup(selected: readonly string[], keys: readonly string[], checked: boolean): string[] {
   if (!checked) return selected.filter((key) => key === lockedColumn || !keys.includes(key));
-  return [...selected, ...keys.filter((key) => !selected.includes(key) && columnChoices.includes(key))];
+  return [...selected, ...keys.filter((key) => !selected.includes(key) && selectable(key))];
 }
 export function columnGroupState(selected: readonly string[], keys: readonly string[]) {
   const optional = keys.filter((key) => key !== lockedColumn);
@@ -80,9 +82,9 @@ export function moveColumn(selected: readonly string[], key: string, target: str
 export function restoreDefaultColumns() {
   return [...defaultColumns];
 }
-export function matchColumns(keys: readonly string[], keyword: string) {
+export function matchColumns(keys: readonly string[], keyword: string, custom: Readonly<Record<string, string>> = {}) {
   const text = keyword.trim();
-  return text ? keys.filter((key) => columnLabel(key).includes(text)) : [...keys];
+  return text ? keys.filter((key) => columnLabel(key, custom).includes(text)) : [...keys];
 }
 export function employeeQuery(filters: Filters, page: PageRequest, allowed: readonly string[]) {
   const params = new URLSearchParams({ page: String(page.page), pageSize: String(page.pageSize) });

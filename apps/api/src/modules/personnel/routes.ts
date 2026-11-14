@@ -1,4 +1,5 @@
 import { registerOrderCodeRoutes } from './order-code-routes.js';
+import { registerCustomFieldRoutes } from './custom-field-routes.js';
 import { sql, withTenant } from '@italent/db';
 import { PERSONNEL_OBJECT, SUBSETS, tenantLocalDate, type SubsetKind } from '@italent/domain';
 import type { Hono } from 'hono';
@@ -15,6 +16,7 @@ import { listEmployees, listFieldVisibility, listOptions, listSubsets, trimSubse
 import { registerSubsetRoutes } from './subset-routes.js';
 import { registerChangeRequestRoutes } from './request-routes.js';
 import { camel, rows } from './store.js';
+import { presetPayload, requireLocalDefinitions, writePayload, type PersonnelCustomFields } from './custom-fields.js';
 import { dateValue, employeeInput, parse } from './validation.js';
 import { registerPersonnelHooks } from '../employment/personnel-hooks.js';
 import { currentPersonName } from './employee-projection.js';
@@ -25,6 +27,7 @@ import { z } from 'zod';
 const base = '/api/tenant/personnel/employees';
 export function registerPersonnelRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerOrderCodeRoutes(router, deps);
+  registerCustomFieldRoutes(router, deps);
   registerPersonnelHooks({ currentName: currentPersonName, sync: syncEmploymentHistory });
   router.get(base, (c) =>
     safe(async () => {
@@ -58,12 +61,26 @@ export function registerPersonnelRoutes(router: Hono<TenantEnv>, deps: TenantRou
   router.patch(`${base}/:id`, (c) =>
     safe(async () => {
       const input = employeeInput(await body(c));
-      const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', input, 'update', revision(c));
+      // 授权分两步（第 2 轮 P2-4）：access 先按预置字段查对象权限与人员范围；write() 内先验自定义字段 ID 合法（400），
+      // 再用展开后的载荷（customFields → custom:<id>）逐字段查编辑权（403）。幂等指纹与落库用原始输入。
+      const payload = writePayload(input);
+      const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', presetPayload(input), 'update', revision(c));
       const id = uuidParam(c);
-      return write(c, deps, ctx, id, 'update', input, async (tx, ctx) => {
-        await appendEmployee(tx, ctx, id, input);
-        return readEmployee(tx, ctx, id);
-      });
+      return write(
+        c,
+        deps,
+        ctx,
+        id,
+        'update',
+        payload,
+        async (tx, ctx) => {
+          await appendEmployee(tx, ctx, id, input);
+          return readEmployee(tx, ctx, id);
+        },
+        'update',
+        input,
+        (tx) => requireLocalDefinitions(tx, ctx.tenantId, input.customFields as PersonnelCustomFields | undefined),
+      );
     }),
   );
   router.post(`${base}/:id/attachments`, (c) =>

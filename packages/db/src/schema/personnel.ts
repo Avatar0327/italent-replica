@@ -142,9 +142,14 @@ export const personnelEmployeeVersions = pgTable(
     commandId: text('command_id').notNull(),
     createdBy: uuid('created_by').notNull(),
     createdAt: createdAt(),
+    // F-474-6c：租户自定义字段值，键为定义 ID；整版沿用，不回填历史行（DEC-402）。
+    customFields: jsonb('custom_fields')
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     ...employeeFields(),
   },
   (t) => [
+    check('personnel_employee_custom_fields_object', sql`jsonb_typeof(${t.customFields}) = 'object'`),
     unique('personnel_employee_versions_owner_id').on(t.tenantId, t.employeeId, t.id),
     unique('personnel_employee_versions_revision').on(t.tenantId, t.employeeId, t.revision),
     employeeFk('personnel_employee_versions_employee_fk', t),

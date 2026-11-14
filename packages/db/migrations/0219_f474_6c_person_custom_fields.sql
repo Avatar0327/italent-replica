@@ -1,0 +1,2 @@
+ALTER TABLE "personnel_employee_versions" ADD COLUMN "custom_fields" jsonb DEFAULT '{}'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "personnel_employee_versions" ADD CONSTRAINT "personnel_employee_custom_fields_object" CHECK (jsonb_typeof("personnel_employee_versions"."custom_fields") = 'object');
