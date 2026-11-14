@@ -1,7 +1,7 @@
 // F-326 F1：配置中心 › 公共变量（全局）/ 各应用 › 流程设置 › 应用变量。原站口径 docs/02_业务建模/30 §流程矩阵与变量 二、三：
 // 两个页签（草稿 + 启用 / 停用）、提示文案、列表列、行操作按状态；不做删除、批量、导入导出（DEC-874）。
 import { Alert, Button, Table, Tabs, Typography } from 'antd';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router';
 import { useRead } from '../../contracts/useRead.js';
 import { PageState } from '../../foundation/PageState.js';
@@ -78,7 +78,9 @@ const usageText = (scopes: readonly string[]) =>
         .map((scope) => m.usage[scope])
         .join('、') || m.missing;
 
-function useRows(scope: ScopeKind, app: string | undefined, tab: Tab, offset: number) {
+/** 本页签当前页的行；offset 由本 hook 持有，总数缩减时自动收回。 */
+function useRows(scope: ScopeKind, app: string | undefined, tab: Tab) {
+  const [offset, setOffset] = useState(0);
   const read = useRead<unknown>(listPath(scope, app, tab, offset));
   let rows: VariableRow[] = [];
   let total = 0;
@@ -88,7 +90,13 @@ function useRows(scope: ScopeKind, app: string | undefined, tab: Tab, offset: nu
   } catch (cause) {
     error = cause;
   }
-  return { rows, total, error, loading: read.loading, reload: read.refresh };
+  const loaded = read.data !== undefined && !error;
+  // 停用或他人改动让总数缩减时当前页可能越过末页（隐藏单页分页后无从返回）：退回最后有效页重读
+  const lastOffset = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1) * PAGE_SIZE;
+  useEffect(() => {
+    if (loaded && offset > lastOffset) setOffset(lastOffset);
+  }, [loaded, offset, lastOffset]);
+  return { rows, total, error, loading: !loaded && !error, reload: read.refresh, offset, setOffset };
 }
 
 /** 列表列（规格 30 §二、三）：应用变量不显示适用范围与描述。 */
@@ -141,8 +149,7 @@ function columnsOf(
 function VariableList({ scope, app }: { scope: ScopeKind; app?: string }) {
   const session = useSession();
   const [tab, setTab] = useState<Tab>('active');
-  const [offset, setOffset] = useState(0);
-  const { rows, total, error, loading, reload } = useRows(scope, app, tab, offset);
+  const { rows, total, error, loading, reload, offset, setOffset } = useRows(scope, app, tab);
   const [editing, setEditing] = useState<{ row?: VariableRow }>();
   const [viewing, setViewing] = useState<VariableRow>();
   const [notice, setNotice] = useState<string>();

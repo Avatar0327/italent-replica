@@ -23,6 +23,7 @@ import {
   EDIT_FIELDS,
   VARIABLES_PATH,
   createBody,
+  createdReceipt,
   defaultValueOf,
   editValues,
   isAllScopes,
@@ -119,10 +120,14 @@ function DefaultValueInput(props: {
   }
 }
 
-/** 适用范围：全部 / 指定范围；指定范围下多选（全选 / 流程 / 业务规则 / 消息模板）。值始终是三项的子集，全部即全集。 */
+/**
+ * 适用范围：全部 / 指定范围；指定范围下多选（全选 / 流程 / 业务规则 / 消息模板）。值始终是三项的子集，全部即全集。
+ * 单选由值推出（不是全集就是「指定范围」），只记用户在全集时主动点了「指定范围」：409 重读回填部分范围时跟着变。
+ */
 function UsageScopesInput(props: { value?: string[]; onChange?: (value: string[]) => void; disabled?: boolean }) {
   const { value = [], onChange, disabled } = props;
-  const [mode, setMode] = useState(isAllScopes(value) ? 'all' : 'some');
+  const [pickedSome, setPickedSome] = useState(false);
+  const mode = pickedSome || !isAllScopes(value) ? 'some' : 'all';
   const all = [...VARIABLE_USAGE_SCOPES];
   return (
     <Space direction="vertical">
@@ -130,7 +135,7 @@ function UsageScopesInput(props: { value?: string[]; onChange?: (value: string[]
         disabled={disabled}
         value={mode}
         onChange={(e) => {
-          setMode(e.target.value as string);
+          setPickedSome(e.target.value === 'some');
           if (e.target.value === 'all') onChange?.(all);
         }}
         options={[
@@ -246,7 +251,9 @@ async function send(api: Api, command: Command<Values>, row?: VariableRow, ackno
     method: row ? 'PATCH' : 'POST',
     command: { ...command, body },
   });
-  return parseReceipt(raw, { id: row?.id, revision: command.revision ?? 0 });
+  return row
+    ? parseReceipt(raw, { id: row.id, revision: (command.revision ?? 0) + 1 })
+    : parseReceipt(raw, createdReceipt(command.body?.enable === true));
 }
 
 export function VariableForm(props: {
@@ -272,13 +279,15 @@ export function VariableForm(props: {
   const submitEdit = async (current: VariableRow, values: Values) => {
     const next = editValues(current, values);
     if (!changedFields(next, writer.full, editable).length) return;
+    // 409 重读后按读回的最新全量判断：他人可能已加入「流程」并被流程引用，打开时的行已过时
+    const latest = { ...current, ...(writer.full as Partial<VariableRow>) };
     let acknowledged: number | undefined;
-    if (current.scope === 'public' && removesProcess(current.usageScopes, next.usageScopes)) {
+    if (current.scope === 'public' && removesProcess(latest.usageScopes, next.usageScopes)) {
       const refs = parseReferences(await api.request<unknown>(rowPath(current.id, 'references')));
       const ok = await impact.ask({
         title: m.impactTitle(m.edit),
         warning: m.scopeImpactWarning,
-        plain: m.confirmDisable(scope, current.name).replace(m.disable, m.edit),
+        plain: m.confirmDisable(scope, latest.name).replace(m.disable, m.edit),
         items: refs.items,
       });
       if (!ok) {

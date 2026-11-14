@@ -32,7 +32,7 @@ function useRowCommand(row: VariableRow, saved: () => void, failed: (reason: str
         send: async ({ command }) => {
           const body = acknowledged === undefined ? {} : { acknowledgedReferenceCount: acknowledged };
           const raw = await api.request(rowPath(row.id, kind), { method: 'POST', command: { ...command, body } });
-          return parseReceipt(raw, { id: row.id, revision: command.revision ?? 0 });
+          return parseReceipt(raw, { id: row.id, revision: (command.revision ?? 0) + 1 });
         },
       });
       saved();

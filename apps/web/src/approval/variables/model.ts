@@ -100,13 +100,17 @@ export function parsePage(raw: unknown): { items: VariableRow[]; total: number }
     throw new Error(m.invalidList);
   return { items: body.items, total: body.total as number };
 }
-/** 写回执：整行须是本行（新建不核对 id），版本 = 实际提交的版本 + 1。 */
-export function parseReceipt(raw: unknown, expected: { id?: string; revision: number }) {
-  const body = raw as { id?: unknown; revision?: unknown } | null;
+/** 写回执：整行须是本行（新建不核对 id），版本与（给出时）状态等于本次命令应得的结果。 */
+export function parseReceipt(raw: unknown, expected: { id?: string; revision: number; status?: VariableStatus }) {
+  const body = raw as { id?: unknown; revision?: unknown; status?: unknown } | null;
   const sameId = !!body && typeof body.id === 'string' && (!expected.id || body.id === expected.id);
-  if (!sameId || body.revision !== expected.revision + 1) throw new Error(m.invalidReceipt);
+  const sameStatus = !expected.status || body?.status === expected.status;
+  if (!sameId || body.revision !== expected.revision || !sameStatus) throw new Error(m.invalidReceipt);
   return { id: body.id as string };
 }
+/** 新建回执应得的版本与状态：后端先建草稿（版本 1），选了启用再启用一次（版本 2，apps/api approval/variables.ts）。 */
+export const createdReceipt = (enable: boolean) =>
+  enable ? { revision: 2, status: 'enabled' as const } : { revision: 1, status: 'draft' as const };
 export function parseReferences(raw: unknown): { items: Reference[]; total: number } {
   const body = raw as { items?: unknown; total?: unknown } | null;
   const valid = (item: unknown) => {

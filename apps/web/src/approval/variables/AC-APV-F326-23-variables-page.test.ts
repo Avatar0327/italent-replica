@@ -121,13 +121,15 @@ const headers = () => [...document.querySelectorAll('thead th')].map((node) => n
 function respond(url: string, method: string, body: unknown) {
   const id = /variables\/([0-9a-f-]{36})/.exec(url)?.[1];
   const current = [enabled, draft, disabled, appRow].find((row) => row.id === id);
-  if (method === 'POST' && url.endsWith(API))
+  if (method === 'POST' && url.endsWith(API)) {
+    // 后端口径：先建草稿（版本 1），选了启用再启用一次（版本 2）
+    const { enable, codeSuffix: _suffix, ...values } = body as { enable: boolean; codeSuffix: string };
+    const created = enable ? { status: 'enabled', revision: 2 } : { status: 'draft', revision: 1 };
     return Response.json(
-      { ...enabled, ...(body as object), id: '50000000-0000-4000-8000-000000000009', revision: 1 },
-      {
-        status: 201,
-      },
+      { ...enabled, ...values, id: '50000000-0000-4000-8000-000000000009', ...created },
+      { status: 201 },
     );
+  }
   const status = url.endsWith('/disable') ? 'disabled' : url.endsWith('/enable') ? 'enabled' : current!.status;
   return Response.json({ ...current, status, revision: current!.revision + 1 });
 }
