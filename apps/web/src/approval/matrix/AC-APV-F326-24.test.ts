@@ -510,4 +510,12 @@ describe('AC-APV-F326-24 第 1 轮审查回归', () => {
   it('P2-2 保存后详情响应无效：同样显示读取失败与重试，重试成功显示回执对象', async () => {
     await createOutsideWith(() => Response.json({ id: 'not-a-matrix' }));
   });
+
+  it('P2-2 保存后详情 204 无正文：判为无效响应，显示读取失败与重试，重试成功显示回执对象', async () => {
+    await createOutsideWith(() => new Response(null, { status: 204 }));
+  });
+
+  it('P2-2 保存后详情 200 但正文为 null：同样判为无效响应，显示读取失败与重试', async () => {
+    await createOutsideWith(() => Response.json(null));
+  });
 });
