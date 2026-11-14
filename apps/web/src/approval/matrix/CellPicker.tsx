@@ -41,7 +41,8 @@ export function useLabels() {
     adopt(names: Names) {
       for (const [kind, group] of Object.entries(names))
         for (const [id, value] of Object.entries(group ?? {})) {
-          const name = kind === 'person' ? (value ? personLabel(value as Person) : null) : (value as string | null);
+          let name = value;
+          if (kind === 'person') name = value ? personLabel(value as Person) : null;
           known.set(`${kind}:${id}`, typeof name === 'string' ? name : null);
         }
     },

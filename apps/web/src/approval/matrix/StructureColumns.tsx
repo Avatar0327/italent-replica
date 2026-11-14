@@ -21,13 +21,14 @@ const removeColumn = (ref: string) => (structure: Structure) => ({
 });
 const dimensionOptions = MATRIX_DIMENSIONS.map((value) => ({ value, label: sm.dimensionLabel[value] }));
 
+/** 角色列可设允许多人；只有部门条件列可设包含下级。 */
+function togglesOf(column: DraftColumn) {
+  if (column.kind === 'role') return [{ field: 'allowMultiple' as const, label: sm.allowMultiple }];
+  return column.dimension === 'department' ? [{ field: 'includeChildren' as const, label: sm.includeChildren }] : [];
+}
+
 function Options({ column, update, readonly }: { column: DraftColumn; update: Update; readonly: boolean }) {
-  const toggles =
-    column.kind === 'role'
-      ? [{ field: 'allowMultiple' as const, label: sm.allowMultiple }]
-      : column.dimension === 'department'
-        ? [{ field: 'includeChildren' as const, label: sm.includeChildren }]
-        : [];
+  const toggles = togglesOf(column);
   if (readonly) return toggles.filter(({ field }) => column[field]).map(({ label }) => <Tag key={label}>{label}</Tag>);
   return toggles.map(({ field, label }) => (
     <Checkbox
