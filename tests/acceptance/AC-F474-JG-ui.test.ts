@@ -299,6 +299,8 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
       const hits = items.filter((item) => (!kind || item.kind === kind) && (!name || item.objectName.includes(name)));
       const page = Number(url.searchParams.get('page') ?? 1);
       const size = Number(url.searchParams.get('pageSize') ?? 15);
+      // 与 graph-routes.ts issueQuery 同口径：pageSize 1～100，超出整单 400。
+      if (size < 1 || size > 100) return failure(400, 'VALIDATION_FAILED', 'pageSize 超出允许范围');
       return Response.json({
         items: hits.slice((page - 1) * size, page * size),
         total: hits.length,
@@ -353,41 +355,148 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     expect(rows()[0]![2]).toBe('与同一类别的职级【合成T1】、【合成T2】重叠');
   });
 
-  it('类型、名称筛选带到查询串并回到第 1 页', async () => {
-    serveIssues(
-      issueItems(allReasonsInput()).concat(issueItems(allReasonsInput())).concat(issueItems(allReasonsInput())),
+  /** 打开 antd 下拉并选中文字为 label 的选项（只在当前展开的下拉里找）。 */
+  async function pick(select: Element, label: string) {
+    await act(async () => {
+      select.querySelector('.ant-select-selector')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    await settle();
+    await click(openOptions().find((item) => item.textContent === label));
+  }
+  const openOptions = () =>
+    Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option',
+      ),
+    );
+  const type = async (input: HTMLInputElement, value: string) => {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await settle();
+  };
+  const drawer = () => document.querySelector<HTMLElement>('.filter-drawer .ant-drawer-content');
+  const lastQuery = () => Object.fromEntries(issueCalls().at(-1)!.url.searchParams);
+  const manyIssues = () =>
+    issueItems(allReasonsInput()).concat(issueItems(allReasonsInput())).concat(issueItems(allReasonsInput()));
+
+  it('高级筛选（设计 §5）：入口打开抽屉，类型、名称组合后确认才应用并回到第 1 页；取消不应用', async () => {
+    serveIssues(manyIssues());
+    await ui.render('/job?kind=graph-issues');
+    expect(ui.host.querySelector('[aria-label="类型"]')).toBeNull();
+    await click(Array.from(ui.host.querySelectorAll('.ant-pagination-item')).find((item) => item.textContent === '2'));
+    expect(lastQuery().page).toBe('2');
+    await click(button('高级筛选', ui.host));
+    expect(drawer()?.textContent).toContain('高级筛选');
+    await pick(drawer()!.querySelector('[aria-label="类型"]')!.closest('.ant-select')!, '职务');
+    await type(drawer()!.querySelector<HTMLInputElement>('input[aria-label="名称"]')!, '合成父');
+    const before = issueCalls().length;
+    expect(issueCalls()).toHaveLength(before);
+    await click(button('确认', drawer()!));
+    expect(lastQuery()).toEqual({ page: '1', pageSize: '15', kind: 'post', name: '合成父' });
+    expect(rows().map((row) => row[1])).toEqual(['合成父序列职务', '合成父序列职务', '合成父序列职务']);
+    const applied = issueCalls().length;
+    await click(button('高级筛选', ui.host));
+    await pick(drawer()!.querySelector('[aria-label="类型"]')!.closest('.ant-select')!, '职级');
+    await click(button('取消', drawer()!));
+    expect(issueCalls()).toHaveLength(applied);
+    expect(lastQuery()).toEqual({ page: '1', pageSize: '15', kind: 'post', name: '合成父' });
+  });
+
+  it('每页条数只给接口允许的选项（graph-routes.ts 上限 100），逐个可读；切筛选后仍合法', async () => {
+    serveIssues(manyIssues());
+    await ui.render('/job?kind=graph-issues');
+    const sizer = () => ui.host.querySelector('.ant-pagination-options .ant-select')!;
+    await act(async () => {
+      sizer()
+        .querySelector('.ant-select-selector')!
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    await settle();
+    const labels = openOptions().map((item) => item.textContent ?? '');
+    const sizes = labels.map((label) => Number.parseInt(label, 10));
+    expect(sizes[0]).toBe(15);
+    expect(sizes.every((size) => size >= 1 && size <= 100)).toBe(true);
+    await click(openOptions()[0]);
+    for (const label of labels) {
+      await pick(sizer(), label);
+      expect(lastQuery().pageSize).toBe(String(Number.parseInt(label, 10)));
+      expect(text()).not.toContain('Oops');
+      expect(rows().length).toBeGreaterThan(0);
+    }
+    await click(button('高级筛选', ui.host));
+    await pick(drawer()!.querySelector('[aria-label="类型"]')!.closest('.ant-select')!, '职务');
+    await click(button('确认', drawer()!));
+    const size = Number(lastQuery().pageSize);
+    expect(size >= 1 && size <= 100).toBe(true);
+    expect(lastQuery().page).toBe('1');
+    expect(rows().length).toBeGreaterThan(0);
+  });
+
+  it('“编辑”迟到响应不覆盖当前表单：A→B 点击，B 先返回并填写，A 后返回仍保留 B 与输入', async () => {
+    serveIssues();
+    const gate = () => {
+      let open!: () => void;
+      const ready = new Promise<void>((done) => (open = done));
+      return { open, ready };
+    };
+    const gates = { p: gate(), missing: gate() };
+    const names = { p: '合成工程师', missing: '合成缺项职务' };
+    for (const id of ['p', 'missing'] as const)
+      ui.route(`GET /api/tenant/job/posts/${id}`, async () => {
+        await gates[id].ready;
+        return Response.json({ id, revision: 2, name: names[id], code: `SYN-${id}`, enabled: true });
+      });
+    await ui.render('/job?kind=graph-issues');
+    const rowOf = (name: string) =>
+      Array.from(ui.host.querySelectorAll('tbody tr.ant-table-row')).find(
+        (row) => row.querySelectorAll('td')[1]?.textContent === name,
+      )!;
+    await click(button('编辑', rowOf('合成工程师')));
+    await click(button('编辑', rowOf('合成缺项职务')));
+    await act(async () => gates.missing.open());
+    await settle(60);
+    const nameInput = () =>
+      Array.from(document.querySelectorAll<HTMLInputElement>('.ant-modal input')).find((input) =>
+        ['合成缺项职务', '合成改名', '合成工程师'].includes(input.value),
+      );
+    expect(nameInput()?.value).toBe('合成缺项职务');
+    await type(nameInput()!, '合成改名');
+    await act(async () => gates.p.open());
+    await settle(60);
+    expect(nameInput()?.value).toBe('合成改名');
+    expect(
+      Array.from(document.querySelectorAll<HTMLInputElement>('.ant-modal input')).map((i) => i.value),
+    ).not.toContain('合成工程师');
+  });
+
+  it('“编辑”关闭弹窗后，之前未返回的读取不再打开表单', async () => {
+    serveIssues();
+    let open!: () => void;
+    const ready = new Promise<void>((done) => (open = done));
+    ui.route('GET /api/tenant/job/posts/p', async () => {
+      await ready;
+      return Response.json({ id: 'p', revision: 2, name: '合成工程师', code: 'SYN-p', enabled: true });
+    });
+    ui.route('GET /api/tenant/job/posts/missing', () =>
+      Response.json({ id: 'missing', revision: 2, name: '合成缺项职务', code: 'SYN-MISS', enabled: true }),
     );
     await ui.render('/job?kind=graph-issues');
-    await click(Array.from(ui.host.querySelectorAll('.ant-pagination-item')).find((item) => item.textContent === '2'));
-    expect(issueCalls().at(-1)!.url.searchParams.get('page')).toBe('2');
-    const kind = ui.host.querySelector('[aria-label="类型"]')!.closest('.ant-select')!;
-    await act(async () => {
-      kind.querySelector('.ant-select-selector')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    });
-    await settle();
-    await click(
-      Array.from(document.querySelectorAll('.ant-select-item-option')).find((item) => item.textContent === '职务'),
-    );
-    expect(Object.fromEntries(issueCalls().at(-1)!.url.searchParams)).toEqual({
-      page: '1',
-      pageSize: '15',
-      kind: 'post',
-    });
-    const search = ui.host.querySelector<HTMLInputElement>('input[aria-label="名称"]')!;
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
-      setter.call(search, '合成父');
-      search.dispatchEvent(new Event('input', { bubbles: true }));
-      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
-    });
-    await settle();
-    expect(Object.fromEntries(issueCalls().at(-1)!.url.searchParams)).toEqual({
-      page: '1',
-      pageSize: '15',
-      kind: 'post',
-      name: '合成父',
-    });
-    expect(rows().map((row) => row[1])).toEqual(['合成父序列职务', '合成父序列职务', '合成父序列职务']);
+    const rowOf = (name: string) =>
+      Array.from(ui.host.querySelectorAll('tbody tr.ant-table-row')).find(
+        (row) => row.querySelectorAll('td')[1]?.textContent === name,
+      )!;
+    await click(button('编辑', rowOf('合成工程师')));
+    await click(button('编辑', rowOf('合成缺项职务')));
+    await settle(60);
+    expect(document.querySelector('.ant-modal')).not.toBeNull();
+    await click(button('取消', document.querySelector('.ant-modal')!));
+    await settle(60);
+    expect(document.querySelector('.ant-modal-wrap:not([style*="display: none"]) .ant-modal')).toBeNull();
+    await act(async () => open());
+    await settle(60);
+    expect(document.querySelector('.ant-modal-wrap:not([style*="display: none"]) .ant-modal')).toBeNull();
   });
 
   it('“编辑”随源对象编辑权显示；点击读取源对象并打开职务体系的编辑弹窗', async () => {
