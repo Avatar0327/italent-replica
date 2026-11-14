@@ -55,7 +55,19 @@ async function conditionValues(tx: Tx, subject: RoutingSubject, column: MatrixCo
 const hits = (cell: readonly string[], values: readonly string[]) =>
   !cell.length || values.some((value) => cell.includes(value));
 
-export async function resolveMatrix(tx: Tx, subject: RoutingSubject, source: ApproverSource): Promise<Candidate[]> {
+export const resolveMatrix = (tx: Tx, subject: RoutingSubject, source: ApproverSource) =>
+  resolveMatrixWith(tx, subject, source, (column) => conditionValues(tx, subject, column));
+
+/**
+ * 条件列的取值由调用方给：运行时读申请对象的真实任职（`resolveMatrix`），模拟的当前值路径取虚拟输入（设计 §3.7），
+ * 两者共用同一套“表头共享锁 → 首条命中行 → 角色格过滤”逻辑。
+ */
+export async function resolveMatrixWith(
+  tx: Tx,
+  subject: RoutingSubject,
+  source: ApproverSource,
+  valuesOf: (column: MatrixColumn) => Promise<string[]>,
+): Promise<Candidate[]> {
   const parts = matrixSourceParts(source);
   if (!parts) return [];
   // 表头取共享锁并持到事务结束：与管理员整体保存 / 停用（FOR UPDATE）串行，状态、列、行、单元格来自同一份结构
@@ -70,8 +82,7 @@ export async function resolveMatrix(tx: Tx, subject: RoutingSubject, source: App
   const conditions = columns.filter((column) => column.kind === 'condition');
   const values = new Map<string, string[]>();
   for (const column of conditions)
-    if (rows.some((row: MatrixRow) => row.cells[column.id]?.length))
-      values.set(column.id, await conditionValues(tx, subject, column));
+    if (rows.some((row: MatrixRow) => row.cells[column.id]?.length)) values.set(column.id, await valuesOf(column));
   // rows 已按 seq 排序：第一条命中的行决定结果，角色格为空也不再往后找
   const matched = rows.find((row) =>
     conditions.every((column) => hits(row.cells[column.id] ?? [], values.get(column.id) ?? [])),

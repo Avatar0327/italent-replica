@@ -23,6 +23,8 @@ import {
   updateSettings,
   createCustomField,
   fieldInput,
+  optionsInput,
+  setCustomFieldOptions,
   setCustomFieldInheritance,
   listCustomFields,
 } from './configuration.js';
@@ -781,6 +783,7 @@ function registerSettings(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 }
 
 function registerCustomFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  registerCustomFieldOptions(router, deps);
   router.post('/custom-fields', async (c) => {
     const ctx = await readContext(
       c,
@@ -836,6 +839,33 @@ function registerCustomFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       async (tx, context) => ({
         status: 200,
         body: await setCustomFieldInheritance(tx, context, id, input),
+      }),
+      { guard: customFieldWriteGuard(deps, ctx, 'update', input) },
+    );
+  });
+}
+
+function registerCustomFieldOptions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.put('/custom-fields/:id/options', async (c) => {
+    const ctx = await readContext(
+      c,
+      deps,
+      'tenant.employment.configuration.write',
+      revision(c),
+      undefined,
+      'TenantBase.EmploymentCustomField',
+    );
+    const id = uuidParam(c);
+    const input = parse(optionsInput, await jsonBody(c));
+    await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentCustomField');
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, context) => ({
+        status: 200,
+        body: await setCustomFieldOptions(tx, context, id, input),
       }),
       { guard: customFieldWriteGuard(deps, ctx, 'update', input) },
     );

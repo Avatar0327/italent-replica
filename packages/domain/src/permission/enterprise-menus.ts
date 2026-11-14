@@ -86,7 +86,8 @@ const ROWS: readonly Row[] = [
   ['license.allocation_groups', '许可管理/余额分配组', [T, S]],
   ['license.usage', '许可管理/使用明细', [T, B], 'license_usage'],
   ['license.sms_failures', '许可管理/短信失败记录', [T]],
-  ['matrix.manage', '流程矩阵/矩阵管理', [T, S, M]],
+  // F-326 F2a（DEC-907）：矩阵列表 / 头部 / 启停 / 引用的读写接口都按 process_matrix 校验（矩阵设置仍只保留入口）
+  ['matrix.manage', '流程矩阵/矩阵管理', [T, S, M], 'process_matrix', 'process_matrix'],
   ['matrix.settings', '流程矩阵/矩阵设置', [T, S, M]],
   ['locale', '语言与时区', [T]],
   ['portal.company_info', '门户设置/企业信息', [T]],

@@ -1,6 +1,7 @@
 import { ORG_DIMENSIONS, type OrgDimension } from '@italent/domain';
 import { ApiError, type PageRequest } from '../foundation/client.js';
 import { m } from './messages.js';
+import { m as matrix } from '../approval/matrix/messages.js';
 export interface AdminMenu {
   code: string;
   path?: string;
@@ -15,6 +16,7 @@ export const settingsPages = [
   { code: 'permission.admins', title: m.admins },
   { code: 'permission.mous', title: m.mous },
   { code: 'audit.business', title: m.audit },
+  { code: 'matrix.manage', title: matrix.title },
 ];
 export function settingsAccess(menus: readonly AdminMenu[], code: string) {
   const menu = menus.find((item) => item.code === code);

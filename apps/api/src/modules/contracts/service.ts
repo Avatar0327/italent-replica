@@ -17,6 +17,7 @@ import {
   isIndefiniteTerm,
   termEnd,
   wholeTermMonths,
+  type CustomFieldOption,
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { validateCustomValue } from '../employment/fields.js';
@@ -346,13 +347,13 @@ async function validateReferences(
   else await verifyIds(tx, ctx.tenantId, 'contract_types', [typeId]);
   await verifyIds(tx, ctx.tenantId, 'contract_companies', [normalized.companyId!]);
   for (const [id, value] of Object.entries(normalized.customFields ?? {})) {
-    const [definition] = rowsOf<{ value_type: string }>(
-      await tx.execute(sql`SELECT value_type
+    const [definition] = rowsOf<{ value_type: string; options: CustomFieldOption[] }>(
+      await tx.execute(sql`SELECT value_type,options
       FROM employment_custom_field_objects WHERE tenant_id=${ctx.tenantId} AND id=${id}::uuid
         AND object_type='contract'`),
     );
     if (!definition) throw new AppError('VALIDATION_FAILED', '合同自定义字段不存在');
-    validateCustomValue(value, definition.value_type);
+    validateCustomValue(value, definition.value_type, definition.options, before?.customFields[id]);
   }
   if (normalized.employmentRecordId) {
     const [record] = rowsOf(

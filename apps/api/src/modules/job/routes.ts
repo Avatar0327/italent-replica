@@ -1,3 +1,4 @@
+import { registerGraphRoutes } from './graph-routes.js';
 import { registerSequenceSyncRoutes } from './sequence-routes.js';
 import { authorizeJobResult } from '../permission/job-result-scope.js';
 import { registerJobScopeReader } from '../permission/module-contracts.js';
@@ -60,6 +61,8 @@ export function registerJobRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
   registerCandidates(router, deps);
   registerImport(router, deps);
   registerSequenceSyncRoutes(router, deps);
+  // 必须早于 registerObjects 的 /:kind 通配
+  registerGraphRoutes(router, deps);
   registerObjects(router, deps);
   registerObjectWrites(router, deps);
 }

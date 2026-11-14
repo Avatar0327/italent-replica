@@ -31,34 +31,48 @@ import {
   type JobKind,
   type JobRow,
 } from './page-model.js';
-import { pageText as m } from './messages.js';
+import { graphText, pageText as m } from './messages.js';
+import { JobGraph } from './JobGraph.js';
+import { JobGraphIssues } from './JobGraphIssues.js';
+import { GRAPH_OBJECT, graphViews } from './graph-model.js';
 import { CatalogFilters } from '../org/CatalogFilters.js';
 import '../org/workspace.css';
 
+const pageObjects = [...Object.values(jobObjects), GRAPH_OBJECT];
 export function JobWorkspace() {
   const [params, setParams] = useSearchParams();
-  const requested = params.get('kind') as JobKind;
-  const permissions = usePagePermissions(Object.values(jobObjects));
+  const requested = params.get('kind') ?? '';
+  const permissions = usePagePermissions(pageObjects);
   if (permissions.loading) return <PageState kind="loading" />;
   if (permissions.error) return <PageState kind="error" error={permissions.error} />;
   const allowed = jobKinds.filter((kind) => permissions.access(jobObjects[kind]).readable);
-  if (!allowed.length) return <PageState kind="forbidden" />;
-  const fallback = allowed.includes('posts') ? 'posts' : allowed[0]!;
-  const kind = allowed.includes(requested) ? requested : fallback;
+  // 图谱页签受图谱对象查看权控制（设计 §5）；待确认记录页只从图谱页新标签打开，不进视图下拉。
+  const graph = permissions.access(GRAPH_OBJECT);
+  const options = [
+    ...allowed.map((key) => ({ key, label: m[key] })),
+    ...(graph.readable ? [{ key: 'graph', label: graphText.title }] : []),
+  ];
+  if (!options.length) return <PageState kind="forbidden" />;
+  const fallback = allowed.includes('posts') ? 'posts' : options[0]!.key;
+  const graphView = graph.readable && (graphViews as readonly string[]).includes(requested);
+  const kind = graphView || options.some((option) => option.key === requested) ? requested : fallback;
+  const view = { value: kind, options, onChange: (kind: string) => setParams({ kind }) };
   return (
     <FormCommands>
       <div className="r1-workspace">
         <DecisionNote id="job" />
-        <JobCatalog
-          key={kind}
-          kind={kind}
-          access={permissions.access(jobObjects[kind])}
-          view={{
-            value: kind,
-            options: allowed.map((key) => ({ key, label: m[key] })),
-            onChange: (kind) => setParams({ kind }),
-          }}
-        />
+        {kind === 'graph' && <JobGraph key={kind} access={graph} view={view} />}
+        {kind === 'graph-issues' && (
+          <JobGraphIssues key={kind} view={view} accessOf={(kind) => permissions.access(jobObjects[kind])} />
+        )}
+        {!graphView && (
+          <JobCatalog
+            key={kind}
+            kind={kind as JobKind}
+            access={permissions.access(jobObjects[kind as JobKind])}
+            view={view}
+          />
+        )}
       </div>
     </FormCommands>
   );

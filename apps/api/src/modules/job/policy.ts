@@ -32,6 +32,7 @@ import {
   admin,
   BAD_REQUEST,
   button,
+  FORBIDDEN,
   guardScope,
   listScope,
   noButton,
@@ -219,6 +220,34 @@ export const JOB_POLICIES = defineTable('job', {
   }),
   [`POST ${BASE}/posts/sync-sequence`]: syncSequence('posts'),
   [`POST ${BASE}/positions/sync-sequence`]: syncSequence('positions'),
+  // ---- graph-routes.ts：职务职级图谱（F-474-7b）。派生缓存：GET 只读快照，rebuild 同步生成并替换快照 ------------------
+  // 访问 = 图谱对象查看权 + 五个源对象（职等 / 职级类别 / 职级 / 职务序列 / 职务）的对象查看权、看全部范围和设计 §4.4
+  // 列出的全部字段；缺任何一项统一 403（不披露缺哪项）。命令重放出口经 CommandGuard.before 再查一遍。
+  [`GET ${BASE}/graph`]: object({
+    object: MODULE_OBJECTS.jobGraph.code,
+    operation: 'view',
+    button: viewOnly,
+    scope: guardScope('job.graphSources', FORBIDDEN),
+    fields: shape('job.graph'),
+  }),
+  [`GET ${BASE}/graph/issues`]: object({
+    object: MODULE_OBJECTS.jobGraph.code,
+    operation: 'view',
+    button: viewOnly,
+    scope: guardScope('job.graphSources', FORBIDDEN),
+    fields: shape('job.graphIssue'),
+  }),
+  // If-Match = 当前快照 revision（无快照为 0）；同租户并发生成 → 409 CONFLICT（details.reason GRAPH_GENERATING）
+  [`POST ${BASE}/graph/rebuild`]: object({
+    object: MODULE_OBJECTS.jobGraph.code,
+    operation: 'view',
+    button: button('rebuild', 'list'),
+    scope: guardScope('job.graphSources', FORBIDDEN),
+    fields: shape('job.graph'),
+    write: write(none('请求体为空，仅 Idempotency-Key / If-Match'), 'job.graphSnapshot', 'job.graphSnapshot', {
+      preconditions: ['job.graphAdvisoryLock', 'job.lockJobTenant', 'job.assertGraphRevision'],
+    }),
+  }),
   // ---- registerObjects / registerObjectWrites：八种职务对象的列表 / 详情 / 新增 / 变更 ------------------------------
   // 列表：职位 scopeSql(org ∪ creator)；其余看全部 ∪ 创建人；orgId 查询参数只适用于职位
   [`GET ${BASE}/:kind`]: object({
