@@ -5,6 +5,11 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/job/graph-text.ts#JOB_GRAPH_TEXT': ['#bound', '#marked'],
+  'packages/domain/src/job/graph-text.ts#jobGraphGrid': ['#JOB_GRAPH_TEXT', '#leaves', '#walk'],
+  'packages/domain/src/job/graph-text.ts#jobGraphReasonText': ['#JOB_GRAPH_TEXT'],
+  'packages/domain/src/job/graph-text.ts#leaves': ['#leaves'],
+  'packages/domain/src/job/graph-text.ts#walk': ['#walk'],
   'packages/domain/src/job/graph.ts#analyseLevels': ['#byNameId', '#gradeRange', '#index'],
   'packages/domain/src/job/graph.ts#analysePosts': ['#boundReasons', '#byNameId', '#index'],
   'packages/domain/src/job/graph.ts#assertTextAndSize': ['#JOB_GRAPH_LIMITS', '#JobGraphLimitError', '#utf8Length'],
