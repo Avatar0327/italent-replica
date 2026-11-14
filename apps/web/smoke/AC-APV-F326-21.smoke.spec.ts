@@ -5,13 +5,17 @@ const globalPath = '/config-center/global/synthetic-global';
 const transferPath = '/config-center/apps/transfer/workflow/synthetic-transfer';
 const orgPath = '/config-center/apps/org/workflow/synthetic-org';
 const staffPath = '/config-center/workflow/processes';
+// F-326 F1 起配置中心有真实登记：全局项「公共变量」（按 id 排在合成全局项之前，是入口的落点），
+// 审批类型所属的每个应用各一份「应用变量」，应用容器随之出现（设计 §4.4）。
+const publicVariablesPath = '/config-center/global/public-variables';
+const containers = ['▾ 组织管理', '▾ 组织员工', '▾ 调动管理', '▾ 员工自助', '▾ 人才盘点', '▾ 人才发展计划'];
 
 test.beforeEach(async ({ page, baseURL }) => {
   await page.context().addCookies([
     { name: 'italent_demo_tenant', value: tenant, url: baseURL! },
     { name: 'italent_demo_user', value: user, url: baseURL! },
   ]);
-  // 通过既有登记入口注入合成页，只验证 C1 外壳，不注册 F1 业务页面。
+  // 通过既有登记入口注入合成页，只验证 C1 外壳；F1 的真实登记照常存在，期望里一并计入。
   await page.route(/\/src\/approval\/pages\.ts(?:\?.*)?$/, async (route) => {
     const response = await route.fetch();
     const body = (await response.text()).replace(
@@ -44,11 +48,13 @@ function snapshot(allowed: boolean) {
 test('AC-APV-F326-21 合成登记通过正常入口展示全局项和应用容器，独立展开、刷新及前进后退', async ({ page }) => {
   await page.route('**/permission/me/snapshot', (route) => route.fulfill({ json: snapshot(true) }));
   await page.goto('/config-center');
-  await expect(page).toHaveURL(new RegExp(`${globalPath}$`));
+  await expect(page).toHaveURL(new RegExp(`${publicVariablesPath}$`));
   const nav = page.getByRole('navigation', { name: '配置中心目录' });
   await expect(nav.getByText('全局项', { exact: true })).toBeVisible();
-  await expect(nav.locator('.configuration-application')).toHaveText(['▾ 组织管理', '▾ 组织员工', '▾ 调动管理']);
+  await expect(nav.locator('.configuration-application')).toHaveText(containers);
   await expect(nav.getByRole('link', { name: '合成全局配置' })).toHaveAttribute('href', globalPath);
+  await nav.getByRole('link', { name: '合成全局配置' }).click();
+  await expect(page).toHaveURL(new RegExp(`${globalPath}$`));
   await expect(page.getByText('合成全局内容', { exact: true })).toBeVisible();
   const transfer = page.locator('#configuration-sections-transfer');
   await transfer.getByRole('button', { name: '流程任务管理', exact: true }).click();

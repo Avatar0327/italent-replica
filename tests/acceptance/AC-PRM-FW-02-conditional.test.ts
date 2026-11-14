@@ -2,13 +2,15 @@
  * AC-PRM-FW-02（续，F-039 PR-A 第 4 轮）：条件准入的 HTTP 现状。显式表把两项条件准入登记为由必需的具名条件守卫承载
  * （when:<守卫>），这里用真实请求核对条件成立 / 不成立两侧（删守卫一侧见 AC-PRM-FW-02-required.test.ts）：
  * - 合同导入 mode = initialize 才另要合同删除权（contracts.importInitializeDelete）；
- * - 360 导入评价者 sync = true 才另要员工信息查看权（survey360.syncEmployees）。
+ * - 360 导入评价者 sync = true 才另要员工信息查看权（survey360.syncEmployees）；
+ * - 审批模拟 resolveCurrentSources = true 才另要流程管理员（F-326 设计 §3.7 / §4.3，处理器内二次校验）。
  */
 import type { Authorizer } from '@italent/api';
-import { CONTRACT_OBJECT } from '@italent/domain';
+import { APPROVAL_PROCESS_OBJECT, CONTRACT_OBJECT } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { fullAccess, world360 } from './AC-360-support.js';
+import { APPROVAL, counter, s4World } from './AC-APV-F326-S4-support.js';
 import { contractWorld } from './AC-CT-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -71,5 +73,36 @@ describe('条件准入：360 导入评价者选“同步”另要员工信息查
   it('条件不成立：无员工信息查看权时 sync = false → 200', async () => {
     const response = await importAs(false);
     expect(response.status, await response.clone().text()).toBe(200);
+  });
+});
+
+describe('条件准入：审批模拟 resolveCurrentSources 另要流程管理员', () => {
+  async function simulateAs(resolveCurrentSources: boolean, admin: boolean) {
+    const w = await s4World(testDb().db, `fw-cond-sim-${resolveCurrentSources}-${admin}`);
+    const viewer = await w.member('合成对象查看者');
+    const process = await w.publishedProcess({
+      isFallback: true,
+      conditions: { items: [] },
+      nodes: [counter([{ type: 'specified', value: w.head.userId }])],
+    });
+    // 对象查看者只放行流程对象 object.view；管理员全放行
+    const authorize: Authorizer = (q) =>
+      admin || (q.userId === viewer && q.action === 'object.view' && q.resource === APPROVAL_PROCESS_OBJECT);
+    const api = tenantApi(w.db, { authorize, clock: w.clock });
+    const body = { scope: 'published', data: { values: {} }, resolveCurrentSources };
+    return api.request('POST', `${APPROVAL}/processes/${process.id}/simulate`, {
+      ...w.as(admin ? w.hr.id : viewer),
+      body,
+    });
+  }
+
+  it('条件成立：对象查看者带标志 → 403', async () => {
+    const response = await simulateAs(true, false);
+    expect(response.status, await response.clone().text()).toBe(403);
+  });
+
+  it('条件不成立：对象查看者不带标志 → 200；管理员带标志 → 200', async () => {
+    expect((await simulateAs(false, false)).status).toBe(200);
+    expect((await simulateAs(true, true)).status).toBe(200);
   });
 });

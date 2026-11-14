@@ -5,10 +5,13 @@ import { limitApprovers } from './source-resolver.js';
  * 只读，不建实例、不发消息、不生成待办。按对象仿真同时给出原站规则（按实体、跨审批类型按优先级）与复刻规则
  * （DEC-017）的命中流程，并对复刻命中流程继续核算能否提交（X-17）。会签节点（F-003）逐人给出审批人与处理方式，
  * 并给出按出口动作生成的流转规则（DEC-144）。
+ * 例外（F-326 §3.7）：`currentSources` 仅由流程管理员显式开启，才把变量 / 矩阵来源按当前值补进虚拟输入
+ * （simulation-current.ts）；默认路径不读变量表与矩阵表，对象查看者拿不到这些来源里的真实用户。
  */
 import type { Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  type ConditionField,
   adminRecused,
   approverSourcesOf,
   expressionValue,
@@ -40,6 +43,7 @@ import { approvalError, type ApprovalContext } from './context.js';
 import { loadProcess, loadVersion, type VersionView } from './definitions.js';
 import { decideHandoverApprovers, type HandoverResolution, type ResolvedApprover } from './handover-empty.js';
 import { candidates, evaluate, noProcessMessage, originalSiteMatch, replicaMatch } from './matching.js';
+import { simulationFieldsOf, withCurrentSources } from './simulation-current.js';
 
 export interface SimulationData {
   readonly values: Readonly<Record<string, string | null>>;
@@ -61,7 +65,9 @@ const NOBODY: Candidate = { personId: null, userId: null };
 
 /** X-18：按条件字段类型校验输入（组织 / 引用须为标识，日期须为合法日期），不把虚拟值当主键查库。 */
 function conditionContext(type: ApprovalTypeCode, data: SimulationData): ConditionContext {
-  const fields = new Map(APPROVAL_TYPES[type].conditionFields.map((field) => [field.path, field.kind]));
+  // 同路径取类型自带的定义；矩阵虚拟维度（部门 / 职位 / 职务）对所有类型可用（F-326 §3.7）
+  const fields = new Map<string, ConditionField['kind']>();
+  for (const field of [...simulationFieldsOf(type)].reverse()) fields.set(field.path, field.kind);
   const orgAncestors: Record<string, readonly string[]> = {};
   for (const [path, value] of Object.entries(data.values)) {
     const kind = fields.get(path);
@@ -362,15 +368,19 @@ export async function simulateProcess(
   ctx: ApprovalContext,
   processId: string,
   request: { scope: 'published' | 'latest'; data: SimulationData },
+  currentSources = false,
 ) {
   const process = await loadProcess(tx, ctx.tenantId, processId);
   const version = request.scope === 'published' ? process.currentVersion : process.latestVersion;
   if (!version) throw approvalError('CONFLICT', 'APPROVAL_NOT_PUBLISHED', '流程尚无已发布版本');
   const context = conditionContext(process.approvalType, request.data);
+  const data = currentSources
+    ? await withCurrentSources(tx, ctx, version, process.approvalType, request.data)
+    : request.data;
   const conditions = evaluateCondition(version.conditions, context);
   const walk = walkOf(version, process.approvalType, context);
-  const nodes = simulateNodes(ctx, version, request.data, walk);
-  const blockers = preflight(ctx, version, request.data);
+  const nodes = simulateNodes(ctx, version, data, walk);
+  const blockers = preflight(ctx, version, data);
   return {
     processId,
     versionNo: version.versionNo,
@@ -388,6 +398,7 @@ export async function simulateByObject(
   tx: Tx,
   ctx: ApprovalContext,
   request: { approvalType: ApprovalTypeCode; scope: 'published' | 'latest'; data: SimulationData },
+  currentSources = false,
 ) {
   const type = APPROVAL_TYPES[request.approvalType];
   const list = await candidates(tx, ctx.tenantId, { objectCode: type.objectCode, scope: request.scope });
@@ -401,7 +412,12 @@ export async function simulateByObject(
     };
   const replica = replicaMatch(evaluated, request.approvalType);
   // X-17 / F13：命中流程后继续无副作用地核算能否提交（与真实提交同一套预检）。
-  const blockers = replica ? preflight(ctx, await loadVersion(tx, ctx.tenantId, replica.version.id), request.data) : [];
+  const replicaVersion = replica ? await loadVersion(tx, ctx.tenantId, replica.version.id) : null;
+  const data =
+    replicaVersion && currentSources
+      ? await withCurrentSources(tx, ctx, replicaVersion, request.approvalType, request.data)
+      : request.data;
+  const blockers = replicaVersion ? preflight(ctx, replicaVersion, data) : [];
   return {
     approvalType: request.approvalType,
     objectCode: type.objectCode,

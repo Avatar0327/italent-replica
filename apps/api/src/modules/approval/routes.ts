@@ -46,6 +46,7 @@ import {
   adminScope,
   adminTargetScope,
   isProcessAdmin,
+  requireCurrentSourcesAdmin,
   requireProcessButton,
   requireProcessView,
   requireResubmitRight,
@@ -87,6 +88,7 @@ import { loadPathFacts } from './detail-path.js';
 import {
   detailView,
   namedForm,
+  capturedAttachmentsOf,
   disclosedFields,
   projectLog,
   readDetail,
@@ -244,7 +246,7 @@ async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, wit
 
 async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
   const { ctx, data, view } = await detailViewOf(c, deps, instanceId, true);
-  const named = await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view));
+  const named = await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view, data.content));
   // F-476 P8：业务内容不在表单里的类型，已办读冻结份时附类型化内容（缺份 503）
   return c.json({ ...named, ...(await typedContentOf(deps, ctx, data)) });
 }
@@ -256,10 +258,13 @@ async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
 async function respondAttachment(c: C, deps: TenantRouteDeps) {
   const instanceId = uuidParam(c);
   const fileId = uuidParam(c, 'fileId');
-  const { ctx, view } = await detailViewOf(c, deps, instanceId);
+  const { ctx, data, view } = await detailViewOf(c, deps, instanceId);
   const refs = (view.form.values as Record<string, unknown>).attachmentRefs;
+  // §3.2：已办冻结读认办理份里的文件（含此后被本人删去的 detached），现值读只认 bound
+  const captured = capturedAttachmentsOf(data.content);
+  const read = captured ? { mode: 'frozen' as const, captured: captured.map((item) => item.id) } : undefined;
   const { row, bytes } = await withTenant(deps.db, ctx.tenantId, (tx) =>
-    readCarrierAttachment(tx, ctx.tenantId, view.businessId, Array.isArray(refs) ? refs : [], fileId),
+    readCarrierAttachment(tx, ctx.tenantId, view.businessId, Array.isArray(refs) ? refs : [], fileId, read),
   );
   return respondAttachmentBytes(c, row, bytes);
 }
@@ -489,21 +494,40 @@ const simulationData = z.strictObject({
   subjectUserIds: z.array(userIdInput).max(50).optional(),
 });
 const scope = z.enum(['published', 'latest']).default('published');
+/** F-326 §3.7：显式要求读变量 / 矩阵当前值；处理器内再校验流程管理员，不靠前端隐藏按钮。 */
+const currentSourcesFlag = z.boolean().default(false);
 
 function registerSimulationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/processes/:id/simulate', async (c) => {
     const ctx = readCtx(c, deps);
     const id = uuidParam(c);
-    const input = await parseBody(c, z.strictObject({ scope, data: simulationData }));
+    const { resolveCurrentSources, ...input } = await parseBody(
+      c,
+      z.strictObject({ scope, data: simulationData, resolveCurrentSources: currentSourcesFlag }),
+    );
     await requireProcessButton(deps, ctx, 'simulate');
-    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => simulateProcess(tx, ctx, id, input)));
+    if (resolveCurrentSources) await requireCurrentSourcesAdmin(deps, ctx);
+    return c.json(
+      await withTenant(deps.db, ctx.tenantId, (tx) => simulateProcess(tx, ctx, id, input, resolveCurrentSources)),
+    );
   });
   router.post('/simulate', async (c) => {
     const ctx = readCtx(c, deps);
-    const input = await parseBody(c, z.strictObject({ approvalType: z.string(), scope, data: simulationData }));
+    const { resolveCurrentSources, ...input } = await parseBody(
+      c,
+      z.strictObject({
+        approvalType: z.string(),
+        scope,
+        data: simulationData,
+        resolveCurrentSources: currentSourcesFlag,
+      }),
+    );
     await requireProcessButton(deps, ctx, 'simulateByObject');
+    if (resolveCurrentSources) await requireCurrentSourcesAdmin(deps, ctx);
     const request = { ...input, approvalType: approvalTypeOf(input.approvalType) };
-    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => simulateByObject(tx, ctx, request)));
+    return c.json(
+      await withTenant(deps.db, ctx.tenantId, (tx) => simulateByObject(tx, ctx, request, resolveCurrentSources)),
+    );
   });
 }
 
