@@ -13,11 +13,10 @@ import { validateCustomValue } from '../../apps/api/src/modules/employment/field
 import { validatePartTimeCustomFields } from '../../apps/api/src/modules/employment/part-time/validation.js';
 import { addMember, seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { resultRows } from './AC-ORG-support.js';
-import { fileAt, fileNow, grantCodesAt } from './support/grant-baseline.js';
+import { fileAt, fileNow, grantCodesAt, resolveGrantBase } from './support/grant-baseline.js';
 
 const database = useTestDb();
 const base = '/api/tenant/employment/custom-fields';
-const baseline = 'c8d02fbe324d0a0bbafab4e4b10a84d2b7a322be';
 const east = { value: 'east', label: '合成东区', enabled: true };
 const west = { value: 'west', label: '合成西区', enabled: true };
 const input = { name: '合成地区', objectType: 'employment', valueType: 'select', options: [east] };
@@ -235,15 +234,27 @@ describe('AC-F474-6b0b options 与单选下拉', () => {
     expect((await response.json()).items[0].options).toEqual([{ ...east, enabled: false }]);
   });
 
-  it('AC-F474-0B09 options 是非系统字段，授权编码集合、版本、指纹和预置文件保持基线', async () => {
+  it('AC-F474-0B09 options 是非系统字段，授权编码指纹与编码集合自洽', () => {
     expect(MODULE_OBJECTS.employmentCustomField.fields).toContainEqual({ code: 'options', system: false });
-    expect([...STANDARD_GRANT_CODES]).toEqual(await grantCodesAt(baseline));
-    expect(STANDARD_GRANT_VERSION).toBe(52);
-    expect(STANDARD_GRANT_DIGEST).toBe('acbafd07e26b55e1');
     expect(grantCodesDigest(STANDARD_GRANT_CODES)).toBe(STANDARD_GRANT_DIGEST);
+  });
+
+  it('AC-F474-0B09b 本 PR 不改授权编码：编码集合、版本、指纹和预置文件与基线逐字相同（F-097 动态基线）', async (context) => {
+    // 基线不写死提交：CI 浅克隆只有 HEAD / HEAD^1，写死的历史提交取不到。
+    // CI 设了 GRANT_BASE_REV=HEAD^1，解析不到会抛错（不静默通过）；本地取 merge-base，取不到才跳过并写明原因。
+    const base = resolveGrantBase();
+    if ('skip' in base) return context.skip(`F-097 动态基线：${base.skip}`);
+    expect([...STANDARD_GRANT_CODES]).toEqual(await grantCodesAt(base.sha));
+    const grants = fileAt(base.sha, 'packages/domain/src/platform/standard-grants.ts') ?? '';
+    const version = /STANDARD_GRANT_VERSION\s*=\s*(\d+)/.exec(grants)?.[1];
+    const digest = /STANDARD_GRANT_DIGEST\s*=\s*'([0-9a-f]+)'/.exec(grants)?.[1];
+    expect(version, `基线 ${base.sha.slice(0, 8)} 上取不到 STANDARD_GRANT_VERSION`).toBeDefined();
+    expect(digest, `基线 ${base.sha.slice(0, 8)} 上取不到 STANDARD_GRANT_DIGEST`).toBeDefined();
+    expect(STANDARD_GRANT_VERSION).toBe(Number(version));
+    expect(STANDARD_GRANT_DIGEST).toBe(digest);
     for (const path of ['standard-grants.ts', 'standard-presets.ts', 'standard-grant-changes.json']) {
       const file = `packages/domain/src/platform/${path}`;
-      expect(fileNow(file)).toBe(fileAt(baseline, file));
+      expect(fileNow(file), `${file} 与基线 ${base.how} 不一致`).toBe(fileAt(base.sha, file));
     }
   });
 });
