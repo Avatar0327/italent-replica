@@ -121,7 +121,8 @@ class Merger {
       return false;
     }
     const values = inMine ? [sm.present, sm.removed, sm.changed] : [sm.present, sm.changed, sm.removed];
-    return this.ambiguous(field, label, values, (inMine ? sm.goneThere : sm.goneHere)(label)) ? inLatest : inMine;
+    const text = (inMine ? sm.goneThere : sm.goneHere)(label);
+    return this.ambiguous(field, label, values, text) ? inLatest : inMine;
   }
 
   columns(): DraftColumn[] {
@@ -152,7 +153,8 @@ class Merger {
       const field = `column:${ref}:dimension`;
       const take = this.ambiguous(field, `${name}·${sm.setting.dimension}`, texts, sm.dimensionClash(name));
       this.clash.set(ref, take);
-      Object.assign(merged, { dimension: (take ? l : m).dimension, includeChildren: (take ? l : m).includeChildren });
+      const { dimension, includeChildren } = take ? l : m;
+      Object.assign(merged, { dimension, includeChildren });
     }
     for (const key of SETTINGS) {
       if (this.clash.has(ref) && (key === 'dimension' || key === 'includeChildren')) continue;
