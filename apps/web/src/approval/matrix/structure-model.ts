@@ -164,7 +164,7 @@ function columnIssues(columns: DraftColumn[]): Issue[] {
 }
 
 /** 名称缓存里这个 id 在该类别（person / 维度）下有没有登记的名称。 */
-export type Known = (kind: string, id: string) => boolean;
+type Known = (kind: string, id: string) => boolean;
 const KINDS = ['person', ...MATRIX_DIMENSIONS];
 
 function cellIssue(column: DraftColumn, ids: string[], known: Known) {
