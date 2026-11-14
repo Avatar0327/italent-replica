@@ -15,6 +15,7 @@ import { listEmployees, listFieldVisibility, listOptions, listSubsets, trimSubse
 import { registerSubsetRoutes } from './subset-routes.js';
 import { registerChangeRequestRoutes } from './request-routes.js';
 import { camel, rows } from './store.js';
+import { writePayload } from './custom-fields.js';
 import { dateValue, employeeInput, parse } from './validation.js';
 import { registerPersonnelHooks } from '../employment/personnel-hooks.js';
 import { currentPersonName } from './employee-projection.js';
@@ -58,12 +59,24 @@ export function registerPersonnelRoutes(router: Hono<TenantEnv>, deps: TenantRou
   router.patch(`${base}/:id`, (c) =>
     safe(async () => {
       const input = employeeInput(await body(c));
-      const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', input, 'update', revision(c));
+      // 授权用展开后的载荷（customFields → custom:<id>）；幂等指纹与落库用原始输入（F-474-6c）。
+      const payload = writePayload(input);
+      const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', payload, 'update', revision(c));
       const id = uuidParam(c);
-      return write(c, deps, ctx, id, 'update', input, async (tx, ctx) => {
-        await appendEmployee(tx, ctx, id, input);
-        return readEmployee(tx, ctx, id);
-      });
+      return write(
+        c,
+        deps,
+        ctx,
+        id,
+        'update',
+        payload,
+        async (tx, ctx) => {
+          await appendEmployee(tx, ctx, id, input);
+          return readEmployee(tx, ctx, id);
+        },
+        'update',
+        input,
+      );
     }),
   );
   router.post(`${base}/:id/attachments`, (c) =>

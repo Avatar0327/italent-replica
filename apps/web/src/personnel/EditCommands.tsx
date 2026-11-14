@@ -33,6 +33,8 @@ import {
   subsetRequiredMark,
 } from './edit-model.js';
 import { fieldValue, type Row } from './model.js';
+import { usePersonnelCustomFields, customControl } from './custom-fields.js';
+import { customBody, customText, flattenCustom, isCustomKey } from './custom-model.js';
 import { ReadPanel } from './ReadPanel.js';
 import { useRead } from './useRead.js';
 import type { ProfileSubset } from './useSubsetAccess.js';
@@ -126,9 +128,22 @@ function PersonForm({ row, editable, close, saved }: { row: Row; editable: strin
   const writer = useConflictCommand(
     people,
     { id: row.id, revision: Number(row.revision), values: row },
-    reader(api, path, (raw) => raw),
+    reader(api, path, flattenCustom),
     { action: 'edit' },
   );
+  const custom = usePersonnelCustomFields();
+  // 提交范围：预置字段 + 定义目录里仍存在的自定义字段（已删定义的权限键不进请求体）。
+  const submittable = [
+    ...editable.filter((name) => !isCustomKey(name)),
+    ...custom.keys.filter((key) => editable.includes(key)),
+  ];
+  const customItem = (key: string) => ({
+    name: key,
+    label: custom.labels[key]!,
+    control: customControl(custom.byKey[key]!, writer.full[key]),
+    access: { visible: true, editable: submittable.includes(key) },
+    display: customText(custom.byKey[key]!, writer.full[key]),
+  });
   // 只读展示取内核最新全量：409 重读核对后显示同事改后的值，不停在打开时（第 2 轮 P2-5）。
   const item = (name: string) => ({
     ...field(
@@ -147,9 +162,9 @@ function PersonForm({ row, editable, close, saved }: { row: Row; editable: strin
       recordKey={path}
       submission={writer.form}
       title={m.editing.person}
-      initialValues={row}
+      initialValues={flattenCustom(row)}
       groups={[
-        { title: m.employeeInfo, fields: personInfoFields.map(item) },
+        { title: m.employeeInfo, fields: [...personInfoFields.map(item), ...custom.keys.map(customItem)] },
         { title: m.recordFields, fields: personJobFields.map(item) },
       ]}
       onClose={() => {
@@ -158,15 +173,19 @@ function PersonForm({ row, editable, close, saved }: { row: Row; editable: strin
       }}
       onSubmit={async (values) => {
         // 补丁语义：没有改动不发空请求。
-        if (!changedFields(values, writer.full, editable).length) return;
+        if (!changedFields(values, writer.full, submittable).length) return;
         await writer.run({
           values,
-          editableFields: editable,
+          editableFields: submittable,
+          // 平铺的 custom:<id> 收进 customFields 再发（F-474-6c）；回执仍按提交时的版本核对。
           send: async ({ command }) =>
-            personReceipt(await api.request(path, { method: 'PATCH', command }), {
-              id: row.id,
-              revision: revisionOf(command),
-            }),
+            personReceipt(
+              await api.request(path, { method: 'PATCH', command: { ...command, body: customBody(command.body) } }),
+              {
+                id: row.id,
+                revision: revisionOf(command),
+              },
+            ),
         });
         saved();
       }}

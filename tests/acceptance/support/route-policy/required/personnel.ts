@@ -226,14 +226,14 @@ export const PERSONNEL: RequiredTable = {
     op(
       person('PATCH', '/:id'),
       `obj:${PERSON}:update`,
-      "const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', input, 'update', revision(c))",
+      "const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', payload, 'update', revision(c))",
       ['object:personnel access', `objectOp:${PERSON}:update`],
       PERSON_CONST,
     ),
     btn(
       person('PATCH', '/:id'),
       `btn:${PERSON}#update@detail`,
-      "const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', input, 'update', revision(c))",
+      "const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', payload, 'update', revision(c))",
       PERSON_CONST,
     ),
   ],

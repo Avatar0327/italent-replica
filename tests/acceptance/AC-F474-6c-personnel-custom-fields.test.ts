@@ -4,7 +4,7 @@
  * 因为真实授权器会先以“字段未登记”拒绝（403），到不了定义校验。
  */
 import { randomUUID } from 'node:crypto';
-import { auditEvents, eq, pgErrorCode, personnelEmployeeVersions, sql, withTenant } from '@italent/db';
+import { auditEvents, eq, personnelEmployeeVersions, sql, withTenant } from '@italent/db';
 import { PERSONNEL_OBJECT, PERSONNEL_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -34,8 +34,10 @@ const key = (id: string) => `custom:${id}`;
 async function define(w: World, valueType: string, options: unknown[] = [], objectType = 'personnel') {
   const id = randomUUID();
   await withTenant(w.db, w.tenant.id, (tx) =>
-    tx.execute(sql`INSERT INTO employment_custom_field_objects(id, tenant_id, code, name, object_type, value_type, options)
-      VALUES (${id}, ${w.tenant.id}, ${id}, ${`合成${valueType}`}, ${objectType}, ${valueType}, ${JSON.stringify(options)}::jsonb)`),
+    tx.execute(sql`INSERT INTO employment_custom_field_objects
+      (id, tenant_id, code, name, object_type, value_type, options)
+      VALUES (${id}, ${w.tenant.id}, ${id}, ${`合成${valueType}`}, ${objectType}, ${valueType},
+        ${JSON.stringify(options)}::jsonb)`),
   );
   return id;
 }
@@ -130,12 +132,12 @@ describe('AC-F474-6c 人员自定义字段', () => {
     expect(versions.length).toBeGreaterThan(0);
     expect(versions.every((v) => (v as { customFields?: unknown }).customFields !== undefined)).toBe(true);
     expect((versions.at(-1) as { customFields: unknown }).customFields).toEqual({});
-    const reject = withTenant(w.db, w.tenant.id, (tx) =>
-      tx.execute(
-        sql`UPDATE personnel_employee_versions SET custom_fields='[]'::jsonb WHERE employee_id=${w.employee.id}`,
-      ),
+    // 版本表只追加（不授 UPDATE），约束以目录为准：必须存在且限定为对象
+    const found = await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+        WHERE conname='personnel_employee_custom_fields_object'`),
     );
-    await expect(reject).rejects.toSatisfy((error: unknown) => pgErrorCode(error) === '23514');
+    expect(JSON.stringify(found)).toContain("jsonb_typeof(custom_fields) = 'object'");
   });
 
   it('AC-F474-6c-02 新定义对任何身份默认不可见；授权后才出现在详情、列表和历史里，无权者连键都没有', async () => {
@@ -273,11 +275,23 @@ describe('AC-F474-6c 人员自定义字段', () => {
       [ids.select, 'east'],
     ] as const)
       expect(await send(id, value)).toBe(200);
-    // 历史值是已停用选项：可读、可原样提交；换成其他值后不能再选回
-    await withTenant(w.db, w.tenant.id, (tx) =>
-      tx.execute(sql`UPDATE personnel_employee_versions SET custom_fields=jsonb_set(custom_fields,${`{${ids.select}}`}::text[],'"old"')
-        WHERE employee_id=${w.employee.id} AND revision=(SELECT max(revision) FROM personnel_employee_versions WHERE employee_id=${w.employee.id})`),
-    );
+    // 历史值是后来被停用的选项：可读、可原样提交；换成其他值后不能再选回
+    expect(await send(ids.select, 'old')).toBe(400);
+    expect(await send(ids.select, 'east')).toBe(200);
+    const enabled = [east, west, { ...old, enabled: true }];
+    const open = await w.setup.request('PUT', `/api/tenant/employment/custom-fields/${ids.select}/options`, {
+      ...w.asAdmin,
+      ifMatch: 1,
+      body: { options: enabled },
+    });
+    expect(open.status, await open.clone().text()).toBe(200);
+    expect(await send(ids.select, 'old')).toBe(200);
+    const close = await w.setup.request('PUT', `/api/tenant/employment/custom-fields/${ids.select}/options`, {
+      ...w.asAdmin,
+      ifMatch: 2,
+      body: { options: [east, west, old] },
+    });
+    expect(close.status, await close.clone().text()).toBe(200);
     expect((await w.read(writer.as)).customFields).toMatchObject({ [ids.select]: 'old' });
     expect(await send(ids.select, 'old')).toBe(200);
     expect(await send(ids.select, 'west')).toBe(200);
@@ -327,8 +341,8 @@ describe('AC-F474-6c 人员自定义字段', () => {
     expect((await w.patch(writer.as, { customFields: { [a]: '甲', [b]: '乙' } })).status).toBe(200);
     const { audits } = await w.stored();
     const event = audits.find((row) => JSON.stringify(row.after ?? {}).includes('"customFields"'))!;
-    expect(event.after).toEqual({ customFields: { [a]: '甲', [b]: '乙' } });
-    expect(event.before).toEqual({ customFields: { [a]: null, [b]: null } });
+    expect((event.after as Record<string, unknown>).customFields).toEqual({ [a]: '甲', [b]: '乙' });
+    expect((event.before as Record<string, unknown>).customFields).toEqual({ [a]: null, [b]: null });
     const visible = new Set([key(a)]);
     expect(visibleValue(event.after, visible)).toEqual({ customFields: { [a]: '甲' } });
     expect(visibleValue(event.after, new Set())).not.toHaveProperty('customFields');

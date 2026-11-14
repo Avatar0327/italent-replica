@@ -18,7 +18,7 @@ it('AC-PER-F325 升级：保留旧档案版本，新列初始为空，升级后�
   const snapshot = () =>
     withTenant(handle.db, tenant.id, async (tx) =>
       rows(
-        await tx.execute(sql`SELECT to_jsonb(v) - 'daily_wage_standard' AS body
+        await tx.execute(sql`SELECT to_jsonb(v) - 'daily_wage_standard' - 'custom_fields' AS body
         FROM personnel_employee_versions v WHERE employee_id=${employeeId}::uuid ORDER BY revision`),
       ),
     );
@@ -57,6 +57,12 @@ it('AC-PER-F325 升级：保留旧档案版本，新列初始为空，升级后�
       FROM personnel_employee_versions WHERE employee_id=${employeeId}::uuid ORDER BY revision`),
     );
     expect(old).toEqual([{ wage: null }, { wage: null }]);
+    // F-474-6c：旧版本升级后自定义字段列为 {}（NOT NULL DEFAULT），不改写旧行其他列。
+    const custom = rows(
+      await tx.execute(sql`SELECT custom_fields FROM personnel_employee_versions
+      WHERE employee_id=${employeeId}::uuid ORDER BY revision`),
+    );
+    expect(custom).toEqual([{ custom_fields: {} }, { custom_fields: {} }]);
     expect(await readEmployee(tx, context, employeeId)).toMatchObject({ dailyWageStandard: null, revision: 2 });
     expect(await appendEmployee(tx, context, employeeId, { dailyWageStandard: '123456789012.34' })).toBe(3);
     expect(await readEmployee(tx, context, employeeId)).toMatchObject({

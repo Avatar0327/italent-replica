@@ -164,7 +164,7 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     button: button('update', 'detail'),
     scope: employeePoint('id'),
     fields: employeeShape,
-    write: personnelWrite('body', 'id', ['lockPerson', 'validateAttachments', 'assertRevision']),
+    write: personnelWrite('body+customFields', 'id', ['lockPerson', 'validateAttachments', 'assertRevision']),
     ...byUuid,
   }),
   [`POST ${EMPLOYEES}/:id/attachments`]: object({

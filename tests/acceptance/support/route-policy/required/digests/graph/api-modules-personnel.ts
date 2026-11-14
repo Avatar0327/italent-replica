@@ -36,6 +36,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     '#trimWithFields',
   ],
+  'apps/api/src/modules/personnel/access.ts#trimWithFields': [
+    'apps/api/src/modules/personnel/custom-fields.ts#trimCustomFields',
+  ],
   'apps/api/src/modules/personnel/approval-hooks.ts#personnelApprovalHooks': ['#hooks'],
   'apps/api/src/modules/personnel/attachments.ts#registerAttachment': [
     'apps/api/src/modules/personnel/store.ts#insert',
@@ -106,6 +109,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/store.ts#update',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_REQUEST_OBJECT',
   ],
+  'apps/api/src/modules/personnel/custom-fields.ts#mergeCustomFields': [
+    'apps/api/src/modules/employment/fields.ts#validateCustomValue',
+    '#personnelDefinitions',
+  ],
+  'apps/api/src/modules/personnel/custom-fields.ts#parseCustomFields': [
+    'apps/api/src/modules/employment/fields.ts#customFields',
+  ],
+  'apps/api/src/modules/personnel/custom-fields.ts#personnelDefinitions': [
+    'apps/api/src/modules/personnel/store.ts#rows',
+  ],
   'apps/api/src/modules/personnel/employee-read.ts#employeeAttributes': [
     'apps/api/src/modules/avatar/references.ts#avatarSql',
     'apps/api/src/modules/personnel/sorting.ts#sortRankColumns',
@@ -135,6 +148,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/personnel/employee-write.ts#appendEmployee': [
     'apps/api/src/modules/personnel/attachments.ts#validateAttachments',
+    'apps/api/src/modules/personnel/custom-fields.ts#mergeCustomFields',
     '#employeeSnapshot',
     'apps/api/src/modules/personnel/identity-types.ts#requireEnabledIdentityTypes',
     'apps/api/src/modules/personnel/store.ts#assertRevision',
@@ -373,6 +387,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/personnel/access.ts#access',
+    'apps/api/src/modules/personnel/custom-fields.ts#writePayload',
     'apps/api/src/modules/personnel/employee-read.ts#readEmployee',
     'apps/api/src/modules/personnel/employee-write.ts#appendEmployee',
     'apps/api/src/modules/personnel/http.ts#body',
@@ -542,6 +557,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/personnel/validation.ts#dateValue': ['#isoDate', '#parse'],
   'apps/api/src/modules/personnel/validation.ts#employeeInput': [
+    'apps/api/src/modules/personnel/custom-fields.ts#parseCustomFields',
     '#parseFields',
     'packages/domain/src/personnel/fields.ts#EMPLOYEE_FIELDS',
   ],

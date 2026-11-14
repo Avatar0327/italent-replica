@@ -47,17 +47,20 @@ export function ColumnGear({ onOpen }: { onOpen(): void }) {
 export function ColumnSettings({
   value,
   allowed,
+  custom = { keys: [], labels: {} },
   onApply,
   onClose,
 }: {
   value: string[];
   allowed: readonly string[];
+  /** F-474-6c：本人可见的自定义字段列（默认不选，无筛选、排序）。 */
+  custom?: { keys: readonly string[]; labels: Readonly<Record<string, string>> };
   onApply(value: string[]): void;
   onClose(): void;
 }) {
   const [draft, setDraft] = useState(value);
   const [keyword, setKeyword] = useState('');
-  const choices = columnChoices.filter((key) => allowed.includes(key));
+  const choices = [...columnChoices, ...custom.keys].filter((key) => allowed.includes(key));
   const picked = visibleColumns(draft, allowed);
   return (
     <Modal
@@ -92,7 +95,12 @@ export function ColumnSettings({
         onChange={(event) => setKeyword(event.target.value)}
       />
       <div className="staff-columns-panes">
-        <AllFields draft={draft} choices={matchColumns(choices, keyword)} setDraft={setDraft} />
+        <AllFields
+          draft={draft}
+          choices={matchColumns(choices, keyword, custom.labels)}
+          labels={custom.labels}
+          setDraft={setDraft}
+        />
         <section className="staff-columns-pane">
           <header>
             <span>{m.selectedFields(picked.length, choices.length)}</span>
@@ -102,6 +110,7 @@ export function ColumnSettings({
           </header>
           <SelectedFields
             keys={picked}
+            labels={custom.labels}
             onMove={(key, target) => setDraft((previous) => moveColumn(previous, key, target))}
           />
         </section>
@@ -114,10 +123,12 @@ export function ColumnSettings({
 function AllFields({
   draft,
   choices,
+  labels,
   setDraft,
 }: {
   draft: string[];
   choices: string[];
+  labels: Readonly<Record<string, string>>;
   setDraft(update: (previous: string[]) => string[]): void;
 }) {
   const group = columnGroupState(draft, choices);
@@ -141,7 +152,7 @@ function AllFields({
             checked={draft.includes(key)}
             onChange={(event) => setDraft((previous) => toggleColumn(previous, key, event.target.checked))}
           >
-            {columnLabel(key)}
+            {columnLabel(key, labels)}
           </Checkbox>
         ))}
       </div>
@@ -150,14 +161,22 @@ function AllFields({
 }
 
 /** 右栏已选字段：HTML5 拖放，放到目标项即占据其位置；员工姓名不可拖动。 */
-function SelectedFields({ keys, onMove }: { keys: string[]; onMove(key: string, target: string): void }) {
+function SelectedFields({
+  keys,
+  labels,
+  onMove,
+}: {
+  keys: string[];
+  labels: Readonly<Record<string, string>>;
+  onMove(key: string, target: string): void;
+}) {
   const [dragging, setDragging] = useState<string>();
   return (
     <ul className="staff-columns-selected" aria-label={m.selectedFieldsLabel}>
       {keys.map((key) => (
         <li
           key={key}
-          aria-label={columnLabel(key)}
+          aria-label={columnLabel(key, labels)}
           draggable={key !== lockedColumn}
           className={[key === lockedColumn && 'is-locked', key === dragging && 'is-dragging'].filter(Boolean).join(' ')}
           onDragStart={(event) => {
@@ -176,7 +195,7 @@ function SelectedFields({ keys, onMove }: { keys: string[]; onMove(key: string, 
           onDragEnd={() => setDragging(undefined)}
         >
           {key === lockedColumn ? <LockIcon /> : <HandleIcon />}
-          {columnLabel(key)}
+          {columnLabel(key, labels)}
         </li>
       ))}
     </ul>

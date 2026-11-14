@@ -13,17 +13,22 @@ import { m, subsetLabels } from './messages.js';
 import type { ObjectPermission } from '../foundation/permission-model.js';
 import { EMPLOYMENT_TYPE_FIELD, employmentTypeLabel } from '../employment-types/labels.js';
 import { RecordEdit, SubsetCreate, SubsetRowCommands } from './EditCommands.js';
+import { usePersonnelCustomFields } from './custom-fields.js';
+import { customText, flattenCustom, type CustomDefinition } from './custom-model.js';
 
 export function FieldGrid({
   row,
   fields,
   allowed,
+  custom,
 }: {
   row: Record<string, unknown>;
   fields: string[];
   allowed: readonly string[];
+  /** F-474-6c：自定义字段按定义显示（有查看权就显示，未填写时是占位而不是隐藏）。 */
+  custom?: Readonly<Record<string, CustomDefinition>>;
 }) {
-  const visible = fields.filter((key) => allowed.includes(key) && Object.hasOwn(row, key));
+  const visible = fields.filter((key) => allowed.includes(key) && (Object.hasOwn(row, key) || !!custom?.[key]));
   return visible.length ? (
     <Descriptions
       column={2}
@@ -31,8 +36,12 @@ export function FieldGrid({
       colon={false}
       items={visible.map((key) => ({
         key,
-        label: m.labels[key],
-        children: key === EMPLOYMENT_TYPE_FIELD ? employmentTypeLabel(row) : fieldValue(key, row[key], 'long'),
+        label: custom?.[key]?.name ?? m.labels[key],
+        children: custom?.[key]
+          ? customText(custom[key], row[key])
+          : key === EMPLOYMENT_TYPE_FIELD
+            ? employmentTypeLabel(row)
+            : fieldValue(key, row[key], 'long'),
       }))}
     />
   ) : (
@@ -73,6 +82,8 @@ export function PersonnelProfile({ row, employeeId }: { row: Row; employeeId: st
   const permission = usePermissions(PERSONNEL_OBJECT);
   const allowed = permission.snapshot.objects[PERSONNEL_OBJECT]?.viewableFields ?? [];
   const access = useSubsetAccess();
+  const custom = usePersonnelCustomFields();
+  const flat = flattenCustom(row);
   const sections = profileSections.filter((section) => section.fields.some((key) => allowed.includes(key)));
   const kinds = Object.keys(access.data ?? {}) as ProfileSubset[];
   const anchors = [
@@ -85,7 +96,12 @@ export function PersonnelProfile({ row, employeeId }: { row: Row; employeeId: st
       <div className="staff-profile-content">
         {sections.map((section) => (
           <CollapsibleSection key={section.key} id={anchor(section.key)} title={section.title}>
-            <FieldGrid row={row} fields={section.fields} allowed={allowed} />
+            <FieldGrid
+              row={flat}
+              fields={section.key === 'basic' ? [...section.fields, ...custom.keys] : section.fields}
+              allowed={allowed}
+              custom={custom.byKey}
+            />
           </CollapsibleSection>
         ))}
         {access.error !== undefined ? (
