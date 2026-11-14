@@ -4,128 +4,22 @@
  * 因为真实授权器会先以“字段未登记”拒绝（403），到不了定义校验。
  */
 import { randomUUID } from 'node:crypto';
-import { auditEvents, eq, personnelEmployeeVersions, sql, withTenant } from '@italent/db';
-import { PERSONNEL_OBJECT, PERSONNEL_OBJECTS } from '@italent/domain';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { visibleValue } from '../../apps/api/src/audit/visibility.js';
 import { PERSONNEL_POLICIES } from '../../apps/api/src/modules/personnel/policy.js';
-import { loginEmailOf } from './AC-EMP-support.js';
-import {
-  addMember,
-  createProfile,
-  grant,
-  makeGrantable,
-  seedPermissionWorld,
-  setObjectPermission,
-} from './AC-PRM-support.js';
-import { tenantApi } from './support/tenant-api.js';
-import { uniqueSuffix } from './support/unique.js';
+import { base, define, fixture, key } from './AC-F474-6c-support.js';
+import { seedPermissionWorld } from './AC-PRM-support.js';
 
 const database = useTestDb();
-const base = '/api/tenant/personnel/employees';
 const east = { value: 'east', label: '合成东区', enabled: true };
 const west = { value: 'west', label: '合成西区', enabled: true };
 const old = { value: 'old', label: '合成旧区', enabled: false };
 
-type World = Awaited<ReturnType<typeof seedPermissionWorld>>;
-const key = (id: string) => `custom:${id}`;
-
-async function define(w: World, valueType: string, options: unknown[] = [], objectType = 'personnel') {
-  const id = randomUUID();
-  await withTenant(w.db, w.tenant.id, (tx) =>
-    tx.execute(sql`INSERT INTO employment_custom_field_objects
-      (id, tenant_id, code, name, object_type, value_type, options)
-      VALUES (${id}, ${w.tenant.id}, ${id}, ${`合成${valueType}`}, ${objectType}, ${valueType},
-        ${JSON.stringify(options)}::jsonb)`),
-  );
-  return id;
-}
-
-async function fixture() {
-  const world = await seedPermissionWorld(database().db);
-  const setup = tenantApi(world.db);
-  const create = async (path: string, body: object, ifMatch = 0) => {
-    const res = await setup.request('POST', `/api/tenant/${path}`, { ...world.asAdmin, body, ifMatch });
-    expect(res.status, await res.clone().text()).toBe(201);
-    return (await res.json()) as { id: string };
-  };
-  const org = await create('org/organizations', {
-    name: '合成自定义字段部门',
-    establishedOn: '2020-01-01',
-    parents: { admin: { parentId: world.tenant.id } },
-  });
-  const employee = await create('employment/employees', { code: `F474-${uniqueSuffix()}`, name: '合成员工' });
-  await create(
-    `employment/employees/${employee.id}/businesses`,
-    {
-      kind: 'hire',
-      mode: 'direct',
-      effectiveDate: '2020-01-01',
-      fields: { departmentId: org.id },
-      loginEmail: loginEmailOf(employee.id),
-    },
-    1,
-  );
-  const definition = PERSONNEL_OBJECTS.find((o) => o.code === PERSONNEL_OBJECT)!;
-  /** view / edit：该身份可查看 / 可编辑的自定义字段 ID；预置字段一律可看可改，避免干扰。 */
-  const actor = async (label: string, view: string[], edit: string[]) => {
-    const user = await addMember(world, label);
-    const profile = await createProfile(world, `${label}-${uniqueSuffix()}`);
-    const configure = async (viewIds: string[], editIds: string[]) => {
-      const res = await setObjectPermission(
-        world,
-        profile,
-        {
-          dataOperations: { create: false, update: true, delete: false },
-          fields: [
-            ...definition.fields.map((f) => ({ fieldCode: f.code, view: true, edit: !f.system })),
-            ...[...new Set([...viewIds, ...editIds])].map((id) => ({
-              fieldCode: key(id),
-              view: viewIds.includes(id) || editIds.includes(id),
-              edit: editIds.includes(id),
-            })),
-          ],
-          buttons: definition.buttons.map((b) => ({ buttonCode: b.code, level: b.level })),
-        },
-        PERSONNEL_OBJECT,
-      );
-      expect(res.status, await res.clone().text()).toBe(200);
-    };
-    await configure(view, edit);
-    await makeGrantable(world, [profile.id]);
-    expect((await grant(world, user.id, profile.id)).status).toBe(201);
-    const scope = await world.api.request('PUT', `/api/tenant/permission/scopes/${user.id}/TenantBase`, {
-      ...world.asAdmin,
-      ifMatch: 0,
-      body: { kind: 'org_range', orgRanges: [{ orgId: org.id, includeDescendants: false }] },
-    });
-    expect(scope.status).toBe(200);
-    return { as: { tenant: world.tenant.id, user: user.id }, configure };
-  };
-  const path = `${base}/${employee.id}`;
-  const read = async (as: { tenant: string; user: string }) => {
-    const res = await world.api.request('GET', path, as);
-    expect(res.status, await res.clone().text()).toBe(200);
-    return (await res.json()) as Record<string, unknown> & { revision: number };
-  };
-  const patch = async (as: { tenant: string; user: string }, body: object, revision?: number) =>
-    world.api.request('PATCH', path, { ...as, ifMatch: revision ?? (await read(as)).revision, body });
-  const stored = () =>
-    withTenant(world.db, world.tenant.id, async (tx) => ({
-      versions: await tx
-        .select()
-        .from(personnelEmployeeVersions)
-        .where(eq(personnelEmployeeVersions.employeeId, employee.id))
-        .orderBy(personnelEmployeeVersions.revision),
-      audits: await tx.select().from(auditEvents).where(eq(auditEvents.objectId, employee.id)),
-    }));
-  return { ...world, actor, path, employee, read, patch, stored, setup };
-}
-
 describe('AC-F474-6c 人员自定义字段', () => {
   it('AC-F474-6c-01 迁移：列默认空对象，非对象值被检查约束拒绝，历史行不回填', async () => {
-    const w = await fixture();
+    const w = await fixture(database().db);
     const writer = await w.actor('writer', [], []);
     await w.patch(writer.as, { name: '合成改名' });
     const { versions } = await w.stored();
@@ -141,7 +35,7 @@ describe('AC-F474-6c 人员自定义字段', () => {
   });
 
   it('AC-F474-6c-02 新定义对任何身份默认不可见；授权后才出现在详情、列表和历史里，无权者连键都没有', async () => {
-    const w = await fixture();
+    const w = await fixture(database().db);
     const field = await define(w, 'text');
     const other = await define(w, 'text');
     const writer = await w.actor('writer', [field], [field]);
@@ -172,7 +66,7 @@ describe('AC-F474-6c 人员自定义字段', () => {
   });
 
   it('AC-F474-6c-03 只有查看权提交 403，未授权字段 403，授权可编辑字段 200，失败不产生新版本', async () => {
-    const w = await fixture();
+    const w = await fixture(database().db);
     const [a, b] = [await define(w, 'text'), await define(w, 'text')];
     const writer = await w.actor('writer', [a, b], [a]);
     const reader = await w.actor('reader', [a], []);
@@ -187,7 +81,7 @@ describe('AC-F474-6c 人员自定义字段', () => {
   });
 
   it('AC-F474-6c-04 字段 ID 必须是本租户人员定义：未知、他租户、非人员对象一律 400', async () => {
-    const w = await fixture();
+    const w = await fixture(database().db);
     const foreign = await seedPermissionWorld(database().db);
     const foreignId = await define(foreign, 'text');
     const employmentId = await define(w, 'text', [], 'employment');
@@ -214,7 +108,7 @@ describe('AC-F474-6c 人员自定义字段', () => {
   });
 
   it('AC-F474-6c-05 版本链：每次写入新增一条版本，未提交的字段沿用上一版，审计的“变更前”取上一版', async () => {
-    const w = await fixture();
+    const w = await fixture(database().db);
     const [a, b] = [await define(w, 'text'), await define(w, 'integer')];
     const writer = await w.actor('writer', [a, b], [a, b]);
     expect((await w.patch(writer.as, { customFields: { [a]: '甲', [b]: 1 } })).status).toBe(200);
@@ -245,7 +139,7 @@ describe('AC-F474-6c 人员自定义字段', () => {
   });
 
   it('AC-F474-6c-06 值校验：类型、2000 字、选项集合、停用选项只可沿用，null 清空', async () => {
-    const w = await fixture();
+    const w = await fixture(database().db);
     const ids = {
       text: await define(w, 'text'),
       integer: await define(w, 'integer'),
@@ -301,7 +195,7 @@ describe('AC-F474-6c 人员自定义字段', () => {
   });
 
   it('AC-F474-6c-07 选项改名后值按稳定编码跟随，不改写人员历史', async () => {
-    const w = await fixture();
+    const w = await fixture(database().db);
     const select = await define(w, 'select', [east]);
     const writer = await w.actor('writer', [select], [select]);
     expect((await w.patch(writer.as, { customFields: { [select]: 'east' } })).status).toBe(200);
@@ -317,7 +211,7 @@ describe('AC-F474-6c 人员自定义字段', () => {
   });
 
   it('AC-F474-6c-08 撤权后详情、列表、历史版本一并裁掉；撤销身份不删值，重新授权后可见', async () => {
-    const w = await fixture();
+    const w = await fixture(database().db);
     const field = await define(w, 'text');
     const writer = await w.actor('writer', [field], [field]);
     const reader = await w.actor('reader', [field], []);
@@ -335,7 +229,7 @@ describe('AC-F474-6c 人员自定义字段', () => {
   });
 
   it('AC-F474-6c-09 审计与业务同事务，值按字段权限裁剪（以真实审计行为夹具）', async () => {
-    const w = await fixture();
+    const w = await fixture(database().db);
     const [a, b] = [await define(w, 'text'), await define(w, 'text')];
     const writer = await w.actor('writer', [a, b], [a, b]);
     expect((await w.patch(writer.as, { customFields: { [a]: '甲', [b]: '乙' } })).status).toBe(200);
@@ -349,7 +243,7 @@ describe('AC-F474-6c 人员自定义字段', () => {
   });
 
   it('AC-F474-6c-10 单次写入失败（版本冲突）不留下版本与审计', async () => {
-    const w = await fixture();
+    const w = await fixture(database().db);
     const field = await define(w, 'text');
     const writer = await w.actor('writer', [field], [field]);
     const before = await w.stored();
