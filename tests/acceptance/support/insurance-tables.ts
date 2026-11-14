@@ -17,6 +17,16 @@ export interface InsuranceWorld {
 export const rowsOf = <T>(result: unknown): T[] =>
   (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 
+/**
+ * 以属主身份写租户数据：方案 / 方案版本对 app_user 只读（种子 / 导入脚本才写），夹具不能走 withTenant 的 app_user 角色。
+ * 只设 app.tenant_id、不切角色：FORCE RLS 下属主同样受 tenant_isolation 约束（普通角色 app_owner 也能跑）。
+ */
+export const asOwner = <T>(db: Db, tenantId: string, fn: (tx: Tx) => Promise<T>): Promise<T> =>
+  db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+    return fn(tx);
+  });
+
 /** 一个租户 + 一名员工 + 三个业务对象 + 一家合同公司 + 一个带一条版本（2026-01 起长期有效）的方案。 */
 export async function seedInsuranceWorld(db: Db, label: string): Promise<InsuranceWorld> {
   const tenantId = randomUUID();
@@ -27,7 +37,7 @@ export async function seedInsuranceWorld(db: Db, label: string): Promise<Insuran
   const companyId = randomUUID();
   const planId = randomUUID();
   const planVersionId = randomUUID();
-  await withTenant(db, tenantId, async (tx) => {
+  await asOwner(db, tenantId, async (tx) => {
     await tx.execute(sql`INSERT INTO employment_employees (id, tenant_id, code, name)
       VALUES (${employeeId}, ${tenantId}, ${`E-${suffix}`}, '合成员工')`);
     for (const id of businessIds)
@@ -81,6 +91,13 @@ export async function sqlState(db: Db, tenantId: string, statement: ReturnType<t
     (error: unknown) => pgErrorCode(error),
   );
 }
+
+/** 同 sqlState，但以属主身份执行（方案 / 方案版本的约束只有属主写得进去，app_user 只读）。 */
+export const ownerState = (db: Db, tenantId: string, statement: ReturnType<typeof sql>) =>
+  asOwner(db, tenantId, (tx) => tx.execute(statement)).then(
+    () => undefined,
+    (error: unknown) => pgErrorCode(error),
+  );
 
 export const count = async (db: Db, tenantId: string, table: string): Promise<number> =>
   withTenant(db, tenantId, async (tx) => {

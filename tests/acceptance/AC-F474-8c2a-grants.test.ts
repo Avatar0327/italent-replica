@@ -105,14 +105,14 @@ describe('AC-INS-12 标准身份预置', () => {
 
 describe('AC-INS-12 已开通租户回补（F-061）', () => {
   const OLD_PROFILES = [ADMIN, HR_ADMIN];
-  const withoutAdjust = (o: { fields: { fieldCode: string }[] }) => ({
+  const withoutAdjust = <T extends { fields: readonly { fieldCode: string }[] }>(o: T): T => ({
     ...o,
     fields: o.fields.filter((f) => !ADJUST_FIELDS.includes(f.fieldCode)),
   });
   const oldDefinitions = OLD_PROFILES.flatMap((code) => [
     withObject(code, PROFILE_OBJECT, null),
     withObject(code, PLAN_OBJECT, null),
-    withObject(code, EMPLOYMENT, (o) => withoutAdjust(o) as typeof o),
+    withObject(code, EMPLOYMENT, withoutAdjust),
   ]);
 
   it('旧定义没有新对象和调整字段：回补装上两个管理员的两个只读对象和调整字段；专员 / 经理没有，也不被补', async () => {

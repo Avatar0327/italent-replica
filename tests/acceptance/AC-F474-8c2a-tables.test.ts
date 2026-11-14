@@ -8,7 +8,9 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   archiveInsert,
+  asOwner,
   count,
+  ownerState,
   planVersionInsert,
   rowsOf,
   seedInsuranceWorld,
@@ -40,13 +42,16 @@ beforeAll(async () => {
 });
 
 const run = (tenantId: string, statement: ReturnType<typeof sql>) => sqlState(testDb().db, tenantId, statement);
+/** 方案 / 方案版本对 app_user 只读，约束与 RLS 用属主身份验（属主同样受 FORCE RLS 约束）。 */
+const runOwner = (tenantId: string, statement: ReturnType<typeof sql>) => ownerState(testDb().db, tenantId, statement);
 
 describe('AC-INS-10 表级：租户隔离', () => {
   it('三张新表都存在，且 ENABLE + FORCE ROW LEVEL SECURITY、带 tenant_isolation 策略', async () => {
     const result = await testDb().db.execute(sql`
       SELECT c.relname AS "table", c.relrowsecurity AS rls, c.relforcerowsecurity AS forced,
-        (SELECT count(*)::int FROM pg_policies p WHERE p.tablename = c.relname AND p.policyname = 'tenant_isolation') AS policies
-      FROM pg_class c WHERE c.relname = ANY(${TABLES}) AND c.relkind = 'r' ORDER BY c.relname`);
+        (SELECT count(*)::int FROM pg_policies p
+          WHERE p.tablename = c.relname AND p.policyname = 'tenant_isolation') AS policies
+      FROM pg_class c WHERE c.relname LIKE 'social_insurance_%' AND c.relkind = 'r' ORDER BY c.relname`);
     expect(rowsOf(result)).toEqual(
       [...TABLES].sort().map((table) => ({ table, rls: true, forced: true, policies: 1 })),
     );
@@ -67,14 +72,9 @@ describe('AC-INS-10 表级：租户隔离', () => {
     expect(await count(testDb().db, b.tenantId, 'social_insurance_archive_versions')).toBe(0);
   });
 
-  it('B 租户上下文往 A 租户写方案 / 版本 / 档案一律被行级策略拒绝（42501），A 的内容不变', async () => {
-    const planId = randomUUID();
-    const statements = [
-      sql`INSERT INTO social_insurance_plans (tenant_id, id, code) VALUES (${a.tenantId}, ${planId}, ${`X-${uniqueSuffix()}`})`,
-      planVersionInsert(a.tenantId, a.planId, '2027-01-01'),
-      archiveInsert(a.tenantId, { employeeId: a.employeeId, versionNo: 9, businessId: a.businessIds[1] }),
-    ];
-    for (const statement of statements) expect(await run(b.tenantId, statement)).toBe('42501');
+  it('B 租户上下文往 A 租户写档案被行级策略拒绝（42501），A 的内容不变；方案 / 版本对 app_user 本就只读（见 privileges）', async () => {
+    const archive = archiveInsert(a.tenantId, { employeeId: a.employeeId, versionNo: 9, businessId: a.businessIds[1] });
+    expect(await run(b.tenantId, archive)).toBe('42501');
     for (const table of TABLES) expect(await count(testDb().db, a.tenantId, table), table).toBe(1);
   });
 
@@ -84,7 +84,7 @@ describe('AC-INS-10 表级：租户隔离', () => {
     expect(await run(b.tenantId, archiveInsert(b.tenantId, { ...own, companyId: a.companyId }))).toBe('23503');
     expect(await run(b.tenantId, archiveInsert(b.tenantId, { ...own, employeeId: a.employeeId }))).toBe('23503');
     expect(await run(b.tenantId, archiveInsert(b.tenantId, { ...own, businessId: a.businessIds[0] }))).toBe('23503');
-    expect(await run(b.tenantId, planVersionInsert(b.tenantId, a.planId, '2027-01-01'))).toBe('23503');
+    expect(await runOwner(b.tenantId, planVersionInsert(b.tenantId, a.planId, '2027-01-01'))).toBe('23503');
     expect(await count(testDb().db, b.tenantId, 'social_insurance_archive_versions')).toBe(0);
   });
 });
@@ -178,17 +178,19 @@ describe('§3.2 方案头与版本约束', () => {
     const code = `DUP-${uniqueSuffix()}`;
     const insert = (tenantId: string) =>
       sql`INSERT INTO social_insurance_plans (tenant_id, code) VALUES (${tenantId}, ${code})`;
-    expect(await run(a.tenantId, insert(a.tenantId))).toBeUndefined();
-    expect(await run(a.tenantId, insert(a.tenantId))).toBe('23505');
-    expect(await run(b.tenantId, insert(b.tenantId))).toBeUndefined();
+    expect(await runOwner(a.tenantId, insert(a.tenantId))).toBeUndefined();
+    expect(await runOwner(a.tenantId, insert(a.tenantId))).toBe('23505');
+    expect(await runOwner(b.tenantId, insert(b.tenantId))).toBeUndefined();
   });
 
   it('同一方案同月重复生效被拒（23505）', async () => {
-    expect(await run(a.tenantId, planVersionInsert(a.tenantId, a.planId, '2026-01-01', '2026-03-01'))).toBe('23505');
+    expect(await runOwner(a.tenantId, planVersionInsert(a.tenantId, a.planId, '2026-01-01', '2026-03-01'))).toBe(
+      '23505',
+    );
   });
 
   it('同一方案区间重叠被排他约束拒绝（23P01）；首尾相接、别的方案同期不算重叠', async () => {
-    const plan = await withTenant(testDb().db, a.tenantId, async (tx) => {
+    const plan = await asOwner(testDb().db, a.tenantId, async (tx) => {
       const id = randomUUID();
       await tx.execute(sql`INSERT INTO social_insurance_plans (tenant_id, id, code)
         VALUES (${a.tenantId}, ${id}, ${`OV-${uniqueSuffix()}`})`);
@@ -196,28 +198,33 @@ describe('§3.2 方案头与版本约束', () => {
       return id;
     });
     // 与 [2026-01, 2026-06) 重叠：从 2026-03 起长期有效 / 完全包含 / 被包含
-    expect(await run(a.tenantId, planVersionInsert(a.tenantId, plan, '2026-03-01'))).toBe('23P01');
-    expect(await run(a.tenantId, planVersionInsert(a.tenantId, plan, '2025-12-01', '2026-02-01'))).toBe('23P01');
-    expect(await run(a.tenantId, planVersionInsert(a.tenantId, plan, '2026-02-01', '2026-04-01'))).toBe('23P01');
+    expect(await runOwner(a.tenantId, planVersionInsert(a.tenantId, plan, '2026-03-01'))).toBe('23P01');
+    expect(await runOwner(a.tenantId, planVersionInsert(a.tenantId, plan, '2025-12-01', '2026-02-01'))).toBe('23P01');
+    expect(await runOwner(a.tenantId, planVersionInsert(a.tenantId, plan, '2026-02-01', '2026-04-01'))).toBe('23P01');
     // 首尾相接合法（半开区间）；别的方案同期合法
-    expect(await run(a.tenantId, planVersionInsert(a.tenantId, plan, '2026-06-01', '2026-09-01'))).toBeUndefined();
-    expect(await run(a.tenantId, planVersionInsert(a.tenantId, a.planId, '2025-01-01', '2026-01-01'))).toBeUndefined();
+    expect(await runOwner(a.tenantId, planVersionInsert(a.tenantId, plan, '2026-06-01', '2026-09-01'))).toBeUndefined();
+    expect(
+      await runOwner(a.tenantId, planVersionInsert(a.tenantId, a.planId, '2025-01-01', '2026-01-01')),
+    ).toBeUndefined();
     // 长期有效版本之后再加更晚版本也重叠
-    expect(await run(a.tenantId, planVersionInsert(a.tenantId, plan, '2027-01-01'))).toBeUndefined();
-    expect(await run(a.tenantId, planVersionInsert(a.tenantId, plan, '2028-01-01'))).toBe('23P01');
+    expect(await runOwner(a.tenantId, planVersionInsert(a.tenantId, plan, '2027-01-01'))).toBeUndefined();
+    expect(await runOwner(a.tenantId, planVersionInsert(a.tenantId, plan, '2028-01-01'))).toBe('23P01');
   });
 
   it('生效月必须是月初；停用月须晚于生效月；revision 须为正；缴交地须在字典内', async () => {
     const plan = a.planId;
-    expect(await run(a.tenantId, planVersionInsert(a.tenantId, plan, '2024-01-15'))).toBe('23514');
-    expect(await run(a.tenantId, planVersionInsert(a.tenantId, plan, '2024-01-01', '2024-01-01'))).toBe('23514');
-    expect(await run(a.tenantId, planVersionInsert(a.tenantId, plan, '2024-01-01', '2023-12-01'))).toBe('23514');
-    expect(await run(a.tenantId, planVersionInsert(a.tenantId, plan, '2024-01-01', null, '999999'))).toBe('23503');
+    expect(await runOwner(a.tenantId, planVersionInsert(a.tenantId, plan, '2024-01-15'))).toBe('23514');
+    expect(await runOwner(a.tenantId, planVersionInsert(a.tenantId, plan, '2024-01-01', '2024-01-01'))).toBe('23514');
+    expect(await runOwner(a.tenantId, planVersionInsert(a.tenantId, plan, '2024-01-01', '2023-12-01'))).toBe('23514');
+    expect(await runOwner(a.tenantId, planVersionInsert(a.tenantId, plan, '2023-01-01', '2023-02-01', '999999'))).toBe(
+      '23503',
+    );
     expect(
-      await run(
+      await runOwner(
         a.tenantId,
-        sql`INSERT INTO social_insurance_plan_versions (tenant_id, plan_id, name, region_code, effective_month, revision)
-          VALUES (${a.tenantId}, ${plan}, '合成', '110000', '2024-01-01', 0)`,
+        sql`INSERT INTO social_insurance_plan_versions
+          (tenant_id, plan_id, name, region_code, effective_month, revision)
+          VALUES (${a.tenantId}, ${plan}, '合成', '110000', '2023-03-01', 0)`,
       ),
     ).toBe('23514');
   });
