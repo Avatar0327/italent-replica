@@ -481,4 +481,33 @@ describe('AC-APV-F326-24 第 1 轮审查回归', () => {
     errors.mockRestore();
     expect(duplicate).toBe(false);
   });
+
+  /** 筛选下新建，新对象不在列表里；它的独立详情读取被 respond 截下一次。 */
+  async function createOutsideWith(respond: () => Response) {
+    const created = '81000000-0000-4000-8000-000000000901';
+    backend.state.failRead = (url) => (url.pathname === `${BASE}/${created}` ? respond() : undefined);
+    await ui.render();
+    await type(document.querySelector<HTMLInputElement>('.matrix-list input'), '合成矩阵甲');
+    await clickNode(document.querySelector('.matrix-list .ant-input-search-button'));
+    await create('NEW_FAILED', '读详情失败新矩阵');
+    expect(listText()).toContain('APPROVE_A');
+    // 失败期间右侧不显示其他矩阵，也不出现它的操作；给出失败提示与重试
+    expect(headText()).not.toContain('APPROVE_A');
+    expect(headText()).not.toContain('合成矩阵甲');
+    expect(find('编辑', document.querySelector('.matrix-head')!)).toBeUndefined();
+    expect(document.querySelector('.matrix-head [role="alert"]')).not.toBeNull();
+    await click('重新加载', document.querySelector('.matrix-head')!);
+    expect(headText()).toContain('NEW_FAILED');
+    expect(headText()).toContain('读详情失败新矩阵');
+    expect(backend.reads.filter((url) => url.pathname === `${BASE}/${created}`)).toHaveLength(2);
+    expect(backend.writes).toHaveLength(1);
+  }
+
+  it('P2-2 保存后详情读取 503：右侧显示读取失败与重试，不切回其他矩阵；重试成功显示回执对象', async () => {
+    await createOutsideWith(() => backend.error(503, 'SERVICE_UNAVAILABLE', '服务暂不可用'));
+  });
+
+  it('P2-2 保存后详情响应无效：同样显示读取失败与重试，重试成功显示回执对象', async () => {
+    await createOutsideWith(() => Response.json({ id: 'not-a-matrix' }));
+  });
 });

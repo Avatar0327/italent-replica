@@ -93,6 +93,8 @@ export interface Write {
   key: string | null;
 }
 type Fail = (write: Write) => Response | Promise<Response> | undefined;
+/** 截下一次匹配的读请求（返回 undefined 表示放行、继续等下一次）。 */
+type FailRead = (url: URL) => Response | undefined;
 
 function list(db: Map<string, Head>, url: URL) {
   const status = url.searchParams.get('status') ?? 'active';
@@ -128,7 +130,7 @@ export function fakeBackend() {
   const columns = new Map<string, Column[]>();
   const writes: Write[] = [];
   const reads: URL[] = [];
-  const state = { fail: undefined as Fail | undefined, created: 0 };
+  const state = { fail: undefined as Fail | undefined, failRead: undefined as FailRead | undefined, created: 0 };
   const detail = (item: Head) => ({ ...item, columns: columns.get(item.id) ?? [], rows: [], referenceNames: {} });
   const error = (status: number, code: string, message: string, details: Record<string, unknown> = {}) =>
     Response.json({ error: { code, message, details } }, { status });
@@ -147,6 +149,11 @@ export function fakeBackend() {
     const [, id, action] = url.pathname.slice(BASE.length).split('/');
     if (method === 'GET') {
       reads.push(url);
+      const failedRead = state.failRead?.(url);
+      if (failedRead) {
+        state.failRead = undefined;
+        return failedRead;
+      }
       if (!id) return Response.json(list(db, url));
       const item = db.get(id);
       if (!item) return error(404, 'NOT_FOUND', '审批矩阵不存在');
