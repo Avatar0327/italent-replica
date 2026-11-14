@@ -23,7 +23,7 @@
     "org": 16,
     "org-adjustment": 16,
     "permission": 52,
-    "personnel": 18,
+    "personnel": 19,
     "platform": 9,
     "qualification": 55,
     "root": 1,
@@ -40,5 +40,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 915
+  "total": 916
 }

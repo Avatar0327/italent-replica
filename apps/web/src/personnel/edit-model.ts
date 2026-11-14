@@ -66,9 +66,11 @@ const granted = (p: Permission, operation: string, button: string, level: string
 
 export function personEditable(p: Permission): string[] {
   if (!granted(p, 'update', 'update', 'detail')) return [];
-  return [...personInfoFields, ...personJobFields].filter(
+  const preset = [...personInfoFields, ...personJobFields].filter(
     (name) => writablePerson.has(name) && fieldAccess(p, name).editable,
   );
+  // F-474-6c：自定义字段按 custom:<id> 单独授权；这里只列出权限，定义是否存在由表单按目录再过滤。
+  return [...preset, ...p.editableFields.filter((name) => name.startsWith('custom:') && fieldAccess(p, name).editable)];
 }
 
 // 已取证字段优先；其余已有字段保留在末尾，不依据未验证的表单删除编辑能力。

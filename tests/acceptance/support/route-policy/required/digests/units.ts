@@ -1196,6 +1196,9 @@ export const DIGESTS: Digests = {
     requireSelf: '50f3545b50d7',
     resubmitChangeInTransaction: '9cd09bdbc1fa',
   },
+  'apps/api/src/modules/personnel/custom-field-routes.ts': {
+    'route:GET /api/tenant/personnel/custom-field-definitions': 'e1e6f951a36d',
+  },
   'apps/api/src/modules/personnel/lists.ts': {
     listOptions: 'b46678e0057f',
     listSubsets: '786ed8e4a4a7',
@@ -1214,7 +1217,7 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/personnel/employees/:id': 'd5ccb9ca1aeb',
     'route:GET /api/tenant/personnel/employees/:id/history': '91fa9765d77c',
     'route:GET /api/tenant/personnel/employees/:id/tenure': '5cd53c71c374',
-    'route:PATCH /api/tenant/personnel/employees/:id': 'c2cd4af01010',
+    'route:PATCH /api/tenant/personnel/employees/:id': 'c869de2ed539',
     'route:POST /api/tenant/personnel/employees/:id/attachments': 'a58c9e435628',
   },
   'apps/api/src/modules/personnel/subset-policy.ts': {
@@ -2897,6 +2900,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/personnel/change-requests.ts#createChange': '117ca6e13d2d',
   'apps/api/src/modules/personnel/change-requests.ts#requireSelf': '52740292ae80',
   'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction': 'bb506cf15a3b',
+  'apps/api/src/modules/personnel/custom-field-routes.ts#route:GET /api/tenant/personnel/custom-field-definitions':
+    '86ea8ffffacc',
   'apps/api/src/modules/personnel/lists.ts#listOptions': '974e14f1d59d',
   'apps/api/src/modules/personnel/lists.ts#listSubsets': 'b0457a655ccb',
   'apps/api/src/modules/personnel/order-code-routes.ts#registerOrderCodeRoutes': '8b6b5b3fbb47',
@@ -2910,7 +2915,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/personnel/routes.ts#route:GET /api/tenant/personnel/employees/:id': 'f1a11815f32c',
   'apps/api/src/modules/personnel/routes.ts#route:GET /api/tenant/personnel/employees/:id/history': '113d1cb4db2b',
   'apps/api/src/modules/personnel/routes.ts#route:GET /api/tenant/personnel/employees/:id/tenure': 'ba994d6e2c21',
-  'apps/api/src/modules/personnel/routes.ts#route:PATCH /api/tenant/personnel/employees/:id': '6ba529beed40',
+  'apps/api/src/modules/personnel/routes.ts#route:PATCH /api/tenant/personnel/employees/:id': '9a181ede059d',
   'apps/api/src/modules/personnel/routes.ts#route:POST /api/tenant/personnel/employees/:id/attachments': '0a1b85a8a097',
   'apps/api/src/modules/personnel/subset-policy.ts#runSubsetRequestPolicy': '669777e317b8',
   'apps/api/src/modules/personnel/subset-policy.ts#runSubsetSavePolicy': '669777e317b8',

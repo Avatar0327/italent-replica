@@ -38,6 +38,20 @@
       "obj:TenantBase.PersonalInformationChange:view"
     ]
   },
+  "GET /api/tenant/personnel/custom-field-definitions": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
+    "trace": [
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
   "GET /api/tenant/personnel/employees": {
     "all": {
       "status": 200
