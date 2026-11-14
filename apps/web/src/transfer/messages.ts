@@ -1,5 +1,6 @@
 /** DEC-045：首版简体中文文案集中到资源文件。 */
 export const text = {
+  disabledOption: '（已停用）',
   processing: '处理中，请在我的申请中查看',
   hrDraftSaved: '信息暂存成功，下次选择此人可自动带出',
   draftRestored: '已带出上次暂存信息',

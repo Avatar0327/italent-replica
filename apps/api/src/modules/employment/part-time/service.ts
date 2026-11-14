@@ -411,7 +411,7 @@ export async function editPartTime(
   // 兼职部门必填：新增时必给，规划阶段拒绝清空，所以编辑后一定有值
   const departmentId = plan.fields.departmentId!;
   if (departmentId !== row.departmentId) await requirePartTimeRecordScope(tx, ctx, row, departmentId);
-  const custom = await validatePartTimeCustomFields(tx, ctx, input.customFields ?? {});
+  const custom = await validatePartTimeCustomFields(tx, ctx, input.customFields ?? {}, business.payload.customFields);
   const changes = [...plan.changes, ...customChanges(business.payload.customFields, custom.customFields)];
   const unchanged: EditedPartTime = {
     id: row.id,

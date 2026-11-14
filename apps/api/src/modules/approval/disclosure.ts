@@ -5,7 +5,12 @@
  * 授权、披露与动作一律按完整任务计算（F1），最新 200 条只是展示窗口。
  */
 import { sql, type Tx } from '@italent/db';
-import { attachmentSummaries } from '../attachments/carrier-read.js';
+import {
+  attachmentSummaries,
+  capturedFromExt,
+  frozenAttachmentSummaries,
+  type CapturedAttachment,
+} from '../attachments/carrier-read.js';
 import {
   instanceRecusal,
   jumpAllowed,
@@ -384,21 +389,44 @@ export async function namedForm(
   tx: Tx,
   ctx: TenantContext & { readonly now: Date },
   view: DetailView,
+  content: ContentSelection = { mode: 'live' },
 ): Promise<DetailView> {
   const named = (await employmentTypeNames(tx, ctx.tenantId, view.form)) as DetailView['form'];
-  // F-479 §3.1：附件摘要与 attachmentRefs 同权限同取值（值已按节点表单 ∩ 字段查看权裁剪，没下发引用就没有摘要）
+  // F-479 §3.1：附件摘要与 attachmentRefs 同权限同取值（值已按节点表单 ∩ 字段查看权裁剪，没下发引用就没有摘要）；
+  // §3.2：已办冻结读以办理份里的 ID 与展示元数据为准，现值只复核状态
   const refs = named.values.attachmentRefs;
   const typed = {
     ...view,
     form: Array.isArray(refs)
       ? {
           ...named,
-          values: { ...named.values, attachments: await attachmentSummaries(tx, ctx.tenantId, view.businessId, refs) },
+          values: {
+            ...named.values,
+            attachments: await expandAttachments(tx, ctx.tenantId, view.businessId, refs, content),
+          },
         }
       : named,
   };
   // F-474-3b P2-2：调动原因 / 类型、部门、经理同样按已下发的值取名（见 reference-names.ts）
   return referenceNames(tx, ctx, view.approvalType, typed);
+}
+
+/** 办理份里采集的附件元数据（已办冻结读）；现值读返回 null（调用方走现值口径）。 */
+export function capturedAttachmentsOf(content: ContentSelection): CapturedAttachment[] | null {
+  return content.mode === 'frozen' ? capturedFromExt(content.frozen.content.ext) : null;
+}
+
+function expandAttachments(
+  tx: Tx,
+  tenantId: string,
+  businessId: string,
+  refs: readonly string[],
+  content: ContentSelection,
+) {
+  const captured = capturedAttachmentsOf(content);
+  return captured
+    ? frozenAttachmentSummaries(tx, tenantId, businessId, refs, captured)
+    : attachmentSummaries(tx, tenantId, businessId, refs);
 }
 
 /** DEC-100：意见框旁的提示（意见默认对所有能打开详情页的人公开）。 */

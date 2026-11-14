@@ -1,0 +1,56 @@
+/* 职务职级图谱矩阵（F-474-7a 设计 §1 样式取证值）：居中、细边框、类别色按快照 colorKey 轮换。 */
+.job-graph-toolbar .job-graph-time {
+  color: rgba(0, 0, 0, 0.45);
+}
+.job-graph-warning {
+  color: #faad14;
+  display: inline-flex;
+}
+.job-graph-scroll {
+  overflow: auto;
+  max-width: 100%;
+}
+.job-graph-matrix {
+  border-collapse: collapse;
+  font-weight: normal;
+}
+.job-graph-matrix th,
+.job-graph-matrix td {
+  border: 1px solid #e6e8eb;
+  padding: 6px 12px;
+  text-align: center;
+  font-weight: normal;
+  white-space: nowrap;
+}
+.job-graph-matrix .job-graph-top {
+  background: #f0f2f5;
+}
+.job-graph-matrix .job-graph-head {
+  background: #fafafb;
+}
+.job-graph-matrix .job-graph-grade {
+  background: #ffffff;
+}
+.job-graph-matrix .job-graph-type-0 {
+  background: #eaf5ff;
+}
+.job-graph-matrix .job-graph-type-1 {
+  background: #fef8e5;
+}
+.job-graph-matrix .job-graph-type-2 {
+  background: #f2fae7;
+}
+.job-graph-empty p {
+  margin: 0;
+}
+.job-graph-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.7);
+}

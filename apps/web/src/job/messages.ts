@@ -1,3 +1,4 @@
+import type { JobGraphReasonCode } from '@italent/domain';
 export const text = {
   updatedCount: (count: number) => `已同步 ${count} 条。`,
   skipReason: (reason: string) =>
@@ -154,4 +155,55 @@ export const formText: Partial<Record<keyof typeof kindText, Record<string, stri
     dottedParent: '虚线上级',
     dottedSequence: '虚线上级顺序号',
   },
+};
+
+const bound = (side?: string) => (side === 'min' ? '最低' : '最高');
+const marked = (names: string[]) => names.map((name) => `【${name}】`).join('、');
+/** 职务职级图谱（F-474-7a 设计 §1、§3.2、§5）：原因按机器码与参数现拼，不存中文。 */
+export const graphText = {
+  title: '职务职级图谱',
+  issuesTitle: '待确认的职务职级记录',
+  generatedAt: '最新生成时间：',
+  rebuild: '重新生成',
+  confirmRebuild: '确定执行此操作？',
+  generating: '图谱生成中,请耐心等待',
+  issuesHint: '点击可查看不规范的职务职级',
+  hasIssues: '有不规范的职务职级数据，请检查',
+  gotIt: '我知道了',
+  viewIssues: '去查看 >>',
+  notGenerated: '尚未生成图谱，请点击“重新生成”',
+  notGeneratedReadOnly: '尚未生成图谱',
+  emptyTitle: '暂无可展示的职务职级图谱，请检查：',
+  emptyRules: ['①启用职务须维护【职务序列】和【最高职级】（或【最低职级】）', '②序列和职级必须启用'],
+  grade: '职等',
+  level: '职级',
+  updatedByOthers: '图谱已被他人更新',
+  busy: '图谱正在生成，请稍后刷新',
+  tooLarge: '职务职级数据超出图谱生成上限',
+  denied: '无权重新生成职务职级图谱',
+  failed: 'Oops~好像出问题了，重新刷新一下试试',
+  uncertain: '处理中 / 结果待确认：请点“重试原请求”按原命令核对结果，勿重复生成。',
+  conflictRead: '图谱已被他人更新，读取最新图谱失败，请重新读取。',
+  reread: '重新读取',
+  kind: '类型',
+  kinds: { level: '职级', post: '职务' } as Record<string, string>,
+  allKinds: '全部类型',
+  name: '名称',
+  reason: '无法生成图谱原因',
+  reasonSeparator: '；',
+  unknownReason: '无法识别的原因',
+  editFailed: '读取记录失败，请刷新后重试。',
+  reasons: {
+    LEVEL_GRADE_RANGE_EMPTY: () => '该职级的职等范围为空',
+    LEVEL_TYPE_DISABLED: ([type]: string[]) => (type ? `该职级的职级类别【${type}】为停用` : '该职级的职级类别为停用'),
+    LEVEL_GRADE_RANGE_OVERLAP: (names: string[]) => `与同一类别的职级${marked(names)}重叠`,
+    POST_LEVEL_RANGE_EMPTY: () => '该职务的职级范围为空',
+    POST_SEQUENCE_EMPTY: () => '该职务的职务序列为空',
+    POST_SEQUENCE_HAS_CHILDREN: ([name]: string[]) => `所属序列【${name ?? ''}】，其下级序列已有职务`,
+    POST_BOUND_LEVEL_OVERLAP: ([side, level, ...names]: string[]) =>
+      `${bound(side)}职级【${level ?? ''}】的职等范围与同类别职级${marked(names)}重叠`,
+    POST_BOUND_LEVEL_TYPE_DISABLED: ([side, level, type]: string[]) =>
+      `${bound(side)}职级【${level ?? ''}】，其职级类别${type ? `【${type}】` : ''}为停用`,
+    POST_BOUND_LEVEL_GRADE_EMPTY: ([side, level]: string[]) => `${bound(side)}职级【${level ?? ''}】，其职等范围为空`,
+  } satisfies Record<JobGraphReasonCode, (params: string[]) => string>,
 };

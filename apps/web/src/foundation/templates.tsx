@@ -32,7 +32,12 @@ interface ListPageProps<T extends object> {
   error?: unknown;
   retry?: () => void;
   selection?: { keys: Key[]; onChange(keys: Key[], rows: T[]): void; actions: ReactNode };
+  /** 每页条数选项，有总数 / 无总数两种分页都只用它；接口上限低于默认选项时由页面按接口范围传入，不传沿用各自默认。 */
+  pageSizes?: readonly number[];
 }
+/** 未传 pageSizes 时的默认：有总数用 antd 分页器的档位，无总数（后端只给 items）用三档并入当前值。 */
+const countedPageSizes = [15, 20, 50, 100, 200] as const;
+const openEndedPageSizes = [15, 30, 50] as const;
 export function ListPage<T extends object>(props: ListPageProps<T>) {
   const { title, data, columns, rowKey, page, onPageChange, filters, actions, loading, error, retry, selection } =
     props;
@@ -85,7 +90,13 @@ export function ListPage<T extends object>(props: ListPageProps<T>) {
               rowSelection={selection ? { selectedRowKeys: selection.keys, onChange: selection.onChange } : undefined}
             />
             <div className="page-toolbar">
-              <ListPagination data={data} page={page} changePage={changePage} loading={loading} />
+              <ListPagination
+                data={data}
+                page={page}
+                changePage={changePage}
+                loading={loading}
+                pageSizes={props.pageSizes}
+              />
             </div>
           </>
         )}
@@ -146,14 +157,22 @@ function ListPagination({
   page,
   changePage,
   loading,
+  pageSizes,
 }: {
   data: Pick<PageResult<unknown>, 'total' | 'hasMore' | 'items'>;
   page: PageRequest;
   changePage(page: PageRequest): void;
   loading?: boolean;
+  pageSizes?: readonly number[];
 }) {
   // 现有后端常只返回 items/page/pageSize：满页表示可能还有下一页，不据此捏造总数。
   const hasNext = data.hasMore ?? data.items.length >= page.pageSize;
+  // 每页条数选项的唯一取值处：显式传入的两条分支都只用它；未传时各分支保持原默认。
+  const sizeChoices =
+    pageSizes ??
+    (data.total !== undefined
+      ? countedPageSizes
+      : [...new Set([...openEndedPageSizes, page.pageSize])].sort((a, b) => a - b));
   return (
     <>
       {data.total !== undefined ? (
@@ -167,7 +186,7 @@ function ListPagination({
               labelRender: ({ value }) => `${value}${ui.perPage}`,
               optionRender: ({ value }) => `${value}${ui.perPage}`,
             }}
-            pageSizeOptions={[15, 20, 50, 100, 200]}
+            pageSizeOptions={[...sizeChoices]}
             onChange={(next, size) => changePage({ page: size === page.pageSize ? next : 1, pageSize: size })}
           />
         </>
@@ -177,9 +196,7 @@ function ListPagination({
             size="small"
             aria-label={ui.pageSize}
             value={page.pageSize}
-            options={[...new Set([15, 30, 50, page.pageSize])]
-              .sort((a, b) => a - b)
-              .map((value) => ({ value, label: `${value}${ui.perPage}` }))}
+            options={sizeChoices.map((value) => ({ value, label: `${value}${ui.perPage}` }))}
             onChange={(pageSize) => changePage({ page: 1, pageSize })}
           />
           <Button disabled={page.page <= 1 || loading} onClick={() => changePage({ ...page, page: page.page - 1 })}>

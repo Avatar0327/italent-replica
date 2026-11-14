@@ -640,6 +640,9 @@ export const employmentCustomFieldObjects = pgTable(
     code: text('code').notNull(),
     name: text('name').notNull(),
     valueType: text('value_type').notNull(),
+    options: jsonb('options')
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     createdAt: utc(),
   },
   (t) => [
@@ -653,7 +656,12 @@ export const employmentCustomFieldObjects = pgTable(
     ),
     check(
       'employment_custom_field_objects_value_type',
-      sql`${t.valueType} IN ('text', 'integer', 'decimal', 'boolean', 'date')`,
+      sql`${t.valueType} IN ('text', 'integer', 'decimal', 'boolean', 'date', 'select')`,
+    ),
+    check('employment_custom_field_options_array', sql`jsonb_typeof(${t.options}) = 'array'`),
+    check(
+      'employment_custom_field_select_options',
+      sql`(${t.valueType} = 'select') = (jsonb_array_length(${t.options}) > 0)`,
     ),
     check('employment_custom_field_objects_code_nonempty', sql`btrim(${t.code}) <> ''`),
     check('employment_custom_field_objects_name_nonempty', sql`btrim(${t.name}) <> ''`),

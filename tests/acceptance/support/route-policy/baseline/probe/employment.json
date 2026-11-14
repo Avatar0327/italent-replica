@@ -1770,7 +1770,7 @@
   "POST /api/tenant/employment/custom-fields": {
     "all": {
       "code": "VALIDATION_FAILED",
-      "error": "423c6e42a49c",
+      "error": "f17b167f7ed2",
       "status": 400
     },
     "fieldQueries": [],
@@ -3015,6 +3015,25 @@
     "all": {
       "code": "VALIDATION_FAILED",
       "error": "ad2a5242b8d8",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/employment/custom-fields/:id/options": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "1a554fabfbae",
       "status": 400
     },
     "fieldQueries": [],

@@ -23,7 +23,7 @@ function Definitions() {
   const permission = usePermissions(OBJECT);
   const access = actions(permission.snapshot.objects[OBJECT]);
   const [objectType, setObjectType] = useState<CustomFieldObjectType>('employment');
-  const [editing, setEditing] = useState<{ row?: Definition }>();
+  const [editing, setEditing] = useState<{ row?: Definition; mode?: 'inheritance' | 'options' }>();
   const read = useRead<unknown>(listPath(objectType));
   let rows: Definition[] = [];
   let error = read.error;
@@ -33,12 +33,12 @@ function Definitions() {
     error = cause;
   }
   const managed = objectType === 'employment' || objectType === 'contract';
-  const columns = columnsFor(managed, access.inherit, (row) => setEditing({ row }));
+  const columns = columnsFor(managed, access, (row, mode) => setEditing({ row, mode }));
   return (
     <section>
       <header className="page-heading">
         <h1>{m.title}</h1>
-        {managed && access.create && !read.loading && !error && (
+        {access.create && !read.loading && !error && (
           <Button type="primary" onClick={() => setEditing({})}>
             {m.create}
           </Button>
@@ -75,6 +75,7 @@ function Definitions() {
         <DefinitionForm
           objectType={objectType}
           row={editing.row}
+          mode={editing.mode}
           access={access}
           close={() => setEditing(undefined)}
           saved={read.refresh}
@@ -84,7 +85,11 @@ function Definitions() {
   );
 }
 
-function columnsFor(managed: boolean, canInherit: boolean, edit: (row: Definition) => void) {
+function columnsFor(
+  managed: boolean,
+  access: ReturnType<typeof actions>,
+  edit: (row: Definition, mode: 'inheritance' | 'options') => void,
+) {
   return [
     { key: 'name', title: m.name, render: (_: unknown, row: Definition) => row.name ?? m.missing },
     {
@@ -107,17 +112,25 @@ function columnsFor(managed: boolean, canInherit: boolean, edit: (row: Definitio
               return row.inherit ? m.yes : m.no;
             },
           },
-          {
-            key: 'actions',
-            title: m.actions,
-            render: (_: unknown, row: Definition) =>
-              canInherit && (
-                <Button type="link" onClick={() => edit(row)}>
-                  {m.edit}
-                </Button>
-              ),
-          },
         ]
       : []),
+    {
+      key: 'actions',
+      title: m.actions,
+      render: (_: unknown, row: Definition) => (
+        <>
+          {managed && access.inherit && (
+            <Button type="link" onClick={() => edit(row, 'inheritance')}>
+              {m.edit}
+            </Button>
+          )}
+          {row.valueType === 'select' && access.options && row.options && (
+            <Button type="link" onClick={() => edit(row, 'options')}>
+              {m.editOptions}
+            </Button>
+          )}
+        </>
+      ),
+    },
   ];
 }
