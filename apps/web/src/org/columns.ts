@@ -1,4 +1,4 @@
-import { listFields, orgLabel } from './page-model.js';
+import { isCustomKey, listFields, orgLabel } from './page-model.js';
 
 type FieldGate = { field(name: string): { visible: boolean } };
 /**
@@ -9,23 +9,25 @@ export const orgColumnChoices = [...listFields, 'shortName', 'enabled', 'display
 /** 原站机构ID、机构名称锁定在最前：不可取消、不可拖动，其他字段不能越过它们。 */
 export const lockedOrgColumns = ['code', 'name'];
 const locked = (key: string) => lockedOrgColumns.includes(key);
+/** 自定义字段（custom:<id>）可作为列候选，但不在默认列里（F-474-6b：默认不显示，不支持筛选 / 排序）。 */
+const isChoice = (key: string) => orgColumnChoices.includes(key) || isCustomKey(key);
 
 /** 当前可见的候选：无查看权的字段不进候选，也不成列（字段裁剪）。 */
-export function orgColumnOptions(access: FieldGate) {
-  return orgColumnChoices.filter((key) => access.field(key).visible);
+export function orgColumnOptions(access: FieldGate, customKeys: readonly string[] = []) {
+  return [...orgColumnChoices, ...customKeys].filter((key) => access.field(key).visible);
 }
 export function visibleOrgColumns(selected: readonly string[], allowed: readonly string[]) {
   return selected.filter((key) => allowed.includes(key));
 }
 /** 新勾选的字段排到已选末尾，顺序由右栏拖拽决定。 */
 export function toggleOrgColumn(selected: readonly string[], key: string, checked: boolean): string[] {
-  if (locked(key) || !orgColumnChoices.includes(key)) return [...selected];
+  if (locked(key) || !isChoice(key)) return [...selected];
   if (!checked) return selected.filter((item) => item !== key);
   return selected.includes(key) ? [...selected] : [...selected, key];
 }
 export function toggleOrgColumnGroup(selected: readonly string[], keys: readonly string[], checked: boolean) {
   if (!checked) return selected.filter((key) => locked(key) || !keys.includes(key));
-  return [...selected, ...keys.filter((key) => !selected.includes(key) && orgColumnChoices.includes(key))];
+  return [...selected, ...keys.filter((key) => !selected.includes(key) && isChoice(key))];
 }
 export function orgColumnGroupState(selected: readonly string[], keys: readonly string[]) {
   const optional = keys.filter((key) => !locked(key));
@@ -45,7 +47,11 @@ export function moveOrgColumn(selected: readonly string[], key: string, target: 
 export function restoreOrgColumns() {
   return [...listFields];
 }
-export function matchOrgColumns(keys: readonly string[], keyword: string) {
+export function matchOrgColumns(
+  keys: readonly string[],
+  keyword: string,
+  labels: Readonly<Record<string, string>> = {},
+) {
   const text = keyword.trim();
-  return text ? keys.filter((key) => orgLabel(key, 'list').includes(text)) : [...keys];
+  return text ? keys.filter((key) => (labels[key] ?? orgLabel(key, 'list')).includes(text)) : [...keys];
 }

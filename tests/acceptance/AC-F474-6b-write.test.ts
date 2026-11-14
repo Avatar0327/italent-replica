@@ -5,6 +5,7 @@
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { resolveCustomFields } from '../../apps/api/src/modules/org/custom-fields.js';
 import { resultRows } from './AC-ORG-support.js';
 import { AT, customFieldWorld, type CustomFieldWorld, type OrgDto } from './support/f474-6b-world.js';
 
@@ -57,7 +58,12 @@ describe('AC-F474-6b 组织自定义字段写入', () => {
     const top = await w.top();
     const org = await w.seedOrg('待改组织', top.id);
     const op = await w.operator(top.id, { [a.id]: 'edit', [b.id]: 'view' });
-    for (const body of [{ [b.id]: 'x' }, { [c.id]: 'x' }, { [a.id]: 'ok', [b.id]: 'x' }, { [a.id]: 'ok', [c.id]: 'x' }]) {
+    for (const body of [
+      { [b.id]: 'x' },
+      { [c.id]: 'x' },
+      { [a.id]: 'ok', [b.id]: 'x' },
+      { [a.id]: 'ok', [c.id]: 'x' },
+    ]) {
       const denied = await patch(op, org, { customFields: body });
       expect(denied.status, JSON.stringify(body)).toBe(403);
     }
@@ -80,7 +86,7 @@ describe('AC-F474-6b 组织自定义字段写入', () => {
     expect((await patch(op, org2, { customFields: { [b.id]: 'y' } }, '2026-10-02')).status).toBe(200);
   });
 
-  it('AC-F474-6b-03 租户隔离：别的租户字段 ID、未知 ID 一律 400，版本行不带该键', async () => {
+  it('AC-F474-6b-03 租户隔离：他租户 / 未知字段 ID 不能写入（路由 403，定义校验 400），版本行不带该键', async () => {
     const w = await customFieldWorld(database().db);
     const other = await customFieldWorld(database().db);
     const mine = await w.define('合成本租户');
@@ -89,22 +95,28 @@ describe('AC-F474-6b 组织自定义字段写入', () => {
     const org = await w.seedOrg('隔离组织', top.id);
     const op = await w.operator(top.id, { [mine.id]: 'edit' });
     const unknownId = '00000000-0000-4000-8000-000000000001';
+    // 真实授权器：字段目录里没有的编码一律 403（先于定义校验，不区分“他租户的”和“不存在的”，不泄露存在性）；
+    // 全放行视角越过字段权限后，定义校验同样 400 拒绝。
     for (const id of [foreign.id, unknownId]) {
-      const response = await patch(op, org, { customFields: { [id]: 'x' } });
-      expect(response.status, id).toBe(400);
+      expect((await patch(op, org, { customFields: { [id]: 'x' } })).status, id).toBe(403);
+      const viaAdmin = await w.admin('PATCH', `/organizations/${org.id}`, {
+        ifMatch: org.revision,
+        body: { effectiveDate: AT, customFields: { [id]: 1 } },
+      });
+      expect(viaAdmin.status, id).toBe(400);
     }
-    const bad = await op.request('POST', '/organizations', {
-      ifMatch: 0,
-      body: { name: `隔离新建${w.suffix}`, parents: { admin: { parentId: top.id } }, customFields: { [foreign.id]: 'x' } },
-    });
-    expect(bad.status).toBe(400);
     expect((await versions(w, org.id)).map((row) => row.custom_fields)).toEqual([{}]);
-    // 另一租户的字段定义对本租户请求不可见：管理视角（全放行）同样 400
-    const viaAdmin = await w.admin('PATCH', `/organizations/${org.id}`, {
-      ifMatch: org.revision,
-      body: { effectiveDate: AT, customFields: { [foreign.id]: 1 } },
-    });
-    expect(viaAdmin.status).toBe(400);
+    // 纵深防御：权限通过后的定义校验也只认本租户的组织字段，他租户 / 未知 ID 直接 400
+    for (const id of [foreign.id, unknownId]) {
+      const attempt = withTenant(database().db, w.world.tenant.id, (tx) =>
+        resolveCustomFields(tx, w.world.tenant.id, {}, { [id]: 'x' }),
+      );
+      await expect(attempt, id).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    }
+    const own = await withTenant(database().db, w.world.tenant.id, (tx) =>
+      resolveCustomFields(tx, w.world.tenant.id, {}, { [mine.id]: 'ok' }),
+    );
+    expect(own).toEqual({ [mine.id]: 'ok' });
   });
 
   it('AC-F474-6b-04 版本链：每次改动追加新版本，上一版本值不变；未提交的字段带上一版本；null 清空', async () => {
@@ -122,8 +134,8 @@ describe('AC-F474-6b 组织自定义字段写入', () => {
     const two = (await second.json()) as OrgDto;
     expect(two.customFields).toEqual({ [a.id]: 'v2', [b.id]: 'b1' });
     // 只改名称：自定义字段整体带上一版本
-    const third = await patch(op, two, { name: `改名后${w.suffix}` }, '2026-10-03');
-    expect(third.status).toBe(200);
+    const third = await patch(op, two, { name: `改名后${w.suffix}`, addEmployment: false }, '2026-10-03');
+    expect(third.status, await third.clone().text()).toBe(200);
     const three = (await third.json()) as OrgDto;
     expect(three.customFields).toEqual({ [a.id]: 'v2', [b.id]: 'b1' });
     const fourth = await patch(op, three, { customFields: { [b.id]: null } }, '2026-10-04');
@@ -175,7 +187,10 @@ describe('AC-F474-6b 组织自定义字段写入', () => {
       const response = await patch(op, org, { customFields: { [id]: value } });
       expect(response.status, `${id} ${String(value)}`).toBe(400);
     }
-    for (const value of [[[], 400], ['x', 400]] as const) {
+    for (const value of [
+      [[], 400],
+      ['x', 400],
+    ] as const) {
       const response = await patch(op, org, { customFields: value[0] });
       expect(response.status).toBe(value[1]);
     }
@@ -226,10 +241,13 @@ describe('AC-F474-6b 组织自定义字段写入', () => {
     const op = await w.operator(top.id, { [text.id]: 'edit' });
     const base = { name: `预检${w.suffix}`, parents: { admin: { parentId: top.id } } };
     const bad = await op.request('POST', '/validate', { body: { ...base, customFields: { [text.id]: 5 } } });
-    expect(bad.status).toBe(400);
+    expect(bad.status, await bad.clone().text()).toBe(400);
     const good = await op.request('POST', '/validate', { body: { ...base, customFields: { [text.id]: 'ok' } } });
     expect(good.status, await good.clone().text()).toBe(200);
-    for (const body of [{ ...base, surprise: 1 }, { ...base, customFields: { [text.id]: 'ok' }, surprise: 1 }]) {
+    for (const body of [
+      { ...base, surprise: 1 },
+      { ...base, customFields: { [text.id]: 'ok' }, surprise: 1 },
+    ]) {
       expect((await op.request('POST', '/organizations', { ifMatch: 0, body })).status).toBe(400);
     }
   });

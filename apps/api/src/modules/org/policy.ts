@@ -41,6 +41,7 @@ import {
   BAD_REQUEST,
   button,
   configWrite,
+  customFieldsWrite,
   exception,
   fixed,
   listScope,
@@ -171,8 +172,7 @@ export const ORG_POLICIES = defineTable('org', {
     button: button('validate', 'detail'),
     scope: orgPoint({ body: 'parents.*.parentId' }),
     fields: shape('module.validation'),
-    write: write(
-      'body',
+    write: customFieldsWrite(
       none('只读校验，不进命令 / 台账'),
       none('只读校验，无返回对象，响应按 Organization 查看权裁剪'),
       {
@@ -189,7 +189,7 @@ export const ORG_POLICIES = defineTable('org', {
     button: noButton('新增按数据操作开关授权（objectContext create），无按钮'),
     scope: orgPoint({ body: 'parents.*.parentId' }),
     fields: organization,
-    write: write('body', 'org.result', 'org.result', {
+    write: customFieldsWrite('org.result', 'org.result', {
       controls: CREATE_CONTROLS,
       preconditions: ['assertRevision', 'assertCanSubmit', 'consumeCode'],
     }),
@@ -211,7 +211,7 @@ export const ORG_POLICIES = defineTable('org', {
     scope: orgPoint({ param: 'id' }),
     fields: organization,
     guards: ['org.visibleParents', 'employment.linkage'],
-    write: write('body', 'org.result', 'org.result', {
+    write: customFieldsWrite('org.result', 'org.result', {
       controls: UPDATE_CONTROLS,
       preconditions: [
         'lockOrgEmploymentTargets',

@@ -158,9 +158,10 @@ describe('AC-F474-6b 组织自定义字段读取裁剪', () => {
     };
     const onlyA = await reader([`custom:${a.id}`]);
     const blind = await reader([]);
-    const full = await audit.dataChanges(w.world.asAdmin, { objectId: org.id });
+    const everything = await reader([`custom:${a.id}`, `custom:${b.id}`]);
+    const full = await audit.dataChanges(everything, { objectId: org.id });
     const update = full.items.find((item) => item.action === 'org.update' && JSON.stringify(item).includes('乙新值'));
-    expect(update, '管理视角能看到两个字段的差异').toBeDefined();
+    expect(update, JSON.stringify(full.items.map((item) => [item.action, item.content]))).toBeDefined();
     const seenA = await audit.dataChanges(onlyA, { objectId: org.id });
     const seenAText = JSON.stringify(seenA.items) + JSON.stringify(await audit.dataChange(onlyA, update!.id));
     expect(seenAText).toContain('甲新值');

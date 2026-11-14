@@ -32,6 +32,7 @@ export const customFields =
 
 registerTenantFieldSource(MODULE_OBJECTS.employmentRecord.code, customFields('employment'));
 registerTenantFieldSource(MODULE_OBJECTS.contract.code, customFields('contract'));
+registerTenantFieldSource(MODULE_OBJECTS.organization.code, customFields('organization'));
 
 /** Tenant-local custom field definitions are ordinary configurable fields, never a writable JSON umbrella. */
 export async function tenantObjectCatalog(tx: Tx, catalog: ObjectCatalog, objectCode?: string): Promise<ObjectCatalog> {

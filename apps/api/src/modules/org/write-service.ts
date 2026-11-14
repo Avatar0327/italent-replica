@@ -25,6 +25,7 @@ import {
   unavailableFrom,
 } from './deactivation.js';
 import { assertOrgPeopleEligible, submittedPeople } from './people.js';
+import { resolveCustomFields } from './custom-fields.js';
 import { futureBoundaries, loadOrgSnapshot, type OrgPath, type OrgRecord, resolveOrgPaths } from './read-model.js';
 import {
   assertSnapshotAcyclic,
@@ -80,7 +81,9 @@ export async function validateOrganization(
   input: OrganizationInput,
   assess: EstablishmentAssessor = noEstablishmentRule,
 ): Promise<OrganizationValidation> {
-  const normalized = normalizeCreation(ctx, input);
+  // F-474-6b：预检与新建、更新共用同一份自定义字段整单校验。
+  const resolved = { ...input, customFields: await resolveCustomFields(tx, ctx.tenantId, {}, input.customFields) };
+  const normalized = normalizeCreation(ctx, resolved);
   await validateHierarchy(tx, ctx, normalized);
   await assertParentAvailable(tx, ctx, normalized);
   await assertOrgPeopleEligible(tx, ctx, submittedPeople(input), normalized.startDate);
@@ -101,7 +104,10 @@ export async function createOrganization(
   assess: EstablishmentAssessor = noEstablishmentRule,
 ): Promise<OrgRecord> {
   assertRevision(ctx.expectedRevision, 0);
-  const normalized = normalizeCreation(ctx, input);
+  const normalized = normalizeCreation(ctx, {
+    ...input,
+    customFields: await resolveCustomFields(tx, ctx.tenantId, {}, input.customFields),
+  });
   await ensureOrgSetup(tx, ctx);
   // R2-T08 §7.6：新建挂到正在执行组织调整的上级下 409；判定在组织设置锁之后、任何写入之前。
   const departmentIds = [normalized.parents.admin?.parentId];
@@ -162,7 +168,9 @@ export async function updateOrganization(
   if (patch.establishedOn !== undefined) await assertEstablishedOnUnchanged(tx, ctx, orgId, patch.establishedOn);
   const current = await recordAt(tx, object, effectiveDate);
   const addEmployment = validateEmploymentChoice(current, patch);
-  const normalized = normalizeOrganization(ctx, mergePatch(current, patch, effectiveDate));
+  // F-474-6b：自定义字段整体带上一版本再叠加本次改动；未知 ID / 非法值在任何写入之前整单 400。
+  const customFields = await resolveCustomFields(tx, ctx.tenantId, current.customFields, patch.customFields);
+  const normalized = normalizeOrganization(ctx, { ...mergePatch(current, patch, effectiveDate), customFields });
   const nodes = await validateHierarchy(tx, ctx, normalized, orgId, current.parents);
   await assertParentAvailable(tx, ctx, normalized);
   await assertOrgPeopleEligible(tx, ctx, submittedPeople(patch, current), effectiveDate);

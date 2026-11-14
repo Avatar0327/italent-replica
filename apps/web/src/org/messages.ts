@@ -200,3 +200,12 @@ export const detailText = {
   business: '业务维度上级',
   product: '产品维度上级',
 };
+
+/** 组织自定义字段（F-474-6b）：分组名与控件文案；字段名称取自租户定义。 */
+export const customText = {
+  group: '其他信息',
+  yes: '是',
+  no: '否',
+  disabledOption: '（已停用）',
+  missing: '--',
+};

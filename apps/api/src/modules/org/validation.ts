@@ -41,6 +41,8 @@ export interface OrganizationInput {
   readonly remarks?: string | null;
   readonly displayOrder?: number | null;
   readonly isVirtual?: boolean;
+  /** F-474-6b：按字段定义 ID 提交的自定义字段值，null 清空；经 resolveCustomFields 整单校验后才进入版本。 */
+  readonly customFields?: Readonly<Record<string, string | number | boolean | null>>;
   readonly confirmed?: boolean;
 }
 
@@ -77,6 +79,7 @@ export interface NormalizedOrganization {
   readonly remarks: string | null;
   readonly displayOrder: number | null;
   readonly isVirtual: boolean;
+  readonly customFields: Record<string, string | number | boolean>;
 }
 
 export function invalid(field: string, message: string): AppError {
@@ -137,6 +140,10 @@ export function normalizeOrganization(ctx: OrgWriteContext, input: OrganizationV
     remarks: optionalText(input.remarks, 'remarks'),
     displayOrder: integer(input.displayOrder, 'displayOrder'),
     isVirtual: flag(input.isVirtual, 'isVirtual', false),
+    // 值已由 resolveCustomFields 按定义校验；这里只去掉 null（清空），保证落库对象不含空值。
+    customFields: Object.fromEntries(
+      Object.entries(input.customFields ?? {}).filter(([, value]) => value !== null),
+    ) as Record<string, string | number | boolean>,
   };
 }
 
