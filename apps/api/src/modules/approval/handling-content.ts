@@ -77,7 +77,7 @@ const SNAPSHOT_ONLY: ContentProvider = { kind: 'snapshot-only' };
  */
 export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> = {
   org_adjustment: { kind: 'extended', ext: (tx, tenantId, id) => loadOrgContent(tx, tenantId, id) },
-  employment: { kind: 'extended', ext: (tx, tenantId, id) => loadEmploymentContent(tx, tenantId, id) },
+  employment: { kind: 'extended', ext: loadEmploymentContent },
   personnel_change: { kind: 'extended', ext: loadPersonnelContent },
   contract: { kind: 'extended', ext: loadContractContent },
   idp: { kind: 'extended', ext: (tx, tenantId, stageId, ctx) => loadIdpStageContent(tx, tenantId, stageId, ctx) },

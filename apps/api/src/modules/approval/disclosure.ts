@@ -32,6 +32,7 @@ import { AppError } from '../../errors.js';
 import { employmentTypeNames } from '../employment/employment-types.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { projectBatchValues, projectOfferValues } from '../offer/frozen-view.js';
+import { projectInsuranceValues } from '../insurance/approval-content.js';
 import { referenceNames } from './reference-names.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
@@ -294,6 +295,8 @@ function frozenValues(
 ): Row {
   if (data.content.mode !== 'frozen') return values;
   const { frozen } = data.content;
+  if (data.instance.businessType === 'employment' && data.instance.approvalType === 'transfer')
+    return projectInsuranceValues(frozen, values, disclosed);
   if (data.instance.businessType === 'offer') return projectOfferValues(frozen, values, disclosed);
   if (data.instance.businessType === 'offer_batch') return projectBatchValues(frozen, values, rowViewable);
   return values;

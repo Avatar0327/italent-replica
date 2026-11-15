@@ -26,10 +26,13 @@ interface FormShape {
   originals?: Record<string, unknown>;
 }
 
-const stringsOf = (records: readonly Record<string, unknown>[], keys: readonly string[]) =>
+const stringsOf = (records: readonly Record<string, unknown>[], keys: readonly string[], unnamedOnly = false) =>
   new Set(
     records.flatMap((record) =>
-      keys.map((key) => record[key]).filter((v): v is string => typeof v === 'string' && !!v),
+      keys
+        .filter((key) => !unnamedOnly || !Object.hasOwn(record, `${key}Name`))
+        .map((key) => record[key])
+        .filter((v): v is string => typeof v === 'string' && !!v),
     ),
   );
 
@@ -95,8 +98,8 @@ export async function referenceNames<T extends { form: FormShape }>(
         tx,
         ctx.tenantId,
         businessDate,
-        stringsOf(records, INSURANCE_PLAN_KEYS),
-        stringsOf(records, INSURANCE_COMPANY_KEYS),
+        stringsOf(records, INSURANCE_PLAN_KEYS, true),
+        stringsOf(records, INSURANCE_COMPANY_KEYS, true),
       )
     : null;
   const named = (record: Record<string, unknown>) => {
