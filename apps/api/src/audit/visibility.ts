@@ -51,6 +51,7 @@ import {
   PART_TIME_AUDIT_OBJECTS,
   PROBATION_ASSESSMENT_OBJECT,
   DUTY_TRANSFER_OBJECT,
+  INSURANCE_ADJUST_FIELDS,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../routes.js';
@@ -89,6 +90,7 @@ import {
   resolveLinkageAudit,
   transferEmployee,
   TRANSFER_LINKAGE,
+  INSURANCE_ARCHIVE_AUDIT_TYPE,
   type LinkageAudit,
 } from './transfer-linkage.js';
 
@@ -299,8 +301,8 @@ function evaluationFlowRules(): Rule[] {
 }
 
 /** DEC-197：业务编号解析到当前员工范围；创建人仍取调动业务，不取联动日志执行人。 */
-function transferLinkageRule(): Rule {
-  const person = personRule([TRANSFER_LINKAGE], EMPLOYMENT, (row, viewer) =>
+function transferBusinessRule(type: string): Rule {
+  const person = personRule([type], EMPLOYMENT, (row, viewer) =>
     employmentCreator(viewer.tenantId, sql`lower(${row.objectId})`, true),
   );
   return {
@@ -308,6 +310,24 @@ function transferLinkageRule(): Rule {
     visible: (scope, row, viewer, inputs) => {
       const employee = transferEmployee(viewer.tenantId, row.objectId);
       return sql`(${employee} IS NOT NULL AND ${person.visible(scope, { ...row, employee }, viewer, inputs)})`;
+    },
+  };
+}
+const transferLinkageRule = () => transferBusinessRule(TRANSFER_LINKAGE);
+
+/**
+ * F-474-8c-2c 社保档案追加审计：对象是调动业务（对象编号 = 业务编号），范围同联动审计；三个调整字段是任职对象字段，
+ * 逐字段按字段权披露，三项都不可见时整条隐藏；协议键随字段展示。不新增授权对象（DEC-896④）。
+ */
+function insuranceArchiveRule(): Rule {
+  const base = transferBusinessRule(INSURANCE_ARCHIVE_AUDIT_TYPE);
+  return {
+    ...base,
+    protocol: ['versionNo', 'effectiveDate', 'plannedEffectiveDate', 'source'],
+    visible: (scope, row, viewer, inputs) => {
+      const fields = inputs.objectFields;
+      const anyAdjust = !fields || INSURANCE_ADJUST_FIELDS.some((code) => fields.has(code));
+      return anyAdjust ? base.visible(scope, row, viewer, inputs) : sql`false`;
     },
   };
 }
@@ -541,6 +561,7 @@ const RULES: readonly Rule[] = [
     },
   },
   transferLinkageRule(),
+  insuranceArchiveRule(),
   partTimeRule(PART_TIME_AUDIT_OBJECTS.record, partTimeRecordCreator),
   partTimeRule(PART_TIME_AUDIT_OBJECTS.request, partTimeRequestCreator),
   // F-278 意向退休申请：写入时显式归属员工 + 申请时部门快照（部门不可改），与兼职申请同一入口，创建人 = 申请发起人
