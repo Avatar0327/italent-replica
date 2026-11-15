@@ -10,6 +10,7 @@ import { addPreAssessmentTable } from './support/pre-assessment-schema.js';
 import { addPreBlacklistTable } from './support/pre-blacklist-schema.js';
 import { addPreCustomFieldOptionsColumn } from './support/pre-custom-field-options-schema.js';
 import { addPreInternCycleColumn } from './support/pre-intern-cycle-schema.js';
+import { addPreOrgCustomFieldsColumn } from './support/pre-org-custom-fields-schema.js';
 import { addPrePartTimeTables } from './support/pre-part-time-schema.js';
 
 it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周期补入；已删除与无评定旧周期排除，重跑不重复', async () => {
@@ -25,6 +26,8 @@ it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周
     const restoreInternCycle = await addPreInternCycleColumn(handle.db);
     // F-474-6b-0b：当前接口读自定义字段定义会取 options 列，旧结构没有，临时补列（support/pre-custom-field-options-schema.ts）
     const restoreCustomFieldOptions = await addPreCustomFieldOptionsColumn(handle.db);
+    // F-474-6b：当前接口写组织会带上 org_versions.custom_fields，旧结构没有，临时补列，升级迁移前撤掉（support/pre-org-custom-fields-schema.ts）
+    const restoreOrgCustomFields = await addPreOrgCustomFieldsColumn(handle.db);
     const w = await evaluationLeaveWorld(handle.db);
     const [date] = rowsOf<{ old: string; future: string; later: string }>(
       await handle.db.execute(sql`
@@ -60,6 +63,7 @@ it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周
     await restoreAssessment();
     await restoreInternCycle();
     await restoreCustomFieldOptions();
+    await restoreOrgCustomFields();
     await handle.migrate();
     expect(await w.queue(oldLeave.id)).toHaveLength(1);
     expect(await w.queue(futureLeave.id)).toHaveLength(1);
