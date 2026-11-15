@@ -12,6 +12,7 @@ import { rowsOf } from '../../employment/record-store.js';
 import type { EmploymentContext } from '../../employment/types.js';
 import { validateContractChange } from './contract.js';
 import type { DutyRelation, LinkageOptions, OrgRole } from './input.js';
+import { insuranceAdjustOf, validateInsuranceAdjust } from './insurance-archive.js';
 import { transferPartTimePort } from './part-time.js';
 
 const ROLE_COLUMNS: Record<OrgRole, string> = {
@@ -34,7 +35,10 @@ export async function validateLinkage(
   ctx: EmploymentContext,
   employeeId: string,
   options: LinkageOptions,
+  /** 调动生效日：社保方案按生效日当月判定有效（缺省取租户当日，离职转交不带社保调整值）。 */
+  effectiveDate: string = tenantLocalDate(ctx.now, ctx.timezone),
 ): Promise<void> {
+  await validateInsuranceAdjust(tx, ctx.tenantId, insuranceAdjustOf(options), effectiveDate);
   if (options.contract) await validateContractChange(tx, ctx, employeeId, options.contract);
   for (const { recordId } of options.partTimes) {
     if (!(await transferPartTimePort().exists(tx, ctx, { employeeId, recordId })))

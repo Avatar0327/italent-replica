@@ -7,7 +7,13 @@
  * 定时生效与审批通过端口没有操作人访问上下文，只执行已授权的单据。
  */
 import { sql, type Tx } from '@italent/db';
-import { buttonResource, CONTRACT_OBJECT, contractAction, MODULE_OBJECTS } from '@italent/domain';
+import {
+  buttonResource,
+  CONTRACT_OBJECT,
+  contractAction,
+  INSURANCE_ADJUST_FIELDS,
+  MODULE_OBJECTS,
+} from '@italent/domain';
 import { requirePermission, type Authorizer } from '../../../authorization.js';
 import { AppError } from '../../../errors.js';
 import type { TenantRouteDeps } from '../../../routes.js';
@@ -21,6 +27,7 @@ import { resolveModuleScope, type ModuleScope } from '../../permission/module-ac
 import { requireObjectWrite } from '../../permission/object-write.js';
 import { linkageFieldValues } from './approval.js';
 import type { DutyRelation, LinkageOptions, OrgRole } from './input.js';
+import { latestLinkage } from './store.js';
 import { RELATION_FIELDS, ROLE_FIELDS } from './validation.js';
 
 const ORG_OBJECT = MODULE_OBJECTS.organization.code;
@@ -93,6 +100,23 @@ export async function authorizeSubordinateField(ctx: EmploymentContext, relation
     objectCode: EMPLOYMENT_OBJECT,
     operation: 'update',
     payload: { [RELATION_FIELDS[relation]]: null },
+  });
+}
+
+/**
+ * 第 2 轮 P1：社保子项重试与手工保存同口径——联动里已保存的非空调整字段，每一个都要有当前编辑权
+ * （保存时按 changedLinkageFields 判过，重试时权限可能已被撤）。没有已保存值的字段不判；没有授权器的是定时生效路径，
+ * 只执行已授权的单据，不走本函数。
+ */
+export async function authorizeInsuranceFields(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  if (!ctx.authorize) return;
+  const options = (await latestLinkage(tx, ctx.tenantId, businessId))?.options;
+  const saved = INSURANCE_ADJUST_FIELDS.filter((code) => options?.[code] != null);
+  if (!saved.length) return;
+  await requireObjectWrite(ctx.authorize, ctx, {
+    objectCode: EMPLOYMENT_OBJECT,
+    operation: 'update',
+    payload: Object.fromEntries(saved.map((code) => [code, null])),
   });
 }
 

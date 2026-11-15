@@ -1833,7 +1833,7 @@ export const DIGESTS: Digests = {
     requireEmployeeTransferBusiness: 'fc3d723fa937',
   },
   'apps/api/src/modules/transfer/linkage/routes.ts': {
-    authorizeRetry: '7ecfeb5ca435',
+    authorizeRetry: 'eff51dc7c9dc',
     preauthorizeLinkage: '59a194fd81c5',
     'route:GET /transfers/:id/linkage': 'c120ab81ba0a',
     'route:GET /transfers/employees/:id/contracts': 'aa8231f30a23',
@@ -3369,7 +3369,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/transfer/access.ts#requireTransferSource': 'c189085fadf2',
   'apps/api/src/modules/transfer/access.ts#transferDirectActions': '8183cc7a4028',
   'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness': '9cf5876103f8',
-  'apps/api/src/modules/transfer/linkage/routes.ts#authorizeRetry': 'af59fa9d1f0a',
+  'apps/api/src/modules/transfer/linkage/routes.ts#authorizeRetry': 'c17b2b6e9b2f',
   'apps/api/src/modules/transfer/linkage/routes.ts#preauthorizeLinkage': '969182fa72d8',
   'apps/api/src/modules/transfer/linkage/routes.ts#route:GET /transfers/:id/linkage': '5f098e5621d3',
   'apps/api/src/modules/transfer/linkage/routes.ts#route:GET /transfers/employees/:id/contracts': '6201a59a50b4',

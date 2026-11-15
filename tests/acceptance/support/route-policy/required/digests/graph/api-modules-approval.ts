@@ -1481,6 +1481,7 @@ export const GRAPH: Graph = {
     '#objectAccess',
     'apps/api/src/modules/contracts/context.ts#checkScope',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/modules/approval/foreign-fields.ts#objectAccess': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',

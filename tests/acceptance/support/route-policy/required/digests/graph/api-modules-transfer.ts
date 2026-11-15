@@ -164,6 +164,12 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/rules.ts#contractAction',
     'packages/domain/src/permission/decide.ts#buttonResource',
   ],
+  'apps/api/src/modules/transfer/linkage/access.ts#authorizeInsuranceFields': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
+    'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
+    'packages/domain/src/permission/module-actions.ts#INSURANCE_ADJUST_FIELDS',
+  ],
   'apps/api/src/modules/transfer/linkage/access.ts#authorizeLinkageWrite': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
@@ -195,10 +201,17 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/linkage/approval.ts#contractOwner': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/transfer/linkage/approval.ts#insuranceOrigins': [
+    'apps/api/src/modules/insurance/archive-fold.ts#foldInsuranceOrigin',
+    'apps/api/src/modules/insurance/archive-fold.ts#insurancePosition',
+    '#INSURANCE_ORIGINS',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
   'apps/api/src/modules/transfer/linkage/approval.ts#linkageApproval': [
     '#CONTAINER',
     '#contractFieldEntries',
     '#contractOwner',
+    '#insuranceOrigins',
     '#linkageFieldValues',
     'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
@@ -261,6 +274,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/transfer/linkage/execute.ts#createItems': [
     'apps/api/src/modules/transfer/linkage/store.ts#dutyLines',
+    'apps/api/src/modules/transfer/linkage/store.ts#hasInsuranceAdjust',
     'packages/domain/src/contracts/rules.ts#addDays',
   ],
   'apps/api/src/modules/transfer/linkage/execute.ts#executionDate': [
@@ -284,6 +298,26 @@ export const GRAPH: Graph = {
     '#uuid',
   ],
   'apps/api/src/modules/transfer/linkage/input.ts#normalizeLinkage': ['#assertUnique', '#linkageSchema'],
+  'apps/api/src/modules/transfer/linkage/insurance-archive.ts#appendInsuranceArchive': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/insurance/archive-fold.ts#LATEST_SEQ',
+    'apps/api/src/modules/insurance/archive-fold.ts#foldInsuranceOrigin',
+    'apps/api/src/modules/insurance/archive-fold.ts#insurancePosition',
+    '#ADJUST_KEYS',
+    '#assertSourceLive',
+    '#insuranceAdjustOf',
+    '#validateInsuranceAdjust',
+    'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
+  ],
+  'apps/api/src/modules/transfer/linkage/insurance-archive.ts#assertSourceLive': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/transfer/linkage/insurance-archive.ts#validateInsuranceAdjust': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#invalid',
+    '#monthOf',
+  ],
   'apps/api/src/modules/transfer/linkage/items.ts#attemptLinkageItem': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/transfer/linkage/duty-execution.ts#dutyItemFailure',
@@ -291,6 +325,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/transfer/linkage/items.ts#executeItem': [
     'apps/api/src/modules/transfer/linkage/duty-execution.ts#executeDutyItem',
+    'apps/api/src/modules/transfer/linkage/insurance-archive.ts#appendInsuranceArchive',
     'apps/api/src/modules/transfer/linkage/part-time.ts#transferPartTimePort',
   ],
   'apps/api/src/modules/transfer/linkage/items.ts#retryLinkageItem': [
@@ -298,6 +333,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#requireLinkedEmploymentRecord',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
+    'apps/api/src/modules/transfer/linkage/access.ts#authorizeInsuranceFields',
     'apps/api/src/modules/transfer/linkage/access.ts#authorizeOrgRole',
     'apps/api/src/modules/transfer/linkage/access.ts#authorizeSubordinateField',
     '#attemptLinkageItem',
@@ -310,6 +346,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/linkage/routes.ts#authorizeRetry': [
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/transfer/linkage/access.ts#authorizeInsuranceFields',
     'apps/api/src/modules/transfer/linkage/access.ts#authorizeOrgRole',
     'apps/api/src/modules/transfer/linkage/access.ts#authorizeSubordinateField',
     'apps/api/src/modules/transfer/linkage/items.ts#loadLinkageItem',
@@ -407,6 +444,7 @@ export const GRAPH: Graph = {
     '#dutyLines',
     '#latestLinkage',
   ],
+  'apps/api/src/modules/transfer/linkage/store.ts#hasLinkage': ['#hasInsuranceAdjust'],
   'apps/api/src/modules/transfer/linkage/store.ts#hasPendingCrossLinkage': ['#hasLinkage', '#latestLinkage'],
   'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage': ['#linkageVersion'],
   'apps/api/src/modules/transfer/linkage/store.ts#linkageBeforeCommand': [
@@ -450,11 +488,14 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/transfer/linkage/validation.ts#validateLinkage': [
     'apps/api/src/modules/transfer/linkage/contract.ts#validateContractChange',
+    'apps/api/src/modules/transfer/linkage/insurance-archive.ts#insuranceAdjustOf',
+    'apps/api/src/modules/transfer/linkage/insurance-archive.ts#validateInsuranceAdjust',
     'apps/api/src/modules/transfer/linkage/part-time.ts#transferPartTimePort',
     '#notEligible',
     '#requireEligiblePeople',
     '#requireReportingSubordinate',
     '#requireRoleHolder',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/transfer/linkage/view.ts#contractVisible': [
     'apps/api/src/modules/contracts/context.ts#checkScope',
@@ -463,9 +504,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/linkage/view.ts#dutyTransferView': [
     'apps/api/src/modules/transfer/linkage/items.ts#itemView',
   ],
+  'apps/api/src/modules/transfer/linkage/view.ts#insuranceItem': [
+    'apps/api/src/modules/transfer/linkage/items.ts#itemView',
+    'packages/domain/src/permission/module-actions.ts#INSURANCE_ADJUST_FIELDS',
+  ],
   'apps/api/src/modules/transfer/linkage/view.ts#linkageResults': [
     'apps/api/src/modules/transfer/linkage/items.ts#itemView',
     '#dutyTransferView',
+    '#insuranceItem',
     '#trialView',
   ],
   'apps/api/src/modules/transfer/linkage/view.ts#readTransferLinkage': [
@@ -477,7 +523,11 @@ export const GRAPH: Graph = {
     '#visibleOptions',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/transfer/linkage/view.ts#visibleOptions': ['#pickContractFields', '#trialView'],
+  'apps/api/src/modules/transfer/linkage/view.ts#visibleOptions': [
+    '#pickContractFields',
+    '#trialView',
+    'packages/domain/src/permission/module-actions.ts#INSURANCE_ADJUST_FIELDS',
+  ],
   'apps/api/src/modules/transfer/manager-business-references.ts#requireManagerBusinessReferences': [
     'apps/api/src/modules/employment/record-store.ts#camelRow',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',

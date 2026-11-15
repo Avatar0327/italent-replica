@@ -46,7 +46,7 @@ const systemFields = [
 ];
 /**
  * F-474-8c-2a（设计 F-474-8b §3.4）：调动单上填写的社保调整值（缴交地 / 方案 / 公司），登记在任职记录对象上。
- * 只登记定义；接入联动保存体与审批盲审（TRANSFER_LINKAGE_FIELDS）属 8c-2b，所以这里不并入联动字段白名单。
+ * 8c-2c 起这三项已并入联动字段白名单（TRANSFER_LINKAGE_FIELDS，审批盲审与字段权限共用）；这里保留名单供标准预置引用。
  * 标准身份只预置给系统管理员与人事管理员（standard-presets.ts 的 withoutInsuranceAdjust）。
  */
 export const INSURANCE_ADJUST_FIELDS = [
@@ -550,8 +550,7 @@ export const MODULE_OBJECTS = {
       'employType',
       // R1-T10 调动联动（`13` §7 表单区块）：审批披露、盲审与字段权限共用这些编码。
       ...TRANSFER_LINKAGE_FIELDS,
-      // F-474-8c-2a 调动社保调整值（定义先行，联动保存体接入在 8c-2b）
-      ...INSURANCE_ADJUST_FIELDS,
+      // F-474-8c-2a 调动社保调整值：8c-2c 起并入 TRANSFER_LINKAGE_FIELDS（同名同序，不再单独展开以免重复登记）
       // R2-T03 离职扩展字段（设计 §4A / §9，lastWorkDate / reasonCode 已在上面）
       ...EXIT_REQUEST_FIELDS,
       // BE-7 兼职（设计 §7.2）：兼职类型、结束日期、申请备注

@@ -22,6 +22,7 @@ import { rowsOf } from '../../employment/record-store.js';
 import type { EmploymentContext } from '../../employment/types.js';
 import { authorizeInTransaction, getModuleViewableFields, resolveModuleScope } from '../../permission/module-access.js';
 import {
+  authorizeInsuranceFields,
   authorizeLinkageWrite,
   authorizeOrgRole,
   authorizeSubordinateField,
@@ -161,6 +162,7 @@ async function authorizeRetry(tx: Tx, deps: Deps, ctx: EmploymentContext, id: st
   if (item.itemType === 'duty_subordinate') await authorizeSubordinateField(bound, item.relation as DutyRelation);
   if (item.itemType === 'duty_org_role')
     await authorizeOrgRole(tx, bound, access, item.orgId!, item.orgRole as OrgRole);
+  if (item.itemType === 'insurance_archive') await authorizeInsuranceFields(tx, bound, item.businessId);
 }
 
 /** 表单“变更的合同”候选：该员工当前有效的合同，按合同查看权与合同范围（含创建人）过滤。 */

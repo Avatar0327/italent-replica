@@ -21,7 +21,7 @@ import { rowsOf } from '../../employment/record-store.js';
 import type { EmploymentContext } from '../../employment/types.js';
 import { changeContractOnActivation } from './contract.js';
 import { attemptLinkageItem, type LinkageItemRow } from './items.js';
-import { dutyLines, latestLinkage, type StoredLinkage } from './store.js';
+import { dutyLines, hasInsuranceAdjust, latestLinkage, type StoredLinkage } from './store.js';
 
 export interface ActivatedTransfer {
   readonly id: string;
@@ -122,7 +122,17 @@ export async function applyDutyTransfer(
     executedAt: ctx.now,
   });
   const transfer = { id: target.businessId, employeeId: target.employeeId, effectiveDate: target.effectiveDate };
-  const items = await createItems(tx, ctx, transfer, { ...stored, options: { ...stored.options, partTimes: [] } });
+  const items = await createItems(tx, ctx, transfer, {
+    ...stored,
+    // 离职转交不带社保调整值：不登记 insurance_archive 子项。
+    options: {
+      ...stored.options,
+      partTimes: [],
+      adjustedInsuranceRegionCode: null,
+      adjustedInsurancePlanId: null,
+      adjustedInsuranceCompanyId: null,
+    },
+  });
   const results: LinkageItemRow[] = [];
   for (const item of items) results.push(await attemptLinkageItem(tx, ctx, item));
   return results;
@@ -181,6 +191,21 @@ async function createItems(
       partTimeRecordId: item.recordId,
       effectiveDate: partTimeEnd,
     })),
+    // F-474-8c-2c：本单填写了任一社保调整值才登记子项；离职转交（applyDutyTransfer）不带这些值，不会登记。
+    ...(hasInsuranceAdjust(options)
+      ? [
+          {
+            itemType: 'insurance_archive' as const,
+            subordinateId: null,
+            relation: null,
+            orgId: null,
+            orgRole: null,
+            receiverId: null,
+            partTimeRecordId: null,
+            effectiveDate: transfer.effectiveDate,
+          },
+        ]
+      : []),
   ];
   if (!values.length) return [];
   return (await tx

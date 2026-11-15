@@ -26,7 +26,8 @@ export interface InsurancePosition {
 }
 
 /** 位置未定（业务还没写状态事件，或不指定业务）时视为最晚：同日全部事件都算前驱。 */
-const LATEST_SEQ = '9223372036854775807';
+/** 导出给 8c-2c 写侧：操作先后键为空（业务还没写状态事件）时位置不确定，写档案须推迟而不是落在“最晚”。 */
+export const LATEST_SEQ = '9223372036854775807';
 const LATEST_DATE = 'infinity';
 
 export const NO_INSURANCE_ORIGIN: InsuranceOrigin = { regionCode: null, planId: null, companyId: null };
