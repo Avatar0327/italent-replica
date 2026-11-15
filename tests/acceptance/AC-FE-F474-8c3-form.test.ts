@@ -191,6 +191,15 @@ const click = async (element: Element | null) => {
 };
 const regionButton = (name: string) =>
   Array.from(host.querySelectorAll<HTMLButtonElement>('[data-region-code]')).find((b) => b.textContent === name)!;
+// 暂存单按读取接口形状（业务单 + 联动 options）解析；调整后缴交地为东城区
+const parsedDraft = () =>
+  draftRestore.parseDraft(
+    DRAFT,
+    EMPLOYEE,
+    { id: DRAFT, status: 'draft', revision: 2, fields: {}, effectiveDate: DATE },
+    { businessId: DRAFT, revision: 2, options: { adjustedInsuranceRegionCode: '110101' } },
+    'transfer',
+  );
 /** 挂起该上级的下级查询，返回释放函数。 */
 function hold(parent: string) {
   let release = () => {};
@@ -268,14 +277,7 @@ describe('AC-INS-01 / 02 / 09 薪资调整组的社保原值与调整值', () =>
   });
 
   it('AC-INS-02 带出的暂存单按单号取原值；换人或清除后不再带单号', async () => {
-    const parsed = draftRestore.parseDraft(
-      DRAFT,
-      EMPLOYEE,
-      { id: DRAFT, status: 'draft', revision: 2, fields: {}, effectiveDate: DATE },
-      { businessId: DRAFT, revision: 2, options: { adjustedInsuranceRegionCode: '110101' } },
-      'transfer',
-    );
-    const restored = draftRestore.restoreDraft(model(), parsed);
+    const restored = draftRestore.restoreDraft(model(), parsedDraft());
     await render(restored);
     expect(originCalls().at(-1)).toBe(
       `/api/tenant/transfer/insurance-origin?employeeId=${EMPLOYEE}&effectiveDate=${DATE}&businessId=${DRAFT}`,
@@ -358,6 +360,17 @@ describe('AC-INS-03 / 04 调整后缴交地、方案与公司', () => {
       expect(adjustedKeys(current.linkage!)).toEqual([]);
       expect(host.querySelector('[role="tab"]')).toBeNull();
       expect(control('adjustedInsuranceRegionCode')?.textContent).toBe('请选择');
+    });
+
+    it('带出暂存单后才返回：选择器不卸载也作废，不覆盖带出的调整值', async () => {
+      const release = await pendingDongguan();
+      // 同 useDraftRestore：生效日与类型不变时保留预览，表单不卸载，只换联动草稿与暂存单号
+      await act(async () => setCurrent((value) => draftRestore.restoreDraft(value, parsedDraft())));
+      expect(control('adjustedInsuranceRegionCode')?.textContent).toBe('东城区');
+      await release();
+      expect(current.linkage).toMatchObject({ adjustedInsuranceRegionCode: '110101' });
+      expect(current.linkage).not.toHaveProperty('adjustedInsurancePlanId');
+      expect(control('adjustedInsuranceRegionCode')?.textContent).toBe('东城区');
     });
 
     it('重新选择后才返回：旧点击不覆盖新选中的地点', async () => {
