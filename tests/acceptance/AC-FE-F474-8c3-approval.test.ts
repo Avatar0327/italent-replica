@@ -84,14 +84,14 @@ async function render(detail: ReturnType<typeof transfer>, flags: Record<string,
   const session = { tenantId: randomUUID(), identityKey: 'synthetic-user', displayName: '合成用户', source: 'server' };
   const row = { id: detail.id, title: detail.title, approvalType: detail.approvalType, status: detail.status };
   const page = h(ApprovalDetail, { row, layout: 'page', onClose: () => {}, onChanged: () => {}, ...flags });
-  await act(async () =>
-    root.render(h(SessionProvider, { session }, h(MemoryRouter, { initialEntries: ['/'] }, page))),
-  );
+  await act(async () => root.render(h(SessionProvider, { session }, h(MemoryRouter, { initialEntries: ['/'] }, page))));
   await act(async () => {});
   await act(async () => {});
 }
 const group = (title: string) =>
-  Array.from(host.querySelectorAll('.approval-field-group')).find((item) => item.querySelector('h3')?.textContent === title);
+  Array.from(host.querySelectorAll('.approval-field-group')).find(
+    (item) => item.querySelector('h3')?.textContent === title,
+  );
 const field = (scope: ParentNode, label: string) =>
   Array.from(scope.querySelectorAll('.approval-field')).find((item) => item.querySelector('dt')?.textContent === label);
 

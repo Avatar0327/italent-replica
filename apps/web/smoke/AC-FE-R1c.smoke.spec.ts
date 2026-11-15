@@ -236,8 +236,8 @@ test('AC-FE-R1c-03b 他人调动申请：四区块、锚点导航、是否单选
   await expect(contract).toContainText('未选择变更合同。');
   await info.getByRole('radiogroup', { name: '是否变更合同' }).getByRole('radio', { name: '是' }).check();
   await expect(contract).not.toContainText('未选择变更合同。');
-  // 原站不支持的字段只提示缺口，不造假数据。
-  await expect(page.locator('#hr-transfer-salary')).toContainText('社保缴纳地');
+  // 薪资调整组始终显示社保三对字段（F-474-8c-3，与“是否调整薪资”无关）。
+  await expect(page.locator('#hr-transfer-salary')).toContainText('调整后社保缴交地');
   await expect(hrButtons(page)).toHaveText(['取消', '暂存', '提交']);
   await expect(page.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '直接调动', exact: true })).toHaveCount(0);

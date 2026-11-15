@@ -1,6 +1,6 @@
 import { presetLabels } from '../transfer/messages.js';
 import { detailText as d, fieldLabels } from './messages.js';
-import { NAME_KEYS } from './named-fields.js';
+import { INSURANCE_ORIGIN, NAME_KEYS } from './named-fields.js';
 
 export interface FieldGroup {
   title: string;
@@ -24,14 +24,16 @@ const adjustLabels: Readonly<Record<string, string>> = {
 
 /**
  * 我的申请详情的表单分组。只对调动实例分组；其他业务类型按自己的字段平铺（DEC-799：不按标题或状态猜模板），
- * 所以这里返回 undefined 让调用方沿用平铺呈现。没有归入两组的键放“其他信息”，不隐藏数据。
+ * 所以这里返回 undefined 让调用方沿用平铺呈现。没有归入前三组的键放“其他信息”，不隐藏数据。
  */
 export function applicationGroups(approvalType: string, values: Readonly<Record<string, unknown>>) {
   if (approvalType !== 'transfer') return undefined;
   const keys = Object.keys(values).filter((key) => !NAME_KEYS.has(key));
   const info = keys.filter((key) => key in infoLabels);
   const adjust = keys.filter((key) => !(key in infoLabels) && (key in adjustLabels || key in presetLabels));
-  const other = keys.filter((key) => !info.includes(key) && !adjust.includes(key));
+  // 原站“薪资调整”组只有社保三对字段（F-474-8b §1.1）；“是否调整薪资”仍在其他信息
+  const salary = keys.filter((key) => key in INSURANCE_ORIGIN);
+  const other = keys.filter((key) => !info.includes(key) && !adjust.includes(key) && !salary.includes(key));
   const group = (title: string, list: string[], labels: Readonly<Record<string, string>>): FieldGroup => ({
     title,
     fields: list.map((key) => ({ key, label: labels[key] ?? presetLabels[key] ?? fieldLabels[key] ?? key })),
@@ -39,6 +41,7 @@ export function applicationGroups(approvalType: string, values: Readonly<Record<
   return [
     group(d.transferInfo, info, infoLabels),
     group(d.transferAdjust, adjust, adjustLabels),
+    group(d.salaryAdjust, salary, {}),
     group(d.otherInfo, other, {}),
   ].filter((item) => item.fields.length);
 }

@@ -218,7 +218,9 @@ describe('AC-INS-01 / 02 / 09 薪资调整组的社保原值与调整值', () =>
 
   it('AC-INS-02 原值只取原值接口（不取联动草稿），缴交地取字典名称，方案 / 公司取候选名称', async () => {
     await render(model({ adjustedInsuranceRegionCode: '440103', adjustedInsurancePlanId: PLAN_GZ } as never));
-    expect(originCalls()).toEqual([`/api/tenant/transfer/insurance-origin?employeeId=${EMPLOYEE}&effectiveDate=${DATE}`]);
+    expect(originCalls()).toEqual([
+      `/api/tenant/transfer/insurance-origin?employeeId=${EMPLOYEE}&effectiveDate=${DATE}`,
+    ]);
     expect(outputs()).toEqual(['海淀区', '北京基本方案', '合成甲公司']);
     expect(salary().textContent).not.toMatch(UUID_TEXT);
   });
@@ -265,7 +267,9 @@ describe('AC-INS-01 / 02 / 09 薪资调整组的社保原值与调整值', () =>
     await act(() => root.unmount());
     root = createRoot(host);
     await render({ ...restored, employeeId: OTHER });
-    expect(originCalls().at(-1)).toBe(`/api/tenant/transfer/insurance-origin?employeeId=${OTHER}&effectiveDate=${DATE}`);
+    expect(originCalls().at(-1)).toBe(
+      `/api/tenant/transfer/insurance-origin?employeeId=${OTHER}&effectiveDate=${DATE}`,
+    );
     await act(() => root.unmount());
     root = createRoot(host);
     await render(draftRestore.clearDraft(restored));

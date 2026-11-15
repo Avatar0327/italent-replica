@@ -3,7 +3,7 @@
  * 读取按真实接口形状核对（GET /businesses/:id、GET /transfers/:id/linkage）；回填走 F-142 内核（DEC-502①）。
  */
 import { changedFields } from '../foundation/forms/values.js';
-import { emptyLinkage } from './linkage-api.js';
+import { emptyLinkage, INSURANCE_ADJUST_KEYS } from './linkage-api.js';
 import type { FieldMode, FieldValues, LinkageDraft, TransferCatalog, TransferFormModel } from './types.js';
 
 export interface DraftSnapshot {
@@ -94,8 +94,10 @@ export function linkageFromOptions(options: unknown): LinkageDraft {
       ? { handoverPersonId: handover.handoverPersonId }
       : {}),
     ...dutyLinkage(options.dutyTransfer),
+    ...Object.fromEntries(INSURANCE_ADJUST_KEYS.flatMap((key) => optionalEntry(key, options[key]))),
   };
 }
+const optionalEntry = (key: string, value: unknown) => (optionalText(value) ? [[key, value] as const] : []);
 
 /** 服务端未返回类型时不从表单反推，交用户确认（F-181b / 附录 A(d)）。 */
 export function draftTransferType(catalog: TransferCatalog, draft: DraftSnapshot): string | undefined {
@@ -115,6 +117,7 @@ const linkageGroups: readonly { codes: readonly string[]; keys: readonly (keyof 
   { codes: ['onTrialStartDate'], keys: ['onTrialStartDate'] },
   { codes: ['handoverPersonId'], keys: ['handoverPersonId'] },
   { codes: ['dutyTransfer'], keys: ['dutyReceiverId', 'dutySubordinateIds', 'transferDepartmentHead'] },
+  ...INSURANCE_ADJUST_KEYS.map((key) => ({ codes: [key], keys: [key] })),
 ];
 /**
  * 只带出当前可编辑的联动项：只读项在表单上改不回，而提交会原样带上联动草稿，
@@ -125,12 +128,17 @@ export function editableLinkage(catalog: TransferCatalog, linkage: LinkageDraft)
   if (!editable) return linkage;
   const kept = linkageGroups
     .filter((group) => group.codes.every((code) => editable.includes(code)))
-    .flatMap((group) => group.keys.map((key) => [key, linkage[key]] as const));
+    .flatMap((group) => group.keys.map((key) => [key, linkage[key]] as const))
+    .filter(([, value]) => value !== undefined);
   return { ...emptyLinkage, ...Object.fromEntries(kept) };
 }
 
 function withoutPending(model: TransferFormModel): TransferFormModel {
   const { pendingDraft: _pending, ...rest } = model;
+  return rest;
+}
+function withoutDraft(model: TransferFormModel): TransferFormModel {
+  const { draftOf: _draft, ...rest } = withoutPending(model);
   return rest;
 }
 /**
@@ -153,6 +161,7 @@ export function restoreDraft(model: TransferFormModel, draft: DraftSnapshot): Tr
     customFields: {},
     ...(model.linkage ? { linkage: editableLinkage(model.catalog, draft.linkage) } : {}),
     pendingDraft: { employeeId: draft.employeeId, fields: draft.fields, customFields: draft.customFields },
+    draftOf: { employeeId: draft.employeeId, id: draft.id },
   };
   return same && model.preview ? applyPendingDraft(next) : { ...next, preview: null };
 }
@@ -196,7 +205,7 @@ export function clearDraft(model: TransferFormModel): TransferFormModel {
   const transferTypeCode = model.catalog.types[0]?.code ?? model.transferTypeCode;
   const same = effectiveDate === model.effectiveDate && transferTypeCode === model.transferTypeCode;
   return {
-    ...withoutPending(model),
+    ...withoutDraft(model),
     effectiveDate,
     transferTypeCode,
     typeConfirmation: false,

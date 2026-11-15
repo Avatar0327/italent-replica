@@ -1,6 +1,13 @@
 /** 调动联动的提交载荷与接口（R1-T10）。 */
 import { TRANSFER_API, transferRequest } from './api.js';
-import type { ContractChoice, LinkageDraft, LinkageItemView, LinkageView, TransferFormModel } from './types.js';
+import type {
+  ContractChoice,
+  InsuranceAdjustKey,
+  LinkageDraft,
+  LinkageItemView,
+  LinkageView,
+  TransferFormModel,
+} from './types.js';
 
 export const emptyLinkage: LinkageDraft = {
   changeContract: false,
@@ -14,6 +21,16 @@ export const emptyLinkage: LinkageDraft = {
   dutySubordinateIds: [],
   transferDepartmentHead: false,
 };
+
+export const INSURANCE_ADJUST_KEYS: readonly InsuranceAdjustKey[] = [
+  'adjustedInsuranceRegionCode',
+  'adjustedInsurancePlanId',
+  'adjustedInsuranceCompanyId',
+];
+/** 只带填了的调整值：未带的键服务端记为空（linkage/input.ts），与“不调整”同义。 */
+function insurancePayload(draft: LinkageDraft) {
+  return Object.fromEntries(INSURANCE_ADJUST_KEYS.filter((key) => draft[key]).map((key) => [key, draft[key]]));
+}
 
 /** 草稿 → 服务端 linkage；没有任何联动时返回 undefined（不提交该键）。 */
 export function linkagePayload(draft: LinkageDraft | undefined, sourceDepartmentId: string | null) {
@@ -44,6 +61,7 @@ export function linkagePayload(draft: LinkageDraft | undefined, sourceDepartment
       : {}),
     ...(draft.handoverPersonId ? { handover: { handoverPersonId: draft.handoverPersonId } } : {}),
     ...(subordinates.length || orgRoles.length ? { dutyTransfer: { subordinates, orgRoles } } : {}),
+    ...insurancePayload(draft),
   };
   return Object.keys(linkage).length ? linkage : undefined;
 }
