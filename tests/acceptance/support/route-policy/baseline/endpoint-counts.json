@@ -18,6 +18,7 @@
     "hr-process-dashboard": 2,
     "hr-structure": 4,
     "idp": 58,
+    "insurance": 4,
     "job": 20,
     "offers": 21,
     "org": 17,
@@ -40,5 +41,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 917
+  "total": 921
 }
