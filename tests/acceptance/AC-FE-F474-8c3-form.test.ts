@@ -87,12 +87,20 @@ let companies: Reply;
 let calls: string[];
 // 第 2 轮 P2-1：按上级编码挂起区划查询，模拟迟到返回；第 3 轮：按 origin:员工:日期 挂起原值读取
 let gates: Record<string, Promise<void>>;
-const gateKey = (url: URL) =>
-  url.pathname === '/api/tenant/insurance/regions'
-    ? (url.searchParams.get('parent') ?? '')
-    : url.pathname === ORIGIN_PATH
-      ? `origin:${url.searchParams.get('employeeId')}:${url.searchParams.get('effectiveDate')}`
-      : undefined;
+const REGION_PATH = '/api/tenant/insurance/regions';
+function gateKey(url: URL) {
+  if (url.pathname === REGION_PATH) return url.searchParams.get('parent') ?? '';
+  if (url.pathname === ORIGIN_PATH)
+    return `origin:${url.searchParams.get('employeeId')}:${url.searchParams.get('effectiveDate')}`;
+  return undefined;
+}
+function replyOf(url: URL): Reply {
+  if (url.pathname === ORIGIN_PATH) return typeof origin === 'function' ? origin(url.searchParams) : origin;
+  if (url.pathname === REGION_PATH) return ok({ items: REGIONS[url.searchParams.get('parent') ?? ''] ?? [] });
+  if (url.pathname === '/api/tenant/insurance/plans') return plans(url.searchParams.get('regionCode') ?? '');
+  if (url.pathname === '/api/tenant/insurance/companies') return companies;
+  return fail(404, 'NOT_FOUND');
+}
 
 function stubApi() {
   calls = [];
@@ -103,18 +111,7 @@ function stubApi() {
       calls.push(`${url.pathname}${url.search}`);
       const key = gateKey(url);
       if (key !== undefined && gates[key]) await gates[key];
-      const reply =
-        url.pathname === ORIGIN_PATH
-          ? typeof origin === 'function'
-            ? origin(url.searchParams)
-            : origin
-          : url.pathname === '/api/tenant/insurance/regions'
-            ? ok({ items: REGIONS[url.searchParams.get('parent') ?? ''] ?? [] })
-            : url.pathname === '/api/tenant/insurance/plans'
-              ? plans(url.searchParams.get('regionCode') ?? '')
-              : url.pathname === '/api/tenant/insurance/companies'
-                ? companies
-                : fail(404, 'NOT_FOUND');
+      const reply = replyOf(url);
       return new Response(JSON.stringify(reply.body), { status: reply.status ?? 200 });
     }),
   );
