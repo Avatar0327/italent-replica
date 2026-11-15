@@ -1155,6 +1155,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/disclosure.ts#formFields': ['#disclosedFields'],
   'apps/api/src/modules/approval/disclosure.ts#formValuesView': ['#formFields', '#frozenValues', '#pick'],
   'apps/api/src/modules/approval/disclosure.ts#frozenValues': [
+    'apps/api/src/modules/insurance/approval-content.ts#projectInsuranceValues',
     'apps/api/src/modules/offer/frozen-view.ts#projectBatchValues',
     'apps/api/src/modules/offer/frozen-view.ts#projectOfferValues',
   ],
@@ -1975,11 +1976,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/reference-names.ts#referenceNames': [
     '#CODE_KEYS',
     '#DEPARTMENT_KEYS',
+    '#INSURANCE_COMPANY_KEYS',
+    '#INSURANCE_PLAN_KEYS',
     '#PERSON_KEYS',
     '#departmentNames',
     '#dictionaryNames',
     '#personNames',
     '#stringsOf',
+    'apps/api/src/modules/insurance/reference-names.ts#insuranceReferenceNames',
   ],
   'apps/api/src/modules/approval/resolver.ts#adminAncestors': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#assigneeGate': [

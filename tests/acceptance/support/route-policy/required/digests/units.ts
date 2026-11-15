@@ -937,7 +937,7 @@ export const DIGESTS: Digests = {
     requireView: 'f3963f9a9aa4',
     'route:GET /api/tenant/insurance/companies': 'a259c382d31e',
     'route:GET /api/tenant/insurance/plans': 'ede106f369da',
-    'route:GET /api/tenant/transfer/insurance-origin': '5d012bf7f323',
+    'route:GET /api/tenant/transfer/insurance-origin': '0412e64005f8',
   },
   'apps/api/src/modules/job/context.ts': {
     readContext: '583d54745dca',
@@ -2704,7 +2704,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/insurance/routes.ts#requireView': '268dd8715303',
   'apps/api/src/modules/insurance/routes.ts#route:GET /api/tenant/insurance/companies': 'b94631c8f694',
   'apps/api/src/modules/insurance/routes.ts#route:GET /api/tenant/insurance/plans': '71a8734bbe43',
-  'apps/api/src/modules/insurance/routes.ts#route:GET /api/tenant/transfer/insurance-origin': 'bec3188d2d1b',
+  'apps/api/src/modules/insurance/routes.ts#route:GET /api/tenant/transfer/insurance-origin': 'a74f0c845d25',
   'apps/api/src/modules/job/context.ts#readContext': '9d063f8ea5e6',
   'apps/api/src/modules/job/employment-port.ts#employmentJobPersonnel': '6a624377b0cf',
   'apps/api/src/modules/job/graph-export.ts#route:GET /api/tenant/job/graph/export': '3b81a2a2e37a',
