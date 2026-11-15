@@ -6,7 +6,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld, transferScene, type InstanceView } from './AC-APV-support.js';
 import { controlledApi, D } from './AC-LNK-support.js';
-import { asOwner, seedInsuranceWorld } from './support/insurance-tables.js';
+import { asOwner, rowsOf, seedInsuranceWorld } from './support/insurance-tables.js';
 import { uniqueSuffix } from './support/unique.js';
 
 import { referenceNames } from '../../apps/api/src/modules/approval/reference-names.js';
@@ -222,6 +222,102 @@ describe('AC-F474-8c3n / DEC-914 审批名称披露', () => {
     expect(handled.form.values).toMatchObject(renamed);
     const revoked = await view({ deny: (r) => r.action === 'object.view' && r.resource === PROFILE.code });
     absent(revoked.body.form.values, Object.values(ORIGIN));
+  });
+
+  it('P2-1 / F-476：办理后四个引用改名不漂移，已办撤对象或单字段权时 ID 与名称一起消失', async () => {
+    const { view, own, w, ids, instance } = await scene('names-handled');
+    const { body, request } = await view({ deny: noCandidates });
+    const task = body.tasks.find((t) => t.status === 'pending')!;
+    const approve = await request('POST', `/api/tenant/approval/tasks/${task.id}/approve`, {
+      ifMatch: body.revision,
+      body: {},
+    });
+    expect(approve.status, await approve.clone().text()).toBe(200);
+    const handled = (await view({ deny: noCandidates })).body;
+    expect(handled).toMatchObject({ contentView: { mode: 'frozen' } });
+    expect(handled.form.values).toMatchObject(EXPECTED);
+    await own(async (tx) => {
+      await tx.execute(sql`UPDATE social_insurance_plan_versions SET name='办理后方案改名'
+        WHERE tenant_id=${w.tenant.id} AND plan_id IN (${ids.oldPlan},${ids.newPlan})`);
+      await tx.execute(sql`UPDATE contract_companies SET name='办理后公司改名'
+        WHERE tenant_id=${w.tenant.id} AND id IN (${ids.oldCompany},${ids.newCompany})`);
+    });
+    const after = (await view({ deny: noCandidates })).body;
+    expect(after).toMatchObject({ contentView: { mode: 'frozen' } });
+    expect(after.form.values).toMatchObject({
+      adjustedInsurancePlanId: ids.newPlan,
+      adjustedInsuranceCompanyId: ids.newCompany,
+      [ORIGIN.plan]: ids.oldPlan,
+      [ORIGIN.company]: ids.oldCompany,
+    });
+    expect(after.form.values, '办理后改名不得改变冻结的四个社保标签').toMatchObject(EXPECTED);
+    // 发起人仍走现值读取，不因已办捕获把待办 / 在途的取名改成历史标签。
+    const live = await w.json<InstanceView>(
+      await w.request(w.hr.id, 'GET', `/api/tenant/approval/instances/${instance.id}`),
+    );
+    expect(live.form.values).toMatchObject({
+      adjustedInsurancePlanIdName: '办理后方案改名',
+      adjustedInsuranceCompanyIdName: '办理后公司改名',
+      'insuranceOrigin.planIdName': '办理后方案改名',
+      'insuranceOrigin.companyIdName': '办理后公司改名',
+    });
+    const noProfile = await view({ deny: (r) => r.action === 'object.view' && r.resource === PROFILE.code });
+    absent(noProfile.body.form.values, Object.values(ORIGIN));
+    expect(noProfile.body.form.values).toMatchObject({
+      adjustedInsurancePlanIdName: '方案NEW',
+      adjustedInsuranceCompanyIdName: '公司NEW',
+    });
+    for (const [field, key, other] of [
+      ['insurancePlanId', ORIGIN.plan, ORIGIN.company],
+      ['insuranceCompanyId', ORIGIN.company, ORIGIN.plan],
+    ] as const) {
+      const fields = PROFILE.fields.map((f) => f.code).filter((f) => f !== field);
+      const hidden = (await view({ fields: { [PROFILE.code]: fields } })).body.form.values;
+      absent(hidden, [key]);
+      expect(hidden[`${other}Name`]).toBe(EXPECTED[`${other}Name`]);
+    }
+    for (const [key, other] of [
+      ['adjustedInsurancePlanId', 'adjustedInsuranceCompanyId'],
+      ['adjustedInsuranceCompanyId', 'adjustedInsurancePlanId'],
+    ] as const) {
+      const employment = MODULE_OBJECTS.employmentRecord;
+      const fields = employment.fields.map((f) => f.code).filter((f) => f !== key);
+      const hidden = (await view({ fields: { [employment.code]: fields } })).body.form.values;
+      absent(hidden, [key]);
+      expect(hidden[`${other}Name`]).toBe(EXPECTED[`${other}Name`]);
+    }
+    const [copy] = await withTenant(w.db, w.tenant.id, async (tx) =>
+      rowsOf<{ refs: unknown }>(
+        await tx.execute(sql`SELECT content->'ext'->'insuranceRefs' AS refs FROM approval_handling_contents
+        WHERE tenant_id=${w.tenant.id} AND instance_id=${instance.id}`),
+      ),
+    );
+    // 写入标签只有四个明确键，不扩大成保存整份响应、动作、路由条件或名称对象。
+    expect(copy?.refs).toEqual(EXPECTED);
+  });
+
+  it('P2-1 / F-476：办理时没有档案查看权，不捕获原值标签；事后放权也不补原值', async () => {
+    const { view, w, instance } = await scene('names-handled-ceiling');
+    const { body, request } = await view({ deny: (r) => r.action === 'object.view' && r.resource === PROFILE.code });
+    const task = body.tasks.find((t) => t.status === 'pending')!;
+    const approve = await request('POST', `/api/tenant/approval/tasks/${task.id}/approve`, {
+      ifMatch: body.revision,
+      body: {},
+    });
+    expect(approve.status, await approve.clone().text()).toBe(200);
+    const restored = (await view()).body.form.values;
+    absent(restored, Object.values(ORIGIN));
+    expect(restored).toMatchObject({
+      adjustedInsurancePlanIdName: '方案NEW',
+      adjustedInsuranceCompanyIdName: '公司NEW',
+    });
+    const [copy] = await withTenant(w.db, w.tenant.id, async (tx) =>
+      rowsOf<{ refs: unknown }>(
+        await tx.execute(sql`SELECT content->'ext'->'insuranceRefs' AS refs FROM approval_handling_contents
+        WHERE tenant_id=${w.tenant.id} AND instance_id=${instance.id}`),
+      ),
+    );
+    expect(copy?.refs).toEqual({ adjustedInsurancePlanIdName: '方案NEW', adjustedInsuranceCompanyIdName: '公司NEW' });
   });
 
   it('生效月已过停用月时取最近版本；没填写的公司不生成名称', async () => {
