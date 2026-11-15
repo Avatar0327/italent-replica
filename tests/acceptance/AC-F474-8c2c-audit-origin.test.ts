@@ -46,8 +46,8 @@ async function scene() {
   });
   await w.approve(second, '2026-10-02T02:00:00Z');
   await w.runScheduler(`${D}T01:00:00Z`);
-  const origin = { [REGION]: '440100', [PLAN]: p1, [COMPANY]: c1 };
-  const next = { [REGION]: '110105', [PLAN]: p2, [COMPANY]: c2 };
+  const origin: Record<string, string> = { [REGION]: '440100', [PLAN]: p1, [COMPANY]: c1 };
+  const next: Record<string, string> = { [REGION]: '110105', [PLAN]: p2, [COMPANY]: c2 };
   return { w, business: second, origin, next };
 }
 
