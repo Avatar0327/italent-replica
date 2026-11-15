@@ -20,6 +20,7 @@ import { withPreAuditSchema } from './support/pre-audit-schema.js';
 import { withPreExitRoutesSchema } from './support/pre-exit-routes-schema.js';
 import { withPreCustomFieldOptionsSchema } from './support/pre-custom-field-options-schema.js';
 import { withPreOrgCustomFieldsSchema } from './support/pre-org-custom-fields-schema.js';
+import { withPreTransferLinkageInsuranceSchema } from './support/pre-transfer-linkage-insurance-schema.js';
 import { withPreInternCycleSchema } from './support/pre-intern-cycle-schema.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 
@@ -255,13 +256,15 @@ it('升级前发起的离职 / 员工子集 / 合同 / IDP 在途实例：avoid_
       withPreInternCycleSchema(handle.db, () =>
         withPreCustomFieldOptionsSchema(handle.db, () =>
           withPreOrgCustomFieldsSchema(handle.db, () =>
-            withPreExitRoutesSchema(handle.db, () =>
-              withoutSubjectsTable(handle.db, async () => ({
-                leave: await leaveBefore(handle.db),
-                personnel: await personnelBefore(handle.db),
-                contract: await contractBefore(handle.db),
-                idp: await idpBefore(handle.db),
-              })),
+            withPreTransferLinkageInsuranceSchema(handle.db, () =>
+              withPreExitRoutesSchema(handle.db, () =>
+                withoutSubjectsTable(handle.db, async () => ({
+                  leave: await leaveBefore(handle.db),
+                  personnel: await personnelBefore(handle.db),
+                  contract: await contractBefore(handle.db),
+                  idp: await idpBefore(handle.db),
+                })),
+              ),
             ),
           ),
         ),
