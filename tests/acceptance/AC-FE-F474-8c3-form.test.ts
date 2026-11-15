@@ -75,6 +75,8 @@ let origin: Reply;
 let plans: (code: string) => Reply;
 let companies: Reply;
 let calls: string[];
+// 第 2 轮 P2-1：按上级编码挂起区划查询，模拟迟到返回
+let gates: Record<string, Promise<void>>;
 
 function stubApi() {
   calls = [];
@@ -83,6 +85,8 @@ function stubApi() {
     vi.fn(async (input: string) => {
       const url = new URL(String(input), 'http://local');
       calls.push(`${url.pathname}${url.search}`);
+      const gate = url.pathname === '/api/tenant/insurance/regions' && gates[url.searchParams.get('parent') ?? ''];
+      if (gate) await gate;
       const reply =
         url.pathname === '/api/tenant/transfer/insurance-origin'
           ? origin
@@ -142,11 +146,13 @@ function model(linkage: Partial<LinkageDraft> = {}): TransferFormModel {
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 let current: TransferFormModel;
+let setCurrent: (update: (value: TransferFormModel) => TransferFormModel) => void;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   origin = ok({ regionCode: '110108', planId: PLAN_OLD, companyId: COMPANY_OLD });
   plans = (code) => ok({ items: PLANS[code] ?? [] });
   companies = ok({ items: COMPANIES });
+  gates = {};
   stubApi();
   host = document.createElement('div');
   document.body.append(host);
@@ -161,6 +167,7 @@ afterEach(async () => {
 function Harness({ initial }: { initial: TransferFormModel }) {
   const [state, setState] = useState(initial);
   current = state;
+  setCurrent = setState;
   const onLinkage = (patch: Partial<LinkageDraft>) =>
     setState((value: TransferFormModel) => ({ ...value, linkage: { ...value.linkage!, ...patch } }));
   return h(HrTransferForm, { model: state, mode: 'apply', writable: true, onCancel: () => {}, onLinkage });
@@ -184,6 +191,17 @@ const click = async (element: Element | null) => {
 };
 const regionButton = (name: string) =>
   Array.from(host.querySelectorAll<HTMLButtonElement>('[data-region-code]')).find((b) => b.textContent === name)!;
+/** 挂起该上级的下级查询，返回释放函数。 */
+function hold(parent: string) {
+  let release = () => {};
+  gates[parent] = new Promise<void>((resolve) => (release = resolve));
+  return async () => {
+    await act(async () => release());
+    await act(async () => {});
+  };
+}
+const adjustedKeys = (linkage: LinkageDraft) =>
+  Object.entries(linkage).filter(([key, value]) => key.startsWith('adjustedInsurance') && value !== undefined);
 async function choose(name: string, value: string) {
   const element = select(name);
   await act(async () => {
@@ -303,6 +321,55 @@ describe('AC-INS-03 / 04 调整后缴交地、方案与公司', () => {
     expect(current.linkage).toMatchObject({ adjustedInsuranceRegionCode: '441900' });
     expect(control('adjustedInsuranceRegionCode')?.textContent).toBe('东莞市');
     expect(regionCalls().every((call) => /^\/api\/tenant\/insurance\/regions(\?parent=\d{6})?$/.test(call))).toBe(true);
+  });
+
+  describe('第 2 轮 P2-1 地区选择的迟到返回一律作废', () => {
+    // 打开选择器下钻到广东省，点没有下级的东莞市，其下级查询挂起未返回
+    async function pendingDongguan() {
+      await render(model());
+      await click(control('adjustedInsuranceRegionCode'));
+      await click(regionButton('广东省'));
+      const release = hold('441900');
+      await click(regionButton('东莞市'));
+      expect(regionCalls().at(-1)).toBe('/api/tenant/insurance/regions?parent=441900');
+      return release;
+    }
+
+    it('换人后才返回：不写进新员工的草稿，提交载荷没有社保调整键', async () => {
+      const release = await pendingDongguan();
+      // 同 useTransferForm 换人：清预览与联动草稿，选择器随之卸载；新员工预览回来后重新挂载
+      await act(async () =>
+        setCurrent((value) => ({ ...value, employeeId: OTHER, preview: null, linkage: emptyLinkage })),
+      );
+      expect(control('adjustedInsuranceRegionCode')).toBeNull();
+      await act(async () => setCurrent((value) => ({ ...value, preview: model().preview })));
+      await release();
+      expect(current.employeeId).toBe(OTHER);
+      expect(current.linkage).toEqual(emptyLinkage);
+      expect(JSON.stringify(transferBody(current, 'submit'))).not.toContain('adjustedInsurance');
+      expect(control('adjustedInsuranceRegionCode')?.textContent).toBe('请选择');
+    });
+
+    it('关闭选择器后才返回：不写入草稿，选择器保持关闭', async () => {
+      const release = await pendingDongguan();
+      await click(control('adjustedInsuranceRegionCode'));
+      expect(host.querySelector('[role="tab"]')).toBeNull();
+      await release();
+      expect(adjustedKeys(current.linkage!)).toEqual([]);
+      expect(host.querySelector('[role="tab"]')).toBeNull();
+      expect(control('adjustedInsuranceRegionCode')?.textContent).toBe('请选择');
+    });
+
+    it('重新选择后才返回：旧点击不覆盖新选中的地点', async () => {
+      const release = await pendingDongguan();
+      await click(host.querySelectorAll('[role="tab"]')[0]!);
+      await click(regionButton('北京市'));
+      await click(regionButton('海淀区'));
+      expect(current.linkage).toMatchObject({ adjustedInsuranceRegionCode: '110108' });
+      await release();
+      expect(current.linkage).toMatchObject({ adjustedInsuranceRegionCode: '110108' });
+      expect(control('adjustedInsuranceRegionCode')?.textContent).toBe('海淀区');
+    });
   });
 
   it('AC-INS-04 方案按缴交地 + 生效日取候选；未调缴交地时按原缴交地；改缴交地清掉已选方案', async () => {
