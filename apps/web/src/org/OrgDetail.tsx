@@ -1,9 +1,18 @@
 import { Button, Descriptions, Dropdown, Tag } from 'antd';
 import { DetailPage } from '../foundation/index.js';
 import { PersonName } from './PersonFields.js';
-import { orgActions, orgCreatable, orgDetailFields, orgLabel, type OrgAction, type OrgRow } from './page-model.js';
+import {
+  orgActions,
+  orgCreatable,
+  orgCustomValue,
+  orgDetailFields,
+  orgLabel,
+  type OrgAction,
+  type OrgRow,
+} from './page-model.js';
 import { useRemote, RemoteContent, type PageAccess } from './page-support.js';
-import { detailText, pageText as m, text } from './messages.js';
+import { customDisplay, type OrgCustomFields } from './custom-fields.js';
+import { customText, detailText, pageText as m, text } from './messages.js';
 
 /** 列表与详情共用的取值显示：状态用标签，虚拟组织显示是 / 否。 */
 export function orgValue(field: string, value: unknown) {
@@ -17,6 +26,8 @@ interface Props {
   date: string;
   detail: ReturnType<typeof useRemote<OrgRow>>;
   access: PageAccess;
+  /** 组织自定义字段定义（已按查看权过滤）；空值显示 `--`，无查看权的字段不在其中，整项不渲染。 */
+  custom: OrgCustomFields;
   onClose(): void;
   onCreate(parentId: string): void;
   onEdit(original: OrgRow, action: OrgAction): void;
@@ -84,9 +95,27 @@ function parentSection({ detail, date }: Props) {
     ),
   };
 }
+function customSection({ detail, custom }: Props) {
+  return {
+    key: 'custom',
+    title: customText.group,
+    children: (
+      <Descriptions
+        className="r1-detail-fields"
+        column={2}
+        size="small"
+        items={custom.definitions.map((field) => ({
+          key: field.id,
+          label: field.name,
+          children: customDisplay(field, detail.data ? orgCustomValue(detail.data, field.id) : undefined),
+        }))}
+      />
+    ),
+  };
+}
 /** 原站详情另有「组织变更记录」「组织操作记录」页签；复刻暂无对应读取接口，列入后端缺口，不放空页签。 */
 export function OrgDetail(props: Props) {
-  const { detail, access } = props;
+  const { detail, access, custom } = props;
   return (
     <DetailPage
       open={!!props.selected}
@@ -115,6 +144,7 @@ export function OrgDetail(props: Props) {
           ),
         },
         ...(access.field('parents').visible ? [parentSection(props)] : []),
+        ...(custom.definitions.length ? [customSection(props)] : []),
       ].filter(() => !!detail.data)}
     />
   );

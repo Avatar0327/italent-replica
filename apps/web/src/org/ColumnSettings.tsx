@@ -13,7 +13,9 @@ import {
 import { orgLabel } from './page-model.js';
 import { columnText as m } from './messages.js';
 
-const label = (key: string) => orgLabel(key, 'list');
+type Labels = Readonly<Record<string, string>>;
+/** 自定义字段列名取租户定义（custom:<id>），其余走资源文件。 */
+const labelOf = (labels: Labels) => (key: string) => labels[key] ?? orgLabel(key, 'list');
 const locked = (key: string) => lockedOrgColumns.includes(key);
 
 /** 操作列表头的齿轮（原站 01）。原站弹层的其他设置项复刻未提供，见 PR 对照表。 */
@@ -49,11 +51,14 @@ export function OrgColumnGear({ onOpen }: { onOpen(): void }) {
 export function OrgColumnSettings({
   value,
   allowed,
+  labels = {},
   onApply,
   onClose,
 }: {
   value: string[];
   allowed: readonly string[];
+  /** 自定义字段的列名（custom:<id> → 名称）。 */
+  labels?: Labels;
   onApply(value: string[]): void;
   onClose(): void;
 }) {
@@ -93,7 +98,12 @@ export function OrgColumnSettings({
         onChange={(event) => setKeyword(event.target.value)}
       />
       <div className="org-columns-panes">
-        <AllFields draft={draft} choices={matchOrgColumns(allowed, keyword)} setDraft={setDraft} />
+        <AllFields
+          draft={draft}
+          labels={labels}
+          choices={matchOrgColumns(allowed, keyword, labels)}
+          setDraft={setDraft}
+        />
         <section className="org-columns-pane">
           <header>
             <span>{m.selectedFields(picked.length, allowed.length)}</span>
@@ -103,6 +113,7 @@ export function OrgColumnSettings({
           </header>
           <SelectedFields
             keys={picked}
+            labels={labels}
             onMove={(key, target) => setDraft((previous) => moveOrgColumn(previous, key, target))}
           />
         </section>
@@ -115,13 +126,16 @@ export function OrgColumnSettings({
 function AllFields({
   draft,
   choices,
+  labels,
   setDraft,
 }: {
   draft: string[];
   choices: string[];
+  labels: Labels;
   setDraft(update: (previous: string[]) => string[]): void;
 }) {
   const group = orgColumnGroupState(draft, choices);
+  const label = labelOf(labels);
   return (
     <section className="org-columns-pane">
       <header>{m.allFields}</header>
@@ -151,7 +165,16 @@ function AllFields({
 }
 
 /** 右栏已选字段：HTML5 拖放，放到目标项即占据其位置；机构ID、机构名称不可拖动。 */
-function SelectedFields({ keys, onMove }: { keys: string[]; onMove(key: string, target: string): void }) {
+function SelectedFields({
+  keys,
+  labels,
+  onMove,
+}: {
+  keys: string[];
+  labels: Labels;
+  onMove(key: string, target: string): void;
+}) {
+  const label = labelOf(labels);
   const [dragging, setDragging] = useState<string>();
   return (
     <ul className="org-columns-selected" aria-label={m.selectedFieldsLabel}>

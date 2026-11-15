@@ -46,6 +46,20 @@ export const GRAPH: Graph = {
     'apps/api/src/audit/request-context.ts#currentAuditRequest',
     'apps/api/src/system-actor.ts#auditActor',
   ],
+  'apps/api/src/audit/insurance-sources.ts#PROFILE': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'apps/api/src/audit/insurance-sources.ts#hiddenOrigins': [
+    '#ORIGIN_FIELD',
+    '#PROFILE',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+  ],
+  'apps/api/src/audit/insurance-sources.ts#insuranceSources': [
+    '#hiddenOrigins',
+    '#redactOrigin',
+    'apps/api/src/audit/transfer-linkage.ts#INSURANCE_ARCHIVE_AUDIT_TYPE',
+  ],
+  'apps/api/src/audit/insurance-sources.ts#redactOrigin': ['#isObject'],
   'apps/api/src/audit/nested-fields.ts#visibleItems': ['#IDENTITY'],
   'apps/api/src/audit/nested-fields.ts#visibleNested': ['#visibleItems'],
   'apps/api/src/audit/nested-fields.ts#visibleNestedChanges': ['#visibleItems'],
@@ -235,7 +249,9 @@ export const GRAPH: Graph = {
   'apps/api/src/audit/source-registry.ts#AUDIT_SOURCES': [
     'apps/api/src/audit/calc-rule-sources.ts#CALC_RULE_AUDIT_TYPE',
     'apps/api/src/audit/calc-rule-sources.ts#calcRuleSources',
+    'apps/api/src/audit/insurance-sources.ts#insuranceSources',
     'apps/api/src/audit/qualification-sources.ts#qualificationSources',
+    'apps/api/src/audit/transfer-linkage.ts#INSURANCE_ARCHIVE_AUDIT_TYPE',
     'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS',
   ],
   'apps/api/src/audit/source-registry.ts#auditRedactors': ['#AUDIT_SOURCES'],
@@ -245,6 +261,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/audit/transfer-linkage.ts#EMP': ['packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS'],
   'apps/api/src/audit/transfer-linkage.ts#ORG': ['packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS'],
+  'apps/api/src/audit/transfer-linkage.ts#OWN_FIELDS': [
+    'packages/domain/src/permission/module-actions.ts#INSURANCE_ADJUST_FIELDS',
+  ],
   'apps/api/src/audit/transfer-linkage.ts#contractsVisible': [
     '#event',
     '#idOf',
@@ -259,7 +278,12 @@ export const GRAPH: Graph = {
     '#subordinateVisible',
   ],
   'apps/api/src/audit/transfer-linkage.ts#eventVisible': ['#can', '#event', '#idOf', '#itemVisible'],
-  'apps/api/src/audit/transfer-linkage.ts#itemVisible': ['#can', '#organizationVisible', '#subordinateVisible'],
+  'apps/api/src/audit/transfer-linkage.ts#itemVisible': [
+    '#can',
+    '#organizationVisible',
+    '#subordinateVisible',
+    'packages/domain/src/permission/module-actions.ts#INSURANCE_ADJUST_FIELDS',
+  ],
   'apps/api/src/audit/transfer-linkage.ts#leaves': ['#event', '#linkageSnapshot', '#object'],
   'apps/api/src/audit/transfer-linkage.ts#linkageSnapshot': ['#TRANSFER_LINKAGE', '#event', '#object'],
   'apps/api/src/audit/transfer-linkage.ts#mappedField': ['#can', '#textArray'],
@@ -328,6 +352,7 @@ export const GRAPH: Graph = {
     '#appConfigRules',
     '#copyJobVisible',
     '#evaluationFlowRules',
+    '#insuranceArchiveRule',
     '#jobObject',
     '#movementVisible',
     '#notificationVisible',
@@ -476,6 +501,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'packages/domain/src/idp/catalog.ts#IDP_OBJECTS',
   ],
+  'apps/api/src/audit/visibility.ts#insuranceArchiveRule': [
+    'apps/api/src/audit/transfer-linkage.ts#INSURANCE_ARCHIVE_AUDIT_TYPE',
+    '#transferBusinessRule',
+    'packages/domain/src/permission/module-actions.ts#INSURANCE_ADJUST_FIELDS',
+  ],
   'apps/api/src/audit/visibility.ts#isConfigLog': [
     'packages/domain/src/audit/labels.ts#AUDIT_CONFIG_ACTIONS',
     'packages/domain/src/audit/labels.ts#AUDIT_CONFIG_OBJECT_TYPES',
@@ -574,12 +604,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/survey360/access.ts#survey360AuditScope',
   ],
   'apps/api/src/audit/visibility.ts#textArray': ['#quote'],
-  'apps/api/src/audit/visibility.ts#transferLinkageRule': [
-    'apps/api/src/audit/transfer-linkage.ts#TRANSFER_LINKAGE',
+  'apps/api/src/audit/visibility.ts#transferBusinessRule': [
     'apps/api/src/audit/transfer-linkage.ts#transferEmployee',
     '#EMPLOYMENT',
     '#personRule',
     'apps/api/src/modules/employment/context.ts#employmentCreator',
+  ],
+  'apps/api/src/audit/visibility.ts#transferLinkageRule': [
+    'apps/api/src/audit/transfer-linkage.ts#TRANSFER_LINKAGE',
+    '#transferBusinessRule',
   ],
   'apps/api/src/audit/visibility.ts#visibleAttachment': ['#ATTACHMENT_WITHHELD_TYPES'],
   'apps/api/src/audit/visibility.ts#visibleChanges': [

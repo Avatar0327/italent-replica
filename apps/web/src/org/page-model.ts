@@ -12,6 +12,22 @@ export interface OrgRow {
   [field: string]: unknown;
 }
 export type Dimension = 'admin' | 'business' | 'product';
+const CUSTOM_PREFIX = 'custom:';
+/** 组织自定义字段在表单与权限里的键（F-474-6b）：`custom:<字段定义 ID>`；请求 / 响应里放在 customFields 对象下。 */
+export const customKey = (id: string) => `${CUSTOM_PREFIX}${id}`;
+export const isCustomKey = (key: string) => key.startsWith(CUSTOM_PREFIX);
+const isEmptyValue = (value: unknown) => value === undefined || value === null || value === '';
+/** 原单上的自定义字段值：表单草稿里是平铺的 custom:<id>，接口行里在 customFields 下。 */
+export function orgCustomValue(row: OrgRow, id: string): unknown {
+  const nested = row.customFields as Record<string, unknown> | undefined;
+  return row[customKey(id)] ?? nested?.[id];
+}
+/** 接口行 → 表单取值：customFields 平铺成 custom:<id>，不再带嵌套对象（内核按键比较基线）。 */
+export function flattenCustomFields(row: OrgRow): Record<string, unknown> {
+  const { customFields, ...rest } = row;
+  const nested = (customFields ?? {}) as Record<string, unknown>;
+  return { ...rest, ...Object.fromEntries(Object.entries(nested).map(([id, value]) => [customKey(id), value])) };
+}
 export const orgObject = 'TenantBase.Organization';
 /** F-123 / F-142：新建用集合路径作恢复槽（slotKey），不随入口、上级或日期变化；未确认的新建命令锁住所有新建入口。 */
 export const orgCreateResource = slotKey('/api/tenant/org/organizations');
@@ -72,7 +88,15 @@ export function chartFigures(node: Pick<ServerOrgNode, 'headcount' | 'establishm
 export function orgChangeBody(original: OrgRow, values: Record<string, unknown>, effectiveDate: string) {
   const { addEmployment, adminParent, businessParent, productParent, ...fields } = values;
   const body: Record<string, unknown> = { effectiveDate };
+  const customFields: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(fields)) {
+    if (isCustomKey(key)) {
+      // 清空 = 提交 null（服务端从新版本里删掉该键）；本来就没有值时不提交。
+      const id = key.slice(CUSTOM_PREFIX.length);
+      const next = isEmptyValue(raw) ? null : raw;
+      if (next !== (orgCustomValue(original, id) ?? null)) customFields[id] = next;
+      continue;
+    }
     const value = key === 'name' && typeof raw === 'string' ? raw.trim() : raw;
     if (value !== undefined && value !== original[key]) body[key] = value;
   }
@@ -88,6 +112,7 @@ export function orgChangeBody(original: OrgRow, values: Record<string, unknown>,
     }
   }
   if (Object.keys(parents).length) body.parents = parents;
+  if (Object.keys(customFields).length) body.customFields = customFields;
   if (body.name !== undefined || parents.admin) {
     if (typeof addEmployment !== 'boolean') throw new Error(m.choiceRequired);
     body.addEmployment = addEmployment;
@@ -99,6 +124,8 @@ export function pageAccess(permission: ObjectPermission | undefined) {
   return {
     readable: !!permission,
     field: (name: string) => fieldAccess(permission, name),
+    /** 有查看权的自定义字段键（custom:<id>）；一个都没有时不请求字段定义，也不渲染任何自定义字段。 */
+    customKeys: (permission?.viewableFields ?? []).filter(isCustomKey),
     can: (button: string, level = 'detail') =>
       canButton(permission, button, level) &&
       (!['create', 'update', 'delete'].includes(button) || permission?.dataOperations[button] === true),
@@ -166,11 +193,17 @@ export function orgImportable(access: ReturnType<typeof pageAccess>) {
 export function orgCreateBody(values: Record<string, unknown>) {
   const { adminParent, ...fields } = values;
   const body: Record<string, unknown> = {};
+  const customFields: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(fields)) {
+    if (isCustomKey(key)) {
+      if (!isEmptyValue(raw)) customFields[key.slice(CUSTOM_PREFIX.length)] = raw;
+      continue;
+    }
     const value = typeof raw === 'string' ? raw.trim() : raw;
     if (value === undefined || value === null || value === '') continue;
     body[key] = key.endsWith('Id') && typeof value === 'string' ? value.toLowerCase() : value;
   }
+  if (Object.keys(customFields).length) body.customFields = customFields;
   if (typeof adminParent === 'string' && adminParent) body.parents = { admin: { parentId: adminParent.toLowerCase() } };
   return body;
 }

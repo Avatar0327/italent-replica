@@ -39,6 +39,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/deactivation.ts#assertParentAvailable',
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
   ],
+  'apps/api/src/modules/org/custom-fields.ts#authorizeCustomFields': [
+    '#withCustomFieldKeys',
+    'apps/api/src/modules/org/validation.ts#invalid',
+    'apps/api/src/modules/permission/module-route-access.ts#writeFields',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'apps/api/src/modules/org/custom-fields.ts#resolveCustomFields': [
+    'apps/api/src/modules/employment/fields.ts#validateCustomValue',
+    'apps/api/src/modules/org/validation.ts#invalid',
+  ],
+  'apps/api/src/modules/org/custom-fields.ts#trimOrganization': [
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
+  ],
   'apps/api/src/modules/org/deactivation.ts#assertDeactivationAfterEstablished': [
     'apps/api/src/modules/org/validation.ts#deactivationNotAfterEstablished',
   ],
@@ -226,9 +240,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org/routes.ts#correction': ['#date'],
   'apps/api/src/modules/org/routes.ts#creation': [
     'apps/api/src/modules/employment/fields.ts#normalizedUuid',
+    '#customFieldsInput',
     '#fields',
     '#parents',
   ],
+  'apps/api/src/modules/org/routes.ts#customFieldsInput': ['apps/api/src/modules/employment/fields.ts#customFields'],
   'apps/api/src/modules/org/routes.ts#date': ['apps/api/src/modules/org/read-model.ts#validIsoDate'],
   'apps/api/src/modules/org/routes.ts#fields': [
     'apps/api/src/modules/employment/fields.ts#normalizedUuid',
@@ -286,7 +302,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#requestScope',
     'apps/api/src/modules/permission/module-route-access.ts#visible',
   ],
+  'apps/api/src/modules/org/routes.ts#route:GET /api/tenant/org/custom-field-definitions': [
+    '#BASE',
+    '#OBJECT',
+    '#context',
+    'apps/api/src/modules/personnel/custom-field-directory.ts#listVisibleCustomFields',
+  ],
   'apps/api/src/modules/org/routes.ts#route:GET /api/tenant/org/organizations': [
+    'apps/api/src/modules/org/custom-fields.ts#trimOrganization',
     'apps/api/src/modules/org/read-views.ts#readOrgPage',
     '#BASE',
     '#OBJECT',
@@ -294,9 +317,9 @@ export const GRAPH: Graph = {
     '#listView',
     '#queryInteger',
     'apps/api/src/modules/org/settings.ts#readOrgSettings',
-    'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
   ],
   'apps/api/src/modules/org/routes.ts#route:GET /api/tenant/org/organizations/:id': [
+    'apps/api/src/modules/org/custom-fields.ts#trimOrganization',
     'apps/api/src/modules/org/read-model.ts#displayOrganization',
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
     '#BASE',
@@ -305,7 +328,6 @@ export const GRAPH: Graph = {
     '#orgId',
     '#queryDate',
     'apps/api/src/modules/org/settings.ts#readOrgSettings',
-    'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
     'apps/api/src/modules/permission/module-route-access.ts#requestScope',
     'apps/api/src/modules/permission/module-route-access.ts#visible',
     'apps/api/src/modules/permission/scope-audit.ts#creatorOf',
@@ -352,6 +374,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
   ],
   'apps/api/src/modules/org/routes.ts#route:PATCH /api/tenant/org/organizations/:id': [
+    'apps/api/src/modules/org/custom-fields.ts#authorizeCustomFields',
+    'apps/api/src/modules/org/custom-fields.ts#presetFields',
     '#BASE',
     '#OBJECT',
     '#body',
@@ -415,6 +439,8 @@ export const GRAPH: Graph = {
     '#revision',
   ],
   'apps/api/src/modules/org/routes.ts#route:POST /api/tenant/org/organizations': [
+    'apps/api/src/modules/org/custom-fields.ts#authorizeCustomFields',
+    'apps/api/src/modules/org/custom-fields.ts#presetFields',
     '#BASE',
     '#OBJECT',
     '#body',
@@ -430,6 +456,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#writeFields',
   ],
   'apps/api/src/modules/org/routes.ts#route:POST /api/tenant/org/organizations/:id/employment-preview': [
+    'apps/api/src/modules/org/custom-fields.ts#authorizeCustomFields',
+    'apps/api/src/modules/org/custom-fields.ts#presetFields',
     'apps/api/src/modules/org/employment-linkage.ts#hasPendingOrgEmployment',
     'apps/api/src/modules/org/employment-linkage.ts#validateEmploymentChoice',
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
@@ -447,6 +475,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/org/routes.ts#route:POST /api/tenant/org/validate': [
+    'apps/api/src/modules/org/custom-fields.ts#authorizeCustomFields',
+    'apps/api/src/modules/org/custom-fields.ts#presetFields',
     '#BASE',
     '#OBJECT',
     '#body',
@@ -469,13 +499,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/settings.ts#writeOrgSettings',
   ],
   'apps/api/src/modules/org/routes.ts#settings': ['packages/domain/src/contracts/org-hierarchy.ts#ORG_DIMENSIONS'],
-  'apps/api/src/modules/org/routes.ts#update': ['#date', '#fields', '#parents'],
+  'apps/api/src/modules/org/routes.ts#update': ['#customFieldsInput', '#date', '#fields', '#parents'],
   'apps/api/src/modules/org/routes.ts#visibleParents': [
     'apps/api/src/modules/permission/module-route-access.ts#visible',
     'apps/api/src/modules/permission/scope-audit.ts#creatorOf',
     'apps/api/src/modules/permission/scope-audit.ts#hasCreatorScope',
   ],
   'apps/api/src/modules/org/routes.ts#write': [
+    'apps/api/src/modules/org/custom-fields.ts#trimOrganization',
     'apps/api/src/modules/org/employment-linkage.ts#authorizeOrgEmploymentReplay',
     '#OBJECT',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
@@ -561,6 +592,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment',
     'apps/api/src/modules/org/codes.ts#consumeCode',
     'apps/api/src/modules/org/codes.ts#ensureOrgSetup',
+    'apps/api/src/modules/org/custom-fields.ts#resolveCustomFields',
     'apps/api/src/modules/org/validation.ts#normalizeCreation',
     'apps/api/src/modules/org/validation.ts#validateHierarchy',
     '#appendVersion',
@@ -589,6 +621,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment',
     'apps/api/src/modules/org/codes.ts#assertCodeAvailable',
     'apps/api/src/modules/org/codes.ts#ensureOrgSetup',
+    'apps/api/src/modules/org/custom-fields.ts#resolveCustomFields',
     'apps/api/src/modules/org/deactivation.ts#assertDeactivationAfterEstablished',
     'apps/api/src/modules/org/deactivation.ts#assertParentAvailable',
     'apps/api/src/modules/org/deactivation.ts#planDeactivation',
@@ -621,6 +654,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/validation.ts#assertSnapshotAcyclic',
   ],
   'apps/api/src/modules/org/write-service.ts#validateOrganization': [
+    'apps/api/src/modules/org/custom-fields.ts#resolveCustomFields',
     'apps/api/src/modules/org/deactivation.ts#assertParentAvailable',
     'apps/api/src/modules/org/people.ts#assertOrgPeopleEligible',
     'apps/api/src/modules/org/people.ts#submittedPeople',

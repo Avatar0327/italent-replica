@@ -1,5 +1,5 @@
 {
-  "id": "fa24c684-5d73-44eb-bdb3-b96923024838",
+  "id": "520f0647-f507-4214-81b0-97721bb423f2",
   "prevId": "c21cc8f2-7dc8-411d-b1cf-647ca40fef6e",
   "version": "7",
   "dialect": "postgresql",
@@ -3176,6 +3176,13 @@
           "notNull": true,
           "default": 0
         },
+        "custom_fields": {
+          "name": "custom_fields",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3316,6 +3323,10 @@
         "org_versions_level_nonnegative": {
           "name": "org_versions_level_nonnegative",
           "value": "\"org_versions\".\"level\" >= 0"
+        },
+        "org_versions_custom_fields_object": {
+          "name": "org_versions_custom_fields_object",
+          "value": "jsonb_typeof(\"org_versions\".\"custom_fields\") = 'object'"
         }
       },
       "isRLSEnabled": false
@@ -29959,7 +29970,7 @@
       "checkConstraints": {
         "transfer_linkage_items_type": {
           "name": "transfer_linkage_items_type",
-          "value": "\"transfer_linkage_items\".\"item_type\" IN ('duty_subordinate', 'duty_org_role', 'part_time_end', 'insurance_archive')"
+          "value": "\"transfer_linkage_items\".\"item_type\" IN ('duty_subordinate', 'duty_org_role', 'part_time_end')"
         },
         "transfer_linkage_items_status": {
           "name": "transfer_linkage_items_status",
