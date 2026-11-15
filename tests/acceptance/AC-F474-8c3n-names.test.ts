@@ -198,6 +198,19 @@ describe('AC-F474-8c3n / DEC-914 审批名称披露', () => {
     });
     expect(hiddenDate.body.form.values).not.toHaveProperty('effectiveDate');
     expect(hiddenDate.body.form.values).toMatchObject(EXPECTED);
+    // 直接改变本次取到的标签，仍使用改名前的审批 revision；能区分名称误入载荷版本的实现。
+    await own(async (tx) => {
+      await tx.execute(sql`UPDATE social_insurance_plan_versions SET name='生效月改名'
+        WHERE tenant_id=${w.tenant.id} AND plan_id=${ids.newPlan} AND effective_month='2026-01-01'`);
+      await tx.execute(sql`UPDATE contract_companies SET name='公司改名'
+        WHERE tenant_id=${w.tenant.id} AND id=${ids.newCompany}`);
+    });
+    const renamed = {
+      ...EXPECTED,
+      adjustedInsurancePlanIdName: '生效月改名',
+      adjustedInsuranceCompanyIdName: '公司改名',
+    };
+    expect((await view()).body.form.values).toMatchObject(renamed);
     const task = before.body.tasks.find((t) => t.status === 'pending')!;
     const approved = await before.request('POST', `/api/tenant/approval/tasks/${task.id}/approve`, {
       ifMatch: before.body.revision,
@@ -206,7 +219,7 @@ describe('AC-F474-8c3n / DEC-914 审批名称披露', () => {
     expect(approved.status, await approved.clone().text()).toBe(200);
     const handled = (await view({ deny: noCandidates })).body;
     expect(handled).toMatchObject({ contentView: { mode: 'frozen' } });
-    expect(handled.form.values).toMatchObject(EXPECTED);
+    expect(handled.form.values).toMatchObject(renamed);
     const revoked = await view({ deny: (r) => r.action === 'object.view' && r.resource === PROFILE.code });
     absent(revoked.body.form.values, Object.values(ORIGIN));
   });
@@ -220,6 +233,37 @@ describe('AC-F474-8c3n / DEC-914 审批名称披露', () => {
     const { body } = await view();
     expect(body.form.values).toMatchObject({ 'insuranceOrigin.planIdName': '方案OLD' });
     absent(body.form.values, ['adjustedInsuranceCompanyId', ORIGIN.company]);
+  });
+
+  it('真实 HTTP：本租户方案无版本时名称为 null，不借用其他租户同 ID 的版本名', async () => {
+    const { w, s, own, view, ids } = await scene('names-missing-version');
+    const other = await seedInsuranceWorld(w.db, 'names-same-id');
+    await asOwner(w.db, other.tenantId, async (tx) => {
+      for (const id of [ids.oldPlan, ids.newPlan]) {
+        await tx.execute(sql`INSERT INTO social_insurance_plans (tenant_id,id,code)
+          VALUES (${other.tenantId},${id},${uniqueSuffix()})`);
+        await tx.execute(sql`INSERT INTO social_insurance_plan_versions
+          (tenant_id,plan_id,name,region_code,effective_month) VALUES
+          (${other.tenantId},${id},'另一租户方案秘密名','110105','2026-01-01')`);
+      }
+    });
+    await own((tx) =>
+      tx.execute(sql`DELETE FROM social_insurance_plan_versions
+      WHERE tenant_id=${w.tenant.id} AND plan_id IN (${ids.oldPlan},${ids.newPlan})`),
+    );
+    const { body, request } = await view();
+    expect(body.form.values).toMatchObject({
+      adjustedInsurancePlanId: ids.newPlan,
+      adjustedInsurancePlanIdName: null,
+      [ORIGIN.plan]: ids.oldPlan,
+      'insuranceOrigin.planIdName': null,
+      adjustedInsuranceCompanyIdName: '公司NEW',
+      'insuranceOrigin.companyIdName': '公司OLD',
+    });
+    expect(JSON.stringify(body)).not.toContain('另一租户方案秘密名');
+    const origin = await request('GET', originUrl(s.subject.employeeId, D));
+    expect(origin.status).toBe(200);
+    expect(await origin.json()).toMatchObject({ planId: ids.oldPlan, planName: null, companyName: '公司OLD' });
   });
 
   it('引用名称单一出口：跨租户、不存在为 null；空 ID 不附名；已有冻结标签不覆盖', async () => {
@@ -266,6 +310,7 @@ describe('AC-F474-8c3n / DEC-914 审批名称披露', () => {
               adjustedInsurancePlanId: foreign.planId,
               adjustedInsurancePlanIdName: '办理时标签',
               adjustedInsuranceCompanyId: null,
+              adjustedInsuranceCompanyIdName: '空 ID 不应披露的旧标签',
             },
           },
         },
@@ -316,7 +361,8 @@ describe('AC-F474-8c3n / DEC-914 原值接口名称', () => {
     }
     await asOwner(database().db, r.tenantId, (tx) =>
       tx.execute(sql`UPDATE social_insurance_plan_versions
-      SET stop_month='2026-10-01' WHERE tenant_id=${r.tenantId} AND plan_id=${planId} AND effective_month='2026-01-01'`),
+      SET stop_month='2026-10-01' WHERE tenant_id=${r.tenantId}
+        AND plan_id=${planId} AND effective_month='2026-01-01'`),
     );
     const gap = await caller.get(originUrl(employee.id, '2026-10-01'));
     expect(await gap.json()).toMatchObject({ planName: '后月方案', companyName: '公司停用' });
