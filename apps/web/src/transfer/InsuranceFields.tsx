@@ -14,6 +14,7 @@ import {
   usePlanChoices,
   useRegionChildren,
   useRegionName,
+  useTicket,
 } from './useInsurance.js';
 
 type Change = (patch: Partial<LinkageDraft>) => void;
@@ -34,6 +35,8 @@ export function InsuranceFields({
   // 带出的暂存单按单号取原值；换了人就不是这张单
   const businessId = model.draftOf?.employeeId === model.employeeId ? model.draftOf.id : undefined;
   const origin = useInsuranceOrigin(tenantId, model.employeeId, effectiveDate, businessId);
+  // 选择器按上下文重建：换人、换生效日、换暂存单时旧实例卸载，进行中的选择随之作废（第 2 轮 P2-1）
+  const context = [tenantId, model.employeeId, effectiveDate, businessId ?? ''].join(':');
   const originRegion = origin?.regionCode ?? '';
   // 方案候选按缴交地过滤（设计 U3-A）：未调整缴交地时按原缴交地
   const region = draft.adjustedInsuranceRegionCode || originRegion;
@@ -50,7 +53,12 @@ export function InsuranceFields({
     <div className="transfer-grid hr-insurance-fields">
       <OriginField name="insuranceRegionCode" label={i.region} value={origin?.regionCode && originRegionName} />
       <LinkageAccess catalog={catalog} codes={['adjustedInsuranceRegionCode']}>
-        <RegionPicker tenantId={tenantId} value={draft.adjustedInsuranceRegionCode ?? ''} onChange={pickRegion} />
+        <RegionPicker
+          key={context}
+          tenantId={tenantId}
+          value={draft.adjustedInsuranceRegionCode ?? ''}
+          onChange={pickRegion}
+        />
       </LinkageAccess>
       <OriginField
         name="insurancePlanId"
@@ -123,6 +131,7 @@ function ChoiceSelect(props: {
 /**
  * 原站地区选择器（设计 §1.1）：“全国”页签起，省 → 市 → 区逐级下钻，按 parent 懒加载；单选，回填只显示末级。
  * 区县级或没有下级的节点（如东莞市）点击即选中。
+ * 点击要先等下级查询；关闭、换层级、清除、再点别处或卸载都作废进行中的那次，迟到返回不写弹层也不写草稿。
  */
 function RegionPicker({
   tenantId,
@@ -137,12 +146,22 @@ function RegionPicker({
   const [path, setPath] = useState<readonly RegionNode[] | null>(null);
   const nodes = useRegionChildren(tenantId, path ? (path.at(-1)?.code ?? '') : null);
   const name = useRegionName(tenantId, value);
+  const ticket = useTicket();
+  const go = (next: readonly RegionNode[] | null) => {
+    ticket.revoke();
+    setPath(next);
+  };
   const pick = async (node: RegionNode) => {
+    const signal = ticket.issue();
     const children = node.level >= 3 ? [] : await regionChildren(tenantId, node.code).catch(() => null);
-    if (!children) return;
+    if (signal.aborted || !children) return;
     if (children.length) return setPath([...(path ?? []), node]);
     setPath(null);
     onChange(node.code);
+  };
+  const clear = () => {
+    ticket.revoke();
+    onChange('');
   };
   return (
     <div className="hr-region-picker">
@@ -152,50 +171,62 @@ function RegionPicker({
           type="button"
           name="adjustedInsuranceRegionCode"
           aria-expanded={!!path}
-          onClick={() => setPath(path ? null : [])}
+          onClick={() => go(path ? null : [])}
         >
           {value ? name : i.choose}
         </button>
         {value && (
-          <button type="button" onClick={() => onChange('')}>
+          <button type="button" onClick={clear}>
             {i.clear}
           </button>
         )}
       </div>
-      {path && (
-        <div className="hr-region-panel" role="group" aria-label={i.adjustedRegion}>
-          <div role="tablist">
-            <button type="button" role="tab" aria-selected={!path.length} onClick={() => setPath([])}>
-              {i.nationwide}
+      {path && <RegionPanel path={path} nodes={nodes} value={value} go={go} pick={(node) => void pick(node)} />}
+    </div>
+  );
+}
+
+/** 选择器弹层：页签是已下钻的层级（“全国”起），列表是当前层级的下级。 */
+function RegionPanel(props: {
+  path: readonly RegionNode[];
+  nodes: readonly RegionNode[];
+  value: string;
+  go: (next: readonly RegionNode[]) => void;
+  pick: (node: RegionNode) => void;
+}) {
+  const { path, nodes, value, go, pick } = props;
+  return (
+    <div className="hr-region-panel" role="group" aria-label={i.adjustedRegion}>
+      <div role="tablist">
+        <button type="button" role="tab" aria-selected={!path.length} onClick={() => go([])}>
+          {i.nationwide}
+        </button>
+        {path.map((node, index) => (
+          <button
+            key={node.code}
+            type="button"
+            role="tab"
+            aria-selected={index === path.length - 1}
+            onClick={() => go(path.slice(0, index + 1))}
+          >
+            {node.name}
+          </button>
+        ))}
+      </div>
+      <ul role="tabpanel">
+        {nodes.map((node) => (
+          <li key={node.code}>
+            <button
+              type="button"
+              data-region-code={node.code}
+              aria-pressed={node.code === value}
+              onClick={() => pick(node)}
+            >
+              {node.name}
             </button>
-            {path.map((node, index) => (
-              <button
-                key={node.code}
-                type="button"
-                role="tab"
-                aria-selected={index === path.length - 1}
-                onClick={() => setPath(path.slice(0, index + 1))}
-              >
-                {node.name}
-              </button>
-            ))}
-          </div>
-          <ul role="tabpanel">
-            {nodes.map((node) => (
-              <li key={node.code}>
-                <button
-                  type="button"
-                  data-region-code={node.code}
-                  aria-pressed={node.code === value}
-                  onClick={() => void pick(node)}
-                >
-                  {node.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
