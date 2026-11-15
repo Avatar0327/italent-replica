@@ -173,6 +173,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-queries.ts#loadExitDetail',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'apps/api/src/modules/employment/retirement-views.ts#loadRetirementDetail',
+    'apps/api/src/modules/insurance/approval-content.ts#captureInsuranceRefs',
   ],
   'apps/api/src/modules/employment/approval-content.ts#openAsParticipant': [
     'apps/api/src/modules/approval/disclosure.ts#readDetail',

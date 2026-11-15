@@ -5,6 +5,17 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'apps/api/src/modules/insurance/approval-content.ts#captureInsuranceRefs': [
+    '#REFERENCES',
+    '#hasId',
+    'apps/api/src/modules/insurance/reference-names.ts#insuranceReferenceNames',
+  ],
+  'apps/api/src/modules/insurance/approval-content.ts#projectInsuranceValues': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    '#REFERENCES',
+    '#hasId',
+    '#isRow',
+  ],
   'apps/api/src/modules/insurance/archive-fold.ts#foldInsuranceEvents': ['#NO_INSURANCE_ORIGIN'],
   'apps/api/src/modules/insurance/archive-fold.ts#foldInsuranceOrigin': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -17,6 +28,10 @@ export const GRAPH: Graph = {
     '#LATEST_DATE',
     '#LATEST_SEQ',
     '#NOT_FOUND_MESSAGE',
+  ],
+  'apps/api/src/modules/insurance/reference-names.ts#insuranceReferenceNames': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#UUID',
   ],
   'apps/api/src/modules/insurance/routes.ts#COMPANY': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
@@ -59,6 +74,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/insurance/archive-fold.ts#NOT_FOUND_MESSAGE',
     'apps/api/src/modules/insurance/archive-fold.ts#foldInsuranceOrigin',
     'apps/api/src/modules/insurance/archive-fold.ts#insurancePosition',
+    'apps/api/src/modules/insurance/reference-names.ts#insuranceReferenceNames',
     '#INSURANCE_ORIGIN_PATH',
     '#ORIGIN_FIELDS',
     '#PROFILE',

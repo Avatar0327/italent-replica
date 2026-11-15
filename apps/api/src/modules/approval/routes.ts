@@ -246,7 +246,10 @@ async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, wit
 
 async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
   const { ctx, data, view } = await detailViewOf(c, deps, instanceId, true);
-  const named = await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view, data.content));
+  // DEC-914：用所选内容快照的业务日期取版本名，不依赖查看人是否能看到生效日。
+  const named = await withTenant(deps.db, ctx.tenantId, (tx) =>
+    namedForm(tx, ctx, view, data.content, data.snapshot.businessDate),
+  );
   // F-476 P8：业务内容不在表单里的类型，已办读冻结份时附类型化内容（缺份 503）
   return c.json({ ...named, ...(await typedContentOf(deps, ctx, data)) });
 }

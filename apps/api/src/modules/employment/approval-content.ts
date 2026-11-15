@@ -13,6 +13,10 @@ import { sql } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { captureAttachments, type AttachmentSummary } from '../attachments/carrier-read.js';
 import type { TenantRouteDeps } from '../../routes.js';
+import type { Run } from '../approval/engine.js';
+import type { ApprovalContext } from '../approval/context.js';
+import type { HandlerFacts } from '../approval/handling-content.js';
+import { captureInsuranceRefs, type InsuranceRefs } from '../insurance/approval-content.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { approvalError } from '../approval/context.js';
 import { disclosedFields, readDetail, type DetailData } from '../approval/disclosure.js';
@@ -104,6 +108,7 @@ export interface EmploymentContent {
   readonly business: Row;
   /** 离职单 / 退休单的专用详情内容；其他类型为 null。 */
   readonly exit: Row | null;
+  readonly insuranceRefs?: InsuranceRefs;
 }
 
 const isRow = (value: unknown): value is Row => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -118,6 +123,9 @@ export async function loadEmploymentContent(
   tx: Tx,
   tenantId: string,
   businessId: string,
+  ctx: ApprovalContext,
+  run: Run,
+  handler: HandlerFacts,
 ): Promise<EmploymentContent | null> {
   // 业务内容不随查询日期变化；asOf 只影响生效后的“当前记录”，那属于流程事实、不进办理份
   const business = await loadEmploymentBusiness(tx, tenantId, businessId, new Date().toISOString().slice(0, 10));
@@ -129,6 +137,16 @@ export async function loadEmploymentContent(
         ? await loadRetirementDetail(tx, tenantId, businessId, undefined)
         : null;
   return {
+    ...(business.kind === 'transfer'
+      ? {
+          insuranceRefs: await captureInsuranceRefs(
+            tx,
+            tenantId,
+            run.snapshot,
+            ctx.actorUserId === null ? new Set<string>() : handler.viewable,
+          ),
+        }
+      : {}),
     business: contentOf(business as unknown as Row, BUSINESS_FACTS),
     exit: exit ? withCapturedAttachments(contentOf(exit as unknown as Row, EXIT_FACTS)) : null,
   };
