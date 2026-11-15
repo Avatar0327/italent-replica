@@ -217,7 +217,7 @@ describe('AC-INS-01 / 02 / 09 薪资调整组的社保原值与调整值', () =>
   });
 
   it('AC-INS-02 原值只取原值接口（不取联动草稿），缴交地取字典名称，方案 / 公司取候选名称', async () => {
-    await render(model({ adjustedInsuranceRegionCode: '440103', adjustedInsurancePlanId: PLAN_GZ } as never));
+    await render(model({ adjustedInsuranceRegionCode: '440103', adjustedInsurancePlanId: PLAN_GZ }));
     expect(originCalls()).toEqual([
       `/api/tenant/transfer/insurance-origin?employeeId=${EMPLOYEE}&effectiveDate=${DATE}`,
     ]);
@@ -325,7 +325,7 @@ describe('AC-INS-03 / 04 调整后缴交地、方案与公司', () => {
   it('AC-INS-04 没有候选（含无权读取）时显示“暂无可选项”，不报错；已存值不在候选里时不悄悄换掉', async () => {
     plans = () => fail(403, 'FORBIDDEN');
     companies = ok({ items: [] });
-    await render(model({ adjustedInsuranceCompanyId: COMPANY_OLD } as never));
+    await render(model({ adjustedInsuranceCompanyId: COMPANY_OLD }));
     expect(options('adjustedInsurancePlanId')).toEqual(['暂无可选项']);
     expect(select('adjustedInsuranceCompanyId').value).toBe(COMPANY_OLD);
     expect(options('adjustedInsuranceCompanyId')).toEqual(['暂无可选项', '已保存的值']);
@@ -354,7 +354,7 @@ describe('F-474-8c-3 联动草稿：载荷、暂存还原与联动详情', () =>
     adjustedInsuranceCompanyId: '',
   };
   it('提交载荷只带填了的调整值；都没填时不带社保键', () => {
-    const body = transferBody(model(filled as never), 'submit');
+    const body = transferBody(model(filled), 'submit');
     expect(body.linkage).toEqual({ adjustedInsuranceRegionCode: '110108', adjustedInsurancePlanId: PLAN_NEW });
     expect(transferBody(model(), 'submit')).not.toHaveProperty('linkage');
   });
