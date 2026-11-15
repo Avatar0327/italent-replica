@@ -1,6 +1,6 @@
 /** C2-1b 真 PG：员工锁交错、旧离职迟消费、迁移锁表防止入队窗口丢失。 */
 import { sql, withTenant } from '@italent/db';
-import { createTestDb, useTestDb } from '@italent/testkit';
+import { withCurrentWriteColumns, createTestDb, useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
 import { assertCycleActive } from '../../apps/api/src/modules/evaluation/cycle-guard.js';
@@ -15,9 +15,7 @@ import {
 } from './AC-EV-leave-support.js';
 import { addPreAssessmentTable } from './support/pre-assessment-schema.js';
 import { addPreBlacklistTable } from './support/pre-blacklist-schema.js';
-import { addPreCustomFieldOptionsColumn } from './support/pre-custom-field-options-schema.js';
 import { addPreInternCycleColumn } from './support/pre-intern-cycle-schema.js';
-import { addPreOrgCustomFieldsColumn } from './support/pre-org-custom-fields-schema.js';
 import { addPrePartTimeTables } from './support/pre-part-time-schema.js';
 
 const database = useTestDb();
@@ -117,65 +115,72 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-pg：设计 §7.4 �
         // F-480：任职写入会读写 employment_cycles.trainee_start_date，旧结构没有，临时补列；writer_first 在升级迁移前撤掉，
         // migration_first 全程不跑完整迁移，随测试库销毁（同兼职表，support/pre-intern-cycle-schema.ts）
         const restoreInternCycle = await addPreInternCycleColumn(handle.db);
-        // F-474-6b-0b：当前接口读自定义字段定义会取 options 列，旧结构没有，临时补列（support/pre-custom-field-options-schema.ts）
-        const restoreCustomFieldOptions = await addPreCustomFieldOptionsColumn(handle.db);
-        // F-474-6b：当前接口写组织会带上 org_versions.custom_fields，旧结构没有，临时补列；撤列时机同上
-        // （writer_first 在升级迁移前撤，migration_first 随测试库销毁；support/pre-org-custom-fields-schema.ts）
-        const restoreOrgCustomFields = await addPreOrgCustomFieldsColumn(handle.db);
-        const w = await evaluationLeaveWorld(handle.db);
+        const w = await withCurrentWriteColumns(handle.db, () => evaluationLeaveWorld(handle.db));
         await restoreBlacklist();
-        const leave = await w.leave('2026-12-20');
-        const other = order === 'writer_first' ? await w.leave('2026-12-20', w.f.mgrB.id) : null;
+        const { leave, other } = await withCurrentWriteColumns(handle.db, async () => {
+          const leave = await w.leave('2026-12-20');
+          const other = order === 'writer_first' ? await w.leave('2026-12-20', w.f.mgrB.id) : null;
+          return { leave, other };
+        });
         if (order === 'writer_first') {
           await restorePartTime();
           await restoreAssessment();
           await restoreInternCycle();
-          await restoreCustomFieldOptions();
-          await restoreOrgCustomFields();
         }
-        let otherId = other?.id;
-        const insert = async (pause: boolean) =>
-          withTenant(w.db, w.tenantId, async (tx) => {
-            await tx.execute(sql`INSERT INTO employment_outbox
+        // migration_first 仍用当前接口写旧结构；writer_first 必须先撤列再跑完整迁移。
+        const interleave = async () => {
+          try {
+            let otherId = other?.id;
+            const insert = async (pause: boolean) =>
+              withTenant(w.db, w.tenantId, async (tx) => {
+                await tx.execute(sql`INSERT INTO employment_outbox
           (tenant_id, employee_id, business_id, object_type, object_id, event_type, payload,
             state, command_id, payload_version_id, created_at)
           SELECT tenant_id, employee_id, business_id, object_type, object_id, event_type, payload,
             state, 'interleave-' || gen_random_uuid()::text, payload_version_id, created_at
           FROM employment_outbox WHERE tenant_id=${w.tenantId} AND object_id=${other!.id}::uuid
             AND event_type='employment.record.create' LIMIT 1`);
-            if (pause) {
-              held.resolve();
-              await release.promise;
-            }
-          });
-        if (order === 'writer_first') first = insert(true);
-        else
-          first = handle.db.transaction(async (tx) => {
-            await tx.execute(sql`LOCK TABLE employment_outbox IN SHARE ROW EXCLUSIVE MODE`);
-            await replayLeaveMigration(tx);
-            held.resolve();
-            await release.promise;
-          });
-        await held.promise;
-        let finished = false;
-        second = (
-          order === 'writer_first'
-            ? handle.migrate()
-            : w.leave('2026-12-20', w.f.mgrB.id).then((saved) => {
-                otherId = saved.id;
-              })
-        ).finally(() => {
-          finished = true;
-        });
-        await waitForLock(w.db, () => finished);
-        release.resolve();
-        await Promise.all([first, second]);
-        expect(otherId).toBeTruthy();
-        expect(await w.queue(leave.id)).toHaveLength(1);
-        expect(await w.queue(otherId!)).toHaveLength(1);
-        await replayLeaveMigration(handle.db);
-        expect(await w.queue(leave.id)).toHaveLength(1);
-        expect(await w.queue(otherId!)).toHaveLength(1);
+                if (pause) {
+                  held.resolve();
+                  await release.promise;
+                }
+              });
+            if (order === 'writer_first') first = insert(true);
+            else
+              first = handle.db.transaction(async (tx) => {
+                await tx.execute(sql`LOCK TABLE employment_outbox IN SHARE ROW EXCLUSIVE MODE`);
+                await replayLeaveMigration(tx);
+                held.resolve();
+                await release.promise;
+              });
+            await held.promise;
+            let finished = false;
+            second = (
+              order === 'writer_first'
+                ? handle.migrate()
+                : w.leave('2026-12-20', w.f.mgrB.id).then((saved) => {
+                    otherId = saved.id;
+                  })
+            ).finally(() => {
+              finished = true;
+            });
+            await waitForLock(w.db, () => finished);
+            release.resolve();
+            await Promise.all([first, second]);
+            expect(otherId).toBeTruthy();
+            expect(await w.queue(leave.id)).toHaveLength(1);
+            expect(await w.queue(otherId!)).toHaveLength(1);
+            await replayLeaveMigration(handle.db);
+            expect(await w.queue(leave.id)).toHaveLength(1);
+            expect(await w.queue(otherId!)).toHaveLength(1);
+          } finally {
+            // 先结束可能持锁的事务，再让通用夹具撤列；异常路径也不能让 DDL 等待自身未释放的锁。
+            release.resolve();
+            await Promise.allSettled([first, second]);
+          }
+        };
+        if (order === 'migration_first') await withCurrentWriteColumns(handle.db, interleave);
+        else await interleave();
       } finally {
         release.resolve();
         await Promise.allSettled([first, second]);

@@ -36,8 +36,8 @@ export const INSURANCE_POLICIES = defineTable('insurance', {
     button: noButton('原值读取是调动表单的只读回填，按对象查看权，没有按钮'),
     scope: guardScope('insurance.employeeScope', NOT_FOUND),
     fields: fixed(
-      ['regionCode', 'planId', 'companyId'],
-      'DEC-896④：三个原值字段整体可见才给，缺一整体 403（routes.ts ORIGIN_FIELDS）',
+      ['regionCode', 'planId', 'companyId', 'planName', 'companyName'],
+      'DEC-896④ / DEC-914：三个原值字段整体可见才给，缺一整体 403；名称随 ID 披露',
     ),
     ...invalid,
   }),

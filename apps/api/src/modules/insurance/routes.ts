@@ -20,6 +20,7 @@ import { rowsOf } from '../employment/record-store.js';
 import { businessDate } from '../job/fields.js';
 import { getModuleViewableFields, resolveModuleScope } from '../permission/module-access.js';
 import { foldInsuranceOrigin, insurancePosition, NOT_FOUND_MESSAGE } from './archive-fold.js';
+import { insuranceReferenceNames } from './reference-names.js';
 
 export const INSURANCE_ORIGIN_PATH = '/api/tenant/transfer/insurance-origin';
 export const INSURANCE_BASE = '/api/tenant/insurance';
@@ -78,7 +79,19 @@ function registerOrigin(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         input.effectiveDate,
         input.businessId,
       );
-      return foldInsuranceOrigin(tx, ctx.tenantId, input.employeeId, position);
+      const values = await foldInsuranceOrigin(tx, ctx.tenantId, input.employeeId, position);
+      const names = await insuranceReferenceNames(
+        tx,
+        ctx.tenantId,
+        input.effectiveDate,
+        new Set(values.planId ? [values.planId] : []),
+        new Set(values.companyId ? [values.companyId] : []),
+      );
+      return {
+        ...values,
+        planName: values.planId ? (names.plans.get(values.planId) ?? null) : null,
+        companyName: values.companyId ? (names.companies.get(values.companyId) ?? null) : null,
+      };
     });
     return c.json(origin);
   });

@@ -32,6 +32,7 @@ import { AppError } from '../../errors.js';
 import { employmentTypeNames } from '../employment/employment-types.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { projectBatchValues, projectOfferValues } from '../offer/frozen-view.js';
+import { projectInsuranceValues } from '../insurance/approval-content.js';
 import { referenceNames } from './reference-names.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
@@ -294,6 +295,8 @@ function frozenValues(
 ): Row {
   if (data.content.mode !== 'frozen') return values;
   const { frozen } = data.content;
+  if (data.instance.businessType === 'employment' && data.instance.approvalType === 'transfer')
+    return projectInsuranceValues(frozen, values, disclosed);
   if (data.instance.businessType === 'offer') return projectOfferValues(frozen, values, disclosed);
   if (data.instance.businessType === 'offer_batch') return projectBatchValues(frozen, values, rowViewable);
   return values;
@@ -390,6 +393,7 @@ export async function namedForm(
   ctx: TenantContext & { readonly now: Date },
   view: DetailView,
   content: ContentSelection = { mode: 'live' },
+  businessDate?: string,
 ): Promise<DetailView> {
   const named = (await employmentTypeNames(tx, ctx.tenantId, view.form)) as DetailView['form'];
   // F-479 §3.1：附件摘要与 attachmentRefs 同权限同取值（值已按节点表单 ∩ 字段查看权裁剪，没下发引用就没有摘要）；
@@ -408,7 +412,7 @@ export async function namedForm(
       : named,
   };
   // F-474-3b P2-2：调动原因 / 类型、部门、经理同样按已下发的值取名（见 reference-names.ts）
-  return referenceNames(tx, ctx, view.approvalType, typed);
+  return referenceNames(tx, ctx, view.approvalType, typed, businessDate);
 }
 
 /** 办理份里采集的附件元数据（已办冻结读）；现值读返回 null（调用方走现值口径）。 */

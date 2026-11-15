@@ -11,7 +11,7 @@ import { cmd } from './support/tenant-api.js';
 import { DAY, insuranceReadWorld, originUrl, type InsuranceReadWorld } from './support/insurance-read.js';
 
 const testDb = useTestDb();
-const NONE = { regionCode: null, planId: null, companyId: null };
+const NONE = { regionCode: null, planId: null, companyId: null, planName: null, companyName: null };
 
 /** 同一员工的四张真实调动申请（提交先后 = 业务先后）：前一日 A1、当日 A2、目标 B、当日更晚 A3；档案按相反顺序追加。 */
 async function scene() {
@@ -64,11 +64,23 @@ describe('AC-INS-02 原值 = 严格前驱事件按业务先后折叠', () => {
     const { res, body } = await read({}, DAY, s.b.id);
     expect(res.status).toBe(200);
     // A1 → 前一日；early（计划日更早）→ 公司 C2；A2（同日在前，seq 小于 B）→ 方案 P2；A3 / late 在 B 之后，不计
-    expect(body).toEqual({ regionCode: '440100', planId: s.ids.p2, companyId: s.ids.c2 });
+    expect(body).toEqual({
+      regionCode: '440100',
+      planId: s.ids.p2,
+      companyId: s.ids.c2,
+      planName: '方案P2',
+      companyName: '公司C2',
+    });
   });
 
   it('已有业务的位置由服务端从单据解析：客户端生效日早于 / 等于 / 晚于单据日期，原值都不变', async () => {
-    const expected = { regionCode: '440100', planId: s.ids.p2, companyId: s.ids.c2 };
+    const expected = {
+      regionCode: '440100',
+      planId: s.ids.p2,
+      companyId: s.ids.c2,
+      planName: '方案P2',
+      companyName: '公司C2',
+    };
     // 单据 B 的实际生效日是 DAY；10-03 在 A1 之前、10-06 在后序事件之后，旧实现分别得到全空与含后继的值
     const reads = [];
     for (const queryDate of ['2026-10-03', DAY, '2026-10-06']) reads.push(await read({}, queryDate, s.b.id));
@@ -78,7 +90,13 @@ describe('AC-INS-02 原值 = 严格前驱事件按业务先后折叠', () => {
 
   it('不带业务编号：位置取当日最后一次操作，当日全部事件都计入', async () => {
     const { body } = await read();
-    expect(body).toEqual({ regionCode: '110000', planId: s.ids.p3, companyId: s.ids.c2 });
+    expect(body).toEqual({
+      regionCode: '110000',
+      planId: s.ids.p3,
+      companyId: s.ids.c2,
+      planName: '方案P3',
+      companyName: '公司C2',
+    });
   });
 
   it('生效日之前没有任何事件：三个值都为空（不是错误）', async () => {
@@ -87,6 +105,8 @@ describe('AC-INS-02 原值 = 严格前驱事件按业务先后折叠', () => {
       regionCode: '440100',
       planId: s.ids.p1,
       companyId: s.ids.c1,
+      planName: '方案P1',
+      companyName: '公司C1',
     });
   });
 
