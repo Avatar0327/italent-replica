@@ -1,0 +1,48 @@
+{
+  "GET /api/tenant/insurance/companies": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.ContractCompany"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractCompany/TenantBase.ContractCompany.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractCompany:view"
+    ]
+  },
+  "GET /api/tenant/insurance/plans": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "8ff67b0bb7a4",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.SocialInsurancePlan:view"
+    ]
+  },
+  "GET /api/tenant/insurance/regions": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/transfer/insurance-origin": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "285c196fa927",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.SocialSecurityProfile:view"
+    ]
+  }
+}
