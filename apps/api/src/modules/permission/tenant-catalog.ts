@@ -32,6 +32,7 @@ export const customFields =
 
 registerTenantFieldSource(MODULE_OBJECTS.employmentRecord.code, customFields('employment'));
 registerTenantFieldSource(MODULE_OBJECTS.contract.code, customFields('contract'));
+registerTenantFieldSource(MODULE_OBJECTS.organization.code, customFields('organization'));
 // F-474-6c：人员自定义字段对任何身份默认不可见，授权后才进入 custom:<id> 字段目录。
 registerTenantFieldSource(PERSONNEL_OBJECT, customFields('personnel'));
 

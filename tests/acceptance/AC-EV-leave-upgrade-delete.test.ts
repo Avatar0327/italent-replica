@@ -8,6 +8,7 @@ import { addPreAssessmentTable } from './support/pre-assessment-schema.js';
 import { addPreBlacklistTable } from './support/pre-blacklist-schema.js';
 import { addPreCustomFieldOptionsColumn } from './support/pre-custom-field-options-schema.js';
 import { addPreInternCycleColumn } from './support/pre-intern-cycle-schema.js';
+import { addPreOrgCustomFieldsColumn } from './support/pre-org-custom-fields-schema.js';
 import { addPrePartTimeTables } from './support/pre-part-time-schema.js';
 
 it('AC-EV-leave-upgrade：补入未来离职后在生效前删除，立即 skipped 且不终止评定', async () => {
@@ -23,6 +24,8 @@ it('AC-EV-leave-upgrade：补入未来离职后在生效前删除，立即 skipp
     const restoreInternCycle = await addPreInternCycleColumn(handle.db);
     // F-474-6b-0b：当前接口读自定义字段定义会取 options 列，旧结构没有，临时补列（support/pre-custom-field-options-schema.ts）
     const restoreCustomFieldOptions = await addPreCustomFieldOptionsColumn(handle.db);
+    // F-474-6b：当前接口写组织会带上 org_versions.custom_fields，旧结构没有，临时补列，升级迁移前撤掉（support/pre-org-custom-fields-schema.ts）
+    const restoreOrgCustomFields = await addPreOrgCustomFieldsColumn(handle.db);
     const w = await evaluationLeaveWorld(handle.db);
     await restoreBlacklist();
     const id = await w.seed();
@@ -33,6 +36,7 @@ it('AC-EV-leave-upgrade：补入未来离职后在生效前删除，立即 skipp
     await restoreAssessment();
     await restoreInternCycle();
     await restoreCustomFieldOptions();
+    await restoreOrgCustomFields();
     await handle.migrate();
     expect(await w.queue(leave.id)).toHaveLength(1);
     await w.remove(leave);

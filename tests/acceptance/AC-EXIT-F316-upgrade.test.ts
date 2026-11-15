@@ -5,6 +5,7 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { withPreExitRoutesSchema } from './support/pre-exit-routes-schema.js';
 import { withPreCustomFieldOptionsSchema } from './support/pre-custom-field-options-schema.js';
+import { withPreOrgCustomFieldsSchema } from './support/pre-org-custom-fields-schema.js';
 import { withPreInternCycleSchema } from './support/pre-intern-cycle-schema.js';
 import { api, definition, publish, reach, view, world } from './AC-EXIT-F316-support.js';
 
@@ -16,19 +17,21 @@ it('DEC-678 升级不回填新策略，旧发布版的兜底配置与在途行�
   // 当前接口建入职周期会写 employment_cycles.trainee_start_date，旧结构没有，同样临时补列（F-480，support/pre-intern-cycle-schema.ts）
   const { x, process, run } = await withPreInternCycleSchema(handle.db, () =>
     withPreCustomFieldOptionsSchema(handle.db, () =>
-      withPreExitRoutesSchema(handle.db, async () => {
-        const x = await world(handle.db, 'upgrade', false);
-        const process = await publish(
-          x,
-          definition(x, {
-            work_handover: { fallbackUserIds: [x.workOwner.userId] },
-            other_handover: { fallbackUserIds: [x.hrbp.userId] },
-          }),
-        );
-        const run = await reach(x, 'work_handover', false);
-        expect((await x.pendingNode(run.instanceId))?.userId).toBe(x.workOwner.userId);
-        return { x, process, run };
-      }),
+      withPreOrgCustomFieldsSchema(handle.db, () =>
+        withPreExitRoutesSchema(handle.db, async () => {
+          const x = await world(handle.db, 'upgrade', false);
+          const process = await publish(
+            x,
+            definition(x, {
+              work_handover: { fallbackUserIds: [x.workOwner.userId] },
+              other_handover: { fallbackUserIds: [x.hrbp.userId] },
+            }),
+          );
+          const run = await reach(x, 'work_handover', false);
+          expect((await x.pendingNode(run.instanceId))?.userId).toBe(x.workOwner.userId);
+          return { x, process, run };
+        }),
+      ),
     ),
   );
   await handle.migrate();

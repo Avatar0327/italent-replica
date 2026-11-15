@@ -41,6 +41,7 @@ import {
   BAD_REQUEST,
   button,
   configWrite,
+  customFieldsWrite,
   exception,
   fixed,
   listScope,
@@ -123,6 +124,15 @@ export const ORG_POLICIES = defineTable('org', {
   [`GET ${BASE}/settings`]: admin('other_settings', { fields: settingFields }),
   // 静态四视图目录（Q-M0-09 待接入界面）：items 仍经 trimModuleResponse 按 Organization 查看权裁剪
   // （resource / dimension 是目录系统字段，label 不在目录内——现状）
+  // F-474-6b 第 2 轮：业务侧自定义字段定义目录。只按组织对象查看权准入（与 views 同一 context(read)），
+  // 定义是租户配置、不含组织行，故无数据范围；每项再按 custom:<id> 查看权裁剪，只回 id / name / valueType / options / editable
+  [`GET ${BASE}/custom-field-definitions`]: object({
+    object: ORG,
+    operation: 'view',
+    button: noButton('定义目录只按组织对象查看权，无按钮'),
+    scope: noScope('定义是租户配置，不含组织行，不查数据范围'),
+    fields: shape('org.customFieldDefinitions'),
+  }),
   [`GET ${BASE}/views`]: object({
     object: ORG,
     operation: 'view',
@@ -171,8 +181,7 @@ export const ORG_POLICIES = defineTable('org', {
     button: button('validate', 'detail'),
     scope: orgPoint({ body: 'parents.*.parentId' }),
     fields: shape('module.validation'),
-    write: write(
-      'body',
+    write: customFieldsWrite(
       none('只读校验，不进命令 / 台账'),
       none('只读校验，无返回对象，响应按 Organization 查看权裁剪'),
       {
@@ -189,7 +198,7 @@ export const ORG_POLICIES = defineTable('org', {
     button: noButton('新增按数据操作开关授权（objectContext create），无按钮'),
     scope: orgPoint({ body: 'parents.*.parentId' }),
     fields: organization,
-    write: write('body', 'org.result', 'org.result', {
+    write: customFieldsWrite('org.result', 'org.result', {
       controls: CREATE_CONTROLS,
       preconditions: ['assertRevision', 'assertCanSubmit', 'consumeCode'],
     }),
@@ -211,7 +220,7 @@ export const ORG_POLICIES = defineTable('org', {
     scope: orgPoint({ param: 'id' }),
     fields: organization,
     guards: ['org.visibleParents', 'employment.linkage'],
-    write: write('body', 'org.result', 'org.result', {
+    write: customFieldsWrite('org.result', 'org.result', {
       controls: UPDATE_CONTROLS,
       preconditions: [
         'lockOrgEmploymentTargets',
@@ -233,7 +242,7 @@ export const ORG_POLICIES = defineTable('org', {
     scope: orgPoint({ param: 'id' }),
     fields: fixed(['hasPendingEmployment'], 'DEC-137（employment-linkage.ts hasPendingOrgEmployment：只返回布尔）'),
     // 不进命令 / 台账；预检事务内仍按 authorizeOrgResult（created = false，即 org.byId 范围）复核目标组织
-    write: write('body', 'org.result', none('只读预检，无返回对象（单个布尔）'), {
+    write: customFieldsWrite('org.result', none('只读预检，无返回对象（单个布尔）'), {
       controls: UPDATE_CONTROLS,
       preconditions: ['validateEmploymentChoice'],
     }),
