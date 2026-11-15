@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import { createUser, grantMembership, sql, withTenant, type Db } from '@italent/db';
 import { PRESET_PROCESSES } from '@italent/domain';
-import { useTestDb } from '@italent/testkit';
+import { useTestDb, withCurrentWriteColumns } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { createProcess, publishProcess } from '../../apps/api/src/modules/approval/definitions.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
@@ -18,9 +18,6 @@ import { pendingOf } from './support/f048.js';
 import { withPreAssessmentSchema } from './support/pre-assessment-schema.js';
 import { withPreAuditSchema } from './support/pre-audit-schema.js';
 import { withPreExitRoutesSchema } from './support/pre-exit-routes-schema.js';
-import { withPreCustomFieldOptionsSchema } from './support/pre-custom-field-options-schema.js';
-import { withPreOrgCustomFieldsSchema } from './support/pre-org-custom-fields-schema.js';
-import { withPreTransferLinkageInsuranceSchema } from './support/pre-transfer-linkage-insurance-schema.js';
 import { withPreInternCycleSchema } from './support/pre-intern-cycle-schema.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 
@@ -254,18 +251,14 @@ it('升级前发起的离职 / 员工子集 / 合同 / IDP 在途实例：avoid_
   const continuations = await withPreAuditSchema(handle.db, () =>
     withPreAssessmentSchema(handle.db, () =>
       withPreInternCycleSchema(handle.db, () =>
-        withPreCustomFieldOptionsSchema(handle.db, () =>
-          withPreOrgCustomFieldsSchema(handle.db, () =>
-            withPreTransferLinkageInsuranceSchema(handle.db, () =>
-              withPreExitRoutesSchema(handle.db, () =>
-                withoutSubjectsTable(handle.db, async () => ({
-                  leave: await leaveBefore(handle.db),
-                  personnel: await personnelBefore(handle.db),
-                  contract: await contractBefore(handle.db),
-                  idp: await idpBefore(handle.db),
-                })),
-              ),
-            ),
+        withPreExitRoutesSchema(handle.db, () =>
+          withoutSubjectsTable(handle.db, () =>
+            withCurrentWriteColumns(handle.db, async () => ({
+              leave: await leaveBefore(handle.db),
+              personnel: await personnelBefore(handle.db),
+              contract: await contractBefore(handle.db),
+              idp: await idpBefore(handle.db),
+            })),
           ),
         ),
       ),
