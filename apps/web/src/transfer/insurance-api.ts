@@ -12,6 +12,9 @@ export interface InsuranceOrigin {
   readonly regionCode: string | null;
   readonly planId: string | null;
   readonly companyId: string | null;
+  /** DEC-914：名称随 ID 下发；ID 为 null 或查不到名称时为 null。 */
+  readonly planName: string | null;
+  readonly companyName: string | null;
 }
 export interface RegionNode {
   readonly code: string;
@@ -22,10 +25,10 @@ export interface RegionNode {
 interface Items<T> {
   readonly items: readonly T[];
 }
-const ORIGIN_KEYS = ['regionCode', 'planId', 'companyId'] as const;
+const ORIGIN_KEYS = ['regionCode', 'planId', 'companyId', 'planName', 'companyName'] as const;
 const signalOf = (signal?: AbortSignal) => (signal ? { signal } : {});
 
-/** 三个键缺任何一个都按读取失败处理（AC-INS-09：不显示半截原值）。 */
+/** 五个键缺任何一个都按读取失败处理（AC-INS-09：不显示半截原值；名称随原值固定下发，DEC-914）。 */
 export async function loadInsuranceOrigin(
   tenantId: string,
   query: { employeeId: string; effectiveDate: string; businessId?: string },

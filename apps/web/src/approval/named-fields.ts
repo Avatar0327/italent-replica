@@ -10,6 +10,11 @@ const ID_NAMED_FIELDS: Readonly<Record<string, string>> = {
   departmentId: 'departmentIdName',
   directManagerId: 'directManagerIdName',
   dottedManagerId: 'dottedManagerIdName',
+  // DEC-914：社保方案 / 公司的新值与原值（apps/api approval/reference-names.ts），已办读取为办理时冻结的名称
+  adjustedInsurancePlanId: 'adjustedInsurancePlanIdName',
+  adjustedInsuranceCompanyId: 'adjustedInsuranceCompanyIdName',
+  'insuranceOrigin.planId': 'insuranceOrigin.planIdName',
+  'insuranceOrigin.companyId': 'insuranceOrigin.companyIdName',
 };
 // 编码字段：同名键在别的业务里是另一种编码（如离职原因 reasonCode，后端不取名）。后端没下发名称键时按原值显示。
 const CODE_NAMED_FIELDS: Readonly<Record<string, string>> = {

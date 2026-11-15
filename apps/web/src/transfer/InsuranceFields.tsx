@@ -1,6 +1,7 @@
 /**
  * F-474-8c-3 调动表单“薪资调整”组的社保三对字段（设计 F-474-8b §1.1、§5；AC-INS-01～04 / 09）：
  * 原值只读、来自社保档案（原值接口，不取联动草稿）；调整值各按自己的字段权限显示 / 只读；6 项都非必填。
+ * 原方案 / 公司名称随原值接口下发（DEC-914）：停用、当月未生效或无候选权限都照常显示；候选只用于选新值。
  */
 import { useState } from 'react';
 import { useSession } from '../foundation/Session.js';
@@ -18,8 +19,6 @@ import {
 } from './useInsurance.js';
 
 type Change = (patch: Partial<LinkageDraft>) => void;
-const choiceName = (choices: readonly Choice[], id: string) =>
-  choices.find((item) => item.id === id)?.name ?? text.savedValue;
 
 export function InsuranceFields({
   model,
@@ -37,11 +36,9 @@ export function InsuranceFields({
   const origin = useInsuranceOrigin(tenantId, model.employeeId, effectiveDate, businessId);
   // 选择器按上下文重建：换人、换生效日、换暂存单时旧实例卸载，进行中的选择随之作废（第 2 轮 P2-1）
   const context = [tenantId, model.employeeId, effectiveDate, businessId ?? ''].join(':');
-  const originRegion = origin?.regionCode ?? '';
   // 方案候选按缴交地过滤（设计 U3-A）：未调整缴交地时按原缴交地
-  const region = draft.adjustedInsuranceRegionCode || originRegion;
+  const region = draft.adjustedInsuranceRegionCode || origin?.regionCode || '';
   const plans = usePlanChoices(tenantId, region, effectiveDate);
-  const otherPlans = usePlanChoices(tenantId, region === originRegion ? '' : originRegion, effectiveDate);
   const companies = useCompanyChoices(tenantId);
   const originRegionName = useRegionName(tenantId, origin?.regionCode);
   // 换了缴交地，原选的方案可能不再适用，清空重选；同一地点不动
@@ -63,7 +60,7 @@ export function InsuranceFields({
       <OriginField
         name="insurancePlanId"
         label={i.plan}
-        value={origin?.planId && choiceName(region === originRegion ? plans : otherPlans, origin.planId)}
+        value={origin?.planId && (origin.planName ?? text.savedValue)}
       />
       <LinkageAccess catalog={catalog} codes={['adjustedInsurancePlanId']}>
         <ChoiceSelect
@@ -77,7 +74,7 @@ export function InsuranceFields({
       <OriginField
         name="insuranceCompanyId"
         label={i.company}
-        value={origin?.companyId && choiceName(companies, origin.companyId)}
+        value={origin?.companyId && (origin.companyName ?? text.savedValue)}
       />
       <LinkageAccess catalog={catalog} codes={['adjustedInsuranceCompanyId']}>
         <ChoiceSelect
