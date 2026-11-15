@@ -21,6 +21,7 @@ export interface InsuranceItemRow {
   status: string;
   attemptCount: number;
   failureCode: string | null;
+  failureRule: string | null;
   effectiveDate: string;
 }
 export interface ArchiveVersion {
@@ -99,7 +100,8 @@ export async function insuranceWriteWorld(db: Db, label: string) {
     asOwner(db, tenantId, async (tx) =>
       rowsOf<InsuranceItemRow>(
         await tx.execute(sql`SELECT id, revision, item_type AS "itemType", status, attempt_count AS "attemptCount",
-            failure_code AS "failureCode", effective_date::text AS "effectiveDate"
+            failure_code AS "failureCode", failure_rule AS "failureRule",
+            effective_date::text AS "effectiveDate"
           FROM transfer_linkage_items WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid
             AND item_type='insurance_archive' ORDER BY line_no`),
       ),
@@ -110,6 +112,23 @@ export async function insuranceWriteWorld(db: Db, label: string) {
       rowsOf<{ action: string; after: Record<string, unknown> | null }>(
         await tx.execute(sql`SELECT action, after FROM audit_events
           WHERE tenant_id=${tenantId} AND object_id=${businessId} ORDER BY occurred_at, id`),
+      ),
+    );
+
+  /** 本业务的审计事件（含 before / after），可按对象类型过滤。 */
+  const auditRows = (businessId: string, objectType?: string) =>
+    withTenant(db, tenantId, async (tx) =>
+      rowsOf<{
+        id: string;
+        action: string;
+        objectType: string;
+        before: Record<string, unknown> | null;
+        after: Record<string, unknown> | null;
+      }>(
+        await tx.execute(sql`SELECT id, action, object_type AS "objectType", before, after FROM audit_events
+          WHERE tenant_id=${tenantId} AND object_id=${businessId}
+            AND (${objectType ?? null}::text IS NULL OR object_type=${objectType ?? null})
+          ORDER BY occurred_at, id`),
       ),
     );
 
@@ -141,6 +160,7 @@ export async function insuranceWriteWorld(db: Db, label: string) {
     savedAdjust,
     insuranceItems,
     audits,
+    auditRows,
     submitTransfer,
     MONTH,
     expectOk: async (response: Response, status = 200) =>
@@ -149,3 +169,16 @@ export async function insuranceWriteWorld(db: Db, label: string) {
 }
 
 export type InsuranceWriteWorld = Awaited<ReturnType<typeof insuranceWriteWorld>>;
+
+/** 带方案 / 公司与三项调整值的标准场景（方案自调动生效月起有效）。 */
+export async function insuranceScene(db: Db, label: string) {
+  const w = await insuranceWriteWorld(db, label);
+  const person = await w.hire('社保员工');
+  const [plan, company] = [await w.plan('P', '440100', w.MONTH), await w.company('C')];
+  const adjust = {
+    adjustedInsuranceRegionCode: '440100',
+    adjustedInsurancePlanId: plan,
+    adjustedInsuranceCompanyId: company,
+  };
+  return { w, person, plan, company, adjust };
+}

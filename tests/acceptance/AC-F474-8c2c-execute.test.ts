@@ -3,9 +3,11 @@
  * 在自己的保存点里追加一条社保档案版本；失败只记子项、可重试；撤销 / 改期按联动现有路径。
  * 真实 HTTP + 真实定时任务；档案与审计用属主身份只读核对。
  */
+import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { D } from './AC-LNK-support.js';
+import { asOwner } from './support/insurance-tables.js';
 import { insuranceWriteWorld } from './support/insurance-write.js';
 
 const testDb = useTestDb();
@@ -124,10 +126,26 @@ describe('AC-INS-07 幂等与失败可重试', () => {
     await w.approve(business, '2026-10-02T01:00:00Z');
     await w.runScheduler(AT_D);
     const before = await w.archive(person.employee.id);
-    // 直接以属主身份把联动版本改成另一组值再重放子项，模拟“同来源不同值”：重试已成功的子项不得改写档案
+    // 联动版本只追加：以属主身份追加一条改了缴交地的新版本，并把子项置为失败，模拟“同来源不同值”的重放
+    await asOwner(w.db, w.tenantId, async (tx) => {
+      await tx.execute(sql`CREATE TEMP TABLE conflict_version ON COMMIT DROP AS
+        SELECT * FROM transfer_linkage_versions WHERE tenant_id=${w.tenantId} AND business_id=${business.id}::uuid
+        ORDER BY version_no DESC LIMIT 1`);
+      await tx.execute(sql`UPDATE conflict_version SET id=gen_random_uuid(), version_no=version_no+1,
+        adjusted_insurance_region_code='110105'`);
+      await tx.execute(sql`INSERT INTO transfer_linkage_versions SELECT * FROM conflict_version`);
+      await tx.execute(sql`UPDATE transfer_linkage_items SET status='failed', failure_code='CONFLICT',
+        revision=revision+1 WHERE tenant_id=${w.tenantId} AND business_id=${business.id}::uuid
+          AND item_type='insurance_archive'`);
+    });
     const [item] = await w.insuranceItems(business.id);
+    expect(item).toMatchObject({ status: 'failed' });
     const response = await w.retryItem(item!);
-    expect(response.status).toBe(409);
+    expect(response.status, await response.clone().text()).toBe(200);
+    // 冲突是业务拒绝：子项记失败并带可辨认的规则码，已写版本一字不改
+    expect(await w.insuranceItems(business.id)).toEqual([
+      expect.objectContaining({ status: 'failed', failureRule: 'INSURANCE_ARCHIVE_CONFLICT' }),
+    ]);
     expect(await w.archive(person.employee.id)).toEqual(before);
   });
 });
@@ -190,9 +208,9 @@ describe('AC-INS-13 审计同事务', () => {
     expect(append).toHaveLength(1);
     expect(append[0]!.after).toMatchObject({
       versionNo: 1,
-      regionCode: '440100',
-      planId: plan,
-      companyId: company,
+      adjustedInsuranceRegionCode: '440100',
+      adjustedInsurancePlanId: plan,
+      adjustedInsuranceCompanyId: company,
     });
     expect(events.map((event) => event.action)).toContain('transfer.linkage.item.succeeded');
   });
