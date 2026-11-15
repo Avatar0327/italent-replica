@@ -88,7 +88,7 @@ const file = (name: string, content: unknown[]) => ({
 });
 async function chooseImport(page: Page, content: unknown[] = rows) {
   await page.getByRole('button', { name: '更多操作' }).click();
-  await page.getByRole('menuitem', { name: '导入' }).click();
+  await page.getByRole('menuitem', { name: '导入', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '导入组织' });
   await dialog.getByLabel('选择文件').setInputFiles(file('org-import.json', content));
   await expect(dialog.getByText('已读取 2 行')).toBeVisible();
@@ -191,7 +191,7 @@ for (const [label, reply] of [
     await dialog.getByRole('button', { name: 'Close' }).click();
     await expect(dialog).toHaveCount(0);
     await page.getByRole('button', { name: '更多操作' }).click();
-    await page.getByRole('menuitem', { name: '导入' }).click();
+    await page.getByRole('menuitem', { name: '导入', exact: true }).click();
     await expect(dialog.getByText(/处理中 \/ 结果待确认/)).toBeVisible();
     await expect(dialog.getByText('已读取 2 行')).toBeVisible();
     await expect(save(page)).toBeDisabled();
@@ -214,7 +214,7 @@ test('AC-FE-R1a-43 组织导入逐行预检：只有新建权时，带 orgId 的
   const posts = await routeImport(page, () => ({ status: 200, json: { results: [] } }));
   await page.goto('/org');
   await page.getByRole('button', { name: '更多操作' }).click();
-  await page.getByRole('menuitem', { name: '导入' }).click();
+  await page.getByRole('menuitem', { name: '导入', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '导入组织' });
   await dialog.getByLabel('选择文件').setInputFiles(file('org-import.json', rows));
   await expect(dialog.getByText('第 2 行需要更新组织的权限，当前无权更新')).toBeVisible();
@@ -391,7 +391,7 @@ test('AC-FE-R1a-43 只写原系统编码映射与 expectedRevision、没有 orgI
   }));
   await page.goto('/org');
   await page.getByRole('button', { name: '更多操作' }).click();
-  await page.getByRole('menuitem', { name: '导入' }).click();
+  await page.getByRole('menuitem', { name: '导入', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '导入组织' });
   await dialog.getByLabel('选择文件').setInputFiles(file('org-import-mapped.json', [mapped]));
   await expect(dialog.getByText('已读取 1 行')).toBeVisible();

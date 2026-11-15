@@ -123,6 +123,23 @@ export const linkageText = {
   failed: '失败',
   waiting: '待执行',
   attempts: '次尝试',
+  insuranceArchive: '社保档案',
+} as const;
+
+/** F-474-8c-3 薪资调整组的社保三对字段（设计 F-474-8b §1.1 原站字段名）；审批详情同用。 */
+export const insuranceText = {
+  region: '社保缴交地',
+  plan: '社保缴交方案',
+  company: '社保缴交公司',
+  adjustedRegion: '调整后社保缴交地',
+  adjustedPlan: '调整后社保缴交方案',
+  adjustedCompany: '调整后社保缴交公司',
+  none: '--',
+  blank: '—',
+  noChoices: '暂无可选项',
+  nationwide: '全国',
+  choose: '请选择',
+  clear: '清除',
 } as const;
 
 export const presetLabels: Readonly<Record<string, string>> = {
@@ -254,7 +271,6 @@ export const hrFormText = {
   noApplication: '当前不能为该员工发起调动申请。',
   infoGap:
     '原站本区块还有性别、年龄、是否同步履历、试岗方式、预计试岗结束日期、测试、是否调整目标，接口暂不支持，本页不显示。',
-  salaryGap: '原站本区块的社保缴纳地、社保方案、社保缴纳主体（原值 / 调整后）接口暂不支持，本页不显示。',
   contractGap: '原站本区块的“发起电子文件签署”接口暂不支持，本页不显示。',
   salaryOff: '未选择调整薪资。',
   contractOff: '未选择变更合同。',
