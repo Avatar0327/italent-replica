@@ -7,7 +7,9 @@ import { QUALIFICATION_OBJECTS } from '@italent/domain';
 import type { TenantRouteDeps } from '../routes.js';
 import type { TenantContext } from '../tenant-context.js';
 import { CALC_RULE_AUDIT_TYPE, calcRuleSources } from './calc-rule-sources.js';
+import { insuranceSources } from './insurance-sources.js';
 import { qualificationSources, type SourceRedactor } from './qualification-sources.js';
+import { INSURANCE_ARCHIVE_AUDIT_TYPE } from './transfer-linkage.js';
 
 export interface AuditSource {
   readonly types: ReadonlySet<string>;
@@ -26,6 +28,8 @@ export const AUDIT_SOURCES: readonly AuditSource[] = [
   },
   // F-082：计算规则（公式里的字段引用按查看人当前的字段目录权限裁剪，DEC-376④）
   { types: new Set([CALC_RULE_AUDIT_TYPE]), create: calcRuleSources },
+  // F-474-8c-2c 第 3 轮：社保追加审计的原值（前镜像）按社保档案对象 / 字段当前查看权裁剪（设计 §4.3）
+  { types: new Set([INSURANCE_ARCHIVE_AUDIT_TYPE]), create: insuranceSources },
   {
     types: new Set(['TalentReview.Template']),
     create: (deps, ctx) => calcRuleSources(deps, ctx, 'TalentReview.Template', 'resultRules'),
