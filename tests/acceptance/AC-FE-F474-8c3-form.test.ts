@@ -3,6 +3,8 @@
 /**
  * F-474-8c-3（设计 F-474-8b §5，AC-INS-01～04 / 09）：调动表单“薪资调整”组的社保三项，原值只读、调整值可编辑；
  * 地区选择器按 parent 懒加载；方案按缴交地 + 生效日取候选。接口形状按 insurance/routes.ts 与 linkage/view.ts。
+ * DEC-914 / 8c-3n：原值接口固定返回五个键（含 planName / companyName，ID 为 null 时名称为 null，查不到也为 null）；
+ * 原值名称只取这里，候选只用于选新值。
  */
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -28,7 +30,15 @@ const PLAN_NEW = '82000000-0000-4000-8000-000000000002';
 const PLAN_GZ = '82000000-0000-4000-8000-000000000003';
 const COMPANY_OLD = '83000000-0000-4000-8000-000000000001';
 const COMPANY_NEW = '83000000-0000-4000-8000-000000000002';
+const COMPANY_STOP = '83000000-0000-4000-8000-000000000003';
+const PLAN_STOP = '82000000-0000-4000-8000-000000000004';
 const DATE = '2026-11-20';
+const LATER = '2026-12-01';
+const ORIGIN_PATH = '/api/tenant/transfer/insurance-origin';
+// GET /api/tenant/transfer/insurance-origin（insurance/routes.ts）：三个原值 + 两个名称
+const ORIGIN = { regionCode: '110108', planId: PLAN_OLD, companyId: COMPANY_OLD, planName: '北京基本方案' };
+const ORIGIN_OK = { ...ORIGIN, companyName: '合成甲公司' };
+const NO_PROFILE = { regionCode: null, planId: null, companyId: null, planName: null, companyName: null };
 const UUID_TEXT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
 
 const region = (code: string, parentCode: string | null, level: number, name: string) => ({
@@ -71,12 +81,18 @@ interface Reply {
 const ok = (body: unknown): Reply => ({ body });
 // 错误体形状按 apps/api/src/errors.ts errorResponse
 const fail = (status: number, code: string): Reply => ({ status, body: { error: { code, message: '合成拒绝' } } });
-let origin: Reply;
+let origin: Reply | ((query: URLSearchParams) => Reply);
 let plans: (code: string) => Reply;
 let companies: Reply;
 let calls: string[];
-// 第 2 轮 P2-1：按上级编码挂起区划查询，模拟迟到返回
+// 第 2 轮 P2-1：按上级编码挂起区划查询，模拟迟到返回；第 3 轮：按 origin:员工:日期 挂起原值读取
 let gates: Record<string, Promise<void>>;
+const gateKey = (url: URL) =>
+  url.pathname === '/api/tenant/insurance/regions'
+    ? (url.searchParams.get('parent') ?? '')
+    : url.pathname === ORIGIN_PATH
+      ? `origin:${url.searchParams.get('employeeId')}:${url.searchParams.get('effectiveDate')}`
+      : undefined;
 
 function stubApi() {
   calls = [];
@@ -85,11 +101,13 @@ function stubApi() {
     vi.fn(async (input: string) => {
       const url = new URL(String(input), 'http://local');
       calls.push(`${url.pathname}${url.search}`);
-      const gate = url.pathname === '/api/tenant/insurance/regions' && gates[url.searchParams.get('parent') ?? ''];
-      if (gate) await gate;
+      const key = gateKey(url);
+      if (key !== undefined && gates[key]) await gates[key];
       const reply =
-        url.pathname === '/api/tenant/transfer/insurance-origin'
-          ? origin
+        url.pathname === ORIGIN_PATH
+          ? typeof origin === 'function'
+            ? origin(url.searchParams)
+            : origin
           : url.pathname === '/api/tenant/insurance/regions'
             ? ok({ items: REGIONS[url.searchParams.get('parent') ?? ''] ?? [] })
             : url.pathname === '/api/tenant/insurance/plans'
@@ -149,7 +167,7 @@ let current: TransferFormModel;
 let setCurrent: (update: (value: TransferFormModel) => TransferFormModel) => void;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  origin = ok({ regionCode: '110108', planId: PLAN_OLD, companyId: COMPANY_OLD });
+  origin = ok(ORIGIN_OK);
   plans = (code) => ok({ items: PLANS[code] ?? [] });
   companies = ok({ items: COMPANIES });
   gates = {};
@@ -243,7 +261,7 @@ describe('AC-INS-01 / 02 / 09 薪资调整组的社保原值与调整值', () =>
     expect(salary().querySelectorAll('output, select, button')).toHaveLength(count);
   });
 
-  it('AC-INS-02 原值只取原值接口（不取联动草稿），缴交地取字典名称，方案 / 公司取候选名称', async () => {
+  it('AC-INS-02 原值只取原值接口（不取联动草稿），缴交地取字典名称，方案 / 公司取原值接口的名称', async () => {
     await render(model({ adjustedInsuranceRegionCode: '440103', adjustedInsurancePlanId: PLAN_GZ }));
     expect(originCalls()).toEqual([
       `/api/tenant/transfer/insurance-origin?employeeId=${EMPLOYEE}&effectiveDate=${DATE}`,
@@ -253,7 +271,7 @@ describe('AC-INS-01 / 02 / 09 薪资调整组的社保原值与调整值', () =>
   });
 
   it('AC-INS-02 没有档案的员工：原值三项显示“--”，调整值仍可填', async () => {
-    origin = ok({ regionCode: null, planId: null, companyId: null });
+    origin = ok(NO_PROFILE);
     await render(model());
     expect(outputs()).toEqual(['--', '--', '--']);
     expect((control('adjustedInsuranceRegionCode') as HTMLButtonElement).disabled).toBe(false);
@@ -266,6 +284,8 @@ describe('AC-INS-01 / 02 / 09 薪资调整组的社保原值与调整值', () =>
     ['404', fail(404, 'NOT_FOUND')],
     ['500', fail(500, 'INTERNAL_ERROR')],
     ['缺键', ok({ regionCode: '110108', planId: PLAN_OLD })],
+    ['缺名称键（DEC-914 固定五个键）', ok({ regionCode: '110108', planId: PLAN_OLD, companyId: COMPANY_OLD })],
+    ['缺公司名称键', ok(ORIGIN)],
   ])('AC-INS-09 原值接口 %s：三项都显示“--”，不出现半截原值，不挡表单', async (_name, reply) => {
     origin = reply;
     await render(model());
@@ -274,6 +294,62 @@ describe('AC-INS-01 / 02 / 09 薪资调整组的社保原值与调整值', () =>
     expect(select('adjustedInsuranceCompanyId').disabled).toBe(false);
     const submit = Array.from(host.querySelectorAll('button')).find((item) => item.textContent === '提交');
     expect(submit?.disabled).toBe(false);
+  });
+
+  it.each<[string, object, Reply, Reply, string[]]>([
+    [
+      '方案停用 / 当月未生效、公司停用，都不在候选里',
+      { ...ORIGIN, planId: PLAN_STOP, companyId: COMPANY_STOP, planName: '北京旧方案', companyName: '合成停用公司' },
+      ok({ items: PLANS['110108'] }),
+      ok({ items: COMPANIES }),
+      ['海淀区', '北京旧方案', '合成停用公司'],
+    ],
+    [
+      '没有方案 / 公司候选权限',
+      ORIGIN_OK,
+      fail(403, 'FORBIDDEN'),
+      fail(403, 'FORBIDDEN'),
+      ['海淀区', '北京基本方案', '合成甲公司'],
+    ],
+  ])('DEC-914 %s：原值仍显示原值接口给的名称，候选只用于选新值', async (_name, body, plan, company, expected) => {
+    origin = ok(body);
+    plans = () => plan;
+    companies = company;
+    await render(model());
+    expect(outputs()).toEqual(expected);
+    expect(options('adjustedInsurancePlanId')).not.toContain(expected[1]);
+    expect(options('adjustedInsuranceCompanyId')).not.toContain(expected[2]);
+    expect(salary().textContent).not.toMatch(UUID_TEXT);
+  });
+
+  it('DEC-914 原值接口名称为 null（查不到）时显示“已保存的值”，不拿候选名称顶替，不显示裸 ID', async () => {
+    origin = ok({ ...ORIGIN, planName: null, companyName: null });
+    await render(model());
+    expect(outputs()).toEqual(['海淀区', '已保存的值', '已保存的值']);
+    expect(salary().textContent).not.toMatch(UUID_TEXT);
+  });
+
+  it.each([
+    ['换人（同 useTransferForm：清预览，选择器卸载后重新挂载）', OTHER, DATE],
+    ['换生效日（组件不卸载，只换读取上下文）', EMPLOYEE, LATER],
+  ])('DEC-914 %s：旧原值迟到返回不写入，名称取新上下文', async (_name, employeeId, effectiveDate) => {
+    const after = { regionCode: '110101', planId: PLAN_NEW, companyId: COMPANY_STOP };
+    origin = (query) =>
+      query.get('employeeId') === EMPLOYEE && query.get('effectiveDate') === DATE
+        ? ok(ORIGIN_OK)
+        : ok({ ...after, planName: '北京补充方案', companyName: '合成停用公司' });
+    const release = hold(`origin:${EMPLOYEE}:${DATE}`);
+    await render(model());
+    expect(outputs()).toEqual(['--', '--', '--']);
+    if (employeeId === OTHER) {
+      await act(async () => setCurrent((value) => ({ ...value, employeeId, preview: null, linkage: emptyLinkage })));
+      await act(async () => setCurrent((value) => ({ ...value, preview: model().preview })));
+    } else await act(async () => setCurrent((value) => ({ ...value, effectiveDate })));
+    await act(async () => {});
+    expect(outputs()).toEqual(['东城区', '北京补充方案', '合成停用公司']);
+    await release();
+    expect(originCalls().at(-1)).toBe(`${ORIGIN_PATH}?employeeId=${employeeId}&effectiveDate=${effectiveDate}`);
+    expect(outputs(), '旧上下文的原值迟到后不得覆盖').toEqual(['东城区', '北京补充方案', '合成停用公司']);
   });
 
   it('AC-INS-02 带出的暂存单按单号取原值；换人或清除后不再带单号', async () => {
@@ -299,7 +375,7 @@ describe('AC-INS-01 / 02 / 09 薪资调整组的社保原值与调整值', () =>
 
 describe('AC-INS-03 / 04 调整后缴交地、方案与公司', () => {
   it('AC-INS-03 地区选择器：“全国”页签，按 parent 逐级懒加载，单选，回填只显示末级', async () => {
-    origin = ok({ regionCode: null, planId: null, companyId: null });
+    origin = ok(NO_PROFILE);
     await render(model());
     expect(regionCalls()).toEqual([]);
     await click(control('adjustedInsuranceRegionCode'));
