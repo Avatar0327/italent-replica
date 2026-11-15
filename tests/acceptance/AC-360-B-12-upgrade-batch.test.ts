@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type Db, migrationsFolder, sql, withTenant } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
+import { useTestDb, withCurrentWriteColumns } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { loadSurvey360Port } from '../../apps/api/src/modules/survey360/port.js';
@@ -17,8 +17,6 @@ import type { QuestionnaireView } from './AC-360-support.js';
 import { DATA_CHANGED, errorOf, key, outbox, reportLink, sceneB, type SceneB } from './AC-360-B-support.js';
 import { withPreAssessmentSchema } from './support/pre-assessment-schema.js';
 import { withPreBlacklistSchema } from './support/pre-blacklist-schema.js';
-import { withPreCustomFieldOptionsSchema } from './support/pre-custom-field-options-schema.js';
-import { withPreOrgCustomFieldsSchema } from './support/pre-org-custom-fields-schema.js';
 import { withPreInternCycleSchema } from './support/pre-intern-cycle-schema.js';
 import { withPrePartTimeSchema } from './support/pre-part-time-schema.js';
 import { withPreProfileUpdatedBySchema } from './support/pre-profile-updated-by-schema.js';
@@ -203,16 +201,14 @@ it('PR-A 历史计分批次升级后：不能凭它生成报告；重新计分�
     withPreBlacklistSchema(handle.db, () =>
       withPrePartTimeSchema(handle.db, () =>
         withPreInternCycleSchema(handle.db, () =>
-          withPreCustomFieldOptionsSchema(handle.db, () =>
-            withPreOrgCustomFieldsSchema(handle.db, () =>
-              withPreProfileUpdatedBySchema(handle.db, () =>
-                withPreAssessmentSchema(handle.db, async () => {
-                  const list: Legacy[] = [];
-                  for (const kind of ['content', 'weights', 'scoreMethod'] as const)
-                    list.push(await legacy(handle.db, kind));
-                  return list;
-                }),
-              ),
+          withPreProfileUpdatedBySchema(handle.db, () =>
+            withPreAssessmentSchema(handle.db, () =>
+              withCurrentWriteColumns(handle.db, async () => {
+                const list: Legacy[] = [];
+                for (const kind of ['content', 'weights', 'scoreMethod'] as const)
+                  list.push(await legacy(handle.db, kind));
+                return list;
+              }),
             ),
           ),
         ),

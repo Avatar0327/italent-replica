@@ -6,16 +6,13 @@
  * - 升级后驳回重提只冻结新一轮（不补写升级前的轮次），实例照常走完。
  */
 import { type Db, sql, withTenant } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
+import { useTestDb, withCurrentWriteColumns } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { loadRecusalFacts } from '../../apps/api/src/modules/approval/subjects.js';
 import { approvalWorld, transferScene, type InstanceView } from './AC-APV-support.js';
 import { withPreAssessmentSchema } from './support/pre-assessment-schema.js';
 import { withPreAuditSchema } from './support/pre-audit-schema.js';
 import { withPreExitRoutesSchema } from './support/pre-exit-routes-schema.js';
-import { withPreCustomFieldOptionsSchema } from './support/pre-custom-field-options-schema.js';
-import { withPreOrgCustomFieldsSchema } from './support/pre-org-custom-fields-schema.js';
-import { withPreTransferLinkageInsuranceSchema } from './support/pre-transfer-linkage-insurance-schema.js';
 import { withPreInternCycleSchema } from './support/pre-intern-cycle-schema.js';
 
 const database = useTestDb({ migrateBefore: '_approval_subjects' });
@@ -52,27 +49,23 @@ it('升级前的在途实例：节点列值保持、无冻结行按单主体回�
   const { w, s, process, view } = await withPreAuditSchema(handle.db, () =>
     withPreAssessmentSchema(handle.db, () =>
       withPreInternCycleSchema(handle.db, () =>
-        withPreCustomFieldOptionsSchema(handle.db, () =>
-          withPreOrgCustomFieldsSchema(handle.db, () =>
-            withPreTransferLinkageInsuranceSchema(handle.db, () =>
-              withPreExitRoutesSchema(handle.db, () =>
-                withoutSubjectsTable(handle.db, async () => {
-                  const w = await approvalWorld(handle.db, 'f048-upgrade');
-                  const s = await transferScene(w);
-                  const process = await w.publishedProcess({
-                    nodes: [
-                      {
-                        key: 'out_head',
-                        approver: { type: 'department', value: 'latest_record_department_head' },
-                        actions: { avoidSelf: true },
-                      },
-                    ],
-                  });
-                  const draft = await w.application(s.subject.employeeId, { departmentId: s.to });
-                  return { w, s, process, view: await w.submit(draft) };
-                }),
-              ),
-            ),
+        withPreExitRoutesSchema(handle.db, () =>
+          withoutSubjectsTable(handle.db, () =>
+            withCurrentWriteColumns(handle.db, async () => {
+              const w = await approvalWorld(handle.db, 'f048-upgrade');
+              const s = await transferScene(w);
+              const process = await w.publishedProcess({
+                nodes: [
+                  {
+                    key: 'out_head',
+                    approver: { type: 'department', value: 'latest_record_department_head' },
+                    actions: { avoidSelf: true },
+                  },
+                ],
+              });
+              const draft = await w.application(s.subject.employeeId, { departmentId: s.to });
+              return { w, s, process, view: await w.submit(draft) };
+            }),
           ),
         ),
       ),
