@@ -79,12 +79,11 @@ describe('AC-INS-15 前序挂起 / 迟到重试，三条调动的追加顺序与
     const person = await w.hire('重建社保员工');
     const [p1, p2] = [await w.plan('P1', '440100', w.MONTH), await w.plan('P2', '440100', w.MONTH)];
     const [c1, c2] = [await w.company('C1'), await w.company('C2')];
-    const a = await w.submitTransfer(
-      person,
-      '2026-10-05',
-      { adjustedInsuranceRegionCode: '440100', adjustedInsurancePlanId: p1, adjustedInsuranceCompanyId: c1 },
-      { departmentId: w.to.id },
-    );
+    const a = await w.submitTransfer(person, '2026-10-05', {
+      adjustedInsuranceRegionCode: '440100',
+      adjustedInsurancePlanId: p1,
+      adjustedInsuranceCompanyId: c1,
+    });
     const b = await w.submitTransfer(person, '2026-10-05', {
       adjustedInsurancePlanId: p2,
       adjustedInsuranceCompanyId: c2,
@@ -96,7 +95,13 @@ describe('AC-INS-15 前序挂起 / 迟到重试，三条调动的追加顺序与
     expect(await w.archive(person.employee.id)).toEqual([]);
 
     // A 失败后再发起、审批通过时生效日已到的 C：排在 A 之后，计划日 10-06，审批日 10-07 顺延生效
-    const c = await w.submitTransfer(person, '2026-10-06', { adjustedInsuranceRegionCode: '110105' });
+    // C 不进编制已满的调入部门（保存即会被编制校验拒绝），留在调出部门，只带社保调整
+    const c = await w.submitTransfer(
+      person,
+      '2026-10-06',
+      { adjustedInsuranceRegionCode: '110105' },
+      { departmentId: w.from.id },
+    );
     await w.approve(c, '2026-10-07T02:00:00Z');
     fullDepartments.delete(w.to.id);
     expect((await w.retry(a, '2026-10-07T04:00:00Z')).status).toBe(200);

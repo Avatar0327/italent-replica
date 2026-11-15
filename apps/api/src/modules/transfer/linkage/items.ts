@@ -10,6 +10,7 @@ import { findCurrentRecord } from '../../employment/read-model.js';
 import { lockTransferParticipants } from '../../employment/transfer-locks.js';
 import type { EmploymentContext } from '../../employment/types.js';
 import { authorizeOrgRole, authorizeSubordinateField, type LinkageAccess } from './access.js';
+import { appendInsuranceArchive } from './insurance-archive.js';
 import { dutyItemFailure, executeDutyItem, type DutyItemFailure } from './duty-execution.js';
 import type { DutyRelation, OrgRole } from './input.js';
 import { transferPartTimePort } from './part-time.js';
@@ -91,6 +92,10 @@ export async function attemptLinkageItem(tx: Tx, ctx: EmploymentContext, item: L
 }
 
 async function executeItem(tx: Tx, ctx: EmploymentContext, item: LinkageItemRow) {
+  if (item.itemType === 'insurance_archive') {
+    await appendInsuranceArchive(tx, ctx, item);
+    return;
+  }
   if (item.itemType === 'part_time_end') {
     await transferPartTimePort().end(tx, ctx, {
       employeeId: item.employeeId,

@@ -537,7 +537,10 @@ export const transferLinkageItems = pgTable(
       columns: [t.tenantId, t.orgId],
       foreignColumns: [orgObjects.tenantId, orgObjects.id],
     }),
-    check('transfer_linkage_items_type', sql`${t.itemType} IN ('duty_subordinate', 'duty_org_role', 'part_time_end')`),
+    check(
+      'transfer_linkage_items_type',
+      sql`${t.itemType} IN ('duty_subordinate', 'duty_org_role', 'part_time_end', 'insurance_archive')`,
+    ),
     check('transfer_linkage_items_status', sql`${t.status} IN ('pending', 'succeeded', 'failed', 'superseded')`),
     check(
       'transfer_linkage_items_failure',

@@ -88,6 +88,10 @@ export const TRANSFER_LINKAGE_FIELDS = [
   'handoverPersonId',
   'partTimeEnds',
   'dutyTransfer',
+  // F-474-8c-2c：社保调整值（缴交地 / 方案 / 公司），与 module-actions 的 INSURANCE_ADJUST_FIELDS 同名同序。
+  'adjustedInsuranceRegionCode',
+  'adjustedInsurancePlanId',
+  'adjustedInsuranceCompanyId',
 ] as const;
 
 /** 预置调动流程的节点表单：已交付且在审批表单上的字段（顺序同原站视图）。 */

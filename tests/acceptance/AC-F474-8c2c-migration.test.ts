@@ -14,18 +14,18 @@ const testDb = useTestDb();
 describe('transfer_linkage_items_type 追加 insurance_archive', () => {
   async function attempt(itemType: string) {
     const world = await seedInsuranceWorld(testDb().db, 'ins-migration');
-    return asOwner(testDb().db, world.tenantId, async (tx) => {
-      await tx.execute(sql`SAVEPOINT item_try`);
-      try {
+    // 真 PG 里语句出错会让事务进入中止状态：让错误直接抛出事务边界（整体回滚），再在外面取错误码
+    try {
+      await asOwner(testDb().db, world.tenantId, async (tx) => {
         await tx.execute(sql`INSERT INTO transfer_linkage_items
           (id, tenant_id, employee_id, business_id, line_no, item_type, effective_date, status)
           VALUES (${randomUUID()}, ${world.tenantId}, ${world.employeeId}, ${world.businessIds[0]}, 1,
             ${itemType}, '2026-10-10', 'pending')`);
-        return 'inserted';
-      } catch (error) {
-        return pgErrorCode(error);
-      }
-    });
+      });
+      return 'inserted';
+    } catch (error) {
+      return pgErrorCode(error);
+    }
   }
 
   it.each(['duty_subordinate', 'duty_org_role', 'part_time_end', 'insurance_archive'])(

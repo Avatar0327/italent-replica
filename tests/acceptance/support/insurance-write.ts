@@ -120,7 +120,12 @@ export async function insuranceWriteWorld(db: Db, label: string) {
     adjust: Adjust,
     fields: Record<string, unknown> = { place: `地点${uniqueSuffix()}` },
   ) {
-    const response = await w.transfer(person, { effectiveDate: date, fields, linkage: adjust });
+    // 跨部门调动必填调入部门；同一员工多次调动时调入部门相同，仍各自是一条独立的业务单。
+    const response = await w.transfer(person, {
+      effectiveDate: date,
+      fields: { departmentId: w.to.id, ...fields },
+      linkage: adjust,
+    });
     return w.saved(response);
   }
 

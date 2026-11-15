@@ -4,7 +4,7 @@
  * （含“我创建的”）与合同字段查看权。无权的部分不返回，不以空值暗示其存在。
  */
 import { and, eq, sql, transferHandovers, transferLinkageItems, transferOnTrials, type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { INSURANCE_ADJUST_FIELDS, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../../errors.js';
 import { checkScope } from '../../contracts/context.js';
 import { loadEmploymentBusiness } from '../../employment/read-model.js';
@@ -117,6 +117,13 @@ function visibleOptions(
     ...(show('handoverPersonId') ? { handover: options.handover } : {}),
     ...(show('partTimeEnds') ? { partTimes: options.partTimes } : {}),
     ...(show('dutyTransfer') ? { dutyTransfer: options.dutyTransfer } : {}),
+    // 社保调整值属任职记录对象字段，逐项随字段查看权（F-474-8c-2c）。
+    ...Object.fromEntries(
+      INSURANCE_ADJUST_FIELDS.filter((code) => show(code) && options[code] != null).map((code) => [
+        code,
+        options[code],
+      ]),
+    ),
   };
 }
 
@@ -158,12 +165,19 @@ async function linkageResults(tx: Tx, ctx: EmploymentContext, businessId: string
       : null,
     dutyTransfer: show('dutyTransfer') ? dutyTransferView(items) : null,
     partTimes: show('partTimeEnds') ? items.filter((item) => item.itemType === 'part_time_end').map(itemView) : [],
+    insuranceArchive: insuranceItem(items, show),
   };
+}
+
+/** 社保档案子项：三个调整字段至少一项可见才返回，状态与失败原因随之披露。 */
+function insuranceItem(items: readonly LinkageItemRow[], show: (code: string) => boolean) {
+  const item = items.find((row) => row.itemType === 'insurance_archive');
+  return item && INSURANCE_ADJUST_FIELDS.some(show) ? itemView(item) : null;
 }
 
 /** `21` §2 DutyTransfer：职责总数、下属员工 / 组织角色职责数、失败数，明细逐条列出。 */
 function dutyTransferView(items: readonly LinkageItemRow[]) {
-  const duties = items.filter((item) => item.itemType !== 'part_time_end');
+  const duties = items.filter((item) => item.itemType.startsWith('duty_'));
   if (!duties.length) return null;
   return {
     total: duties.length,

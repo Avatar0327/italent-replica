@@ -24,6 +24,9 @@ interface VersionRow {
   handover: boolean;
   handoverPersonId: string | null;
   partTimeRecordIds: string[];
+  adjustedInsuranceRegionCode: string | null;
+  adjustedInsurancePlanId: string | null;
+  adjustedInsuranceCompanyId: string | null;
 }
 
 interface DutyRow {
@@ -72,7 +75,10 @@ async function linkageVersion(
     SELECT id, version_no AS "versionNo", contract_target_id AS "contractTargetId",
       contract_fields AS "contractFields", adjust_salary AS "adjustSalary",
       on_trial_start_date::text AS "onTrialStartDate", on_trial_months AS "onTrialMonths", handover,
-      handover_person_id AS "handoverPersonId", part_time_record_ids AS "partTimeRecordIds"
+      handover_person_id AS "handoverPersonId", part_time_record_ids AS "partTimeRecordIds",
+      adjusted_insurance_region_code AS "adjustedInsuranceRegionCode",
+      adjusted_insurance_plan_id AS "adjustedInsurancePlanId",
+      adjusted_insurance_company_id AS "adjustedInsuranceCompanyId"
     FROM transfer_linkage_versions WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid
       AND (${atMost}::int IS NULL OR version_no <= ${atMost}::int)
     ORDER BY version_no DESC LIMIT 1`),
@@ -101,6 +107,9 @@ function optionsOf(row: VersionRow, duties: readonly DutyRow[]): LinkageOptions 
     handover: row.handover ? { handoverPersonId: row.handoverPersonId } : null,
     partTimes: (row.partTimeRecordIds ?? []).map((recordId) => ({ recordId })),
     dutyTransfer: duties.length ? { subordinates, orgRoles } : null,
+    adjustedInsuranceRegionCode: row.adjustedInsuranceRegionCode,
+    adjustedInsurancePlanId: row.adjustedInsurancePlanId,
+    adjustedInsuranceCompanyId: row.adjustedInsuranceCompanyId,
   };
 }
 
@@ -129,6 +138,9 @@ export async function appendLinkageVersion(
     handover: !!options.handover,
     handoverPersonId: options.handover?.handoverPersonId ?? null,
     partTimeRecordIds: options.partTimes.map((item) => item.recordId),
+    adjustedInsuranceRegionCode: options.adjustedInsuranceRegionCode,
+    adjustedInsurancePlanId: options.adjustedInsurancePlanId,
+    adjustedInsuranceCompanyId: options.adjustedInsuranceCompanyId,
     commandId: ctx.commandId,
     createdAt: ctx.now,
   });
@@ -172,6 +184,14 @@ export function dutyLines(options: LinkageOptions) {
   ];
 }
 
+/** 本单填写了任一社保调整值（设计 §3.3：任一项带值即写联动版本，也据此登记 insurance_archive 子项）。 */
+export function hasInsuranceAdjust(options: LinkageOptions | null | undefined): boolean {
+  return !!(
+    options &&
+    (options.adjustedInsuranceRegionCode || options.adjustedInsurancePlanId || options.adjustedInsuranceCompanyId)
+  );
+}
+
 export function hasLinkage(options: LinkageOptions | null | undefined): boolean {
   return !!(
     options &&
@@ -180,7 +200,8 @@ export function hasLinkage(options: LinkageOptions | null | undefined): boolean 
       options.onTrial ||
       options.handover ||
       options.partTimes.length ||
-      options.dutyTransfer)
+      options.dutyTransfer ||
+      hasInsuranceAdjust(options))
   );
 }
 

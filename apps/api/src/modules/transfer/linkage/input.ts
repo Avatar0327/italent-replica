@@ -15,6 +15,10 @@ export type OrgRole = (typeof ORG_ROLES)[number];
 export type DutyRelation = 'direct' | 'dotted';
 
 const linkageSchema = z.strictObject({
+  // F-474-8c-2c：社保三项调整值；缴交地是否字典内、方案 / 公司是否可用由 validation.ts 读库校验。
+  adjustedInsuranceRegionCode: z.string().min(1).max(20).nullable().optional(),
+  adjustedInsurancePlanId: uuid.nullable().optional(),
+  adjustedInsuranceCompanyId: uuid.nullable().optional(),
   contract: z
     .strictObject({ targetId: uuid, fields: contractFieldsSchema.default({}) })
     .nullable()
@@ -69,6 +73,9 @@ export interface LinkageOptions {
     readonly subordinates: readonly DutySubordinate[];
     readonly orgRoles: readonly DutyOrgRole[];
   } | null;
+  readonly adjustedInsuranceRegionCode?: string | null;
+  readonly adjustedInsurancePlanId?: string | null;
+  readonly adjustedInsuranceCompanyId?: string | null;
 }
 
 export function normalizeLinkage(raw: unknown): LinkageOptions {
@@ -101,6 +108,9 @@ export function normalizeLinkage(raw: unknown): LinkageOptions {
     handover: input.handover ?? null,
     partTimes: input.partTimes ?? [],
     dutyTransfer: subordinates.length || orgRoles.length ? { subordinates, orgRoles } : null,
+    adjustedInsuranceRegionCode: input.adjustedInsuranceRegionCode ?? null,
+    adjustedInsurancePlanId: input.adjustedInsurancePlanId ?? null,
+    adjustedInsuranceCompanyId: input.adjustedInsuranceCompanyId ?? null,
   };
 }
 
