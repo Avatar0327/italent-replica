@@ -8,7 +8,7 @@ import { AppError } from '../../../errors.js';
 import { auditEmployment } from '../../employment/context.js';
 import { rowsOf } from '../../employment/record-store.js';
 import type { EmploymentContext } from '../../employment/types.js';
-import { insurancePosition, LATEST_SEQ } from '../../insurance/archive-fold.js';
+import { foldInsuranceOrigin, insurancePosition, LATEST_SEQ } from '../../insurance/archive-fold.js';
 import type { LinkageOptions } from './input.js';
 import { latestLinkage } from './store.js';
 import type { LinkageItemRow } from './items.js';
@@ -95,11 +95,15 @@ export async function appendInsuranceArchive(tx: Tx, ctx: EmploymentContext, ite
       reason: 'INSURANCE_ARCHIVE_CONFLICT',
     });
   }
+  // 第 2 轮 P2-1：来源调动已被删除 / 撤销 / 驳回时不得首次追加（已写入的版本照旧保留，U7-A，上面已先判）。
+  await assertSourceLive(tx, ctx, item);
   const position = await insurancePosition(tx, ctx.tenantId, item.employeeId, item.effectiveDate, item.businessId);
   // 业务还没写状态事件（正在落地的直接业务）：位置不确定，不落在“最晚”，记为可重试的失败。
   if (position.operationSeq === LATEST_SEQ)
     throw new AppError('CONFLICT', '调动的操作先后尚未确定，稍后重试', { reason: 'INSURANCE_OPERATION_PENDING' });
   await validateInsuranceAdjust(tx, ctx.tenantId, adjust, position.effectiveDate);
+  // 第 2 轮 P2-3：before = 本单业务位置之前的折叠原值（与读侧 AC-INS-02 同一口径），不取最大追加版本。
+  const origin = await foldInsuranceOrigin(tx, ctx.tenantId, item.employeeId, position);
   const [row] = rowsOf<{ versionNo: number }>(
     await tx.execute(sql`INSERT INTO social_insurance_archive_versions
         (tenant_id, employee_id, version_no, effective_date, planned_effective_date, operation_seq,
@@ -112,11 +116,38 @@ export async function appendInsuranceArchive(tx: Tx, ctx: EmploymentContext, ite
       WHERE tenant_id = ${ctx.tenantId} AND employee_id = ${item.employeeId}::uuid
       RETURNING version_no AS "versionNo"`),
   );
-  await auditEmployment(tx, ctx, 'insurance.archive.append', 'insurance-archive', item.businessId, null, {
-    versionNo: row!.versionNo,
-    effectiveDate: position.effectiveDate,
-    plannedEffectiveDate: position.plannedDate,
-    source: 'transfer',
-    ...adjust,
-  });
+  // 键用员工字段名（与审计字段披露同一套），只记本单填写的项，未填的不出现。
+  const filled = ADJUST_KEYS.filter(([, key]) => adjust[key]);
+  await auditEmployment(
+    tx,
+    ctx,
+    'insurance.archive.append',
+    'insurance-archive',
+    item.businessId,
+    Object.fromEntries(filled.map(([field, key]) => [field, origin[key]])),
+    {
+      versionNo: row!.versionNo,
+      effectiveDate: position.effectiveDate,
+      plannedEffectiveDate: position.plannedDate,
+      source: 'transfer',
+      ...Object.fromEntries(filled.map(([field, key]) => [field, adjust[key]])),
+    },
+  );
+}
+
+const ADJUST_KEYS = [
+  ['adjustedInsuranceRegionCode', 'regionCode'],
+  ['adjustedInsurancePlanId', 'planId'],
+  ['adjustedInsuranceCompanyId', 'companyId'],
+] as const;
+
+/** 来源调动的当前状态已终结（删除 / 作废 / 驳回）：不得为它首次追加档案；失败码可辨认，子项保持失败。 */
+async function assertSourceLive(tx: Tx, ctx: EmploymentContext, item: LinkageItemRow): Promise<void> {
+  const [latest] = rowsOf<{ state: string }>(
+    await tx.execute(sql`SELECT state FROM employment_state_events
+      WHERE tenant_id = ${ctx.tenantId} AND business_id = ${item.businessId}::uuid
+      ORDER BY event_no DESC LIMIT 1`),
+  );
+  if (latest && ['deleted', 'voided', 'disapproved'].includes(latest.state))
+    throw new AppError('CONFLICT', '来源调动已删除或作废，不再写入社保档案', { reason: 'INSURANCE_SOURCE_DELETED' });
 }
