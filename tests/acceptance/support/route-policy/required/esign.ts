@@ -74,7 +74,125 @@ function write(method: string, path: string, operation: 'create' | 'update'): Ob
 const OPTIONS = '/template-options/transfer-form';
 const optionsCall = (anchor: string) => call('GET', OPTIONS, anchor);
 
+const RECORD_ROUTES = 'apps/api/src/modules/esign/record-routes.ts';
+const RECORD_ACCESS = 'apps/api/src/modules/esign/record-access.ts';
+const SIGN_RECORD = 'TenantBase.ESignRecord';
+const recordConst: Evidence[] = [
+  { role: 'const', unit: `${RECORD_ACCESS}#RECORD_OBJECT`, anchor: 'MODULE_OBJECTS.eSignRecord.code' },
+  {
+    role: 'const',
+    unit: 'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>eSignRecord',
+    anchor: "object('ESignRecord'",
+  },
+];
+const owner: Obligation = {
+  perm: 'guard:esign.recordOwner',
+  at: [
+    {
+      role: 'call',
+      unit: `${RECORD_ACCESS}#loadVisibleSignTask`,
+      anchor: "if (!task) throw new AppError('NOT_FOUND', '签署任务不存在')",
+    },
+    {
+      role: 'scope',
+      unit: `${RECORD_ACCESS}#recordScope`,
+      anchor: 'scopeSql(scope, { person: sql`${esignTasks.employeeId}` })',
+    },
+  ],
+};
+const recordAction = (code: string): Obligation[] => [
+  {
+    perm: `btn:${SIGN_RECORD}#${code}@list`,
+    facts: ['button:button()'],
+    at: [
+      { role: 'call', unit: `${RECORD_ROUTES}#batch`, anchor: "await button(deps, ctx, RECORD_OBJECT, code, 'list')" },
+      {
+        role: 'const',
+        unit: `${RECORD_ROUTES}#batch`,
+        anchor: "const code = action === 'remind' ? 'ESignRecord.Remind' : 'ESignRecord.Revoke'",
+      },
+      BUTTON,
+      ...recordConst,
+    ],
+  },
+  owner,
+];
+
 export const ESIGN: RequiredTable = {
+  [`GET ${BASE}/records`]: [
+    {
+      perm: `obj:${SIGN_RECORD}:view`,
+      facts: ['object:objectContext', `objectOp:${SIGN_RECORD}:view`],
+      at: [
+        {
+          role: 'call',
+          unit: `${RECORD_ROUTES}#route:GET ${BASE}/records`,
+          anchor: "const ctx = await objectContext(c, deps, RECORD_OBJECT, 'view')",
+        },
+        CONTEXT,
+        ...recordConst,
+        {
+          role: 'scope',
+          unit: `${RECORD_ACCESS}#recordScope`,
+          anchor: 'scopeSql(scope, { person: sql`${esignTasks.employeeId}` })',
+        },
+      ],
+    },
+  ],
+  [`POST ${BASE}/records/remind`]: recordAction('ESignRecord.Remind'),
+  [`POST ${BASE}/records/revoke`]: recordAction('ESignRecord.Revoke'),
+  [`GET ${BASE}/records/files`]: [
+    {
+      perm: `btn:${SIGN_RECORD}#ESignRecord.Download@list`,
+      at: [
+        {
+          role: 'call',
+          unit: `${RECORD_ROUTES}#download`,
+          anchor:
+            'await button({ ...deps, authorize: authorizeInTransaction(deps.authorize, tx) }, ctx, ' +
+            "RECORD_OBJECT, 'ESignRecord.Download', 'list',)",
+        },
+        BUTTON,
+        ...recordConst,
+      ],
+    },
+    owner,
+    {
+      perm: 'guard:esign.filesReadable',
+      at: [
+        { role: 'call', unit: `${RECORD_ROUTES}#download`, anchor: 'requireFiles(fields)' },
+        {
+          role: 'impl',
+          unit: `${RECORD_ACCESS}#requireFiles`,
+          anchor: "if (!canRead(fields, 'files')) throw new AppError('FIELD_FORBIDDEN', '没有电子文件查看权限')",
+        },
+      ],
+    },
+  ],
+  [`GET ${BASE}/mine/:id/files`]: [
+    {
+      perm: 'own:esign.signer',
+      at: [
+        {
+          role: 'call',
+          unit: `${RECORD_ROUTES}#download`,
+          anchor: "if (own) return downloadInputs(tx, ctx, [uuidParam(c)], 'own', undefined)",
+        },
+        {
+          role: 'impl',
+          unit: `${RECORD_ACCESS}#loadVisibleSignTask`,
+          anchor: "scope === 'own' ? signer(ctx) : recordScope(scope)",
+        },
+        {
+          role: 'scope',
+          unit: `${RECORD_ACCESS}#signer`,
+          anchor:
+            'sql`(${esignTasks.employeeSignerUserId}=${ctx.userId}::uuid OR ' +
+            '${esignTasks.initiatorUserId}=${ctx.userId}::uuid)`',
+        },
+      ],
+    },
+  ],
   [`GET ${BASE}/templates`]: [view('/templates')],
   [`POST ${BASE}/templates`]: [write('POST', '/templates', 'create')],
   [`PATCH ${BASE}/templates/:id`]: [write('PATCH', '/templates/:id', 'update')],

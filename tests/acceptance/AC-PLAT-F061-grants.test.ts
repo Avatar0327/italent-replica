@@ -266,6 +266,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       54: '36827d498bb0e95c',
       // F-481-S2：调动电子签署两字段，版本占位 main + 1。
       55: '1a33bcf7af9d536b',
+      // F-481-S3b：签署记录 HR 对象、只读字段与三个按钮（占位 main + 1）。
+      56: '701f775f66df36c7',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

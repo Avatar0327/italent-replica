@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { createUser, grantMembership } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { simulatedProvider } from '../../apps/api/src/modules/esign/provider.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { recordsWorld, json, zipNames, RECORD, BASE, COLUMNS } from './AC-TRF-F481-s3b-support.js';
-import { tenantApi, seedTenantWithMember } from './support/tenant-api.js';
+import { tenantApi, seedTenantWithMember, cmd } from './support/tenant-api.js';
 
 const database = useTestDb();
 describe('AC-TRF-F481-16 / 19 / 22 文件', () => {
@@ -11,7 +13,18 @@ describe('AC-TRF-F481-16 / 19 / 22 文件', () => {
     const w = await recordsWorld(database().db, 'files');
     const done = await w.complete(w.task);
     const download = (ids: string) => w.call('GET', `${BASE}/records/files?ids=${ids}`);
-    const pdf = await download(done.id);
+    const provider = vi.spyOn(simulatedProvider, 'signedFiles');
+    let pdf: Response;
+    try {
+      pdf = await download(done.id);
+      const input = provider.mock.calls[0]![0];
+      expect(input.documents[0]!.blocks).toContainEqual({ kind: 'text', text: (await w.files(done.id))[0]!.content });
+      expect(JSON.stringify(input.documents)).toContain('复刻模拟签署，无电子印章');
+      expect(JSON.stringify(input.documents)).toContain('员工本人：ZZ_F481_EMP_01');
+      expect(JSON.stringify(input.documents)).toContain(w.session.tenant.name);
+    } finally {
+      provider.mockRestore();
+    }
     expect(pdf.status, await pdf.clone().text()).toBe(200);
     expect(pdf.headers.get('content-type')).toBe('application/pdf');
     expect(decodeURIComponent(pdf.headers.get('content-disposition')!)).toContain('ZZ_F481_A.pdf');
@@ -84,6 +97,13 @@ describe('AC-TRF-F481-16 / 19 / 22 文件', () => {
       expect(response.headers.get('content-type')).toBe('application/pdf');
     }
     const outsider = await seedTenantWithMember(w.db, 'ZZ_F481_other');
+    const third = await createUser(
+      w.db,
+      { email: `syn_${randomUUID()}@example.com`, displayName: 'ZZ_F481_THIRD' },
+      cmd(),
+    );
+    await grantMembership(w.db, { tenantId: w.tenantId, userId: third.id, expectedRevision: 0 }, cmd());
+    expect((await w.request({}, third.id)('GET', `${BASE}/mine/${done.id}/files`)).status).toBe(404);
     const response = await tenantApi(w.db).request('GET', `${BASE}/mine/${done.id}/files`, {
       user: outsider.user.id,
       tenant: outsider.tenant.id,
@@ -111,5 +131,42 @@ describe('AC-TRF-F481-16 / 19 / 22 文件', () => {
     const noScope = w.request({ scopes: { [RECORD]: EMPTY_SCOPE } });
     expect((await noScope('GET', `${BASE}/records/files?ids=${done.id}`)).status).toBe(404);
     expect(await w.exports()).toEqual([]);
+  });
+
+  it('22 单独验证 files 列裁剪与无 owner 读权的 ZIP 命名', async () => {
+    const w = await recordsWorld(database().db, 'trim-name');
+    const done = await w.complete(w.task);
+    const noFiles = w.request({ fields: { [RECORD]: COLUMNS.filter((f) => f !== 'files') } });
+    const list = await json(await noFiles('GET', `${BASE}/records`));
+    expect(list.items[0]).not.toHaveProperty('files');
+    expect(JSON.stringify(list)).not.toContain('ZZ_F481_A');
+    const second = await w.complete(await w.next());
+    const noOwner = w.request({ fields: { [RECORD]: COLUMNS.filter((f) => f !== 'owner') } });
+    const response = await noOwner('GET', `${BASE}/records/files?ids=${done.id},${second.id}`);
+    expect(response.status).toBe(200);
+    expect(zipNames(Buffer.from(await response.arrayBuffer()))).toEqual([
+      `${done.id.slice(0, 8)}_ZZ_F481_A.pdf`,
+      `${second.id.slice(0, 8)}_ZZ_F481_A.pdf`,
+    ]);
+  });
+
+  it('16 ZIP 同名加序号并清理路径/控制字符，不改变签署正文快照', async () => {
+    const w = await recordsWorld(database().db, 'filename');
+    await w.complete(w.task);
+    const renamed = await w.api.request('PATCH', `${BASE}/templates/${w.templates[0]!.id}`, {
+      ...w.as,
+      ifMatch: 1,
+      body: { name: '../ZZ_F481_\r\n模板' },
+    });
+    expect(renamed.status).toBe(200);
+    const done = await w.complete(await w.next());
+    const second = await w.complete(await w.next());
+    const response = await w.call('GET', `${BASE}/records/files?ids=${done.id},${second.id}`);
+    expect(response.status).toBe(200);
+    const names = zipNames(Buffer.from(await response.arrayBuffer()));
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
+    for (const name of names) expect(name).not.toMatch(/[\\/\r\n]/);
+    expect(names[1]).toBe(names[0]!.replace('.pdf', '_2.pdf'));
   });
 });

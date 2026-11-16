@@ -76,7 +76,11 @@ export async function recordsWorld(db: Db, label: string) {
     );
   const exports = () =>
     withTenant(db, w.tenantId, async (tx) =>
-      rows(await tx.execute(sql`SELECT * FROM operation_logs WHERE tenant_id=${w.tenantId} AND behavior='export'`)),
+      rows(
+        await tx.execute(sql`
+        SELECT * FROM audit_operation_logs WHERE tenant_id=${w.tenantId} AND behavior='export'
+      `),
+      ),
     );
   const task = (await w.tasks())[0]!;
   expect(task.status).toBe('signing');

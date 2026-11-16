@@ -27,9 +27,11 @@ describe('AC-TRF-F481-12 / 13① / 15 / 19 / 21 签署记录', () => {
     });
     const signing = await w.next();
     await withTenant(w.db, w.tenantId, async (tx) => {
-      for (const [i, task] of [completed, revoked, expired, failed, signing].entries())
-        await tx.execute(sql`UPDATE esign_tasks SET initiated_at=${new Date(Date.parse(SIGN_AT) + i * 1000)}
+      for (const [i, task] of [completed, revoked, expired, failed, signing].entries()) {
+        const initiatedAt = new Date(Date.parse(SIGN_AT) + i * 1000).toISOString();
+        await tx.execute(sql`UPDATE esign_tasks SET initiated_at=${initiatedAt}
           WHERE tenant_id=${w.tenantId} AND id=${task.id}`);
+      }
     });
     const all = await json(await w.call('GET', `${BASE}/records?tab=all`));
     expect(all.items.map((r: { id: string }) => r.id)).toEqual([
@@ -70,10 +72,23 @@ describe('AC-TRF-F481-12 / 13① / 15 / 19 / 21 签署记录', () => {
     const scope = {
       ...EMPTY_SCOPE,
       hasDataPermission: true,
-      terms: [{ dimension: 'organization' as const, orgIds: [w.from.id], personIds: [] }],
+      terms: [
+        {
+          dimension: 'organization' as const,
+          orgIds: [w.from.id],
+          personIds: [],
+          personQuery: { kind: 'organization' as const, tenantId: w.tenantId, asOf: '2026-10-10' },
+        },
+      ],
     };
     const request = w.request({ scopes: { [RECORD]: scope } });
     expect(await json(await request('GET', `${BASE}/records?pageSize=1`))).toMatchObject({ items: [], total: 0 });
+    const allowed = w.request({
+      scopes: { [RECORD]: { ...scope, terms: [{ ...scope.terms[0]!, orgIds: [w.to.id] }] } },
+    });
+    expect(
+      (await json(await allowed('GET', `${BASE}/records?pageSize=1`))).items.map((r: { id: string }) => r.id),
+    ).toEqual([w.task.id]);
     for (const action of ['revoke', 'remind']) {
       const body = await json(
         await request('POST', `${BASE}/records/${action}`, { body: { items: [{ id: w.task.id, revision: 1 }] } }),
@@ -81,6 +96,9 @@ describe('AC-TRF-F481-12 / 13① / 15 / 19 / 21 签署记录', () => {
       expect(body.items).toEqual([{ id: w.task.id, ok: false, code: 'NOT_FOUND' }]);
     }
     const b = await recordsWorld(database().db, 'foreign');
+    const foreignList = await json(await b.call('GET', `${BASE}/records`));
+    expect(foreignList.items.map((r: { id: string }) => r.id)).toEqual([b.task.id]);
+    expect(foreignList.total).toBe(1);
     for (const id of [w.task.id, randomUUID()]) {
       const body = await json(await b.batch('revoke', [{ id, revision: 1 }]));
       expect(body.items).toEqual([{ id, ok: false, code: 'NOT_FOUND' }]);
@@ -203,5 +221,18 @@ describe('AC-TRF-F481-12 / 13① / 15 / 19 / 21 签署记录', () => {
       if (profile.hr) expect(grant?.fields).toContainEqual({ fieldCode: 'files', view: true, edit: false });
       else expect(grant).toBeUndefined();
     }
+  });
+
+  it('12 / 13 并发同命令只提醒一次，同 revision 撤销只有一次成功', async () => {
+    const w = await recordsWorld(database().db, 'concurrent');
+    const key = randomUUID();
+    const reminders = await Promise.all([w.batch('remind', [w.task], key), w.batch('remind', [w.task], key)]);
+    for (const response of reminders) expect((await json(response)).items).toEqual([{ id: w.task.id, ok: true }]);
+    expect(await w.notices()).toHaveLength(1);
+    const responses = await Promise.all([w.batch('revoke', [w.task]), w.batch('revoke', [w.task])]);
+    const receipts = await Promise.all(responses.map((r) => json(r)));
+    expect(receipts.map((r) => r.items[0].ok).sort()).toEqual([false, true]);
+    expect(receipts.find((r) => !r.items[0].ok)!.items[0].code).toBe('REVISION_CONFLICT');
+    expect(await w.notices()).toHaveLength(3);
   });
 });
