@@ -1,25 +1,15 @@
 /** F-481 S3c：只调用本片调度与已合入 S1/S2/S3a，不依赖签署记录或下载。 */
-import { sql, withTenant, type Db } from '@italent/db';
+import { randomUUID } from 'node:crypto';
+import { employmentBusinessObjects, esignTasks, esignTaskFiles, sql, withTenant, withPlatform } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
-import { runContractJobs, startContractScheduler } from '../../apps/api/src/modules/contracts/scheduler.js';
+import * as scheduler from '../../apps/api/src/modules/esign/scheduler.js';
 import { applySignEvent } from '../../apps/api/src/modules/esign/sign-events.js';
+import { simulatedProvider } from '../../apps/api/src/modules/esign/provider.js';
 import * as notifications from '../../apps/api/src/modules/approval/notifications.js';
 import { mineWorld } from './AC-TRF-F481-s3a-support.js';
 import { rows } from './AC-TRF-F481-s2-support.js';
 
-// 红提交：基线无电子签调度，运行 server.ts 已有的真实合同调度；以任务/通知断言证明缺口，
-// 不把 import 失败或函数不存在算红证据。实现提交改为直接静态导入本片调度。
-interface SchedulerModule {
-  runESignJobs(db: Db, options: { clock: () => Date; onError?: (error: unknown) => void }): Promise<unknown>;
-  startESignScheduler(db: Db, options: { clock: () => Date; intervalMs?: number }): { stop(): Promise<void> };
-}
-const modules = import.meta.glob<SchedulerModule>('../../apps/api/src/modules/esign/scheduler.ts', { eager: true });
-const scheduler = Object.values(modules)[0] ?? {
-  runESignJobs: (db: Db, options: { clock: () => Date }) => runContractJobs(db, {}, options),
-  startESignScheduler: (db: Db, options: { clock: () => Date; intervalMs?: number }) =>
-    startContractScheduler(db, options),
-};
 const database = useTestDb();
 const REMIND_AT = new Date('2026-10-11T01:00:00.000Z');
 const EXPIRE_AT = new Date('2026-10-12T01:00:00.000Z');
@@ -178,5 +168,159 @@ describe('AC-TRF-F481-10 / 11 / 21 定时过期与提醒', () => {
     expect((await w.tasks())[0]?.status).toBe('expired');
     expect((await w.audits(task.id)).filter((a) => a.action === 'esign.task.expired')).toHaveLength(1);
     expect(await w.tasks()).toHaveLength(1);
+  });
+});
+
+describe('AC-TRF-F481-10 / 11 / 21 调度隔离与恢复边界', () => {
+  it('10 / 21 过期写审计后失败整条回滚，其他租户继续；下轮重试仅过期一次', async () => {
+    const a = await world('expire-failure');
+    const b = await world('expire-healthy');
+    const before = await a.w.audits(a.task.id);
+    const original = simulatedProvider.revoke;
+    const spy = vi.spyOn(simulatedProvider, 'revoke').mockImplementation(async (input) => {
+      if (input.taskId === a.task.id) throw new Error('SYN_EXPIRE_FAILED');
+      return original(input);
+    });
+    const errors: unknown[] = [];
+    try {
+      await round(EXPIRE_AT, (error) => errors.push(error));
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await a.w.tasks()).toEqual([a.task]);
+    expect(await a.w.audits(a.task.id)).toEqual(before);
+    expect(await ledger(a.w, a.task.id)).toEqual([]);
+    expect(await failures(a.w, a.task.id)).toHaveLength(1);
+    expect((await b.w.tasks())[0]?.status).toBe('expired');
+    expect(errors).toHaveLength(1);
+    await round(EXPIRE_AT);
+    await round(EXPIRE_AT);
+    expect((await a.w.tasks())[0]?.status).toBe('expired');
+    expect((await a.w.audits(a.task.id)).filter((a) => a.action === 'esign.task.expired')).toHaveLength(1);
+    expect(await a.w.notices()).toEqual([]);
+  });
+
+  it('10 / 11 / 21 单租户 101 条跨页：失败不挡后续任务、另一租户；失败次数逐轮留存且可重试', async () => {
+    const { w, task } = await world('pages');
+    const other = await world('pages-other');
+    const files = await w.files(task.id);
+    // 规模夹具用 S1 已合入表契约造 100 条合成任务；正常业务流程由上述 HTTP + S2 用例覆盖。
+    await withTenant(w.db, w.tenantId, async (tx) => {
+      for (let index = 0; index < 100; index += 1) {
+        const businessId = randomUUID();
+        const id = randomUUID();
+        await tx
+          .insert(employmentBusinessObjects)
+          .values({ id: businessId, tenantId: w.tenantId, employeeId: task.employeeId });
+        await tx.insert(esignTasks).values({ ...task, id, businessId });
+        await tx.insert(esignTaskFiles).values(files.map((file) => ({ ...file, taskId: id })));
+      }
+    });
+    const original = notifications.notifyMessage;
+    const spy = vi.spyOn(notifications, 'notifyMessage').mockImplementation(async (...args) => {
+      if ('businessId' in args[2] && args[2].businessId === task.id) throw new Error('SYN_ONE_BAD_TASK');
+      return original(...args);
+    });
+    const errors: unknown[] = [];
+    try {
+      await round(REMIND_AT, (error) => errors.push(error));
+      await round(REMIND_AT, (error) => errors.push(error));
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await w.notices()).toHaveLength(100);
+    expect(await other.w.notices()).toHaveLength(1);
+    expect((await w.tasks()).filter((t) => t.expiryRemindedAt !== null)).toHaveLength(100);
+    expect(await failures(w, task.id)).toHaveLength(2);
+    expect(errors).toHaveLength(2);
+    await round(REMIND_AT);
+    expect(await w.notices()).toHaveLength(101);
+    await round(EXPIRE_AT);
+    expect((await w.tasks()).filter((t) => t.status === 'expired')).toHaveLength(101);
+    expect(await w.notices()).toHaveLength(101);
+  });
+
+  it('10 / 11 终态不动、不重试发起；停用租户不扫描，另一租户仍正常运行', async () => {
+    const a = await world('terminal');
+    const b = await world('inactive');
+    const c = await world('active');
+    await a.w.revoke(a.task);
+    const snapshot = { tasks: await a.w.tasks(), notices: await a.w.notices(), audits: await a.w.audits(a.task.id) };
+    await withPlatform(b.w.db, (tx) => tx.execute(sql`UPDATE tenants SET status='suspended' WHERE id=${b.w.tenantId}`));
+    try {
+      await round(REMIND_AT);
+      expect(await b.w.tasks()).toEqual([b.task]);
+      expect(await b.w.notices()).toEqual([]);
+      expect(await c.w.notices()).toHaveLength(1);
+      await round(EXPIRE_AT);
+      expect(await a.w.tasks()).toEqual(snapshot.tasks);
+      expect(await a.w.notices()).toEqual(snapshot.notices);
+      expect(await a.w.audits(a.task.id)).toEqual(snapshot.audits);
+      expect(await b.w.tasks()).toEqual([b.task]);
+      expect((await c.w.tasks())[0]?.status).toBe('expired');
+    } finally {
+      await withPlatform(b.w.db, (tx) => tx.execute(sql`UPDATE tenants SET status='active' WHERE id=${b.w.tenantId}`));
+    }
+  });
+
+  it('11 截止时间按租户 America/Chicago 时区，提醒仍按 24 小时窗口', async () => {
+    const { w, task } = await world('timezone');
+    await withPlatform(w.db, (tx) =>
+      tx.execute(sql`UPDATE tenants SET timezone='America/Chicago' WHERE id=${w.tenantId}`),
+    );
+    await round(REMIND_AT);
+    expect((await w.notices())[0]).toMatchObject({
+      business_id: task.id,
+      recipient_user_id: w.employeeUser,
+      payload: { 截止时间: '2026-10-11 20:00' },
+    });
+  });
+
+  it('10 / 11 启动立即执行、慢轮次不重叠；stop 等待在途事务并停止后续轮次', async () => {
+    const { w, task } = await world('stop');
+    let release!: () => void;
+    let entered!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const original = simulatedProvider.remind;
+    const spy = vi.spyOn(simulatedProvider, 'remind').mockImplementation(async (input) => {
+      if (input.taskId === task.id) {
+        entered();
+        await blocked;
+      }
+      return original(input);
+    });
+    const clock = vi.fn(() => REMIND_AT);
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const running = scheduler.startESignScheduler(w.db, { clock, intervalMs: 1000 });
+    try {
+      await started;
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(clock).toHaveBeenCalledTimes(1);
+      let stopped = false;
+      const stopping = running.stop().then(() => {
+        stopped = true;
+      });
+      await Promise.resolve();
+      expect(stopped).toBe(false);
+      release();
+      await stopping;
+      expect(await w.notices()).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(clock).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+      await running.stop();
+      vi.useRealTimers();
+      spy.mockRestore();
+    }
+  });
+
+  it.each([0, 999, 1.1, NaN, Infinity, 2147483648])('10 调度间隔 %s 不合法时拒绝启动', (intervalMs) => {
+    expect(() => scheduler.startESignScheduler(database().db, { intervalMs })).toThrow(RangeError);
   });
 });
