@@ -3,11 +3,11 @@
 // 命令走 F-147 批量内核（useBatchCommand）：每条任职记录的恢复槽钉到本次命令，结果未知时关闭重开、
 // 换一批勾选（含未确认行）仍锁定，只能由用户显式“按原命令重发”（claude_fe_rules g，DEC-067）。
 import { App, Button, Modal, Table } from 'antd';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ApiError, rejectionMessage, type Command } from '../foundation/client.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
-import { createFormStore, type Values } from '../foundation/forms/store.js';
+import { createFormStore, isLocked, type Values } from '../foundation/forms/store.js';
 import { useBatchCommand } from '../foundation/forms/useCommandForm.js';
 import { RECORD_OBJECT } from '../employment-records/model.js';
 import { m } from './messages.js';
@@ -27,6 +27,8 @@ const r = m.reissue;
 const store = createFormStore();
 // 回执按命令 ID 存：弹窗在请求途中被关掉时，重开的弹窗仍能显示这次命令的结果。状态仍只看内核存储。
 const receiptsOf = new Map<string, ReissueReceipt[]>();
+// 弹窗消失（关闭或离开页面）时仍在途 / 结果未知的命令：之后才到的回执、拒绝原因留到重开同一批时显示。
+const detached = new Set<string>();
 
 export interface ReissueRow {
   readonly id: string;
@@ -74,8 +76,18 @@ function ReissueDialog({ rows, close }: { rows: readonly ReissueRow[]; close(): 
     store,
   );
   const [ids, setIds] = useState<string[]>([]);
-  // 本弹窗跟进的命令：打开时已在途或结果未知的那条，或本弹窗发出的。别处留下的已完成、被拒结果不显示。
-  const [watched, setWatched] = useState(() => (form.locked ? form.state?.command?.id : undefined));
+  // 本弹窗跟进的命令：打开时在途、结果未知或途中离开后才有结果的那条，或本弹窗发出的。看过的结果不再显示。
+  const [watched, setWatched] = useState(() => {
+    const id = form.state?.command?.id;
+    return id && (form.locked || detached.has(id)) ? id : undefined;
+  });
+  // 只登记不清存储：StrictMode 的模拟卸载也走这里，按卸载那一刻的状态记入或移出。
+  useEffect(() => () => {
+    const state = form.peek();
+    const id = state?.command?.id;
+    if (id && isLocked(state)) detached.add(id);
+    else if (id) detached.delete(id);
+  });
   const receipts = watched ? receiptsOf.get(watched) : undefined;
   const pending = form.locked ? form.state : undefined;
   const rejected = form.status === 'rejected' && form.state?.command?.id === watched ? form.state : undefined;
