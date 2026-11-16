@@ -274,4 +274,8 @@ export const hrFormText = {
   contractGap: '原站本区块的“发起电子文件签署”接口暂不支持，本页不显示。',
   salaryOff: '未选择调整薪资。',
   contractOff: '未选择变更合同。',
+  // F-504：原站保存时的确认框文案（F-481 设计 §9），确认后才发请求。
+  terminateTitle: '请确认以下信息后，再继续操作',
+  terminateContent: '变更后合同的生效日期晚于原合同生效日期，继续保存将终止原合同。',
+  confirm: '确定',
 } as const;

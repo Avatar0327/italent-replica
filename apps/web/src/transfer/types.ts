@@ -10,6 +10,8 @@ export interface Choice {
 export interface ContractChoice {
   readonly id: string;
   readonly name: string | null;
+  /** 原合同生效日期（租户本地日期，F-504 确认框用）；读不到或无权查看时缺省。 */
+  readonly effectiveDate?: string;
 }
 export interface EmployeeChoice extends Choice {
   readonly code: string | null;
