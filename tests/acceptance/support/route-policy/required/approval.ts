@@ -330,10 +330,15 @@ export const APPROVAL: RequiredTable = {
   'PUT /api/tenant/approval/processes/:id/draft': [
     processWrite(route('PUT', '/processes/:id/draft', "await requireProcessButton(deps, ctx, 'update')")),
   ],
+  // S7a：发布带待生效变量的逐项处理，单独成显式路由；新版本 / 作废仍在循环里。
+  // 三条都在 registerProcessLifecycleRoutes（registerProcessRoutes 受 80 行函数上限，放不下）
+  'POST /api/tenant/approval/processes/:id/publish': [
+    processWrite(route('POST', '/processes/:id/publish', "await requireProcessButton(deps, ctx, 'publish')")),
+  ],
   ...Object.fromEntries(
-    ['versions', 'publish', 'discard'].map((path) => [
+    ['versions', 'discard'].map((path) => [
       `POST /api/tenant/approval/processes/:id/${path}`,
-      [processWrite(fn('registerProcessRoutes', 'await requireProcessButton(deps, ctx, button)'))],
+      [processWrite(fn('registerProcessLifecycleRoutes', 'await requireProcessButton(deps, ctx, button)'))],
     ]),
   ),
   'POST /api/tenant/approval/exception-admins/handover': [
