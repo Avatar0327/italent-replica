@@ -87,7 +87,15 @@ describe('AC-TRF-F481-01 模板维护', () => {
     const a = await w.create('a');
     const disabled = await w.call('PATCH', `/templates/${a.id}`, { ifMatch: a.revision, body: { status: 'disabled' } });
     expect(disabled.status).toBe(200);
-    expect(await disabled.json()).toMatchObject({ id: a.id, status: 'disabled', revision: a.revision + 1 });
+    const disabledView = (await disabled.json()) as TemplateView;
+    expect(disabledView).toMatchObject({ id: a.id, status: 'disabled', revision: a.revision + 1 });
+    // §8.4 列表「更新时间」：回执与列表都带 ISO UTC 时间；改过之后不早于创建时，列表与回执一致。
+    const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    expect(a.updatedAt).toMatch(iso);
+    expect(disabledView.updatedAt).toMatch(iso);
+    expect(Date.parse(disabledView.updatedAt)).toBeGreaterThanOrEqual(Date.parse(a.updatedAt));
+    const listed = (await (await w.call('GET', '/templates')).json()) as { items: TemplateView[] };
+    expect(listed.items.find((item) => item.id === a.id)?.updatedAt).toBe(disabledView.updatedAt);
     const stale = await w.call('PATCH', `/templates/${a.id}`, {
       ifMatch: a.revision,
       body: { name: `ZZ_F481_${uniqueSuffix()}` },

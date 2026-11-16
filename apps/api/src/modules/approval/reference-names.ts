@@ -9,6 +9,7 @@ import { TRANSFER_REASONS, TRANSFER_TYPES, tenantLocalDate } from '@italent/doma
 import { AppError } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { employeeName } from '../employment/employees.js';
+import { signTemplateView } from '../esign/transfer-input.js';
 import { loadOrgSnapshot } from '../org/read-model.js';
 import { insuranceReferenceNames } from '../insurance/reference-names.js';
 import { rowsOf } from './context.js';
@@ -20,6 +21,8 @@ const INSURANCE_COMPANY_KEYS = ['adjustedInsuranceCompanyId', 'insuranceOrigin.c
 const PERSON_KEYS = ['directManagerId', 'dottedManagerId'] as const;
 // 原因 / 调动类型是调动字典；离职等业务的 reasonCode 属于别的字典，所以只对调动单取名。
 const CODE_KEYS = { reasonCode: 'reasons', transferTypeCode: 'types' } as const;
+// F-481 §8.1：调动单所选签署模板，名称为与 ID 同序的数组（停用照常取名，查不到为 null）
+const TEMPLATE_KEY = 'esignTemplateIds';
 
 interface FormShape {
   values: Record<string, unknown>;
@@ -65,6 +68,13 @@ async function departmentNames(tx: Tx, ctx: TenantContext & { now: Date }, ids: 
   return names;
 }
 
+async function templateNames(tx: Tx, tenantId: string, records: readonly Record<string, unknown>[]) {
+  const ids = records.flatMap((record) => (Array.isArray(record[TEMPLATE_KEY]) ? record[TEMPLATE_KEY] : []));
+  const valid = [...new Set(ids.filter((id): id is string => typeof id === 'string' && UUID.test(id)))];
+  const views = await signTemplateView(tx, tenantId, valid);
+  return new Map(views.flatMap((view) => (view.name === null ? [] : [[view.id, view.name] as const])));
+}
+
 async function personNames(tx: Tx, tenantId: string, ids: ReadonlySet<string>) {
   const names = new Map<string, string>();
   for (const id of ids) {
@@ -102,6 +112,7 @@ export async function referenceNames<T extends { form: FormShape }>(
         stringsOf(records, INSURANCE_COMPANY_KEYS, true),
       )
     : null;
+  const templates = isTransfer ? await templateNames(tx, ctx.tenantId, records) : null;
   const named = (record: Record<string, unknown>) => {
     const result = { ...record };
     const attach = (key: string, names: ReadonlyMap<string, string>) => {
@@ -124,6 +135,13 @@ export async function referenceNames<T extends { form: FormShape }>(
           else attach(key, names);
         }
       }
+    }
+    if (templates) {
+      const ids = record[TEMPLATE_KEY];
+      // 同社保：名称不单独存在；已带名称（办理时冻结）不覆盖
+      if (!Array.isArray(ids)) delete result[`${TEMPLATE_KEY}Name`];
+      else if (!Object.hasOwn(record, `${TEMPLATE_KEY}Name`))
+        result[`${TEMPLATE_KEY}Name`] = ids.map((id) => (typeof id === 'string' && templates.get(id)) || null);
     }
     return result;
   };

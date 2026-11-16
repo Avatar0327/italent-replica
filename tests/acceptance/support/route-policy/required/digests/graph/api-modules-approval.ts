@@ -1980,11 +1980,18 @@ export const GRAPH: Graph = {
     '#INSURANCE_COMPANY_KEYS',
     '#INSURANCE_PLAN_KEYS',
     '#PERSON_KEYS',
+    '#TEMPLATE_KEY',
     '#departmentNames',
     '#dictionaryNames',
     '#personNames',
     '#stringsOf',
+    '#templateNames',
     'apps/api/src/modules/insurance/reference-names.ts#insuranceReferenceNames',
+  ],
+  'apps/api/src/modules/approval/reference-names.ts#templateNames': [
+    '#TEMPLATE_KEY',
+    '#UUID',
+    'apps/api/src/modules/esign/transfer-input.ts#signTemplateView',
   ],
   'apps/api/src/modules/approval/resolver.ts#adminAncestors': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#assigneeGate': [
