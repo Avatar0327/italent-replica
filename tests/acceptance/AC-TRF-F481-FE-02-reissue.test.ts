@@ -16,7 +16,7 @@ import { RECORD_ROW } from './support/f474-records-row.js';
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h, act } = requireWeb('react');
 const { createRoot } = requireWeb('react-dom/client');
-const { MemoryRouter } = requireWeb('react-router');
+const { MemoryRouter, RouterProvider, createMemoryRouter } = requireWeb('react-router');
 const { App, ConfigProvider } = requireWeb('antd');
 const { SessionProvider } = await import(resolve('apps/web/src/foundation/Session.tsx'));
 const { PermissionsProvider } = await import(resolve('apps/web/src/foundation/Permissions.tsx'));
@@ -62,10 +62,11 @@ interface Reply {
 }
 let buttons: { buttonCode: string; level: string }[];
 let options: Reply;
-let tasks: Reply[];
+let listRows: (typeof ROWS)[number][];
+let tasks: (Reply | Promise<Reply>)[];
 let posts: { body: unknown; key: string | null }[];
 let optionReads: number;
-function replyOf(url: URL, init: RequestInit): Reply {
+function replyOf(url: URL, init: RequestInit): Reply | Promise<Reply> {
   const path = url.pathname;
   if (path.endsWith('/me/snapshot')) return { body: { session, apps: [], scope: [], adminMenus: [] } };
   if (path.includes('/permission/me/objects/')) {
@@ -80,7 +81,10 @@ function replyOf(url: URL, init: RequestInit): Reply {
       },
     };
   }
-  if (path === LIST) return { body: { items: ROWS, total: ROWS.length } };
+  if (path === LIST) {
+    const size = Number(url.searchParams.get('pageSize'));
+    return { body: { items: listRows.slice(0, size), total: listRows.length } };
+  }
   if (path === OPTIONS) {
     optionReads += 1;
     return options;
@@ -118,13 +122,14 @@ beforeEach(() => {
       ],
     },
   };
+  listRows = ROWS;
   tasks = [];
   posts = [];
   optionReads = 0;
   vi.stubGlobal(
     'fetch',
     vi.fn(async (raw: string, init: RequestInit = {}) => {
-      const reply = replyOf(new URL(String(raw), 'http://localhost'), init);
+      const reply = await replyOf(new URL(String(raw), 'http://localhost'), init);
       return Response.json(reply.body, { status: reply.status ?? 200 });
     }),
   );
@@ -140,22 +145,15 @@ afterEach(async () => {
 });
 
 const settle = (ms = 30) => act(() => new Promise<void>((done) => setTimeout(done, ms)));
+const theme = { token: { motion: false } };
+const shell = (page: unknown) =>
+  h(SessionProvider, { session }, h(PermissionsProvider, {}, h(ConfigProvider, { theme }, h(App, {}, page))));
 async function render() {
-  const theme = { token: { motion: false } };
-  const page = h(EmploymentRecordsPage);
-  await act(async () =>
-    root.render(
-      h(
-        MemoryRouter,
-        { initialEntries: ['/'] },
-        h(SessionProvider, { session }, h(PermissionsProvider, {}, h(ConfigProvider, { theme }, h(App, {}, page)))),
-      ),
-    ),
-  );
+  await act(async () => root.render(h(MemoryRouter, { initialEntries: ['/'] }, shell(h(EmploymentRecordsPage)))));
   await settle(60);
-  expect(host.querySelectorAll('.ant-table-tbody .ant-table-row .ant-checkbox-input'), '列表已出现').toHaveLength(
-    ROWS.length,
-  );
+  // 默认每页 30 条（employment-records/model.ts PAGE_SIZE）
+  const shown = host.querySelectorAll('.ant-table-tbody .ant-table-row .ant-checkbox-input');
+  expect(shown, '列表已出现').toHaveLength(Math.min(listRows.length, 30));
 }
 async function click(element: Element | null | undefined) {
   expect(element, '可点击的元素').toBeTruthy();
@@ -354,16 +352,8 @@ describe('AC-TRF-F481-FE-02 任职记录列表：调动发起电子签署（补�
   it('FE-02-08 调动管理工具栏「调动处理」仍禁用、悬停“未完成”（列表是演示数据，不接补发；设计 §8.1、DEC-774）', async () => {
     expect(pageModel.transferTools.completed).toContain('process');
     expect(pageModel.enabledTools).not.toContain('process');
-    const theme = { token: { motion: false } };
-    const page = h(HrTransferPage);
     await act(async () =>
-      root.render(
-        h(
-          MemoryRouter,
-          { initialEntries: ['/?view=completed'] },
-          h(SessionProvider, { session }, h(PermissionsProvider, {}, h(ConfigProvider, { theme }, h(App, {}, page)))),
-        ),
-      ),
+      root.render(h(MemoryRouter, { initialEntries: ['/?view=completed'] }, shell(h(HrTransferPage)))),
     );
     await settle(60);
     const tool = Array.from(host.querySelectorAll<HTMLButtonElement>('.transfer-list-head button')).find(
@@ -375,6 +365,54 @@ describe('AC-TRF-F481-FE-02 任职记录列表：调动发起电子签署（补�
     await settle(200);
     const tips = Array.from(document.querySelectorAll('.ant-tooltip:not(.ant-tooltip-hidden) .ant-tooltip-inner'));
     expect(tips.map((item) => item.textContent)).toEqual(['未完成']);
+  });
+
+  it('FE-02-11 一次勾选超过 50 条：提示“一次最多补发 50 条”，不开弹窗、不读模板；减到 50 条可打开', async () => {
+    listRows = Array.from({ length: 51 }, (_, index) => row(String(index + 10), `合成员工${index + 10}`));
+    await render();
+    const sizer = host.querySelector('.ant-pagination-options .ant-select-selector')!;
+    await act(async () => void sizer.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+    await settle();
+    await click(
+      Array.from(document.querySelectorAll('.ant-select-item-option')).find((item) => item.textContent === '100条/页'),
+    );
+    await settle(60);
+    await click(host.querySelector('.ant-table-thead .ant-checkbox-input'));
+    await click(reissueButton());
+    expect(document.body.textContent).toContain('一次最多补发 50 条');
+    expect(modal()).toBeNull();
+    expect(optionReads).toBe(0);
+    await check(50);
+    await click(reissueButton());
+    expect(modal()?.textContent).toContain('已选择 50 条任职记录');
+    await click(modalButton('关闭'));
+  });
+
+  it('FE-02-12 请求途中关闭弹窗：在途时重开仍锁定；回执晚到后重开同一批，仍显示这次的逐条结果、不另起命令', async () => {
+    let arrive!: (reply: Reply) => void;
+    tasks = [new Promise<Reply>((done) => (arrive = done))];
+    await render();
+    await check(0, 3);
+    await click(reissueButton());
+    await pick(T1);
+    await click(modalButton('确定'));
+    await click(modalButton('关闭'));
+    await click(reissueButton());
+    expect(modalButton('确定')?.disabled, '在途时重开仍锁定').toBe(true);
+    await click(modalButton('关闭'));
+    const sent = { ok: true, taskId: '84810000-0000-4000-8000-000000000307', status: 'signing', failureReason: null };
+    const refused = { ok: false, code: 'ESIGN_TRANSFER_NOT_ACTIVE' };
+    await act(async () => arrive({ body: { items: [receipt(0, sent), receipt(3, refused)] } }));
+    await settle();
+    await click(reissueButton());
+    expect(modal()?.textContent).toContain('已发起签署');
+    expect(modal()?.textContent).toContain('不可发起：调动尚未生效');
+    expect(modalButton('确定')?.disabled).toBe(true);
+    // 看过结果、关闭后再开是新的一次
+    await click(modalButton('关闭'));
+    await click(reissueButton());
+    expect(modal()?.textContent).not.toContain('已发起签署');
+    expect(posts).toHaveLength(1);
   });
 
   // 以下两条按 claude_fe_rules (g)：结果未知时关闭重开、换一批勾选（换入口）仍锁定，直到用户按原命令重发。
@@ -433,5 +471,37 @@ describe('AC-TRF-F481-FE-02 任职记录列表：调动发起电子签署（补�
       { items: [{ businessId: ROWS[3]!.id }], templateIds: [T2] },
     ]);
     expect(modal()?.textContent).toContain('已发起签署');
+  });
+
+  it('FE-02-13 结果未知后后退再前进、离开再回来：同一批勾选仍锁定，不另起命令', async () => {
+    listRows = [row('21', '合成员工戊'), row('22', '合成员工己')];
+    tasks = [lost];
+    const routes = [
+      { path: '/records', element: shell(h(EmploymentRecordsPage)) },
+      { path: '/other', element: h('p', {}, '其他页') },
+    ];
+    const router = createMemoryRouter(routes, { initialEntries: ['/other', '/records'], initialIndex: 1 });
+    await act(async () => root.render(h(RouterProvider, { router })));
+    await settle(60);
+    await check(0, 1);
+    await click(reissueButton());
+    await pick(T1);
+    await click(modalButton('确定'));
+    expect(modal()?.textContent).toContain('结果待确认');
+    for (const steps of [
+      [-1, 1],
+      ['/other', '/records'],
+    ]) {
+      for (const step of steps) {
+        await act(async () => void router.navigate(step));
+        await settle(60);
+      }
+      await check(0, 1);
+      await click(reissueButton());
+      expect(modal()?.textContent).toContain('结果待确认');
+      expect(modalButton('确定')?.disabled).toBe(true);
+      await click(modalButton('关闭'));
+    }
+    expect(posts).toHaveLength(1);
   });
 });

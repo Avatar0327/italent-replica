@@ -336,8 +336,8 @@ describe('AC-TRF-F481-FE-05 电子签 > 签署场景设置', () => {
       expect(lines[0]!.textContent).toContain(text);
   });
 
-  it('FE-05-11 有效期只接受 2～30：1 与 31 提示且不发请求，7 发 PUT（带到期前提醒与 If-Match）', async () => {
-    writes = [{ body: { scene: 'transfer', validityDays: 7, remindBeforeExpiry: false, revision: 5 } }];
+  it('FE-05-11 有效期只接受 2～30：1 与 31 提示且不发请求，上限 30 发 PUT（带到期前提醒与 If-Match）', async () => {
+    writes = [{ body: { scene: 'transfer', validityDays: 30, remindBeforeExpiry: false, revision: 5 } }];
     await open('签署场景设置');
     await click(pressable(rowOf('调动电子签署'), '编辑'));
     for (const value of ['1', '31']) {
@@ -346,13 +346,13 @@ describe('AC-TRF-F481-FE-05 电子签 > 签署场景设置', () => {
       expect(drawer()?.textContent).toContain('签署有效期须为 2～30 天的整数');
     }
     expect(sent).toEqual([]);
-    await type('validityDays', '7');
+    await type('validityDays', '30');
     await save();
     expect(sent).toEqual([
       {
         method: 'PUT',
         path: SCENE,
-        body: { validityDays: 7, remindBeforeExpiry: false },
+        body: { validityDays: 30, remindBeforeExpiry: false },
         key: expect.any(String),
         ifMatch: '4',
       },
