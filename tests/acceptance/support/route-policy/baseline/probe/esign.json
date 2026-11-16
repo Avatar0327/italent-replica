@@ -1,4 +1,27 @@
 {
+  "GET /api/tenant/esign/mine": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/esign/mine/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "a2f754ca9722",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "GET /api/tenant/esign/scenes/transfer": {
     "all": {
       "status": 200
@@ -9,6 +32,17 @@
     "scopeQueries": [],
     "trace": [
       "obj:TenantBase.ESignSettings:view"
+    ]
+  },
+  "GET /api/tenant/esign/template-options/reissue": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#MulLaunchESignTranfer@list",
+      "obj:TenantBase.EmploymentRecord:update"
     ]
   },
   "GET /api/tenant/esign/template-options/transfer-form": {
@@ -51,6 +85,21 @@
       "obj:TenantBase.ESignSettings:update"
     ]
   },
+  "POST /api/tenant/esign/mine/:id/sign": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "a1493a72c72c",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "POST /api/tenant/esign/templates": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -61,6 +110,19 @@
     "scopeQueries": [],
     "trace": [
       "obj:TenantBase.ESignSettings:create"
+    ]
+  },
+  "POST /api/tenant/esign/transfer-tasks": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "5201f2e7fee2",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#MulLaunchESignTranfer@list",
+      "obj:TenantBase.EmploymentRecord:update"
     ]
   },
   "PUT /api/tenant/esign/scenes/transfer": {
