@@ -154,7 +154,6 @@ function DirectContent({ state }: { state: ReturnType<typeof useDirectForm> }) {
       {cmd.form.state?.error instanceof DirectError &&
         errorLines(cmd.form.state.error.details).map((line) => <Alert key={line} type="error" message={line} />)}
       {preview.node}
-      {custom.node}
       <FormLock locked={locked}>
         <Form
           form={form}
