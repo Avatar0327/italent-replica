@@ -34,6 +34,7 @@ import {
 } from './edit-model.js';
 import { fieldValue, type Row } from './model.js';
 import { usePersonnelCustomFields, customControl } from './custom-fields.js';
+import { customFieldsNoticeField } from '../shared/CustomFieldsNotice.js';
 import { customBody, customText, flattenCustom, isCustomKey } from './custom-model.js';
 import { ReadPanel } from './ReadPanel.js';
 import { useRead } from './useRead.js';
@@ -145,6 +146,8 @@ function PersonForm({ row, editable, close, saved }: { row: Row; editable: strin
     access: { visible: true, editable: submittable.includes(key) },
     display: customText(custom.byKey[key]!, writer.full[key]),
   });
+  // 定义目录读取失败 / 重试中：员工信息分组末尾放一行提示（F-527），不进请求体。
+  const customFields = [...custom.keys.map(customItem), ...customFieldsNoticeField(custom.notice)];
   // 只读展示取内核最新全量：409 重读核对后显示同事改后的值，不停在打开时（第 2 轮 P2-5）。
   const item = (name: string) => ({
     ...field(
@@ -165,7 +168,7 @@ function PersonForm({ row, editable, close, saved }: { row: Row; editable: strin
       title={m.editing.person}
       initialValues={flattenCustom(row)}
       groups={[
-        { title: m.employeeInfo, fields: [...personInfoFields.map(item), ...custom.keys.map(customItem)] },
+        { title: m.employeeInfo, fields: [...personInfoFields.map(item), ...customFields] },
         { title: m.recordFields, fields: personJobFields.map(item) },
       ]}
       onClose={() => {

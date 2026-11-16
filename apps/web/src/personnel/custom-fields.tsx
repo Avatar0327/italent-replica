@@ -6,15 +6,20 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import { customKey, isCustomKey, selectOptions, type CustomDefinition } from './custom-model.js';
 import { useRead } from './useRead.js';
+import { useCustomFieldsNotice } from '../shared/CustomFieldsNotice.js';
 
 // 业务侧只读目录（普通人员 HR 没有配置管理能力，读配置接口会 403）：已按 custom:<id> 查看权裁剪，最小字段。
 const definitionsPath = '/api/tenant/personnel/custom-field-definitions';
 
-/** 无任何 custom:* 查看权时不请求定义目录；有权限的定义才进入返回值，列表与档案共用。 */
+/**
+ * 无任何 custom:* 查看权时不请求定义目录；有权限的定义才进入返回值，列表与档案共用。
+ * 读取失败时按无字段处理；「编辑人员」的员工信息分组另给提示行与重试（F-527）。
+ */
 export function usePersonnelCustomFields() {
   const permission = usePermissions(PERSONNEL_OBJECT).snapshot.objects[PERSONNEL_OBJECT];
   const visible = permission?.viewableFields.filter(isCustomKey) ?? [];
   const result = useRead<{ items: CustomDefinition[] }>(visible.length ? definitionsPath : null);
+  const notice = useCustomFieldsNotice(visible.length > 0, result);
   const definitions = (result.data?.items ?? []).filter(
     (field) =>
       visible.includes(customKey(field.id)) && field.name && CUSTOM_FIELD_VALUE_TYPES.includes(field.valueType),
@@ -26,6 +31,7 @@ export function usePersonnelCustomFields() {
     byKey: Object.fromEntries(definitions.map((field) => [customKey(field.id), field])),
     loading: visible.length > 0 && result.loading,
     error: result.error,
+    notice,
   };
 }
 
