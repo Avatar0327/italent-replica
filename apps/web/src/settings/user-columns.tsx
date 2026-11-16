@@ -40,10 +40,12 @@ export function userColumns(
       </Tooltip>
     ),
   }));
+  // DEC-917：登录手机号 / 来源 / 创建人在复刻系统没有语义一致的数据源，全部用户页不显示；外部用户页保持原列。
+  const externalOnly = (...columns: TableColumnsType<User>) => (all ? [] : columns);
   if (!internal)
     return [
       ...identity,
-      { title: m.loginPhone, width: 128, render: () => m.empty },
+      ...externalOnly({ title: m.loginPhone, width: 128, render: () => m.empty }),
       ...(all ? [{ title: m.loginName, dataIndex: 'email', width: 188, render: accountText }] : []),
       { title: m.contactEmail, width: 188, dataIndex: 'contactEmail', render: all ? accountText : textValue },
       { title: m.contactPhone, dataIndex: 'contactPhone', width: 128, render: textValue },
@@ -55,8 +57,10 @@ export function userColumns(
           (({ internal: m.users, external: m.external }) as Record<string, string>)[value ?? ''] ?? value ?? m.empty,
       },
       { title: m.businessIdentity, dataIndex: 'businessIdentity', width: 128 },
-      { title: m.accountSource, width: 128, render: () => m.empty },
-      { title: m.createdBy, width: 118, render: () => m.empty },
+      ...externalOnly(
+        { title: m.accountSource, width: 128, render: () => m.empty },
+        { title: m.createdBy, width: 118, render: () => m.empty },
+      ),
       { title: m.createdAt, dataIndex: 'createdAt', width: 146, render: instant },
       {
         title: m.accountStatus,

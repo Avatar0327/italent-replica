@@ -35,7 +35,6 @@ export const m = {
   employeeStatus: '员工状态',
   updatedBy: '最近修改人',
   updatedAt: '最近修改时间',
-  owningApp: '所属应用',
   profileDescription: '描述',
   grantScope: '授权范围',
   grantCount: (count: number) => `${count} 条有效授权`,

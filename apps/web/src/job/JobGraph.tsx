@@ -126,7 +126,16 @@ export function JobGraph({ access, view }: { access: PageAccess; view: ListView 
     <section className="list-page job-graph">
       {heading}
       <CommandNotice rebuild={rebuild} refresh={refresh} />
-      <div className="list-card">{body}</div>
+      <div className="list-card">
+        {/* 原站最新生成时间在提示条下方、内容区左上，不在工具栏（DEC-916 B③） */}
+        {!remote.error && current && (
+          <div className="job-graph-time">
+            {t.generatedAt}
+            {graphTime(current.generatedAt, session.timezone)}
+          </div>
+        )}
+        {body}
+      </div>
       {rebuild.command.busy && (
         <div className="job-graph-mask" role="status">
           <Spin />
@@ -147,7 +156,6 @@ function Toolbar(props: {
   ready: boolean;
 }) {
   const { snapshot, access, rebuild, refresh, ready } = props;
-  const session = useSession();
   const issues = useHref({ search: ISSUES_SEARCH });
   const download = useGraphDownload();
   // 导出与重新生成互斥：导出进行中两者都不可点（原站提示），生成进行中也不导出。
@@ -162,30 +170,12 @@ function Toolbar(props: {
     if (blocked || download.isRunning() || rebuild.command.locked) return;
     void rebuild.start(refresh);
   };
+  // 原站右上依次为 导出 → 重新生成 → 警示图标，两个按钮都是主色（DEC-916 B③）
   return (
     <Space className="job-graph-toolbar">
-      {snapshot && (
-        <span className="job-graph-time">
-          {t.generatedAt}
-          {graphTime(snapshot.generatedAt, session.timezone)}
-        </span>
-      )}
-      {snapshot?.containsError && (
-        <Tooltip title={t.issuesHint}>
-          <a
-            className="job-graph-warning"
-            href={issues}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={t.issuesHint}
-          >
-            <WarningIcon />
-          </a>
-        </Tooltip>
-      )}
       {download.busy && <span role="status">{t.exporting}</span>}
       {access.can('export', 'list') && (
-        <Button disabled={blocked} onClick={exportGraph}>
+        <Button type="primary" disabled={blocked} onClick={exportGraph}>
           {ui.export}
         </Button>
       )}
@@ -204,6 +194,19 @@ function Toolbar(props: {
             {t.rebuild}
           </Button>
         </Popconfirm>
+      )}
+      {snapshot?.containsError && (
+        <Tooltip title={t.issuesHint}>
+          <a
+            className="job-graph-warning"
+            href={issues}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={t.issuesHint}
+          >
+            <WarningIcon />
+          </a>
+        </Tooltip>
       )}
     </Space>
   );
