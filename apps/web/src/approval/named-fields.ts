@@ -15,6 +15,8 @@ const ID_NAMED_FIELDS: Readonly<Record<string, string>> = {
   adjustedInsuranceCompanyId: 'adjustedInsuranceCompanyIdName',
   'insuranceOrigin.planId': 'insuranceOrigin.planIdName',
   'insuranceOrigin.companyId': 'insuranceOrigin.companyIdName',
+  // F-481：审批载荷只带模板 ID、不带名称，显示占位，不出裸 ID；空数组 = 未发起签署，按空值显示。
+  esignTemplateIds: 'esignTemplateIdsName',
 };
 // 编码字段：同名键在别的业务里是另一种编码（如离职原因 reasonCode，后端不取名）。后端没下发名称键时按原值显示。
 const CODE_NAMED_FIELDS: Readonly<Record<string, string>> = {
@@ -41,6 +43,7 @@ export const NAME_KEYS: ReadonlySet<string> = new Set([
 export function namedValue(record: Readonly<Record<string, unknown>>, key: string): unknown {
   const value = record[key];
   if (value === null || value === undefined || value === '') return value;
+  if (key === 'esignTemplateIds' && Array.isArray(value) && !value.length) return null;
   const idName = ID_NAMED_FIELDS[key];
   if (idName) return record[idName] ?? transferText.savedValue;
   const codeName = CODE_NAMED_FIELDS[key];

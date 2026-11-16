@@ -33,6 +33,16 @@ function insurancePayload(draft: LinkageDraft) {
   return Object.fromEntries(INSURANCE_ADJUST_KEYS.filter((key) => draft[key]).map((key) => [key, draft[key]]));
 }
 
+/**
+ * F-481 §3.1：变更合同且选“是”并选了模板时带 esign；选“否”或未选不带键（服务端记为否）。
+ * 没选变更的合同也照带，由服务端拒绝并给出原因（电子签署须同时变更合同），不在前端静默丢掉。
+ */
+function esignPayload(draft: LinkageDraft) {
+  const templateIds = draft.esignTemplateIds ?? [];
+  const signing = draft.changeContract && draft.electronicSignature === true;
+  return signing && templateIds.length ? { esign: { templateIds: [...templateIds] } } : {};
+}
+
 /** 草稿 → 服务端 linkage；没有任何联动时返回 undefined（不提交该键）。 */
 export function linkagePayload(draft: LinkageDraft | undefined, sourceDepartmentId: string | null) {
   if (!draft) return undefined;
@@ -63,6 +73,7 @@ export function linkagePayload(draft: LinkageDraft | undefined, sourceDepartment
     ...(draft.handoverPersonId ? { handover: { handoverPersonId: draft.handoverPersonId } } : {}),
     ...(subordinates.length || orgRoles.length ? { dutyTransfer: { subordinates, orgRoles } } : {}),
     ...insurancePayload(draft),
+    ...esignPayload(draft),
   };
   return Object.keys(linkage).length ? linkage : undefined;
 }

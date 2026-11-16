@@ -95,7 +95,14 @@ export function linkageFromOptions(options: unknown): LinkageDraft {
       : {}),
     ...dutyLinkage(options.dutyTransfer),
     ...Object.fromEntries(INSURANCE_ADJUST_KEYS.flatMap((key) => optionalEntry(key, options[key]))),
+    ...esignLinkage(options.esign),
   };
+}
+/** esign 为 null 或缺席（不可见）时保持未选；只有存了模板才带出“是”。 */
+function esignLinkage(esign: unknown): Partial<LinkageDraft> {
+  if (!isObject(esign) || !Array.isArray(esign.templateIds)) return {};
+  const templateIds = esign.templateIds.filter((id): id is string => typeof id === 'string');
+  return templateIds.length ? { electronicSignature: true, esignTemplateIds: templateIds } : {};
 }
 const optionalEntry = (key: string, value: unknown) => (optionalText(value) ? [[key, value] as const] : []);
 
@@ -118,6 +125,7 @@ const linkageGroups: readonly { codes: readonly string[]; keys: readonly (keyof 
   { codes: ['handoverPersonId'], keys: ['handoverPersonId'] },
   { codes: ['dutyTransfer'], keys: ['dutyReceiverId', 'dutySubordinateIds', 'transferDepartmentHead'] },
   ...INSURANCE_ADJUST_KEYS.map((key) => ({ codes: [key], keys: [key] })),
+  { codes: ['electronicSignature', 'esignTemplateIds'], keys: ['electronicSignature', 'esignTemplateIds'] },
 ];
 /**
  * 只带出当前可编辑的联动项：只读项在表单上改不回，而提交会原样带上联动草稿，

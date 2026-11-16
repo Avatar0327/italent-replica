@@ -361,3 +361,75 @@ describe('AC-TRF-F481-FE-05 电子签 > 签署场景设置', () => {
     expect(control('validityDays')).toBeTruthy();
   });
 });
+
+/**
+ * 并发（AGENTS.md §10、自查第 2 条）：409 与结果未知分开处理（F-142 内核）。错误体按后端 esign/service.ts：
+ * 陈旧版本 → 409 REVISION_CONFLICT（details.expected 为当前版本）；503 视为结果未知。
+ * 结果未知会把命令钉在页面级存储里（模块级 store），所以这一组放在文件最后、结果未知用例排最后。
+ */
+describe('AC-TRF-F481-FE-05 电子签设置页并发：409 重读与结果未知', () => {
+  const overlay = () => document.querySelector('.ant-drawer-open');
+  const stale = (message: string, expected: number) => ({
+    status: 409,
+    body: { error: { code: 'REVISION_CONFLICT', message, details: { expected } } },
+  });
+
+  it('FE-05-13 场景保存 409：重读最新版本后重提，带新版本与新命令 ID；没改的到期前提醒取最新值，不被旧值覆盖', async () => {
+    writes = [
+      stale('签署场景设置已被修改，请刷新后重试', 6),
+      { body: { scene: 'transfer', validityDays: 7, remindBeforeExpiry: true, revision: 7 } },
+    ];
+    await open('签署场景设置');
+    await click(pressable(rowOf('调动电子签署'), '编辑'));
+    await type('validityDays', '7');
+    await save();
+    expect(drawer()?.textContent).toContain('版本冲突');
+    // 他人同时把“到期前自动提醒”改成了是
+    scene = { body: { scene: 'transfer', validityDays: 2, remindBeforeExpiry: true, revision: 6 } };
+    await click(pressable(overlay(), '重读最新版本'));
+    await click(pressable(overlay(), '已核对差异，继续编辑'));
+    await save();
+    expect(sent.map(({ method, body, ifMatch }) => ({ method, body, ifMatch }))).toEqual([
+      { method: 'PUT', body: { validityDays: 7, remindBeforeExpiry: false }, ifMatch: '4' },
+      { method: 'PUT', body: { validityDays: 7, remindBeforeExpiry: true }, ifMatch: '6' },
+    ]);
+    expect(sent[1]!.key).not.toBe(sent[0]!.key);
+  });
+
+  it('FE-05-14 模板编辑 409：重读后重提只发改过的名称，带最新版本与新命令 ID', async () => {
+    writes = [
+      stale('签署模板已被修改，请刷新后重试', 5),
+      { body: template(T1, { name: '合成调动协议（新）', body: '他人改过的正文', revision: 6 }) },
+    ];
+    await open('设置');
+    await click(pressable(rowOf('合成调动协议'), '编辑'));
+    await type('name', '合成调动协议（新）');
+    await save();
+    expect(drawer()?.textContent).toContain('版本冲突');
+    rows = [template(T1, { body: '他人改过的正文', revision: 5 }), rows[1]];
+    await click(pressable(overlay(), '重读最新版本'));
+    await click(pressable(overlay(), '已核对差异，继续编辑'));
+    await save();
+    expect(sent.map(({ method, body, ifMatch }) => ({ method, body, ifMatch }))).toEqual([
+      { method: 'PATCH', body: { name: '合成调动协议（新）' }, ifMatch: '3' },
+      { method: 'PATCH', body: { name: '合成调动协议（新）' }, ifMatch: '5' },
+    ]);
+    expect(sent[1]!.key).not.toBe(sent[0]!.key);
+  });
+
+  it('FE-05-15 模板编辑结果未知：显示待确认并锁定；关闭重开仍锁定，再点保存不另起命令', async () => {
+    writes = [{ status: 503, body: { error: { code: 'SERVICE_UNAVAILABLE', message: '服务暂不可用' } } }];
+    await open('设置');
+    await click(pressable(rowOf('合成调动协议'), '编辑'));
+    await type('name', '合成调动协议（新）');
+    await save();
+    expect(drawer()?.textContent).toContain('结果待确认');
+    await click(pressable(overlay(), '取消'));
+    expect(drawer()).toBeNull();
+    await click(pressable(rowOf('合成调动协议'), '编辑'));
+    expect(drawer()?.textContent).toContain('结果待确认');
+    expect(pressable(overlay(), '保存')?.disabled).toBe(true);
+    await save();
+    expect(sent).toHaveLength(1);
+  });
+});
