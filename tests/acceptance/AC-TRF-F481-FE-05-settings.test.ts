@@ -417,8 +417,71 @@ describe('AC-TRF-F481-FE-05 电子签设置页并发：409 重读与结果未知
     expect(sent[1]!.key).not.toBe(sent[0]!.key);
   });
 
-  it('FE-05-15 模板编辑结果未知：显示待确认并锁定；关闭重开仍锁定，再点保存不另起命令', async () => {
-    writes = [{ status: 503, body: { error: { code: 'SERVICE_UNAVAILABLE', message: '服务暂不可用' } } }];
+  it('FE-05-15 模板编辑 409 后把名称改回打开时的原值：按最新版本发出原值，不当作“没改”吞掉', async () => {
+    writes = [stale('签署模板已被修改，请刷新后重试', 5), { body: template(T1, { revision: 6 }) }];
+    await open('设置');
+    await click(pressable(rowOf('合成调动协议'), '编辑'));
+    await type('name', '合成调动协议（新）');
+    await save();
+    // 他人同时把名称改成了别的值
+    rows = [template(T1, { name: '他人改的名称', revision: 5 }), rows[1]];
+    await click(pressable(overlay(), '重读最新版本'));
+    await click(pressable(overlay(), '已核对差异，继续编辑'));
+    await type('name', '合成调动协议');
+    await save();
+    expect(sent.map(({ body, ifMatch }) => ({ body, ifMatch }))).toEqual([
+      { body: { name: '合成调动协议（新）' }, ifMatch: '3' },
+      { body: { name: '合成调动协议' }, ifMatch: '5' },
+    ]);
+  });
+
+  it('FE-05-16 场景保存 409 后把有效期改回打开时的 2 天：按最新版本发出 2，不当作“没改”吞掉', async () => {
+    writes = [
+      stale('签署场景设置已被修改，请刷新后重试', 6),
+      { body: { scene: 'transfer', validityDays: 2, remindBeforeExpiry: false, revision: 7 } },
+    ];
+    await open('签署场景设置');
+    await click(pressable(rowOf('调动电子签署'), '编辑'));
+    await type('validityDays', '7');
+    await save();
+    scene = { body: { scene: 'transfer', validityDays: 9, remindBeforeExpiry: false, revision: 6 } };
+    await click(pressable(overlay(), '重读最新版本'));
+    await click(pressable(overlay(), '已核对差异，继续编辑'));
+    await type('validityDays', '2');
+    await save();
+    expect(sent.map(({ body, ifMatch }) => ({ body, ifMatch }))).toEqual([
+      { body: { validityDays: 7, remindBeforeExpiry: false }, ifMatch: '4' },
+      { body: { validityDays: 2, remindBeforeExpiry: false }, ifMatch: '6' },
+    ]);
+  });
+
+  it('FE-05-17 停用 409：提示刷新并刷新列表；再点停用带最新版本与新命令 ID', async () => {
+    writes = [
+      stale('签署模板已被修改，请刷新后重试', 31),
+      { body: template(T1, { status: 'disabled', revision: 32 }) },
+    ];
+    // 409 的尝试按“对象@版本”留在页面级存储里（内核不清锁定态，store.clear），刷新后版本前进便不再命中；
+    // 本条用单独的版本段，免得与后面按版本 3 打开的用例撞到同一条目。
+    rows = [template(T1, { revision: 30 }), rows[1]];
+    await open('设置');
+    rows = [template(T1, { revision: 31 }), rows[1]];
+    await click(pressable(rowOf('合成调动协议'), '停用'));
+    // 陈旧版本按平台统一文案提示（client.ts：REVISION_CONFLICT → refresh），不显示英文原因码
+    expect(document.body.textContent).toContain('记录已被更新，请刷新后重新提交');
+    expect(document.body.textContent).not.toContain('REVISION_CONFLICT');
+    await click(pressable(rowOf('合成调动协议'), '停用'));
+    expect(sent.map(({ body, ifMatch }) => ({ body, ifMatch }))).toEqual([
+      { body: { status: 'disabled' }, ifMatch: '30' },
+      { body: { status: 'disabled' }, ifMatch: '31' },
+    ]);
+    expect(sent[1]!.key).not.toBe(sent[0]!.key);
+  });
+
+  // 以下三条结果未知：命令一直钉在页面级存储里，各用不同对象（T1 编辑、T2 启停、场景），互不影响。
+  const lost = { status: 503, body: { error: { code: 'SERVICE_UNAVAILABLE', message: '服务暂不可用' } } };
+
+  it('FE-05-18 模板编辑结果未知：显示待确认并锁定；关闭重开仍锁定，再点保存不另起命令', async () => {
+    writes = [lost];
     await open('设置');
     await click(pressable(rowOf('合成调动协议'), '编辑'));
     await type('name', '合成调动协议（新）');
@@ -429,6 +492,52 @@ describe('AC-TRF-F481-FE-05 电子签设置页并发：409 重读与结果未知
     await click(pressable(rowOf('合成调动协议'), '编辑'));
     expect(drawer()?.textContent).toContain('结果待确认');
     expect(pressable(overlay(), '保存')?.disabled).toBe(true);
+    await save();
+    expect(sent).toHaveLength(1);
+    // 同一模板的启停与编辑共用恢复槽：编辑结果未知时停用也锁定，换入口不能另起命令
+    await click(pressable(overlay(), '取消'));
+    expect(pressable(rowOf('合成调动协议'), '停用')?.disabled).toBe(true);
+  });
+
+  it('FE-05-19 启用结果未知：本行显示待确认，按钮锁定，再点不另起命令', async () => {
+    writes = [lost];
+    await open('设置');
+    await click(pressable(rowOf('合成保密协议'), '启用'));
+    expect(rowOf('合成保密协议')?.textContent).toContain('结果待确认');
+    const again = pressable(rowOf('合成保密协议'), '启用');
+    expect(again?.disabled).toBe(true);
+    await act(async () => again?.click());
+    expect(sent).toEqual([expect.objectContaining({ method: 'PATCH', body: { status: 'enabled' }, ifMatch: '1' })]);
+  });
+
+  it('FE-05-20 场景保存结果未知：关闭重开仍锁定，再点保存不另起命令', async () => {
+    writes = [lost];
+    await open('签署场景设置');
+    await click(pressable(rowOf('调动电子签署'), '编辑'));
+    await type('validityDays', '7');
+    await save();
+    expect(drawer()?.textContent).toContain('结果待确认');
+    await click(pressable(overlay(), '取消'));
+    await click(pressable(rowOf('调动电子签署'), '编辑'));
+    expect(drawer()?.textContent).toContain('结果待确认');
+    await save();
+    expect(sent).toHaveLength(1);
+  });
+
+  it('FE-05-21 新建结果未知：锁定不另起命令；关闭时刷新列表供核对，重开新建仍锁定', async () => {
+    writes = [lost];
+    await open('设置');
+    const reads = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith(TEMPLATES)).length;
+    await click(pressable(host.querySelector('.page-heading'), '新建'));
+    await type('name', '合成新协议');
+    await type('code', 'SYN-NEW');
+    await save();
+    expect(drawer()?.textContent).toContain('结果待确认');
+    const before = reads();
+    await click(pressable(overlay(), '取消'));
+    expect(reads()).toBeGreaterThan(before);
+    await click(pressable(host.querySelector('.page-heading'), '新建'));
+    expect(drawer()?.textContent).toContain('结果待确认');
     await save();
     expect(sent).toHaveLength(1);
   });
