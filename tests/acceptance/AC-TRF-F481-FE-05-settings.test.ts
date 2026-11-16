@@ -46,6 +46,7 @@ const template = (id: string, extra: Record<string, unknown>) => ({
   status: 'enabled',
   sortOrder: 10,
   revision: 3,
+  updatedAt: '2026-11-15T16:30:05.000Z',
   ...extra,
 });
 
@@ -212,9 +213,16 @@ describe('AC-TRF-F481-FE-05 电子签菜单组', () => {
 });
 
 describe('AC-TRF-F481-FE-05 电子签 > 设置（签署模板）', () => {
-  it('FE-05-03 列表显示名称、编码、状态；没有删除入口', async () => {
+  it('FE-05-03 列表按设计 §8.4 显示 名称 / 编码 / 状态 / 更新时间 / 操作，照后端顺序排列；没有删除入口', async () => {
     await open('设置');
     expect(host.querySelector('h1')?.textContent).toBe('签署模板');
+    const headers = Array.from(host.querySelectorAll('.ant-table-thead th'), (th) => th.textContent?.trim());
+    expect(headers).toEqual(['名称', '编码', '状态', '更新时间', '操作']);
+    const names = Array.from(host.querySelectorAll('.ant-table-tbody tr td:first-child'), (td) => td.textContent);
+    expect(names).toEqual(['合成调动协议', '合成保密协议']);
+    // 更新时间按租户时区（Asia/Shanghai）显示：UTC 16:30:05 跨到次日 00:30:05，不按 UTC 或浏览器时区
+    expect(rowOf('合成调动协议')?.textContent).toContain('2026-11-16 00:30:05');
+    expect(rowOf('合成调动协议')?.textContent).not.toContain('2026-11-15');
     expect(rowOf('合成调动协议')?.textContent).toContain('SYN-TRF');
     expect(rowOf('合成调动协议')?.textContent).toContain('启用');
     expect(rowOf('合成保密协议')?.textContent).toContain('停用');

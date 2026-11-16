@@ -222,7 +222,11 @@ async function settingsFixtures(page: Page) {
         items: [
           { id: T1, code: 'SYN-TRF', name: '合成调动协议', body: '{员工姓名}调入{调入部门}。' },
           { id: T2, code: 'SYN-NDA', name: '合成保密协议', body: '合成正文' },
-        ].map((item, index) => ({ ...item, status: index ? 'disabled' : 'enabled', sortOrder: index, revision: 1 })),
+        ].map((item, index) => ({
+          ...item,
+          ...{ status: index ? 'disabled' : 'enabled', sortOrder: index, revision: 1 },
+          updatedAt: '2026-11-15T16:30:05.000Z',
+        })),
       },
     }),
   );
@@ -236,8 +240,11 @@ test('AC-TRF-F481-FE-S3 电子签 > 设置（签署模板）与签署场景设�
   await seedDemoUser(page);
   await page.goto('/esign-templates');
   await expect(page.getByRole('heading', { name: '签署模板' })).toBeVisible({ timeout: 15_000 });
+  // 设计 §8.4：名称 / 编码 / 状态 / 更新时间 / 操作；更新时间按租户时区（Asia/Shanghai，UTC 16:30 跨到次日）
+  await expect(page.locator('.ant-table-thead th')).toHaveText(['名称', '编码', '状态', '更新时间', '操作']);
   const first = page.locator('.ant-table-row').filter({ hasText: '合成调动协议' });
   await expect(first).toContainText('SYN-TRF');
+  await expect(first).toContainText('2026-11-16 00:30:05');
   const second = page.locator('.ant-table-row').filter({ hasText: '合成保密协议' });
   await expect(second).toContainText('停用');
   // 配置对象按钮恒为空，写入口按数据操作 + 字段编辑权给出
