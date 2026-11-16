@@ -1,3 +1,4 @@
+import { registerESignTaskRoutes } from './task-routes.js';
 import { registerESignDeletion } from './deletion.js';
 import { registerESignRecordRoutes } from './record-routes.js';
 /**
@@ -93,6 +94,7 @@ async function write(
 export function registerESignRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerESignDeletion();
   registerESignRecordRoutes(router, deps);
+  registerESignTaskRoutes(router, deps);
   router.get(`${ESIGN_BASE}/templates`, async (c) => {
     const ctx = await objectContext(c, deps, OBJECT, 'view');
     const items = await withTenant(deps.db, ctx.tenantId, (tx) => listTemplates(tx, ctx.tenantId));

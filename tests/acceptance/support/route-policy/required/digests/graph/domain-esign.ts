@@ -5,6 +5,16 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/esign/events.ts#isTerminal': ['#TERMINAL_STATUSES'],
+  'packages/domain/src/esign/events.ts#nextSignState': ['#isTerminal'],
+  'packages/domain/src/esign/notice-templates.ts#ESIGN_NOTICE_TEMPLATES': [
+    '#ESIGN_COMPLETED_EMPLOYEE_TEMPLATE',
+    '#ESIGN_COMPLETED_INITIATOR_TEMPLATE',
+    '#ESIGN_REMIND_TEMPLATE',
+    '#ESIGN_REVOKED_EMPLOYEE_TEMPLATE',
+    '#ESIGN_REVOKED_INITIATOR_TEMPLATE',
+  ],
+  'packages/domain/src/esign/notice-templates.ts#renderEsignNotice': ['#ESIGN_NOTICE_TEMPLATES', '#fill'],
   'packages/domain/src/esign/variables.ts#renderTemplateBody': [
     '#ESIGN_EMPTY_VALUE',
     '#ESIGN_TEMPLATE_VARIABLES',
