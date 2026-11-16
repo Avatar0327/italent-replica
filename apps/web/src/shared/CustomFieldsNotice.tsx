@@ -5,6 +5,7 @@ import { customFieldsNoticeText as text } from './messages.js';
 
 /** 各模块定义目录读取（useRemote / useRead 的返回值）里用到的部分。 */
 interface DefinitionsRead {
+  data?: unknown;
   error?: unknown;
   loading: boolean;
   refresh(): void;
@@ -27,6 +28,8 @@ function noticeStatus(requested: boolean, read: DefinitionsRead, retried: boolea
  */
 export function useCustomFieldsNotice(requested: boolean, read: DefinitionsRead): CustomFieldsNoticeState {
   const [retried, setRetried] = useState(false);
+  // 重试读到定义即复位：之后换身份等引起的重新读取回到各处原有的首次加载处理（兼职照旧锁表单）。
+  if (retried && read.data !== undefined) setRetried(false);
   return {
     status: noticeStatus(requested, read, retried),
     retry: () => {

@@ -212,6 +212,17 @@ describe('AC-FE-F527 组织新建 / 变更：自定义字段定义加载失败�
     expect(text()).not.toContain(GROUP);
   });
 
+  it('AC-FE-F527-OG-08 重试成功后换身份重新读取：回到原有首次加载处理，不显示重试加载态', async () => {
+    replies = [failures[500]!, success, () => new Promise<Response>(() => {})];
+    await render('change');
+    await click('重试');
+    expect(customInput()?.value).toBe('合成旧说明');
+    await render('change');
+    expect(definitionReads(), '换身份后按新身份重读定义目录').toBe(3);
+    expect(text(), '不是点重试引起的读取，不显示重试加载态').not.toContain(LOADING);
+    expect(text()).not.toContain(NOTICE);
+  });
+
   it('AC-FE-F527-OG-07 成功路径不变：定义目录只读一次，字段出现，不显示提示', async () => {
     await render('change');
     expect(definitionReads()).toBe(1);
