@@ -6,8 +6,8 @@ import { PersonSelect } from './PersonFields.js';
 import { type PageAccess } from './page-support.js';
 import { useRecordCommand } from './record-command.js';
 import { info } from './OrgEditor.js';
-import { customFormFields, type OrgCustomFields } from './custom-fields.js';
-import { customText, detailText, pageText as m } from './messages.js';
+import { customFormFields, customFormGroups, type OrgCustomFields } from './custom-fields.js';
+import { detailText, pageText as m } from './messages.js';
 
 interface Props {
   /** 新建下级时预填的行政维度上级。 */
@@ -91,7 +91,7 @@ export function OrgCreate(props: Props) {
       }}
       groups={[
         { title: m.basic, fields: createFields(access, asOf) },
-        ...(custom.definitions.length ? [{ title: customText.group, fields: customFormFields(custom, access) }] : []),
+        ...customFormGroups(custom, customFormFields(custom, access)),
       ]}
     />
   );

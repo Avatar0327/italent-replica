@@ -17,12 +17,12 @@ import {
   type OrgAction,
   type OrgRow,
 } from './page-model.js';
-import { customFormFields, type OrgCustomFields } from './custom-fields.js';
+import { customFormFields, customFormGroups, type OrgCustomFields } from './custom-fields.js';
 import { type PageAccess } from './page-support.js';
 import { useRecordCommand } from './record-command.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { PersonSelect } from './PersonFields.js';
-import { customText, detailText, pageText as m } from './messages.js';
+import { detailText, pageText as m } from './messages.js';
 interface Props {
   original: OrgRow;
   action: OrgAction;
@@ -228,8 +228,7 @@ function headerFields({ action, date, original }: Props, resumed: boolean): Form
   ];
 }
 function customGroups({ action, access, custom }: Props, current: OrgRow) {
-  const fields = action === 'change' ? customFormFields(custom, access, current) : [];
-  return fields.length ? [{ title: customText.group, fields }] : [];
+  return action === 'change' ? customFormGroups(custom, customFormFields(custom, access, current)) : [];
 }
 export function OrgEditor(opened: Props) {
   const record = useOrgCommand(opened);
