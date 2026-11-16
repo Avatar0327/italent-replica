@@ -3,6 +3,7 @@
  * 不依赖 React 或浏览器 API；权威校验在服务端，这里只做提交前的同口径提示。
  */
 import { isValidValidityDays, unknownTemplateVariables } from '@italent/domain';
+import { configAccess } from '../contracts/model.js';
 import type { ObjectPermission } from '../foundation/permission-model.js';
 import { m } from './messages.js';
 
@@ -72,16 +73,17 @@ export const validSortOrder = (value: unknown) =>
 export const unknownVariables = (body: unknown) => (typeof body === 'string' ? unknownTemplateVariables(body) : []);
 export const validValidityDays = (value: unknown) => isValidValidityDays(integerOf(value));
 
-/** 授权按后端链：数据操作 + 按钮授权（create@list，update@detail）+ 逐字段编辑权；摘要未载入明细时不授予。 */
+/**
+ * 电子签设置是配置类对象：写入口按数据操作 + 逐字段编辑权，不看按钮（同 contracts configAccess）——
+ * /me/objects 对配置对象恒返回空按钮（permission/me.ts configObjectPermission），esign/routes.ts 写入也只校验
+ * objectContext 的数据操作与 writeFields 的字段权。摘要未载入明细时不授予。
+ */
 export function settingsActions(permission: ObjectPermission | undefined) {
   const loaded = permission && !permission.summary ? permission : undefined;
-  const op = (name: string) => loaded?.dataOperations[name] === true;
-  const button = (code: string, level: string) =>
-    !!loaded?.buttons.some((item) => item.buttonCode === code && item.level === level);
+  const { create, update } = configAccess(loaded);
   const editable = (field: string) => !!loaded?.viewableFields.includes(field) && loaded.editableFields.includes(field);
-  const update = op('update') && button('update', 'detail');
   return {
-    create: op('create') && button('create', 'list') && ['code', 'name', 'body'].every(editable),
+    create: create && ['code', 'name', 'body'].every(editable),
     edit: update && templateFields.some(editable),
     status: update && editable('status'),
     scene: update && editable('validityDays') && editable('remindBeforeExpiry'),

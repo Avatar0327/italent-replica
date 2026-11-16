@@ -194,7 +194,7 @@ export const listText = {
   more: '更多操作',
   export: '导出数据',
   import: '导入调动记录',
-  pendingTool: '接口待补齐，暂不可用',
+  pendingTool: '未完成', // 没有后端契约的入口一律标“未完成”（DEC-774，F-481 设计 §8.1）
   collapse: '收起',
   expand: '展开',
   closeBanner: '关闭提示',
