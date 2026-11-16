@@ -3,7 +3,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { cmd } from './support/tenant-api.js';
 import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
-import { signWorld, SIGN_AT } from './AC-TRF-F481-s2-support.js';
+import { rows, signWorld, SIGN_AT } from './AC-TRF-F481-s2-support.js';
 
 const database = useTestDb();
 describe('AC-TRF-F481-03～07 调动签署发起', () => {
@@ -68,7 +68,7 @@ describe('AC-TRF-F481-03～07 调动签署发起', () => {
     await withTenant(w.db, w.tenantId, async (tx) => {
       const versions = await tx.execute(sql`SELECT version_no FROM transfer_linkage_versions
         WHERE tenant_id=${w.tenantId} AND business_id=${business.id}::uuid ORDER BY version_no`);
-      expect(Array.isArray(versions) ? versions : versions.rows).toEqual([{ version_no: 1 }, { version_no: 2 }]);
+      expect(rows<{ version_no: number }>(versions)).toEqual([{ version_no: 1 }, { version_no: 2 }]);
     });
     const run = await w.runScheduler(SIGN_AT);
     expect(run).toMatchObject({ failed: [], errors: [] });
