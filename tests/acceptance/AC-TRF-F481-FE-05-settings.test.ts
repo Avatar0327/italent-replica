@@ -160,7 +160,22 @@ async function open(label: string) {
       ),
     ),
   );
-  await settle(80);
+  await rendered(label);
+}
+// 两张设置页是懒加载（esign/pages.ts lazyPage）：冷启动时模块转换可能超过任何固定等待，首跑偶发拿不到 h1。
+// 改为轮询到页面标题出现且读取结束（PageState loading 消失），上限 3 秒；超时照常判红并写明卡在哪一步。
+const PAGE_TIMEOUT_MS = 3000;
+const loading = () => host.querySelector('.page-state .ant-spin');
+async function rendered(label: string) {
+  const deadline = Date.now() + PAGE_TIMEOUT_MS;
+  while (!(host.querySelector('h1') && !loading()) && Date.now() < deadline) await settle();
+  expect(
+    host.querySelector('h1'),
+    `电子签 > ${label}：${PAGE_TIMEOUT_MS}ms 内页面未渲染出 h1（懒加载未完成）`,
+  ).not.toBeNull();
+  expect(loading(), `电子签 > ${label}：${PAGE_TIMEOUT_MS}ms 内页面读取未结束`).toBeNull();
+  // 列表读取与对象权限是并行请求：页面就绪后再等一拍，让权限回执（新建 / 编辑按钮）落地
+  await settle();
 }
 const pressable = (scope: ParentNode | null | undefined, label: string) =>
   Array.from(scope?.querySelectorAll<HTMLButtonElement>('button') ?? []).find(
