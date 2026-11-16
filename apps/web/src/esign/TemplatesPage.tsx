@@ -8,12 +8,13 @@ import { rejectionMessage, type Command } from '../foundation/client.js';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
-import { useApiClient } from '../foundation/Session.js';
+import { useApiClient, useSession } from '../foundation/Session.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
 import { createFormStore, type Values } from '../foundation/forms/store.js';
 import { FormCommands } from '../foundation/forms/useCommandForm.js';
 import { changedFields } from '../foundation/forms/values.js';
+import { dateTime } from '../talent-review/ConfigList.js';
 import { m } from './messages.js';
 import {
   BODY_MAX,
@@ -80,6 +81,7 @@ function TemplateList() {
   const permission = usePermissions(ESIGN_SETTINGS_OBJECT);
   const actions = settingsActions(permission.snapshot.objects[ESIGN_SETTINGS_OBJECT]);
   const read = useRead<unknown>(TEMPLATES_PATH);
+  const { timezone } = useSession();
   const [editing, setEditing] = useState<{ row?: TemplateRow }>();
   let rows: TemplateRow[] = [];
   let error = read.error;
@@ -113,7 +115,12 @@ function TemplateList() {
             { key: 'name', title: t.name, render: (_: unknown, row: TemplateRow) => text(row.name) },
             { key: 'code', title: t.code, render: (_: unknown, row: TemplateRow) => text(row.code) },
             { key: 'status', title: t.status, render: (_: unknown, row: TemplateRow) => statusTag(row) },
-            { key: 'sortOrder', title: t.sortOrder, render: (_: unknown, row: TemplateRow) => text(row.sortOrder) },
+            // 设计 §8.4：列表不列顺序（照后端顺序排列，顺序在抽屉里编辑）；更新时间按租户时区（DEC-056）
+            {
+              key: 'updatedAt',
+              title: t.updatedAt,
+              render: (_: unknown, row: TemplateRow) => dateTime(row.updatedAt, timezone),
+            },
             ...(rowActions
               ? [
                   {

@@ -32,6 +32,7 @@ export type TemplateRow = {
   body?: string;
   status?: 'enabled' | 'disabled';
   sortOrder?: number;
+  updatedAt?: string;
 };
 export type SceneRow = { revision: number; validityDays?: number; remindBeforeExpiry?: boolean };
 

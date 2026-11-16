@@ -18,6 +18,7 @@ export const m = {
     body: '正文',
     status: '状态',
     sortOrder: '顺序',
+    updatedAt: '更新时间',
     variables: '可用变量',
     basic: '模板信息',
     empty: '暂无签署模板',
