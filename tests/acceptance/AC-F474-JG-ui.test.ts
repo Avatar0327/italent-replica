@@ -746,3 +746,62 @@ describe('AC-F474-JG-09 待确认的职务职级记录页', () => {
     });
   });
 });
+
+describe('F-526a 工具栏顺序与最新生成时间位置（DEC-916 B③ 原站取证）', () => {
+  const toolbar = () => ui.host.querySelector<HTMLElement>('.job-graph-toolbar')!;
+  const card = () => ui.host.querySelector<HTMLElement>('.job-graph .list-card')!;
+  const time = () => card().querySelector<HTMLElement>('.job-graph-time');
+
+  it('右上依次为 导出 → 重新生成 → 警示图标（警示最右），导出与重新生成都是主色按钮', async () => {
+    serveGraph(snapshot(3, errorInput()));
+    await ui.render('/job?kind=graph');
+    const items = Array.from(toolbar().querySelectorAll<HTMLElement>('button, a.job-graph-warning')).map(
+      (item) => item.getAttribute('aria-label') ?? item.textContent?.replace(/\s/g, ''),
+    );
+    expect(items).toEqual(['导出', '重新生成', '点击可查看不规范的职务职级']);
+    for (const name of ['导出', '重新生成']) expect(button(name, toolbar())?.className).toContain('ant-btn-primary');
+    // 警示图标的出现条件不变：快照不含不规范数据就没有
+    await ui.close();
+    ui = graphHarness();
+    serveGraph(snapshot(3));
+    await ui.render('/job?kind=graph');
+    expect(toolbar().querySelector('a.job-graph-warning')).toBeNull();
+    expect(
+      Array.from(toolbar().querySelectorAll('button')).map((item) => item.textContent?.replace(/\s/g, '')),
+    ).toEqual(['导出', '重新生成']);
+  });
+
+  it('最新生成时间不在工具栏，放在内容区左上：内容区第一项、矩阵之前；没有快照不显示', async () => {
+    serveGraph(snapshot(3));
+    await ui.render('/job?kind=graph');
+    expect(toolbar().textContent).not.toContain('最新生成时间');
+    expect(card().firstElementChild).toBe(time());
+    expect(time()?.textContent).toBe('最新生成时间：2026-11-12 10:30:05');
+    expect(time()!.compareDocumentPosition(matrix()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await ui.close();
+    ui = graphHarness();
+    serveGraph(null);
+    await ui.render('/job?kind=graph');
+    expect(text()).not.toContain('最新生成时间');
+  });
+
+  it('提示条（结果待确认）出现时，最新生成时间在提示条下方；重试成功后随新快照更新', async () => {
+    serveGraph(snapshot(3));
+    const replies: (() => Response)[] = [
+      () => {
+        throw new TypeError('network down');
+      },
+      () => Response.json(snapshot(4, undefined, '2026-11-12T03:00:00.000Z')),
+    ];
+    ui.route(`POST ${GRAPH}/rebuild`, () => replies.shift()!());
+    await ui.render('/job?kind=graph');
+    await rebuild();
+    const notice = ui.host.querySelector('.job-graph .ant-alert')!;
+    expect(notice.textContent).toContain('处理中 / 结果待确认');
+    expect(time(), '内容区应有最新生成时间').not.toBeNull();
+    expect(notice.compareDocumentPosition(time()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toolbar().textContent).not.toContain('最新生成时间');
+    await click(button('重试原请求', ui.host));
+    expect(time()?.textContent).toBe('最新生成时间：2026-11-12 11:00:00');
+  });
+});

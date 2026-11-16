@@ -32,6 +32,7 @@ const COMPANY_OLD = '83000000-0000-4000-8000-000000000001';
 const COMPANY_NEW = '83000000-0000-4000-8000-000000000002';
 const COMPANY_STOP = '83000000-0000-4000-8000-000000000003';
 const PLAN_STOP = '82000000-0000-4000-8000-000000000004';
+const PLAN_GD = '82000000-0000-4000-8000-000000000005';
 const DATE = '2026-11-20';
 const LATER = '2026-12-01';
 const ORIGIN_PATH = '/api/tenant/transfer/insurance-origin';
@@ -69,6 +70,9 @@ const plan = (planId: string | undefined, name: string, regionCode: string) => (
 const PLANS: Record<string, unknown[]> = {
   '110108': [plan(PLAN_OLD, '北京基本方案', '110000'), plan(PLAN_NEW, '北京补充方案', '110000')],
   '440103': [plan(PLAN_GZ, '广州方案', '440100'), plan(undefined, '无标识方案', '440000')],
+  // F-526a：选到省 / 市本级时，后端同样按“所选地区或其上级”取（insurance/routes.ts 递归 chain）
+  '440000': [plan(PLAN_GD, '广东省级方案', '440000')],
+  '440100': [plan(PLAN_GZ, '广州方案', '440100'), plan(PLAN_GD, '广东省级方案', '440000')],
 };
 const COMPANIES = [
   { id: COMPANY_OLD, code: 'C01', name: '合成甲公司' },
@@ -556,5 +560,85 @@ describe('F-474-8c-3 联动草稿：载荷、暂存还原与联动详情', () =>
     expect(host.textContent).toContain('社保档案');
     expect(host.textContent).toContain('社保方案在生效日当月不可用');
     expect(host.querySelector('[data-retry-item="item-insurance"]')).not.toBeNull();
+  });
+});
+
+describe('F-526a 缴交地省 / 市 / 区县任一级可选（DEC-916 A④ 原站取证）', () => {
+  const tabs = () => Array.from(host.querySelectorAll('[role="tab"]')).map((tab) => tab.textContent);
+  const pickLevel = () =>
+    Array.from(host.querySelectorAll<HTMLButtonElement>('.hr-region-panel button')).find(
+      (item) => item.textContent === '选择本级',
+    );
+  /** 点当前层级的“选择本级”；没有该入口按业务断言失败，不让点击空元素报类型错。 */
+  async function chooseLevel() {
+    const target = pickLevel();
+    expect(target, '当前层级应能“选择本级”').toBeTruthy();
+    await click(target!);
+  }
+
+  it('省级：下钻到广东省后“选择本级”即选中，回填“广东省”；方案按省级编码取候选；“全国”层不能选本级', async () => {
+    await render(model({ adjustedInsurancePlanId: PLAN_NEW }));
+    await click(control('adjustedInsuranceRegionCode'));
+    expect(tabs()).toEqual(['全国']);
+    expect(pickLevel(), '“全国”不是缴交地').toBeUndefined();
+    await click(regionButton('广东省'));
+    expect(tabs()).toEqual(['全国', '广东省']);
+    await chooseLevel();
+    expect(current.linkage).toMatchObject({ adjustedInsuranceRegionCode: '440000', adjustedInsurancePlanId: '' });
+    expect(host.querySelector('[role="tab"]')).toBeNull();
+    expect(control('adjustedInsuranceRegionCode')?.textContent).toBe('广东省');
+    expect(calls).toContain(`/api/tenant/insurance/plans?regionCode=440000&asOf=${DATE}`);
+    expect(options('adjustedInsurancePlanId')).toEqual(['—', '广东省级方案']);
+    // 再打开下钻到广东省：本级显示为已选中
+    await click(control('adjustedInsuranceRegionCode'));
+    await click(regionButton('广东省'));
+    expect(pickLevel()?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('有区的市：下钻到广州市仍列出区县，“选择本级”选中广州市；方案候选含市级与省级', async () => {
+    origin = ok(NO_PROFILE);
+    await render(model());
+    await click(control('adjustedInsuranceRegionCode'));
+    await click(regionButton('广东省'));
+    await click(regionButton('广州市'));
+    expect(tabs()).toEqual(['全国', '广东省', '广州市']);
+    expect(regionButton('荔湾区')).toBeTruthy();
+    expect(pickLevel()?.getAttribute('aria-pressed')).toBe('false');
+    await chooseLevel();
+    expect(current.linkage).toMatchObject({ adjustedInsuranceRegionCode: '440100' });
+    expect(host.querySelector('[role="tab"]')).toBeNull();
+    expect(control('adjustedInsuranceRegionCode')?.textContent).toBe('广州市');
+    expect(calls).toContain(`/api/tenant/insurance/plans?regionCode=440100&asOf=${DATE}`);
+    expect(options('adjustedInsurancePlanId')).toEqual(['—', '广州方案', '广东省级方案']);
+  });
+
+  it('不设区地级市（东莞市）：同层可选本级的同时，点东莞市即回填，不进入空的下一级', async () => {
+    origin = ok(NO_PROFILE);
+    await render(model());
+    await click(control('adjustedInsuranceRegionCode'));
+    await click(regionButton('广东省'));
+    expect(pickLevel()).toBeTruthy();
+    await click(regionButton('东莞市'));
+    expect(current.linkage).toMatchObject({ adjustedInsuranceRegionCode: '441900' });
+    expect(host.querySelector('[role="tab"]')).toBeNull();
+    expect(control('adjustedInsuranceRegionCode')?.textContent).toBe('东莞市');
+    expect(calls).toContain(`/api/tenant/insurance/plans?regionCode=441900&asOf=${DATE}`);
+  });
+
+  it('下钻查询未返回时点“选择本级”：选中本级，迟到的下钻结果作废，不重开弹层也不覆盖', async () => {
+    origin = ok(NO_PROFILE);
+    await render(model());
+    await click(control('adjustedInsuranceRegionCode'));
+    await click(regionButton('广东省'));
+    const release = hold('440100');
+    await click(regionButton('广州市'));
+    expect(regionCalls().at(-1)).toBe('/api/tenant/insurance/regions?parent=440100');
+    expect(tabs()).toEqual(['全国', '广东省']);
+    await chooseLevel();
+    expect(current.linkage).toMatchObject({ adjustedInsuranceRegionCode: '440000' });
+    await release();
+    expect(current.linkage).toMatchObject({ adjustedInsuranceRegionCode: '440000' });
+    expect(host.querySelector('[role="tab"]')).toBeNull();
+    expect(control('adjustedInsuranceRegionCode')?.textContent).toBe('广东省');
   });
 });

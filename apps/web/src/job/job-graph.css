@@ -1,6 +1,8 @@
 /* 职务职级图谱矩阵（F-474-7a 设计 §1 样式取证值）：居中、细边框、类别色按快照 colorKey 轮换。 */
-.job-graph-toolbar .job-graph-time {
+.job-graph-time {
   color: rgba(0, 0, 0, 0.45);
+  text-align: left;
+  margin-bottom: 12px;
 }
 .job-graph-warning {
   color: #faad14;
