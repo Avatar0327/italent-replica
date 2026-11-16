@@ -13,6 +13,7 @@ import type { EmploymentContext } from '../../employment/types.js';
 import type { ModuleScope } from '../../permission/module-access.js';
 import type { LinkageOptions } from './input.js';
 import { itemView, type LinkageItemRow } from './items.js';
+import { signTemplateView } from '../../esign/transfer-input.js';
 import { latestLinkage } from './store.js';
 
 export interface LinkageVisibility {
@@ -53,8 +54,15 @@ export async function readTransferLinkage(
     show('contractChange') && (await contractVisible(tx, ctx, visibility, business.employeeId, contractTarget));
   const results = await linkageResults(tx, ctx, businessId, show);
   const executedAt = run ? new Date(run.executedAt).toISOString() : null;
+  const esign: { esign?: { templates: Awaited<ReturnType<typeof signTemplateView>> } | null } = {};
+  if (show('electronicSignature') && show('esignTemplateIds')) {
+    esign.esign = stored?.options.esign
+      ? { templates: await signTemplateView(tx, ctx.tenantId, stored.options.esign.templateIds) }
+      : null;
+  }
   return {
     businessId,
+    ...esign,
     revision: business.revision,
     options: stored ? visibleOptions(stored.options, show, contractShown, visibility.contract.fields) : null,
     executedAt,
@@ -102,6 +110,7 @@ function visibleOptions(
 ) {
   const contract = options.contract;
   return {
+    ...(show('electronicSignature') && show('esignTemplateIds') ? { esign: options.esign ?? null } : {}),
     ...(contractShown
       ? {
           contract: contract && {

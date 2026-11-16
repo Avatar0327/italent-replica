@@ -59,6 +59,14 @@ export async function updateTransferLinkage(
   await lockTransferParticipants(tx, ctx, visible.employeeId, dutySubordinateIds(options));
   const business = await lockEmploymentBusiness(tx, ctx, businessId);
   await requireLinkageSource(tx, ctx, businessId, business.employeeId);
+  if (options.esign) {
+    const [request] = rowsOf<{ initiator: string }>(
+      await tx.execute(sql`SELECT initiator FROM transfer_requests
+      WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid`),
+    );
+    if (request && request.initiator !== 'hr')
+      throw new AppError('VALIDATION_FAILED', '此入口不能设置电子签署', { reason: 'TRANSFER_LINKAGE_NOT_ALLOWED' });
+  }
   const executed = await linkageExecuted(tx, ctx.tenantId, businessId);
   assertLinkageMutable(business.state, business.payload.mode, executed, business.payload.effectiveDate > today);
   // 第三轮 P1-2：锁内读取原选项，按新旧差异授权（清空、置 false、删掉嵌套字段同样要有编辑权）。

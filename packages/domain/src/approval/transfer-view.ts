@@ -80,6 +80,8 @@ export const TRANSFER_DETAIL_VIEW: readonly TransferViewItem[] = [
 
 /** R1-T10 联动字段（审批载荷、变化检测与字段权限的编码；值见 transfer/linkage/approval.ts）。 */
 export const TRANSFER_LINKAGE_FIELDS = [
+  'electronicSignature',
+  'esignTemplateIds',
   'isChangeContract',
   'contractChange',
   'adjustSalary',

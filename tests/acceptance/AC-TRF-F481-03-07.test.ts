@@ -1,6 +1,8 @@
-import { sql, withTenant } from '@italent/db';
+import { createUser, grantMembership, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { cmd } from './support/tenant-api.js';
+import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
 import { signWorld, SIGN_AT } from './AC-TRF-F481-s2-support.js';
 
 const database = useTestDb();
@@ -26,6 +28,7 @@ describe('AC-TRF-F481-03～07 调动签署发起', () => {
       expect(file.content).toContain('ZZ_F481_EMP_01|');
       expect(file.content).toContain('|2026-10-10|调出部门|调入部门|2026-10-10|2029-10-09|2026-10-10|');
       expect(file.content).not.toMatch(/\{[^}]+\}/);
+      expect(file.content.endsWith(`|${w.session.tenant.name}`)).toBe(true);
     }
     expect(await w.notices()).toEqual([]);
     await w.runScheduler('2026-10-11T01:00:00Z');
@@ -70,7 +73,7 @@ describe('AC-TRF-F481-03～07 调动签署发起', () => {
     const run = await w.runScheduler(SIGN_AT);
     expect(run).toMatchObject({ failed: [], errors: [] });
     const [task] = await w.tasks();
-    expect(task?.status).toBe('signing');
+    expect(task).toMatchObject({ status: 'signing', initiatorUserId: w.session.user.id });
     expect((await w.files(task!.id)).map((f) => f.templateId)).toEqual([w.templates[2]!.id]);
     await w.runScheduler(SIGN_AT);
     expect(await w.tasks()).toHaveLength(1);
@@ -81,7 +84,25 @@ describe('AC-TRF-F481-03～07 调动签署发起', () => {
     const business = await w.saved(await w.transfer(w.person, { linkage: w.linkage() }));
     expect(business.status).toBe('in_review');
     expect(await w.tasks()).toEqual([]);
-    await w.approve(business, SIGN_AT);
+    const approver = await createUser(
+      w.db,
+      { email: `syn-approver-${crypto.randomUUID()}@example.com`, displayName: 'ZZ_F481_APPROVER' },
+      cmd(),
+    );
+    await grantMembership(w.db, { tenantId: w.tenantId, userId: approver.id, expectedRevision: 0 }, cmd());
+    const result = await runEmploymentTransition(
+      w.db,
+      {
+        tenantId: w.tenantId,
+        userId: approver.id,
+        timezone: w.session.tenant.timezone,
+        now: new Date(SIGN_AT),
+        commandId: crypto.randomUUID(),
+        expectedRevision: business.revision,
+      },
+      { id: business.id, action: 'approve' },
+    );
+    expect(result.status).toBe(200);
     expect(await w.tasks()).toEqual([
       expect.objectContaining({
         status: 'signing',
@@ -120,5 +141,73 @@ describe('AC-TRF-F481-03～07 调动签署发起', () => {
     expect(await w.notices()).toEqual([]);
     await w.runScheduler('2026-10-13T01:00:00Z');
     expect(await w.tasks()).toHaveLength(1);
+  });
+});
+
+describe('F-481 S2 失败边界与场景快照', () => {
+  it('07 发起人撤销成员后才到日：INITIATOR_NO_ACCOUNT；调动不回滚', async () => {
+    const w = await signWorld(database().db, '07-initiator');
+    const business = await w.saved(await w.transfer(w.person, { mode: 'direct', submit: false, linkage: w.linkage() }));
+    await withTenant(w.db, w.tenantId, (tx) =>
+      tx.execute(sql`UPDATE tenant_memberships SET status='revoked'
+      WHERE tenant_id=${w.tenantId} AND user_id=${w.session.user.id}::uuid`),
+    );
+    expect(await w.runScheduler(SIGN_AT)).toMatchObject({ failed: [], errors: [] });
+    expect(await w.tasks()).toEqual([
+      expect.objectContaining({ businessId: business.id, status: 'failed', failureReason: 'INITIATOR_NO_ACCOUNT' }),
+    ]);
+    expect(await w.notices()).toEqual([]);
+  });
+
+  it('07 损坏正文替换失败落 RENDER_FAILED，失败任务不存错误正文；不回滚任职', async () => {
+    const w = await signWorld(database().db, '07-render');
+    const business = await w.saved(await w.transfer(w.person, { mode: 'direct', submit: false, linkage: w.linkage() }));
+    await withTenant(w.db, w.tenantId, (tx) =>
+      tx.execute(sql`UPDATE esign_templates SET body='{未知合成变量}'
+      WHERE tenant_id=${w.tenantId} AND id=${w.templates[0]!.id}::uuid`),
+    );
+    expect(await w.runScheduler(SIGN_AT)).toMatchObject({ failed: [], errors: [] });
+    const [task] = await w.tasks();
+    expect(task).toMatchObject({
+      businessId: business.id,
+      status: 'failed',
+      failureReason: 'RENDER_FAILED',
+      failureDetail: null,
+    });
+    expect(await w.files(task!.id)).toEqual([]);
+    expect(await w.notices()).toEqual([]);
+  });
+
+  it('场景设置快照 30 天、不影响已发起任务；模板编辑不改任务文件', async () => {
+    const w = await signWorld(database().db, 'settings-snapshot');
+    await w.direct();
+    const [first] = await w.tasks();
+    const oldFiles = await w.files(first!.id);
+    const settings = await w.call('PUT', '/scenes/transfer', {
+      ifMatch: 0,
+      body: { validityDays: 30, remindBeforeExpiry: true },
+    });
+    expect(settings.status).toBe(200);
+    await w.call('PATCH', `/templates/${w.templates[0]!.id}`, { ifMatch: 1, body: { body: '新正文' } });
+    expect(await w.files(first!.id)).toEqual(oldFiles);
+    const person = await w.hire('ZZ_F481_EMP_02');
+    const contract = await w.contract(person.employee.id);
+    await w.saved(
+      await w.transfer(person, {
+        mode: 'direct',
+        submit: false,
+        linkage: {
+          ...w.linkage(),
+          contract: { targetId: contract.id },
+        },
+      }),
+    );
+    const tasks = await w.tasks();
+    expect(tasks.find((t) => t.id === first!.id)).toEqual(first);
+    expect(tasks.find((t) => t.id !== first!.id)).toMatchObject({
+      validityDays: 30,
+      remindBeforeExpiry: true,
+      expiresAt: new Date('2026-11-09T01:00:00.000Z'),
+    });
   });
 });

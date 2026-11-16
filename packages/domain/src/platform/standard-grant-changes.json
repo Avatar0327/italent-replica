@@ -1,12 +1,20 @@
 {
-  "reason": "F-474-8c-2a（DEC-896④，授权类变更）：新增 TenantBase.SocialSecurityProfile（社保档案）与 TenantBase.SocialInsurancePlan（社保方案）两个只读对象，只预置给标准版系统管理员与人事管理员（对象查看 + 全部系统字段可见，无按钮、无数据操作）；任职记录对象新增调整字段 adjustedInsuranceRegionCode / adjustedInsurancePlanId / adjustedInsuranceCompanyId，同样只给这两个身份；人事专员、经理、看板、员工等其它标准身份均不含",
+  "reason": "F-481-S2（设计 §10.3）：electronicSignature / esignTemplateIds 随既有联动字段预置，管理员与专员查看编辑，经理只读；不新增按钮或数据范围。",
   "add": [
-    "standard_org_system_admin/TenantBase.SocialSecurityProfile/*",
-    "standard_org_system_admin/TenantBase.SocialInsurancePlan/*",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:adjustedInsurance*",
-    "standard_hr_admin/TenantBase.SocialSecurityProfile/*",
-    "standard_hr_admin/TenantBase.SocialInsurancePlan/*",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:adjustedInsurance*"
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:electronicSignature:view",
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:electronicSignature:edit",
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:esignTemplateIds:view",
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:esignTemplateIds:edit",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:electronicSignature:view",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:electronicSignature:edit",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:esignTemplateIds:view",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:esignTemplateIds:edit",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:electronicSignature:view",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:electronicSignature:edit",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:esignTemplateIds:view",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:esignTemplateIds:edit",
+    "standard_manager/TenantBase.EmploymentRecord/field:electronicSignature:view",
+    "standard_manager/TenantBase.EmploymentRecord/field:esignTemplateIds:view"
   ],
   "remove": []
 }

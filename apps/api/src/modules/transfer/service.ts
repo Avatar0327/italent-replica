@@ -62,6 +62,8 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
   const input = parsed.data;
   const linkage = input.linkage === undefined || input.linkage === null ? null : normalizeLinkage(input.linkage);
   // 12 附录：本人调动表单没有薪资、合同、试岗等区块，人事申请入口不能带联动。
+  if (input.initiator !== 'hr' && linkage?.esign)
+    throw new AppError('VALIDATION_FAILED', '此入口不能设置电子签署', { reason: 'TRANSFER_LINKAGE_NOT_ALLOWED' });
   if (input.initiator === 'employee' && hasLinkage(linkage))
     throw new AppError('VALIDATION_FAILED', '本人调动申请不能设置联动业务', { reason: 'TRANSFER_LINKAGE_NOT_ALLOWED' });
   if (input.formId === 'standard') throw new AppError('VALIDATION_FAILED', '调动接口必须选择真实表单');
