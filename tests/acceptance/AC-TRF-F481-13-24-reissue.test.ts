@@ -71,6 +71,7 @@ describe('AC-TRF-F481-13/14/23/24 批量补发', () => {
     let scope: ModuleScope = {
       ...EMPTY_SCOPE,
       hasDataPermission: true,
+      orgIds: [w.from.id, w.to.id],
       personIds: [w.person.employee.id, futurePerson.employee.id, leaver.employee.id],
       terms: undefined,
     };

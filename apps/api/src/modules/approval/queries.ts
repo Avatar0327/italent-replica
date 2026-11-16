@@ -1,6 +1,6 @@
 /** “我的”列表：待办、通知、我发起 / 参与的实例，按接收人过滤；管理员留痕日志按数据范围过滤。均为有界分页。 */
 import { sql, type Tx } from '@italent/db';
-import { renderExitNotice } from '@italent/domain';
+import { renderExitNotice, renderEsignNotice } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { rowsOf } from './context.js';
 import { visibleRecordInstances } from './disclosure.js';
@@ -54,7 +54,10 @@ export async function listNotifications(tx: Tx, tenantId: string, userId: string
   return rows.map((row) => {
     const template = (row.template_code as string | null) ?? null;
     // 目录里有的模板码渲染标题 / 正文（DEC-045：界面不显示模板码）；没有的为 null
-    const rendered = renderExitNotice(template, (row.payload as Record<string, unknown> | null) ?? null);
+    const payload = (row.payload as Record<string, unknown> | null) ?? null;
+    const rendered = template?.startsWith('esign_')
+      ? { ...renderEsignNotice(template, payload), sender: null }
+      : renderExitNotice(template, payload);
     return {
       id: String(row.id),
       instanceId: (row.instance_id as string | null) ?? null,

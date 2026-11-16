@@ -1,20 +1,9 @@
 {
-  "reason": "F-481-S2（设计 §10.3）：electronicSignature / esignTemplateIds 随既有联动字段预置，管理员与专员查看编辑，经理只读；不新增按钮或数据范围。",
+  "reason": "F-481-S3a（设计 §10.3）：任职记录批量补发 MulLaunchESignTranfer 仅授予 HR 类标准身份；版本为 main + 1 占位。",
   "add": [
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:electronicSignature:view",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:electronicSignature:edit",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:esignTemplateIds:view",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:esignTemplateIds:edit",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:electronicSignature:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:electronicSignature:edit",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:esignTemplateIds:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:esignTemplateIds:edit",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:electronicSignature:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:electronicSignature:edit",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:esignTemplateIds:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:esignTemplateIds:edit",
-    "standard_manager/TenantBase.EmploymentRecord/field:electronicSignature:view",
-    "standard_manager/TenantBase.EmploymentRecord/field:esignTemplateIds:view"
+    "standard_org_system_admin/TenantBase.EmploymentRecord/button:MulLaunchESignTranfer@list",
+    "standard_hr_admin/TenantBase.EmploymentRecord/button:MulLaunchESignTranfer@list",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/button:MulLaunchESignTranfer@list"
   ],
   "remove": []
 }
