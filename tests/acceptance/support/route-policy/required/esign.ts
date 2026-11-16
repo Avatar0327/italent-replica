@@ -83,6 +83,14 @@ const taskCall = (method: string, path: string, anchor: string): Evidence => ({
   anchor,
 });
 function reissue(method: string, path: string): Obligation[] {
+  // POST 还在命令事务内复核当前权限；这些直接授权原语归属同一对象/按钮义务。
+  const transaction = (anchor: string): Evidence[] =>
+    method === 'POST'
+      ? [
+          taskCall(method, path, 'await authorizeReissue(tx, deps, ctx)'),
+          { role: 'impl', unit: `${REISSUE}#authorizeReissue`, anchor },
+        ]
+      : [];
   const scope: Evidence[] =
     method === 'POST'
       ? [
@@ -100,10 +108,18 @@ function reissue(method: string, path: string): Obligation[] {
     {
       need,
       perm: `obj:${RECORD}:update`,
-      facts: ['object:objectContext', `objectOp:${RECORD}:update`],
+      facts: [
+        'object:objectContext',
+        `objectOp:${RECORD}:update`,
+        ...(method === 'POST' ? ['object:object.* 动作'] : []),
+      ],
       at: [
         taskCall(method, path, "const ctx = await objectContext(c, deps, EMPLOYMENT_OBJECT, 'update')"),
         CONTEXT,
+        ...transaction(
+          "await requirePermission(authorize, { ...ctx, action: 'object.update', " +
+            'resource: EMPLOYMENT_OBJECT, fields: [] })',
+        ),
         ...RECORD_CONST,
         ...scope,
       ],
@@ -111,10 +127,14 @@ function reissue(method: string, path: string): Obligation[] {
     {
       need,
       perm: `btn:${RECORD}#MulLaunchESignTranfer@list`,
-      facts: ['button:button()'],
+      facts: ['button:button()', ...(method === 'POST' ? ['button:buttonResource', 'button:object.button'] : [])],
       at: [
         taskCall(method, path, "await button(deps, ctx, EMPLOYMENT_OBJECT, REISSUE_BUTTON, 'list')"),
         BUTTON,
+        ...transaction(
+          "await requirePermission(authorize, { ...ctx, action: 'object.button', " +
+            "resource: buttonResource(EMPLOYMENT_OBJECT, REISSUE_BUTTON, 'list'), })",
+        ),
         ...RECORD_CONST,
         { role: 'const', unit: `${REISSUE}#REISSUE_BUTTON`, anchor: "'MulLaunchESignTranfer'" },
         ...scope,
