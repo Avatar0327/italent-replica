@@ -3219,6 +3219,29 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     customFieldWrite('POST', '/custom-fields', 'create'),
   ],
+  'GET /api/tenant/employment/custom-field-definitions': [
+    {
+      ...ob(
+        `obj:${RECORD}:view`,
+        [`objectOp:${RECORD}:view`, 'object:object.* 动作'],
+        [
+          at(
+            EMP,
+            'GET',
+            '/custom-field-definitions',
+            "await requirePermission(deps.authorize, { ...ctx, action: 'object.view', resource: EMPLOYMENT_OBJECT })",
+          ),
+          {
+            role: 'impl',
+            unit: 'apps/api/src/authorization.ts#requirePermission',
+            anchor: "if (!(await authorizer(request))) throw new AppError('FORBIDDEN'",
+          },
+          RECORD_CONST,
+        ],
+      ),
+      need: NONE,
+    },
+  ],
   'GET /api/tenant/employment/custom-fields': [
     ob(
       'obj:TenantBase.EmploymentCustomField:view',
