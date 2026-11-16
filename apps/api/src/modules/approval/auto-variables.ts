@@ -354,8 +354,10 @@ const variableIdsOf = (nodes: Iterable<ApprovalNode>): string[] => {
 };
 
 /**
- * 收尾候选（主设计 §5.5③ 三类）：保存前草稿引用过的自动变量、本版本自己归属的未停用自动变量、
+ * 收尾候选的上界（主设计 §5.5③ 三类）：保存前草稿引用过的自动变量、本版本自己归属的自动变量、
  * 本流程内被管理员手工重新启用过的（有 enable 审计）自动变量——后者来源版本可能更早，前两类取不到（DEC-861⑧）。
+ * 不按变量当前状态筛：状态会被并发的停用 / 重新启用翻转，按它筛出的集合就不是上界，
+ * 保存开始时看到“已停用”的变量，到收尾时可能已被重新启用（审查 rf326s7a_2 P2-1）；是否真停用由收尾在锁内重读状态决定。
  */
 async function retireCandidates(tx: Tx, ctx: ApprovalContext, scope: MaterializeScope): Promise<string[]> {
   const referenced = variableIdsOf(scope.previous?.values() ?? []);
@@ -366,7 +368,6 @@ async function retireCandidates(tx: Tx, ctx: ApprovalContext, scope: Materialize
       and(
         eq(table.tenantId, ctx.tenantId),
         eq(table.origin, 'auto'),
-        eq(table.status, 'enabled'),
         sql`(${table.originVersionId} = ${scope.versionId}::uuid ${
           referenced.length ? sql`OR ${inArray(table.id, referenced)}` : sql``
         } OR (${table.originProcessId} = ${scope.processId}::uuid AND EXISTS (
@@ -379,23 +380,31 @@ async function retireCandidates(tx: Tx, ctx: ApprovalContext, scope: Materialize
   return rows.map((row) => row.id);
 }
 
+/** 保存一批取锁的结果：update 里的变量都已持 FOR UPDATE，收尾只能在这个集合内动作（升序、一次确定）。 */
+export interface SaveLocks {
+  update: readonly string[];
+}
+
 /**
- * 保存一批取锁（主设计 §5.5③④、F-326-L §3.3）：收尾候选（FOR UPDATE）与本次保存引用的变量（FOR SHARE）合成一批，
- * 按 id 升序一次取完；之后的引用校验与收尾对其中的行都是重入，不再升级锁，两个流程同时引用同一条变量不会互等。
+ * 保存一批取锁（主设计 §5.5③④、F-326-L §3.3）：收尾候选（FOR UPDATE，上界与变量状态无关）与本次保存引用的变量（FOR SHARE）
+ * 合成一批，按 id 升序一次取完，同一变量只有一种最终模式（候选压过引用）。
+ * 之后的引用校验、收尾对其中的行都是重入，事务中段任何地方都不再对变量升级锁：
+ * 两个流程同时引用同一条变量、或与管理员的停用 / 重新启用交错，都不会互等成环。
  */
 export async function lockSaveBatch(
   tx: Tx,
   ctx: ApprovalContext,
   scope: MaterializeScope,
   nodes: readonly ApprovalNode[],
-): Promise<void> {
+): Promise<SaveLocks> {
   const modes = new Map<string, 'update' | 'share'>();
   for (const node of nodes)
     for (const slot of ['approver', 'empty_approver'] as const)
       for (const source of slotSources(node, slot))
         if (source.type === 'public_variable' || source.type === 'application_variable')
           modes.set(source.value, 'share');
-  for (const id of await retireCandidates(tx, ctx, scope)) modes.set(id, 'update');
+  const update = await retireCandidates(tx, ctx, scope);
+  for (const id of update) modes.set(id, 'update');
   for (const [id, mode] of [...modes].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     await tx.execute(
       mode === 'update'
@@ -403,16 +412,17 @@ export async function lockSaveBatch(
         : sql`SELECT id FROM approval_variables WHERE tenant_id=${ctx.tenantId}::uuid AND id=${id}::uuid FOR SHARE`,
     );
   }
+  return { update };
 }
 
-/** 全部在用版本（草稿 / 当前 / 仍有可恢复实例的旧版本）都不再引用才停用（DEC-859）；行锁已由 lockSaveBatch 取得。 */
-export async function retireUnreferencedAutoVariables(
-  tx: Tx,
-  ctx: ApprovalContext,
-  scope: MaterializeScope,
-): Promise<void> {
-  for (const id of await retireCandidates(tx, ctx, scope)) {
-    const current = await loadVariable(tx, ctx.tenantId, id, true);
+/**
+ * 全部在用版本（草稿 / 当前 / 仍有可恢复实例的旧版本）都不再引用才停用（DEC-859）。
+ * 只处理 lockSaveBatch 已锁住的候选，且只读不加锁地重读状态：不重新筛候选（状态可能在取锁等待期间翻转），
+ * 也不再 FOR UPDATE（对只持 SHARE 的行就是升级）。本次保存新建的自动变量必被自己的节点引用，不在候选里。
+ */
+export async function retireUnreferencedAutoVariables(tx: Tx, ctx: ApprovalContext, locks: SaveLocks): Promise<void> {
+  for (const id of locks.update) {
+    const current = await loadVariable(tx, ctx.tenantId, id);
     if (current.status !== 'enabled') continue;
     if ((await findSourceUsages(tx, ctx.tenantId, { kind: 'variable', id })).length) continue;
     await changeAuto(tx, ctx, current, { status: 'disabled' }, 'auto_disable', { reason: RETIRE_REASON });

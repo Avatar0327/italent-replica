@@ -435,7 +435,7 @@ async function writeVersionContent(
   }
   const scope = await materializeScope(tx, tenantId, processId, id, definition, options);
   // 变量行一批取锁（按 id 升序，事务中段不升级，主设计 §5.5③④）：先于任何引用校验与收尾
-  if (!options.copyOfExisting) await lockSaveBatch(tx, ctx, scope, definition.nodes);
+  const locks = options.copyOfExisting ? undefined : await lockSaveBatch(tx, ctx, scope, definition.nodes);
   for (const [index, original] of definition.nodes.entries()) {
     await assertFallbackUsers(tx, tenantId, original);
     const [violation] = approverSourceViolations(original, APPROVAL_TYPES[type]);
@@ -466,7 +466,7 @@ async function writeVersionContent(
     await insertNode(tx, tenantId, id, node, index);
   }
   await writeRoutes(tx, tenantId, id, definition.nodes);
-  if (!options.copyOfExisting) await retireUnreferencedAutoVariables(tx, ctx, scope);
+  if (locks) await retireUnreferencedAutoVariables(tx, ctx, locks);
 }
 
 async function insertVersion(
