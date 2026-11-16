@@ -19,6 +19,7 @@ import { auditEmployment } from '../../employment/context.js';
 import { plannedEffectiveDate } from '../../employment/timeline.js';
 import { rowsOf } from '../../employment/record-store.js';
 import type { EmploymentContext } from '../../employment/types.js';
+import { initiateTransferSign, transferSignInitiator } from '../../esign/transfer-sign.js';
 import { changeContractOnActivation } from './contract.js';
 import { attemptLinkageItem, type LinkageItemRow } from './items.js';
 import { dutyLines, hasInsuranceAdjust, latestLinkage, type StoredLinkage } from './store.js';
@@ -83,6 +84,13 @@ export async function applyTransferCrossLinkage(tx: Tx, ctx: EmploymentContext, 
     commandId: ctx.commandId,
     executedAt: ctx.now,
   });
+  if (options.esign)
+    await initiateTransferSign(tx, ctx, {
+      businessId: transfer.id,
+      templateIds: options.esign.templateIds,
+      initiatorUserId: await transferSignInitiator(tx, ctx, transfer.id),
+      origin: 'activation',
+    });
   await recordTrialAndHandover(tx, ctx, transfer, stored);
   await auditEmployment(tx, ctx, 'transfer.linkage.executed', 'transfer-linkage', transfer.id, null, {
     plannedEffectiveDate,

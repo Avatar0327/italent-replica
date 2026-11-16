@@ -66,8 +66,8 @@ describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
       [`${base}/users/${id}`]: row,
     });
     const cells = ui.host.querySelectorAll('tbody .ant-table-row td');
-    expect(cells[3]?.textContent).toBe(user.email);
-    expect(cells[4]?.textContent).toBe(contactEmail ?? '--');
+    expect(cells[2]?.textContent).toBe(user.email);
+    expect(cells[3]?.textContent).toBe(contactEmail ?? '--');
     const name = Array.from(ui.host.querySelectorAll<HTMLButtonElement>('tbody button')).find(
       (button) => button.textContent === user.displayName,
     );
@@ -91,10 +91,38 @@ describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
     await ui.render(h(UsersPage, { ...props, code: 'users.all' }), '/', undefined, {
       [`${base}/users`]: { items: [user], total: 31 },
     });
+    // DEC-917：登录手机号 / 来源 / 创建人在复刻系统无语义一致的数据源，全部用户页不显示，其余列序不变。
     expect(ui.headers().slice(1)).toEqual([
       '姓名',
-      '登录手机号',
       '登录用户名',
+      '联系邮箱',
+      '联系手机号',
+      '用户类型',
+      '业务身份',
+      '创建时间',
+      '账号状态',
+      '员工状态',
+      '',
+    ]);
+    expect(ui.widths()).toEqual([30, 128, 188, 188, 128, 128, 128, 146, 128, 128, 24].map((n) => `${n}px`));
+    expect(ui.host.textContent).toContain('contact@example.com');
+    expect(ui.host.textContent).toContain('login@example.com');
+    expect(ui.host.querySelector('tbody')?.textContent).toContain('启用');
+    expect(ui.host.querySelector('tbody')?.textContent).not.toContain('已撤销');
+    const select = ui.host.querySelector<HTMLInputElement>('input[aria-label="选择此行"]');
+    await act(() => select!.click());
+    expect(select!.checked).toBe(true);
+    await next();
+    expect(queries().at(-1)?.searchParams.get('offset')).toBe('15');
+    expect(ui.host.querySelector<HTMLInputElement>('input[aria-label="选择此行"]')?.checked).toBe(false);
+  });
+  it('外部用户页表头不受全部用户撤列影响', async () => {
+    await ui.render(h(UsersPage, { ...props, code: 'users.external' }), '/', undefined, {
+      [`${base}/users`]: { items: [user], total: 1 },
+    });
+    expect(ui.headers()).toEqual([
+      '姓名',
+      '登录手机号',
       '联系邮箱',
       '联系手机号',
       '用户类型',
@@ -106,19 +134,7 @@ describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
       '员工状态',
       '',
     ]);
-    expect(ui.widths()).toEqual(
-      [30, 128, 128, 188, 188, 128, 128, 128, 128, 118, 146, 128, 128, 24].map((n) => `${n}px`),
-    );
-    expect(ui.host.textContent).toContain('contact@example.com');
-    expect(ui.host.textContent).toContain('login@example.com');
-    expect(ui.host.querySelector('tbody')?.textContent).toContain('启用');
-    expect(ui.host.querySelector('tbody')?.textContent).not.toContain('已撤销');
-    const select = ui.host.querySelector<HTMLInputElement>('input[aria-label="选择此行"]');
-    await act(() => select!.click());
-    expect(select!.checked).toBe(true);
-    await next();
-    expect(queries().at(-1)?.searchParams.get('offset')).toBe('15');
-    expect(ui.host.querySelector<HTMLInputElement>('input[aria-label="选择此行"]')?.checked).toBe(false);
+    expect(ui.widths()).toEqual([128, 128, 188, 128, 128, 128, 128, 118, 146, 128, 128, 24].map((n) => `${n}px`));
   });
   it('用户授权读取关联名称与管理单元，不依赖可授予身份权限或当前页切片', async () => {
     await ui.render(h(GrantsPage, { ...props, code: 'permission.user_grant', canScope: false }), '/', undefined, {
@@ -200,6 +216,7 @@ describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
     await ui.render(h(ProfilesPage, { ...props, code: 'permission.profiles' }), '/', undefined, {
       [`${base}/profiles`]: { items: [profile], total: 31 },
     });
+    // DEC-917：身份定义没有状态与所属应用，两列不显示；关联应用保留。
     expect(ui.headers()).toEqual([
       '名称',
       '编码',
@@ -207,18 +224,15 @@ describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
       '授权范围',
       '类型',
       '描述',
-      '状态',
       '最近修改人',
       '最近修改时间',
-      '所属应用',
       '操作',
       '',
     ]);
-    expect(ui.widths()).toEqual([193, 128, 128, 128, 128, 128, 128, 118, 146, 128, 168, 24].map((n) => `${n}px`));
+    expect(ui.widths()).toEqual([193, 128, 128, 128, 128, 128, 118, 146, 168, 24].map((n) => `${n}px`));
     const cells = ui.host.querySelectorAll('tbody .ant-table-row td');
-    expect(cells[7]?.textContent).toBe('—');
     expect(cells[6]?.textContent).toBe('—');
-    expect(cells[8]?.textContent).toContain('2026/11/11');
+    expect(cells[7]?.textContent).toContain('2026/11/11');
     expect(cells[3]?.textContent).toContain('23');
     expect(ui.headers()).not.toContain('来源视图');
     await next();
@@ -240,7 +254,7 @@ describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
     ).toEqual(['0', '15', '0']);
     expect(ui.host.querySelectorAll('tbody .ant-table-row')).toHaveLength(1);
   });
-  it('修改人、自动持有与特殊字符如实显示，不把关联应用冒充所属应用', async () => {
+  it('修改人、自动持有与特殊字符如实显示，所属应用列不存在、关联应用保留真实值', async () => {
     await ui.render(h(ProfilesPage, { ...props, code: 'permission.profiles' }), '/', undefined, {
       [`${base}/profiles`]: {
         items: [
@@ -255,9 +269,11 @@ describe('AC-FE-F4745-A2a 列表投影、结构与服务端分页', () => {
       },
     });
     const cells = ui.host.querySelectorAll('tbody .ant-table-row td');
+    expect(ui.headers()).not.toContain('所属应用');
+    expect(ui.headers()[2]).toBe('关联应用');
+    expect(cells[2]?.textContent).toBe('TenantBase');
     expect(cells[3]?.textContent).toBe('自动适用于全体员工');
-    expect(cells[7]?.textContent).toBe('合成修改人');
-    expect(cells[9]?.textContent).toBe('—');
+    expect(cells[6]?.textContent).toBe('合成修改人');
     expect(ui.host.querySelector('tbody script')).toBeNull();
     expect(ui.host.querySelector('input[aria-label="名称"]')?.getAttribute('maxlength')).toBe('100');
     expect(ui.host.querySelector('input[aria-label="关联应用"]')?.getAttribute('maxlength')).toBe('64');

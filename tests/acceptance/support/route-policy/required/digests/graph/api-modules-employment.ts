@@ -7858,6 +7858,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/access.ts#requireTransferButton',
     'apps/api/src/modules/transfer/completion.ts#listCompletionTodos',
   ],
+  'apps/api/src/modules/employment/routes.ts#route:GET /custom-field-definitions': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/personnel/custom-field-directory.ts#listVisibleCustomFields',
+    'apps/api/src/tenant-context.ts#tenantOf',
+  ],
   'apps/api/src/modules/employment/routes.ts#route:GET /custom-fields': [
     'apps/api/src/modules/employment/configuration.ts#listCustomFields',
     'apps/api/src/modules/employment/context.ts#readContext',

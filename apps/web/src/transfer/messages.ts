@@ -138,6 +138,7 @@ export const insuranceText = {
   blank: '—',
   noChoices: '暂无可选项',
   nationwide: '全国',
+  pickLevel: '选择本级',
   choose: '请选择',
   clear: '清除',
 } as const;

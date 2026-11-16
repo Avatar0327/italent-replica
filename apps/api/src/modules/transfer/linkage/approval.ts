@@ -25,6 +25,8 @@ const CONTAINER = 'contractChange';
 /** 联动选项落在任职对象上的字段值（容器级）：审批载荷、写入授权的新旧差异共用同一口径。 */
 export function linkageFieldValues(options: LinkageOptions | null): Record<string, unknown> {
   return {
+    electronicSignature: !!options?.esign,
+    esignTemplateIds: options?.esign?.templateIds ?? [],
     isChangeContract: !!options?.contract,
     contractChange: options?.contract ? { targetId: options.contract.targetId, ...options.contract.fields } : null,
     adjustSalary: options?.adjustSalary ?? false,

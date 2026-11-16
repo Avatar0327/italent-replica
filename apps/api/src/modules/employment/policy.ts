@@ -1736,6 +1736,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     auditedConfigWrite('employment_custom_field'),
     { guards: ['employment.customFieldWrite'] },
   ),
+  // F-523a：业务目录只按任职对象查看权准入；定义不含任职行，逐项按 custom:<id> 查看权裁剪。
+  'GET /custom-field-definitions': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('定义目录只按任职对象查看权，无按钮'),
+    scope: noScope('定义是租户配置，不含任职行，不查数据范围'),
+    fields: shape('employment.customFieldDefinitions'),
+  }),
   // DEC-896：四类对象共用配置权限，支持五种基础值类型与 select。
   // objectType 查询非法 → 400；hasDataPermission 恒 true（配置对象无范围）
   'GET /custom-fields': configurationView(CUSTOM_FIELD, CUSTOM_FIELD_FIELDS),

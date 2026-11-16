@@ -660,6 +660,7 @@ export const DIGESTS: Digests = {
     'route:GET /activation-todos': 'fd59d84ee8a5',
     'route:GET /businesses/:id': '1255d470a70f',
     'route:GET /completion-todos': '24e1dfaf3e09',
+    'route:GET /custom-field-definitions': 'b2f86681ddae',
     'route:GET /custom-fields': '6d17617d7db4',
     'route:GET /employees': '7179e4f7aaf7',
     'route:GET /employees/:id': '051a5b206c0b',
@@ -1832,6 +1833,9 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/transfer/employee-policy.ts': {
     requireEmployeeTransferBusiness: 'fc3d723fa937',
   },
+  'apps/api/src/modules/transfer/linkage/approval.ts': {
+    linkageFieldValues: '5f92b834c5f8',
+  },
   'apps/api/src/modules/transfer/linkage/routes.ts': {
     authorizeRetry: 'eff51dc7c9dc',
     preauthorizeLinkage: '59a194fd81c5',
@@ -1874,7 +1878,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/transfer/service.ts': {
     createTransfer: '22d73a42272e',
-    normalizeTransferInput: '6aae4e9a33dc',
+    normalizeTransferInput: 'fb5128caeb74',
     requireDirectTransfer: '51a8e83b978b',
     requireTransferWrite: '2a9f6e41f020',
     transferBusinessContext: 'd205bb16e2c5',
@@ -1894,6 +1898,9 @@ export const DIGESTS: Digests = {
     CONTRACT_BOARD_OBJECT: 'd8404150dfe9',
     HR_STRUCTURE_OBJECT: 'b811df5b64eb',
     HR_STRUCTURE_REPORT_OBJECT: '1f75873ce22d',
+  },
+  'packages/domain/src/approval/transfer-view.ts': {
+    TRANSFER_LINKAGE_FIELDS: 'af330e3729eb',
   },
   'packages/domain/src/contracts/rules.ts': {
     CONTRACT_OBJECT: 'e22987935f65',
@@ -2499,6 +2506,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/routes.ts#route:GET /activation-todos': '35f251f375ae',
   'apps/api/src/modules/employment/routes.ts#route:GET /businesses/:id': '06d4b669a606',
   'apps/api/src/modules/employment/routes.ts#route:GET /completion-todos': 'bbaea3cee59b',
+  'apps/api/src/modules/employment/routes.ts#route:GET /custom-field-definitions': 'c0e519889526',
   'apps/api/src/modules/employment/routes.ts#route:GET /custom-fields': '4c977aae9ff5',
   'apps/api/src/modules/employment/routes.ts#route:GET /employees': '2b70f681b2e8',
   'apps/api/src/modules/employment/routes.ts#route:GET /employees/:id': 'a1d110f8eec9',
@@ -3369,6 +3377,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/transfer/access.ts#requireTransferSource': 'c189085fadf2',
   'apps/api/src/modules/transfer/access.ts#transferDirectActions': '8183cc7a4028',
   'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness': '9cf5876103f8',
+  'apps/api/src/modules/transfer/linkage/approval.ts#linkageFieldValues': 'e3b0c44298fc',
   'apps/api/src/modules/transfer/linkage/routes.ts#authorizeRetry': 'c17b2b6e9b2f',
   'apps/api/src/modules/transfer/linkage/routes.ts#preauthorizeLinkage': '969182fa72d8',
   'apps/api/src/modules/transfer/linkage/routes.ts#route:GET /transfers/:id/linkage': '5f098e5621d3',
@@ -3400,7 +3409,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/transfer/routes.ts#route:PUT /transfers/settings': 'c225d6ed449e',
   'apps/api/src/modules/transfer/routes.ts#visibleTransferForm': '82d44ef14009',
   'apps/api/src/modules/transfer/service.ts#createTransfer': 'caebc9f3bc86',
-  'apps/api/src/modules/transfer/service.ts#normalizeTransferInput': 'a8766d504455',
+  'apps/api/src/modules/transfer/service.ts#normalizeTransferInput': 'f0786ef5eb83',
   'apps/api/src/modules/transfer/service.ts#requireDirectTransfer': '4bdb52ca15df',
   'apps/api/src/modules/transfer/service.ts#requireTransferWrite': '27b94794f43d',
   'apps/api/src/modules/transfer/service.ts#transferBusinessContext': 'c7b31c61e80d',
@@ -3412,6 +3421,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/analytics/hr-structure.ts#CONTRACT_BOARD_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORT_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/approval/transfer-view.ts#TRANSFER_LINKAGE_FIELDS': 'e3b0c44298fc',
   'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/contracts/rules.ts#contractAction': 'e3b0c44298fc',
   'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT': 'e3b0c44298fc',

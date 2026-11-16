@@ -31,10 +31,8 @@ export function profileColumns(detail: (id: string) => void, instant: (value?: s
       render: (value: string) => (value === 'standard' ? m.standard : m.custom),
     },
     { title: m.profileDescription, dataIndex: 'description', width: 128 },
-    { title: m.status, width: 128, render: () => m.empty },
     { title: m.updatedBy, width: 118, render: (_: unknown, row: Profile) => textValue(row.updatedBy?.displayName) },
     { title: m.updatedAt, dataIndex: 'updatedAt', width: 146, render: instant },
-    { title: m.owningApp, width: 128, render: () => m.empty },
     {
       title: m.operation,
       width: 168,
