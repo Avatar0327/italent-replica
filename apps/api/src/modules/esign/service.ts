@@ -26,6 +26,8 @@ export interface TemplateView {
   readonly status: string;
   readonly sortOrder: number;
   readonly revision: number;
+  /** 设计 §8.4 列表「更新时间」；ISO UTC，前端按租户时区显示（DEC-056）。审计按技术字段排除。 */
+  readonly updatedAt: string;
 }
 export interface SceneView {
   readonly scene: 'transfer';
@@ -43,6 +45,7 @@ const view = (row: Row): TemplateView => ({
   status: row.status,
   sortOrder: row.sortOrder,
   revision: row.revision,
+  updatedAt: row.updatedAt.toISOString(),
 });
 
 /** 正文里只允许内置变量（设计 §3.2）；创建与编辑同一检查。 */

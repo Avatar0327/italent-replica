@@ -82,6 +82,7 @@ export const GRAPH: Graph = {
     '#object',
   ],
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>contractCompany': ['#object'],
+  'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>eSignRecord': ['#button', '#object'],
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>eSignSettings': ['#object'],
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>establishment': ['#button', '#crud', '#object'],
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>organization': ['#button', '#crud', '#object'],

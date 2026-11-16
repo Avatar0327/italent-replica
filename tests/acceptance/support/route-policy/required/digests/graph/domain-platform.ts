@@ -184,7 +184,12 @@ export const GRAPH: Graph = {
   'packages/domain/src/platform/standard-presets.ts#full': [
     'packages/domain/src/platform/employee-self-service.ts#SELF_APPLICATION_BUTTONS',
   ],
-  'packages/domain/src/platform/standard-presets.ts#grant': ['#READ_ONLY_OBJECTS', '#full', '#readOnly'],
+  'packages/domain/src/platform/standard-presets.ts#grant': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    '#READ_ONLY_OBJECTS',
+    '#full',
+    '#readOnly',
+  ],
   'packages/domain/src/platform/standard-presets.ts#partial': ['#full'],
   'packages/domain/src/platform/standard-presets.ts#succession': [
     'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS',

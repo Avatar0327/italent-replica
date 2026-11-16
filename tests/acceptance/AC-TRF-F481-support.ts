@@ -20,6 +20,8 @@ export interface TemplateView {
   status: 'enabled' | 'disabled';
   sortOrder: number;
   revision: number;
+  /** F-481 §8.4 列表「更新时间」：ISO 8601 UTC（DEC-056 由前端按租户时区显示）。 */
+  updatedAt: string;
 }
 
 /** 拒绝配置对象 ESignSettings 的一切操作，其余全放行（模拟没有模板维护权的身份）。 */
