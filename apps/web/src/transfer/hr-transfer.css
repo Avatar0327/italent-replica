@@ -286,6 +286,14 @@
 .hr-region-panel [aria-pressed='true'] {
   color: #146eff;
 }
+.hr-region-panel .hr-region-level {
+  display: block;
+  margin-bottom: 4px;
+  color: #146eff;
+}
+.hr-region-panel .hr-region-level[aria-pressed='true'] {
+  font-weight: 600;
+}
 .hr-region-panel ul {
   display: flex;
   flex-wrap: wrap;

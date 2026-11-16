@@ -126,9 +126,10 @@ function ChoiceSelect(props: {
 }
 
 /**
- * 原站地区选择器（设计 §1.1）：“全国”页签起，省 → 市 → 区逐级下钻，按 parent 懒加载；单选，回填只显示末级。
- * 区县级或没有下级的节点（如东莞市）点击即选中。
- * 点击要先等下级查询；关闭、换层级、清除、再点别处或卸载都作废进行中的那次，迟到返回不写弹层也不写草稿。
+ * 原站地区选择器（设计 §1.1）：“全国”页签起，省 → 市 → 区逐级下钻，按 parent 懒加载；单选，回填只显示所选那一级。
+ * 省 / 市 / 区县任一级都可作缴交地（DEC-916 A④）：有下级的节点点击下钻，下钻后用“选择本级”选中它；
+ * 区县级或没有下级的节点（如东莞市）点击即选中。“全国”不是缴交地，不给“选择本级”。
+ * 点击要先等下级查询；关闭、换层级、清除、选择本级、再点别处或卸载都作废进行中的那次，迟到返回不写弹层也不写草稿。
  */
 function RegionPicker({
   tenantId,
@@ -156,6 +157,10 @@ function RegionPicker({
     setPath(null);
     onChange(node.code);
   };
+  const pickLevel = (node: RegionNode) => {
+    go(null);
+    onChange(node.code);
+  };
   const clear = () => {
     ticket.revoke();
     onChange('');
@@ -178,20 +183,31 @@ function RegionPicker({
           </button>
         )}
       </div>
-      {path && <RegionPanel path={path} nodes={nodes} value={value} go={go} pick={(node) => void pick(node)} />}
+      {path && (
+        <RegionPanel
+          path={path}
+          nodes={nodes}
+          value={value}
+          go={go}
+          pick={(node) => void pick(node)}
+          pickLevel={pickLevel}
+        />
+      )}
     </div>
   );
 }
 
-/** 选择器弹层：页签是已下钻的层级（“全国”起），列表是当前层级的下级。 */
+/** 选择器弹层：页签是已下钻的层级（“全国”起），列表是当前层级的下级；下钻后可“选择本级”。 */
 function RegionPanel(props: {
   path: readonly RegionNode[];
   nodes: readonly RegionNode[];
   value: string;
   go: (next: readonly RegionNode[]) => void;
   pick: (node: RegionNode) => void;
+  pickLevel: (node: RegionNode) => void;
 }) {
-  const { path, nodes, value, go, pick } = props;
+  const { path, nodes, value, go, pick, pickLevel } = props;
+  const level = path.at(-1);
   return (
     <div className="hr-region-panel" role="group" aria-label={i.adjustedRegion}>
       <div role="tablist">
@@ -210,6 +226,16 @@ function RegionPanel(props: {
           </button>
         ))}
       </div>
+      {level && (
+        <button
+          type="button"
+          className="hr-region-level"
+          aria-pressed={level.code === value}
+          onClick={() => pickLevel(level)}
+        >
+          {i.pickLevel}
+        </button>
+      )}
       <ul role="tabpanel">
         {nodes.map((node) => (
           <li key={node.code}>
