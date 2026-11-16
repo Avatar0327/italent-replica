@@ -10,6 +10,7 @@ import { ineligibleOrgPeople } from '../../employment/org-people.js';
 import { findCurrentRecord } from '../../employment/read-model.js';
 import { rowsOf } from '../../employment/record-store.js';
 import type { EmploymentContext } from '../../employment/types.js';
+import { validateSignTemplates } from '../../esign/transfer-input.js';
 import { validateContractChange } from './contract.js';
 import type { DutyRelation, LinkageOptions, OrgRole } from './input.js';
 import { insuranceAdjustOf, validateInsuranceAdjust } from './insurance-archive.js';
@@ -38,6 +39,7 @@ export async function validateLinkage(
   /** 调动生效日：社保方案按生效日当月判定有效（缺省取租户当日，离职转交不带社保调整值）。 */
   effectiveDate: string = tenantLocalDate(ctx.now, ctx.timezone),
 ): Promise<void> {
+  if (options.esign) await validateSignTemplates(tx, ctx.tenantId, options.esign.templateIds);
   await validateInsuranceAdjust(tx, ctx.tenantId, insuranceAdjustOf(options), effectiveDate);
   if (options.contract) await validateContractChange(tx, ctx, employeeId, options.contract);
   for (const { recordId } of options.partTimes) {
