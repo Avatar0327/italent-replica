@@ -1,6 +1,7 @@
 import { EMPLOYEE_FIELDS, SUBSETS, type PersonnelField, type SubsetKind } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
+import { parseCustomFields } from './custom-fields.js';
 import type { Row } from './store.js';
 
 const isoDate = z
@@ -50,16 +51,27 @@ export function normalizeDailyWageStandard(value: unknown): string | null {
   const [integer, fraction = ''] = value.split('.');
   return `${integer!.replace(/^0+(?=\d)/, '')}.${fraction.padEnd(2, '0')}`;
 }
-export function parseFields(fields: readonly PersonnelField[], value: unknown): Row {
+export function parseFields(fields: readonly PersonnelField[], value: unknown, allowEmpty = false): Row {
   const shape = Object.fromEntries(
     fields.filter((field) => !field.system).map((field) => [field.code, fieldSchema(field).nullable().optional()]),
   );
   const result = parse(z.object(shape).strict(), value);
-  if (!Object.keys(result).length) throw new AppError('VALIDATION_FAILED', '必须提供要修改的字段');
+  if (!allowEmpty && !Object.keys(result).length) throw new AppError('VALIDATION_FAILED', '必须提供要修改的字段');
   return result;
 }
+/** F-474-6c：customFields 与预置字段同请求提交；只带自定义字段时也算有修改，空对象不算。 */
 export function employeeInput(value: unknown): Row {
-  const result = parseFields(EMPLOYEE_FIELDS, value);
+  const isRecord = !!value && typeof value === 'object' && !Array.isArray(value);
+  const { customFields: raw, ...rest } = isRecord ? (value as Row) : ({} as Row);
+  const custom =
+    raw === undefined
+      ? {}
+      : parseCustomFields(raw, () => {
+          throw new AppError('VALIDATION_FAILED', '人员字段不合法');
+        });
+  const hasCustom = Object.keys(custom).length > 0;
+  const result = parseFields(EMPLOYEE_FIELDS, isRecord ? rest : value, hasCustom);
+  if (hasCustom) result.customFields = custom;
   if ('name' in result && (typeof result.name !== 'string' || !result.name.length))
     throw new AppError('VALIDATION_FAILED', '姓名不能为空');
   // TODO(R2)：仅记录重聘模式，完整合并/新建人员流程由 REQ-EMP-005 实现。

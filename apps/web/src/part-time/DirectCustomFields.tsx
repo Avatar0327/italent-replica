@@ -1,4 +1,5 @@
 import { Form, Input, InputNumber, Select } from 'antd';
+import { CUSTOM_FIELD_VALUE_TYPES, type CustomFieldValueType, type CustomFieldOption } from '@italent/domain';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import { LockedField } from '../foundation/forms/FormLock.js';
 import { PageState } from '../foundation/PageState.js';
@@ -10,7 +11,8 @@ import { d } from './direct-messages.js';
 interface Definition {
   id: string;
   name: string;
-  valueType: 'text' | 'integer' | 'decimal' | 'boolean' | 'date';
+  valueType: CustomFieldValueType;
+  options?: readonly CustomFieldOption[];
 }
 /** §1.6：只消费租户定义与 custom:id 权限，不内置“占人头”的字段或默认值。 */
 export function useDirectCustomFields(access: ReturnType<typeof useDirectAccess>) {
@@ -21,9 +23,7 @@ export function useDirectCustomFields(access: ReturnType<typeof useDirectAccess>
   );
   const definitions = (result.data?.items ?? []).filter(
     (field) =>
-      visible.includes(`custom:${field.id}`) &&
-      field.name &&
-      ['text', 'integer', 'decimal', 'boolean', 'date'].includes(field.valueType),
+      visible.includes(`custom:${field.id}`) && field.name && CUSTOM_FIELD_VALUE_TYPES.includes(field.valueType),
   );
   return {
     definitions,
@@ -48,11 +48,26 @@ export function DirectCustomField({
   if (!access.field(name, create).editable)
     return (
       <Form.Item label={field.name}>
-        <span>{value(baseline[name])}</span>
+        <span>{field.options?.find((option) => option.value === baseline[name])?.label ?? value(baseline[name])}</span>
       </Form.Item>
     );
   let control;
   switch (field.valueType) {
+    case 'select':
+      control = (
+        <Select
+          aria-label={field.name}
+          allowClear
+          options={(field.options ?? [])
+            .filter((option) => option.enabled || option.value === baseline[name])
+            .map((option) => ({
+              value: option.value,
+              disabled: !option.enabled,
+              label: option.enabled ? option.label : `${option.label}${d.disabledOption}`,
+            }))}
+        />
+      );
+      break;
     case 'boolean':
       control = (
         <Select

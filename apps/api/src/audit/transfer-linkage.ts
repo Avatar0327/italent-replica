@@ -4,7 +4,13 @@
  * 联动保存的职责数组整体裁剪；子项目标不可见时整条隐藏，避免失败消息暴露目标信息（DEC-197）。
  */
 import { sql } from '@italent/db';
-import { buttonResource, CONTRACT_OBJECT, MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
+import {
+  buttonResource,
+  CONTRACT_OBJECT,
+  INSURANCE_ADJUST_FIELDS,
+  MODULE_OBJECTS,
+  tenantLocalDate,
+} from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../routes.js';
 import type { TenantContext } from '../tenant-context.js';
@@ -21,6 +27,8 @@ import { creatorSql } from '../modules/permission/scope-audit.js';
 import { RELATION_FIELDS, ROLE_FIELDS } from '../modules/transfer/linkage/validation.js';
 
 export const TRANSFER_LINKAGE = 'transfer-linkage';
+/** 社保档案追加审计的对象类型（对象编号 = 来源调动的业务编号）。 */
+export const INSURANCE_ARCHIVE_AUDIT_TYPE = 'insurance-archive';
 const EMP = MODULE_OBJECTS.employmentRecord.code;
 const ORG = MODULE_OBJECTS.organization.code;
 const event = sql`audit_events`;
@@ -157,6 +165,7 @@ function itemVisible(a: LinkageAccess): SQL {
     WHEN 'duty_org_role' THEN ${can(a.employment, 'dutyTransfer')}
       AND ${organizationVisible(a, sql`li.org_id`, sql`li.org_role`)}
     WHEN 'part_time_end' THEN ${can(a.employment, 'partTimeEnds')}
+    WHEN 'insurance_archive' THEN ${INSURANCE_ADJUST_FIELDS.every((field) => can(a.employment, field))}
     ELSE false END)`;
 }
 
@@ -234,6 +243,7 @@ const OWN_FIELDS: Readonly<Record<string, string>> = {
   partTimes: 'partTimeEnds',
   effectiveDate: 'effectiveDate',
   plannedEffectiveDate: 'effectiveDate',
+  ...Object.fromEntries(INSURANCE_ADJUST_FIELDS.map((field) => [field, field])),
 };
 function pathVisible(a: LinkageAccess): SQL {
   const own = Object.entries(OWN_FIELDS)

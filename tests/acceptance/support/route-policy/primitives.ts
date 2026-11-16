@@ -390,6 +390,8 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['orgAdjustment.item', calls('authorizeItem', 'orgScopeAuthorizer'), { modules: ['org-adjustment'] }],
     // R2-T09a 职责转交：被转交人按 DutyTransferCommon 范围判定，范围外与不存在同为 404（routes.ts requireVisiblePerson）
     ['dutyTransfer.person', call('requireVisiblePerson'), { modules: ['duty-transfer'] }],
+    // F-474-8c-2b 社保原值读取：员工须在任职数据范围内，范围外与不存在同为 404（routes.ts 经 readPageContext 绑定员工）
+    ['insurance.employeeScope', call('readPageContext'), { modules: ['insurance'] }],
   ]),
   ...dimension('failureAudit', [['withFailedImportLog', call('withFailedImportLog'), NEAR]]),
   // 分支域绑定：处理函数按哪个有限域分派（声明的选择器键必须等于本路由绑定的域，不能借别的模块同形的域）

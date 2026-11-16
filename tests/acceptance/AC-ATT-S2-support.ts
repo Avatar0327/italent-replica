@@ -11,7 +11,9 @@ import { expect } from 'vitest';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
+import { MODULE_OBJECTS } from '@italent/domain';
 import { grantVisibleFields, permissionAdmin, type Person } from './AC-APV-support.js';
+import { setObjectPermission } from './AC-PRM-support.js';
 import { attachmentWorld, png, type Receipt } from './AC-ATT-support.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 
@@ -44,6 +46,8 @@ export interface NodeOptions {
   readonly formFields?: readonly string[];
   /** 在审批节点前加一个由“被回避主体”办理的节点（subject_skip，其人不是发起人，AC-ATT-14）。 */
   readonly skipFirst?: boolean;
+  /** 审批节点前加一个“首节点”审批人（lead）：第一轮 lead 同意、approver 驳回；第二轮起 lead 待办、approver 只剩已办（AC-ATT-26）。 */
+  readonly leadFirst?: boolean;
   /** 审批节点开放 attachmentRefs 为可编辑（单独编辑 / 同意时带编辑），用来验证审批编辑出口对它只读（AC-ATT-16）。 */
   readonly editMode?: 'separate' | 'with_approve';
   /** 审批节点可编辑的字段，默认只有 attachmentRefs；R1 要测“同值回传 + 正常字段编辑”时加上 lastWorkDate。 */
@@ -55,6 +59,7 @@ export async function exitWorld(db: Parameters<typeof attachmentWorld>[0], label
   const { w } = a;
   const approver = await a.person('合成审批人甲');
   const skipper = node.skipFirst ? await a.person('合成被回避人') : undefined;
+  const lead = node.leadFirst ? await a.person('合成首节点审批人') : undefined;
   await w.publishedProcess({
     approvalType: 'leave',
     isFallback: true,
@@ -67,6 +72,15 @@ export async function exitWorld(db: Parameters<typeof attachmentWorld>[0], label
               approver: { type: 'specified' as const, value: skipper.userId },
               formFields: ['lastWorkDate', 'attachmentRefs'],
               actions: { avoidSubjects: true },
+            },
+          ]
+        : []),
+      ...(lead
+        ? [
+            {
+              key: 'lead',
+              approver: { type: 'specified' as const, value: lead.userId },
+              formFields: ['lastWorkDate', 'attachmentRefs'],
             },
           ]
         : []),
@@ -192,7 +206,23 @@ export async function exitWorld(db: Parameters<typeof attachmentWorld>[0], label
   let admin: ReturnType<typeof permissionAdmin> | undefined;
   async function grantFields(userId: string, fields: readonly string[]) {
     admin ??= permissionAdmin(w);
-    await grantVisibleFields(await admin, userId, fields);
+    return grantVisibleFields(await admin, userId, fields);
+  }
+  /** 改写已授予身份的可见字段（AC-ATT-26：办理之后收回 / 补授字段权）。 */
+  async function reviseFields(profile: Parameters<typeof setObjectPermission>[1], visible: readonly string[]) {
+    admin ??= permissionAdmin(w);
+    const definition = MODULE_OBJECTS.employmentRecord;
+    const response = await setObjectPermission(
+      await admin,
+      profile,
+      {
+        dataOperations: { create: false, update: false, delete: false },
+        fields: definition.fields.map((f) => ({ fieldCode: f.code, view: visible.includes(f.code), edit: false })),
+        buttons: [],
+      },
+      definition.code,
+    );
+    expect(response.status, await response.clone().text()).toBe(200);
   }
   /** 夹具：把已上传的本人文件直接标成“已绑定到别的业务单”（同一员工不能同时有两张未办结离职单，造不出第二张草稿）。 */
   async function bindElsewhere(fileId: string) {
@@ -204,6 +234,7 @@ export async function exitWorld(db: Parameters<typeof attachmentWorld>[0], label
 
   return {
     grantFields,
+    reviseFields,
     bindElsewhere,
     activateAt,
     fillExitType,
@@ -211,6 +242,7 @@ export async function exitWorld(db: Parameters<typeof attachmentWorld>[0], label
     w,
     approver,
     skipper,
+    lead,
     ess,
     asUser,
     uploads,

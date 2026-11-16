@@ -157,6 +157,7 @@ async function sweepTenant(
   const errors: EmploymentActivationRun['errors'] = [];
   const ctx: EmploymentContext = {
     tenantId: tenant.id,
+    tenantName: tenant.name,
     userId: SYSTEM_USER_ID,
     timezone: tenant.timezone,
     now,

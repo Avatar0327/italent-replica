@@ -114,4 +114,35 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/esign/service.ts#templateOptions': ['#ESIGN_TEMPLATE_LIMIT', '#ordered'],
+  'apps/api/src/modules/esign/transfer-input.ts#signTemplateView': ['#selectedTemplates'],
+  'apps/api/src/modules/esign/transfer-input.ts#validateSignTemplates': ['#selectedTemplates'],
+  'apps/api/src/modules/esign/transfer-sign.ts#finishInitiation': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/esign/provider.ts#simulatedProvider',
+  ],
+  'apps/api/src/modules/esign/transfer-sign.ts#initiateTransferSign': [
+    'apps/api/src/modules/approval/resolver.ts#isActiveAccount',
+    'apps/api/src/modules/approval/resolver.ts#userOfPerson',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/esign/provider.ts#simulatedProvider',
+    'apps/api/src/modules/esign/transfer-input.ts#selectedTemplates',
+    '#finishInitiation',
+    '#renderTransferFiles',
+    'packages/domain/src/esign/settings.ts#esignExpiresAt',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/esign/transfer-sign.ts#renderTransferFiles': [
+    '#transferVariables',
+    'packages/domain/src/esign/variables.ts#renderTemplateBody',
+  ],
+  'apps/api/src/modules/esign/transfer-sign.ts#transferSignInitiator': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/esign/transfer-sign.ts#transferVariables': [
+    'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
 };

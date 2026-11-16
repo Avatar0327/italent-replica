@@ -11,6 +11,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -76,6 +77,8 @@ export const orgVersions = pgTable(
     displayOrder: integer('display_order'),
     isVirtual: boolean('is_virtual').notNull().default(false),
     level: integer('level').notNull().default(0),
+    /** F-474-6b：租户自定义字段值，键为定义 ID；每个版本整体带上一版本再叠加本次改动（设计 6a §3.2）。 */
+    customFields: jsonb('custom_fields').$type<Record<string, string | number | boolean>>().notNull().default({}),
     createdAt: utc('created_at'),
   },
   (t): PgTableExtraConfigValue[] => [
@@ -98,6 +101,7 @@ export const orgVersions = pgTable(
     check('org_versions_version_positive', sql`${t.versionNo} > 0`),
     check('org_versions_dates_valid', sql`${t.stopDate} >= ${t.startDate}`),
     check('org_versions_level_nonnegative', sql`${t.level} >= 0`),
+    check('org_versions_custom_fields_object', sql`jsonb_typeof(${t.customFields}) = 'object'`),
   ],
 );
 

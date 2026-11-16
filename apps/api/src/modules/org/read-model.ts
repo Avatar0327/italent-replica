@@ -259,6 +259,7 @@ function orgSnapshotQuery(
         fullName: current.fullName,
         displayOrder: current.displayOrder,
         isVirtual: current.isVirtual,
+        customFields: current.customFields,
         level: current.level,
         createdAt: current.createdAt,
       },

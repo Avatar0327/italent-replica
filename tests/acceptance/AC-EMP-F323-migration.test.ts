@@ -1,7 +1,7 @@
 /** F-323：旧人员类别文本按名称精确映射到本租户预置项 ID；未知置空，三种载荷表均迁移、保持稳定 ID，并加外键。 */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
+import { useTestDb, withCurrentWriteColumns } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { employmentSession } from './AC-EMP-support.js';
 
@@ -13,9 +13,12 @@ it('AC-EMP-F323-10：两个租户的主职 / 兼职载荷及申请迁移，未�
   const targets: { tenantId: string; id: string; value: string | null }[] = [];
   const schemes: { tenantId: string; version: string }[] = [];
   for (const label of ['f323-migration-a', 'f323-migration-b']) {
-    const s = await employmentSession(db, label);
-    const org = await s.org('合成迁移部门', { establishedOn: '2020-01-01' });
-    const e = await s.employee();
+    // F-474-6b：当前接口写组织会带上 org_versions.custom_fields，旧结构没有，造组织时临时补列，升级迁移前撤掉
+    const { s, org, e } = await withCurrentWriteColumns(db, async () => {
+      const s = await employmentSession(db, label);
+      const org = await s.org('合成迁移部门', { establishedOn: '2020-01-01' });
+      return { s, org, e: await s.employee() };
+    });
     await withTenant(db, s.tenant.id, async (tx) => {
       for (const name of ['技术开发', '运维服务', 'YG正式员工', '不存在', ' 技术开发', null]) {
         const id = randomUUID();

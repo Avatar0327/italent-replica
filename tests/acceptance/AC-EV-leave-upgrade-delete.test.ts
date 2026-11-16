@@ -1,6 +1,6 @@
 /** C2-1b / F-055：补入的未来离职被删除后，也必须在生效前被真实循环取到。 */
 import { sql } from '@italent/db';
-import { createTestDb } from '@italent/testkit';
+import { createTestDb, withCurrentWriteColumns } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { evaluationLeaveWorld, rowsOf, LEAVE_MIGRATION } from './AC-EV-leave-support.js';
 import { runEvaluationLeave } from '../../apps/api/src/modules/evaluation/leave-handler.js';
@@ -20,12 +20,15 @@ it('AC-EV-leave-upgrade：补入未来离职后在生效前删除，立即 skipp
     const restoreAssessment = await addPreAssessmentTable(handle.db);
     // F-480：当前接口建入职周期会写 employment_cycles.trainee_start_date，旧结构没有，临时补列，升级迁移前撤掉（support/pre-intern-cycle-schema.ts）
     const restoreInternCycle = await addPreInternCycleColumn(handle.db);
-    const w = await evaluationLeaveWorld(handle.db);
+    const w = await withCurrentWriteColumns(handle.db, () => evaluationLeaveWorld(handle.db));
     await restoreBlacklist();
-    const id = await w.seed();
-    const before = await w.read(id);
-    const [date] = rowsOf<{ future: string }>(await handle.db.execute(sql`SELECT (CURRENT_DATE+7)::text AS future`));
-    const leave = await w.leave(date!.future);
+    const { leave, id, before } = await withCurrentWriteColumns(handle.db, async () => {
+      const id = await w.seed();
+      const before = await w.read(id);
+      const [date] = rowsOf<{ future: string }>(await handle.db.execute(sql`SELECT (CURRENT_DATE+7)::text AS future`));
+      const leave = await w.leave(date!.future);
+      return { leave, id, before };
+    });
     await restorePartTime();
     await restoreAssessment();
     await restoreInternCycle();

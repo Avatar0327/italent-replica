@@ -80,6 +80,8 @@ export const TRANSFER_DETAIL_VIEW: readonly TransferViewItem[] = [
 
 /** R1-T10 联动字段（审批载荷、变化检测与字段权限的编码；值见 transfer/linkage/approval.ts）。 */
 export const TRANSFER_LINKAGE_FIELDS = [
+  'electronicSignature',
+  'esignTemplateIds',
   'isChangeContract',
   'contractChange',
   'adjustSalary',
@@ -88,6 +90,10 @@ export const TRANSFER_LINKAGE_FIELDS = [
   'handoverPersonId',
   'partTimeEnds',
   'dutyTransfer',
+  // F-474-8c-2c：社保调整值（缴交地 / 方案 / 公司），与 module-actions 的 INSURANCE_ADJUST_FIELDS 同名同序。
+  'adjustedInsuranceRegionCode',
+  'adjustedInsurancePlanId',
+  'adjustedInsuranceCompanyId',
 ] as const;
 
 /** 预置调动流程的节点表单：已交付且在审批表单上的字段（顺序同原站视图）。 */

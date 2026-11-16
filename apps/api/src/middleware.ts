@@ -5,6 +5,14 @@ import { errorResponse } from './errors.js';
 /** 请求体默认上限 32KB（AGENTS.md §10「请求」）。个别接口可在路由上另挂更大的 bodyLimit。 */
 export const DEFAULT_BODY_LIMIT = 32 * 1024;
 
+/**
+ * HTTP 入口容量（交给 @hono/node-server → node:http createServer）。请求行 + 请求头上限 32KB：
+ * “导出已选”最多 500 个对象 ID 走 GET 查询串（F-474-7c，设计 §4.2），按 URLSearchParams 编码
+ * （36 字节 UUID × 500 + “%2C”分隔 × 499 + 路径）约 19,540 字节，超过 Node 默认 16KB；余下约 13KB 留给
+ * Cookie、身份头等常规请求头。
+ */
+export const HTTP_SERVER_OPTIONS = { maxHeaderSize: 32 * 1024 } as const;
+
 const METHODS_WITH_BODY = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /** 写请求只接受 JSON（AGENTS.md §10「请求」）；无请求体的 DELETE 放行。 */

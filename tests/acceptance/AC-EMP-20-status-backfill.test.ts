@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant, type Tx } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
+import { useTestDb, withCurrentWriteColumns } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { employmentSession } from './AC-EMP-support.js';
 import { withPreAuditSchema } from './support/pre-audit-schema.js';
@@ -76,12 +76,14 @@ async function snapshot(tx: Tx, tenantId: string) {
 
 it('AC-EMP-20 回填：有试用期且未转正为试用、转正及之后为正式、离职 / 退休、在途申请按前一条，其他列不变', async () => {
   const handle = database();
-  const { session, people } = await withPreAuditSchema(handle.db, async () => {
-    const session = await employmentSession(handle.db, 'empbackfill');
-    const people = [];
-    for (let i = 0; i < 5; i += 1) people.push(await session.employee());
-    return { session, people };
-  });
+  const { session, people } = await withPreAuditSchema(handle.db, () =>
+    withCurrentWriteColumns(handle.db, async () => {
+      const session = await employmentSession(handle.db, 'empbackfill');
+      const people = [];
+      for (let i = 0; i < 5; i += 1) people.push(await session.employee());
+      return { session, people };
+    }),
+  );
   const tenantId = session.tenant.id;
   const [a, b, c, d, e] = people.map((person) => person.id) as [string, string, string, string, string];
   const [aStaff, bStaff, bStaff2, cStaff] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];

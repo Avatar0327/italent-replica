@@ -112,6 +112,7 @@ export const ORG: RequiredTable = {
   'GET /api/tenant/org/organizations/:id': [op('GET', '/organizations/:id', 'view', READ)],
   'GET /api/tenant/org/settings': [settings('GET')],
   'GET /api/tenant/org/views': [op('GET', '/views', 'view', READ)],
+  'GET /api/tenant/org/custom-field-definitions': [op('GET', '/custom-field-definitions', 'view', READ)],
   'GET /api/tenant/org/person-candidates': [
     {
       perm: 'exception:org.anyPersonFieldEditable',

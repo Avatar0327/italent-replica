@@ -20,6 +20,12 @@ afterEach(async () => ui.close());
 const page = async () => (await import(resolve('apps/web/src/all-people/AllPeoplePage.tsx'))).AllPeoplePage;
 const calls = () => (globalThis.fetch as Mock).mock.calls.map(([url]) => new URL(String(url), 'http://localhost'));
 const listCalls = () => calls().filter((url) => url.pathname === LIST);
+/**
+ * 员工筛选（PersonSelect）挂载 200ms 后会向同一接口发 pageSize=20 的候选搜索（AllPeoplePage.tsx CANDIDATE_SIZE），
+ * 与表格请求的先后取决于机器快慢；断言表格查询时只取表格请求（DEC-771 并入：计时竞态）。
+ */
+const CANDIDATE_SIZE = '20';
+const tableCalls = () => listCalls().filter((url) => url.searchParams.get('pageSize') !== CANDIDATE_SIZE);
 /** 任职记录侧筛选字段要显式给查看权，否则按字段权隐藏对应筛选。 */
 const fields = [...allFields, 'employmentForm', 'serviceType', 'idType', 'idNumber', 'age', 'level'];
 const without = (...hidden: string[]) => fields.filter((field) => !hidden.includes(field));
@@ -49,7 +55,7 @@ describe('AC-EMP F-474-4c 全部人员页面', () => {
 
   it('默认筛选：人员状态 试用 + 正式、任职类型 主职，每页 15 条', async () => {
     await ui.render(h(await page()), '/', fields, { [LIST]: body() });
-    expect(Object.fromEntries(listCalls().at(-1)!.searchParams)).toEqual({
+    expect(Object.fromEntries(tableCalls().at(-1)!.searchParams)).toEqual({
       page: '1',
       pageSize: '15',
       employeeStatus: '2,3',
@@ -110,7 +116,7 @@ describe('AC-EMP F-474-4c 全部人员页面', () => {
     );
     for (const label of ['邮箱', '人员状态', '用工形式', '雇佣关系', '任职类型'])
       expect(ui.host.querySelector(`[aria-label="${label}"]`), label).toBeNull();
-    const query = Object.fromEntries(listCalls().at(-1)!.searchParams);
+    const query = Object.fromEntries(tableCalls().at(-1)!.searchParams);
     expect(query).toEqual({ page: '1', pageSize: '15' });
   });
 

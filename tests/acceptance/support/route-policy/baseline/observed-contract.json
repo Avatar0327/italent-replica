@@ -4999,6 +4999,31 @@
         ]
       }
     },
+    "GET /api/tenant/employment/custom-field-definitions": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ]
+      }
+    },
     "GET /api/tenant/employment/custom-fields": {
       "edge": {
         "anonymous": {
@@ -8142,6 +8167,71 @@
         ]
       }
     },
+    "GET /api/tenant/insurance/companies": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "insurance",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope",
+          "scope.all"
+        ]
+      }
+    },
+    "GET /api/tenant/insurance/plans": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "insurance",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ]
+      }
+    },
+    "GET /api/tenant/insurance/regions": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "status": 200
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "insurance",
+      "primitives": {}
+    },
     "GET /api/tenant/job/:kind": {
       "edge": {
         "anonymous": {
@@ -8340,6 +8430,36 @@
         ]
       }
     },
+    "GET /api/tenant/job/graph/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "job",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope",
+          "scope.all"
+        ]
+      }
+    },
     "GET /api/tenant/job/graph/issues": {
       "edge": {
         "anonymous": {
@@ -8357,6 +8477,36 @@
       },
       "module": "job",
       "primitives": {
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "resolveModuleScope",
+          "scope.all"
+        ]
+      }
+    },
+    "GET /api/tenant/job/graph/issues/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "job",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
         "object": [
           "object.* 动作"
         ],
@@ -8815,6 +8965,31 @@
           "adminScope",
           "creator scope",
           "instanceScopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/org/custom-field-definitions": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org",
+      "primitives": {
+        "object": [
+          "org context(read|create|update|delete)"
+        ],
+        "objectOp": [
+          "TenantBase.Organization:view"
         ]
       }
     },
@@ -9707,6 +9882,34 @@
         ],
         "self": [
           "requireSelf"
+        ]
+      }
+    },
+    "GET /api/tenant/personnel/custom-field-definitions": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "personnel",
+      "primitives": {
+        "object": [
+          "personnel access"
+        ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view"
+        ],
+        "scope": [
+          "personnel access"
         ]
       }
     },
@@ -14002,6 +14205,35 @@
         "scope": [
           "requestScope",
           "visible()"
+        ]
+      }
+    },
+    "GET /api/tenant/transfer/insurance-origin": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "insurance",
+      "primitives": {
+        "guard": [
+          "insurance.employeeScope"
+        ],
+        "object": [
+          "object.* 动作",
+          "readPageContext"
+        ],
+        "scope": [
+          "readPageContext"
         ]
       }
     },
@@ -29702,6 +29934,42 @@
       }
     },
     "PUT /api/tenant/employment/custom-fields/:id/inheritance": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentCustomField:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/employment/custom-fields/:id/options": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",

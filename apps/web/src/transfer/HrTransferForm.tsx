@@ -10,6 +10,7 @@ import {
   type HrFormMode,
   type HrSection,
 } from './hr-form-model.js';
+import { InsuranceFields } from './InsuranceFields.js';
 import { ContractDetails, DutyFields, LinkageAccess, PersonSelect, TrialFields } from './LinkageFields.js';
 import { hrFormText as h, linkageText, text } from './messages.js';
 import type { LinkageDraft, TransferFormProps } from './types.js';
@@ -176,12 +177,14 @@ function AdjustmentSection(props: HrTransferFormProps) {
   );
 }
 
-/** 原站选“否”时本区块仍显示；接口只记“是否调整薪资”标志（DEC-002），社保类字段列入缺口。 */
-function SalarySection({ model, busy }: HrTransferFormProps) {
+/** 原站选“否”时本区块仍显示；社保三对字段与“是否调整薪资”无关，始终显示（设计 F-474-8b §1.1）。 */
+function SalarySection({ model, busy, onLinkage }: HrTransferFormProps) {
   return (
     <SectionFrame section="salary" busy={busy}>
       <p>{model.linkage?.adjustSalary ? linkageText.salaryHint : h.salaryOff}</p>
-      <p className="hr-form-gap">{h.salaryGap}</p>
+      {model.linkage && model.preview && (
+        <InsuranceFields model={model} draft={model.linkage} change={(patch) => onLinkage?.(patch)} />
+      )}
     </SectionFrame>
   );
 }

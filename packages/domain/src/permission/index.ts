@@ -28,7 +28,13 @@ export {
   resolveObjectPermission,
   trimToViewableFields,
 } from './effective.js';
-export { MODULE_ACTIONS, MODULE_OBJECTS, type ModuleAction, ORG_EMPLOYEE_APP } from './module-actions.js';
+export {
+  INSURANCE_ADJUST_FIELDS,
+  MODULE_ACTIONS,
+  MODULE_OBJECTS,
+  type ModuleAction,
+  ORG_EMPLOYEE_APP,
+} from './module-actions.js';
 export {
   BUTTON_LEVELS,
   type ButtonDefinition,

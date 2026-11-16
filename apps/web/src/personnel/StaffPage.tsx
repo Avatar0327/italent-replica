@@ -8,6 +8,8 @@ import type { PageRequest, PageResult } from '../foundation/client.js';
 import { StaffDetail } from './StaffDetail.js';
 import { EditPersonButton } from './EditCommands.js';
 import { personEditable } from './edit-model.js';
+import { usePersonnelCustomFields } from './custom-fields.js';
+import { customText, isCustomKey, type CustomDefinition } from './custom-model.js';
 import { StaffFilters } from './StaffFilters.js';
 import { ColumnGear, ColumnSettings } from './ColumnSettings.js';
 import { useRead } from './useRead.js';
@@ -40,7 +42,8 @@ export function StaffPage() {
     setSearch(value.name ?? '');
     setPage({ ...page, page: 1 });
   };
-  const columns = staffColumns(selectedColumns, allowed, setEmployeeId);
+  const custom = usePersonnelCustomFields();
+  const columns = staffColumns(selectedColumns, allowed, setEmployeeId, custom.byKey);
   // 原站列表行「编辑人员」（F-329）；无编辑权时整列不出现。▾ 更多菜单不在本任务范围。
   if (personEditable(permission.snapshot.objects[PERSONNEL_OBJECT]).length)
     columns.push({
@@ -86,6 +89,7 @@ export function StaffPage() {
         <ColumnSettings
           value={selectedColumns}
           allowed={allowed}
+          custom={custom}
           onApply={setColumns}
           onClose={() => setOverlay(undefined)}
         />
@@ -113,15 +117,24 @@ const staffWidths: Record<string, number> = {
   workDate: 105,
   gender: 140,
 };
-function staffColumns(selectedColumns: string[], allowed: readonly string[], setEmployeeId: (id: string) => void) {
-  const columns: TableColumnsType<Row> = visibleColumns(selectedColumns, allowed).map((key) => ({
+function staffColumns(
+  selectedColumns: string[],
+  allowed: readonly string[],
+  setEmployeeId: (id: string) => void,
+  custom: Readonly<Record<string, CustomDefinition>>,
+) {
+  // 自定义列只在定义目录已加载且有权限时出现；值取自行里的 customFields[定义 ID]。
+  const shown = visibleColumns(selectedColumns, allowed).filter((key) => !isCustomKey(key) || custom[key]);
+  const columns: TableColumnsType<Row> = shown.map((key) => ({
     key,
-    title: columnLabel(key),
-    dataIndex: key,
+    title: columnLabel(key, custom[key] ? { [key]: custom[key].name } : {}),
+    dataIndex: custom[key] ? undefined : key,
     width: staffWidths[key] ?? 155,
     ellipsis: true,
     render: (value: unknown, row: Row) =>
-      key === 'name' ? (
+      custom[key] ? (
+        customText(custom[key], (row.customFields as Record<string, unknown> | undefined)?.[key.slice(7)])
+      ) : key === 'name' ? (
         <Button type="link" className="staff-name" onClick={() => setEmployeeId(row.id)}>
           {fieldValue(key, value)}
         </Button>

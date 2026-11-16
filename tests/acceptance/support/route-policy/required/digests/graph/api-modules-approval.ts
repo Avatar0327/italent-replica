@@ -705,6 +705,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/auto-variables.ts#MAX_NAME': [
     'packages/domain/src/approval/variables.ts#VARIABLE_TEXT_FIELDS',
   ],
+  'apps/api/src/modules/approval/auto-variables.ts#assertHeadcount': [
+    '#valueFor',
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'packages/domain/src/approval/variables.ts#defaultValueViolation',
+  ],
   'apps/api/src/modules/approval/auto-variables.ts#assertNoMergedDuplicate': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'packages/domain/src/approval/definition.ts#countersignDuplicate',
@@ -727,6 +732,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/variables.ts#textViolation',
   ],
   'apps/api/src/modules/approval/auto-variables.ts#decide': [
+    '#RETIRE_REASON',
     '#changeAuto',
     '#createAuto',
     '#inheritedVariable',
@@ -737,6 +743,7 @@ export const GRAPH: Graph = {
     '#valueFor',
   ],
   'apps/api/src/modules/approval/auto-variables.ts#enrichProcessView': [
+    '#pendingNeedsChoice',
     '#variableIdsOf',
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'packages/domain/src/approval/types.ts#isCountersign',
@@ -744,12 +751,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/auto-variables.ts#inheritedVariable': [
     'apps/api/src/modules/approval/variables.ts#selection',
   ],
+  'apps/api/src/modules/approval/auto-variables.ts#lockSaveBatch': ['#retireCandidates', '#slotSources'],
   'apps/api/src/modules/approval/auto-variables.ts#materializeNode': [
     '#materializeSlot',
     '#slotSources',
     'packages/domain/src/approval/types.ts#isCountersign',
   ],
   'apps/api/src/modules/approval/auto-variables.ts#materializeSlot': [
+    '#assertHeadcount',
     '#decide',
     'apps/api/src/modules/approval/context.ts#canonicalId',
     'packages/domain/src/approval/sources.ts#isUnselectedSpecified',
@@ -757,10 +766,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/auto-variables.ts#ownedVariable': [
     'apps/api/src/modules/approval/variables.ts#selection',
   ],
+  'apps/api/src/modules/approval/auto-variables.ts#pendingNeedsChoice': ['#peopleOfRow', '#sameSet'],
+  'apps/api/src/modules/approval/auto-variables.ts#retireCandidates': ['#variableIdsOf'],
   'apps/api/src/modules/approval/auto-variables.ts#retireUnreferencedAutoVariables': [
     '#RETIRE_REASON',
     '#changeAuto',
-    '#variableIdsOf',
     'apps/api/src/modules/approval/source-usages.ts#findSourceUsages',
     'apps/api/src/modules/approval/variables.ts#loadVariable',
   ],
@@ -1052,6 +1062,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/definitions.ts#versionId': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/definitions.ts#writeVersionContent': [
     'apps/api/src/modules/approval/auto-variables.ts#assertNoMergedDuplicate',
+    'apps/api/src/modules/approval/auto-variables.ts#lockSaveBatch',
     'apps/api/src/modules/approval/auto-variables.ts#materializeNode',
     'apps/api/src/modules/approval/auto-variables.ts#retireUnreferencedAutoVariables',
     'apps/api/src/modules/approval/condition-rows.ts#insertConditionItem',
@@ -1170,6 +1181,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#adminCovers',
   ],
+  'apps/api/src/modules/approval/disclosure.ts#capturedAttachmentsOf': [
+    'apps/api/src/modules/attachments/carrier-read.ts#capturedFromExt',
+  ],
   'apps/api/src/modules/approval/disclosure.ts#ccNodeOf': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/disclosure.ts#detailView': [
     'apps/api/src/modules/approval/detail-path.ts#NO_PATH_FACTS',
@@ -1193,9 +1207,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/handling-content.ts#capViewable',
     'packages/domain/src/approval/policies.ts#disclosedFieldNames',
   ],
+  'apps/api/src/modules/approval/disclosure.ts#expandAttachments': [
+    '#capturedAttachmentsOf',
+    'apps/api/src/modules/attachments/carrier-read.ts#attachmentSummaries',
+    'apps/api/src/modules/attachments/carrier-read.ts#frozenAttachmentSummaries',
+  ],
   'apps/api/src/modules/approval/disclosure.ts#formFields': ['#disclosedFields'],
   'apps/api/src/modules/approval/disclosure.ts#formValuesView': ['#formFields', '#frozenValues', '#pick'],
   'apps/api/src/modules/approval/disclosure.ts#frozenValues': [
+    'apps/api/src/modules/insurance/approval-content.ts#projectInsuranceValues',
     'apps/api/src/modules/offer/frozen-view.ts#projectBatchValues',
     'apps/api/src/modules/offer/frozen-view.ts#projectOfferValues',
   ],
@@ -1204,8 +1224,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
   ],
   'apps/api/src/modules/approval/disclosure.ts#namedForm': [
+    '#expandAttachments',
     'apps/api/src/modules/approval/reference-names.ts#referenceNames',
-    'apps/api/src/modules/attachments/carrier-read.ts#attachmentSummaries',
     'apps/api/src/modules/employment/employment-types.ts#employmentTypeNames',
   ],
   'apps/api/src/modules/approval/disclosure.ts#readDetail': [
@@ -1522,6 +1542,7 @@ export const GRAPH: Graph = {
     '#objectAccess',
     'apps/api/src/modules/contracts/context.ts#checkScope',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/modules/approval/foreign-fields.ts#objectAccess': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
@@ -2015,11 +2036,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/reference-names.ts#referenceNames': [
     '#CODE_KEYS',
     '#DEPARTMENT_KEYS',
+    '#INSURANCE_COMPANY_KEYS',
+    '#INSURANCE_PLAN_KEYS',
     '#PERSON_KEYS',
     '#departmentNames',
     '#dictionaryNames',
     '#personNames',
     '#stringsOf',
+    'apps/api/src/modules/insurance/reference-names.ts#insuranceReferenceNames',
   ],
   'apps/api/src/modules/approval/resolver.ts#adminAncestors': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#assigneeGate': [
@@ -2228,6 +2252,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#MAX_ADD_SIGNERS',
   ],
   'apps/api/src/modules/approval/routes.ts#respondAttachment': [
+    'apps/api/src/modules/approval/disclosure.ts#capturedAttachmentsOf',
     '#detailViewOf',
     '#uuidParam',
     'apps/api/src/modules/attachments/carrier-read.ts#readCarrierAttachment',
@@ -2672,7 +2697,7 @@ export const GRAPH: Graph = {
     '#MATRIX_INVALID',
     '#MISSING',
     '#VARIABLE_INVALID',
-    '#isOwnerNode',
+    '#isOwnerSlot',
     '#sourceInvalid',
     'packages/domain/src/approval/sources.ts#matrixSourceParts',
     'packages/domain/src/approval/type-apps.ts#APPROVAL_TYPE_APPS',

@@ -56,6 +56,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECTS',
     '#CONFIG_OBJECTS',
     '#JOB_GRAPH_PRESET_OBJECTS',
+    '#SOCIAL_INSURANCE_PRESET_OBJECTS',
   ],
   'packages/domain/src/platform/standard-presets.ts#CONFIG_OBJECTS': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
@@ -129,6 +130,12 @@ export const GRAPH: Graph = {
     '#ANALYTICS_BE13A_OBJECTS',
     '#ANALYTICS_BE13B_OBJECTS',
   ],
+  'packages/domain/src/platform/standard-presets.ts#SOCIAL_INSURANCE_PRESET_OBJECTS': [
+    '#SOCIAL_INSURANCE_VIEW_OBJECTS',
+  ],
+  'packages/domain/src/platform/standard-presets.ts#SOCIAL_INSURANCE_VIEW_OBJECTS': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
   'packages/domain/src/platform/standard-presets.ts#STANDARD_PROFILES': [
     'packages/domain/src/approval/catalog.ts#APPROVAL_PROCESS_OBJECT',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
@@ -149,12 +156,14 @@ export const GRAPH: Graph = {
     '#MANAGER_OBJECTS',
     '#ORG_ADJUSTMENT_SEE_ALL',
     '#QUALIFICATION_PROFILES',
+    '#SOCIAL_INSURANCE_VIEW_OBJECTS',
     '#SUCCESSION_PROFILES',
     '#fieldSubset',
     '#full',
     '#grant',
     '#readOnly',
     '#withoutDailyWage',
+    '#withoutInsuranceAdjust',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_APP',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_PROFILES',
     'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_APP',
@@ -182,5 +191,9 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/platform/standard-presets.ts#withoutDailyWage': [
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+  ],
+  'packages/domain/src/platform/standard-presets.ts#withoutInsuranceAdjust': [
+    'packages/domain/src/permission/module-actions.ts#INSURANCE_ADJUST_FIELDS',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
 };

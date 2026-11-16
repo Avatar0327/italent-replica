@@ -38,6 +38,12 @@ export function LinkagePanel(props: { view: LinkageView; busy?: boolean; onRetry
           <ItemList items={view.dutyTransfer.items} {...props} />
         </>
       )}
+      {view.insuranceArchive && (
+        <>
+          <h4>{linkageText.insuranceArchive}</h4>
+          <ItemList items={[view.insuranceArchive]} {...props} />
+        </>
+      )}
       {view.partTimes.length > 0 && (
         <>
           <h4>{linkageText.partTimes}</h4>

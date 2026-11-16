@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type Db, migrationsFolder, sql, withTenant } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
+import { useTestDb, withCurrentWriteColumns } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { loadSurvey360Port } from '../../apps/api/src/modules/survey360/port.js';
@@ -202,12 +202,14 @@ it('PR-A 历史计分批次升级后：不能凭它生成报告；重新计分�
       withPrePartTimeSchema(handle.db, () =>
         withPreInternCycleSchema(handle.db, () =>
           withPreProfileUpdatedBySchema(handle.db, () =>
-            withPreAssessmentSchema(handle.db, async () => {
-              const list: Legacy[] = [];
-              for (const kind of ['content', 'weights', 'scoreMethod'] as const)
-                list.push(await legacy(handle.db, kind));
-              return list;
-            }),
+            withPreAssessmentSchema(handle.db, () =>
+              withCurrentWriteColumns(handle.db, async () => {
+                const list: Legacy[] = [];
+                for (const kind of ['content', 'weights', 'scoreMethod'] as const)
+                  list.push(await legacy(handle.db, kind));
+                return list;
+              }),
+            ),
           ),
         ),
       ),

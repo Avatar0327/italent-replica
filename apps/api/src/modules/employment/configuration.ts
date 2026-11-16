@@ -6,6 +6,8 @@ import {
   CUSTOM_FIELD_NAME_MAX,
   CUSTOM_FIELD_VALUE_TYPES,
   CUSTOM_FIELD_WRITABLE_OBJECT_TYPES,
+  isCustomFieldOptions,
+  type CustomFieldOption,
   type CustomFieldObjectType,
   type CustomFieldValueType,
 } from '@italent/domain';
@@ -22,18 +24,22 @@ export interface CustomFieldDefinition {
   readonly valueType: CustomFieldValueType;
   readonly revision: number;
   readonly inherit: boolean;
+  readonly options: readonly CustomFieldOption[];
 }
 
+export const optionsInput = z.strictObject({ options: z.custom<CustomFieldOption[]>(isCustomFieldOptions) });
 export const fieldInput = z
   .object({
     name: z.string().trim().min(1).max(CUSTOM_FIELD_NAME_MAX),
     objectType: z.enum(CUSTOM_FIELD_WRITABLE_OBJECT_TYPES),
     valueType: z.enum(CUSTOM_FIELD_VALUE_TYPES),
+    options: z.custom<CustomFieldOption[]>(isCustomFieldOptions).optional(),
   })
-  .strict();
+  .strict()
+  .refine((value) => (value.valueType === 'select' ? value.options !== undefined : value.options === undefined));
 const fieldSelect = sql`
   SELECT f.id,f.code,f.name,f.object_type AS "objectType",f.value_type AS "valueType",f.revision,
-    COALESCE(v.inherit,true) AS inherit
+    f.options,COALESCE(v.inherit,true) AS inherit
   FROM employment_custom_field_objects f
   LEFT JOIN LATERAL (SELECT inherit FROM employment_custom_field_inheritance_versions
     WHERE tenant_id=f.tenant_id AND field_id=f.id ORDER BY version_no DESC LIMIT 1) v ON true
@@ -97,16 +103,53 @@ export async function createCustomField(tx: Tx, ctx: EmploymentContext, input: z
   if (count!.count >= CUSTOM_FIELD_LIMIT) throw new AppError('SERVICE_UNAVAILABLE', '自定义字段数量超出当前处理预算');
   const id = randomUUID();
   const code = `ext_${ctx.tenantId.replaceAll('-', '')}_${id.replaceAll('-', '')}`;
-  const after: CustomFieldDefinition = { id, code, ...parsed.data, revision: 1, inherit: true };
+  const after: CustomFieldDefinition = {
+    id,
+    code,
+    ...parsed.data,
+    options: parsed.data.options ?? [],
+    revision: 1,
+    inherit: true,
+  };
   await tx.execute(sql`
-    INSERT INTO employment_custom_field_objects(id,tenant_id,code,name,object_type,value_type,created_at)
-    VALUES(${id},${ctx.tenantId},${code},${after.name},${after.objectType},${after.valueType},${ctx.now.toISOString()})
+    INSERT INTO employment_custom_field_objects(id,tenant_id,code,name,object_type,value_type,options,created_at)
+    VALUES(${id},${ctx.tenantId},${code},${after.name},${after.objectType},${after.valueType},
+      ${JSON.stringify(after.options)}::jsonb,${ctx.now.toISOString()})
   `);
   await tx.execute(sql`
     INSERT INTO employment_custom_field_inheritance_versions(tenant_id,field_id,version_no,inherit,created_at)
     VALUES(${ctx.tenantId},${id},1,true,${ctx.now.toISOString()})
   `);
   await auditEmployment(tx, ctx, 'employment.custom_field.create', 'employment_custom_field', id, null, after);
+  return after;
+}
+
+export async function setCustomFieldOptions(
+  tx: Tx,
+  ctx: EmploymentContext,
+  id: string,
+  input: z.input<typeof optionsInput>,
+) {
+  const parsed = optionsInput.safeParse(input);
+  if (!parsed.success) throw new AppError('VALIDATION_FAILED', '自定义字段选项不合法');
+  const [before] = rowsOf<CustomFieldDefinition>(
+    await tx.execute(sql`
+    ${fieldSelect} WHERE f.tenant_id=${ctx.tenantId} AND f.id=${id} LIMIT 1 FOR UPDATE OF f
+  `),
+  );
+  if (!before) throw new AppError('NOT_FOUND', '自定义字段不存在');
+  if (before.valueType !== 'select') throw new AppError('VALIDATION_FAILED', '只有单选下拉支持选项设置');
+  assertRevision(ctx.expectedRevision, before.revision);
+  const { options } = parsed.data;
+  if (before.options.some((old) => !options.some((option) => option.value === old.value))) {
+    throw new AppError('VALIDATION_FAILED', '已有选项不可删除或修改编码');
+  }
+  const after = { ...before, options, revision: before.revision + 1 };
+  await tx.execute(sql`
+    UPDATE employment_custom_field_objects SET options=${JSON.stringify(options)}::jsonb,revision=${after.revision}
+    WHERE tenant_id=${ctx.tenantId} AND id=${id} AND revision=${before.revision}
+  `);
+  await auditEmployment(tx, ctx, 'employment.custom_field.options', 'employment_custom_field', id, before, after);
   return after;
 }
 

@@ -5,5 +5,10 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/esign/variables.ts#renderTemplateBody': [
+    '#ESIGN_EMPTY_VALUE',
+    '#ESIGN_TEMPLATE_VARIABLES',
+    '#PLACEHOLDER',
+  ],
   'packages/domain/src/esign/variables.ts#unknownTemplateVariables': ['#ESIGN_TEMPLATE_VARIABLES', '#PLACEHOLDER'],
 };

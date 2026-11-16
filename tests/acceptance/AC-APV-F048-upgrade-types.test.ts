@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import { createUser, grantMembership, sql, withTenant, type Db } from '@italent/db';
 import { PRESET_PROCESSES } from '@italent/domain';
-import { useTestDb } from '@italent/testkit';
+import { useTestDb, withCurrentWriteColumns } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { createProcess, publishProcess } from '../../apps/api/src/modules/approval/definitions.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
@@ -252,12 +252,14 @@ it('升级前发起的离职 / 员工子集 / 合同 / IDP 在途实例：avoid_
     withPreAssessmentSchema(handle.db, () =>
       withPreInternCycleSchema(handle.db, () =>
         withPreExitRoutesSchema(handle.db, () =>
-          withoutSubjectsTable(handle.db, async () => ({
-            leave: await leaveBefore(handle.db),
-            personnel: await personnelBefore(handle.db),
-            contract: await contractBefore(handle.db),
-            idp: await idpBefore(handle.db),
-          })),
+          withoutSubjectsTable(handle.db, () =>
+            withCurrentWriteColumns(handle.db, async () => ({
+              leave: await leaveBefore(handle.db),
+              personnel: await personnelBefore(handle.db),
+              contract: await contractBefore(handle.db),
+              idp: await idpBefore(handle.db),
+            })),
+          ),
         ),
       ),
     ),

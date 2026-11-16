@@ -9,17 +9,27 @@ import {
   type FormField,
 } from '../foundation/index.js';
 import { ReferenceSelect } from '../job/JobEditor.js';
-import { orgChangeBody, orgCreateResource, type Dimension, type OrgAction, type OrgRow } from './page-model.js';
+import {
+  flattenCustomFields,
+  orgChangeBody,
+  orgCreateResource,
+  type Dimension,
+  type OrgAction,
+  type OrgRow,
+} from './page-model.js';
+import { customFormFields, type OrgCustomFields } from './custom-fields.js';
 import { type PageAccess } from './page-support.js';
 import { useRecordCommand } from './record-command.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { PersonSelect } from './PersonFields.js';
-import { detailText, pageText as m } from './messages.js';
+import { customText, detailText, pageText as m } from './messages.js';
 interface Props {
   original: OrgRow;
   action: OrgAction;
   date: string;
   access: PageAccess;
+  /** 组织自定义字段（F-474-6b）：只在「变更」里作为“其他信息”分组出现。 */
+  custom: OrgCustomFields;
   onClose(): void;
   onSaved(): void;
 }
@@ -119,7 +129,8 @@ function parentFields(
     }));
 }
 function project(row: OrgRow) {
-  const values: Record<string, unknown> = { ...row };
+  // 自定义字段平铺成 custom:<id>：内核按键比较基线、只提交改过的字段。
+  const values: Record<string, unknown> = flattenCustomFields(row);
   for (const dimension of ['admin', 'business', 'product'] as const)
     values[`${dimension}Parent`] = row.parents?.[dimension]?.parentId;
   return values;
@@ -216,6 +227,10 @@ function headerFields({ action, date, original }: Props, resumed: boolean): Form
       : []),
   ];
 }
+function customGroups({ action, access, custom }: Props, current: OrgRow) {
+  const fields = action === 'change' ? customFormFields(custom, access, current) : [];
+  return fields.length ? [{ title: customText.group, fields }] : [];
+}
 export function OrgEditor(opened: Props) {
   const record = useOrgCommand(opened);
   // 槽里有未确认的命令时按它的动作与日期打开，不按本次入口另起命令。
@@ -243,6 +258,7 @@ export function OrgEditor(opened: Props) {
           title: m.basic,
           fields: [...headerFields(props, record.resumed), ...fields],
         },
+        ...customGroups(props, current),
       ]}
     />
   );

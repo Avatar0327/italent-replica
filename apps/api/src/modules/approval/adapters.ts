@@ -463,7 +463,7 @@ const employmentAdapter: BusinessAdapter = {
     const employType = business.kind === 'intern_regularization' ? 'internal' : before?.fields.employType;
     const fields: PresetFields = { ...business.fields, employType: business.fields.employType ?? employType ?? null };
     const payload = await latestPayload(tx, ctx.tenantId, businessId);
-    const linkage = await linkageApproval(tx, ctx.tenantId, businessId, business.kind); // R1-T10 P1-6
+    const linkage = await linkageApproval(tx, ctx.tenantId, businessId, business.kind, business); // R1-T10 P1-6
     const exit = ['leave', 'retirement'].includes(business.kind)
       ? await exitMetadata(tx, ctx.tenantId, businessId, business.kind)
       : {};

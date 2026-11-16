@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EMPLOYMENT_STATUS_FIELDS } from '@italent/domain';
+import { EMPLOYMENT_STATUS_FIELDS, type CustomFieldOption } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { validIsoDate } from '../org/read-model.js';
 import {
@@ -158,8 +158,18 @@ export function dayAfter(value: string): string {
   return businessDate(day.toISOString().slice(0, 10));
 }
 
-export function validateCustomValue(value: unknown, type: string): CustomValue {
+export function validateCustomValue(
+  value: unknown,
+  type: string,
+  options: readonly CustomFieldOption[] = [],
+  previous?: unknown,
+): CustomValue {
   if (value === null) return null;
+  if (type === 'select') {
+    const selected = options.find((option) => option.value === value);
+    if (selected && (selected.enabled || value === previous)) return selected.value;
+    throw new AppError('VALIDATION_FAILED', '单选值须为启用选项或沿用原值');
+  }
   const schemas = {
     text: z.string().max(2000),
     integer: z.number().int().safe(),

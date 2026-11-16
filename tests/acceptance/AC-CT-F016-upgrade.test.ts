@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
+import { useTestDb, withCurrentWriteColumns } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { legacyContractWorld } from './AC-CT-upgrade-support.js';
 import { withPreHandoverSchema } from './support/pre-handover-schema.js';
@@ -24,7 +24,9 @@ it('P2-N4 DEC-190 升级隔离整个冲突组，保留审批历史且无自动�
   // 当前审批 / 平台接口会写 R1-T16 新增的审计列、读 F-478 出口路由表，旧结构上临时补出（只影响夹具，断言不变）
   await withPreExitRoutesSchema(handle.db, () =>
     withPreHandoverSchema(handle.db, () =>
-      withPreAuditSchema(handle.db, () => installApprovalFallbacks(handle.db, tenantId, w.session.user.id)),
+      withPreAuditSchema(handle.db, () =>
+        withCurrentWriteColumns(handle.db, () => installApprovalFallbacks(handle.db, tenantId, w.session.user.id)),
+      ),
     ),
   );
   await withTenant(handle.db, tenantId, async (tx) => {

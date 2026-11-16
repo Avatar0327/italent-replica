@@ -5,6 +5,7 @@ const TENANT_PAGE = 100;
 
 export interface TenantRow {
   readonly id: string;
+  readonly name?: string;
   readonly timezone: string;
 }
 
@@ -17,7 +18,7 @@ export async function* activeTenants(db: Db, tenantId: string | null): AsyncGene
   for (;;) {
     const page: TenantRow[] = await withPlatform(db, async (tx) =>
       rowsOf<TenantRow>(
-        await tx.execute(sql`SELECT id::text, timezone FROM tenants WHERE status='active'
+        await tx.execute(sql`SELECT id::text, name, timezone FROM tenants WHERE status='active'
           AND (${tenantId}::uuid IS NULL OR id=${tenantId}::uuid)
           AND (${after}::uuid IS NULL OR id>${after}::uuid) ORDER BY id LIMIT ${TENANT_PAGE}`),
       ),
