@@ -354,4 +354,62 @@ describe('AC-TRF-F481-FE-02 任职记录列表：调动发起电子签署（补�
     expect(pageModel.transferTools.completed).toContain('process');
     expect(pageModel.enabledTools).not.toContain('process');
   });
+
+  // 以下两条按 claude_fe_rules (g)：结果未知时关闭重开、换一批勾选（换入口）仍锁定，直到用户按原命令重发。
+  // 补发命令的恢复槽存于模块级存储（切走再回来也不丢），本文件内不复位：留下未确认行的用例放在最后。
+  const lost = { status: 503, body: { error: { code: 'UNAVAILABLE', message: '服务暂不可用' } } };
+  const chosenIds = () =>
+    Array.from(templates()?.options ?? [])
+      .filter((option) => option.selected)
+      .map((option) => option.value);
+  const started = (index: number, task: string) => ({
+    body: { items: [receipt(index, { ok: true, taskId: task, status: 'signing', failureReason: null })] },
+  });
+
+  it('FE-02-09 结果未知后关闭再打开：仍显示待确认，模板保持原选择且不可改，不另起命令；按原命令重发沿用原命令', async () => {
+    tasks = [lost, started(1, '84810000-0000-4000-8000-000000000305')];
+    await render();
+    await check(1);
+    await click(reissueButton());
+    await pick(T2);
+    await click(modalButton('确定'));
+    expect(modal()?.textContent).toContain('结果待确认');
+    await click(modalButton('关闭'));
+    expect(modal()).toBeNull();
+    await click(reissueButton());
+    expect(modal()?.textContent).toContain('结果待确认');
+    expect(templates()?.disabled).toBe(true);
+    expect(chosenIds()).toEqual([T2]);
+    expect(modalButton('确定')?.disabled).toBe(true);
+    await click(modalButton('按原命令重发'));
+    expect(posts).toHaveLength(2);
+    expect(posts[1]).toEqual(posts[0]);
+    expect(modal()?.textContent).toContain('已发起签署');
+  });
+
+  it('FE-02-10 结果未知后换一批勾选：含未确认行的批次仍锁定、不另起命令；不含这些行的批次照常发起', async () => {
+    tasks = [lost, started(3, '84810000-0000-4000-8000-000000000306')];
+    await render();
+    await check(0, 2);
+    await click(reissueButton());
+    await pick(T1);
+    await click(modalButton('确定'));
+    await click(modalButton('关闭'));
+    await check(2);
+    await click(reissueButton());
+    expect(modal()?.textContent).toContain('已选择 1 条任职记录');
+    expect(modal()?.textContent).toContain('结果待确认');
+    expect(modalButton('确定')?.disabled).toBe(true);
+    await click(modalButton('关闭'));
+    await check(0, 3);
+    await click(reissueButton());
+    expect(modal()?.textContent).not.toContain('结果待确认');
+    await pick(T2);
+    await click(modalButton('确定'));
+    expect(posts.map((post) => post.body)).toEqual([
+      { items: [{ businessId: ROWS[0]!.id }, { businessId: ROWS[2]!.id }], templateIds: [T1] },
+      { items: [{ businessId: ROWS[3]!.id }], templateIds: [T2] },
+    ]);
+    expect(modal()?.textContent).toContain('已发起签署');
+  });
 });
