@@ -6827,6 +6827,78 @@
       "module": "esign",
       "primitives": {}
     },
+    "GET /api/tenant/esign/mine/:id/files": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "scope": [
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/esign/records": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ESignRecord:view"
+        ],
+        "scope": [
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/esign/records/files": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "scope": [
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/esign/scenes/transfer": {
       "edge": {
         "anonymous": {
@@ -23048,6 +23120,62 @@
       "primitives": {
         "command": [
           "runCommand / runWrite"
+        ]
+      }
+    },
+    "POST /api/tenant/esign/records/remind": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "runCommand / runWrite"
+        ],
+        "scope": [
+          "scopeSql"
+        ]
+      }
+    },
+    "POST /api/tenant/esign/records/revoke": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "runCommand / runWrite"
+        ],
+        "scope": [
+          "scopeSql"
         ]
       }
     },

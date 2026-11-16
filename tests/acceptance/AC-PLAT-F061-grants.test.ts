@@ -268,6 +268,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       55: '1a33bcf7af9d536b',
       // F-481-S3a：HR 类身份补发按钮，占位 main + 1，合并阶段统一定号。
       56: '2ceb5a8b5a976b7e',
+      // F-481-S3b：签署记录 HR 对象、只读字段与三个按钮（占位 main + 1）。
+      57: '2f79070a2978cfe5',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

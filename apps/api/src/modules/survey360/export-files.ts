@@ -630,7 +630,7 @@ async function pdfOf(doc: Doc, pages: readonly Page[], raster: RasterSession, si
 // ---- 响应头 ------------------------------------------------------------------------------------------------------
 
 /** 附件文件名：RFC 5987 编码，去掉路径与引号等不宜出现在文件名里的字符。 */
-export function attachmentName(name: string, extension: 'png' | 'pdf'): string {
+export function attachmentName(name: string, extension: 'png' | 'pdf' | 'zip'): string {
   // 按完整字符截断：按 UTF-16 单元截会把代理对（如“𠮷”）劈开，encodeURIComponent 抛 URIError
   const safe = [...clean(name).replace(/[\\/:*?"<>|\r\n]+/g, '_')].slice(0, 120).join('') || 'download';
   return `attachment; filename*=UTF-8''${encodeURIComponent(`${safe}.${extension}`)}`;

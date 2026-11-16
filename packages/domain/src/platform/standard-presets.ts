@@ -182,8 +182,14 @@ const READ_ONLY_OBJECTS = new Set<string>([
   ...ANALYTICS_BE13A_OBJECTS,
   ...ANALYTICS_BE13B_OBJECTS,
 ]);
-const grant = (definition: ObjectDefinition) =>
-  READ_ONLY_OBJECTS.has(definition.code) ? readOnly(definition) : full(definition);
+const grant = (definition: ObjectDefinition) => {
+  if (definition.code === MODULE_OBJECTS.eSignRecord.code)
+    return {
+      ...readOnly(definition),
+      buttons: definition.buttons.map((b) => ({ buttonCode: b.code, level: b.level })),
+    };
+  return READ_ONLY_OBJECTS.has(definition.code) ? readOnly(definition) : full(definition);
+};
 
 /**
  * F-474-7b（DEC-896 U8）：职务职级图谱原站菜单只授系统管理员，所以不进 BUSINESS_OBJECTS（人事管理员、专员、经理

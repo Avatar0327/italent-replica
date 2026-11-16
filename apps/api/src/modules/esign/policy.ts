@@ -19,12 +19,25 @@ import {
   object,
   shape,
   write,
+  listScope,
+  guardScope,
+  allFields,
 } from '../../route-policy/presets.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { ESIGN_BASE } from './routes.js';
 import { REISSUE_BUTTON } from './reissue.js';
 
 const SETTINGS = MODULE_OBJECTS.eSignSettings.code;
+const RECORD = MODULE_OBJECTS.eSignRecord.code;
+const recordButton = (code: string) =>
+  object({
+    object: RECORD,
+    operation: 'button',
+    button: button(code, 'list'),
+    scope: guardScope('esign.recordOwner', NOT_FOUND),
+    fields: fixed(['items'], 'F-481 §4.3：逐条 id/ok/code 回执，当前范围外统一 NOT_FOUND'),
+    write: commandWrite('esign.task.audited', 'esign.recordOwner', { preconditions: ['esign.lock', 'esign.revision'] }),
+  });
 const NO_BUTTON = noButton('配置对象只有数据操作开关，没有按钮（authorizer CONFIG_OBJECTS 分支）');
 const NO_SCOPE = noScope('配置对象是租户全局配置，不参与数据范围判定');
 const byId = { invalidId: BAD_REQUEST };
@@ -32,6 +45,31 @@ const configWrite = (action: string, preconditions: readonly string[]) =>
   write('body', `config.audited:${action}`, none('配置对象无范围，返回后只按配置对象字段权 trim'), { preconditions });
 
 export const ESIGN_POLICIES = defineTable('esign', {
+  [`GET ${ESIGN_BASE}/records`]: object({
+    object: RECORD,
+    operation: 'view',
+    button: noButton('列表只需对象查看权'),
+    scope: listScope('esign.recordOwner'),
+    fields: shape('esign.record'),
+  }),
+  [`POST ${ESIGN_BASE}/records/remind`]: recordButton('ESignRecord.Remind'),
+  [`POST ${ESIGN_BASE}/records/revoke`]: recordButton('ESignRecord.Revoke'),
+  [`GET ${ESIGN_BASE}/records/files`]: object({
+    object: RECORD,
+    operation: 'button',
+    button: button('ESignRecord.Download', 'list'),
+    scope: guardScope('esign.recordOwner', NOT_FOUND),
+    fields: allFields('F-481 §4.5：files 当前读权允许整份已签文件；ZIP 文件名另检查 owner'),
+    guards: ['esign.filesReadable'],
+  }),
+  [`GET ${ESIGN_BASE}/mine/:id/files`]: own({
+    predicate: 'esign.signer',
+    target: { param: 'id' },
+    locator: 'esign.task',
+    denied: NOT_FOUND,
+    fields: allFields('F-481 §4.5：签署人本人可读整份已签文件'),
+    invalidId: BAD_REQUEST,
+  }),
   [`GET ${ESIGN_BASE}/templates`]: object({
     object: SETTINGS,
     operation: 'view',
