@@ -4,12 +4,15 @@ import { MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { operatorNames } from '../../audit/query.js';
 import { scopeSql, type ModuleScope } from '../permission/module-access.js';
+import { registerPersonScopedObject } from '../permission/scope-resolver.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { personnelHooks } from '../employment/personnel-hooks.js';
 import { rowsOf } from '../employment/record-store.js';
 import type { SignTask } from './sign-events.js';
 
 export const RECORD_OBJECT = MODULE_OBJECTS.eSignRecord.code;
+// F-481 §10.1：按业务所有者解析管理单元，组织范围须转换为人员关联谓词。
+registerPersonScopedObject(RECORD_OBJECT);
 export const canRead = (fields: ReadonlySet<string> | undefined, field: string) =>
   fields === undefined || fields.has(field);
 export function requireFiles(fields: ReadonlySet<string> | undefined) {
