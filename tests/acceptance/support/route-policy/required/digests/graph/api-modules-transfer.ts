@@ -263,6 +263,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/transfer/linkage/execute.ts#applyTransferCrossLinkage': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/esign/transfer-sign.ts#initiateTransferSign',
+    'apps/api/src/modules/esign/transfer-sign.ts#transferSignInitiator',
     'apps/api/src/modules/transfer/linkage/contract.ts#changeContractOnActivation',
     '#createItems',
     '#executionDate',
@@ -427,6 +429,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
     'apps/api/src/modules/transfer/linkage/access.ts#authorizeLinkageWrite',
@@ -487,6 +490,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/transfer/linkage/validation.ts#validateLinkage': [
+    'apps/api/src/modules/esign/transfer-input.ts#validateSignTemplates',
     'apps/api/src/modules/transfer/linkage/contract.ts#validateContractChange',
     'apps/api/src/modules/transfer/linkage/insurance-archive.ts#insuranceAdjustOf',
     'apps/api/src/modules/transfer/linkage/insurance-archive.ts#validateInsuranceAdjust',
@@ -517,6 +521,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/linkage/view.ts#readTransferLinkage': [
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/esign/transfer-input.ts#signTemplateView',
     'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
     '#contractVisible',
     '#linkageResults',

@@ -506,7 +506,25 @@ const managerView = (call: Evidence) =>
     ],
   );
 const linkage = (call: Evidence, note?: string) =>
-  ob('guard:employment.linkage', ['guard:employment.linkage'], [call, LINKED], note);
+  ob(
+    'guard:employment.linkage',
+    ['guard:employment.linkage'],
+    [
+      call,
+      LINKED,
+      {
+        role: 'impl',
+        unit: `${SRC}/transfer/linkage/approval.ts#linkageFieldValues`,
+        anchor: 'esignTemplateIds: options?.esign?.templateIds ?? []',
+      },
+      {
+        role: 'const',
+        unit: 'packages/domain/src/approval/transfer-view.ts#TRANSFER_LINKAGE_FIELDS',
+        anchor: "'electronicSignature', 'esignTemplateIds'",
+      },
+    ],
+    note ?? 'F-481 S2：两签署字段进入联动差异授权、审批披露与盲审，不新增路由策略',
+  );
 const businessWrite = (call: Evidence) =>
   ob(
     'guard:employment.businessWrite',
@@ -1924,6 +1942,7 @@ export const EMPLOYMENT: RequiredTable = {
       `obj:${RECORD}:view`,
       ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view'],
       [at(LNK, 'GET', '/transfers/:id/linkage', "const ctx = await readContext(c, deps, 'object.view')"), READ],
+      'F-481 S2：esign 及 options.esign 按 electronicSignature / esignTemplateIds 当前读权裁剪',
     ),
     {
       perm: 'obj:TenantBase.EmploymentContract:view',

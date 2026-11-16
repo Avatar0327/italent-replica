@@ -18,6 +18,8 @@ import type { IdentityResolver } from './identity.js';
 export const TENANT_HEADER = 'x-tenant-id';
 
 export interface TenantContext {
+  /** 平台已核验的租户名称，供业务模板快照使用；不从请求体接收。 */
+  readonly tenantName?: string;
   readonly tenantId: string;
   readonly userId: string;
   /** 租户时区（DEC-056），业务日期判定一律用它。 */
@@ -50,7 +52,7 @@ export function tenantContext(db: Db, identity: IdentityResolver): MiddlewareHan
     if (!tenant) throw new AppError('TENANT_NOT_MEMBER', '不是该租户的成员');
     if (tenant.status !== 'active') throw new AppError('TENANT_UNAVAILABLE', '租户暂不可用');
 
-    c.set('tenant', { tenantId, userId, timezone: tenant.timezone });
+    c.set('tenant', { tenantId, userId, timezone: tenant.timezone, tenantName: tenant.name });
     await next();
   };
 }

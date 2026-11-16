@@ -1,4 +1,5 @@
 /** 调动联动的提交载荷与接口（R1-T10）。 */
+import { contractApi } from '../contracts/model.js';
 import { TRANSFER_API, transferRequest } from './api.js';
 import type {
   ContractChoice,
@@ -71,10 +72,37 @@ export function sourceDepartment(model: TransferFormModel): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-export function loadContractChoices(tenantId: string, employeeId: string, signal?: AbortSignal) {
-  return transferRequest<{ items: ContractChoice[] }>(tenantId, `${TRANSFER_API}/employees/${employeeId}/contracts`, {
-    ...(signal ? { signal } : {}),
-  });
+/**
+ * 可变更的合同，并补上原合同生效日期（F-504）：调动候选只回 id 与编号，生效日取合同模块的员工合同摘要
+ * （apps/api/src/modules/contracts/routes.ts `/employees/:id/contracts`，同一对象权限与数据范围）。
+ * 摘要读不到（无权、超上限）、生效日被字段裁剪或没有这份合同时不补，保存时不弹确认框，候选照常可选。
+ */
+export async function loadContractChoices(tenantId: string, employeeId: string, signal?: AbortSignal) {
+  const options = signal ? { signal } : {};
+  const path = `${TRANSFER_API}/employees/${employeeId}/contracts`;
+  const [choices, dates] = await Promise.all([
+    transferRequest<{ items: ContractChoice[] }>(tenantId, path, options),
+    contractEffectiveDates(tenantId, employeeId, options),
+  ]);
+  const withDate = (item: ContractChoice) => {
+    const effectiveDate = dates.get(item.id);
+    return effectiveDate ? { ...item, effectiveDate } : item;
+  };
+  return { items: choices.items.map(withDate) };
+}
+
+async function contractEffectiveDates(tenantId: string, employeeId: string, options: RequestInit) {
+  const dates = new Map<string, string>();
+  try {
+    const path = `${contractApi.list}/employees/${employeeId}/contracts`;
+    const { items } = await transferRequest<{ items?: unknown }>(tenantId, path, options);
+    for (const row of Array.isArray(items) ? (items as Record<string, unknown>[]) : []) {
+      if (typeof row?.id === 'string' && typeof row.effectiveDate === 'string') dates.set(row.id, row.effectiveDate);
+    }
+  } catch {
+    // 生效日只用于提示，读不到不影响选择合同与保存。
+  }
+  return dates;
 }
 
 export function loadLinkage(tenantId: string, businessId: string) {

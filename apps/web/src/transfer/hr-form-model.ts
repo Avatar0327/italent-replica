@@ -1,5 +1,5 @@
 import { hrFormText as h } from './messages.js';
-import type { TransferPreview } from './types.js';
+import type { TransferFormModel, TransferPreview } from './types.js';
 
 /**
  * HR 全页表单的结构与按钮规则（纯函数，单测直接核对；#333 第 1 轮 P2-1 / P2-2 / P2-5）。
@@ -65,4 +65,19 @@ function actionHint(mode: HrFormMode, writable: boolean, preview: PreviewActions
   if (!writable) return h.noWrite;
   if (!preview || allowed) return undefined;
   return mode === 'apply' ? h.noApplication : h.noDirect;
+}
+
+const businessDate = /^\d{4}-\d{2}-\d{2}$/;
+/**
+ * F-504：变更合同且新合同生效日（= 调动生效日，apps/api/src/modules/transfer/linkage/contract.ts）晚于原合同生效日时，
+ * 生效即终止原合同，保存前须确认。与 contracts/service.ts applyRequest 同口径（严格晚于才终止，否则作废原合同）；
+ * 两个都是租户本地业务日期 YYYY-MM-DD，按字符串比较。与保存载荷同条件（linkage-api.ts linkagePayload）：
+ * 未选合同时不带合同；原合同取表单已加载的候选，任一日期缺失或格式不对时不确认。
+ */
+export function terminatesOriginalContract(model: TransferFormModel): boolean {
+  const { linkage, contracts, effectiveDate } = model;
+  if (model.initiator === 'employee' || !linkage?.changeContract || !linkage.contractTargetId) return false;
+  const original = contracts?.find((item) => item.id === linkage.contractTargetId)?.effectiveDate;
+  if (!original || !businessDate.test(original) || !businessDate.test(effectiveDate)) return false;
+  return effectiveDate > original;
 }
