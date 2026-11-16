@@ -1935,6 +1935,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#iso',
     'packages/domain/src/employment/exit-notice-templates.ts#renderExitNotice',
+    'packages/domain/src/esign/notice-templates.ts#renderEsignNotice',
   ],
   'apps/api/src/modules/approval/queries.ts#listTodos': ['apps/api/src/modules/approval/context.ts#rowsOf', '#iso'],
   'apps/api/src/modules/approval/recusal.ts#assertNotRecused': [

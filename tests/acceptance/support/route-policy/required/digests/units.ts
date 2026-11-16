@@ -104,7 +104,7 @@ export const DIGESTS: Digests = {
     retrieveTask: '649138642c42',
   },
   'apps/api/src/modules/approval/queries.ts': {
-    listNotifications: '103debee94a2',
+    listNotifications: '3e7570f8b607',
     listTodos: '6b64f79dcefe',
   },
   'apps/api/src/modules/approval/routes.ts': {
@@ -691,6 +691,16 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/write-service.ts': {
     materializeEmploymentRecord: '9ee842355dd2',
   },
+  'apps/api/src/modules/esign/mine.ts': {
+    listMine: '13c4a0b5154f',
+    ownSignTask: 'fddb02200d78',
+    signerPredicate: '2b9e98fa4015',
+  },
+  'apps/api/src/modules/esign/reissue.ts': {
+    REISSUE_BUTTON: '938b0fa430e6',
+    authorizeReissue: '9791ab4f7903',
+    visibleTransfer: '47bcc5b244f6',
+  },
   'apps/api/src/modules/esign/routes.ts': {
     OBJECT: 'b38353085f2c',
     'route:GET /api/tenant/esign/scenes/transfer': '33ca8c794a34',
@@ -699,6 +709,13 @@ export const DIGESTS: Digests = {
     'route:PATCH /api/tenant/esign/templates/:id': '3898bb298a0a',
     'route:POST /api/tenant/esign/templates': 'ec441f3401ab',
     'route:PUT /api/tenant/esign/scenes/transfer': '2f47be14a50a',
+  },
+  'apps/api/src/modules/esign/task-routes.ts': {
+    'route:GET /api/tenant/esign/mine': '537870a3f7bf',
+    'route:GET /api/tenant/esign/mine/:id': '78ad524a10d2',
+    'route:GET /api/tenant/esign/template-options/reissue': '0837b4086192',
+    'route:POST /api/tenant/esign/mine/:id/sign': '8e8d1965dc5c',
+    'route:POST /api/tenant/esign/transfer-tasks': '4bfcced0eeb3',
   },
   'apps/api/src/modules/establishment/copy-service.ts': {
     listNotifications: 'ea9103b1ab2d',
@@ -2096,7 +2113,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/matrix-routes.ts#route:PUT /matrices/:id/structure': 'd15ebdafe9da',
   'apps/api/src/modules/approval/my-applications.ts#listMyApplications': '12801cc6782a',
   'apps/api/src/modules/approval/node-actions.ts#retrieveTask': '0e8b7aab9710',
-  'apps/api/src/modules/approval/queries.ts#listNotifications': '9a92904d5be3',
+  'apps/api/src/modules/approval/queries.ts#listNotifications': '6276219c3c5a',
   'apps/api/src/modules/approval/queries.ts#listTodos': '80471183b41a',
   'apps/api/src/modules/approval/routes.ts#detailViewOf': '52a28d530ce2',
   'apps/api/src/modules/approval/routes.ts#fieldRights': 'cd83039b7197',
@@ -2530,6 +2547,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite': '413b0e4e2c2a',
   'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure': '573e99887edc',
   'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': 'c407882418e6',
+  'apps/api/src/modules/esign/mine.ts#listMine': '105cc9644d98',
+  'apps/api/src/modules/esign/mine.ts#ownSignTask': 'a330f2f318b4',
+  'apps/api/src/modules/esign/mine.ts#signerPredicate': 'f9b147eca340',
+  'apps/api/src/modules/esign/reissue.ts#REISSUE_BUTTON': 'e3b0c44298fc',
+  'apps/api/src/modules/esign/reissue.ts#authorizeReissue': '0fb6b6410c62',
+  'apps/api/src/modules/esign/reissue.ts#visibleTransfer': '015b114e7c71',
   'apps/api/src/modules/esign/routes.ts#OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/esign/routes.ts#route:GET /api/tenant/esign/scenes/transfer': 'f82ebf22fcca',
   'apps/api/src/modules/esign/routes.ts#route:GET /api/tenant/esign/template-options/transfer-form': '9fb3399ad472',
@@ -2537,6 +2560,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/esign/routes.ts#route:PATCH /api/tenant/esign/templates/:id': '9ebdc5ed7a21',
   'apps/api/src/modules/esign/routes.ts#route:POST /api/tenant/esign/templates': 'bae133f89588',
   'apps/api/src/modules/esign/routes.ts#route:PUT /api/tenant/esign/scenes/transfer': '660e2ea3c959',
+  'apps/api/src/modules/esign/task-routes.ts#route:GET /api/tenant/esign/mine': '723249545961',
+  'apps/api/src/modules/esign/task-routes.ts#route:GET /api/tenant/esign/mine/:id': 'b3da4292f6aa',
+  'apps/api/src/modules/esign/task-routes.ts#route:GET /api/tenant/esign/template-options/reissue': '271c8cf61980',
+  'apps/api/src/modules/esign/task-routes.ts#route:POST /api/tenant/esign/mine/:id/sign': 'f6a56acd851c',
+  'apps/api/src/modules/esign/task-routes.ts#route:POST /api/tenant/esign/transfer-tasks': '83c147f429bc',
   'apps/api/src/modules/establishment/copy-service.ts#listNotifications': '5cecb2b72dfa',
   'apps/api/src/modules/establishment/routes.ts#OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/establishment/routes.ts#route:DELETE /api/tenant/establishment/schemes/:id': 'ad749dd90f8a',

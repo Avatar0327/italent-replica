@@ -561,6 +561,8 @@ export const MODULE_OBJECTS = {
     [
       button('Employment.Create', 'detail', 'create'),
       button('Transfer.Hr', 'detail', 'create'),
+      // F-481 §10：批量补发，只随 HR 类身份的完整任职功能预置。
+      button('MulLaunchESignTranfer', 'list', 'update'),
       button('Transfer.Manager', 'detail', 'create'),
       button('Transfer.Self', 'detail', 'create'),
       button('Exit.Self', 'detail', 'create'),

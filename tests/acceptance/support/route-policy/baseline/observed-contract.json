@@ -6792,6 +6792,41 @@
         ]
       }
     },
+    "GET /api/tenant/esign/mine": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "status": 200
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {}
+    },
+    "GET /api/tenant/esign/mine/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {}
+    },
     "GET /api/tenant/esign/scenes/transfer": {
       "edge": {
         "anonymous": {
@@ -6817,6 +6852,34 @@
         ],
         "objectOp": [
           "TenantBase.ESignSettings:view"
+        ]
+      }
+    },
+    "GET /api/tenant/esign/template-options/reissue": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
         ]
       }
     },
@@ -22966,6 +23029,28 @@
         ]
       }
     },
+    "POST /api/tenant/esign/mine/:id/sign": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "command": [
+          "runCommand / runWrite"
+        ]
+      }
+    },
     "POST /api/tenant/esign/templates": {
       "edge": {
         "anonymous": {
@@ -22998,6 +23083,46 @@
         ],
         "objectOp": [
           "TenantBase.ESignSettings:create"
+        ]
+      }
+    },
+    "POST /api/tenant/esign/transfer-tasks": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ],
+        "object": [
+          "object.* 动作",
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
         ]
       }
     },

@@ -7,6 +7,10 @@ import { MODULE_OBJECTS } from '@italent/domain';
 import { defineTable } from '../../route-policy/index.js';
 import {
   BAD_REQUEST,
+  NOT_FOUND,
+  own,
+  pointScope,
+  commandWrite,
   button,
   fixed,
   noButton,
@@ -18,6 +22,7 @@ import {
 } from '../../route-policy/presets.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { ESIGN_BASE } from './routes.js';
+import { REISSUE_BUTTON } from './reissue.js';
 
 const SETTINGS = MODULE_OBJECTS.eSignSettings.code;
 const NO_BUTTON = noButton('配置对象只有数据操作开关，没有按钮（authorizer CONFIG_OBJECTS 分支）');
@@ -76,5 +81,52 @@ export const ESIGN_POLICIES = defineTable('esign', {
     button: button('Transfer.Hr', 'detail'),
     scope: NO_SCOPE,
     fields: fixed(['items'], 'service.ts templateOptions：items 仅含启用模板的 id 与 name，不含正文与编码'),
+  }),
+  [`GET ${ESIGN_BASE}/template-options/reissue`]: object({
+    object: EMPLOYMENT_OBJECT,
+    operation: 'update',
+    button: button(REISSUE_BUTTON, 'list'),
+    scope: NO_SCOPE,
+    fields: fixed(['items'], '同 templateOptions，只返回启用模板 id/name'),
+  }),
+  [`POST ${ESIGN_BASE}/transfer-tasks`]: object({
+    object: EMPLOYMENT_OBJECT,
+    operation: 'update',
+    button: button(REISSUE_BUTTON, 'list'),
+    scope: pointScope({ body: 'items[*].businessId' }, 'esign.transferWrite', NOT_FOUND),
+    fields: fixed(['items'], '逐条回执仅含提交的 id、ok、code 或 taskId/status/failureReason'),
+    write: commandWrite(
+      'esign.reissue',
+      { generic: { targets: 'items[*].id', locator: 'esign.transferWrite' } },
+      { preconditions: ['esign.templates', 'esign.inForce', 'esign.noSigning'] },
+    ),
+  }),
+  [`GET ${ESIGN_BASE}/mine`]: own({
+    predicate: 'esign.signer',
+    fields: shape('esign.mineList'),
+  }),
+  [`GET ${ESIGN_BASE}/mine/:id`]: own({
+    predicate: 'esign.signer',
+    target: { param: 'id' },
+    locator: 'esign.ownSignTask',
+    denied: NOT_FOUND,
+    fields: shape('esign.mineDetail'),
+    ...byId,
+  }),
+  [`POST ${ESIGN_BASE}/mine/:id/sign`]: own({
+    predicate: 'esign.signer',
+    target: { param: 'id' },
+    locator: 'esign.ownSignTask',
+    denied: NOT_FOUND,
+    fields: fixed(
+      ['id', 'revision', 'status', 'currentNode', 'employeeSignedAt', 'enterpriseSignedAt', 'completedAt'],
+      '成功只给节点回执；过期为同事务提交的 409 错误信封',
+    ),
+    write: commandWrite(
+      'esign.sign',
+      { generic: { targets: 'id', locator: 'esign.ownSignTask' } },
+      { controls: ['revision'], preconditions: ['esign.revision', 'esign.currentSigner', 'esign.expiry'] },
+    ),
+    ...byId,
   }),
 });
