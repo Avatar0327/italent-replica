@@ -15,6 +15,7 @@ import { directBody, directValues, formFields, recordReceipt, validateDirect, er
 import { DirectField, ReadonlyPerson, useDirectPreview } from './DirectFields.js';
 import { DirectCustomField, useDirectCustomFields } from './DirectCustomFields.js';
 import { d } from './direct-messages.js';
+import { CustomFieldsNotice } from '../shared/CustomFieldsNotice.js';
 export interface DirectProps {
   onClose(): void;
   refresh(): Promise<void>;
@@ -179,6 +180,11 @@ function DirectContent({ state }: { state: ReturnType<typeof useDirectForm> }) {
           {custom.definitions.map((field) => (
             <DirectCustomField key={field.id} field={field} access={access} create={create} baseline={cmd.full} />
           ))}
+          {custom.notice.status && (
+            <Form.Item>
+              <CustomFieldsNotice notice={custom.notice} />
+            </Form.Item>
+          )}
           <p>{d.linkage}</p>
           {create && employeeId && <ReadonlyPerson id={employeeId} />}
         </Form>

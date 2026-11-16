@@ -7,6 +7,7 @@ import type { useDirectAccess } from './direct-commands.js';
 import { apiRoot, object, value } from './model.js';
 import { useRead } from './useRead.js';
 import { d } from './direct-messages.js';
+import { useCustomFieldsNotice } from '../shared/CustomFieldsNotice.js';
 interface Definition {
   id: string;
   name: string;
@@ -23,6 +24,7 @@ export function useDirectCustomFields(access: ReturnType<typeof useDirectAccess>
   const visible = access.p.snapshot.objects[object]?.viewableFields.filter((key) => key.startsWith('custom:')) ?? [];
   // 无字段查看权时不请求定义目录；返回后仍按快照的 custom:<id> 查看权再裁一遍（同 6b / 6c）。
   const result = useRead<{ items: Definition[] }>(visible.length ? definitionsPath : null);
+  const notice = useCustomFieldsNotice(visible.length > 0, result);
   const definitions = (result.data?.items ?? []).filter(
     (field) =>
       visible.includes(`custom:${field.id}`) && field.name && CUSTOM_FIELD_VALUE_TYPES.includes(field.valueType),
@@ -31,9 +33,10 @@ export function useDirectCustomFields(access: ReturnType<typeof useDirectAccess>
     definitions,
     keys: definitions.map((field) => `custom:${field.id}`),
     labels: Object.fromEntries(definitions.map((field) => [`custom:${field.id}`, field.name])),
-    // 读取中短暂锁定，避免定义未到就提交；读取失败照 6b（org/custom-fields.tsx）按无字段处理，
-    // 不显示错误、不挡表单（docs/08_设计/F-474-6a §5）。
-    blocked: visible.length > 0 && result.loading,
+    // 首次读取中短暂锁定，避免定义未到就提交；读取失败照 6b（org/custom-fields.tsx）按无字段处理、不挡表单
+    // （docs/08_设计/F-474-6a §5），自定义字段区给提示行与重试；点重试后的重新读取同样不挡表单（F-527）。
+    blocked: visible.length > 0 && result.loading && notice.status !== 'retrying',
+    notice,
   };
 }
 export function DirectCustomField({

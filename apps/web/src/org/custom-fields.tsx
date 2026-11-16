@@ -1,6 +1,7 @@
 import { Input, InputNumber, Select } from 'antd';
 import { CUSTOM_FIELD_VALUE_TYPES, type CustomFieldOption, type CustomFieldValueType } from '@italent/domain';
-import { TenantDatePicker, type FormField } from '../foundation/index.js';
+import { TenantDatePicker, type FormField, type FormGroup } from '../foundation/index.js';
+import { customFieldsNoticeField, useCustomFieldsNotice } from '../shared/CustomFieldsNotice.js';
 import { customKey, orgCustomValue, type OrgRow } from './page-model.js';
 import { useRemote, type PageAccess } from './page-support.js';
 import { customText } from './messages.js';
@@ -18,12 +19,13 @@ export interface OrgCustomDefinition {
 const DEFINITIONS = '/api/tenant/org/custom-field-definitions';
 
 /**
- * 租户定义 × 查看人的 custom:<id> 查看权：只返回有查看权的字段；定义读取失败时按无字段处理，
- * 不渲染占位，也不影响组织页本身（fail-closed，docs/08_设计/F-474-6a §5）。
+ * 租户定义 × 查看人的 custom:<id> 查看权：只返回有查看权的字段；定义读取失败时按无字段处理，不影响组织页本身
+ * （fail-closed，docs/08_设计/F-474-6a §5）；新建 / 变更弹窗的“其他信息”分组另给提示行与重试（F-527）。
  */
 export function useOrgCustomFields(access: PageAccess) {
   const keys = access.customKeys;
   const result = useRemote<{ items: OrgCustomDefinition[] }>(keys.length ? DEFINITIONS : null);
+  const notice = useCustomFieldsNotice(keys.length > 0, result);
   const definitions = (result.data?.items ?? []).filter(
     (field) => keys.includes(customKey(field.id)) && field.name && CUSTOM_FIELD_VALUE_TYPES.includes(field.valueType),
   );
@@ -31,6 +33,7 @@ export function useOrgCustomFields(access: PageAccess) {
     definitions,
     keys: definitions.map((field) => customKey(field.id)),
     labels: Object.fromEntries(definitions.map((field) => [customKey(field.id), field.name])),
+    notice,
   };
 }
 export type OrgCustomFields = ReturnType<typeof useOrgCustomFields>;
@@ -84,6 +87,11 @@ export function customFormFields(custom: OrgCustomFields, access: PageAccess, or
       display: customDisplay(field, original ? orgCustomValue(original, field.id) : undefined),
     };
   });
+}
+/** 弹窗「其他信息」分组：放字段，定义读取失败 / 重试中再放一行提示（F-527）；两者都没有时不建分组。 */
+export function customFormGroups(custom: OrgCustomFields, fields: FormField[]): FormGroup[] {
+  const all = [...fields, ...customFieldsNoticeField(custom.notice)];
+  return all.length ? [{ title: customText.group, fields: all }] : [];
 }
 /** 详情 / 列表 / 只读行的取值显示：下拉显示选项名称，布尔显示是 / 否，空值 `--`。 */
 export function customDisplay(field: Pick<OrgCustomDefinition, 'valueType' | 'options'>, value: unknown) {

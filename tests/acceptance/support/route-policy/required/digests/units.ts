@@ -698,6 +698,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/esign/reissue.ts': {
     REISSUE_BUTTON: '938b0fa430e6',
+    authorizeReissue: '9791ab4f7903',
     visibleTransfer: '47bcc5b244f6',
   },
   'apps/api/src/modules/esign/routes.ts': {
@@ -2550,6 +2551,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/esign/mine.ts#ownSignTask': 'a330f2f318b4',
   'apps/api/src/modules/esign/mine.ts#signerPredicate': 'f9b147eca340',
   'apps/api/src/modules/esign/reissue.ts#REISSUE_BUTTON': 'e3b0c44298fc',
+  'apps/api/src/modules/esign/reissue.ts#authorizeReissue': '0fb6b6410c62',
   'apps/api/src/modules/esign/reissue.ts#visibleTransfer': '015b114e7c71',
   'apps/api/src/modules/esign/routes.ts#OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/esign/routes.ts#route:GET /api/tenant/esign/scenes/transfer': 'f82ebf22fcca',
