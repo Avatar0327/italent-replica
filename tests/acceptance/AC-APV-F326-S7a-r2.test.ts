@@ -125,6 +125,28 @@ describe('AC-APV-F326-S7a-r2 P2-3 发布冲突的重选协议', () => {
     expect(await varRow(w, x.id)).toEqual(current);
     expect((await readProcess(w, saved.id)).latestVersion.status).toBe('draft');
   });
+
+  it('对照：两个待生效位置、两个选择都指向同一变量 → 400，不写任何变量（不经数量上限，单独守住重复检查）', async () => {
+    const w = await s4World(database().db, 's7a-r2-dup2');
+    const first = await w.person('合成待改选人甲', w.staff);
+    const second = await w.person('合成待改选人乙', w.staff);
+    const a = await w.publish(await create(w, [single('n1', w.head.userId), single('n2', w.near.userId)]));
+    const x1 = await autoAt(w, a.id, 'n1');
+    const x2 = await autoAt(w, a.id, 'n2');
+    const saved = await draftOk(w, await newVersion(w, a), [single('n1', first.userId), single('n2', second.userId)]);
+    const before = [await varRow(w, x1.id), await varRow(w, x2.id)];
+    const response = await publishWith(w, saved, {
+      pendingResolutions: [
+        { variableId: x1.id, revision: before[0]!.revision, choice: 'designer' },
+        { variableId: x1.id, revision: before[0]!.revision, choice: 'current' },
+      ],
+    });
+    // 两个选择 = 两个待生效位置，未超数量上限；只有“同一变量只能选择一次”能拒绝它
+    const error = await rejected(response, 400, 'APPROVAL_PENDING_RESOLUTION_INVALID');
+    expect(error.message).toContain('同一变量只能选择一次');
+    expect([await varRow(w, x1.id), await varRow(w, x2.id)]).toEqual(before);
+    expect((await readProcess(w, saved.id)).latestVersion.status).toBe('draft');
+  });
 });
 
 describe('AC-APV-F326-S7a-r2 P2-4 pendingConflict 与发布同一判定', () => {
