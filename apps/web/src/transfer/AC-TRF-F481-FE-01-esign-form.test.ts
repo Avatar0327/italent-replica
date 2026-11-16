@@ -12,6 +12,7 @@ import { App, ConfigProvider } from 'antd';
 import { act, createElement as h } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApprovalFields } from '../approval/ApprovalDetail.js';
 import { SessionProvider, type Session } from '../foundation/Session.js';
 import { TransferApplication } from '../self-service/shared/TransferApplication.js';
 import { LinkagePanel } from './LinkagePanel.js';
@@ -245,9 +246,11 @@ describe('AC-TRF-F481-FE-01 调动表单合同段：发起电子文件签署与�
     await open();
     await signWith();
     await click(selectAll());
-    expect(Array.from(templates()!.selectedOptions, (option) => option.value)).toEqual([T1, T2]);
+    // 按 option.selected 判断：happy-dom 的 selectedOptions 在取消选中后不刷新（测试环境缺陷）。
+    const chosen = () => Array.from(templates()!.options).flatMap((option) => (option.selected ? [option.value] : []));
+    expect(chosen()).toEqual([T1, T2]);
     await click(selectAll());
-    expect(templates()!.selectedOptions).toHaveLength(0);
+    expect(chosen()).toEqual([]);
     await click(selectAll());
     await click(button('保存'));
     expect(posts).toEqual([directBody({ contract, esign: { templateIds: [T1, T2] } })]);
@@ -290,10 +293,11 @@ describe('AC-TRF-F481-FE-01 调动表单合同段：发起电子文件签署与�
   });
 
   it('FE-01-07 模板选项读取失败：给出中文原因，不能提交“是”', async () => {
-    options = { status: 403, body: { error: { code: 'FORBIDDEN', message: '无权读取签署模板' } } };
+    // 后端形状：apps/api authorization.ts requirePermission；403 前端统一显示“暂无访问权限”（foundation/client.ts）
+    options = { status: 403, body: { error: { code: 'FORBIDDEN', message: '无权执行该操作' } } };
     await open();
     await signWith();
-    expect(contractSection().textContent).toContain('无权读取签署模板');
+    expect(contractSection().textContent).toContain('签署模板读取失败：暂无访问权限');
     expect(button('保存')?.disabled).toBe(true);
     expect(posts).toEqual([]);
   });
@@ -364,5 +368,39 @@ describe('AC-TRF-F481-FE-01 调动详情只读：发起电子文件签署与模�
     expect(host.textContent).toContain('发起电子文件签署：否');
     await panel(view(undefined));
     expect(host.textContent).not.toContain('发起电子文件签署');
+  });
+});
+
+/**
+ * 审批详情：调动审批载荷带 electronicSignature 与 esignTemplateIds（transfer/linkage/approval.ts linkageFieldValues，
+ * 只有 ID 没有名称）。按中文标签显示是 / 否；模板只给占位，不出裸 ID；空数组按空值显示。
+ */
+describe('AC-TRF-F481-FE-01 审批详情：发起电子文件签署与电子签署模板', () => {
+  const approval = (values: Record<string, unknown>) =>
+    h(ApprovalFields, {
+      grouped: true,
+      detail: {
+        ...{ id: BUSINESS, title: '合成调动审批', approvalType: 'transfer', revision: 1 },
+        ...{ actions: [], recordsHidden: true, tasks: [], logs: [], form: { values } },
+      },
+    });
+  const fields = () =>
+    [...host.querySelectorAll('.approval-field')].map((node) => [
+      node.querySelector('dt')?.textContent,
+      node.querySelector('dd')?.textContent,
+    ]);
+
+  it('FE-01-12 “是”显示中文标签与已保存占位，不出字段键与模板 ID；未发起时为否、模板为空', async () => {
+    await act(async () => root.render(approval({ electronicSignature: true, esignTemplateIds: [T1, T2] })));
+    expect(fields()).toEqual([
+      ['发起电子文件签署', '是'],
+      ['电子签署模板', '已保存的值'],
+    ]);
+    expect(host.textContent).not.toContain(T1);
+    await act(async () => root.render(approval({ electronicSignature: false, esignTemplateIds: [] })));
+    expect(fields()).toEqual([
+      ['发起电子文件签署', '否'],
+      ['电子签署模板', '—'],
+    ]);
   });
 });

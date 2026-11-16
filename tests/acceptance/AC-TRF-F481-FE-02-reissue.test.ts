@@ -278,7 +278,17 @@ describe('AC-TRF-F481-FE-02 任职记录列表：调动发起电子签署（补�
 
   it('FE-02-05 整批被拒（模板不可用）显示后端中文原因，可改选后重提', async () => {
     tasks = [
-      { status: 400, body: { error: { code: 'ESIGN_TEMPLATE_UNAVAILABLE', message: '签署模板不可用' } } },
+      // 后端形状：apps/api esign/transfer-input.ts validateSignTemplates（VALIDATION_FAILED + details.reason）
+      {
+        status: 400,
+        body: {
+          error: {
+            code: 'VALIDATION_FAILED',
+            message: '签署模板不可用',
+            details: { reason: 'ESIGN_TEMPLATE_UNAVAILABLE', templateIds: [T1] },
+          },
+        },
+      },
       {
         body: {
           items: [
