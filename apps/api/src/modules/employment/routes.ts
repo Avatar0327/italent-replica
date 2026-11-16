@@ -1,5 +1,6 @@
 import { CUSTOM_FIELD_OBJECT_TYPES } from '@italent/domain';
 import { customFieldWriteGuard } from './custom-field-guard.js';
+import { listVisibleCustomFields } from '../personnel/custom-field-directory.js';
 import { composeBusiness, disclosedBy, selectEmploymentRead, type EmploymentRead } from './approval-content.js';
 import { registerEmploymentFormRoutes } from './employment-form-routes.js';
 import { registerEmploymentTypeRoutes } from './employment-type-routes.js';
@@ -15,7 +16,7 @@ import { requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import { pauseDisclosureHandler } from '../org-adjustment/pause-disclosure.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
-import type { TenantEnv } from '../../tenant-context.js';
+import { tenantOf, type TenantEnv } from '../../tenant-context.js';
 import { getModuleViewableFields } from '../permission/module-access.js';
 import { provisionEmployeeUser } from '../permission/user-provisioning.js';
 import {
@@ -784,6 +785,14 @@ function registerSettings(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 
 function registerCustomFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerCustomFieldOptions(router, deps);
+  // F-523a：兼职页按任职对象查看权读取定义；字段裁剪复用业务目录，配置接口的准入不变。
+  router.get('/custom-field-definitions', async (c) => {
+    const ctx = tenantOf(c);
+    await requirePermission(deps.authorize, { ...ctx, action: 'object.view', resource: EMPLOYMENT_OBJECT });
+    return c.json({
+      items: await listVisibleCustomFields(deps, ctx, { objectType: 'employment', objectCode: EMPLOYMENT_OBJECT }),
+    });
+  });
   router.post('/custom-fields', async (c) => {
     const ctx = await readContext(
       c,

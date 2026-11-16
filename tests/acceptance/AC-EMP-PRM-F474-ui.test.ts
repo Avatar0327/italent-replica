@@ -121,7 +121,8 @@ describe('AC-EMP / AC-PRM F-474 子集顺序与设置列表', () => {
   });
   it('身份管理补齐修改人时间等列，保持原站列宽', async () => {
     await ui.render(h(ProfilesPage, { title: '身份管理', editable: false }));
-    expect(ui.widths()).toEqual([193, 128, 128, 128, 128, 128, 128, 118, 146, 128, 168, 24].map((n) => `${n}px`));
+    // DEC-917：状态、所属应用两列不显示，其余列宽不变。
+    expect(ui.widths()).toEqual([193, 128, 128, 128, 128, 128, 118, 146, 168, 24].map((n) => `${n}px`));
   });
   it('变更日志补齐应用和来源列，保持已有列宽', async () => {
     await ui.render(h(AuditPage));
