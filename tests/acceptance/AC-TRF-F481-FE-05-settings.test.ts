@@ -5,10 +5,12 @@
  * 菜单从各模块登记汇总里找（用户能否看到入口），页面从登记的入口取（与路由挂载同一个组件）。
  * 模板新建 / 编辑 / 启停按后端契约（esign/routes.ts、input.ts）：新建 POST 全量，编辑 PATCH 只发改动字段、带 If-Match；
  * 场景设置有效期只接受 2～30；签署流程、确认方式、消息设置只读，注明“复刻固定，不可配置”。
+ * 授权夹具按后端真实出参：电子签设置是配置类对象，/me/objects 走 permission/me.ts configObjectPermission
+ * （全部字段可看、非系统字段可改、不可删除、按钮恒为空）；没有“其他设置”权限时对象与接口都是 403。
  */
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
-import { ESIGN_NOTICE_TEMPLATES } from '@italent/domain';
+import { ESIGN_NOTICE_TEMPLATES, MODULE_OBJECTS } from '@italent/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const requireWeb = createRequire(resolve('apps/web/package.json'));
@@ -27,7 +29,6 @@ const TEMPLATES = `${BASE}/templates`;
 const SCENE = `${BASE}/scenes/transfer`;
 const T1 = '84810000-0000-4000-8000-000000000501';
 const T2 = '84810000-0000-4000-8000-000000000502';
-const FIELDS = ['code', 'name', 'body', 'status', 'sortOrder', 'scene', 'validityDays', 'remindBeforeExpiry'];
 const session = {
   tenantId: '10000000-0000-4000-8000-000000000485',
   userId: '20000000-0000-4000-8000-000000000485',
@@ -59,7 +60,20 @@ interface Sent {
   readonly key: string | null;
   readonly ifMatch: string | null;
 }
-let grant: { create: boolean; update: boolean; buttons: { buttonCode: string; level: string }[] };
+const definition = MODULE_OBJECTS.eSignSettings;
+// 同 me.ts configObjectPermission：对象定义里登记的 create@list 等按钮不下发，配置对象只有“能进 / 不能进”两档。
+const configPermission = () => ({
+  objectCode: definition.code,
+  dataOperations: { create: true, update: true, delete: false },
+  viewableFields: definition.fields.map((field) => field.code).sort(),
+  editableFields: definition.fields
+    .filter((field) => !field.system)
+    .map((field) => field.code)
+    .sort(),
+  buttons: [],
+});
+const FORBIDDEN: Reply = { status: 403, body: { error: { code: 'FORBIDDEN', message: '无权访问该对象' } } };
+let configAllowed: boolean;
 let rows: unknown[];
 let scene: Reply;
 let writes: Reply[];
@@ -70,17 +84,10 @@ function replyOf(url: URL, init: RequestInit): Reply {
   if (path.endsWith('/me/snapshot')) return { body: { session, apps: [], scope: [], adminMenus: [] } };
   if (path.includes('/permission/me/objects/')) {
     const objectCode = decodeURIComponent(path.split('/').at(-1)!);
-    const own = objectCode === SETTINGS_OBJECT;
-    return {
-      body: {
-        objectCode,
-        dataOperations: { read: true, create: own && grant.create, update: own && grant.update },
-        viewableFields: own ? FIELDS : [],
-        editableFields: own ? FIELDS : [],
-        buttons: own ? grant.buttons : [],
-      },
-    };
+    if (objectCode === SETTINGS_OBJECT) return configAllowed ? { body: configPermission() } : FORBIDDEN;
+    return { body: { objectCode, dataOperations: {}, viewableFields: [], editableFields: [], buttons: [] } };
   }
+  if (!configAllowed && path.startsWith(BASE)) return FORBIDDEN;
   if (method !== 'GET' && path.startsWith(BASE)) {
     const headers = new Headers(init.headers);
     sent.push({
@@ -111,14 +118,7 @@ beforeEach(() => {
       removeEventListener() {},
     })),
   );
-  grant = {
-    create: true,
-    update: true,
-    buttons: [
-      { buttonCode: 'create', level: 'list' },
-      { buttonCode: 'update', level: 'detail' },
-    ],
-  };
+  configAllowed = true;
   rows = [template(T1, {}), template(T2, { code: 'SYN-NDA', name: '合成保密协议', status: 'disabled', revision: 1 })];
   scene = { body: { scene: 'transfer', validityDays: 2, remindBeforeExpiry: false, revision: 4 } };
   writes = [];
@@ -304,13 +304,26 @@ describe('AC-TRF-F481-FE-05 电子签 > 设置（签署模板）', () => {
     expect(sent[0]!.key).not.toBe(sent[1]!.key);
   });
 
-  it('FE-05-09 没有新建 / 修改授权时不显示新建、编辑、停用', async () => {
-    grant = { create: false, update: false, buttons: [] };
+  it('FE-05-09 没有电子签配置权限（对象与接口都 403）：两页提示无权访问，不显示新建、编辑、停用', async () => {
+    configAllowed = false;
+    for (const label of ['设置', '签署场景设置']) {
+      await open(label);
+      expect(host.textContent).toContain('暂无访问权限');
+      expect(host.querySelector('.ant-table-tbody tr')).toBeNull();
+      for (const action of ['新建', '编辑', '停用', '启用']) expect(pressable(host, action)).toBeUndefined();
+    }
+  });
+
+  it('FE-05-22 真实配置对象授权（/me/objects 按钮恒为空）：模板新建、编辑、停用 / 启用与场景编辑入口都在', async () => {
+    expect(configPermission().buttons).toEqual([]);
+    expect(definition.buttons.length, '对象定义虽登记了按钮，配置对象不下发').toBeGreaterThan(0);
     await open('设置');
-    expect(rowOf('合成调动协议')).toBeTruthy();
-    expect(pressable(host, '新建')).toBeUndefined();
-    expect(pressable(host, '编辑')).toBeUndefined();
-    expect(pressable(host, '停用')).toBeUndefined();
+    expect(pressable(host.querySelector('.page-heading'), '新建')).toBeTruthy();
+    expect(pressable(rowOf('合成调动协议'), '编辑')).toBeTruthy();
+    expect(pressable(rowOf('合成调动协议'), '停用')).toBeTruthy();
+    expect(pressable(rowOf('合成保密协议'), '启用')).toBeTruthy();
+    await open('签署场景设置');
+    expect(pressable(rowOf('调动电子签署'), '编辑')).toBeTruthy();
   });
 });
 

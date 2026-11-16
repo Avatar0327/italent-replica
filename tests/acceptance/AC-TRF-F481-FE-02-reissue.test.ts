@@ -21,6 +21,7 @@ const { App, ConfigProvider } = requireWeb('antd');
 const { SessionProvider } = await import(resolve('apps/web/src/foundation/Session.tsx'));
 const { PermissionsProvider } = await import(resolve('apps/web/src/foundation/Permissions.tsx'));
 const { EmploymentRecordsPage } = await import(resolve('apps/web/src/employment-records/EmploymentRecordsPage.tsx'));
+const { HrTransferPage } = await import(resolve('apps/web/src/transfer/HrTransferPage.tsx'));
 const pageModel = await import(resolve('apps/web/src/transfer/page-model.ts'));
 
 const RECORD_OBJECT = 'TenantBase.EmploymentRecord';
@@ -350,9 +351,30 @@ describe('AC-TRF-F481-FE-02 任职记录列表：调动发起电子签署（补�
     expect(reissueButton()).toBeUndefined();
   });
 
-  it('FE-02-08 调动管理工具栏「调动处理」仍禁用（列表是演示数据，不接补发）', () => {
+  it('FE-02-08 调动管理工具栏「调动处理」仍禁用、悬停“未完成”（列表是演示数据，不接补发；设计 §8.1、DEC-774）', async () => {
     expect(pageModel.transferTools.completed).toContain('process');
     expect(pageModel.enabledTools).not.toContain('process');
+    const theme = { token: { motion: false } };
+    const page = h(HrTransferPage);
+    await act(async () =>
+      root.render(
+        h(
+          MemoryRouter,
+          { initialEntries: ['/?view=completed'] },
+          h(SessionProvider, { session }, h(PermissionsProvider, {}, h(ConfigProvider, { theme }, h(App, {}, page)))),
+        ),
+      ),
+    );
+    await settle(60);
+    const tool = Array.from(host.querySelectorAll<HTMLButtonElement>('.transfer-list-head button')).find(
+      (item) => item.textContent?.replace(/\s/g, '') === '调动处理',
+    );
+    expect(tool?.disabled, '工具栏「调动处理」禁用').toBe(true);
+    // React 不给禁用按钮派发 onMouseEnter；antd 浮层另挂 onPointerEnter（浏览器里悬停禁用按钮走的就是这一路）
+    await act(async () => void tool!.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+    await settle(200);
+    const tips = Array.from(document.querySelectorAll('.ant-tooltip:not(.ant-tooltip-hidden) .ant-tooltip-inner'));
+    expect(tips.map((item) => item.textContent)).toEqual(['未完成']);
   });
 
   // 以下两条按 claude_fe_rules (g)：结果未知时关闭重开、换一批勾选（换入口）仍锁定，直到用户按原命令重发。

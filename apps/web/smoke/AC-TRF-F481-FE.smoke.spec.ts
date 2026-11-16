@@ -1,3 +1,4 @@
+import { MODULE_OBJECTS } from '@italent/domain';
 import { test, expect, employee, seedDemoUser, snapshotFixture } from './fixtures.js';
 import { RECORD_ROW } from '../../../tests/acceptance/support/f474-records-row.js';
 import type { Page } from '@playwright/test';
@@ -188,7 +189,18 @@ test('AC-TRF-F481-FE-S2 任职记录：不勾选先提示；勾选两行选模�
   await expect(confirm).toBeDisabled();
 });
 
-const fields = ['code', 'name', 'body', 'status', 'sortOrder', 'scene', 'validityDays', 'remindBeforeExpiry'];
+// 配置类对象的 /me/objects 按 apps/api permission/me.ts configObjectPermission：全部字段可看、非系统字段可改、按钮恒为空。
+const settings = MODULE_OBJECTS.eSignSettings;
+const settingsPermission = {
+  objectCode: settings.code,
+  dataOperations: { create: true, update: true, delete: false },
+  viewableFields: settings.fields.map((field) => field.code).sort(),
+  editableFields: settings.fields
+    .filter((field) => !field.system)
+    .map((field) => field.code)
+    .sort(),
+  buttons: [],
+};
 async function settingsFixtures(page: Page) {
   // 菜单入口按应用的 entryObjects 放行（同 AC-FE-F455）：电子签设置对象归企业设置应用。
   await page.route('**/permission/me/snapshot', (route) =>
@@ -202,16 +214,7 @@ async function settingsFixtures(page: Page) {
     }),
   );
   await page.route('**/permission/me/objects/TenantBase.ESignSettings', (route) =>
-    route.fulfill({
-      json: permission('TenantBase.ESignSettings', {
-        viewableFields: fields,
-        editableFields: fields,
-        buttons: [
-          { buttonCode: 'create', level: 'list' },
-          { buttonCode: 'update', level: 'detail' },
-        ],
-      }),
-    }),
+    route.fulfill({ json: settingsPermission }),
   );
   await page.route('**/esign/templates', (route) =>
     route.fulfill({
@@ -235,7 +238,12 @@ test('AC-TRF-F481-FE-S3 电子签 > 设置（签署模板）与签署场景设�
   await expect(page.getByRole('heading', { name: '签署模板' })).toBeVisible({ timeout: 15_000 });
   const first = page.locator('.ant-table-row').filter({ hasText: '合成调动协议' });
   await expect(first).toContainText('SYN-TRF');
-  await expect(page.locator('.ant-table-row').filter({ hasText: '合成保密协议' })).toContainText('停用');
+  const second = page.locator('.ant-table-row').filter({ hasText: '合成保密协议' });
+  await expect(second).toContainText('停用');
+  // 配置对象按钮恒为空，写入口按数据操作 + 字段编辑权给出
+  await expect(page.locator('.page-heading').getByRole('button', { name: button('新建') })).toBeVisible();
+  await expect(first.getByRole('button', { name: button('停用') })).toBeVisible();
+  await expect(second.getByRole('button', { name: button('启用') })).toBeVisible();
   await first.getByRole('button', { name: button('编辑') }).click();
   const drawer = page.locator('.ant-drawer-content');
   await expect(drawer).toContainText('{调入部门}');
