@@ -1,12 +1,15 @@
+import { useRef } from 'react';
 import { Alert, Button, Form, Select } from 'antd';
 import type { ApprovalNode, ApproverSource } from '@italent/domain';
 import { useFormLock } from '../../foundation/forms/FormLock.js';
 import { nodeField } from './model.js';
 import { DesignerPeople } from './FallbackHandlers.js';
+import { MatrixValue } from './MatrixValue.js';
 import { ReferenceValue } from './ReferenceValue.js';
 import {
   changeSourceType,
   REFERENCE_SOURCE_TYPES,
+  referenceOf,
   sourceInputError,
   sourceList,
   sourceOptions,
@@ -65,17 +68,24 @@ function SourceValue({
   const blank = multiple ? [] : [{ type: 'specified' as const, value: '' }];
   const rows = sourceList(value) ?? blank;
   const options = sourceOptions(node, approvalType);
+  const keys = useRowKeys(rows.length);
   const update = lock.guard((next: ApproverSource[]) => onChange?.(multiple ? next : next[0]!));
   const replace = (index: number, source: ApproverSource) => update(rows.map((row, i) => (i === index ? source : row)));
+  const removeRow = lock.guard((index: number) => {
+    keys.remove(index);
+    onChange?.(rows.filter((_, i) => i !== index));
+  });
   return (
     <div>
       {rows.map((source, index) => (
         <SourceRow
-          key={index}
+          key={keys.list[index]}
           source={source}
           options={options}
+          approvalType={approvalType}
+          single={!multiple}
           onChange={(next) => replace(index, next)}
-          remove={multiple ? () => update(rows.filter((_, i) => i !== index)) : undefined}
+          remove={multiple ? () => removeRow(index) : undefined}
         />
       ))}
       {multiple && (
@@ -93,14 +103,35 @@ function SourceValue({
   );
 }
 
+/**
+ * 来源行的稳定身份（F-326 F3 P2-1）：行内未完成的选择（矩阵一级、候选搜索词）只存在行组件里，
+ * 删除某行时只摘掉它的 key，其余行保留原组件；值被整份替换（初始、重读回填）时按行数补齐或截断。
+ */
+function useRowKeys(count: number) {
+  const next = useRef(0);
+  const keys = useRef<number[]>([]);
+  while (keys.current.length < count) keys.current.push((next.current += 1));
+  if (keys.current.length > count) keys.current = keys.current.slice(0, count);
+  return {
+    list: keys.current,
+    remove(index: number) {
+      keys.current = keys.current.filter((_, i) => i !== index);
+    },
+  };
+}
+
 function SourceRow({
   source,
   options,
+  approvalType,
+  single,
   onChange,
   remove,
 }: {
   source: ApproverSource;
   options: ReturnType<typeof sourceOptions>;
+  approvalType: string;
+  single: boolean;
   onChange(source: ApproverSource): void;
   remove?: () => void;
 }) {
@@ -111,7 +142,9 @@ function SourceRow({
       ...item,
       label: item.status === 'restricted' ? `${item.label} · ${s.restricted}` : item.label,
     })) ?? [];
-  if (source.value && !values.some((item) => item.value === source.value))
+  const candidate = { approvalType, single, disabled: !option || option.disabled, onChange };
+  // 已存的不可识别固定值才补成禁用项；变量 / 身份 / 组织等动态引用由 ReferenceValue 按候选回显（P2-2）
+  if (source.value && !referenceOf(source) && !values.some((item) => item.value === source.value))
     values.push({
       value: source.value,
       label: sourceValueLabel(source.value),
@@ -140,7 +173,9 @@ function SourceRow({
             onChange={(ids) => onChange({ type: 'specified', value: ids[0] ?? '' })}
           />
         ) : REFERENCE_SOURCE_TYPES.includes(source.type) ? (
-          <ReferenceValue source={source} fixed={values} disabled={!option || option.disabled} onChange={onChange} />
+          <ReferenceValue source={source} fixed={values} {...candidate} />
+        ) : source.type === 'matrix' ? (
+          <MatrixValue source={source} {...candidate} />
         ) : (
           <Select
             aria-label={s.value}

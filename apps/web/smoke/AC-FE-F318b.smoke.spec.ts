@@ -24,7 +24,7 @@ async function choose(page: Page, group: Locator, type: string, value?: string, 
 }
 const save = (page: Page) => page.getByRole('button', { name: '保存草稿', exact: true }).click();
 
-test('AC-FE-F318b-07 交接选上一节点审批人保存，F-326 灰显，F-318c 新来源已可选', async ({
+test('AC-FE-F318b-07 交接选上一节点审批人保存，F-326 三类与 F-318c 新来源已可选', async ({
   page,
   baseURL,
 }, testInfo) => {
@@ -32,9 +32,13 @@ test('AC-FE-F318b-07 交接选上一节点审批人保存，F-326 灰显，F-318
   await page.goto(sourcePath);
   const group = editor(page);
   await openSelect(group.getByRole('combobox', { name: '来源类型', exact: true }));
-  for (const label of ['公共变量 · 暂不支持', '应用变量 · 暂不支持', '审批矩阵 · 暂不支持']) {
-    await expect(page.locator('.ant-select-item-option').filter({ hasText: label })).toHaveClass(/disabled/);
+  // 离职交接有任职申请业务日：三类均可选，且不再出现“暂不支持”
+  for (const label of ['公共变量', '应用变量', '审批矩阵']) {
+    await expect(page.locator('.ant-select-item-option').filter({ hasText: new RegExp(`^${label}$`) })).not.toHaveClass(
+      /disabled/,
+    );
   }
+  await expect(page.locator('.ant-select-item-option').filter({ hasText: '暂不支持' })).toHaveCount(0);
   await expect(page.locator('.ant-select-item-option').filter({ hasText: /^业务组织$/ })).not.toHaveClass(/disabled/);
   await page.keyboard.press('Escape');
   await choose(page, group, '上下文变量', '上一节点审批人');
@@ -135,7 +139,7 @@ test('AC-FE-F318b-12 无编辑权限只读，人员显示姓名工号部门，�
   expect(state.writes).toHaveLength(0);
 });
 
-for (const message of ['暂不支持，后补 F-326', '审批来源引用不存在或不可用']) {
+for (const message of ['多人变量只能用于会签或或签节点', '审批来源引用不存在或不可用']) {
   test(`AC-FE-F318b-16 服务端 422 ${message} 就地提示且保留来源`, async ({ page, baseURL }) => {
     const state = await setupSources(page, baseURL!, true);
     state.mode = '422';

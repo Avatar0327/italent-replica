@@ -23,8 +23,9 @@ describe('AC-FE-F396 新来源放开', () => {
         type,
       ).toBe(false);
     }
+    // F-326 F3：三类不再灰显（调动有任职申请业务日，矩阵同样可选）
     for (const type of ['public_variable', 'application_variable', 'matrix'])
-      expect(options.find((o) => o.value === type)).toMatchObject({ disabled: true, status: 'unsupported' });
+      expect(options.find((o) => o.value === type)).toMatchObject({ disabled: false, status: 'enabled' });
   });
   it('02 引用值按 F-318c 语法校验：本级 / 含下级 / 职务相对，其余拒绝', () => {
     for (const type of OPENED) expect(error({ type, value: ID } as ApproverSource), type).toBeUndefined();
