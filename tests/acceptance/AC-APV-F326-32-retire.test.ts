@@ -8,6 +8,7 @@ import type { NodeInput } from './AC-APV-support.js';
 import {
   actionsOf,
   audits,
+  auditAtRevision,
   autoAt,
   autoRows,
   firstAuto,
@@ -111,8 +112,7 @@ describe('AC-APV-F326-32 删节点 / 改来源 / 再生成', () => {
     expect(reenabled.status, await reenabled.clone().text()).toBe(200);
     await draftOk(w, toManager, [viaManager('n1')]);
     expect((await varRow(w, x!.id)).status).toBe('disabled');
-    const trail = await audits(w, x!.id);
-    const last = trail.at(-1)!;
+    const last = await auditAtRevision(w, x!.id, (await varRow(w, x!.id)).revision);
     expect(last.action).toBe('approval.public_variable.auto_disable');
     expect(last.actor).toBe(w.hr.id);
     expect(last.after).toMatchObject({ reason: '不再被引用' });
