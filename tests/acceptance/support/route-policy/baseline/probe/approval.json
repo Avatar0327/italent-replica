@@ -22,7 +22,8 @@
     "fieldQueries": [],
     "scopeQueries": [],
     "trace": [
-      "admin:process_matrix"
+      "admin:process_matrix",
+      "obj:TenantBase.ApprovalProcess:update"
     ]
   },
   "GET /api/tenant/approval/designer/source-candidates": {

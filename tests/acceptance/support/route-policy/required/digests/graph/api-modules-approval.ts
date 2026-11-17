@@ -764,6 +764,7 @@ export const GRAPH: Graph = {
     '#pendingNeedsChoice',
     '#variableIdsOf',
     'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/source-usages.ts#referencingProcessCounts',
     'packages/domain/src/approval/types.ts#isCountersign',
   ],
   'apps/api/src/modules/approval/auto-variables.ts#inheritedVariable': [
@@ -800,6 +801,12 @@ export const GRAPH: Graph = {
     '#publicVariable',
     '#stripPending',
     'packages/domain/src/approval/types.ts#isCountersign',
+  ],
+  'apps/api/src/modules/approval/auto-variables.ts#unselectedSpecifiedSlots': [
+    '#peopleOfRow',
+    '#slotSources',
+    '#variableIdsOf',
+    'apps/api/src/modules/approval/variables.ts#selection',
   ],
   'apps/api/src/modules/approval/auto-variables.ts#variableIdsOf': ['#slotSources'],
   'apps/api/src/modules/approval/condition-rows.ts#insertConditionItem': ['#textArray'],
@@ -1081,6 +1088,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/definitions.ts#processRow': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/definitions.ts#publishProcess': [
     'apps/api/src/modules/approval/auto-variables.ts#applyPendingAutoVariables',
+    'apps/api/src/modules/approval/auto-variables.ts#unselectedSpecifiedSlots',
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/definition-routes.ts#assertRoutesValid',
     '#assertExceptionAdminMember',
@@ -1859,6 +1867,10 @@ export const GRAPH: Graph = {
     '#locked',
     '#matrixDetail',
   ],
+  'apps/api/src/modules/approval/matrix-cell-validation.ts#assertMatrixCellKinds': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/matrix-input.ts#matrixInvalid',
+  ],
   'apps/api/src/modules/approval/matrix-input.ts#columnSchema': [
     '#text',
     '#uuid',
@@ -1974,6 +1986,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/matrix-input.ts#validateMatrixStructure',
   ],
   'apps/api/src/modules/approval/matrix-structure.ts#replaceMatrixStructure': [
+    'apps/api/src/modules/approval/matrix-cell-validation.ts#assertMatrixCellKinds',
     '#auditStructure',
     '#candidate',
     '#loadMatrixStructure',
@@ -2305,6 +2318,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#ADD_SIGN_TYPES',
     'packages/domain/src/approval/types.ts#MAX_ADD_SIGNERS',
   ],
+  'apps/api/src/modules/approval/routes.ts#requireCandidateContext': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'packages/domain/src/approval/catalog.ts#APPROVAL_PROCESS_OBJECT',
+  ],
   'apps/api/src/modules/approval/routes.ts#respondAttachment': [
     'apps/api/src/modules/approval/disclosure.ts#capturedAttachmentsOf',
     '#detailViewOf',
@@ -2344,12 +2361,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/designer-people.ts#designerPeopleQuery',
     'apps/api/src/modules/approval/designer-people.ts#listDesignerPeople',
     '#readCtx',
+    '#requireCandidateContext',
   ],
   'apps/api/src/modules/approval/routes.ts#route:GET /designer/source-candidates': [
     'apps/api/src/modules/approval/access.ts#requireProcessButton',
     'apps/api/src/modules/approval/designer-sources.ts#designerSourcesQuery',
     'apps/api/src/modules/approval/designer-sources.ts#listDesignerSources',
     '#readCtx',
+    '#requireCandidateContext',
   ],
   'apps/api/src/modules/approval/routes.ts#route:GET /instances': [
     'apps/api/src/modules/approval/my-applications.ts#listMyApplications',
@@ -2704,6 +2723,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/simulation.ts#virtualFacts': ['packages/domain/src/approval/recusal.ts#recusalFacts'],
   'apps/api/src/modules/approval/simulation.ts#virtualSources': [
+    '#OWN_AUTO',
     '#virtualCandidate',
     'packages/domain/src/approval/sources.ts#expressionValue',
     'packages/domain/src/approval/sources.ts#sourceKey',
@@ -2714,6 +2734,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/simulation.ts#withOwnAutoVariables': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#OWN_AUTO',
     'apps/api/src/modules/approval/variable-input.ts#variablePersonIds',
     'packages/domain/src/approval/sources.ts#sourceKey',
   ],
@@ -2868,6 +2889,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#RESUMABLE_INSTANCE_STATUSES',
     '#matches',
+    '#slots',
+  ],
+  'apps/api/src/modules/approval/source-usages.ts#referencingProcessCounts': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#RESUMABLE_INSTANCE_STATUSES',
     '#slots',
   ],
   'apps/api/src/modules/approval/source-usages.ts#sourceUsagePage': ['#USAGE_PAGE_LIMIT', '#findSourceUsages'],
