@@ -1,15 +1,17 @@
 /**
  * F-478 S7 浏览器集成专用：全新隔离数据库、合成数据（邮箱 example.com）、真实审批定义 / 办理路由；不连接开发库。
  * - 两个退休场景（返聘 / 不返聘各一张单据，已推进到 HRBP 节点），流程经真实 HTTP 保存业务出口与分支后发布；
- * - 返聘场景的 HR 开通租户管理员并授予流程对象全部权限，真实权限快照驱动设计器可编辑；四张草稿流程供设计器用例互不干扰。
+ * - 返聘场景的 HR 开通租户管理员并授予流程对象全部权限，真实权限快照驱动设计器可编辑；每个设计器用例各用一张草稿，互不干扰；
+ * - 维度用例的草稿在业务维度启用时合法保存了业务组织引用，建好后关闭业务维度（行政组织不受影响，其余用例不用扩展维度）。
  * 身份按代理传入的 x-smoke-user 签名；唯一的控制口 /__smoke/revoke 只把合成指定审批人的租户成员资格置为 revoked。
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { sql, withTenant } from '@italent/db';
-import { APPROVAL_OBJECTS, APPROVAL_PROCESS_OBJECT } from '@italent/domain';
+import { APPROVAL_OBJECTS, APPROVAL_PROCESS_OBJECT, MAX_ROUTE_CONDITION_ITEMS } from '@italent/domain';
 import { permissionAdmin, type NodeInput, type ProcessView } from '../../../tests/acceptance/AC-APV-support.js';
 import { createProfile, grant, makeGrantable, setObjectPermission } from '../../../tests/acceptance/AC-PRM-support.js';
 import { cloneForPut, putDraft, withRoutesOn } from '../../../tests/acceptance/AC-APV-F478-s2-support.js';
+import { dimensions, orgVersion } from '../../../tests/acceptance/AC-APV-F318c-support.js';
 import { retireScene, type RetireScene } from '../../../tests/acceptance/AC-APV-F478-s4-support.js';
 import { uniqueSuffix } from '../../../tests/acceptance/support/unique.js';
 import { createTestDb } from '../../../packages/testkit/src/test-db.js';
@@ -92,14 +94,67 @@ async function designerAdmin(s: RetireScene) {
   if (granted.status !== 201) throw new Error(`授予身份失败 ${granted.status}: ${await granted.text()}`);
 }
 
-/** 三节点调动草稿（未发布）：各设计器用例各用一张，互不干扰。 */
-async function designerDraft(s: RetireScene, name: string) {
-  const nodes: NodeInput[] = [
-    { key: 'n1', name: '合成首节点', approver: { type: 'object_field', value: 'direct_manager' } },
-    { key: 'n2', name: '合成次节点', approver: { type: 'department', value: 'record_department_hrbp' } },
-    { key: 'n3', name: '合成末节点', approver: { type: 'department', value: 'record_department_head' } },
-  ].map((node) => ({ ...node, actions: loose }) as NodeInput);
-  return (await s.w.createProcess({ name, nodes })).id;
+type Approver = NonNullable<NodeInput['approver']>;
+const NAMES = ['合成首节点', '合成次节点', '合成末节点'];
+const head: Approver = { type: 'department', value: 'record_department_head' };
+const FIXED: Approver[] = [
+  { type: 'object_field', value: 'direct_manager' },
+  { type: 'department', value: 'record_department_hrbp' },
+  head,
+];
+/** 三节点调动草稿（未发布）：各设计器用例各用一张，互不干扰；approvers 依次是三个节点的审批人。 */
+async function designerDraft(s: RetireScene, name: string, approvers = FIXED) {
+  const nodes = approvers.map(
+    (approver, index) => ({ key: `n${index + 1}`, name: NAMES[index]!, approver, actions: loose }) as NodeInput,
+  );
+  return s.w.createProcess({ name, nodes });
+}
+
+/**
+ * 422 不猜定位的前置：首节点是固定表达式“任职记录—部门负责人”，次节点（及多引用用例的末节点）引用业务组织；
+ * 业务维度关闭后保存，真实 assertSourceReferences 返回 APPROVAL_SOURCE_DIMENSION_DISABLED。
+ */
+async function dimensionDrafts(s: RetireScene) {
+  await dimensions(s.w);
+  const org = await s.w.org('合成业务组织');
+  await orgVersion(s.w, org, {}, { business: s.w.tenant.id });
+  const business: Approver = { type: 'business_org', value: org };
+  const manager = FIXED[0]!;
+  const drafts = {
+    dimensionLater: (await designerDraft(s, '合成维度关闭流程', [head, business, manager])).id,
+    dimensionEdited: (await designerDraft(s, '合成维度关闭改来源流程', [head, business, manager])).id,
+    dimensionAmbiguous: (await designerDraft(s, '合成维度关闭多引用流程', [head, business, business])).id,
+  };
+  await dimensions(s.w, false);
+  return drafts;
+}
+
+/** 条件编号用例的前置：首节点同意出口已有一条满 MAX_ROUTE_CONDITION_ITEMS 个条件（编号 1～上限）的条件分支 + Else。 */
+async function fullConditionDraft(s: RetireScene) {
+  const created = await designerDraft(s, '合成满条件流程');
+  const items = Array.from({ length: MAX_ROUTE_CONDITION_ITEMS }, (_, index) => ({
+    no: index + 1,
+    field: 'business.kind',
+    operator: 'ne',
+    value: `合成${index + 1}类`,
+  }));
+  const condition = { expression: items.map((item) => item.no).join(' and '), items };
+  const routes = {
+    n1: [
+      {
+        exit: 'approve',
+        branches: [
+          { kind: 'condition', priority: 1, conditions: condition, target: 'n3' },
+          { kind: 'else', target: 'n2' },
+        ],
+      },
+    ],
+  };
+  const body = cloneForPut(created.latestVersion, {
+    nodes: withRoutesOn(created.latestVersion.nodes, routes as never),
+  });
+  await s.w.json<ProcessView>(await putDraft(s.w, created, body));
+  return created.id;
 }
 
 async function seed(db: Parameters<typeof retireScene>[0]) {
@@ -108,10 +163,12 @@ async function seed(db: Parameters<typeof retireScene>[0]) {
   await designerAdmin(rehire.s);
   const specified = await rehire.s.w.person('合成指定审批人', rehire.s.home.id);
   const processes = {
-    sources: await designerDraft(rehire.s, '合成来源流程'),
-    branches: await designerDraft(rehire.s, '合成分支流程'),
-    routeError: await designerDraft(rehire.s, '合成分支报错流程'),
-    sourceError: await designerDraft(rehire.s, '合成来源报错流程'),
+    sources: (await designerDraft(rehire.s, '合成来源流程')).id,
+    branches: (await designerDraft(rehire.s, '合成分支流程')).id,
+    routeError: (await designerDraft(rehire.s, '合成分支报错流程')).id,
+    sourceError: (await designerDraft(rehire.s, '合成来源报错流程')).id,
+    conditionSlots: await fullConditionDraft(rehire.s),
+    ...(await dimensionDrafts(rehire.s)),
   };
   return { rehire, plain, specified, processes };
 }

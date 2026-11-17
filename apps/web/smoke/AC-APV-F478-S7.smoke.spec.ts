@@ -6,12 +6,21 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { test, expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
+import { MAX_ROUTE_CONDITION_ITEMS } from '@italent/domain';
 
 interface Persona {
   tenant: string;
   userId: string;
 }
-type DraftKey = 'sources' | 'branches' | 'routeError' | 'sourceError';
+type DraftKey =
+  | 'sources'
+  | 'branches'
+  | 'routeError'
+  | 'sourceError'
+  | 'conditionSlots'
+  | 'dimensionLater'
+  | 'dimensionEdited'
+  | 'dimensionAmbiguous';
 interface Manifest {
   url: string;
   designer: Persona & { processes: Record<DraftKey, string> };
@@ -27,6 +36,7 @@ interface Write {
 }
 interface StoredNode {
   key: string;
+  name?: string;
   approver?: { type: string; value: string };
   routes?: { exit: string; branches: Record<string, unknown>[] }[];
 }
@@ -280,6 +290,115 @@ test('AC-APV-F478-26 422：指定人员已失效，APPROVAL_SOURCE_INVALID 定�
   await expect(page.getByText('草稿已保存', { exact: true })).toHaveCount(0);
   const nodes = await storedNodes(context, 'sourceError');
   expect(nodes[2]!.approver).toEqual({ type: 'department', value: 'record_department_head' });
+});
+
+/** 422 引用类原因的 details 只有 reason：按后端同口径（具体业务组织引用）唯一确定节点才定位，否则只显示服务端原文。 */
+const DISABLED = '审批来源的组织维度未启用';
+const FIXED_HEAD = { type: 'department', value: 'record_department_head' };
+const locatedAt = (page: Page, name: string) => page.getByText(`节点“${name}” · 审批人来源`, { exact: false });
+async function rejectedWithServerText(page: Page, writes: Write[]) {
+  await expect.poll(() => writes.map((write) => write.status)).toEqual([422]);
+  await expect(page.getByText(DISABLED, { exact: false }).first()).toBeVisible();
+  await expect(page.getByText('草稿已保存', { exact: true })).toHaveCount(0);
+  await expect(locatedAt(page, '合成首节点')).toHaveCount(0);
+}
+
+test('AC-APV-F478-26 422 维度关闭：前节点正常、后节点引用失效，只定位到引用业务组织的节点', async ({
+  context,
+  page,
+  baseURL,
+}) => {
+  const writes = await signIn(context, baseURL!, manifest.designer);
+  await openDesigner(page, 'dimensionLater');
+  await selectNode(page, '合成末节点');
+  await page.getByRole('textbox', { name: '节点名称', exact: true }).filter({ visible: true }).fill('合成末节点改名');
+  await save(page);
+  await rejectedWithServerText(page, writes);
+  await expect(nodeButton(page, '合成首节点')).not.toHaveAttribute('aria-current', 'true');
+  await expect(nodeButton(page, '合成次节点')).toHaveAttribute('aria-current', 'true');
+  await expect(locatedAt(page, '合成次节点').first()).toBeVisible();
+  const nodes = await storedNodes(context, 'dimensionLater');
+  expect(nodes.map((node) => node.name)).toEqual(['合成首节点', '合成次节点', '合成末节点']);
+  expect(nodes[0]!.approver).toEqual(FIXED_HEAD);
+});
+
+test('AC-APV-F478-26 422 维度关闭：编辑了正常节点的来源、另一节点失效，不把编辑过的节点标为出错', async ({
+  context,
+  page,
+  baseURL,
+}) => {
+  const writes = await signIn(context, baseURL!, manifest.designer);
+  await openDesigner(page, 'dimensionEdited');
+  await selectNode(page, '合成首节点');
+  await choose(page, sources(page), '来源类型', exact('身份'));
+  await choose(page, sources(page), '来源值', '系统管理员');
+  await save(page);
+  await rejectedWithServerText(page, writes);
+  await expect(nodeButton(page, '合成首节点')).not.toHaveAttribute('aria-current', 'true');
+  await expect(nodeButton(page, '合成次节点')).toHaveAttribute('aria-current', 'true');
+  await expect(locatedAt(page, '合成次节点').first()).toBeVisible();
+  const nodes = await storedNodes(context, 'dimensionEdited');
+  expect(nodes[0]!.approver).toEqual(FIXED_HEAD);
+});
+
+test('AC-APV-F478-26 422 维度关闭：两个节点都引用业务组织时无法唯一确定，不定位、只显示服务端原文', async ({
+  context,
+  page,
+  baseURL,
+}) => {
+  const writes = await signIn(context, baseURL!, manifest.designer);
+  await openDesigner(page, 'dimensionAmbiguous');
+  await page.getByRole('textbox', { name: '节点名称', exact: true }).filter({ visible: true }).fill('合成首节点改名');
+  await save(page);
+  await rejectedWithServerText(page, writes);
+  for (const name of ['合成首节点改名', '合成次节点', '合成末节点']) await expect(locatedAt(page, name)).toHaveCount(0);
+  // 未定位：编辑区停在用户所在的节点，不切到猜测的节点
+  await expect(nodeButton(page, '合成首节点')).toHaveAttribute('aria-current', 'true');
+  expect((await storedNodes(context, 'dimensionAmbiguous'))[0]!.name).toBe('合成首节点');
+});
+
+interface SentBranch {
+  conditions: { expression: string; items: { no: number }[] };
+}
+const references = (expression: string) => [...expression.matchAll(/\d+/g)].map(Number).sort((a, b) => a - b);
+const sorted = (numbers: number[]) => [...numbers].sort((a, b) => a - b);
+
+test('AC-APV-F478-26 条件编号：条件已满时删一条再添加，新编号不超上限，按页面编号写表达式后保存成功', async ({
+  context,
+  page,
+  baseURL,
+}) => {
+  const writes = await signIn(context, baseURL!, manifest.designer);
+  await openDesigner(page, 'conditionSlots');
+  const items = branch(page, 1).getByRole('group', { name: /^条件 \d+$/ });
+  const add = branch(page, 1).getByRole('button', { name: '添加条件', exact: true });
+  await expect(items).toHaveCount(MAX_ROUTE_CONDITION_ITEMS);
+  await expect(add).toBeDisabled();
+  await branch(page, 1)
+    .getByRole('group', { name: '条件 1', exact: true })
+    .getByRole('button', { name: '移除条件', exact: true })
+    .click();
+  await expect(items).toHaveCount(MAX_ROUTE_CONDITION_ITEMS - 1);
+  await add.click();
+  await expect(items).toHaveCount(MAX_ROUTE_CONDITION_ITEMS);
+  await choose(page, items.last(), '条件字段', exact('业务类型'));
+  await choose(page, items.last(), '运算符', exact('不为空'));
+  // 用户按页面上显示的条件编号书写表达式
+  const labels = await items.evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label') ?? ''));
+  const shown = labels.map((label) => Number(label.replace('条件 ', '')));
+  await branch(page, 1).getByRole('textbox', { name: '条件表达式', exact: true }).fill(shown.join(' and '));
+  await save(page);
+  await expect.poll(() => writes.map((write) => write.status)).toEqual([200]);
+  const sent = (writes[0]!.body.nodes as StoredNode[])[0]!.routes![0]!.branches[0] as unknown as SentBranch;
+  const numbers = sent.conditions.items.map((item) => item.no);
+  expect(numbers.filter((no) => no < 1 || no > MAX_ROUTE_CONDITION_ITEMS)).toEqual([]);
+  expect(new Set(numbers).size).toBe(MAX_ROUTE_CONDITION_ITEMS);
+  expect(references(sent.conditions.expression)).toEqual(sorted(numbers));
+  await savedAndReloaded(page, 'conditionSlots');
+  const [first] = await storedNodes(context, 'conditionSlots');
+  const stored = first!.routes![0]!.branches[0] as unknown as SentBranch;
+  expect(sorted(stored.conditions.items.map((item) => item.no))).toEqual(sorted(numbers));
+  expect(references(stored.conditions.expression)).toEqual(sorted(numbers));
 });
 
 const head = (page: Page) => page.locator('.approval-detail-head').filter({ visible: true });
