@@ -17,6 +17,9 @@ import { DictionaryForm, RowCommands } from './DictionaryCommands.js';
 import { HandoverItems } from './HandoverItems.js';
 import { HandoverTrigger } from './HandoverTrigger.js';
 import { m } from './messages.js';
+import { RETIRE_SENIORITY_TAB } from './retire-seniority-model.js';
+import { retireSeniorityMessages as rs } from './retire-seniority-messages.js';
+import { RetireSenioritySettings } from './RetireSenioritySettings.js';
 import { EXIT_SETTINGS_OBJECT, KINDS, dictionaryPath, isKind, parseEntries, writeAccess } from './model.js';
 import type { Entry, Kind } from './model.js';
 import { s } from './settings-messages.js';
@@ -45,8 +48,8 @@ export function ExitSettingsPage() {
 function DictionaryTabs() {
   const { kind } = useParams();
   const navigate = useNavigate();
-  if (!isKind(kind) && kind !== ACCOUNT_STOP_TAB && kind !== TERMINATION_TAB && !isSettingsTab(kind))
-    return <PageState kind="not-found" />;
+  const standalone = [ACCOUNT_STOP_TAB, TERMINATION_TAB, RETIRE_SENIORITY_TAB];
+  if (!isKind(kind) && !standalone.includes(kind ?? '') && !isSettingsTab(kind)) return <PageState kind="not-found" />;
   return (
     <section className="exit-card">
       <Tabs
@@ -58,6 +61,8 @@ function DictionaryTabs() {
           ...KINDS.map((key) => ({ key, label: m.dictionaries[key] })),
           { key: ACCOUNT_STOP_TAB, label: a.tab },
           { key: TERMINATION_TAB, label: t.title },
+          // F-478 S7 设计 §7.2：员工相关的租户级开关，与终止在途设置同列。
+          { key: RETIRE_SENIORITY_TAB, label: rs.title },
           ...SETTINGS_TABS.map((key) => ({ key, label: s.tabs[key] })),
         ]}
       />
@@ -65,6 +70,7 @@ function DictionaryTabs() {
       {isSettingsTab(kind) && <SettingsTabPage tab={kind} />}
       {kind === ACCOUNT_STOP_TAB && <AccountStopSettings />}
       {kind === TERMINATION_TAB && <TerminationSettings />}
+      {kind === RETIRE_SENIORITY_TAB && <RetireSenioritySettings />}
     </section>
   );
 }

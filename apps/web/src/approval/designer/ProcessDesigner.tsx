@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
-import { Alert, Button, Descriptions, Form, Input, Select, Space, Switch, Table, Tag } from 'antd';
+import { Alert, Button, Descriptions, Form, Input, Select, Space, Switch, Table, Tag, type FormInstance } from 'antd';
 import { Link, Route, Routes, useParams } from 'react-router';
-import type { ApprovalNode } from '@italent/domain';
+import type { ApprovalNode, ProcessDefinition } from '@italent/domain';
 import { APPROVAL_TYPES } from '@italent/domain';
 import { useApiClient, useSession } from '../../foundation/Session.js';
 import { usePermissions } from '../../foundation/Permissions.js';
@@ -9,10 +9,10 @@ import { PageState } from '../../foundation/PageState.js';
 import { ApiError, rejectionMessage } from '../../foundation/client.js';
 import { createFormStore, type Latest, type Values } from '../../foundation/forms/store.js';
 import { FormCommands, useDraftRefill, type CommandForm } from '../../foundation/forms/useCommandForm.js';
-import { useConflictCommand } from '../../foundation/forms/ConflictCommands.js';
+import { useConflictCommand, type Sending } from '../../foundation/forms/ConflictCommands.js';
 import { SourceCommandStatus } from './SourceCommandStatus.js';
 import { FormLock, LockedField } from '../../foundation/forms/FormLock.js';
-import { readProcess, readProcesses, writeProcess } from './api.js';
+import { readProcess, readProcesses } from './api.js';
 import {
   attributes,
   base,
@@ -35,6 +35,11 @@ import { FallbackHandlers } from './FallbackHandlers.js';
 import { ApproverSources } from './ApproverSources.js';
 import { sourceFields } from './sources.js';
 import { s } from './source-messages.js';
+import { locateRejection, localSpot, type Located } from './locate.js';
+import { r } from './route-messages.js';
+import { routesSummary } from './routes.js';
+import { RoutesEditor } from './RoutesEditor.js';
+import { useDesignerWrite } from './write.js';
 import './designer.css';
 
 // 模块切换不能丢失未知命令；内核按租户 + 身份 + 稳定流程 ID 隔离恢复槽（DEC-464、F-142）。
@@ -299,65 +304,103 @@ function useProcessCommand(process: ProcessView) {
   const nodesVisible = !!permission?.viewableFields.includes('nodes');
   return { api, command, submission, full, version, writable, action, nodesVisible };
 }
-function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(message: string): void }) {
-  const { api, command, submission, full, version, writable, action, nodesVisible } = useProcessCommand(process);
-  const [form] = Form.useForm();
-  const [localError, setLocalError] = useState<unknown>();
-  const editable = writable && action === 'draft' ? Object.keys(editableValues(version, full.approvalType)) : [];
-  useDraftRefill(submission, editable, form);
-  const labels = Object.fromEntries(
-    (nodesVisible ? (version.nodes ?? []) : []).flatMap((node) => [
+function nodeLabels(nodes: readonly ApprovalNode[]) {
+  return Object.fromEntries(
+    nodes.flatMap((node) => [
       ...attributes.map((field) => [nodeField(node.key, field), `${node.name} · ${m.fields[field]}`]),
       [nodeField(node.key, 'fallbackUserIds'), `${node.name} · ${m.fallback}`],
+      [nodeField(node.key, 'routes'), `${node.name} · ${r.title}`],
       ...sourceFields(node).map((field) => [
         nodeField(node.key, field),
         `${node.name} · ${field === 'emptyApproverSources' ? s.empty : s.main}`,
       ]),
     ]),
   );
+}
+type ProcessCommand = ReturnType<typeof useProcessCommand>;
+/** 保存：本地拦截与服务端拒绝都切到出错节点（F-478 S7 设计 §2.2）；409 由内核提示刷新，不自动重提。 */
+function useSave(process: ProcessView, context: ProcessCommand, form: FormInstance, onSaved: (text: string) => void) {
+  const { api, command, submission, full, version, writable, action } = context;
+  const write = useDesignerWrite();
+  const [localError, setLocalError] = useState<unknown>();
+  const [selected, setSelected] = useState<string>();
+  const [located, setLocated] = useState<Located>();
+  const point = (spot: Located | undefined) => {
+    setLocated(spot);
+    if (spot) setSelected(spot.nodeKey);
+  };
+  const editable = writable && action === 'draft' ? Object.keys(editableValues(version, full.approvalType)) : [];
+  const send = async ({ edited, command: request }: Sending) => {
+    let draft: ProcessDefinition | undefined;
+    try {
+      if (action === 'draft') draft = buildDraft(version, edited, full.approvalType);
+      await write(process.id, action, { ...request, body: draft ?? {} });
+      return { id: process.id };
+    } catch (error) {
+      if (action !== 'draft') throw error;
+      const result = await locateRejection(error, { draft, approvalType: full.approvalType, api });
+      point(result.located);
+      throw result.error;
+    }
+  };
   const submit = async () => {
     if (!writable || submission.locked || submission.blocked) return;
     setLocalError(undefined);
+    point(undefined);
     let values: Values;
     try {
       values = action === 'draft' ? ((await form.validateFields()) as Values) : {};
       // 本地校验在进入内核前完成；send 中的失败只能代表请求结果。
       if (action === 'draft') buildDraft(version, values, full.approvalType);
     } catch (error) {
+      point(localSpot(error));
       if (error instanceof Error) setLocalError(error);
       return;
     }
     try {
-      await command.run({
-        values,
-        editableFields: editable,
-        send: async ({ edited, command: request }) => {
-          await writeProcess(api, process.id, action, {
-            ...request,
-            body: action === 'draft' ? buildDraft(version, edited, full.approvalType) : {},
-          });
-          return { id: process.id };
-        },
-      });
+      await command.run({ values, editableFields: editable, send });
       onSaved(action === 'draft' ? m.saved : m.created);
     } catch {
       // 请求状态统一由 CommandStatus 展示，避免确认冲突后又显示旧拒绝信息。
     }
   };
+  return { editable, submit, localError, selected, setSelected, located };
+}
+function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(message: string): void }) {
+  const context = useProcessCommand(process);
+  const { submission, full, version, writable, action, nodesVisible } = context;
+  const [form] = Form.useForm();
+  const save = useSave(process, context, form, onSaved);
+  useDraftRefill(submission, save.editable, form);
+  const fields = APPROVAL_TYPES[full.approvalType as keyof typeof APPROVAL_TYPES]?.conditionFields ?? [];
+  const format = (field: string, value: unknown) =>
+    field.endsWith(':routes') ? routesSummary(value, version.nodes ?? [], fields) : value;
   return (
     <>
       <VersionInfo process={full} version={version} />
       <Conditions version={version} />
       <Alert className="flow-note" type="info" message={action === 'draft' ? m.draftHint : m.publishedHint} />
       {!writable && <p className="flow-muted">{m.restricted}</p>}
-      <SourceCommandStatus submission={submission} labels={labels} />
+      <SourceCommandStatus
+        submission={submission}
+        labels={nodeLabels(nodesVisible ? (version.nodes ?? []) : [])}
+        format={format}
+      />
       {submission.state?.readError instanceof Error && submission.state.readError.message === m.versionChanged && (
         <Alert type="warning" message={m.versionChanged} />
       )}
-      {!!localError && !submission.state?.error && <Alert type="error" message={rejectionMessage(localError)} />}
+      {!!save.localError && !submission.state?.error && (
+        <Alert type="error" message={rejectionMessage(save.localError)} />
+      )}
       <Form form={form} layout="vertical" initialValues={editableValues(version, process.approvalType)}>
         <FormLock locked={!writable || action !== 'draft' || submission.locked || !!submission.blocked}>
-          <NodeProperties nodes={nodesVisible ? version.nodes : undefined} approvalType={full.approvalType} />
+          <NodeProperties
+            nodes={nodesVisible ? version.nodes : undefined}
+            approvalType={full.approvalType}
+            selected={save.selected}
+            onSelect={save.setSelected}
+            located={save.located}
+          />
         </FormLock>
       </Form>
       {writable && (
@@ -367,7 +410,7 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
             aria-label={action === 'draft' ? m.save : m.newVersion}
             loading={submission.busy}
             disabled={submission.locked || submission.blocked}
-            onClick={() => void submit()}
+            onClick={() => void save.submit()}
           >
             {action === 'draft' ? m.save : m.newVersion}
           </Button>
@@ -394,26 +437,54 @@ function ReadOnlyVersion({ process, version }: { process: ProcessView; version: 
     </>
   );
 }
-function NodeProperties({ nodes, approvalType }: { nodes: readonly ApprovalNode[] | undefined; approvalType: string }) {
-  const [selected, setSelected] = useState<string>();
+function NodeNav({
+  nodes,
+  active,
+  onSelect,
+}: {
+  nodes: readonly ApprovalNode[];
+  active: string;
+  onSelect(key: string): void;
+}) {
+  return (
+    <nav className="flow-nodes" aria-label={m.nodes}>
+      <h3>{m.nodes}</h3>
+      {nodes.map((node, index) => (
+        <Button
+          key={node.key}
+          type={active === node.key ? 'primary' : 'text'}
+          aria-current={active === node.key ? 'true' : undefined}
+          onClick={() => onSelect(node.key)}
+        >
+          <span className="flow-node-number">{index + 1}</span>
+          {text(node.name)}
+        </Button>
+      ))}
+    </nav>
+  );
+}
+function NodeProperties({
+  nodes,
+  approvalType,
+  selected,
+  onSelect,
+  located,
+}: {
+  nodes: readonly ApprovalNode[] | undefined;
+  approvalType: string;
+  /** 传入时由保存流程控制当前节点（出错时切到出错节点）；只读版本内部自管。 */
+  selected?: string;
+  onSelect?(key: string): void;
+  located?: Located;
+}) {
+  const [own, setOwn] = useState<string>();
   if (!nodes) return <Alert type="info" message={m.missingNodes} />;
   if (!nodes.length) return <Alert type="info" message={m.emptyNodes} />;
-  const active = nodes.find((node) => node.key === selected) ?? nodes[0]!;
+  const current = onSelect ? selected : own;
+  const active = nodes.find((node) => node.key === current) ?? nodes[0]!;
   return (
     <div className="flow-node-layout">
-      <nav className="flow-nodes" aria-label={m.nodes}>
-        <h3>{m.nodes}</h3>
-        {nodes.map((node, index) => (
-          <Button
-            key={node.key}
-            type={active.key === node.key ? 'primary' : 'text'}
-            onClick={() => setSelected(node.key)}
-          >
-            <span className="flow-node-number">{index + 1}</span>
-            {text(node.name)}
-          </Button>
-        ))}
-      </nav>
+      <NodeNav nodes={nodes} active={active.key} onSelect={onSelect ?? setOwn} />
       <div className="flow-properties">
         <h3>{m.properties}</h3>
         <Descriptions
@@ -436,6 +507,7 @@ function NodeProperties({ nodes, approvalType }: { nodes: readonly ApprovalNode[
             <ApproverSources node={node} approvalType={approvalType} />
             <ApproverSources node={node} approvalType={approvalType} empty />
             <FallbackHandlers node={node} approvalType={approvalType} />
+            <RoutesEditor node={node} nodes={nodes} approvalType={approvalType} located={located} />
             {attributes.map((field) =>
               editableValues({ nodes: [node] })[nodeField(node.key, field)] === undefined ? (
                 <Form.Item key={field} label={m.fields[field]}>

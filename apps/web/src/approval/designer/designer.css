@@ -96,3 +96,40 @@
 .flow-source-value > .ant-select {
   width: 100%;
 }
+
+/* F-478 S7 出口分支 */
+.flow-routes {
+  margin: 16px 0;
+}
+.flow-route-group {
+  margin: 8px 0 16px;
+}
+.flow-route-branch {
+  border: 1px solid var(--shell-border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+.flow-route-located {
+  border-color: var(--shell-primary);
+  box-shadow: 0 0 0 1px var(--shell-primary);
+}
+.flow-route-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.flow-route-field,
+.flow-route-target {
+  width: 200px;
+}
+.flow-route-operator {
+  width: 130px;
+}
+.flow-route-value,
+.flow-route-expression {
+  flex: 1;
+  min-width: 160px;
+}
