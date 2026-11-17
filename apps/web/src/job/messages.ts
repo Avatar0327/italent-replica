@@ -1,3 +1,4 @@
+import { JOB_GRAPH_TEXT } from '@italent/domain';
 export const text = {
   updatedCount: (count: number) => `已同步 ${count} 条。`,
   skipReason: (reason: string) =>
@@ -154,4 +155,39 @@ export const formText: Partial<Record<keyof typeof kindText, Record<string, stri
     dottedParent: '虚线上级',
     dottedSequence: '虚线上级顺序号',
   },
+};
+
+/** 职务职级图谱（F-474-7a 设计 §1、§3.2、§5）：表头与原因文案与导出共用 domain 的 JOB_GRAPH_TEXT。 */
+export const graphText = {
+  title: '职务职级图谱',
+  issuesTitle: '待确认的职务职级记录',
+  generatedAt: '最新生成时间：',
+  rebuild: '重新生成',
+  confirmRebuild: '确定执行此操作？',
+  generating: '图谱生成中,请耐心等待',
+  issuesHint: '点击可查看不规范的职务职级',
+  hasIssues: '有不规范的职务职级数据，请检查',
+  gotIt: '我知道了',
+  viewIssues: '去查看 >>',
+  notGenerated: '尚未生成图谱，请点击“重新生成”',
+  notGeneratedReadOnly: '尚未生成图谱',
+  emptyTitle: '暂无可展示的职务职级图谱，请检查：',
+  emptyRules: ['①启用职务须维护【职务序列】和【最高职级】（或【最低职级】）', '②序列和职级必须启用'],
+  ...JOB_GRAPH_TEXT,
+  updatedByOthers: '图谱已被他人更新',
+  busy: '图谱正在生成，请稍后刷新',
+  tooLarge: '职务职级数据超出图谱生成上限',
+  denied: '无权重新生成职务职级图谱',
+  failed: 'Oops~好像出问题了，重新刷新一下试试',
+  uncertain: '处理中 / 结果待确认：请点“重试原请求”按原命令核对结果，勿重复生成。',
+  conflictRead: '图谱已被他人更新，读取最新图谱失败，请重新读取。',
+  reread: '重新读取',
+  allKinds: '全部类型',
+  exported: '导出成功',
+  exportFailed: '导出失败',
+  exportNotGenerated: '请先重新生成图谱',
+  exporting: '正在导出图谱，请导出完成后再进行此操作',
+  exportSelected: (count: number) => `导出已选（${count} 条）`,
+  exportAll: (count: number) => `导出全部（${count} 条）`,
+  editFailed: '读取记录失败，请刷新后重试。',
 };

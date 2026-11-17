@@ -93,6 +93,37 @@
       "obj:TenantBase.JobSequence:view"
     ]
   },
+  "GET /api/tenant/job/graph/export": {
+    "all": {
+      "code": "CONFLICT",
+      "error": "7a7f0b6ed6b6",
+      "reason": "GRAPH_NOT_GENERATED",
+      "status": 409
+    },
+    "fieldQueries": [
+      "fields:TenantBase.JobGrade",
+      "fields:TenantBase.JobLevel",
+      "fields:TenantBase.JobLevelType",
+      "fields:TenantBase.JobPost",
+      "fields:TenantBase.JobSequence"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.JobGrade/-",
+      "scope:TenantBase/TenantBase.JobLevel/-",
+      "scope:TenantBase/TenantBase.JobLevelType/-",
+      "scope:TenantBase/TenantBase.JobPost/-",
+      "scope:TenantBase/TenantBase.JobSequence/-"
+    ],
+    "trace": [
+      "btn:TenantBase.JobPostAndJobLevelGraph#export@list",
+      "obj:TenantBase.JobGrade:view",
+      "obj:TenantBase.JobLevel:view",
+      "obj:TenantBase.JobLevelType:view",
+      "obj:TenantBase.JobPost:view",
+      "obj:TenantBase.JobPostAndJobLevelGraph:view",
+      "obj:TenantBase.JobSequence:view"
+    ]
+  },
   "GET /api/tenant/job/graph/issues": {
     "all": {
       "status": 200
@@ -112,6 +143,36 @@
       "scope:TenantBase/TenantBase.JobSequence/-"
     ],
     "trace": [
+      "obj:TenantBase.JobGrade:view",
+      "obj:TenantBase.JobLevel:view",
+      "obj:TenantBase.JobLevelType:view",
+      "obj:TenantBase.JobPost:view",
+      "obj:TenantBase.JobPostAndJobLevelGraph:view",
+      "obj:TenantBase.JobSequence:view"
+    ]
+  },
+  "GET /api/tenant/job/graph/issues/export": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "4d8249d35ad3",
+      "status": 400
+    },
+    "fieldQueries": [
+      "fields:TenantBase.JobGrade",
+      "fields:TenantBase.JobLevel",
+      "fields:TenantBase.JobLevelType",
+      "fields:TenantBase.JobPost",
+      "fields:TenantBase.JobSequence"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.JobGrade/-",
+      "scope:TenantBase/TenantBase.JobLevel/-",
+      "scope:TenantBase/TenantBase.JobLevelType/-",
+      "scope:TenantBase/TenantBase.JobPost/-",
+      "scope:TenantBase/TenantBase.JobSequence/-"
+    ],
+    "trace": [
+      "btn:TenantBase.JobPostAndJobLevelGraph#export@list",
       "obj:TenantBase.JobGrade:view",
       "obj:TenantBase.JobLevel:view",
       "obj:TenantBase.JobLevelType:view",

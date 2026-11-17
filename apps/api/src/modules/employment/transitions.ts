@@ -1,3 +1,4 @@
+import { getTenant } from '@italent/db';
 import { restoreRehireSeniority } from './rehire-seniority.js';
 import { assertRegularizationApplication } from './regularization-eligibility.js';
 import { reverseCarriedEstablishment, assertReleasedEstablishment } from '../establishment/carried-transfer.js';
@@ -96,6 +97,7 @@ export async function runEmploymentTransition(
   ctx: EmploymentContext,
   input: EmploymentTransitionInput,
 ): Promise<CommandResult> {
+  ctx = { ...ctx, tenantName: (await getTenant(db, ctx.tenantId))?.name };
   return runCommand(db, ctx, {
     id: ctx.commandId,
     fingerprint: { operation: 'employment.transition', input, expectedRevision: ctx.expectedRevision },

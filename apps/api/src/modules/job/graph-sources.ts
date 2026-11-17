@@ -81,6 +81,14 @@ export async function requireGraphRebuild(deps: Deps, ctx: TenantContext, tx?: T
     throw new AppError('FORBIDDEN', '无权访问职务职级图谱');
 }
 
+/** 两种导出：在读权限之上再要求图谱「导出」按钮（列表层），每次请求重查；统一 403，不给半份文件。 */
+export async function requireGraphExport(deps: Deps, ctx: TenantContext) {
+  await requireGraphAccess(deps, ctx);
+  const resource = buttonResource(GRAPH_OBJECT, 'export', 'list');
+  if (!(await authorizerOf(deps)({ ...ctx, action: 'object.button', resource })))
+    throw new AppError('FORBIDDEN', '无权访问职务职级图谱');
+}
+
 /** 取 asOf 时点有效的最新版本，只投影授权清单里的列（停用的保留 enabled 标志，已过期 / 未开始的不取）。 */
 export async function loadGraphInput(tx: Tx, tenantId: string, asOf: string): Promise<JobGraphInput> {
   const input = {} as Record<keyof JobGraphInput, JobGraphRecord[]>;

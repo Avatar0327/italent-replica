@@ -9,6 +9,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 export const ERROR_STATUS = {
   UNAUTHENTICATED: 401,
   FORBIDDEN: 403,
+  FIELD_FORBIDDEN: 403,
   VALIDATION_FAILED: 400,
   // F-139a：历史离职导入整批校验不过（逐行原因在 details.rows），零写入。
   IMPORT_ROWS_INVALID: 400,

@@ -43,7 +43,7 @@ export async function editedValues(
   for (const [id, value] of Object.entries(patch.customFields ?? {})) {
     const definition = definitions.find((field) => field.id === id);
     if (!definition) throw new AppError('VALIDATION_FAILED', '自定义字段不属于本租户任职对象');
-    customFields[id] = validateCustomValue(value, definition.valueType);
+    customFields[id] = validateCustomValue(value, definition.valueType, definition.options, record.customFields[id]);
   }
   const sequenceId = await sequenceForNewPost(tx, ctx.tenantId, patch.fields ?? {}, record.effectiveDate);
   const fields = { ...record.fields, ...patch.fields, ...(sequenceId ? { sequenceId } : {}) };

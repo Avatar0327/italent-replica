@@ -43,6 +43,13 @@ export async function addPreExitRoutesObjects(db: Db): Promise<() => Promise<voi
       created_seq integer NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`);
     tables.push('approval_node_activations');
   }
+  // F-326-S7a：当前保存流程定义的代码收尾时会查自动变量（升级夹具里的节点不含指定人员，查询必为空）；
+  // 更早的结构还没有变量表，同样临时建只含被查列的空表。
+  if (!(await present(db, 'approval_variables'))) {
+    await db.execute(sql`CREATE TABLE approval_variables (tenant_id uuid NOT NULL, id uuid NOT NULL,
+      origin text NOT NULL, status text NOT NULL, origin_version_id uuid)`);
+    tables.push('approval_variables');
+  }
   if (tables.length) await db.execute(sql.raw(`GRANT SELECT, INSERT ON ${tables.join(', ')} TO app_user`));
   const addColumn = !(await hasColumn(db, 'approval_tasks', 'decision_exit'));
   if (addColumn) await db.execute(sql`ALTER TABLE approval_tasks ADD COLUMN decision_exit text`);

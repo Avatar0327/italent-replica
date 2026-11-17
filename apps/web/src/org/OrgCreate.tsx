@@ -6,6 +6,7 @@ import { PersonSelect } from './PersonFields.js';
 import { type PageAccess } from './page-support.js';
 import { useRecordCommand } from './record-command.js';
 import { info } from './OrgEditor.js';
+import { customFormFields, customFormGroups, type OrgCustomFields } from './custom-fields.js';
 import { detailText, pageText as m } from './messages.js';
 
 interface Props {
@@ -13,6 +14,8 @@ interface Props {
   parentId?: string;
   date: string;
   access: PageAccess;
+  /** 组织自定义字段（F-474-6b）：新建抽屉“其他信息”分组。 */
+  custom: OrgCustomFields;
   onClose(): void;
   onSaved(): void;
 }
@@ -59,7 +62,7 @@ function createFields(access: PageAccess, asOf: string): FormField[] {
   ];
 }
 export function OrgCreate(props: Props) {
-  const { parentId, date, access } = props;
+  const { parentId, date, access, custom } = props;
   const session = useSession();
   const opened = orgCreateDate(date, tenantDate(new Date(), session.timezone), access.field('establishedOn'));
   // 新建没有原单可回查：所有新建入口共用集合路径这一个恢复槽，结果未知时都保持锁定，待刷新列表核对（F-123 页面片接入 2）。
@@ -86,7 +89,10 @@ export function OrgCreate(props: Props) {
         await record.save(values, { path: orgCreateResource, method: 'POST', build: orgCreateBody });
         props.onSaved();
       }}
-      groups={[{ title: m.basic, fields: createFields(access, asOf) }]}
+      groups={[
+        { title: m.basic, fields: createFields(access, asOf) },
+        ...customFormGroups(custom, customFormFields(custom, access)),
+      ]}
     />
   );
 }

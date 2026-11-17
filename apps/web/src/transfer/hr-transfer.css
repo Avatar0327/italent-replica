@@ -238,6 +238,70 @@
   color: #8c9199;
   font-size: 12px;
 }
+/* F-474-8c-3 调整后社保缴交地：原站地区选择器（“全国”页签、逐级下钻） */
+.hr-region-picker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.hr-region-value {
+  display: flex;
+  gap: 8px;
+}
+.hr-region-value button[name] {
+  flex: 1;
+  min-height: 32px;
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  background: white;
+  text-align: left;
+  padding: 5px 10px;
+}
+.hr-region-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  width: min(420px, 90vw);
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  background: white;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+  padding: 8px;
+}
+.hr-region-panel [role='tablist'] {
+  display: flex;
+  gap: 12px;
+  border-bottom: 1px solid #e6e8eb;
+  margin-bottom: 8px;
+}
+.hr-region-panel button {
+  border: 0;
+  background: none;
+  padding: 4px 6px;
+}
+.hr-region-panel [aria-selected='true'],
+.hr-region-panel [aria-pressed='true'] {
+  color: #146eff;
+}
+.hr-region-panel .hr-region-level {
+  display: block;
+  margin-bottom: 4px;
+  color: #146eff;
+}
+.hr-region-panel .hr-region-level[aria-pressed='true'] {
+  font-weight: 600;
+}
+.hr-region-panel ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 .r1c-transfer-form .hr-transfer-actions button:first-child {
   background: white;
   border-color: #e6e8eb;

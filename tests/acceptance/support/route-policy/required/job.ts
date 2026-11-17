@@ -10,6 +10,7 @@ const ROUTES = 'apps/api/src/modules/job/routes.ts';
 const SEQUENCE = 'apps/api/src/modules/job/sequence-routes.ts';
 const GRAPH = 'apps/api/src/modules/job/graph-routes.ts';
 const GRAPH_SOURCES = 'apps/api/src/modules/job/graph-sources.ts';
+const GRAPH_EXPORT = 'apps/api/src/modules/job/graph-export.ts';
 const RESOURCE_SETS = 'apps/api/src/modules/job/resource-set-candidates.ts';
 const ACCESS = 'apps/api/src/modules/permission/module-route-access.ts';
 const KINDS =
@@ -172,18 +173,35 @@ const REBUILD_BUTTON = {
   unit: `${GRAPH_SOURCES}#requireGraphRebuild`,
   anchor: "throw new AppError('FORBIDDEN', '无权访问职务职级图谱')",
 } as const;
-const graphAccess = (method: string, path: string, anchor: string): Obligation[] => [
+const graphAccess = (method: string, path: string, anchor: string, file = GRAPH): Obligation[] => [
   {
     perm: 'obj:TenantBase.JobPostAndJobLevelGraph:view',
     facts: ['object:object.* 动作'],
-    at: [route(method, path, anchor, GRAPH), GRAPH_GUARD],
+    at: [route(method, path, anchor, file), GRAPH_GUARD],
   },
   {
     perm: 'guard:job.graphSources',
-    at: [route(method, path, anchor, GRAPH), GRAPH_GUARD],
+    at: [route(method, path, anchor, file), GRAPH_GUARD],
   },
   ...graphSources(),
 ];
+/** 两种导出（F-474-7c）：导出须经五对象校验（requireGraphAccess）+ 图谱「导出」按钮，每次请求重查。 */
+const EXPORT_BUTTON = {
+  role: 'impl',
+  unit: `${GRAPH_SOURCES}#requireGraphExport`,
+  anchor: "throw new AppError('FORBIDDEN', '无权访问职务职级图谱')",
+} as const;
+const graphExport = (path: string): Obligation[] => {
+  const at = route('GET', path, 'await requireGraphExport(deps, ctx)', GRAPH_EXPORT);
+  return [
+    ...graphAccess('GET', path, 'await requireGraphExport(deps, ctx)', GRAPH_EXPORT),
+    {
+      perm: 'btn:TenantBase.JobPostAndJobLevelGraph#export@list',
+      facts: ['button:buttonResource', 'button:object.button'],
+      at: [at, EXPORT_BUTTON],
+    },
+  ];
+};
 const receipts = (path: string, anchor: string): Obligation[] => [
   {
     perm: 'own:job.sequenceReceiptRecipient',
@@ -294,6 +312,8 @@ export const JOB: RequiredTable = {
       at: [route('POST', '/graph/rebuild', 'await requireGraphRebuild(deps, tenant)', GRAPH), REBUILD_BUTTON],
     },
   ],
+  'GET /api/tenant/job/graph/export': graphExport('/graph/export'),
+  'GET /api/tenant/job/graph/issues/export': graphExport('/graph/issues/export'),
   'GET /api/tenant/job/:kind': [
     {
       perm: `obj:${KINDS}:view`,

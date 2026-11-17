@@ -1,10 +1,11 @@
-import { approverSourcesOf, type ApprovalNode, type ProcessDefinition } from '@italent/domain';
+import { approverSourcesOf, type ApprovalNode, type ExitRoute, type ProcessDefinition } from '@italent/domain';
 import type { ProcessView, VersionView } from '../../../../api/src/modules/approval/definitions.js';
 import { ApiError } from '../../foundation/client.js';
 import type { ObjectPermission } from '../../foundation/permission-model.js';
 import type { Values } from '../../foundation/forms/store.js';
 import { supportsFallback, fallbackError } from './fallback.js';
 import { m } from './messages.js';
+import { normalizeRoutes, routesInputError, routesShape } from './routes.js';
 import { sourceFields, sourceInputError, sourceShape, sourcesShape } from './sources.js';
 
 export type { ProcessView, VersionView, ProcessSummary } from '../../../../api/src/modules/approval/definitions.js';
@@ -58,6 +59,7 @@ function completeNode(node: unknown): node is ApprovalNode {
     !!kind &&
     (node.emptyApproverSources === undefined || sourcesShape(node.emptyApproverSources)) &&
     (node.fallbackUserIds === undefined || strings(node.fallbackUserIds)) &&
+    (node.routes === undefined || routesShape(node.routes)) &&
     [
       'key',
       'name',
@@ -85,16 +87,22 @@ function completeNode(node: unknown): node is ApprovalNode {
     )
   );
 }
+/** 节点进入表单内核的可编辑字段；F-478 S7 起含出口分支 routes（未配置读作空列表）。 */
+const nodeFields = (node: ApprovalNode, approvalType?: string) => [
+  ...attributes,
+  ...sourceFields(node),
+  'routes',
+  ...(supportsFallback(node, approvalType) ? ['fallbackUserIds'] : []),
+];
 export function editableValues(version: Pick<VersionView, 'nodes'>, approvalType?: string): Values {
   return Object.fromEntries(
     (version.nodes ?? []).flatMap((node) =>
-      [...attributes, ...sourceFields(node), ...(supportsFallback(node, approvalType) ? ['fallbackUserIds'] : [])].map(
-        (field) => [nodeField(node.key, field), nodeValue(node, field)],
-      ),
+      nodeFields(node, approvalType).map((field) => [nodeField(node.key, field), nodeValue(node, field)]),
     ),
   );
 }
 function nodeValue(node: ApprovalNode, field: string) {
+  if (field === 'routes') return structuredClone(node.routes ?? []);
   if (field === 'emptyApproverSources') return structuredClone(node.emptyApproverSources ?? []);
   if (field === 'approver' || field === 'approvers') return structuredClone(node[field as keyof ApprovalNode]);
   if (field === 'fallbackUserIds') return Array.isArray(node.fallbackUserIds) ? [...node.fallbackUserIds] : [];
@@ -131,6 +139,12 @@ export function buildDraft(version: VersionView, edited: Values, approvalType?: 
   for (const [field, value] of Object.entries(edited)) {
     const issue = field.endsWith(':fallbackUserIds') ? fallbackError(value) : undefined;
     if (issue) throw new ApiError(422, 'INVALID_NODE_PROPERTY', 'fields', issue);
+    const routed = field.endsWith(':routes') && version.nodes.find((item) => nodeField(item.key, 'routes') === field);
+    if (routed) {
+      const error = routesInputError(value, routed);
+      if (error) throw error;
+      continue;
+    }
     const node = version.nodes.find((item) => sourceFields(item).some((name) => nodeField(item.key, name) === field));
     if (node) {
       const error = sourceInputError(value, node, approvalType, field.endsWith(':emptyApproverSources'));
@@ -150,14 +164,11 @@ export function buildDraft(version: VersionView, edited: Values, approvalType?: 
     nodes: definition.nodes.map((node) => {
       const values: Record<string, unknown> = { ...node };
       const actions = { ...node.actions };
-      for (const field of [
-        ...attributes,
-        ...sourceFields(node),
-        ...(supportsFallback(node, approvalType) ? ['fallbackUserIds'] : []),
-      ]) {
+      for (const field of nodeFields(node, approvalType)) {
         const key = nodeField(node.key, field);
         if (!(key in edited)) continue;
         if (field.startsWith('actions.')) Object.assign(actions, { [field.slice(8)]: edited[key] });
+        else if (field === 'routes') values.routes = normalizeRoutes(edited[key] as ExitRoute[]);
         else values[field] = field === 'name' ? (edited[key] as string).trim() : edited[key];
       }
       return { ...values, actions } as unknown as ApprovalNode;

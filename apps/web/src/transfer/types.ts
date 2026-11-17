@@ -1,3 +1,4 @@
+import type { CustomFieldOption } from '@italent/domain';
 export type FieldValue = string | number | boolean | readonly string[] | null;
 export type FieldValues = Readonly<Record<string, FieldValue>>;
 export type FieldMode = 'editable' | 'readonly' | 'hidden' | 'absent';
@@ -9,6 +10,8 @@ export interface Choice {
 export interface ContractChoice {
   readonly id: string;
   readonly name: string | null;
+  /** 原合同生效日期（租户本地日期，F-504 确认框用）；读不到或无权查看时缺省。 */
+  readonly effectiveDate?: string;
 }
 export interface EmployeeChoice extends Choice {
   readonly code: string | null;
@@ -30,7 +33,12 @@ export interface TransferPreview {
     readonly isStandard: boolean;
     readonly excludedAutofillFields: readonly string[];
     readonly fieldModes: Readonly<Record<string, FieldMode>>;
-    readonly customFields: readonly { id: string; name: string; valueType: string }[];
+    readonly customFields: readonly {
+      id: string;
+      name: string;
+      valueType: string;
+      options?: readonly CustomFieldOption[];
+    }[];
   };
   readonly fields: FieldValues;
   readonly customFields: FieldValues;
@@ -63,6 +71,8 @@ export interface TransferFormModel {
    * 类型留空，等用户重新选择后再预览、回填；在此之前不能暂存或提交（#350 第 1 轮 P2-1）。
    */
   readonly typeConfirmation?: boolean;
+  /** F-474-8c-3：带出的暂存单（原值接口按单号取，AC-INS-02）；换人或清除后不再适用。 */
+  readonly draftOf?: { readonly employeeId: string; readonly id: string };
   /** F-153：已带出、等对应预览到达后回填的暂存字段（DEC-511）。 */
   readonly pendingDraft?: {
     readonly employeeId: string;
@@ -108,11 +118,20 @@ export interface LinkageDraft {
   readonly dutyReceiverId: string;
   readonly dutySubordinateIds: readonly string[];
   readonly transferDepartmentHead: boolean;
+  /** F-474-8c-3 调整后社保三项（设计 F-474-8b §5）：未填时不带键，空串等同未填。 */
+  readonly adjustedInsuranceRegionCode?: string;
+  readonly adjustedInsurancePlanId?: string;
+  readonly adjustedInsuranceCompanyId?: string;
+  /** F-481 §3.1：发起电子文件签署，无默认（未选 = 否）；只在变更合同时提交。 */
+  readonly electronicSignature?: boolean;
+  readonly esignTemplateIds?: readonly string[];
 }
+export type InsuranceAdjustKey =
+  'adjustedInsuranceRegionCode' | 'adjustedInsurancePlanId' | 'adjustedInsuranceCompanyId';
 export interface LinkageItemView {
   readonly id: string;
   readonly revision: number;
-  readonly itemType: 'duty_subordinate' | 'duty_org_role' | 'part_time_end';
+  readonly itemType: 'duty_subordinate' | 'duty_org_role' | 'part_time_end' | 'insurance_archive';
   readonly subordinateId: string | null;
   readonly orgId: string | null;
   readonly orgRole: string | null;
@@ -137,4 +156,10 @@ export interface LinkageView {
     readonly items: readonly LinkageItemView[];
   } | null;
   readonly partTimes: readonly LinkageItemView[];
+  /** F-474-8c-2c：社保档案子项（任一调整值可见时返回）。 */
+  readonly insuranceArchive?: LinkageItemView | null;
+  /** F-481 S2：null = 否；两字段任一不可见时键缺席（linkage/view.ts）。name 不可读时为 null。 */
+  readonly esign?: {
+    readonly templates: readonly { readonly id: string; readonly name: string | null; readonly available: boolean }[];
+  } | null;
 }

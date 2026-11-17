@@ -22,7 +22,7 @@ import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
 import { readCarrierAttachment, respondAttachment } from '../attachments/carrier-read.js';
-import { composeExit, disclosing, selectEmploymentRead } from './approval-content.js';
+import { composeExit, disclosing, keepLiveAttachments, selectEmploymentRead } from './approval-content.js';
 import { exitActions } from './exit-actions.js';
 import { handoverRowActions } from './exit-handover-batch.js';
 import { AppError } from '../../errors.js';
@@ -675,7 +675,7 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const { ctx, detail, show: current, read } = await readExitDetail(c, true);
     // F-476 P4：已办审批人读办理时冻结的离职内容（逐路径按披露集合取舍），其余读现值；流程事实始终是现值
     const frozen = read?.frozen ?? null;
-    const shown = (frozen ? composeExit(detail, frozen.content) : detail) as typeof detail;
+    const shown = (frozen ? keepLiveAttachments(composeExit(detail, frozen.content), detail) : detail) as typeof detail;
     const show = frozen ? disclosing(current, frozen.allowed) : current;
     // 动作随“状态”字段权裁剪（依赖表登记 actions）：无状态查看权的人拿不到，也就无法由动作反推状态；动作是流程事实，取现值
     const actions = (await exitActions(deps, ctx, [detail], { withHandle: false })).get(detail.id) ?? [];

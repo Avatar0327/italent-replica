@@ -262,6 +262,14 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       52: 'acbafd07e26b55e1',
       // F-474-7b（DEC-896 U1/U8）：职务职级图谱对象的查看与 rebuild / export 按钮，仅授给系统管理员；main + 1 占位，合并时重算。
       53: 'c0f9b17371601828',
+      // F-474-8c-2a（DEC-896④，授权类）：社保档案 / 社保方案两个只读对象授给系统管理员与人事管理员，任职记录新增三个调整字段（仅这两个身份）；main + 1 占位，合并时重算。
+      54: '36827d498bb0e95c',
+      // F-481-S2：调动电子签署两字段，版本占位 main + 1。
+      55: '1a33bcf7af9d536b',
+      // F-481-S3a：HR 类身份补发按钮，占位 main + 1，合并阶段统一定号。
+      56: '2ceb5a8b5a976b7e',
+      // F-481-S3b：签署记录 HR 对象、只读字段与三个按钮（占位 main + 1）。
+      57: '2f79070a2978cfe5',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

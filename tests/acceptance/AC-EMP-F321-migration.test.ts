@@ -4,6 +4,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { employmentSession } from './AC-EMP-support.js';
+import { withCurrentWriteColumns } from '@italent/testkit';
 
 const database = useTestDb({ migrateBefore: '_employment_forms' });
 const rows = <T>(v: unknown) => (Array.isArray(v) ? v : (v as { rows: T[] }).rows) as T[];
@@ -12,9 +13,12 @@ it('AC-EMP-F321-09：两个租户的主职 / 兼职载荷及申请迁移，未�
   const db = database().db;
   const targets: { tenantId: string; id: string; value: string | null }[] = [];
   for (const label of ['migration-a', 'migration-b']) {
-    const s = await employmentSession(db, label);
-    const org = await s.org('合成迁移部门', { establishedOn: '2020-01-01' });
-    const e = await s.employee();
+    // F-474-6b：当前接口写组织会带上 org_versions.custom_fields，旧结构没有，造组织时临时补列，升级迁移前撤掉
+    const { s, org, e } = await withCurrentWriteColumns(db, async () => {
+      const s = await employmentSession(db, label);
+      const org = await s.org('合成迁移部门', { establishedOn: '2020-01-01' });
+      return { s, org, e: await s.employee() };
+    });
     await withTenant(db, s.tenant.id, async (tx) => {
       for (const name of ['正式员工', '兼职人员', '劳务派遣', '不存在', ' 正式员工', null]) {
         const id = randomUUID();

@@ -1,5 +1,6 @@
 /** DEC-045：首版简体中文文案集中到资源文件。 */
 export const text = {
+  disabledOption: '（已停用）',
   processing: '处理中，请在我的申请中查看',
   hrDraftSaved: '信息暂存成功，下次选择此人可自动带出',
   draftRestored: '已带出上次暂存信息',
@@ -109,6 +110,11 @@ export const linkageText = {
   dutyDepartmentHead: '转交部门负责人',
   detail: '联动执行情况',
   pending: '尚未执行（调动生效时执行）',
+  // F-481 §8.1：调动详情合同段只读显示所选签署模板；停用的模板标注，名称不可读的不显示裸 ID。
+  electronicSignature: '发起电子文件签署',
+  esignYes: '是',
+  esignNo: '否',
+  esignDisabled: (name: string) => `${name}（已停用）`,
   executedAt: '执行时间',
   contractChanged: '已生成新合同版本',
   trial: '试岗期',
@@ -122,6 +128,24 @@ export const linkageText = {
   failed: '失败',
   waiting: '待执行',
   attempts: '次尝试',
+  insuranceArchive: '社保档案',
+} as const;
+
+/** F-474-8c-3 薪资调整组的社保三对字段（设计 F-474-8b §1.1 原站字段名）；审批详情同用。 */
+export const insuranceText = {
+  region: '社保缴交地',
+  plan: '社保缴交方案',
+  company: '社保缴交公司',
+  adjustedRegion: '调整后社保缴交地',
+  adjustedPlan: '调整后社保缴交方案',
+  adjustedCompany: '调整后社保缴交公司',
+  none: '--',
+  blank: '—',
+  noChoices: '暂无可选项',
+  nationwide: '全国',
+  pickLevel: '选择本级',
+  choose: '请选择',
+  clear: '清除',
 } as const;
 
 export const presetLabels: Readonly<Record<string, string>> = {
@@ -170,7 +194,7 @@ export const listText = {
   more: '更多操作',
   export: '导出数据',
   import: '导入调动记录',
-  pendingTool: '接口待补齐，暂不可用',
+  pendingTool: '未完成', // 没有后端契约的入口一律标“未完成”（DEC-774，F-481 设计 §8.1）
   collapse: '收起',
   expand: '展开',
   closeBanner: '关闭提示',
@@ -253,8 +277,12 @@ export const hrFormText = {
   noApplication: '当前不能为该员工发起调动申请。',
   infoGap:
     '原站本区块还有性别、年龄、是否同步履历、试岗方式、预计试岗结束日期、测试、是否调整目标，接口暂不支持，本页不显示。',
-  salaryGap: '原站本区块的社保缴纳地、社保方案、社保缴纳主体（原值 / 调整后）接口暂不支持，本页不显示。',
-  contractGap: '原站本区块的“发起电子文件签署”接口暂不支持，本页不显示。',
+  // F-481 §3.1：无默认，未选等同“否”（U6）；模板选项与提示文案在 esign/messages.ts。
+  electronicSignature: '发起电子文件签署',
   salaryOff: '未选择调整薪资。',
   contractOff: '未选择变更合同。',
+  // F-504：原站保存时的确认框文案（F-481 设计 §9），确认后才发请求。
+  terminateTitle: '请确认以下信息后，再继续操作',
+  terminateContent: '变更后合同的生效日期晚于原合同生效日期，继续保存将终止原合同。',
+  confirm: '确定',
 } as const;

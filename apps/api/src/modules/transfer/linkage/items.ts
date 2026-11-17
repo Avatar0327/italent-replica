@@ -9,7 +9,8 @@ import { auditEmployment, assertRevision, requireLinkedEmploymentRecord } from '
 import { findCurrentRecord } from '../../employment/read-model.js';
 import { lockTransferParticipants } from '../../employment/transfer-locks.js';
 import type { EmploymentContext } from '../../employment/types.js';
-import { authorizeOrgRole, authorizeSubordinateField, type LinkageAccess } from './access.js';
+import { authorizeInsuranceFields, authorizeOrgRole, authorizeSubordinateField, type LinkageAccess } from './access.js';
+import { appendInsuranceArchive } from './insurance-archive.js';
 import { dutyItemFailure, executeDutyItem, type DutyItemFailure } from './duty-execution.js';
 import type { DutyRelation, OrgRole } from './input.js';
 import { transferPartTimePort } from './part-time.js';
@@ -91,6 +92,10 @@ export async function attemptLinkageItem(tx: Tx, ctx: EmploymentContext, item: L
 }
 
 async function executeItem(tx: Tx, ctx: EmploymentContext, item: LinkageItemRow) {
+  if (item.itemType === 'insurance_archive') {
+    await appendInsuranceArchive(tx, ctx, item);
+    return;
+  }
   if (item.itemType === 'part_time_end') {
     await transferPartTimePort().end(tx, ctx, {
       employeeId: item.employeeId,
@@ -141,6 +146,8 @@ export async function retryLinkageItem(
   // PR #74 第二轮 P1-1 / P1-5：重试与首次执行同样按改写的真实字段与组织范围授权。
   if (item.itemType === 'duty_subordinate') await authorizeSubordinateField(ctx, item.relation as DutyRelation);
   if (item.itemType === 'duty_org_role') await authorizeOrgRole(tx, ctx, access, item.orgId!, item.orgRole as OrgRole);
+  // 第 2 轮 P1：员工锁内再按当前权限复核社保三个调整字段（入口与命令守卫判过后权限可能被撤）。
+  if (item.itemType === 'insurance_archive') await authorizeInsuranceFields(tx, ctx, item.businessId);
   if (item.itemType === 'duty_subordinate') {
     const today = tenantLocalDate(ctx.now, ctx.timezone);
     const record = await findCurrentRecord(tx, ctx.tenantId, item.subordinateId!, today);

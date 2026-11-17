@@ -44,6 +44,16 @@ const systemFields = [
   'updatedAt',
   'createdBy',
 ];
+/**
+ * F-474-8c-2a（设计 F-474-8b §3.4）：调动单上填写的社保调整值（缴交地 / 方案 / 公司），登记在任职记录对象上。
+ * 8c-2c 起这三项已并入联动字段白名单（TRANSFER_LINKAGE_FIELDS，审批盲审与字段权限共用）；这里保留名单供标准预置引用。
+ * 标准身份只预置给系统管理员与人事管理员（standard-presets.ts 的 withoutInsuranceAdjust）。
+ */
+export const INSURANCE_ADJUST_FIELDS = [
+  'adjustedInsuranceRegionCode',
+  'adjustedInsurancePlanId',
+  'adjustedInsuranceCompanyId',
+] as const;
 const button = (code: string, level: ButtonDefinition['level'], requires?: DataOperation): ButtonDefinition =>
   requires ? { code, level, requires } : { code, level };
 const crud = [
@@ -143,6 +153,17 @@ export const MODULE_OBJECTS = {
     'validityDays',
     'remindBeforeExpiry',
   ]),
+  /** F-481 §10：files 读权可看整份文件，含姓名、工号、调动部门/职位、合同日期、签署人与时间。 */
+  eSignRecord: object(
+    'ESignRecord',
+    ['initiator', 'owner', 'ownerDepartment', 'scene', 'initiatedAt', 'completedAt', 'status', 'files'],
+    [
+      button('ESignRecord.Remind', 'list'),
+      button('ESignRecord.Revoke', 'list'),
+      button('ESignRecord.Download', 'list'),
+    ],
+    ['initiator', 'owner', 'ownerDepartment', 'scene', 'initiatedAt', 'completedAt', 'status', 'files'],
+  ),
   contractRules: object('ContractRenewalRule', ['name', 'priority', 'orgIds', 'personIds', 'enabled', 'details']),
   contractType: object('ContractType', ['code', 'name', 'enabled']),
   contractCompany: object('ContractCompany', ['code', 'name', 'enabled']),
@@ -418,6 +439,23 @@ export const MODULE_OBJECTS = {
   // 目录要求每个对象至少登记一个按钮：“指标明细”是列表级的钻取入口，只登记不授予（看板的准入只认对象查看权）
   /** F-474-7b：职务职级图谱（派生缓存）。只读对象 + 重新生成 / 导出两个列表按钮，没有数据操作；原站菜单只授系统管理员。 */
   jobGraph: object('JobPostAndJobLevelGraph', [], [button('rebuild', 'list'), button('export', 'list')]),
+  /**
+   * F-474-8c-2a（DEC-896④，授权类）：员工社保档案的只读视图，字段是当前档案折叠出的缴交地 / 方案 / 公司，全是系统字段；
+   * 与看板同口径只登记“详情”列表按钮、不授予。数据范围不预置（默认空），读取口径在 8c-2b。
+   */
+  socialSecurityProfile: object(
+    'SocialSecurityProfile',
+    [],
+    [button('detail', 'list')],
+    ['insuranceRegionCode', 'insurancePlanId', 'insuranceCompanyId'],
+  ),
+  /** F-474-8c-2a（DEC-896④，授权类）：缴交方案（调动下拉的候选），只读；方案没有组织字段，数据范围同样不预置。 */
+  socialInsurancePlan: object(
+    'SocialInsurancePlan',
+    [],
+    [button('detail', 'list')],
+    ['code', 'name', 'regionCode', 'effectiveMonth', 'stopMonth', 'enabled'],
+  ),
   hrDashboard: object('HrDashboard', [], [button('detail', 'list')]),
   // R2 BE-13c 人事分析 - 人事流程看板（规格 35 B51）：同人事看板，只读聚合、无业务字段；“查看详情”只登记不授予
   hrProcessDashboard: object('HrProcessDashboard', [], [button('detail', 'list')]),
@@ -443,9 +481,12 @@ export const MODULE_OBJECTS = {
     [button(ASSESSMENT_BUTTONS.create, 'detail', 'create'), button(ASSESSMENT_BUTTONS.update, 'detail', 'update')],
     ASSESSMENT_SYSTEM_FIELDS,
   ),
-  employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [
-    'code',
-  ]),
+  employmentCustomField: object(
+    'EmploymentCustomField',
+    ['name', 'objectType', 'valueType', 'inherit', 'options'],
+    crud,
+    ['code'],
+  ),
   // F-323（DEC-706，17 §F-323）：设置 / 员工 / 人员类别租户字典；列表“新建”、详情“编辑 / 停用 / 删除”按原站，
   // “启用”原站停用视图为空未见到，按对称补齐（🟡）；启停只经两个按钮写，登记为系统字段
   employmentType: object(
@@ -520,6 +561,7 @@ export const MODULE_OBJECTS = {
       'employType',
       // R1-T10 调动联动（`13` §7 表单区块）：审批披露、盲审与字段权限共用这些编码。
       ...TRANSFER_LINKAGE_FIELDS,
+      // F-474-8c-2a 调动社保调整值：8c-2c 起并入 TRANSFER_LINKAGE_FIELDS（同名同序，不再单独展开以免重复登记）
       // R2-T03 离职扩展字段（设计 §4A / §9，lastWorkDate / reasonCode 已在上面）
       ...EXIT_REQUEST_FIELDS,
       // BE-7 兼职（设计 §7.2）：兼职类型、结束日期、申请备注
@@ -530,6 +572,8 @@ export const MODULE_OBJECTS = {
     [
       button('Employment.Create', 'detail', 'create'),
       button('Transfer.Hr', 'detail', 'create'),
+      // F-481 §10：批量补发，只随 HR 类身份的完整任职功能预置。
+      button('MulLaunchESignTranfer', 'list', 'update'),
       button('Transfer.Manager', 'detail', 'create'),
       button('Transfer.Self', 'detail', 'create'),
       button('Exit.Self', 'detail', 'create'),

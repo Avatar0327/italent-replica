@@ -27,6 +27,9 @@ import {
   orgCreatable,
   orgImportable,
   orgLabel,
+  customKey,
+  isCustomKey,
+  orgCustomValue,
   orgObject,
   orgTreeQuery,
   serverTreeData,
@@ -36,6 +39,7 @@ import {
   type ServerOrgTree,
 } from './page-model.js';
 import { usePagePermissions, useRemote, RemoteContent, type PageAccess } from './page-support.js';
+import { useOrgCustomFields, customDisplay } from './custom-fields.js';
 import { importText, pageText as m } from './messages.js';
 import { CatalogFilters } from './CatalogFilters.js';
 import { OrgChart } from './OrgChart.js';
@@ -94,6 +98,8 @@ function useCatalog(access: PageAccess, tab: string) {
   const tree = useRemote<ServerOrgTree>(tab === 'tree' ? `/api/tenant/org/organizations/tree?${treeQuery}` : null);
   const chart = useRemote<ServerOrgTree>(tab === 'chart' ? `/api/tenant/org/organizations/chart?${treeQuery}` : null);
   const detail = useRemote<OrgRow>(selected ? `/api/tenant/org/organizations/${selected}?asOf=${date}` : null);
+  // 组织自定义字段定义：详情 / 新建 / 变更 / 列设置共用一份（F-474-6b）。
+  const custom = useOrgCustomFields(access);
   const refreshAll = () => {
     remote.refresh();
     tree.refresh();
@@ -133,6 +139,7 @@ function useCatalog(access: PageAccess, tab: string) {
     remote,
     tree,
     chart,
+    custom,
     refreshAll,
     detail,
     reset,
@@ -160,6 +167,7 @@ function OrgCatalog({ tab, access, view }: { tab: string; access: PageAccess; vi
         date={s.date}
         detail={s.detail}
         access={access}
+        custom={s.custom}
         onClose={() => s.setSelected(undefined)}
         onCreate={(parentId) => openCreate(s, parentId)}
         onEdit={(original, action) => openEditor(s, original, action)}
@@ -171,6 +179,7 @@ function OrgCatalog({ tab, access, view }: { tab: string; access: PageAccess; vi
           action={s.editor.action}
           date={s.date}
           access={access}
+          custom={s.custom}
           onClose={() => s.setEditor(undefined)}
           onSaved={() => {
             s.refreshAll();
@@ -183,6 +192,7 @@ function OrgCatalog({ tab, access, view }: { tab: string; access: PageAccess; vi
           parentId={s.creating.parentId}
           date={s.date}
           access={access}
+          custom={s.custom}
           onClose={() => s.setCreating(undefined)}
           onSaved={() => {
             s.refreshAll();
@@ -201,7 +211,8 @@ function CatalogDialogs({ s, access }: { s: Catalog; access: PageAccess }) {
       {s.columnsOpen && (
         <OrgColumnSettings
           value={s.columns}
-          allowed={orgColumnOptions(access)}
+          allowed={orgColumnOptions(access, s.custom.keys)}
+          labels={s.custom.labels}
           onApply={s.setColumns}
           onClose={() => s.setColumnsOpen(false)}
         />
@@ -339,6 +350,11 @@ const orgListWidths: Record<string, number> = {
   displayOrder: 128,
   remarks: 128,
 };
+/** 自定义字段列：值在 customFields 下（接口已按查看权裁剪），空值 `--`。 */
+function customCell(custom: Catalog['custom'], key: string, row: OrgRow) {
+  const definition = custom.definitions.find((field) => customKey(field.id) === key);
+  return definition ? customDisplay(definition, orgCustomValue(row, definition.id)) : m.missing;
+}
 function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: PageAccess; view: ListView }) {
   return (
     <ListPage
@@ -361,13 +377,15 @@ function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: Pa
         </>
       }
       columns={[
-        ...visibleOrgColumns(s.columns, orgColumnOptions(access)).map((field) => ({
+        ...visibleOrgColumns(s.columns, orgColumnOptions(access, s.custom.keys)).map((field) => ({
           key: field,
-          title: orgLabel(field, 'list'),
+          title: s.custom.labels[field] ?? orgLabel(field, 'list'),
           dataIndex: field,
-          width: orgListWidths[field],
+          width: orgListWidths[field] ?? (isCustomKey(field) ? 160 : undefined),
           render: (value: unknown, row: OrgRow) =>
-            field === 'name' ? (
+            isCustomKey(field) ? (
+              customCell(s.custom, field, row)
+            ) : field === 'name' ? (
               <Button type="link" onClick={() => s.setSelected(row.id)}>
                 {String(value ?? m.unavailable)}
               </Button>

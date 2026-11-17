@@ -37,7 +37,13 @@ const REQUIRED_FIELDS: [string, string][] = [
 ].flatMap(([object, list]) => (list as string[]).map((field): [string, string] => [object as string, field]));
 
 /** 真实授权器：成员 + 身份 + 五个源对象 / 图谱对象的权限，每个测试自选缺哪一项（AC-F474-JG-06）。 */
-async function caller(options: { skip?: string; hideField?: [string, string]; button?: boolean; seeAll?: boolean }) {
+async function caller(options: {
+  skip?: string;
+  hideField?: [string, string];
+  button?: boolean;
+  exportButton?: boolean;
+  seeAll?: boolean;
+}) {
   const { db } = testDb();
   const w: PermissionWorld = await seedPermissionWorld(db);
   await seedGraph(db, w.tenant.id, graphInput());
@@ -63,7 +69,10 @@ async function caller(options: { skip?: string; hideField?: [string, string]; bu
   };
   for (const source of SOURCES) if (source.code !== options.skip) await define(source, []);
   if (options.skip !== MODULE_OBJECTS.jobGraph.code)
-    await define(MODULE_OBJECTS.jobGraph, options.button === false ? [] : ['rebuild']);
+    await define(MODULE_OBJECTS.jobGraph, [
+      ...(options.button === false ? [] : ['rebuild']),
+      ...(options.exportButton === false ? [] : ['export']),
+    ]);
   if (options.seeAll !== false) {
     const scope = await w.api.request('PUT', `/api/tenant/permission/profiles/${profile.id}/data-scopes/TenantBase`, {
       ...w.asAdmin,
@@ -83,19 +92,32 @@ async function caller(options: { skip?: string; hideField?: [string, string]; bu
     get: (path = '') => w.api.request('GET', `${GRAPH}${path}`, as),
     rebuild: (ifMatch = 0, key = randomUUID()) =>
       w.api.request('POST', `${GRAPH}/rebuild`, { ...as, ifMatch, idempotencyKey: key, body: {} }),
+    /** 两种导出（F-474-7c，AC-F474-JG-08 / 09）：每次请求重新授权。 */
+    exports: async () => [
+      await w.api.request('GET', `${GRAPH}/export`, as),
+      await w.api.request('GET', `${GRAPH}/issues/export?all=true`, as),
+    ],
   };
+}
+
+/** 拒绝时不给文件：没有下载头、不是 xlsx，正文是统一错误信封。 */
+async function noFile(res: Response) {
+  expect(res.headers.get('content-disposition'), res.url).toBeNull();
+  expect(res.headers.get('content-type'), res.url).toContain('application/json');
+  return JSON.stringify(await res.json());
 }
 
 const code = async (res: Response) => ((await res.json()) as { error?: { code?: string } }).error?.code;
 
 describe('AC-F474-JG-06 五个源对象整体授权', () => {
-  it('对象、范围、字段、按钮都齐全才放行（GET / 原因 / 生成）', async () => {
+  it('对象、范围、字段、按钮都齐全才放行（GET / 原因 / 生成 / 两种导出）', async () => {
     const c = await caller({});
     expect((await c.get()).status).toBe(200);
     expect((await c.get('/issues')).status).toBe(200);
     expect((await c.rebuild()).status).toBe(200);
+    expect((await c.exports()).map((res) => res.status)).toEqual([200, 200]);
   });
-  it('缺任何一个源对象的查看权、图谱对象查看权、生成按钮或看全部范围，统一 403', async () => {
+  it('缺任何一个源对象的查看权、图谱对象查看权或看全部范围：读、生成、两种导出统一 403', async () => {
     const cases = [
       ...SOURCES.map((source) => ({ name: source.code, options: { skip: source.code } })),
       { name: 'graph', options: { skip: MODULE_OBJECTS.jobGraph.code } },
@@ -108,6 +130,10 @@ describe('AC-F474-JG-06 五个源对象整体授权', () => {
         expect(res.status, `${name} ${res.url}`).toBe(403);
         messages.add(JSON.stringify(await res.json()));
       }
+      for (const res of await c.exports()) {
+        expect(res.status, `${name} ${res.url}`).toBe(403);
+        messages.add(await noFile(res));
+      }
     }
     expect(messages.size, '不披露缺哪一项').toBe(1);
   });
@@ -116,34 +142,54 @@ describe('AC-F474-JG-06 五个源对象整体授权', () => {
     expect((await c.get()).status).toBe(200);
     expect(await code(await c.rebuild())).toBe('FORBIDDEN');
   });
+  it('缺导出按钮：能看图、能生成，两种导出都 403 且不给文件', async () => {
+    const c = await caller({ exportButton: false });
+    expect((await c.get()).status).toBe(200);
+    expect((await c.rebuild()).status).toBe(200);
+    for (const res of await c.exports()) {
+      expect(res.status, res.url).toBe(403);
+      expect(await noFile(res)).toContain('FORBIDDEN');
+    }
+  });
   it('必查字段清单恰为 35 项（与设计 §4.4 的投影清单一致）', () => {
     expect(REQUIRED_FIELDS).toHaveLength(35);
     expect(new Set(REQUIRED_FIELDS.map(([object, field]) => `${object}.${field}`)).size).toBe(35);
   });
-  it.each(REQUIRED_FIELDS)('%s 的 %s 字段不可见：三个入口统一 403', async (objectCode, field) => {
+  it.each(REQUIRED_FIELDS)('%s 的 %s 字段不可见：读、生成、两种导出统一 403', async (objectCode, field) => {
     const c = await caller({ hideField: [objectCode, field] });
-    for (const res of [await c.get(), await c.get('/issues'), await c.rebuild()])
+    for (const res of [await c.get(), await c.get('/issues'), await c.rebuild(), ...(await c.exports())])
       expect(res.status, `${field} ${res.url}`).toBe(403);
   });
-  it.each(REQUIRED_FIELDS)('撤掉 %s 的 %s 字段查看权后：命令重放与读入口同样 403', async (objectCode, field) => {
-    const c = await caller({});
-    const key = randomUUID();
-    expect((await c.rebuild(0, key)).status).toBe(200);
-    const definition = SOURCES.find((source) => source.code === objectCode)!;
-    const revoke = await setObjectPermission(
-      c.w,
-      c.profile,
-      {
-        dataOperations: { create: false, update: false, delete: false },
-        fields: definition.fields.map((f) => ({ fieldCode: f.code, view: f.code !== field, edit: false })),
-        buttons: [],
-      },
-      objectCode,
-    );
-    expect(revoke.status, await revoke.clone().text()).toBe(200);
-    expect((await c.rebuild(0, key)).status, '重放').toBe(403);
-    expect((await c.rebuild(0)).status, '换键新提交').toBe(403);
-    expect((await c.get()).status, 'GET').toBe(403);
-    expect((await c.get('/issues')).status, 'issues').toBe(403);
-  });
+  it.each(REQUIRED_FIELDS)(
+    '撤掉 %s 的 %s 字段查看权后：命令重放、读入口与两种导出同样 403',
+    async (objectCode, field) => {
+      const c = await caller({});
+      const key = randomUUID();
+      expect((await c.rebuild(0, key)).status).toBe(200);
+      expect(
+        (await c.exports()).map((res) => res.status),
+        '撤权前可导出',
+      ).toEqual([200, 200]);
+      const definition = SOURCES.find((source) => source.code === objectCode)!;
+      const revoke = await setObjectPermission(
+        c.w,
+        c.profile,
+        {
+          dataOperations: { create: false, update: false, delete: false },
+          fields: definition.fields.map((f) => ({ fieldCode: f.code, view: f.code !== field, edit: false })),
+          buttons: [],
+        },
+        objectCode,
+      );
+      expect(revoke.status, await revoke.clone().text()).toBe(200);
+      expect((await c.rebuild(0, key)).status, '重放').toBe(403);
+      expect((await c.rebuild(0)).status, '换键新提交').toBe(403);
+      expect((await c.get()).status, 'GET').toBe(403);
+      expect((await c.get('/issues')).status, 'issues').toBe(403);
+      for (const res of await c.exports()) {
+        expect(res.status, `导出 ${res.url}`).toBe(403);
+        await noFile(res);
+      }
+    },
+  );
 });

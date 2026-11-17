@@ -10,15 +10,33 @@ const ID_NAMED_FIELDS: Readonly<Record<string, string>> = {
   departmentId: 'departmentIdName',
   directManagerId: 'directManagerIdName',
   dottedManagerId: 'dottedManagerIdName',
+  // DEC-914：社保方案 / 公司的新值与原值（apps/api approval/reference-names.ts），已办读取为办理时冻结的名称
+  adjustedInsurancePlanId: 'adjustedInsurancePlanIdName',
+  adjustedInsuranceCompanyId: 'adjustedInsuranceCompanyIdName',
+  'insuranceOrigin.planId': 'insuranceOrigin.planIdName',
+  'insuranceOrigin.companyId': 'insuranceOrigin.companyIdName',
+  // F-481：后端读详情时并列下发同序名称数组（api approval/reference-names.ts），查不到的项显示占位、不出裸 ID；
+  // 空数组 = 未发起签署，按空值显示。
+  esignTemplateIds: 'esignTemplateIdsName',
 };
 // 编码字段：同名键在别的业务里是另一种编码（如离职原因 reasonCode，后端不取名）。后端没下发名称键时按原值显示。
 const CODE_NAMED_FIELDS: Readonly<Record<string, string>> = {
   reasonCode: 'reasonCodeName',
   transferTypeCode: 'transferTypeCodeName',
 };
+/**
+ * F-474-8c-3：调整后社保三项的原值随 insuranceOrigin.* 下发（apps/api linkage/approval.ts），不进 form.originals；
+ * 只在调整项下方作“原：旧值”，不单独成行。键缺席表示后端按社保档案查看权裁掉了，不是“原值为空”。
+ */
+export const INSURANCE_ORIGIN: Readonly<Record<string, string>> = {
+  adjustedInsuranceRegionCode: 'insuranceOrigin.regionCode',
+  adjustedInsurancePlanId: 'insuranceOrigin.planId',
+  adjustedInsuranceCompanyId: 'insuranceOrigin.companyId',
+};
 export const NAME_KEYS: ReadonlySet<string> = new Set([
   ...Object.values(ID_NAMED_FIELDS),
   ...Object.values(CODE_NAMED_FIELDS),
+  ...Object.values(INSURANCE_ORIGIN),
   // attachmentRefs 的展开（文件名等元数据）随 ID 一起下发，由附件行展示，不单独成行（F-479 设计 §5.3）
   'attachments',
 ]);
@@ -26,8 +44,13 @@ export const NAME_KEYS: ReadonlySet<string> = new Set([
 export function namedValue(record: Readonly<Record<string, unknown>>, key: string): unknown {
   const value = record[key];
   if (value === null || value === undefined || value === '') return value;
+  if (key === 'esignTemplateIds' && Array.isArray(value) && !value.length) return null;
   const idName = ID_NAMED_FIELDS[key];
-  if (idName) return record[idName] ?? transferText.savedValue;
+  if (idName) {
+    const name = record[idName];
+    if (Array.isArray(name)) return name.map((item: unknown) => item ?? transferText.savedValue);
+    return name ?? transferText.savedValue;
+  }
   const codeName = CODE_NAMED_FIELDS[key];
   if (codeName && codeName in record) return record[codeName] ?? transferText.savedValue;
   return value;

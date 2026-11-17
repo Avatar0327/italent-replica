@@ -18,6 +18,7 @@ import { GRAPH as api_modules_establishment } from './api-modules-establishment.
 import { GRAPH as api_modules_evaluation } from './api-modules-evaluation.js';
 import { GRAPH as api_modules_hr_analysis } from './api-modules-hr-analysis.js';
 import { GRAPH as api_modules_idp } from './api-modules-idp.js';
+import { GRAPH as api_modules_insurance } from './api-modules-insurance.js';
 import { GRAPH as api_modules_job } from './api-modules-job.js';
 import { GRAPH as api_modules_offer } from './api-modules-offer.js';
 import { GRAPH as api_modules_org } from './api-modules-org.js';
@@ -75,6 +76,7 @@ export const GRAPH: Graph = {
   ...api_modules_evaluation,
   ...api_modules_hr_analysis,
   ...api_modules_idp,
+  ...api_modules_insurance,
   ...api_modules_job,
   ...api_modules_offer,
   ...api_modules_org,

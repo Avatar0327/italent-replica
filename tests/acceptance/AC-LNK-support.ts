@@ -17,7 +17,7 @@ export const D = '2026-10-10';
 export interface LinkageItem {
   readonly id: string;
   readonly revision: number;
-  readonly itemType: 'duty_subordinate' | 'duty_org_role' | 'part_time_end';
+  readonly itemType: 'duty_subordinate' | 'duty_org_role' | 'part_time_end' | 'insurance_archive';
   readonly subordinateId: string | null;
   readonly orgId: string | null;
   readonly orgRole: string | null;

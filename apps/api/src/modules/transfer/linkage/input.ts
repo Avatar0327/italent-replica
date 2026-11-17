@@ -15,6 +15,14 @@ export type OrgRole = (typeof ORG_ROLES)[number];
 export type DutyRelation = 'direct' | 'dotted';
 
 const linkageSchema = z.strictObject({
+  esign: z
+    .strictObject({ templateIds: z.array(uuid).min(1).max(20) })
+    .nullable()
+    .optional(),
+  // F-474-8c-2c：社保三项调整值；缴交地是否字典内、方案 / 公司是否可用由 validation.ts 读库校验。
+  adjustedInsuranceRegionCode: z.string().min(1).max(20).nullable().optional(),
+  adjustedInsurancePlanId: uuid.nullable().optional(),
+  adjustedInsuranceCompanyId: uuid.nullable().optional(),
   contract: z
     .strictObject({ targetId: uuid, fields: contractFieldsSchema.default({}) })
     .nullable()
@@ -60,6 +68,7 @@ export interface DutyOrgRole {
 
 /** 规范化后的联动选项；“是否变更合同 / 调整薪资 / 设置试岗 …”以对应项是否存在表示。 */
 export interface LinkageOptions {
+  readonly esign?: { readonly templateIds: readonly string[] } | null;
   readonly contract: { readonly targetId: string; readonly fields: ContractFields } | null;
   readonly adjustSalary: boolean;
   readonly onTrial: { readonly startDate: string | null; readonly months: number } | null;
@@ -69,12 +78,20 @@ export interface LinkageOptions {
     readonly subordinates: readonly DutySubordinate[];
     readonly orgRoles: readonly DutyOrgRole[];
   } | null;
+  readonly adjustedInsuranceRegionCode?: string | null;
+  readonly adjustedInsurancePlanId?: string | null;
+  readonly adjustedInsuranceCompanyId?: string | null;
 }
 
 export function normalizeLinkage(raw: unknown): LinkageOptions {
   const parsed = linkageSchema.safeParse(raw);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '调动联动字段不合法', parsed.error.issues);
   const input = parsed.data;
+  if (input.esign && !input.contract)
+    throw new AppError('VALIDATION_FAILED', '电子签署须同时变更合同', {
+      reason: 'TRANSFER_ESIGN_REQUIRES_CONTRACT',
+    });
+  if (input.esign) assertUnique(input.esign.templateIds, '签署模板不能重复');
   if (input.contract && Object.hasOwn(input.contract.fields, 'effectiveDate'))
     throw new AppError('VALIDATION_FAILED', '变更合同的生效日期即调动生效日期，不能另填', {
       reason: 'TRANSFER_CONTRACT_DATE_FIXED',
@@ -95,12 +112,16 @@ export function normalizeLinkage(raw: unknown): LinkageOptions {
     '兼职记录重复',
   );
   return {
+    esign: input.esign ?? null,
     contract: input.contract ?? null,
     adjustSalary: input.adjustSalary ?? false,
     onTrial: input.onTrial ? { startDate: input.onTrial.startDate ?? null, months: input.onTrial.months } : null,
     handover: input.handover ?? null,
     partTimes: input.partTimes ?? [],
     dutyTransfer: subordinates.length || orgRoles.length ? { subordinates, orgRoles } : null,
+    adjustedInsuranceRegionCode: input.adjustedInsuranceRegionCode ?? null,
+    adjustedInsurancePlanId: input.adjustedInsurancePlanId ?? null,
+    adjustedInsuranceCompanyId: input.adjustedInsuranceCompanyId ?? null,
   };
 }
 

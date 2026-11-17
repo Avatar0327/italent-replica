@@ -16,6 +16,7 @@ import {
   auditObjectMeta,
   auditOperationOf,
   hasAdminCapability,
+  visibleEnterpriseMenus,
 } from '@italent/domain';
 import { auditObjectRegistered } from '../../apps/api/src/audit/visibility.js';
 import { describe, expect, it } from 'vitest';
@@ -33,6 +34,28 @@ describe('matrix.manage ↔ admin.process_matrix', () => {
   it('矩阵设置菜单同口径（不新增授权项：沿用同一管理员能力）', () => {
     const menu = ENTERPRISE_MENUS.find((m) => m.code === 'matrix.settings');
     expect([...menu!.holders].sort()).toEqual([...holders].sort());
+  });
+
+  it('DEC-907：matrix.manage 登记读 / 写能力 process_matrix；持有者可操作，非持有者看不到入口', () => {
+    const menu = ENTERPRISE_MENUS.find((m) => m.code === 'matrix.manage');
+    expect(menu).toMatchObject({ view: 'process_matrix', edit: 'process_matrix' });
+    for (const role of holders)
+      expect(
+        visibleEnterpriseMenus([role]).find((m) => m.code === 'matrix.manage'),
+        role,
+      ).toEqual({
+        code: 'matrix.manage',
+        path: '流程矩阵/矩阵管理',
+        implemented: true,
+        editable: true,
+      });
+    for (const role of ADMIN_ROLES.filter((r) => !holders.includes(r)))
+      expect(
+        visibleEnterpriseMenus([role]).map((m) => m.code),
+        role,
+      ).not.toContain('matrix.manage');
+    // 矩阵设置不在 DEC-907 范围内：仍只保留入口
+    expect(ENTERPRISE_MENUS.find((m) => m.code === 'matrix.settings')?.view).toBeUndefined();
   });
 });
 

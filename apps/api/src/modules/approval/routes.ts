@@ -70,6 +70,7 @@ import {
   withdraw,
   type Outcome,
 } from './actions.js';
+import { enrichProcessView } from './auto-variables.js';
 import { designerPeopleQuery, listDesignerPeople } from './designer-people.js';
 import { ADAPTERS } from './adapters.js';
 import { approvalError, canonicalId, type ApprovalContext, type FieldAccess } from './context.js';
@@ -88,6 +89,7 @@ import { loadPathFacts } from './detail-path.js';
 import {
   detailView,
   namedForm,
+  capturedAttachmentsOf,
   disclosedFields,
   projectLog,
   readDetail,
@@ -245,7 +247,10 @@ async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, wit
 
 async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
   const { ctx, data, view } = await detailViewOf(c, deps, instanceId, true);
-  const named = await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view));
+  // DEC-914：用所选内容快照的业务日期取版本名，不依赖查看人是否能看到生效日。
+  const named = await withTenant(deps.db, ctx.tenantId, (tx) =>
+    namedForm(tx, ctx, view, data.content, data.snapshot.businessDate),
+  );
   // F-476 P8：业务内容不在表单里的类型，已办读冻结份时附类型化内容（缺份 503）
   return c.json({ ...named, ...(await typedContentOf(deps, ctx, data)) });
 }
@@ -257,10 +262,13 @@ async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
 async function respondAttachment(c: C, deps: TenantRouteDeps) {
   const instanceId = uuidParam(c);
   const fileId = uuidParam(c, 'fileId');
-  const { ctx, view } = await detailViewOf(c, deps, instanceId);
+  const { ctx, data, view } = await detailViewOf(c, deps, instanceId);
   const refs = (view.form.values as Record<string, unknown>).attachmentRefs;
+  // §3.2：已办冻结读认办理份里的文件（含此后被本人删去的 detached），现值读只认 bound
+  const captured = capturedAttachmentsOf(data.content);
+  const read = captured ? { mode: 'frozen' as const, captured: captured.map((item) => item.id) } : undefined;
   const { row, bytes } = await withTenant(deps.db, ctx.tenantId, (tx) =>
-    readCarrierAttachment(tx, ctx.tenantId, view.businessId, Array.isArray(refs) ? refs : [], fileId),
+    readCarrierAttachment(tx, ctx.tenantId, view.businessId, Array.isArray(refs) ? refs : [], fileId, read),
   );
   return respondAttachmentBytes(c, row, bytes);
 }
@@ -307,6 +315,22 @@ async function processResponse(c: C, deps: TenantRouteDeps, result: CommandResul
   return c.json(await trimProcess(deps, tenantCtx(c), result.body as object), result.status);
 }
 
+const publishSchema = z.preprocess(
+  (value) => value ?? {},
+  z.strictObject({
+    pendingResolutions: z
+      .array(
+        z.strictObject({
+          variableId: z.uuid(),
+          revision: z.number().int().min(0),
+          choice: z.enum(['designer', 'current']),
+        }),
+      )
+      .max(100)
+      .default([]),
+  }),
+);
+
 export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
   registerHooks(deps);
   // F-039：子应用套本模块登记表（APPROVAL_POLICIES），注册行不变、处理函数不变
@@ -314,6 +338,7 @@ export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
   // 审批通过后的任职联动可能撞到组织调整的执行暂停：编号按查看人的调整单可见性披露（F-342 / F-355）
   module.onError(pauseDisclosureHandler(deps));
   registerProcessRoutes(module, deps);
+  registerProcessLifecycleRoutes(module, deps);
   registerVariableRoutes(module, deps);
   registerMatrixRoutes(module, deps);
   registerTenantConfigRoutes(module, deps);
@@ -390,7 +415,9 @@ function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/processes/:id', async (c) => {
     const ctx = readCtx(c, deps);
     await requireProcessView(deps, ctx);
-    const view = await withTenant(deps.db, ctx.tenantId, (tx) => loadProcess(tx, ctx.tenantId, uuidParam(c)));
+    const view = await withTenant(deps.db, ctx.tenantId, async (tx) =>
+      enrichProcessView(tx, ctx.tenantId, await loadProcess(tx, ctx.tenantId, uuidParam(c))),
+    );
     return c.json(await trimProcess(deps, ctx, view));
   });
   router.post('/processes', async (c) => {
@@ -416,9 +443,24 @@ function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     });
     return processResponse(c, deps, result);
   });
+}
+
+/** 流程的发布、新版本与作废（发布可带待生效变量的逐项处理，S7a）。 */
+function registerProcessLifecycleRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  // 发布可带“待生效变量冲突”的逐项处理（S7a）；不带请求体或空对象照旧
+  router.post('/processes/:id/publish', async (c) => {
+    const ctx = writeCtx(c, deps);
+    const id = uuidParam(c);
+    const input = await parseBody(c, publishSchema);
+    await requireProcessButton(deps, ctx, 'publish');
+    const result = await command(c, deps, ctx, { id, ...input }, async (tx, context) => ({
+      status: 200,
+      body: await publishProcess(tx, context, id, input.pendingResolutions),
+    }));
+    return processResponse(c, deps, result);
+  });
   const lifecycle = [
     ['versions', 'newVersion', newVersion, 201],
-    ['publish', 'publish', publishProcess, 200],
     ['discard', 'discard', discardProcess, 200],
   ] as const;
   for (const [path, button, run, status] of lifecycle) {

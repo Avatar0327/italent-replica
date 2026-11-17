@@ -108,6 +108,7 @@ export function emptyPresetFields(): PresetFields {
 export type EmploymentScope = Awaited<ReturnType<typeof resolveModuleScope>>;
 
 export interface EmploymentContext {
+  readonly tenantName?: string;
   /** 本人自助路由重验账号绑定后设置；仅用于同表单的字段权限继承策略。 */
   readonly selfServiceEmployeeId?: string;
   /** DEC-790：只由本人申请入口设置，用专属字段载体授权。 */

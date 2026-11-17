@@ -74,12 +74,17 @@ export const TRANSFER_DETAIL_VIEW: readonly TransferViewItem[] = [
   form('兼职调整', 'ParttimeJobInfo', 'partTimeEnds'),
   later('薪资调整', null, '薪酬模块', '社保缴交等薪资明细暂缓（DEC-002），只记“是否调整薪资”'),
   form('合同变更', null, 'contractChange'),
+  // F-481 §8.1：合同段只读显示是否发起电子文件签署与所选模板（名称由 api approval/reference-names.ts 并列下发）
+  form('发起电子文件签署', null, 'electronicSignature'),
+  form('电子签署模板', null, 'esignTemplateIds'),
   form('职责转交', null, 'dutyTransfer'),
   later('目标调整', null, '未排期', `${NO_MODEL}（目标调整未列入任务书范围）`),
 ];
 
 /** R1-T10 联动字段（审批载荷、变化检测与字段权限的编码；值见 transfer/linkage/approval.ts）。 */
 export const TRANSFER_LINKAGE_FIELDS = [
+  'electronicSignature',
+  'esignTemplateIds',
   'isChangeContract',
   'contractChange',
   'adjustSalary',
@@ -88,6 +93,10 @@ export const TRANSFER_LINKAGE_FIELDS = [
   'handoverPersonId',
   'partTimeEnds',
   'dutyTransfer',
+  // F-474-8c-2c：社保调整值（缴交地 / 方案 / 公司），与 module-actions 的 INSURANCE_ADJUST_FIELDS 同名同序。
+  'adjustedInsuranceRegionCode',
+  'adjustedInsurancePlanId',
+  'adjustedInsuranceCompanyId',
 ] as const;
 
 /** 预置调动流程的节点表单：已交付且在审批表单上的字段（顺序同原站视图）。 */

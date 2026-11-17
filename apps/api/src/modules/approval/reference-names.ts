@@ -1,7 +1,7 @@
 /**
  * F-474-3b 返工 P2-2：审批详情里引用字段的名称（单一入口，接在 employmentTypeNames 之后）。
  * 只给表单里已下发（已过字段裁剪）的 ID / 编码并列附名称：当前值与原值各自附，ID 与编码本身不改；
- * 所有查询带租户条件，查不到（停用 / 删除 / 跨租户）一律为 null，前端显示占位而不回落成 ID。
+ * 所有查询带租户条件，查不到一律为 null；社保引用停用照常取名（DEC-914），前端显示占位而不回落成 ID。
  * 披露口径（假设，见 PR 描述）：名称随已下发的 ID 一同呈现，与 F-323a 人员类别取名同口径，不再叠加组织模块的范围判断。
  */
 import { sql, type Tx } from '@italent/db';
@@ -9,24 +9,33 @@ import { TRANSFER_REASONS, TRANSFER_TYPES, tenantLocalDate } from '@italent/doma
 import { AppError } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { employeeName } from '../employment/employees.js';
+import { signTemplateView } from '../esign/transfer-input.js';
 import { loadOrgSnapshot } from '../org/read-model.js';
+import { insuranceReferenceNames } from '../insurance/reference-names.js';
 import { rowsOf } from './context.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEPARTMENT_KEYS = ['departmentId'] as const;
+const INSURANCE_PLAN_KEYS = ['adjustedInsurancePlanId', 'insuranceOrigin.planId'] as const;
+const INSURANCE_COMPANY_KEYS = ['adjustedInsuranceCompanyId', 'insuranceOrigin.companyId'] as const;
 const PERSON_KEYS = ['directManagerId', 'dottedManagerId'] as const;
 // 原因 / 调动类型是调动字典；离职等业务的 reasonCode 属于别的字典，所以只对调动单取名。
 const CODE_KEYS = { reasonCode: 'reasons', transferTypeCode: 'types' } as const;
+// F-481 §8.1：调动单所选签署模板，名称为与 ID 同序的数组（停用照常取名，查不到为 null）
+const TEMPLATE_KEY = 'esignTemplateIds';
 
 interface FormShape {
   values: Record<string, unknown>;
   originals?: Record<string, unknown>;
 }
 
-const stringsOf = (records: readonly Record<string, unknown>[], keys: readonly string[]) =>
+const stringsOf = (records: readonly Record<string, unknown>[], keys: readonly string[], unnamedOnly = false) =>
   new Set(
     records.flatMap((record) =>
-      keys.map((key) => record[key]).filter((v): v is string => typeof v === 'string' && !!v),
+      keys
+        .filter((key) => !unnamedOnly || !Object.hasOwn(record, `${key}Name`))
+        .map((key) => record[key])
+        .filter((v): v is string => typeof v === 'string' && !!v),
     ),
   );
 
@@ -59,6 +68,13 @@ async function departmentNames(tx: Tx, ctx: TenantContext & { now: Date }, ids: 
   return names;
 }
 
+async function templateNames(tx: Tx, tenantId: string, records: readonly Record<string, unknown>[]) {
+  const ids = records.flatMap((record) => (Array.isArray(record[TEMPLATE_KEY]) ? record[TEMPLATE_KEY] : []));
+  const valid = [...new Set(ids.filter((id): id is string => typeof id === 'string' && UUID.test(id)))];
+  const views = await signTemplateView(tx, tenantId, valid);
+  return new Map(views.flatMap((view) => (view.name === null ? [] : [[view.id, view.name] as const])));
+}
+
 async function personNames(tx: Tx, tenantId: string, ids: ReadonlySet<string>) {
   const names = new Map<string, string>();
   for (const id of ids) {
@@ -77,6 +93,7 @@ export async function referenceNames<T extends { form: FormShape }>(
   ctx: TenantContext & { now: Date },
   approvalType: string,
   view: T,
+  businessDate?: string,
 ): Promise<T> {
   const records = [view.form.values, ...(view.form.originals ? [view.form.originals] : [])];
   const isTransfer = approvalType === 'transfer';
@@ -86,6 +103,16 @@ export async function referenceNames<T extends { form: FormShape }>(
   const dictionaries = new Map<string, Map<string, string>>();
   for (const [key, kind] of codeKinds)
     dictionaries.set(key, await dictionaryNames(tx, ctx.tenantId, kind, stringsOf(records, [key])));
+  const insurance = isTransfer
+    ? await insuranceReferenceNames(
+        tx,
+        ctx.tenantId,
+        businessDate,
+        stringsOf(records, INSURANCE_PLAN_KEYS, true),
+        stringsOf(records, INSURANCE_COMPANY_KEYS, true),
+      )
+    : null;
+  const templates = isTransfer ? await templateNames(tx, ctx.tenantId, records) : null;
   const named = (record: Record<string, unknown>) => {
     const result = { ...record };
     const attach = (key: string, names: ReadonlyMap<string, string>) => {
@@ -97,6 +124,25 @@ export async function referenceNames<T extends { form: FormShape }>(
     for (const key of DEPARTMENT_KEYS) attach(key, departments);
     for (const key of PERSON_KEYS) attach(key, people);
     for (const [key] of codeKinds) attach(key, dictionaries.get(key)!);
+    if (insurance) {
+      for (const [keys, names] of [
+        [INSURANCE_PLAN_KEYS, insurance.plans],
+        [INSURANCE_COMPANY_KEYS, insurance.companies],
+      ] as const) {
+        for (const key of keys) {
+          // 名称不能单独存在：ID 被裁掉 / 为空时，连已有标签也不得带出。
+          if (typeof record[key] !== 'string' || !record[key]) delete result[`${key}Name`];
+          else attach(key, names);
+        }
+      }
+    }
+    if (templates) {
+      const ids = record[TEMPLATE_KEY];
+      // 同社保：名称不单独存在；已带名称（办理时冻结）不覆盖
+      if (!Array.isArray(ids)) delete result[`${TEMPLATE_KEY}Name`];
+      else if (!Object.hasOwn(record, `${TEMPLATE_KEY}Name`))
+        result[`${TEMPLATE_KEY}Name`] = ids.map((id) => (typeof id === 'string' && templates.get(id)) || null);
+    }
     return result;
   };
   return {

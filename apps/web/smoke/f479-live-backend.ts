@@ -4,7 +4,8 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { Authorizer } from '@italent/api';
-import { EMPLOYMENT_API, exitWorld, type ExitWorld } from '../../../tests/acceptance/AC-ATT-S2-support.js';
+import { MODULE_OBJECTS } from '@italent/domain';
+import { APPROVAL, EMPLOYMENT_API, exitWorld, type ExitWorld } from '../../../tests/acceptance/AC-ATT-S2-support.js';
 import { png } from '../../../tests/acceptance/AC-ATT-support.js';
 import { pinExitGate } from '../../../tests/acceptance/support/tenant-api.js';
 import { createTestDb } from '../../../packages/testkit/src/test-db.js';
@@ -29,6 +30,34 @@ async function bodyOf(req: IncomingMessage) {
   return raw ? (JSON.parse(raw) as unknown) : undefined;
 }
 
+/**
+ * 租户 C（AC-FE-ATT-09 / AC-ATT-26 同一场景）：两节点流程，首节点 lead 同意、第二节点 X 驳回；本人删去 P 再提交。
+ * 第二轮 lead 待办（现值只有 Q），X 是已办（办理时冻结份有 P、Q）。办理走真实授权引擎，办理份的披露上限才是真的。
+ */
+async function seedFrozen(db: Parameters<typeof exitWorld>[0]) {
+  const x = await exitWorld(db, 'F479-C', { leadFirst: true });
+  const me = await x.a.person('合成本人丁');
+  const [p, q] = await x.uploads(me, 2);
+  // 改动字段里有审批人看不到的会被盲审拦下：办理人先授任职对象全部字段
+  const fields = MODULE_OBJECTS.employmentRecord.fields.map((field) => field.code);
+  await x.grantFields(x.lead!.userId, fields);
+  await x.grantFields(x.approver.userId, fields);
+  const { draft, instance, task } = await x.submitted(me, [p!.id, q!.id]);
+  const act = (user: { userId: string }, taskId: string, action: string, revision: number) =>
+    x.asUser(user, `${APPROVAL}/tasks/${taskId}/${action}`, 'POST', { ifMatch: revision, body: { comment: '办理' } });
+  const approved = await act(x.lead!, task.id, 'approve', instance.revision);
+  if (approved.status !== 200) throw new Error(`lead approve ${approved.status}: ${await approved.text()}`);
+  const view = await x.w.detail(instance.id, me.userId);
+  const rejected = await act(x.approver, x.w.pending(view)[0]!.id, 'reject', view.revision);
+  if (rejected.status !== 200) throw new Error(`reject ${rejected.status}: ${await rejected.text()}`);
+  const returned = await x.read(me, draft.id);
+  const saved = await x.w.json<{ revision: number }>(await x.patch(me, returned, { attachmentRefs: [q!.id] }));
+  const again = await x.submit(me, { id: draft.id, revision: saved.revision });
+  if (again.status !== 200) throw new Error(`resubmit ${again.status}: ${await again.text()}`);
+  const running = (await x.w.instanceOfAll(draft.id, me.userId)).find((item) => item.status === 'running')!;
+  return { x, me, p: p!.id, q: q!.id, instanceId: running.id };
+}
+
 /** 两个租户的合成场景：A 有本人 / 审批人（有字段权）/ 无字段权审批人 / HR；B 有一张带附件的本人草稿。 */
 async function seed(db: Parameters<typeof exitWorld>[0]) {
   const a = await exitWorld(db, 'F479-A');
@@ -49,7 +78,8 @@ async function seed(db: Parameters<typeof exitWorld>[0]) {
   const other = await b.a.person('合成本人丙');
   const [otherFile] = await b.uploads(other, 1);
   const draft = await b.createDraft(other, [otherFile!.id]);
-  return { a, b, employee, blind, other, blindInstance: scene.instance.id, otherDraft: draft.id };
+  const frozen = await seedFrozen(db);
+  return { a, b, employee, blind, other, blindInstance: scene.instance.id, otherDraft: draft.id, frozen };
 }
 type Seeded = Awaited<ReturnType<typeof seed>>;
 
@@ -66,6 +96,7 @@ function handler(world: Seeded) {
   const worlds = new Map<string, ExitWorld>([
     [a.w.tenant.id, a],
     [b.w.tenant.id, b],
+    [world.frozen.x.w.tenant.id, world.frozen.x],
   ]);
   const hrApi = a.restrictedHr(hrAuthorize, [...HR_FIELDS, ...HR_EXTRA]);
   return async (req: IncomingMessage, res: ServerResponse) => {
@@ -124,6 +155,14 @@ export async function startExitAttachmentBackend() {
           blindInstance: world.blindInstance,
         },
         b: { tenant: b.w.tenant.id, employee: persona(world.other), draft: world.otherDraft },
+        c: {
+          tenant: world.frozen.x.w.tenant.id,
+          handled: persona(world.frozen.x.approver),
+          pending: persona(world.frozen.x.lead!),
+          instanceId: world.frozen.instanceId,
+          dropped: world.frozen.p,
+          kept: world.frozen.q,
+        },
         // 浏览器上传用的两张合成位图（与验收夹具同一生成器）
         images: [png(3, 3), png(4, 4)].map((bytes) => bytes.toString('base64')),
       },

@@ -4,11 +4,13 @@ import type { LinkageItemView, LinkageView } from './types.js';
 
 export function LinkagePanel(props: { view: LinkageView; busy?: boolean; onRetry?: (item: LinkageItemView) => void }) {
   const { view } = props;
+  // 电子签选择随联动选项保存，生效前就要能看到，所以未执行时也显示（F-481 §8.1）。
   if (!view.executedAt)
     return (
       <section className="transfer-linkage" aria-label={linkageText.detail}>
         <h3>{linkageText.detail}</h3>
         <p>{linkageText.pending}</p>
+        <EsignLine view={view} />
       </section>
     );
   return (
@@ -17,6 +19,7 @@ export function LinkagePanel(props: { view: LinkageView; busy?: boolean; onRetry
       <p>
         {linkageText.executedAt}：{view.executedAt}
       </p>
+      <EsignLine view={view} />
       {view.contract && <p>{linkageText.contractChanged}</p>}
       {view.onTrial && (
         <p>
@@ -38,6 +41,12 @@ export function LinkagePanel(props: { view: LinkageView; busy?: boolean; onRetry
           <ItemList items={view.dutyTransfer.items} {...props} />
         </>
       )}
+      {view.insuranceArchive && (
+        <>
+          <h4>{linkageText.insuranceArchive}</h4>
+          <ItemList items={[view.insuranceArchive]} {...props} />
+        </>
+      )}
       {view.partTimes.length > 0 && (
         <>
           <h4>{linkageText.partTimes}</h4>
@@ -45,6 +54,27 @@ export function LinkagePanel(props: { view: LinkageView; busy?: boolean; onRetry
         </>
       )}
     </section>
+  );
+}
+
+/** esign 键缺席 = 两字段任一不可见，整行不显示；null = 否。 */
+function EsignLine({ view }: { view: LinkageView }) {
+  if (view.esign === undefined) return null;
+  if (view.esign === null)
+    return (
+      <p>
+        {linkageText.electronicSignature}：{linkageText.esignNo}
+      </p>
+    );
+  const names = view.esign.templates.flatMap(({ name, available }) => {
+    if (name === null) return [];
+    return [available ? name : linkageText.esignDisabled(name)];
+  });
+  return (
+    <p>
+      {linkageText.electronicSignature}：{linkageText.esignYes}
+      {names.length > 0 && `（${names.join('、')}）`}
+    </p>
   );
 }
 

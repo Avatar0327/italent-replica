@@ -9,7 +9,8 @@ import { completedDetail } from '../demo-stubs/approval.js';
 import { applicationGroups } from './application-groups.js';
 import { approvalEditGroup } from './EditFields.js';
 import { actionTask, editValues } from './edit-model.js';
-import { NAME_KEYS, namedValue, sameValue } from './named-fields.js';
+import { InsuranceField } from './InsuranceField.js';
+import { INSURANCE_ORIGIN, NAME_KEYS, namedValue, sameValue } from './named-fields.js';
 import { useApprovalAction } from './action-command.js';
 import { decisionButtons, logActor, logComment, readApproval, uuidPattern, visibleActions } from './api.js';
 import {
@@ -60,6 +61,8 @@ function FieldList({ detail, fields }: { detail: Detail; fields: { key: string; 
     <dl className="approval-fields">
       {fields.map(({ key, label }) => {
         if (key === 'attachmentRefs') return <AttachmentField key={key} detail={detail} label={label} />;
+        if (key in INSURANCE_ORIGIN)
+          return <InsuranceField key={key} values={detail.form.values} field={key} label={label} />;
         // 后端 originals 带着前一条记录的全部字段，没变的也在里面：只有值真的不同才算“改变”
         const changed = key in originals && !sameValue(detail.form.values[key], originals[key]);
         return (

@@ -11,7 +11,12 @@
 import { withTenant, type Tx } from '@italent/db';
 import { sql } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
+import { captureAttachments, type AttachmentSummary } from '../attachments/carrier-read.js';
 import type { TenantRouteDeps } from '../../routes.js';
+import type { Run } from '../approval/engine.js';
+import type { ApprovalContext } from '../approval/context.js';
+import type { HandlerFacts } from '../approval/handling-content.js';
+import { captureInsuranceRefs, type InsuranceRefs } from '../insurance/approval-content.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { approvalError } from '../approval/context.js';
 import { disclosedFields, readDetail, type DetailData } from '../approval/disclosure.js';
@@ -103,6 +108,7 @@ export interface EmploymentContent {
   readonly business: Row;
   /** 离职单 / 退休单的专用详情内容；其他类型为 null。 */
   readonly exit: Row | null;
+  readonly insuranceRefs?: InsuranceRefs;
 }
 
 const isRow = (value: unknown): value is Row => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -117,6 +123,9 @@ export async function loadEmploymentContent(
   tx: Tx,
   tenantId: string,
   businessId: string,
+  ctx: ApprovalContext,
+  run: Run,
+  handler: HandlerFacts,
 ): Promise<EmploymentContent | null> {
   // 业务内容不随查询日期变化；asOf 只影响生效后的“当前记录”，那属于流程事实、不进办理份
   const business = await loadEmploymentBusiness(tx, tenantId, businessId, new Date().toISOString().slice(0, 10));
@@ -128,9 +137,29 @@ export async function loadEmploymentContent(
         ? await loadRetirementDetail(tx, tenantId, businessId, undefined)
         : null;
   return {
+    ...(business.kind === 'transfer'
+      ? {
+          insuranceRefs: await captureInsuranceRefs(
+            tx,
+            tenantId,
+            run.snapshot,
+            ctx.actorUserId === null ? new Set<string>() : handler.viewable,
+          ),
+        }
+      : {}),
     business: contentOf(business as unknown as Row, BUSINESS_FACTS),
-    exit: exit ? contentOf(exit as unknown as Row, EXIT_FACTS) : null,
+    exit: exit ? withCapturedAttachments(contentOf(exit as unknown as Row, EXIT_FACTS)) : null,
   };
+}
+
+/**
+ * F-479 §2.3 附件字段的捕获契约：办理份里 attachmentRefs 是有序 ID 列表（已在内容里），attachments 只存展示元数据
+ * [{id, filename, contentType, byteSize}]；不存字节、下载地址与上传时间。退休单没有附件键，原样返回。
+ */
+function withCapturedAttachments(exit: Row): Row {
+  const listed = exit.attachments;
+  if (!Array.isArray(listed)) return exit;
+  return { ...exit, attachments: captureAttachments(listed as AttachmentSummary[]) };
 }
 
 /** 办理份里的业务日期：YYYY-MM-DD 且是真实存在的日子（投影会做日期运算，非法值会在投影里抛错）。 */
@@ -221,6 +250,17 @@ export function composeExit(live: object, content: EmploymentContent): Row {
     ...frozen,
     dutyTransfer: { ...duty, timing: frozen.dutyTransferTiming },
   };
+}
+
+/**
+ * 已办读离职详情时附件只留“现在仍是 bound 的”：HR 载体下载只认 bound（设计 §3.3），办理份里后来被删去 / 清理的文件
+ * 整项缺席，不回显办理时的旧文件名。`live` 是同一请求取的现值详情（只含 bound 摘要）。
+ */
+export function keepLiveAttachments(frozen: Row, live: { readonly attachments?: readonly { id: string }[] }): Row {
+  if (!Array.isArray(frozen.attachments)) return frozen;
+  const current = new Set((live.attachments ?? []).map((item) => item.id.toLowerCase()));
+  const kept = (frozen.attachments as readonly { id: string }[]).filter((item) => current.has(item.id.toLowerCase()));
+  return { ...frozen, attachments: kept };
 }
 
 /**

@@ -1,3 +1,5 @@
+import { insuranceText } from '../transfer/messages.js';
+
 export const messages = {
   title: '审批中心',
   operation: '操作',
@@ -91,6 +93,9 @@ export const typeLabels: Record<string, string> = {
 };
 export const fieldLabels: Record<string, string> = {
   effectiveDate: '生效日期',
+  adjustedInsuranceRegionCode: insuranceText.adjustedRegion,
+  adjustedInsurancePlanId: insuranceText.adjustedPlan,
+  adjustedInsuranceCompanyId: insuranceText.adjustedCompany,
   attachmentRefs: '手写离职申请附件',
   originalEffectiveDate: '原计划生效日期',
   actualEffectiveDate: '实际生效日期',
@@ -98,6 +103,9 @@ export const fieldLabels: Record<string, string> = {
   transferTypeCode: '调动类型',
   employeeId: '人员编号',
   employeeName: '姓名',
+  // F-481 §3.1：联动选项里的电子签两项（apps/api transfer/linkage/approval.ts）
+  electronicSignature: '发起电子文件签署',
+  esignTemplateIds: '电子签署模板',
 };
 
 /** F-132 第 2 段：审批中心各子页按原站（DEC-489：以原站为准，取证只在本机查看）。 */
@@ -240,6 +248,7 @@ export const detailText = {
   original: (value: string) => `原：${value}`,
   transferInfo: '调动信息',
   transferAdjust: '任职调整',
+  salaryAdjust: '薪资调整',
   otherInfo: '其他信息',
   locked: (action: string) => `本单有未确认的“${action}”操作，请打开核对结果；确认前不能发起其他操作。`,
   submitted: '提交',

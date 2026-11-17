@@ -330,10 +330,15 @@ export const APPROVAL: RequiredTable = {
   'PUT /api/tenant/approval/processes/:id/draft': [
     processWrite(route('PUT', '/processes/:id/draft', "await requireProcessButton(deps, ctx, 'update')")),
   ],
+  // S7a：发布带待生效变量的逐项处理，单独成显式路由；新版本 / 作废仍在循环里。
+  // 三条都在 registerProcessLifecycleRoutes（registerProcessRoutes 受 80 行函数上限，放不下）
+  'POST /api/tenant/approval/processes/:id/publish': [
+    processWrite(route('POST', '/processes/:id/publish', "await requireProcessButton(deps, ctx, 'publish')")),
+  ],
   ...Object.fromEntries(
-    ['versions', 'publish', 'discard'].map((path) => [
+    ['versions', 'discard'].map((path) => [
       `POST /api/tenant/approval/processes/:id/${path}`,
-      [processWrite(fn('registerProcessRoutes', 'await requireProcessButton(deps, ctx, button)'))],
+      [processWrite(fn('registerProcessLifecycleRoutes', 'await requireProcessButton(deps, ctx, button)'))],
     ]),
   ),
   'POST /api/tenant/approval/exception-admins/handover': [
@@ -437,7 +442,7 @@ export const APPROVAL: RequiredTable = {
   'GET /api/tenant/approval/instances/:id': canOpen(fn('detailViewOf', 'const viewer = await viewerOf(deps, ctx)')),
   // 探测器在本路由处直接观测到 assertCanOpen / retrievableTask（与详情不同：载体读在入口里再取一次值），显式承接
   'GET /api/tenant/approval/instances/:id/attachments/:fileId/content': canOpen(
-    fn('respondAttachment', 'const { ctx, view } = await detailViewOf(c, deps, instanceId)'),
+    fn('respondAttachment', 'const { ctx, data, view } = await detailViewOf(c, deps, instanceId)'),
   ).map((o, index) =>
     index === 0 ? { ...o, facts: ['relation:assertCanOpen', 'relation:retrievable（retrievableTask）'] } : o,
   ),

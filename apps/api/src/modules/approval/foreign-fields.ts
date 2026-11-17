@@ -5,7 +5,7 @@
  * 详情、审批动作与同人自动跳过三处共用本判定；没有判定入口的调用方一律按看不到处理（fail-closed）。
  */
 import type { Tx } from '@italent/db';
-import { CONTRACT_OBJECT } from '@italent/domain';
+import { CONTRACT_OBJECT, MODULE_OBJECTS } from '@italent/domain';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { AppError } from '../../errors.js';
@@ -65,11 +65,14 @@ export function foreignVisibility(
 ): ForeignVisible {
   const objects = new Map<string, ReturnType<typeof objectAccess>>();
   return async (field) => {
-    // 目前只有合同对象嵌入审批载荷；其他对象没有范围判定入口，按看不到处理。
-    if (field.objectCode !== CONTRACT_OBJECT) return false;
+    // 嵌入审批载荷的只有合同对象与社保档案对象；其他对象没有判定入口，按看不到处理。
+    const profile = field.objectCode === MODULE_OBJECTS.socialSecurityProfile.code;
+    if (field.objectCode !== CONTRACT_OBJECT && !profile) return false;
     if (!objects.has(field.objectCode)) objects.set(field.objectCode, objectAccess(deps, ctx, tx, field.objectCode));
     const access = await objects.get(field.objectCode)!;
     if (!access.view || (access.fields !== undefined && !access.fields.has(field.field))) return false;
+    // 社保原值只看对象与字段查看权，不查员工数据范围（DEC-896④）。
+    if (profile) return true;
     try {
       await checkScope(
         tx,

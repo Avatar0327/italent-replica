@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
+import { useTestDb, withCurrentWriteColumns } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { tenantLocalDate } from '@italent/domain';
 import { listCompletionTodos, remindCompletion } from '../../apps/api/src/modules/transfer/completion.js';
@@ -13,12 +13,16 @@ it('P2-03 回填旧待补全且不重复近期提醒；F-017 DEC-188 只基线�
   const handle = database();
   await skipUnlessMigratorBypassesRls(context, handle.db);
   // 当前任职接口会写 R1-T16 新增的审计列，旧结构上临时补出（只影响夹具，断言不变）
-  const session = await withPreAuditSchema(handle.db, () => employmentSession(handle.db, 'f017upgrade'));
+  const session = await withPreAuditSchema(handle.db, () =>
+    withCurrentWriteColumns(handle.db, () => employmentSession(handle.db, 'f017upgrade')),
+  );
   const tenantId = session.tenant.id;
   const ids: string[] = [];
   const employees: string[] = [];
   for (const offset of [-1, 0, 1]) {
-    const employee = await withPreAuditSchema(handle.db, () => session.employee());
+    const employee = await withPreAuditSchema(handle.db, () =>
+      withCurrentWriteColumns(handle.db, () => session.employee()),
+    );
     const [staff, business, payload] = [randomUUID(), randomUUID(), randomUUID()];
     ids.push(business);
     employees.push(employee.id);

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CustomFieldDefinitionsPage } from './CustomFieldDefinitionsPage.js';
 import { pages } from './pages.js';
+import { mergeOptions } from './model.js';
 import { SessionProvider } from '../foundation/Session.js';
 import { PermissionsProvider } from '../foundation/Permissions.js';
 
@@ -29,9 +30,12 @@ const row = {
   objectType: 'employment',
   valueType: 'text',
   inherit: true,
+  // 真实 GET 形状（configuration.ts fieldSelect）：非 select 也返回 options: []。
+  options: [] as { value: string; label: string; enabled: boolean }[],
 };
 let mode = 'success';
 let currentRow = { ...row };
+let conflictRow: typeof row | undefined;
 let host: HTMLDivElement;
 let root: Root;
 let permission: typeof permissionFixture;
@@ -100,6 +104,7 @@ beforeEach(() => {
   permission = permissionFixture;
   mode = 'success';
   currentRow = { ...row };
+  conflictRow = undefined;
   posts = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = String(input);
@@ -111,8 +116,17 @@ beforeEach(() => {
       posts.push({ url, method, body, headers: new Headers(init?.headers) });
       if (mode === 'unknown') throw new TypeError('synthetic network failure');
       if (mode === 'conflict' && posts.length === 1) {
-        currentRow = { ...row, revision: 2, inherit: false };
+        currentRow = conflictRow ?? { ...row, revision: 2, inherit: false };
         return Response.json({ error: { code: 'REVISION_CONFLICT' } }, { status: 409 });
+      }
+      // 与后端 setCustomFieldOptions 同一规则（configuration.ts）：已保存的选项编码缺一个即 400。
+      const saved = currentRow.options.map((option) => option.value);
+      const sent = (body as { options?: { value: string }[] }).options?.map((option) => option.value);
+      if (url.endsWith('/options') && saved.some((value) => !sent?.includes(value))) {
+        return Response.json(
+          { error: { code: 'VALIDATION_FAILED', message: '已有选项不可删除或修改编码' } },
+          { status: 400 },
+        );
       }
       return Response.json(
         {
@@ -138,6 +152,164 @@ afterEach(async () => {
 });
 
 describe('AC-FE-F4746b0 定义管理', () => {
+  it('AC-F474-0BFE01 新建单选时编辑选项，以稳定编码提交 options', async () => {
+    permission = {
+      ...permissionFixture,
+      viewableFields: [...permissionFixture.viewableFields, 'options'],
+      editableFields: [...permissionFixture.editableFields, 'options'],
+    };
+    await render();
+    await click('新建');
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    type(dialog.querySelector<HTMLInputElement>('input[id$="name"]')!, '合成下拉');
+    await act(() =>
+      dialog
+        .querySelector('input[id$="valueType"]')!
+        .closest('.ant-select')!
+        .querySelector('.ant-select-selector')!
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true })),
+    );
+    await settle();
+    const select = [...document.querySelectorAll<HTMLElement>('.ant-select-item-option')].find(
+      (node) => node.textContent === '单选下拉',
+    );
+    expect(select, '第六种类型为单选下拉').toBeDefined();
+    await act(() => select!.click());
+    await settle();
+    await click('新增选项', dialog);
+    type(dialog.querySelector<HTMLInputElement>('[aria-label="选项名称 1"]')!, '合成东区');
+    await settle();
+    await click('保存', dialog);
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.body).toEqual({
+      name: '合成下拉',
+      objectType: 'employment',
+      valueType: 'select',
+      options: [{ value: expect.any(String), label: '合成东区', enabled: true }],
+    });
+  });
+
+  it('AC-F474-0BFE02 选项结果未知，重开锁定编辑器并复用原命令', async () => {
+    permission = {
+      ...permissionFixture,
+      viewableFields: [...permissionFixture.viewableFields, 'options'],
+      editableFields: [...permissionFixture.editableFields, 'options'],
+    };
+    Object.assign(currentRow, { valueType: 'select', options: [{ value: 'east', label: '合成东区', enabled: true }] });
+    mode = 'unknown';
+    await render();
+    await click('编辑选项');
+    const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
+    type(dialog().querySelector<HTMLInputElement>('[aria-label="选项名称 1"]')!, '合成新区');
+    await settle();
+    await click('保存', dialog());
+    await click('取消', dialog());
+    await click('编辑选项');
+    expect(dialog().querySelector<HTMLInputElement>('[aria-label="选项名称 1"]')!.disabled).toBe(true);
+    mode = 'success';
+    await click('按原命令重试', dialog());
+    expect(posts).toHaveLength(2);
+    expect(posts[1]!.body).toEqual({ options: [{ value: 'east', label: '合成新区', enabled: true }] });
+    expect(posts[1]!.url).toContain('/options');
+    expect([...posts[1]!.headers]).toEqual([...posts[0]!.headers]);
+  });
+
+  it('AC-F474-0BFE03 选项 409 重读后显示他人改名，改回打开时的原名以新 revision 提交', async () => {
+    permission = {
+      ...permissionFixture,
+      viewableFields: [...permissionFixture.viewableFields, 'options'],
+      editableFields: [...permissionFixture.editableFields, 'options'],
+    };
+    const east = { value: 'east', label: '合成东区', enabled: true };
+    Object.assign(currentRow, { valueType: 'select', options: [east] });
+    conflictRow = { ...currentRow, revision: 2, options: [{ ...east, label: '合成他人改名' }] };
+    mode = 'conflict';
+    await render();
+    await click('编辑选项');
+    const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
+    const label = () => dialog().querySelector<HTMLInputElement>('[aria-label="选项名称 1"]')!;
+    type(label(), '合成新区');
+    await settle();
+    await click('保存', dialog());
+    expect(posts[0]!.body).toEqual({ options: [{ ...east, label: '合成新区' }] });
+    await click('重读最新版本', dialog());
+    await click('已核对差异，继续编辑', dialog());
+    type(label(), '合成东区');
+    await settle();
+    await click('保存', dialog());
+    expect(posts).toHaveLength(2);
+    expect(posts[1]!.url).toContain(`/${row.id}/options`);
+    expect(posts[1]!.body).toEqual({ options: [east] });
+    expect(posts[1]!.headers.get('if-match')).toBe('2');
+  });
+
+  it('AC-F474-0BFE04 他人新增选项后本人改名 409，重读合并他人新增项并以新 revision 保存成功', async () => {
+    permission = {
+      ...permissionFixture,
+      viewableFields: [...permissionFixture.viewableFields, 'options'],
+      editableFields: [...permissionFixture.editableFields, 'options'],
+    };
+    const east = { value: 'east', label: '合成东区', enabled: true };
+    const west = { value: 'west', label: '合成西区', enabled: true };
+    Object.assign(currentRow, { valueType: 'select', options: [east] });
+    conflictRow = { ...currentRow, revision: 2, options: [east, west] };
+    mode = 'conflict';
+    await render();
+    await click('编辑选项');
+    const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
+    const label = (index: number) =>
+      dialog().querySelector<HTMLInputElement>(`[aria-label="选项名称 ${index}"]`) ?? undefined;
+    type(label(1)!, '合成新区');
+    await settle();
+    await click('保存', dialog());
+    expect(posts[0]!.body).toEqual({ options: [{ ...east, label: '合成新区' }] });
+    await click('重读最新版本', dialog());
+    await click('已核对差异，继续编辑', dialog());
+    expect(label(1)!.value).toBe('合成新区');
+    expect(label(2)?.value, '他人新增的选项进入编辑器').toBe('合成西区');
+    expect(buttons(dialog()), '他人新增项已保存，不可移除').not.toContain('移除');
+    await click('保存', dialog());
+    expect(posts).toHaveLength(2);
+    expect(posts[1]!.url).toContain(`/${row.id}/options`);
+    expect(posts[1]!.body).toEqual({ options: [{ ...east, label: '合成新区' }, west] });
+    expect(posts[1]!.headers.get('if-match')).toBe('2');
+    expect(document.querySelector('[role="dialog"]'), '保存成功后关闭').toBeNull();
+  });
+
+  it('AC-F474-0BFE05 他人改名并新增选项后本人只新增 409，重读保留他人改名与新增项', async () => {
+    permission = {
+      ...permissionFixture,
+      viewableFields: [...permissionFixture.viewableFields, 'options'],
+      editableFields: [...permissionFixture.editableFields, 'options'],
+    };
+    const east = { value: 'east', label: '合成东区', enabled: true };
+    const renamed = { ...east, label: '合成他人改名' };
+    const west = { value: 'west', label: '合成西区', enabled: false };
+    Object.assign(currentRow, { valueType: 'select', options: [east] });
+    conflictRow = { ...currentRow, revision: 2, options: [renamed, west] };
+    mode = 'conflict';
+    await render();
+    await click('编辑选项');
+    const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
+    await click('新增选项', dialog());
+    type(dialog().querySelector<HTMLInputElement>('[aria-label="选项名称 2"]')!, '合成本人新增');
+    await settle();
+    await click('保存', dialog());
+    expect(posts[0]!.body).toEqual({
+      options: [east, { value: expect.any(String), label: '合成本人新增', enabled: true }],
+    });
+    const mine = (posts[0]!.body as { options: { value: string }[] }).options[1]!.value;
+    await click('重读最新版本', dialog());
+    await click('已核对差异，继续编辑', dialog());
+    await click('保存', dialog());
+    expect(posts).toHaveLength(2);
+    expect(posts[1]!.body).toEqual({
+      options: [renamed, west, { value: mine, label: '合成本人新增', enabled: true }],
+    });
+    expect(posts[1]!.headers.get('if-match')).toBe('2');
+    expect(document.querySelector('[role="dialog"]'), '保存成功后关闭').toBeNull();
+  });
+
   it('AC-F474-FE01 通过登记入口展示字段，配置对象按数据操作授权，无按钮码依赖', async () => {
     expect(entry()).toMatchObject({ app: 'settings', objectCode: OBJECT, label: '自定义字段' });
     await render();
@@ -151,10 +323,15 @@ describe('AC-FE-F4746b0 定义管理', () => {
     expect(text()).toContain('合成备注');
     expect(buttons()).toContain('新建');
     await chooseObject('组织');
-    expect(buttons()).not.toContain('新建');
-    expect([...document.querySelectorAll('th')].map((node) => node.textContent)).toEqual(['名称', '类型', '对象']);
+    expect(buttons()).toContain('新建');
+    expect([...document.querySelectorAll('th')].map((node) => node.textContent)).toEqual([
+      '名称',
+      '类型',
+      '对象',
+      '操作',
+    ]);
     await chooseObject('人员');
-    expect(buttons()).not.toContain('新建');
+    expect(buttons()).toContain('新建');
   });
   it('AC-F474-FE02 新建选择现有类型，提交真实协议字段并刷新', async () => {
     await render();
@@ -232,5 +409,38 @@ describe('AC-FE-F4746b0 定义管理', () => {
     );
     expect(save?.disabled).toBe(true);
     expect(posts).toHaveLength(1);
+  });
+});
+
+describe('AC-FE-F4746b0 选项冲突合并规则（mergeOptions）', () => {
+  const option = (value: string, label = value, enabled = true) => ({ value, label, enabled });
+  it('本人改名保留本人，他人新增照收并排在最新顺序', () => {
+    expect(mergeOptions([option('a')], [option('a', 'A2')], [option('a'), option('b')])).toEqual([
+      option('a', 'A2'),
+      option('b'),
+    ]);
+  });
+  it('本人未改的项取最新（他人改名 / 停用），本人新增项接在最后', () => {
+    const base = [option('a'), option('b')];
+    expect(
+      mergeOptions(base, [...base, option('x')], [option('a', 'A9'), option('b', 'b', false), option('c')]),
+    ).toEqual([option('a', 'A9'), option('b', 'b', false), option('c'), option('x')]);
+  });
+  it('本人改回基线原值的项视为未改，取他人最新', () => {
+    expect(mergeOptions([option('a')], [option('a')], [option('a', 'A9')])).toEqual([option('a', 'A9')]);
+  });
+  it('本人调过顺序时按本人顺序，他人新增项接在后面', () => {
+    expect(
+      mergeOptions(
+        [option('a'), option('b')],
+        [option('b'), option('a', 'A2')],
+        [option('a'), option('b', 'B9'), option('c')],
+      ),
+    ).toEqual([option('b', 'B9'), option('a', 'A2'), option('c')]);
+  });
+  it('他人调序、本人未调序时按最新顺序', () => {
+    expect(
+      mergeOptions([option('a'), option('b')], [option('a', 'A2'), option('b')], [option('b'), option('a')]),
+    ).toEqual([option('b'), option('a', 'A2')]);
   });
 });

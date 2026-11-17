@@ -6,8 +6,10 @@ import { text } from './messages.js';
 import { missingTransferRequiredFields } from '@italent/domain';
 import { saveTransfer } from './api.js';
 import { draftValues, editableKeys, previewRecord, withReread } from './hr-conflict.js';
+import { terminatesOriginalContract } from './hr-form-model.js';
 import type { TransferAction, TransferFormModel } from './types.js';
 import { useHrWrite } from './useHrWrite.js';
+import { useTerminateConfirm } from './useTerminateConfirm.js';
 
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;
 type Reread = Awaited<ReturnType<typeof loadPreview>>;
@@ -24,6 +26,7 @@ export function useHrTransferCommand(
   scope?: string,
 ) {
   const write = useHrWrite(scope);
+  const confirmTerminate = useTerminateConfirm();
   const [action, setAction] = useState<TransferAction>('draft');
   // 冲突状态随本表单存在：关掉表单即放弃本次尝试，重开按新预览的版本提交；结果未知另由会话处理标记锁定（DEC-464）。
   const [store] = useState(createFormStore);
@@ -69,6 +72,8 @@ export function useHrTransferCommand(
       if (write.result || command.locked || loadingPreview || !preview || preview.requiredFieldsUnavailable) return;
       if (model.typeConfirmation) return;
       if (missingTransferRequiredFields(preview.form, { ...preview.fields, ...model.fields }).length) return;
+      // F-504：暂存不生效、不终止原合同，不问；提交 / 保存每次都先确认，取消即不发请求、表单不动。
+      if (action !== 'draft' && terminatesOriginalContract(model) && !(await confirmTerminate())) return;
       setAction(action);
       restart();
       const record = previewRecord(model.employeeId, preview);
