@@ -109,12 +109,21 @@ test('AC-APV-F326-26-02 单人节点选多人变量即时提示；换单人变�
   baseURL,
 }) => {
   const candidates = await signIn(context, baseURL!);
+  // P2-2：反复切换来源值后不得出现 React 重复 key 告警
+  const sameKey: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error' && message.text().includes('same key')) sameKey.push(message.text());
+  });
   await page.goto(processPath(manifest.processes.variables));
   await expect(editor(page).getByText('合成公共审批人（Global.B.SmokePerson）')).toBeVisible();
   await choose(page, '来源值', '合成公共多人');
   await expect(editor(page).getByText(MULTI_VARIABLE, { exact: true })).toBeVisible();
   await choose(page, '来源值', '合成公共审批人');
   await expect(editor(page).getByText(MULTI_VARIABLE, { exact: true })).toHaveCount(0);
+  await combo(page, '来源值').press('ArrowDown');
+  await expect(dropdownOption(page, '合成公共审批人')).toHaveCount(1);
+  await expect(dropdownOption(page, '来源信息未读取')).toHaveCount(0);
+  await combo(page, '来源值').press('Escape');
 
   await choose(page, '来源类型', /^应用变量$/);
   await choose(page, '来源值', '合成调动对接人');
@@ -125,6 +134,7 @@ test('AC-APV-F326-26-02 单人节点选多人变量即时提示；换单人变�
   await page.reload();
   await expect(editor(page).getByText(/^合成调动对接人（.+）$/)).toBeVisible();
   await noUuid(editor(page));
+  expect(sameKey).toEqual([]);
 });
 
 test('AC-APV-F326-26-03 矩阵两级选择：矩阵 → 角色列；多人角色列即时提示且后端同文拒存；单人列保存后回显', async ({
