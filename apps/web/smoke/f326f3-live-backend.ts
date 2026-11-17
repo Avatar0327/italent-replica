@@ -1,7 +1,7 @@
 /**
  * F-326 F3 浏览器集成专用：全新隔离数据库、合成数据、真实审批路由、真实权限快照与真实授权；不连接开发库。
  * 种子经 S4 验收夹具造数：公共人员 / 多人变量、调动应用的应用变量、单人与允许多人两张矩阵；
- * 三个调动流程草稿（单人节点）与一个 Offer 流程草稿（多主体类型，矩阵不可选）。夹具 HR 引导为租户管理员并授予流程对象编辑身份后，
+ * 三个调动流程草稿（单人节点）、一个调动流程草稿（两行来源的会签节点）与一个 Offer 流程草稿（多主体类型，矩阵不可选）。夹具 HR 引导为租户管理员并授予流程对象编辑身份后，
  * 浏览器流量走另一个应用实例的真实授权器（createPermissionAuthorizer）。
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -39,7 +39,7 @@ async function created(response: Response) {
 async function seed(db: Parameters<typeof s4World>[0]) {
   const w = await s4World(db, 'F3');
   const person = await variable(w, { codeSuffix: 'SmokePerson', name: '合成公共审批人' });
-  await variable(w, {
+  const persons = await variable(w, {
     codeSuffix: 'SmokePersons',
     name: '合成公共多人',
     dataType: 'persons',
@@ -59,6 +59,15 @@ async function seed(db: Parameters<typeof s4World>[0]) {
     variables: await draft(),
     matrix: await draft(),
     offer: await draft('offer'),
+    // P2-1：两行来源的会签节点，删除前一行后核对后一行的临时矩阵选择
+    rows: await saveNodes(w, [
+      {
+        key: 'n1',
+        name: '合成会签节点',
+        kind: 'countersign',
+        approvers: [approver, varSource('public_variable', persons.id)],
+      },
+    ]).then(created),
   };
   await grantProcessEditor(w);
   return { w, processes };

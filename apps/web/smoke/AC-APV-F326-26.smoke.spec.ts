@@ -12,7 +12,7 @@ interface Manifest {
   url: string;
   tenant: string;
   admin: string;
-  processes: { display: string; variables: string; matrix: string; offer: string };
+  processes: { display: string; variables: string; matrix: string; offer: string; rows: string };
 }
 const MULTI_VARIABLE = '多人变量只能用于会签或或签节点';
 const MULTI_COLUMN = '允许多人的角色列只能用于会签或或签节点';
@@ -74,11 +74,15 @@ const editor = (page: Page) => page.getByRole('group', { name: '审批人来源'
 const combo = (page: Page, name: string) => editor(page).getByRole('combobox', { name, exact: true });
 const dropdownOption = (page: Page, text: string | RegExp) =>
   page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: text });
-async function choose(page: Page, name: string, text: string | RegExp) {
-  await combo(page, name).focus();
-  await combo(page, name).press('ArrowDown');
+async function choose(page: Page, name: string, text: string | RegExp, scope: Locator = editor(page)) {
+  const box = scope.getByRole('combobox', { name, exact: true });
+  await box.focus();
+  await box.press('ArrowDown');
   await dropdownOption(page, text).click();
 }
+const rows = (page: Page) => editor(page).locator('.flow-source-row');
+const selected = (row: Locator, name: string) =>
+  row.getByRole('combobox', { name, exact: true }).locator('xpath=ancestor::div[contains(@class,"ant-select")][1]');
 const save = (page: Page) => page.getByRole('button', { name: '保存草稿', exact: true }).click();
 const noUuid = async (scope: Locator) =>
   expect(scope.getByText(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/).filter({ visible: true })).toHaveCount(0);
@@ -175,4 +179,35 @@ test('AC-APV-F326-26-04 Offer（无任职申请业务日、多主体）：审批
   await expect(dropdownOption(page, '审批矩阵 · 该审批类型不可选')).toHaveClass(/disabled/);
   for (const label of ['公共变量', '应用变量'])
     await expect(dropdownOption(page, new RegExp(`^${label}$`))).not.toHaveClass(/disabled/);
+});
+
+test('AC-APV-F326-26-05 会签删除前一行：后一行未完成的矩阵选择保留为乙，只给乙的角色列，保存后回显乙', async ({
+  context,
+  page,
+  baseURL,
+}) => {
+  await signIn(context, baseURL!);
+  await page.goto(processPath(manifest.processes.rows));
+  await expect(rows(page)).toHaveCount(2);
+  const [first, second] = [rows(page).nth(0), rows(page).nth(1)];
+  await choose(page, '来源类型', /^审批矩阵$/, first);
+  await choose(page, '矩阵', '合成单人矩阵', first);
+  await choose(page, '角色列', /^角色$/, first);
+  await choose(page, '来源类型', /^审批矩阵$/, second);
+  await choose(page, '矩阵', '合成多人矩阵', second);
+  await expect(selected(second, '矩阵')).toContainText('合成多人矩阵');
+
+  await first.getByRole('button', { name: '移除来源', exact: true }).click();
+  await expect(rows(page)).toHaveCount(1);
+  const left = rows(page).nth(0);
+  await expect(selected(left, '矩阵')).toContainText('合成多人矩阵');
+  await expect(selected(left, '角色列')).not.toContainText('角色');
+  await choose(page, '角色列', /^角色$/, left);
+  await save(page);
+  await expect(page.getByText('草稿已保存', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(rows(page)).toHaveCount(1);
+  await expect(selected(rows(page).nth(0), '矩阵')).toContainText('合成多人矩阵');
+  await expect(selected(rows(page).nth(0), '角色列')).toContainText('角色');
+  await noUuid(editor(page));
 });
