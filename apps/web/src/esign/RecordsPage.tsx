@@ -33,6 +33,7 @@ import {
   type RecordTab,
 } from './records-model.js';
 import { fileText, nameText, sceneText, statusText, unknownText } from './sign-model.js';
+import { tasksChanged, useTasksChanged } from './task-changes.js';
 
 const t = m.records;
 // 模块级：切走菜单再回来，结果未知的提醒 / 撤销仍锁定（同 ReissueAction）。
@@ -55,6 +56,8 @@ async function deliver(api: Api, action: RecordAction, command: Command<Values>)
     command: { id: command.id, body },
   });
   receiptsOf.set(command.id, parseRecordReceipts(raw, body));
+  // 弹窗可能在途时已关闭（关闭时的重读早于落定）：回执到了再让列表重读（返工 P2-1 同类）。
+  tasksChanged(body.items.map((item) => item.id));
   return { id: command.id };
 }
 function submitTo(api: Api, command: CommandForm, action: RecordAction, rows: readonly RecordRow[]) {
@@ -85,6 +88,7 @@ function RecordList() {
   const [page, setPage] = useState<PageRequest>({ page: 1, pageSize: 20 });
   const [selected, setSelected] = useState<readonly RecordRow[]>([]);
   const records = useRecords(tab, page);
+  useTasksChanged(records.read.refresh);
   const error = records.error ?? permission.error;
   const finish = () => {
     setSelected([]);

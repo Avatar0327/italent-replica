@@ -30,6 +30,7 @@ import {
   type MineTab,
 } from './mine-model.js';
 import { fileText, nameText, sceneText, statusText, unknownText } from './sign-model.js';
+import { tasksChanged, useTasksChanged } from './task-changes.js';
 
 const t = m.mine;
 // 模块级：结果未知的签署在切走菜单、关闭详情再回来时仍锁定（同 TemplatesPage）。
@@ -52,6 +53,7 @@ function MineList() {
   // seq 让每次打开都是新的详情组件：关闭前未返回的旧读取随组件中止，迟到也不会落到重开后的详情上。
   const [opened, setOpened] = useState<{ id: string; seq: number }>();
   const read = useRead<unknown>(`${MINE_PATH}?tab=${tab}&${pageQuery(page, 'offset')}`);
+  useTasksChanged(read.refresh);
   let items: MineRow[] = [];
   let error = read.error;
   try {
@@ -100,15 +102,15 @@ function MineList() {
           />
         }
       />
-      {opened && (
-        <MineDetail key={opened.seq} id={opened.id} close={() => setOpened(undefined)} changed={read.refresh} />
-      )}
+      {opened && <MineDetail key={opened.seq} id={opened.id} close={() => setOpened(undefined)} />}
     </>
   );
 }
 
-function MineDetail({ id, close, changed }: { id: string; close(): void; changed(): void }) {
+function MineDetail({ id, close }: { id: string; close(): void }) {
   const read = useRead<unknown>(minePath(id));
+  // 签署结果可能落在已关闭的上一个详情上：当前打开的同任务详情按任务 ID 收通知重读（返工 P2-1）。
+  useTasksChanged(read.refresh, id);
   let row: MineRow | undefined;
   let error = read.error;
   try {
@@ -116,17 +118,13 @@ function MineDetail({ id, close, changed }: { id: string; close(): void; changed
   } catch (cause) {
     error = cause;
   }
-  const refresh = () => {
-    read.refresh();
-    changed();
-  };
   let body = <PageState kind="loading" />;
   if (error) body = <PageState kind="error" error={error} retry={read.refresh} />;
-  else if (row && !read.loading) body = <SignBody row={row} refresh={refresh} />;
+  else if (row && !read.loading) body = <SignBody row={row} />;
   return <DetailPage open title={t.detail} onClose={close} summary={body} />;
 }
 
-function SignBody({ row, refresh }: { row: MineRow; refresh(): void }) {
+function SignBody({ row }: { row: MineRow }) {
   const api = useApiClient();
   const { message } = App.useApp();
   const { timezone } = useSession();
@@ -144,6 +142,8 @@ function SignBody({ row, refresh }: { row: MineRow; refresh(): void }) {
     api
       .request<unknown>(signPath(row.id), { method: 'POST', command: { id: command.id, body: command.body } })
       .then((receipt) => parseSignReceipt(receipt, row.id));
+  // 落定时本详情可能已关闭：刷新交给仍挂着的列表与同任务详情，不调本组件的读取。
+  const refresh = () => tasksChanged([row.id]);
   const finish = () => {
     void message.success(t.signed);
     refresh();
