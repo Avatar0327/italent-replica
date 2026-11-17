@@ -3,8 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { APPROVAL_TYPES, type ApproverSource } from '@italent/domain';
 import { flowFixture } from '../../../../../tests/acceptance/support/f315-fixture.js';
 import { buildDraft, nodeField } from './model.js';
-import { acceptCandidates, candidateParams, type CandidateQuery } from './source-candidates.js';
-import { sourceInputError, sourceOptions } from './sources.js';
+import type { ApiClient } from '../../foundation/client.js';
+import {
+  acceptCandidates,
+  candidateParams,
+  matrixOptions,
+  multipleHint,
+  readMatrixCandidates,
+  type CandidateQuery,
+} from './source-candidates.js';
+import { matrixReference, referenceOf, sourceInputError, sourceOptions } from './sources.js';
 
 const VARIABLE = 'b3260000-0000-4000-8000-000000000001';
 const MATRIX = 'b3260000-0000-4000-8000-000000000002';
@@ -30,18 +38,23 @@ describe('AC-APV-F326-26 设计器三类来源', () => {
       for (const option of sourceOptions(node(), code))
         expect(option.label, `${code}/${option.value}`).not.toContain('暂不支持');
   });
-  it('02 矩阵只在有任职申请业务日的类型可选，其余可见但禁用并注明原因；两类变量不受类型限制', () => {
+  it('02 矩阵只在有任职申请业务日的类型可选，其余可见但禁用并注明原因；两类变量除组织调整外都可选', () => {
     for (const [code, type] of Object.entries(APPROVAL_TYPES)) {
       const options = sourceOptions(node(), code);
       const matrix = options.find((o) => o.value === 'matrix')!;
       if (MATRIX_ADAPTERS.includes(type.adapter))
         expect(matrix, code).toMatchObject({ disabled: false, label: '审批矩阵' });
       else expect(matrix, code).toMatchObject({ disabled: true, label: '审批矩阵 · 该审批类型不可选' });
+      // 组织调整只收白名单命名取值（R2-T08 §4.2、DEC-697），变量与其余来源一样可见但禁用
       for (const variable of ['public_variable', 'application_variable'])
         expect(
           options.find((o) => o.value === variable),
           `${code}/${variable}`,
-        ).toMatchObject({ disabled: false });
+        ).toMatchObject(
+          type.adapter === 'org_adjustment'
+            ? { disabled: true, status: 'restricted' }
+            : { disabled: false, status: 'enabled' },
+        );
     }
     expect(error({ type: 'matrix', value: `${MATRIX}:${COLUMN}` }, 'offer')).toBe('审批矩阵 · 该审批类型不可选');
     expect(error({ type: 'matrix', value: `${MATRIX}:${COLUMN}` }, 'personnel_change')).toBeUndefined();
@@ -122,5 +135,54 @@ describe('AC-APV-F326-26 设计器三类来源', () => {
       ids: `${MATRIX},${MATRIX}:${COLUMN}`,
       includeInactive: 'true',
     });
+  });
+  it('07 矩阵两级：按 parentId 分组；值拆成矩阵与角色列；变量值即对象 ID', () => {
+    const OTHER = 'b3260000-0000-4000-8000-000000000004';
+    const items = [
+      { id: OTHER, name: '甲矩阵', enabled: true, parentId: null },
+      { id: `${MATRIX}:${COLUMN}`, name: '角色', enabled: true, parentId: MATRIX, multiple: false },
+      { id: MATRIX, name: '乙矩阵', enabled: true, parentId: null },
+    ];
+    expect(matrixOptions(items)).toEqual([
+      { head: items[0], columns: [] },
+      { head: items[2], columns: [items[1]] },
+    ]);
+    expect(matrixReference({ type: 'matrix', value: `${MATRIX}:${COLUMN}` })).toEqual({
+      matrixId: MATRIX,
+      columnKey: `${MATRIX}:${COLUMN}`,
+    });
+    expect(matrixReference({ type: 'matrix', value: MATRIX })).toBeNull();
+    expect(referenceOf({ type: 'public_variable', value: VARIABLE })).toEqual({ id: VARIABLE, mode: 'self' });
+    expect(referenceOf({ type: 'application_variable', value: 'x' })).toBeNull();
+  });
+  it('08 多人提示只在单人节点主审批人、且候选 multiple 为真时出现，文案与后端 422 同文', () => {
+    const many = { id: VARIABLE, name: '合成多人', enabled: true, parentId: null, multiple: true };
+    expect(multipleHint('public_variable', many, true)).toBe('多人变量只能用于会签或或签节点');
+    expect(multipleHint('application_variable', many, true)).toBe('多人变量只能用于会签或或签节点');
+    expect(multipleHint('matrix', many, true)).toBe('允许多人的角色列只能用于会签或或签节点');
+    expect(multipleHint('matrix', many, false)).toBeUndefined();
+    expect(multipleHint('matrix', { ...many, multiple: false }, true)).toBeUndefined();
+    expect(multipleHint('matrix', undefined, true)).toBeUndefined();
+  });
+  it('09 矩阵候选整份读取：每页 200 逐页读到无更多；超过 10 页截断并标记', async () => {
+    const urls: string[] = [];
+    const api = (pages: number) =>
+      ({
+        request: async (url: string) => {
+          urls.push(url);
+          const page = Number(new URL(url, 'http://x').searchParams.get('page') ?? '1');
+          const item = { id: `${MATRIX.slice(0, -3)}${String(page).padStart(3, '0')}`, name: `矩阵${page}` };
+          return { items: [{ ...item, enabled: true, parentId: null }], page, pageSize: 200, hasMore: page < pages };
+        },
+      }) as unknown as ApiClient;
+    const two = await readMatrixCandidates(api(2), '2026-11-14');
+    expect(two.items.map((item) => item.name)).toEqual(['矩阵1', '矩阵2']);
+    expect(two.hasMore).toBe(false);
+    expect(new URL(urls[0]!, 'http://x').searchParams.get('pageSize')).toBe('200');
+    expect(new URL(urls[1]!, 'http://x').searchParams.get('page')).toBe('2');
+    urls.length = 0;
+    const capped = await readMatrixCandidates(api(50), '2026-11-14');
+    expect(urls).toHaveLength(10);
+    expect(capped).toMatchObject({ hasMore: true });
   });
 });

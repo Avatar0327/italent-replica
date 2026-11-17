@@ -142,9 +142,10 @@ test('AC-APV-F326-26-03 矩阵两级选择：矩阵 → 角色列；多人角色
   await choose(page, '角色列', /^角色$/);
   await expect(editor(page).getByText(MULTI_COLUMN, { exact: true })).toBeVisible();
   await save(page);
-  // 后端 422 同文：保存被拒，来源保留可改
-  await expect(page.getByText(MULTI_COLUMN, { exact: true }).filter({ visible: true }).first()).toBeVisible();
+  // 后端 422 同文：等服务端拒绝落地（错误态提示，非编辑区的即时提示），保存被拒，来源保留可改
+  await expect(page.locator('.ant-alert-error').filter({ hasText: MULTI_COLUMN })).toBeVisible();
   await expect(page.getByText('草稿已保存', { exact: true })).toHaveCount(0);
+  await expect(combo(page, '矩阵')).toBeEnabled();
 
   await choose(page, '矩阵', '合成单人矩阵');
   await expect(editor(page).getByText(MULTI_COLUMN, { exact: true })).toHaveCount(0);

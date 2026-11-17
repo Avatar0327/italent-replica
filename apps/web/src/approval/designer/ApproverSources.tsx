@@ -3,6 +3,7 @@ import type { ApprovalNode, ApproverSource } from '@italent/domain';
 import { useFormLock } from '../../foundation/forms/FormLock.js';
 import { nodeField } from './model.js';
 import { DesignerPeople } from './FallbackHandlers.js';
+import { MatrixValue } from './MatrixValue.js';
 import { ReferenceValue } from './ReferenceValue.js';
 import {
   changeSourceType,
@@ -74,6 +75,8 @@ function SourceValue({
           key={index}
           source={source}
           options={options}
+          approvalType={approvalType}
+          single={!multiple}
           onChange={(next) => replace(index, next)}
           remove={multiple ? () => update(rows.filter((_, i) => i !== index)) : undefined}
         />
@@ -96,11 +99,15 @@ function SourceValue({
 function SourceRow({
   source,
   options,
+  approvalType,
+  single,
   onChange,
   remove,
 }: {
   source: ApproverSource;
   options: ReturnType<typeof sourceOptions>;
+  approvalType: string;
+  single: boolean;
   onChange(source: ApproverSource): void;
   remove?: () => void;
 }) {
@@ -111,6 +118,7 @@ function SourceRow({
       ...item,
       label: item.status === 'restricted' ? `${item.label} · ${s.restricted}` : item.label,
     })) ?? [];
+  const candidate = { approvalType, single, disabled: !option || option.disabled, onChange };
   if (source.value && !values.some((item) => item.value === source.value))
     values.push({
       value: source.value,
@@ -140,7 +148,9 @@ function SourceRow({
             onChange={(ids) => onChange({ type: 'specified', value: ids[0] ?? '' })}
           />
         ) : REFERENCE_SOURCE_TYPES.includes(source.type) ? (
-          <ReferenceValue source={source} fixed={values} disabled={!option || option.disabled} onChange={onChange} />
+          <ReferenceValue source={source} fixed={values} {...candidate} />
+        ) : source.type === 'matrix' ? (
+          <MatrixValue source={source} {...candidate} />
         ) : (
           <Select
             aria-label={s.value}
