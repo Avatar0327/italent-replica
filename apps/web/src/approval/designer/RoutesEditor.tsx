@@ -4,6 +4,7 @@ import {
   CONDITION_OPERATORS,
   MAX_ROUTE_BRANCHES,
   MAX_ROUTE_CONDITION_ITEMS,
+  MAX_ROUTE_PRIORITY,
   ROUTE_END,
   nodeExits,
   type ApprovalNode,
@@ -189,7 +190,7 @@ function BranchEditor({
           <InputNumber
             aria-label={r.priority}
             min={1}
-            max={32767}
+            max={MAX_ROUTE_PRIORITY}
             precision={0}
             disabled={scope.disabled}
             value={branch.priority}
