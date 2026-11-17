@@ -21,6 +21,8 @@ export interface MineRow {
   readonly files?: readonly { readonly seq: number; readonly templateName?: string; readonly content?: string }[];
 }
 export const minePath = (id: string) => `${MINE_PATH}/${encodeURIComponent(id)}`;
+export const signPath = (id: string) => `${minePath(id)}/sign`;
+export const mineFilesPath = (id: string) => `${minePath(id)}/files`;
 export const parseMine = (raw: unknown) => rowsOf<MineRow>((raw as { items?: unknown } | null)?.items);
 export const parseMineDetail = (raw: unknown) => rowsOf<MineRow>([raw])[0]!;
 /** 回执须是本任务、版本为整数；否则按结果未知处理，由内核回查（DEC-067）。 */

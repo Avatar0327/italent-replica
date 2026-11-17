@@ -507,6 +507,21 @@ describe('AC-TRF-F481-FE-04 我的签署：被拒与冲突', () => {
     await detailReady('合成保密协议');
     expect(signButton()).toBeUndefined();
   });
+
+  // 反向：后端只给本人的签署任务（mine.ts 按本人过滤，别人的 / 已不存在的一律 404 NOT_FOUND），前端不另判权限。
+  it('FE-04-10 详情 404（不是本人的签署或已不存在）：抽屉提示“页面或记录不存在”，不显示正文与「确认签署」，不发写请求', async () => {
+    details[M1] = [async () => ({ status: 404, body: { error: { code: 'NOT_FOUND', message: '签署任务不存在' } } })];
+    await open();
+    await click(pressable(rowOf('合成调动协议'), '调动电子签署'));
+    const alert = () => drawer()?.querySelector('[role="alert"]');
+    const deadline = Date.now() + PAGE_TIMEOUT_MS;
+    while (!alert() && Date.now() < deadline) await settle();
+    // 404 统一按“页面或记录不存在”提示（client.ts），不区分是别人的还是已删除
+    expect(alert()?.textContent, '抽屉里的错误提示').toContain('页面或记录不存在');
+    expect(drawer()?.textContent).not.toContain('合成调动协议正文');
+    expect(signButton()).toBeUndefined();
+    expect(sent).toEqual([]);
+  });
 });
 
 describe('AC-TRF-F481-FE-04 我的签署：员工自助挂载', () => {

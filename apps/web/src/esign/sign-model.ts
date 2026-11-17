@@ -1,4 +1,5 @@
 // F-481 §8.2、§8.3：签署记录与我的签署共用的展示口径。界面只显示中文，不露 status / currentNode / scene 英文码。
+import { ApiError } from '../foundation/client.js';
 import { m } from './messages.js';
 
 export interface Named {
@@ -14,6 +15,9 @@ export const sceneText = (scene: unknown) => (typeof scene === 'string' && m.sce
 export const nameText = (value?: Named | null) => value?.name || m.missing;
 export const fileText = (names: readonly (string | undefined)[]) =>
   names.filter(Boolean).join(m.fileSeparator) || m.missing;
+/** 结果未知的提示；回执识别不了（不是接口错误）时先说明原因（同 ReissueAction）。 */
+export const unknownText = (error: unknown, invalidReceipt: string) =>
+  error instanceof ApiError ? m.reissue.unknown : `${invalidReceipt}；${m.reissue.unknown}`;
 
 /** 行必须带 id 与非负整数版本：写命令要用它们，缺了就当读取结果无效，不让无效行进入勾选或确认。 */
 export function rowsOf<T extends { id: string; revision: number }>(items: unknown): T[] {

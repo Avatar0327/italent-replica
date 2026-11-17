@@ -6,6 +6,12 @@ import { rowsOf, type Named } from './sign-model.js';
 
 export const RECORD_OBJECT = 'TenantBase.ESignRecord';
 export const RECORDS_PATH = `${ESIGN_BASE}/records`;
+/** 三个按钮的授权项编码（S3b 授权模型，列表级）。 */
+export const RECORD_BUTTONS = {
+  remind: 'ESignRecord.Remind',
+  revoke: 'ESignRecord.Revoke',
+  download: 'ESignRecord.Download',
+} as const;
 export const RECORD_TABS = ['all', 'signing', 'completed'] as const;
 export type RecordTab = (typeof RECORD_TABS)[number];
 export type RecordAction = 'remind' | 'revoke';

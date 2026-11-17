@@ -7,7 +7,7 @@ import { esignFailureText } from '@italent/domain';
 import { App, Button, Modal, Table, Tabs, Tooltip, type TableColumnsType } from 'antd';
 import { useState } from 'react';
 import { useRead } from '../contracts/useRead.js';
-import { ApiError, pageQuery, rejectionMessage, type Command, type PageRequest } from '../foundation/client.js';
+import { pageQuery, rejectionMessage, type Command, type PageRequest } from '../foundation/client.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import { forAction } from '../foundation/forms/action.js';
@@ -19,6 +19,7 @@ import { useESignDownload } from './download.js';
 import { m } from './messages.js';
 import {
   RECORDS_PATH,
+  RECORD_BUTTONS,
   RECORD_OBJECT,
   RECORD_TABS,
   filesPath,
@@ -31,10 +32,9 @@ import {
   type RecordRow,
   type RecordTab,
 } from './records-model.js';
-import { fileText, nameText, sceneText, statusText } from './sign-model.js';
+import { fileText, nameText, sceneText, statusText, unknownText } from './sign-model.js';
 
 const t = m.records;
-const BUTTONS = { remind: 'ESignRecord.Remind', revoke: 'ESignRecord.Revoke', download: 'ESignRecord.Download' };
 // 模块级：切走菜单再回来，结果未知的提醒 / 撤销仍锁定（同 ReissueAction）。
 const store = createFormStore();
 // 回执按命令 ID 存，弹窗只显示内核当前命令（done）对应的那份；状态仍只看内核存储，关闭弹窗时删掉已确认命令的回执。
@@ -91,7 +91,7 @@ function RecordList() {
     records.read.refresh();
   };
   const { act, dialog } = useRecordActions(selected, finish);
-  const can = (button: keyof typeof BUTTONS) => ready && permission.can(BUTTONS[button], 'list');
+  const can = (button: keyof typeof RECORD_BUTTONS) => ready && permission.can(RECORD_BUTTONS[button], 'list');
   const canDownload = can('download') && permission.field('files').visible;
   const downloadSelected = () => {
     if (!selected.length) return void message.warning(t.noSelection);
@@ -200,10 +200,6 @@ function StatusCell({ row }: { row: RecordRow }) {
   return reason ? <Tooltip title={reason}>{text}</Tooltip> : text;
 }
 
-/** 回执识别不了也按结果未知处理，并说明原因（同 ReissueAction）。 */
-const unknownText = (error: unknown) =>
-  error instanceof ApiError ? m.reissue.unknown : `${t.invalidReceipt}；${m.reissue.unknown}`;
-
 function RecordDialog({ action, rows, asking, cancel, finish }: Dialog & { cancel(): void; finish(): void }) {
   const api = useApiClient();
   const ids = rows.map((row) => row.id);
@@ -244,7 +240,7 @@ function RecordDialog({ action, rows, asking, cancel, finish }: Dialog & { cance
     <Modal open title={t.actions[action]} onCancel={confirming ? cancel : close} maskClosable={false} footer={footer}>
       {confirming && <p>{t.revokeConfirm}</p>}
       {!confirming && command.status === 'submitting' && <p>{t.sending}</p>}
-      {!confirming && command.status === 'unknown' && <p role="alert">{unknownText(state?.error)}</p>}
+      {!confirming && command.status === 'unknown' && <p role="alert">{unknownText(state?.error, t.invalidReceipt)}</p>}
       {!confirming && ['rejected', 'conflict'].includes(command.status) && (
         <p role="alert">{rejectionMessage(state?.error)}</p>
       )}

@@ -5,7 +5,7 @@
 import { App, Button, Space, Tabs, type TableColumnsType } from 'antd';
 import { useEffect, useState } from 'react';
 import { useRead } from '../contracts/useRead.js';
-import { ApiError, pageQuery, rejectionMessage, type PageRequest } from '../foundation/client.js';
+import { pageQuery, rejectionMessage, type PageRequest } from '../foundation/client.js';
 import { PageState } from '../foundation/PageState.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import { useConflictCommand, type Sending } from '../foundation/forms/ConflictCommands.js';
@@ -19,15 +19,17 @@ import { m } from './messages.js';
 import {
   MINE_PATH,
   MINE_TABS,
+  mineFilesPath,
   minePath,
   parseMine,
   parseMineDetail,
   parseSignReceipt,
+  signPath,
   snapshotOf,
   type MineRow,
   type MineTab,
 } from './mine-model.js';
-import { fileText, nameText, sceneText, statusText } from './sign-model.js';
+import { fileText, nameText, sceneText, statusText, unknownText } from './sign-model.js';
 
 const t = m.mine;
 // 模块级：结果未知的签署在切走菜单、关闭详情再回来时仍锁定（同 TemplatesPage）。
@@ -118,13 +120,9 @@ function MineDetail({ id, close, changed }: { id: string; close(): void; changed
     read.refresh();
     changed();
   };
-  const body = error ? (
-    <PageState kind="error" error={error} retry={read.refresh} />
-  ) : read.loading || !row ? (
-    <PageState kind="loading" />
-  ) : (
-    <SignBody row={row} refresh={refresh} />
-  );
+  let body = <PageState kind="loading" />;
+  if (error) body = <PageState kind="error" error={error} retry={read.refresh} />;
+  else if (row && !read.loading) body = <SignBody row={row} refresh={refresh} />;
   return <DetailPage open title={t.detail} onClose={close} summary={body} />;
 }
 
@@ -144,7 +142,7 @@ function SignBody({ row, refresh }: { row: MineRow; refresh(): void }) {
   // 请求体就是命令体 { revision }；不带 If-Match（后端从请求体取版本，同 signMine）。
   const send = ({ command }: Sending) =>
     api
-      .request<unknown>(`${minePath(row.id)}/sign`, { method: 'POST', command: { id: command.id, body: command.body } })
+      .request<unknown>(signPath(row.id), { method: 'POST', command: { id: command.id, body: command.body } })
       .then((receipt) => parseSignReceipt(receipt, row.id));
   const finish = () => {
     void message.success(t.signed);
@@ -161,11 +159,10 @@ function SignBody({ row, refresh }: { row: MineRow; refresh(): void }) {
   const resend = () => replay(send).then(finish, fail);
   const signable = row.canSign === true || form.locked;
   const latest = state?.latest?.values;
-  const recheckText = state?.reading
-    ? t.rechecking
-    : state?.readError
-      ? t.recheckFailed
-      : latest && t.rechecked(statusText(latest.status, latest.currentNode));
+  // 回查中 > 回查失败 > 回查到的状态（后赋值的优先）
+  let recheckText = latest && t.rechecked(statusText(latest.status, latest.currentNode));
+  if (state?.readError) recheckText = t.recheckFailed;
+  if (state?.reading) recheckText = t.rechecking;
   return (
     <>
       <Space wrap>
@@ -176,13 +173,13 @@ function SignBody({ row, refresh }: { row: MineRow; refresh(): void }) {
           </Button>
         )}
         {row.status === 'completed' && (
-          <Button onClick={() => void download(`${minePath(row.id)}/files`)}>{t.download}</Button>
+          <Button onClick={() => void download(mineFilesPath(row.id))}>{t.download}</Button>
         )}
       </Space>
       {signable && !form.locked && <p>{t.simulated}</p>}
       {unknown && (
         <div role="alert">
-          <p>{state?.error instanceof ApiError ? m.reissue.unknown : `${t.invalidReceipt}；${m.reissue.unknown}`}</p>
+          <p>{unknownText(state?.error, t.invalidReceipt)}</p>
           {recheckText && <p>{recheckText}</p>}
           <Button onClick={() => void resend()}>{t.replay}</Button>
         </div>
