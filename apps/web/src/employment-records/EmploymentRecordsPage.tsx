@@ -1,5 +1,6 @@
 import { Button, Checkbox, Input, Select, Space, type TableColumnsType } from 'antd';
 import { useState, type Key } from 'react';
+import { ReissueAction } from '../esign/ReissueAction.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import type { PageRequest, PageResult } from '../foundation/client.js';
@@ -95,6 +96,8 @@ export function EmploymentRecordsPage() {
         error={result.error}
         retry={result.refresh}
         selection={{ keys: checked, onChange: setChecked, actions: null }}
+        // F-481 §8.1：补发入口在列表头，不勾选点击时提示“请至少选择一条数据”，所以不放进勾选后才出现的操作区。
+        actions={<ReissueAction selected={rows.filter((row) => checked.includes(row.id))} />}
         filters={<QuickFilters filters={filters} allowed={allowed} apply={apply} />}
       />
       {employeeId && (

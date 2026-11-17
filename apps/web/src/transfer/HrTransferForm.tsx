@@ -1,5 +1,7 @@
 import { codeText } from '../foundation/code-text.js';
 import type { ReactNode } from 'react';
+import { TRANSFER_FORM_OPTIONS_PATH } from '../esign/model.js';
+import { TemplatePicker, chosenTemplates, useTemplateOptions, type TemplateOptions } from '../esign/TemplatePicker.js';
 import { EmploymentFields, SelectionFields, transferBlocked } from '../self-service/shared/TransferForm.js';
 import {
   hrActionLabels,
@@ -21,20 +23,33 @@ export interface HrTransferFormProps extends TransferFormProps {
   readonly writable: boolean;
   readonly onCancel: () => void;
 }
+interface SectionProps extends HrTransferFormProps {
+  readonly esign: { readonly signing: boolean; readonly options: TemplateOptions };
+}
+
+const ESIGN_CODES = ['electronicSignature', 'esignTemplateIds'];
+/** F-481 §3.1：两字段都可见、变更合同且选“是”时才读模板选项（esign/routes.ts，授权同发起调动）。 */
+function useEsign({ model }: HrTransferFormProps) {
+  const viewable = model.catalog.viewableFields;
+  const shown = !viewable || ESIGN_CODES.every((code) => viewable.includes(code));
+  const signing = shown && !!model.linkage?.changeContract && model.linkage.electronicSignature === true;
+  return { signing, options: useTemplateOptions(signing ? TRANSFER_FORM_OPTIONS_PATH : null) };
+}
 
 /**
  * HR 全页表单按原站四个区块：调动信息 / 任职调整 / 薪资调整 / 合同变更，右侧锚点导航（#333 第 1 轮 P2-5）。
  * 底部按钮按入口区分：“调动”为取消 / 保存，“他人调动申请”为取消 / 暂存 / 提交（P2-1）。
  */
 export function HrTransferForm(props: HrTransferFormProps) {
+  const esign = useEsign(props);
   return (
     <form className="hr-transfer-form" onSubmit={(event) => event.preventDefault()} aria-label={text.subtitle}>
       <div className="hr-transfer-sections">
         <InfoSection {...props} />
         <AdjustmentSection {...props} />
         <SalarySection {...props} />
-        <ContractSection {...props} />
-        <HrActions {...props} />
+        <ContractSection {...props} esign={esign} />
+        <HrActions {...props} esign={esign} />
       </div>
       <HrAnchorNav />
     </form>
@@ -122,7 +137,10 @@ function InfoLinkage({ model, draft, change, onWithEstablishment }: LinkageProps
           name="changeContract"
           label={h.changeContract}
           value={draft.changeContract}
-          onChange={(changeContract) => change({ changeContract })}
+          // 切换是否变更合同时，电子签两项一并清空（F-481 §8.1）。
+          onChange={(changeContract) =>
+            change({ changeContract, electronicSignature: undefined, esignTemplateIds: undefined })
+          }
         />
       </LinkageAccess>
       <LinkageAccess catalog={model.catalog} codes={['withEstablishment']}>
@@ -189,27 +207,71 @@ function SalarySection({ model, busy, onLinkage }: HrTransferFormProps) {
   );
 }
 
-function ContractSection({ model, busy, onLinkage }: HrTransferFormProps) {
+function ContractSection({ model, busy, onLinkage, esign }: SectionProps) {
   const draft = model.linkage;
+  const change = (patch: Partial<LinkageDraft>) => onLinkage?.(patch);
   return (
     <SectionFrame section="contract" busy={busy}>
       {draft?.changeContract ? (
-        <LinkageAccess catalog={model.catalog} codes={['isChangeContract', 'contractChange']}>
-          <div className="transfer-grid">
-            <ContractDetails draft={draft} contracts={model.contracts ?? []} change={(patch) => onLinkage?.(patch)} />
-          </div>
-        </LinkageAccess>
+        <>
+          <LinkageAccess catalog={model.catalog} codes={['isChangeContract', 'contractChange']}>
+            <div className="transfer-grid">
+              <ContractDetails draft={draft} contracts={model.contracts ?? []} change={change} />
+            </div>
+          </LinkageAccess>
+          <LinkageAccess catalog={model.catalog} codes={ESIGN_CODES}>
+            <EsignFields draft={draft} options={esign.options} change={change} />
+          </LinkageAccess>
+        </>
       ) : (
         <p>{h.contractOff}</p>
       )}
-      <p className="hr-form-gap">{h.contractGap}</p>
     </SectionFrame>
   );
 }
 
-function HrActions(props: HrTransferFormProps) {
-  const { model, mode, writable, onAction, onCancel } = props;
-  const state = hrActionState({ mode, writable, blocked: transferBlocked(props), preview: model.preview });
+/** 发起电子文件签署：是 / 否都不预选（未选 = 否，U6）；选“是”后必选至少一份模板。 */
+function EsignFields(props: {
+  draft: LinkageDraft;
+  options: TemplateOptions;
+  change: (patch: Partial<LinkageDraft>) => void;
+}) {
+  const { draft, options, change } = props;
+  const choose = (value: boolean) => change({ electronicSignature: value, esignTemplateIds: value ? [] : undefined });
+  return (
+    <div className="transfer-grid">
+      <div role="radiogroup" aria-label={h.electronicSignature} className="hr-yes-no">
+        <span>{h.electronicSignature}</span>
+        {[true, false].map((value) => (
+          <label key={String(value)}>
+            <input
+              type="radio"
+              name="electronicSignature"
+              value={String(value)}
+              checked={draft.electronicSignature === value}
+              onChange={() => choose(value)}
+            />
+            {value ? text.yes : text.no}
+          </label>
+        ))}
+      </div>
+      {draft.electronicSignature === true && (
+        <TemplatePicker
+          options={options}
+          value={draft.esignTemplateIds ?? []}
+          onChange={(esignTemplateIds) => change({ esignTemplateIds })}
+        />
+      )}
+    </div>
+  );
+}
+
+function HrActions(props: SectionProps) {
+  const { model, mode, writable, onAction, onCancel, esign } = props;
+  // 选了“是”却没有可提交的模板（未选、无可用模板、读取失败）时不能保存 / 提交。
+  const esignBlocked = esign.signing && !chosenTemplates(esign.options, model.linkage?.esignTemplateIds ?? []).length;
+  const blocked = transferBlocked(props) || esignBlocked;
+  const state = hrActionState({ mode, writable, blocked, preview: model.preview });
   const run: Record<HrFormAction, () => void> = {
     cancel: onCancel,
     draft: () => onAction?.('draft'),
