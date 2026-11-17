@@ -113,9 +113,20 @@ async function bulkPeople(w: RelationWorld, label: string, count: number, depart
   return user;
 }
 
-describe('AC-APV-F380 身份展开', () => {
+describe('AC-APV-F380 身份展开', { concurrent: false }, () => {
+  let shared: RelationWorld;
+  let sharedForeign: RelationWorld;
+  beforeAll(async () => {
+    // F-528：这七例只增删各自的身份 / 授权或保存草稿，不改变共用的人员任职、组织和时钟。
+    // 复用两租户基础夹具，避免每例重复 HTTP 建三组织、三人员并入职；管理员也只开通一次。
+    // 提交审批和批量加人会改变查询全集，下面三例仍各建独立租户，不能复用这里的世界。
+    shared = await relationWorld(database().db, 'f380-shared');
+    sharedForeign = await relationWorld(database().db, 'f380-foreign');
+    await adminOf(shared);
+    await adminOf(sharedForeign);
+  }, HOOK_TIMEOUT);
   it('手工授权身份：展开全部有效成员，撤权实时生效，不按数据范围反筛', async () => {
-    const w = await relationWorld(database().db, 'f380-manual');
+    const w = shared;
     const { admin, profile, grants } = await profileWith(w, 'f380m', [w.head.userId, w.near.userId, w.subject.userId]);
     expect(await resolved(w, identity(profile.id))).toEqual([w.head.userId, w.near.userId, w.subject.userId].sort());
     const revoked = await admin.api.request('POST', `${BASE}/grants/${grants[2]!.id}/revoke`, {
@@ -127,7 +138,7 @@ describe('AC-APV-F380 身份展开', () => {
   });
 
   it('无有效授权的身份解析为空；账号未绑定在职人员的授权不作为审批人', async () => {
-    const w = await relationWorld(database().db, 'f380-empty');
+    const w = shared;
     const { profile } = await profileWith(w, 'f380e', [w.exceptionAdmin]);
     expect(await resolved(w, identity(profile.id))).toEqual([]);
     const none = await profileWith(w, 'f380n', []);
@@ -135,7 +146,7 @@ describe('AC-APV-F380 身份展开', () => {
   });
 
   it('标准自动持有“员工”按全体在职内部账号成立；同编码自定义身份只认授权行', async () => {
-    const w = await relationWorld(database().db, 'f380-employee');
+    const w = shared;
     const employee = await standardProfile(w, 'employee_self_service');
     const everyone = [w.head.userId, w.near.userId, w.subject.userId].sort();
     expect(await resolved(w, identity(employee))).toEqual(everyone);
@@ -144,7 +155,7 @@ describe('AC-APV-F380 身份展开', () => {
   });
 
   it('经理自助是即时派生身份：负责人成立且不依赖授权行，授权成员并入', async () => {
-    const w = await relationWorld(database().db, 'f380-manager');
+    const w = shared;
     const { admin } = await profileWith(w, 'f380x', []);
     const profile = await createProfile(admin, 'department_manager_self_service');
     expect(await resolved(w, identity(profile.id))).toEqual([w.head.userId, w.near.userId].sort());
@@ -154,7 +165,7 @@ describe('AC-APV-F380 身份展开', () => {
   });
 
   it('D5 身份取全部成员而交接 HR 管理员命名值仍只取第一人', async () => {
-    const w = await relationWorld(database().db, 'f380-hr-admin');
+    const w = shared;
     const hr = await standardProfile(w, 'standard_hr_admin');
     const admin = await adminOf(w);
     await makeGrantable(admin, [hr]);
@@ -164,8 +175,8 @@ describe('AC-APV-F380 身份展开', () => {
   });
 
   it('D6 保存校验：身份必须存在于本租户，未映射者 422，不静默当空人', async () => {
-    const w = await relationWorld(database().db, 'f380-save');
-    const other = await relationWorld(database().db, 'f380-save-other');
+    const w = shared;
+    const other = sharedForeign;
     const mine = await profileWith(w, 'f380s', [w.head.userId]);
     const foreign = await profileWith(other, 'f380f', [other.head.userId]);
     expect((await save(w, [identity(mine.profile.id)])).status).toBe(201);
@@ -262,8 +273,8 @@ describe('AC-APV-F380 身份展开', () => {
   }, 600_000);
 
   it('身份候选：仅流程编辑者可读、最少字段、分页搜索、跨租户不回显', async () => {
-    const w = await relationWorld(database().db, 'f380-candidates');
-    const other = await relationWorld(database().db, 'f380-candidates-other');
+    const w = shared;
+    const other = sharedForeign;
     const mine = await profileWith(w, 'f380c', []);
     const foreign = await profileWith(other, 'f380d', []);
     const get = (query: string, allow = true, type = 'identity') =>
