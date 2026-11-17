@@ -426,7 +426,9 @@ describe('AC-TRF-F481-FE-04 我的签署：列表与详情', () => {
     await click(pressable(rowOf('合成调动协议'), '调动电子签署'));
     expect(drawer()).toBeTruthy();
     await closeDetail();
-    await openDetail('新正文快照');
+    // 列表行不带正文（mineViews detail=false）：按文件名找行，按正文判详情就绪。
+    await click(pressable(rowOf('合成调动协议'), '调动电子签署'));
+    await detailReady('新正文快照');
     await act(async () => late.release());
     await settle(60);
     expect(drawer()?.textContent).toContain('新正文快照');
