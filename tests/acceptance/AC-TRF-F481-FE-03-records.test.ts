@@ -562,3 +562,31 @@ describe('AC-TRF-F481-FE-03 签署记录：结果未知', () => {
     expect(modal()?.textContent).not.toContain('结果待确认');
   });
 });
+
+/** 在途时关闭弹窗：命令落定时弹窗已卸载，完成的命令留在模块级 store 里（关闭时仍锁定、没清掉），所以也放在最后。 */
+describe('AC-TRF-F481-FE-03 签署记录：请求在途时关闭弹窗', () => {
+  // 返工 P2-1 同类：关闭时列表就重读了，那时撤销尚未落定；落定后仍挂着的列表要再重读，不能停在旧状态与旧版本上。
+  it('FE-03-13 撤销在途时关闭弹窗：回执到达后列表重读、显示已撤销，不另起命令', async () => {
+    let release!: () => void;
+    const landed = new Promise<void>((done) => (release = done)).then(() => {
+      rows = ALL.map((row) => (row.id === R2 ? { ...row, status: 'revoked', revision: 4, currentNode: null } : row));
+      return { body: { items: [{ id: R2, ok: true }] } };
+    });
+    writes = [landed];
+    await open();
+    await check('合成员工乙');
+    await click(pressable(heading(), '撤销'));
+    await click(pressable(modal(), '确定'));
+    expect(modal()?.textContent).toContain('正在提交');
+    await click(pressable(modal(), '关闭'));
+    await rendered();
+    expect(rowOf('合成员工乙')?.textContent, '关闭时撤销尚未落定').toContain('签署中');
+    const before = lists().length;
+    await act(async () => release());
+    await settle(60);
+    await rendered();
+    expect(lists().length, '撤销落定后列表重读').toBeGreaterThan(before);
+    expect(rowOf('合成员工乙')?.textContent).toContain('已撤销');
+    expect(sent).toHaveLength(1);
+  });
+});

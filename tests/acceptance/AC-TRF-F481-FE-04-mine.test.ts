@@ -312,6 +312,18 @@ const gate = () => {
   const promise = new Promise<void>((done) => (release = done));
   return { promise, release };
 };
+// 冲突、结果未知会把恢复槽留在模块级存储里：在途交错用例各加一条只属于本用例的待签任务，不碰别的用例的槽。
+const fresh = (n: number, templateName: string) => {
+  const item = task(id(n), { files: [file(1, templateName)] });
+  tasks[item.id] = item;
+  return item.id;
+};
+// 签署请求未返回：点确认后关闭抽屉、重开同一任务，重开的详情因共用恢复槽仍禁用按钮
+async function reopenWhileSending(fileName: string) {
+  await closeDetail();
+  await openDetail(fileName);
+  expect(signButton()?.disabled, '重开后请求仍在途、按钮禁用').toBe(true);
+}
 
 describe('AC-TRF-F481-FE-04 我的签署：列表与详情', () => {
   it('FE-04-01 两页签 待我签署 / 我已签署；行显示场景、发起人、发起时间、截止时间、文件名称、状态', async () => {
@@ -524,6 +536,78 @@ describe('AC-TRF-F481-FE-04 我的签署：被拒与冲突', () => {
   });
 });
 
+// 返工 P2-1：落定回调属于已关闭的旧详情；重开的同任务详情要随结果重读，不能留着旧的 canSign: true。
+describe('AC-TRF-F481-FE-04 我的签署：请求在途时关闭重开', () => {
+  it('FE-04-11 确认在途时关闭重开：成功回执到达后当前详情重读、显示签后进度、按钮消失，不再发写请求', async () => {
+    const X = fresh(5, '合成兼职协议');
+    const pending = gate();
+    writes = [
+      async () => {
+        await pending.promise;
+        return { body: receipt((tasks[X] = signed(tasks[X]!))) };
+      },
+    ];
+    await open();
+    await openDetail('合成兼职协议');
+    await click(signButton());
+    await reopenWhileSending('合成兼职协议');
+    const reads = detailReads(X).length;
+    await act(async () => pending.release());
+    await settle(60);
+    await detailReady('合成兼职协议');
+    expect(detailReads(X).length, '当前打开的详情已重读').toBeGreaterThan(reads);
+    expect(drawer()?.textContent).toContain('签署中（待企业确认）');
+    expect(drawer()?.textContent).toContain('2026-11-16 11:00:00');
+    expect(signButton(), '签后按钮消失').toBeUndefined();
+    await settle(200);
+    expect(sent).toHaveLength(1);
+  });
+
+  // 两种 409 都按 mine.ts signMine：版本先于状态校验，本人在另一入口已确认时旧版本得 REVISION_CONFLICT。
+  it.each([
+    {
+      n: 6,
+      code: 'ESIGN_TASK_EXPIRED',
+      change: (item: Task): Task => ({ ...item, revision: 3, status: 'expired', currentNode: null, canSign: false }),
+      error: { code: 'CONFLICT', message: '签署任务已过期', details: { reason: 'ESIGN_TASK_EXPIRED' } },
+      notice: '签署任务已过期',
+      shown: '已过期',
+    },
+    {
+      n: 7,
+      code: 'REVISION_CONFLICT',
+      change: signed,
+      error: { code: 'REVISION_CONFLICT', message: '签署任务已变更，请刷新后重试' },
+      notice: '记录已被更新，请刷新后重新提交',
+      shown: '签署中（待企业确认）',
+    },
+  ])('FE-04-12 确认在途时关闭重开，迟到 409 $code：当前详情重读、显示新状态、按钮消失，不自动重提', async (item) => {
+    const X = fresh(item.n, '合成培训协议');
+    const pending = gate();
+    writes = [
+      async () => {
+        await pending.promise;
+        tasks[X] = item.change(tasks[X]!);
+        return { status: 409, body: { error: item.error } };
+      },
+    ];
+    await open();
+    await openDetail('合成培训协议');
+    await click(signButton());
+    await reopenWhileSending('合成培训协议');
+    const reads = detailReads(X).length;
+    await act(async () => pending.release());
+    await settle(60);
+    expect(noticeText()).toContain(item.notice);
+    await detailReady('合成培训协议');
+    expect(detailReads(X).length, '当前打开的详情已重读').toBeGreaterThan(reads);
+    expect(drawer()?.textContent).toContain(item.shown);
+    expect(signButton(), '不可再签，按钮消失').toBeUndefined();
+    await settle(200);
+    expect(sent, '不自动重提').toHaveLength(1);
+  });
+});
+
 describe('AC-TRF-F481-FE-04 我的签署：员工自助挂载', () => {
   it('FE-04-08 员工自助 > 我的签署：/self/esign 挂同一个组件，菜单在员工自助下，同一接口', async () => {
     const route = selfRoute();
@@ -571,5 +655,36 @@ describe('AC-TRF-F481-FE-04 我的签署：结果未知', () => {
     expect(drawer()?.textContent).not.toContain('结果待确认');
     expect(signButton()).toBeUndefined();
     expect(drawer()?.textContent).toContain('签署中（待企业确认）');
+  });
+
+  // 同 P2-1 的重发路径：重发回执也落在已关闭的旧详情上。
+  it('FE-04-13 按原命令重发在途时关闭重开：重发成功后当前详情重读、按钮消失，不另起命令', async () => {
+    const X = fresh(8, '合成轮岗协议');
+    const pending = gate();
+    writes = [
+      { status: 503, body: { error: { code: 'SERVICE_UNAVAILABLE', message: '服务暂不可用' } } },
+      async () => {
+        await pending.promise;
+        return { body: receipt((tasks[X] = signed(tasks[X]!))) };
+      },
+    ];
+    await open();
+    await openDetail('合成轮岗协议');
+    await click(signButton());
+    await settle(60);
+    expect(drawer()?.textContent).toContain('结果待确认');
+    await click(pressable(drawer(), '按原命令重发'));
+    await reopenWhileSending('合成轮岗协议');
+    const reads = detailReads(X).length;
+    await act(async () => pending.release());
+    await settle(60);
+    await detailReady('合成轮岗协议');
+    expect(detailReads(X).length, '当前打开的详情已重读').toBeGreaterThan(reads);
+    expect(drawer()?.textContent).not.toContain('结果待确认');
+    expect(drawer()?.textContent).toContain('签署中（待企业确认）');
+    expect(signButton(), '签后按钮消失').toBeUndefined();
+    await settle(200);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]!.key, '重发沿用原命令 ID').toBe(sent[0]!.key);
   });
 });
