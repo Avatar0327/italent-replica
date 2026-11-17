@@ -6,9 +6,10 @@ import { limitApprovers } from './source-resolver.js';
  * （DEC-017）的命中流程，并对复刻命中流程继续核算能否提交（X-17）。会签节点（F-003）逐人给出审批人与处理方式，
  * 并给出按出口动作生成的流转规则（DEC-144）。
  * 例外（F-326 §3.7）：`currentSources` 仅由流程管理员显式开启，才把变量 / 矩阵来源按当前值补进虚拟输入
- * （simulation-current.ts）；默认路径不读变量表与矩阵表，对象查看者拿不到这些来源里的真实用户。
+ * （simulation-current.ts）；默认路径不读矩阵表，对象查看者拿不到这些来源里的真实用户。
+ * 默认路径只读一处变量表：被模拟流程自己的自动变量取已发布值（`withOwnAutoVariables`，DEC-919，§3.7 ⑥）。
  */
-import type { Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
   type ConditionField,
@@ -36,14 +37,16 @@ import {
   type PathStep,
   type PathWalk,
   type RoutingFacts,
+  type VariableDataType,
   walkDefaultPath,
 } from '@italent/domain';
 import { validIsoDate } from '../org/read-model.js';
-import { approvalError, type ApprovalContext } from './context.js';
+import { approvalError, rowsOf, type ApprovalContext } from './context.js';
 import { loadProcess, loadVersion, type VersionView } from './definitions.js';
 import { decideHandoverApprovers, type HandoverResolution, type ResolvedApprover } from './handover-empty.js';
 import { candidates, evaluate, noProcessMessage, originalSiteMatch, replicaMatch } from './matching.js';
 import { simulationFieldsOf, withCurrentSources } from './simulation-current.js';
+import { variablePersonIds } from './variable-input.js';
 
 export interface SimulationData {
   readonly values: Readonly<Record<string, string | null>>;
@@ -87,6 +90,32 @@ const managerOf = (data: SimulationData, candidate: Candidate): Candidate => ({
   personId: null,
   userId: (candidate.userId && data.managers?.[candidate.userId]) ?? null,
 });
+
+/**
+ * DEC-919（F-326 §3.7 ⑥ 的已发布值子集）：被模拟流程自己的自动变量是流程定义的一部分（`GET /processes/:id` 本来就回显），
+ * 虚拟路径里直接取已发布的默认值，是“虚拟账号”，不查真实资格，与原 `specified` 一致。集合按 `origin_process_id`
+ * 一次查出，不逐来源查；停用的变量与运行时一样按“没有人”。人工变量、其他流程的自动变量不在集合里，仍走原路径。
+ * 调用方给的虚拟值（含当前值路径已解析好的）优先，所以 `resolveCurrentSources` 的结果不受影响。待生效值随 S7e。
+ */
+async function withOwnAutoVariables(
+  tx: Tx,
+  tenantId: string,
+  processId: string,
+  data: SimulationData,
+): Promise<SimulationData> {
+  const rows = rowsOf<{ id: string; data_type: string; value: string | null }>(
+    await tx.execute(sql`SELECT id, data_type, default_value::text AS value FROM approval_variables
+      WHERE tenant_id=${tenantId}::uuid AND origin='auto' AND origin_process_id=${processId}::uuid
+        AND status='enabled'`),
+  );
+  const own: Record<string, readonly string[]> = {};
+  for (const row of rows) {
+    const defaultValue = row.value === null ? null : JSON.parse(row.value);
+    const key = sourceKey({ type: 'public_variable', value: row.id });
+    own[key] = variablePersonIds({ dataType: row.data_type as VariableDataType, defaultValue });
+  }
+  return { ...data, sourceRelations: { ...own, ...data.sourceRelations } };
+}
 
 function virtualSources(source: ApproverSource, data: SimulationData, facts: RoutingFacts): Candidate[] {
   const value = expressionValue(source);
@@ -374,9 +403,10 @@ export async function simulateProcess(
   const version = request.scope === 'published' ? process.currentVersion : process.latestVersion;
   if (!version) throw approvalError('CONFLICT', 'APPROVAL_NOT_PUBLISHED', '流程尚无已发布版本');
   const context = conditionContext(process.approvalType, request.data);
-  const data = currentSources
+  const given = currentSources
     ? await withCurrentSources(tx, ctx, version, process.approvalType, request.data)
     : request.data;
+  const data = await withOwnAutoVariables(tx, ctx.tenantId, processId, given);
   const conditions = evaluateCondition(version.conditions, context);
   const walk = walkOf(version, process.approvalType, context);
   const nodes = simulateNodes(ctx, version, data, walk);
@@ -413,10 +443,11 @@ export async function simulateByObject(
   const replica = replicaMatch(evaluated, request.approvalType);
   // X-17 / F13：命中流程后继续无副作用地核算能否提交（与真实提交同一套预检）。
   const replicaVersion = replica ? await loadVersion(tx, ctx.tenantId, replica.version.id) : null;
-  const data =
+  const given =
     replicaVersion && currentSources
       ? await withCurrentSources(tx, ctx, replicaVersion, request.approvalType, request.data)
       : request.data;
+  const data = replica ? await withOwnAutoVariables(tx, ctx.tenantId, replica.processId, given) : given;
   const blockers = replicaVersion ? preflight(ctx, replicaVersion, data) : [];
   return {
     approvalType: request.approvalType,

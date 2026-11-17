@@ -98,6 +98,17 @@ describe('AC-APV-F326-37（已发布值子集，DEC-919）本流程自动变量�
     expect(result.nodes![0]).toMatchObject({ approverUserId: s.own.userId, resolution: 'resolved' });
   });
 
+  it('本流程自动变量被停用：与运行时一致，按没有人', async () => {
+    const s = await scene('s7a-sim-disabled');
+    await withTenant(s.w.db, s.w.tenant.id, (tx) =>
+      tx.execute(sql`UPDATE approval_variables SET status='disabled'
+        WHERE tenant_id=${s.w.tenant.id}::uuid AND origin='auto' AND origin_process_id=${s.process.id}::uuid`),
+    );
+    const result = await s.simulate(s.viewer, false);
+    expect(result.startable).toBe(false);
+    expect(result.nodes![0]!.approverUserId).toBeNull();
+  });
+
   it('调用方给了虚拟值时以虚拟值为准', async () => {
     const s = await scene('s7a-sim-override');
     const virtual = s.w.near.userId;
