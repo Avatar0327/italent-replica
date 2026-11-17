@@ -1,3 +1,4 @@
+import { startESignScheduler } from './modules/esign/scheduler.js';
 import { startSequenceSyncScheduler } from './modules/job/sequence-worker.js';
 import { maybeStartQualificationSyncScheduler } from './modules/qualification/sync-worker.js';
 import { maybeStartLeaveConsumerScheduler } from './modules/evaluation/leave-consumer.js';
@@ -62,6 +63,9 @@ if (handle && process.env.EMPLOYMENT_ACTIVATION_SCHEDULER !== 'off') {
 }
 
 if (handle && process.env.CONTRACT_SCHEDULER !== 'off') startContractScheduler(handle.db);
+
+// F-481 §5.4：签署任务到期与员工节点提醒，按任务快照执行，不自动重新发起。
+if (handle) startESignScheduler(handle.db);
 
 // F-479 S3 附件清理：临时文件 24h 过期转待清理，再过 1h 删字节；单文件失败记次数并下轮重试，多实例靠行锁去重。
 if (handle && process.env.ATTACHMENT_CLEANUP_SCHEDULER !== 'off') {

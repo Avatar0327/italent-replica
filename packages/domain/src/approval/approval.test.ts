@@ -338,6 +338,9 @@ describe('PR #35 第三轮：预置与目录按规格核对', () => {
       '兼职调整',
       '薪资调整',
       '合同变更',
+      // F-481 设计 §8.1：合同段只读显示是否发起电子文件签署与所选模板（审批人只看本单字段，DEC-057）。
+      '发起电子文件签署',
+      '电子签署模板',
       '职责转交',
       '目标调整',
     ];
@@ -375,6 +378,8 @@ describe('PR #35 第三轮：预置与目录按规格核对', () => {
       '试岗期限（月）': 'onTrialMonths',
       兼职调整: 'partTimeEnds',
       合同变更: 'contractChange',
+      发起电子文件签署: 'electronicSignature',
+      电子签署模板: 'esignTemplateIds',
       职责转交: 'dutyTransfer',
     };
     const byLabel = new Map(TRANSFER_DETAIL_VIEW.map((item) => [item.label, item]));

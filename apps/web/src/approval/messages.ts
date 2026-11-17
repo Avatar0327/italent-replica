@@ -103,6 +103,9 @@ export const fieldLabels: Record<string, string> = {
   transferTypeCode: '调动类型',
   employeeId: '人员编号',
   employeeName: '姓名',
+  // F-481 §3.1：联动选项里的电子签两项（apps/api transfer/linkage/approval.ts）
+  electronicSignature: '发起电子文件签署',
+  esignTemplateIds: '电子签署模板',
 };
 
 /** F-132 第 2 段：审批中心各子页按原站（DEC-489：以原站为准，取证只在本机查看）。 */

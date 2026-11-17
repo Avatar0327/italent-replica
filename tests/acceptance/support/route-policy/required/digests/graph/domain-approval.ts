@@ -115,6 +115,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#ORG_ADJUSTMENT_APPROVERS',
     'packages/domain/src/approval/types.ts#ORG_ADJUSTMENT_ONLY_APPROVERS',
   ],
+  'packages/domain/src/approval/definition.ts#publishViolations': [
+    '#avoidSubjectsViolations',
+    'packages/domain/src/approval/routes.ts#hasApproveExit',
+  ],
   'packages/domain/src/approval/definition.ts#subjectEmployeeViolations': [
     '#allowsSubjectEmployee',
     'packages/domain/src/approval/types.ts#approverExpressionsOf',

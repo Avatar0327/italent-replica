@@ -110,6 +110,11 @@ export const linkageText = {
   dutyDepartmentHead: '转交部门负责人',
   detail: '联动执行情况',
   pending: '尚未执行（调动生效时执行）',
+  // F-481 §8.1：调动详情合同段只读显示所选签署模板；停用的模板标注，名称不可读的不显示裸 ID。
+  electronicSignature: '发起电子文件签署',
+  esignYes: '是',
+  esignNo: '否',
+  esignDisabled: (name: string) => `${name}（已停用）`,
   executedAt: '执行时间',
   contractChanged: '已生成新合同版本',
   trial: '试岗期',
@@ -189,7 +194,7 @@ export const listText = {
   more: '更多操作',
   export: '导出数据',
   import: '导入调动记录',
-  pendingTool: '接口待补齐，暂不可用',
+  pendingTool: '未完成', // 没有后端契约的入口一律标“未完成”（DEC-774，F-481 设计 §8.1）
   collapse: '收起',
   expand: '展开',
   closeBanner: '关闭提示',
@@ -272,7 +277,12 @@ export const hrFormText = {
   noApplication: '当前不能为该员工发起调动申请。',
   infoGap:
     '原站本区块还有性别、年龄、是否同步履历、试岗方式、预计试岗结束日期、测试、是否调整目标，接口暂不支持，本页不显示。',
-  contractGap: '原站本区块的“发起电子文件签署”接口暂不支持，本页不显示。',
+  // F-481 §3.1：无默认，未选等同“否”（U6）；模板选项与提示文案在 esign/messages.ts。
+  electronicSignature: '发起电子文件签署',
   salaryOff: '未选择调整薪资。',
   contractOff: '未选择变更合同。',
+  // F-504：原站保存时的确认框文案（F-481 设计 §9），确认后才发请求。
+  terminateTitle: '请确认以下信息后，再继续操作',
+  terminateContent: '变更后合同的生效日期晚于原合同生效日期，继续保存将终止原合同。',
+  confirm: '确定',
 } as const;

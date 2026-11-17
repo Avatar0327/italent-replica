@@ -348,26 +348,16 @@ test('AC-FE-R2d2a-08 有按钮但无对象写权，记录仍展示、提交入�
 test('AC-FE-R2d2a-09 租户自定义字段按元数据与字段权显示、编辑保存', async ({ page }) => {
   const id = '70000000-0000-4000-8000-000000000001';
   await ready(page, buttons, [`custom:${id}`]);
-  await page.route('**/employment/custom-fields?*', (route) =>
-    route.fulfill({
-      json: {
-        items: [
-          {
-            id,
-            code: 'ext_synthetic',
-            name: '合成兼职说明',
-            objectType: 'employment',
-            valueType: 'text',
-            revision: 1,
-            inherit: true,
-          },
-        ],
-        page: 1,
-        pageSize: 200,
-        hasDataPermission: true,
-      },
-    }),
+  // F-523b：业务侧只读目录（任职对象查看权即可），形状照 F-523a：不分页、每项只有 id/name/valueType/options/editable。
+  await page.route('**/employment/custom-field-definitions', (route) =>
+    route.fulfill({ json: { items: [{ id, name: '合成兼职说明', valueType: 'text', options: [], editable: true }] } }),
   );
+  // 配置接口保持配置准入，普通 HR 得 403；本页不得再请求它。
+  const config: string[] = [];
+  await page.route('**/employment/custom-fields**', (route) => {
+    config.push(route.request().url());
+    return route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN', message: '无权限' } } });
+  });
   let body: unknown;
   await page.route(`**/employment/part-times/${recordId}`, (route) => {
     if (route.request().method() === 'GET')
@@ -382,6 +372,7 @@ test('AC-FE-R2d2a-09 租户自定义字段按元数据与字段权显示、编�
   await save(page).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(body).toEqual({ customFields: { [id]: '新说明' } });
+  expect(config).toEqual([]);
 });
 
 async function fillNew(page: Page) {

@@ -10,6 +10,8 @@ export interface Choice {
 export interface ContractChoice {
   readonly id: string;
   readonly name: string | null;
+  /** 原合同生效日期（租户本地日期，F-504 确认框用）；读不到或无权查看时缺省。 */
+  readonly effectiveDate?: string;
 }
 export interface EmployeeChoice extends Choice {
   readonly code: string | null;
@@ -120,6 +122,9 @@ export interface LinkageDraft {
   readonly adjustedInsuranceRegionCode?: string;
   readonly adjustedInsurancePlanId?: string;
   readonly adjustedInsuranceCompanyId?: string;
+  /** F-481 §3.1：发起电子文件签署，无默认（未选 = 否）；只在变更合同时提交。 */
+  readonly electronicSignature?: boolean;
+  readonly esignTemplateIds?: readonly string[];
 }
 export type InsuranceAdjustKey =
   'adjustedInsuranceRegionCode' | 'adjustedInsurancePlanId' | 'adjustedInsuranceCompanyId';
@@ -153,4 +158,8 @@ export interface LinkageView {
   readonly partTimes: readonly LinkageItemView[];
   /** F-474-8c-2c：社保档案子项（任一调整值可见时返回）。 */
   readonly insuranceArchive?: LinkageItemView | null;
+  /** F-481 S2：null = 否；两字段任一不可见时键缺席（linkage/view.ts）。name 不可读时为 null。 */
+  readonly esign?: {
+    readonly templates: readonly { readonly id: string; readonly name: string | null; readonly available: boolean }[];
+  } | null;
 }

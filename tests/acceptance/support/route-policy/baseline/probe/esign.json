@@ -1,4 +1,70 @@
 {
+  "GET /api/tenant/esign/mine": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/esign/mine/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "a2f754ca9722",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/esign/mine/:id/files": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "a2f754ca9722",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/esign/records": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.ESignRecord"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ESignRecord/TenantBase.ESignRecord.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ESignRecord:view"
+    ]
+  },
+  "GET /api/tenant/esign/records/files": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "3217b193d174",
+      "status": 400
+    },
+    "fieldQueries": [
+      "fields:TenantBase.ESignRecord"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TenantBase.ESignRecord#ESignRecord.Download@list"
+    ]
+  },
   "GET /api/tenant/esign/scenes/transfer": {
     "all": {
       "status": 200
@@ -9,6 +75,17 @@
     "scopeQueries": [],
     "trace": [
       "obj:TenantBase.ESignSettings:view"
+    ]
+  },
+  "GET /api/tenant/esign/template-options/reissue": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#MulLaunchESignTranfer@list",
+      "obj:TenantBase.EmploymentRecord:update"
     ]
   },
   "GET /api/tenant/esign/template-options/transfer-form": {
@@ -51,6 +128,45 @@
       "obj:TenantBase.ESignSettings:update"
     ]
   },
+  "POST /api/tenant/esign/mine/:id/sign": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "a1493a72c72c",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/esign/records/remind": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "d9d9d4c381e9",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TenantBase.ESignRecord#ESignRecord.Remind@list"
+    ]
+  },
+  "POST /api/tenant/esign/records/revoke": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "d9d9d4c381e9",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TenantBase.ESignRecord#ESignRecord.Revoke@list"
+    ]
+  },
   "POST /api/tenant/esign/templates": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -61,6 +177,19 @@
     "scopeQueries": [],
     "trace": [
       "obj:TenantBase.ESignSettings:create"
+    ]
+  },
+  "POST /api/tenant/esign/transfer-tasks": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "5201f2e7fee2",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#MulLaunchESignTranfer@list",
+      "obj:TenantBase.EmploymentRecord:update"
     ]
   },
   "PUT /api/tenant/esign/scenes/transfer": {

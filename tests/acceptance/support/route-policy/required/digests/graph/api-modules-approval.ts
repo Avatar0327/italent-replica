@@ -705,6 +705,21 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/auto-variables.ts#MAX_NAME': [
     'packages/domain/src/approval/variables.ts#VARIABLE_TEXT_FIELDS',
   ],
+  'apps/api/src/modules/approval/auto-variables.ts#applyPendingAutoVariables': [
+    '#assertHeadcount',
+    '#assertResolutions',
+    '#changeAuto',
+    '#createAuto',
+    '#pendingEntries',
+    '#pendingNeedsChoice',
+    '#peopleOfRow',
+    '#sameSet',
+    '#swapPending',
+    '#valueFor',
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/variables.ts#loadVariable',
+    'packages/domain/src/approval/types.ts#isCountersign',
+  ],
   'apps/api/src/modules/approval/auto-variables.ts#assertHeadcount': [
     '#valueFor',
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -713,6 +728,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/auto-variables.ts#assertNoMergedDuplicate': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'packages/domain/src/approval/definition.ts#countersignDuplicate',
+  ],
+  'apps/api/src/modules/approval/auto-variables.ts#assertResolutions': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
   ],
   'apps/api/src/modules/approval/auto-variables.ts#autoVariableName': ['#MAX_NAME', '#cutUnits', '#wellFormed'],
   'apps/api/src/modules/approval/auto-variables.ts#changeAuto': [
@@ -766,6 +784,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/auto-variables.ts#ownedVariable': [
     'apps/api/src/modules/approval/variables.ts#selection',
   ],
+  'apps/api/src/modules/approval/auto-variables.ts#pendingEntries': ['#slotSources'],
   'apps/api/src/modules/approval/auto-variables.ts#pendingNeedsChoice': ['#peopleOfRow', '#sameSet'],
   'apps/api/src/modules/approval/auto-variables.ts#retireCandidates': ['#variableIdsOf'],
   'apps/api/src/modules/approval/auto-variables.ts#retireUnreferencedAutoVariables': [
@@ -775,6 +794,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/variables.ts#loadVariable',
   ],
   'apps/api/src/modules/approval/auto-variables.ts#slotSources': [
+    'packages/domain/src/approval/types.ts#isCountersign',
+  ],
+  'apps/api/src/modules/approval/auto-variables.ts#swapPending': [
+    '#publicVariable',
+    '#stripPending',
     'packages/domain/src/approval/types.ts#isCountersign',
   ],
   'apps/api/src/modules/approval/auto-variables.ts#variableIdsOf': ['#slotSources'],
@@ -977,6 +1001,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/designer-people.ts#eligibleDesignerPeople',
   ],
+  'apps/api/src/modules/approval/definitions.ts#assertUniquePriority': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#lockApprovalPriority',
+  ],
   'apps/api/src/modules/approval/definitions.ts#audited': [
     'apps/api/src/modules/approval/auto-variables.ts#enrichProcessView',
     'apps/api/src/modules/approval/context.ts#auditApproval',
@@ -992,6 +1021,7 @@ export const GRAPH: Graph = {
     '#insertVersion',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
+  'apps/api/src/modules/approval/definitions.ts#discardProcess': ['#audited', '#bump', '#lockedForChange'],
   'apps/api/src/modules/approval/definitions.ts#inheritRecusalSwitches': [
     'packages/domain/src/approval/types.ts#avoidsSelf',
     'packages/domain/src/approval/types.ts#avoidsSubjects',
@@ -1026,6 +1056,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/definition-routes.ts#withLoadedRoutes',
     '#nodeOf',
   ],
+  'apps/api/src/modules/approval/definitions.ts#lockApprovalPriority': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+  ],
   'apps/api/src/modules/approval/definitions.ts#lockedForChange': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#assertRevision',
@@ -1033,11 +1067,33 @@ export const GRAPH: Graph = {
     '#processRow',
   ],
   'apps/api/src/modules/approval/definitions.ts#materializeScope': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/definitions.ts#newVersion': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    '#audited',
+    '#bump',
+    '#insertVersion',
+    '#lockedForChange',
+  ],
   'apps/api/src/modules/approval/definitions.ts#nodeOf': ['#approversOf'],
   'apps/api/src/modules/approval/definitions.ts#nodeTypeColumns': [
     'packages/domain/src/approval/types.ts#isCountersign',
   ],
   'apps/api/src/modules/approval/definitions.ts#processRow': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/definitions.ts#publishProcess': [
+    'apps/api/src/modules/approval/auto-variables.ts#applyPendingAutoVariables',
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/definition-routes.ts#assertRoutesValid',
+    '#assertExceptionAdminMember',
+    '#assertUniquePriority',
+    '#audited',
+    '#bump',
+    '#lockedForChange',
+    '#materializeScope',
+    '#rewriteNodes',
+    'packages/domain/src/approval/conditions.ts#conditionViolations',
+    'packages/domain/src/approval/definition.ts#publishViolations',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
   'apps/api/src/modules/approval/definitions.ts#replaceDraft': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/definition-routes.ts#inheritRoutes',
@@ -1054,6 +1110,11 @@ export const GRAPH: Graph = {
     '#insertVersion',
     '#loadProcess',
     '#processRow',
+  ],
+  'apps/api/src/modules/approval/definitions.ts#rewriteNodes': [
+    'apps/api/src/modules/approval/definition-routes.ts#writeRoutes',
+    '#NODE_TABLES',
+    '#insertNode',
   ],
   'apps/api/src/modules/approval/definitions.ts#transitionRuleOf': [
     '#exitRuleOf',
@@ -1995,6 +2056,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#iso',
     'packages/domain/src/employment/exit-notice-templates.ts#renderExitNotice',
+    'packages/domain/src/esign/notice-templates.ts#renderEsignNotice',
   ],
   'apps/api/src/modules/approval/queries.ts#listTodos': ['apps/api/src/modules/approval/context.ts#rowsOf', '#iso'],
   'apps/api/src/modules/approval/recusal.ts#assertNotRecused': [
@@ -2039,11 +2101,18 @@ export const GRAPH: Graph = {
     '#INSURANCE_COMPANY_KEYS',
     '#INSURANCE_PLAN_KEYS',
     '#PERSON_KEYS',
+    '#TEMPLATE_KEY',
     '#departmentNames',
     '#dictionaryNames',
     '#personNames',
     '#stringsOf',
+    '#templateNames',
     'apps/api/src/modules/insurance/reference-names.ts#insuranceReferenceNames',
+  ],
+  'apps/api/src/modules/approval/reference-names.ts#templateNames': [
+    '#TEMPLATE_KEY',
+    '#UUID',
+    'apps/api/src/modules/esign/transfer-input.ts#signTemplateView',
   ],
   'apps/api/src/modules/approval/resolver.ts#adminAncestors': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#assigneeGate': [
@@ -2187,32 +2256,17 @@ export const GRAPH: Graph = {
     '#writeCtx',
     'apps/api/src/modules/job/context.ts#parseBody',
   ],
-  'apps/api/src/modules/approval/routes.ts#registerProcessRoutes': [
+  'apps/api/src/modules/approval/routes.ts#registerProcessLifecycleRoutes': [
     'apps/api/src/modules/approval/access.ts#requireProcessButton',
-    'apps/api/src/modules/approval/access.ts#requireProcessView',
-    'apps/api/src/modules/approval/auto-variables.ts#enrichProcessView',
-    'apps/api/src/modules/approval/definition-input.ts#approvalTypeOf',
-    'apps/api/src/modules/approval/definition-input.ts#createSchema',
-    'apps/api/src/modules/approval/definition-input.ts#definitionSchema',
-    'apps/api/src/modules/approval/definition-input.ts#toDefinition',
-    'apps/api/src/modules/approval/definitions.ts#createProcess',
-    'apps/api/src/modules/approval/definitions.ts#listProcesses',
-    'apps/api/src/modules/approval/definitions.ts#loadProcess',
-    'apps/api/src/modules/approval/definitions.ts#replaceDraft',
-    'apps/api/src/modules/approval/designer-people.ts#designerPeopleQuery',
-    'apps/api/src/modules/approval/designer-people.ts#listDesignerPeople',
-    'apps/api/src/modules/approval/designer-sources.ts#designerSourcesQuery',
-    'apps/api/src/modules/approval/designer-sources.ts#listDesignerSources',
+    'apps/api/src/modules/approval/definitions.ts#discardProcess',
+    'apps/api/src/modules/approval/definitions.ts#newVersion',
+    'apps/api/src/modules/approval/definitions.ts#publishProcess',
     '#command',
     '#processResponse',
-    '#readCtx',
-    '#tenantCtx',
-    '#trimProcess',
+    '#publishSchema',
     '#uuidParam',
     '#writeCtx',
-    'apps/api/src/modules/job/context.ts#pageQuery',
     'apps/api/src/modules/job/context.ts#parseBody',
-    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'apps/api/src/modules/approval/routes.ts#registerRelayRoutes': [
     'apps/api/src/modules/approval/actions.ts#jumpTask',
@@ -2379,6 +2433,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/definitions.ts#createProcess',
     '#command',
     '#processResponse',
+    '#writeCtx',
+    'apps/api/src/modules/job/context.ts#parseBody',
+  ],
+  'apps/api/src/modules/approval/routes.ts#route:POST /processes/:id/publish': [
+    'apps/api/src/modules/approval/access.ts#requireProcessButton',
+    'apps/api/src/modules/approval/definitions.ts#publishProcess',
+    '#command',
+    '#processResponse',
+    '#publishSchema',
+    '#uuidParam',
     '#writeCtx',
     'apps/api/src/modules/job/context.ts#parseBody',
   ],
@@ -2598,6 +2662,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/simulation-current.ts#withCurrentSources',
     '#conditionContext',
     '#preflight',
+    '#withOwnAutoVariables',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'apps/api/src/modules/approval/simulation.ts#simulateNodes': [
@@ -2619,6 +2684,7 @@ export const GRAPH: Graph = {
     '#preflight',
     '#simulateNodes',
     '#walkOf',
+    '#withOwnAutoVariables',
     'packages/domain/src/approval/conditions.ts#evaluateCondition',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
@@ -2645,6 +2711,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/simulation.ts#walkOf': [
     'packages/domain/src/approval/routes.ts#hasBusinessExits',
     'packages/domain/src/approval/routes.ts#walkDefaultPath',
+  ],
+  'apps/api/src/modules/approval/simulation.ts#withOwnAutoVariables': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/variable-input.ts#variablePersonIds',
+    'packages/domain/src/approval/sources.ts#sourceKey',
   ],
   'apps/api/src/modules/approval/source-identity.ts#memberUserIds': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
