@@ -122,7 +122,6 @@ function RetireSeniorityForm({ setting, reload }: { setting: RetireSenioritySett
           </Form.Item>
         </Form>
       </FormLock>
-      <p className="exit-hint">{t.effect}</p>
       <p className="exit-hint">{t.hint}</p>
       {writable && (
         <Button type="primary" loading={submission.busy} disabled={locked} onClick={() => void save()}>
