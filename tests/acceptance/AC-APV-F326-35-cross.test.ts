@@ -12,6 +12,7 @@ import {
   actionsOf,
   APPROVAL,
   audits,
+  auditAtRevision,
   autoAt,
   autoRows,
   firstAuto,
@@ -129,7 +130,7 @@ describe('AC-APV-F326-35 跨流程复用（DEC-860）', () => {
     expect(cSaved.latestVersion.nodes).toHaveLength(1);
     const row = (await autoRows(w, a.id)).find((item) => item.id === wRow.id)!;
     expect(row.status).toBe('disabled');
-    const last = (await audits(w, wRow.id)).at(-1)!;
+    const last = await auditAtRevision(w, wRow.id, row.revision);
     expect(last).toMatchObject({ action: 'approval.public_variable.auto_disable', actor: w.hr.id });
     expect(last.after).toMatchObject({ reason: '不再被引用' });
   });
