@@ -1,0 +1,4 @@
+/* F-481 §8.3：签署正文是生成时的快照文本，保留换行。 */
+.esign-content {
+  white-space: pre-wrap;
+}
