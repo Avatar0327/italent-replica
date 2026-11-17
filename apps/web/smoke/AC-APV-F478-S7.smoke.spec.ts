@@ -109,14 +109,18 @@ async function openSelect(input: Locator) {
   await input.focus();
   await input.press('ArrowDown');
 }
-async function option(page: Page, text: string | RegExp) {
-  const item = page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: text });
+/** 只在本选择框自己的下拉里取选项（aria-owns 指向下拉内的列表）：上一个下拉收起动画期间仍可见，不能按“第一个可见”取。 */
+async function option(page: Page, input: Locator, text: string | RegExp) {
+  const owns = await input.getAttribute('aria-owns');
+  const dropdown = page.locator('.ant-select-dropdown').filter({ has: page.locator(`[id="${owns}"]`) });
+  const item = dropdown.locator('.ant-select-item-option').filter({ hasText: text });
   await expect(item.first(), `下拉选项 ${String(text)}`).toBeVisible();
   await item.first().click();
 }
 async function choose(page: Page, scope: Locator, name: string, text: string | RegExp) {
-  await openSelect(scope.getByRole('combobox', { name, exact: true }));
-  await option(page, text);
+  const input = scope.getByRole('combobox', { name, exact: true });
+  await openSelect(input);
+  await option(page, input, text);
 }
 const exact = (text: string) => new RegExp(`^${text}$`);
 
