@@ -1,6 +1,9 @@
 /** AC-42：暂停点只由 Vitest 包装已有函数注入，产品没有钩子状态或默认路径开销。 */
+import { sql, type Db } from '@italent/db';
+import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
+import type * as ApprovalContext from '../../apps/api/src/modules/approval/context.js';
 import type * as Variables from '../../apps/api/src/modules/approval/variables.js';
 import type * as AutoVariables from '../../apps/api/src/modules/approval/auto-variables.js';
 import {
@@ -27,6 +30,17 @@ const hook = vi.hoisted(() => ({
   release: (): void => undefined,
   pause: async (): Promise<void> => undefined,
 }));
+vi.mock('../../apps/api/src/modules/approval/context.js', async (original) => {
+  const actual = await original<typeof ApprovalContext>();
+  return {
+    ...actual,
+    auditApproval: async (...args: Parameters<typeof actual.auditApproval>) => {
+      await actual.auditApproval(...args);
+      if (hook.step === 'admin' && args[2].action === 'approval.public_variable.update' && args[2].objectId === hook.id)
+        await hook.pause();
+    },
+  };
+});
 vi.mock('../../apps/api/src/modules/approval/variables.js', async (original) => {
   const actual = await original<typeof Variables>();
   return {
@@ -65,6 +79,18 @@ function arm(step: string, id: string) {
   };
 }
 const node = (id: string) => [{ key: 'n1', name: '合成节点', approver: specified(id) }];
+
+async function waitingQuery(db: Db, expected: RegExp) {
+  const rows = rowsOf<{ query: string; blockers: number }>(
+    await db.execute(sql`
+    SELECT query,cardinality(pg_blocking_pids(pid)) AS blockers FROM pg_stat_activity
+    WHERE datname=current_database() AND wait_event_type='Lock'`),
+  );
+  expect(rows).toHaveLength(1);
+  expect(rows[0]!.query).toMatch(expected);
+  expect(rows[0]!.blockers).toBeGreaterThan(0);
+}
+
 async function clean(db: Parameters<typeof lockWaiters>[0]) {
   expect(await lockWaiters(db)).toBe(0);
   expect(await idleInTransaction(db)).toBe(0);
@@ -91,6 +117,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-APV-F326-42 真 PG �
         ]);
         const second = lock.track(saveDraft(w, b, node(w.head.userId)));
         expect(await settledOrBlocked(w.db, second, 1)).toBe('blocked');
+        await waitingQuery(w.db, /insert.*approval_variables/is);
         hook.release();
         expect((await first).status).toBe(200);
         expect((await second).status).toBe(200);
@@ -121,6 +148,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-APV-F326-42 真 PG �
         ]);
         const second = lock.track(saveDraft(w, p, [{ ...node(w.near.userId)[0]!, key: 'b_new' }]));
         expect(await settledOrBlocked(w.db, second, 1)).toBe('blocked');
+        await waitingQuery(w.db, /select.*approval_processes.*for update/is);
         hook.release();
         expect((await first).status).toBe(200);
         const rejected = await second;
@@ -132,7 +160,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-APV-F326-42 真 PG �
     expect((await varRow(w, x.id)).default_value).toBe(w.head.userId);
     await draftOk(w, await readProcess(w, p.id), node(w.near.userId));
     expect((await varRow(w, x.id)).default_value).toBe(w.near.userId);
-    expect(actionsOf(await audits(w, x.id))).toEqual(['auto_create', 'auto_update', 'auto_update']);
+    expect(actionsOf(await audits(w, x.id)).sort()).toEqual(['auto_create', 'auto_update', 'auto_update']);
     await clean(w.db);
   });
 
@@ -153,6 +181,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-APV-F326-42 真 PG �
         ]);
         const second = lock.track(editVariable(w, x, { defaultValue: w.near.userId }));
         expect(await settledOrBlocked(w.db, second, 1)).toBe('blocked');
+        await waitingQuery(w.db, /select.*approval_variables.*for update/is);
         hook.release();
         expect((await first).status).toBe(200);
         const response = await second;
@@ -162,13 +191,43 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-APV-F326-42 真 PG �
     );
     const current = await varRow(w, x.id);
     expect((await editVariable(w, current, { defaultValue: w.near.userId })).status).toBe(200);
-    // 管理员已提交；设计器拿到锁后必须读新默认值，不能使用拿锁前的快照。
-    const before = await varRow(w, x.id);
-    const same = await draftOk(w, await readProcess(w, p.id), node(w.near.userId));
-    expect((await varRow(w, x.id)).revision).toBe(before.revision);
-    await draftOk(w, same, node(w.head.userId));
-    expect((await varRow(w, x.id)).revision).toBe(before.revision + 1);
-    expect(actionsOf(await audits(w, x.id)).sort()).toEqual(['auto_create', 'auto_update', 'auto_update', 'update']);
+    // 反序：管理员持 V 锁时启动设计器；放行后设计器必须重读刚提交的默认值。
+    for (const sameValue of [true, false]) {
+      const before = await varRow(w, x.id);
+      const process = await readProcess(w, p.id);
+      const target = sameValue ? w.head.userId : w.near.userId;
+      const priorAudit = await audits(w, x.id);
+      arm('admin', x.id);
+      await withRelease(
+        () => hook.release(),
+        async (lock) => {
+          const admin = lock.track(editVariable(w, before, { defaultValue: w.head.userId }));
+          await Promise.race([
+            hook.reached,
+            admin.then(() => {
+              throw new Error('管理员暂停点未到达');
+            }),
+          ]);
+          const designer = lock.track(saveDraft(w, process, node(target)));
+          expect(await settledOrBlocked(w.db, designer, 1)).toBe('blocked');
+          await waitingQuery(w.db, /select.*approval_variables.*for update/is);
+          hook.release();
+          expect((await admin).status).toBe(200);
+          expect((await designer).status).toBe(200);
+        },
+      );
+      const after = await varRow(w, x.id);
+      expect(after.default_value).toBe(target);
+      expect(after.revision).toBe(before.revision + (sameValue ? 1 : 2));
+      const trail = await audits(w, x.id);
+      expect(trail.filter((a) => a.action.endsWith('.update'))).toHaveLength(
+        priorAudit.filter((a) => a.action.endsWith('.update')).length + 1,
+      );
+      expect(trail.filter((a) => a.action.endsWith('.auto_update'))).toHaveLength(
+        priorAudit.filter((a) => a.action.endsWith('.auto_update')).length + (sameValue ? 0 : 1),
+      );
+      expect(trail.every((a) => a.actor === w.hr.id)).toBe(true);
+    }
     await clean(w.db);
   });
 });

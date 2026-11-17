@@ -1,3 +1,4 @@
+import { assertMatrixCellKinds } from './matrix-cell-validation.js';
 import { randomUUID } from 'node:crypto';
 import { and, eq, asc, approvalMatrixColumns, approvalMatrixRows, approvalMatrixCells, type Tx } from '@italent/db';
 import { auditApproval, type ApprovalContext, type Row } from './context.js';
@@ -133,6 +134,7 @@ export async function replaceMatrixStructure(
 ) {
   const before = await loadMatrixStructure(tx, ctx.tenantId, matrix.id);
   const after = candidate(input, before);
+  await assertMatrixCellKinds(tx, ctx.tenantId, after);
   await tx
     .delete(approvalMatrixRows)
     .where(and(eq(approvalMatrixRows.tenantId, ctx.tenantId), eq(approvalMatrixRows.matrixId, matrix.id)));

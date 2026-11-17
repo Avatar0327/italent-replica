@@ -1,4 +1,5 @@
 /** S7d：引用计数与 §6.1 同口径，跨节点、版本去重，只有数字可披露。 */
+import { sql, withTenant } from '@italent/db';
 import { APPROVAL_PROCESS_OBJECT } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -17,6 +18,9 @@ import {
   s4World,
   specified,
 } from './AC-APV-F326-S7a-support.js';
+import type { Authorizer } from '../../apps/api/src/authorization.js';
+import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
+import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { tenantApi } from './support/tenant-api.js';
 const database = useTestDb();
 const count = (p: ProcessView) =>
@@ -33,7 +37,7 @@ describe('AC-APV-F326-49 引用流程数', () => {
     const published = await w.publish(a);
     const v = await autoAt(w, a.id, 'a1');
     const b = await w.publish(await create(w, [{ key: 'b1', approver: publicVar(v.id) }], { name: '隐藏乙流程' }));
-    await dispatch(w);
+    const inflight = await dispatch(w);
     const b2 = await newVersion(w, b);
     await w.publish(b2);
     const c = await create(w, [{ key: 'c1', approver: publicVar(v.id) }], { name: '隐藏丙流程' });
@@ -42,10 +46,14 @@ describe('AC-APV-F326-49 引用流程数', () => {
     await draftOk(w, c, [{ key: 'c1', approver: manager }]);
     expect(count(await readProcess(w, a.id))).toBe(2);
     const viewer = await w.member('合成仅查看者');
-    const api = tenantApi(w.db, {
-      clock: w.clock,
-      authorize: (q) => q.userId === viewer && q.action === 'object.view' && q.resource === APPROVAL_PROCESS_OBJECT,
+    const authorize: Authorizer = (q) =>
+      q.userId === viewer && q.action === 'object.view' && q.resource === APPROVAL_PROCESS_OBJECT;
+    registerScopeProvider(authorize, {
+      scope: async () => EMPTY_SCOPE,
+      authorize: async (q) => authorize(q),
+      fields: async () => new Set(['id', 'revision', 'latestVersion', 'currentVersion']),
     });
+    const api = tenantApi(w.db, { clock: w.clock, authorize });
     const response = await api.request('GET', `${APPROVAL}/processes/${a.id}`, w.as(viewer));
     expect(response.status).toBe(200);
     const view = (await response.json()) as ProcessView;
@@ -55,5 +63,15 @@ describe('AC-APV-F326-49 引用流程数', () => {
     const b3 = await draftOk(w, await newVersion(w, b2), [{ key: 'b1', approver: manager }]);
     await w.publish(b3);
     expect(count(await readProcess(w, a.id))).toBe(2);
+    // §6.1：作废流程只靠可恢复旧实例计入；终态不计。
+    for (const status of ['running', 'returned', 'withdrawn', 'approved']) {
+      await withTenant(w.db, w.tenant.id, async (tx) => {
+        await tx.execute(sql`UPDATE approval_processes SET status='discarded'
+          WHERE tenant_id=${w.tenant.id} AND id=${b.id}::uuid`);
+        await tx.execute(sql`UPDATE approval_instances SET status=${status}
+          WHERE tenant_id=${w.tenant.id} AND id=${inflight.instance.id}::uuid`);
+      });
+      expect(count(await readProcess(w, a.id))).toBe(status === 'approved' ? 1 : 2);
+    }
   });
 });

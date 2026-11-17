@@ -24,7 +24,7 @@ export function usePeopleNames(ids: readonly string[]) {
     void (async () => {
       const map = new Map<string, string>();
       for (let offset = 0; offset < list.length; offset += 100) {
-        const query = new URLSearchParams({ userIds: list.slice(offset, offset + 100).join(',') });
+        const query = new URLSearchParams({ context: 'matrix', userIds: list.slice(offset, offset + 100).join(',') });
         const result = await api.request<Result>(`${PEOPLE_PATH}?${query}`, { signal: controller.signal });
         for (const person of result.items) map.set(person.userId, person.name);
       }
@@ -49,7 +49,7 @@ export function PersonValue(props: {
   const [known, setKnown] = useState<Choice[]>(() => people.map(choiceOf));
   const load = useCallback(
     async (keyword: string, signal: AbortSignal) => {
-      const query = new URLSearchParams({ keyword, page: '1', pageSize: '50' });
+      const query = new URLSearchParams({ context: 'matrix', keyword, page: '1', pageSize: '50' });
       return (await api.request<Result>(`${PEOPLE_PATH}?${query}`, { signal })).items.map(choiceOf);
     },
     [api],

@@ -23,7 +23,9 @@ describe('AC-APV-F326-37 草稿模拟有效值', () => {
     const viewer = await w.member('合成查看者');
     const next = await w.person('合成待生效人', w.staff);
     const manual = await variable(w);
-    const foreign = await w.publish(await create(w, [{ key: 'f', approver: specified(w.head.userId) }]));
+    const foreign = await w.publish(
+      await create(w, [{ key: 'f', approver: specified(w.head.userId) }], { approvalType: 'personnel_change' }),
+    );
     const foreignVar = await autoAt(w, foreign.id, 'f');
     const nodes = [
       { key: 'own', approver: specified(w.near.userId) },
@@ -31,9 +33,11 @@ describe('AC-APV-F326-37 草稿模拟有效值', () => {
       { key: 'foreign', approver: publicVar(foreignVar.id) },
     ];
     const p = await w.publish(await create(w, nodes, { priority: 9 }));
+    const own = await autoAt(w, p.id, 'own');
     const saved = await draftOk(w, await newVersion(w, p), [
       { ...nodes[0]!, approver: specified(next.userId) },
       ...nodes.slice(1),
+      { key: 'same_variable_other_slot', approver: publicVar(own.id) },
     ]);
     const api = tenantApi(w.db, {
       clock: w.clock,
@@ -58,10 +62,11 @@ describe('AC-APV-F326-37 草稿模拟有效值', () => {
     const latest = await simulate();
     expect(latest.nodes[0]).toMatchObject({ approverUserId: next.userId, resolution: 'resolved' });
     expect((await simulate('published')).nodes[0]!.approverUserId).toBe(w.near.userId);
-    for (const node of latest.nodes.slice(1)) {
+    for (const node of latest.nodes.slice(1, 3)) {
       expect(node.resolution).toBe('exception_admin');
       expect([w.near.userId, w.head.userId]).not.toContain(node.approverUserId);
     }
+    expect(latest.nodes[3]!.approverUserId).toBe(w.near.userId);
     const key = sourceKey(saved.latestVersion.nodes[0]!.approver!);
     expect((await simulate('latest', { sourceRelations: { [key]: [w.head.userId] } })).nodes[0]!.approverUserId).toBe(
       w.head.userId,
