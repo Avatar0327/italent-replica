@@ -14,7 +14,7 @@ import { ESIGN_NOTICE_TEMPLATES, MODULE_OBJECTS } from '@italent/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const requireWeb = createRequire(resolve('apps/web/package.json'));
-const { createElement: h, act, Suspense } = requireWeb('react');
+const { createElement: h, act, lazy, Suspense } = requireWeb('react');
 const { createRoot } = requireWeb('react-dom/client');
 const { MemoryRouter } = requireWeb('react-router');
 const { App, ConfigProvider } = requireWeb('antd');
@@ -146,11 +146,9 @@ type Entry = { id: string; label: string; children?: Entry[]; page?: { Component
 const group = () => (PAGES.entries as Entry[]).find((entry) => entry.label === '电子签');
 const child = (label: string) => group()?.children?.find((item) => item.label === label);
 const settle = (ms = 30) => act(() => new Promise<void>((done) => setTimeout(done, ms)));
-async function open(label: string) {
-  const page = child(label)?.page;
-  expect(page, `电子签 > ${label} 有页面`).toBeTruthy();
+async function mount(component: unknown) {
   const theme = { token: { motion: false } };
-  const node = h(Suspense, { fallback: null }, h(page!.Component as never));
+  const node = h(Suspense, { fallback: null }, h(component as never));
   await act(async () =>
     root.render(
       h(
@@ -160,20 +158,42 @@ async function open(label: string) {
       ),
     ),
   );
+}
+async function open(label: string) {
+  const page = child(label)?.page;
+  expect(page, `电子签 > ${label} 有页面`).toBeTruthy();
+  await mount(page!.Component);
   await rendered(label);
 }
 // 两张设置页是懒加载（esign/pages.ts lazyPage）：冷启动时模块转换可能超过任何固定等待，首跑偶发拿不到 h1。
-// 改为轮询到页面标题出现且读取结束（PageState loading 消失），上限 3 秒；超时照常判红并写明卡在哪一步。
+// 改为轮询到“目标页”就绪，上限 3 秒；超时按同一判据判红，写明是哪一页、缺哪一项。
+// 只认目标页自己的可见容器：同一个 Suspense 切到未加载的页时，上一页 DOM 仍留在 host 里（display:none），
+// 若按整个 host 找 h1，会把隐藏的旧页当成新页就绪（Sol 第 4 轮 P2-1）。容器与标题见 esign/*Page.tsx、messages.ts。
 const PAGE_TIMEOUT_MS = 3000;
-const loading = () => host.querySelector('.page-state .ant-spin');
-async function rendered(label: string) {
-  const deadline = Date.now() + PAGE_TIMEOUT_MS;
-  while (!(host.querySelector('h1') && !loading()) && Date.now() < deadline) await settle();
-  expect(
-    host.querySelector('h1'),
-    `电子签 > ${label}：${PAGE_TIMEOUT_MS}ms 内页面未渲染出 h1（懒加载未完成）`,
-  ).not.toBeNull();
-  expect(loading(), `电子签 > ${label}：${PAGE_TIMEOUT_MS}ms 内页面读取未结束`).toBeNull();
+const TARGETS: Record<string, { readonly root: string; readonly title: string }> = {
+  设置: { root: 'section.esign-templates', title: '签署模板' },
+  签署场景设置: { root: 'section.esign-scenes', title: '签署场景设置' },
+};
+function visible(element: Element) {
+  for (let node: Element | null = element; node && node !== host; node = node.parentElement)
+    if (node.hasAttribute('hidden') || (node as HTMLElement).style.display === 'none') return false;
+  return true;
+}
+function missing(label: string) {
+  const target = TARGETS[label];
+  if (!target) return [`未登记的目标页「${label}」`];
+  const page = Array.from(host.querySelectorAll(target.root)).find(visible);
+  if (!page) return [`可见的 ${target.root}`];
+  const title = page.querySelector('.page-heading h1')?.textContent;
+  return [
+    ...(title === target.title ? [] : [`标题「${target.title}」（实为 ${title ?? '无'}）`]),
+    ...(page.querySelector('.page-state .ant-spin') ? ['读取结束（loading 仍在）'] : []),
+  ];
+}
+async function rendered(label: string, timeout = PAGE_TIMEOUT_MS) {
+  const deadline = Date.now() + timeout;
+  while (missing(label).length > 0 && Date.now() < deadline) await settle();
+  expect(missing(label), `电子签 > ${label}：${timeout}ms 内页面未就绪，缺`).toEqual([]);
   // 列表读取与对象权限是并行请求：页面就绪后再等一拍，让权限回执（新建 / 编辑按钮）落地
   await settle();
 }
@@ -335,6 +355,31 @@ describe('AC-TRF-F481-FE-05 电子签 > 设置（签署模板）', () => {
       expect(host.querySelector('.ant-table-tbody tr')).toBeNull();
       for (const action of ['新建', '编辑', '停用', '启用']) expect(pressable(host, action)).toBeUndefined();
     }
+  });
+
+  it('FE-05-09b 切页回归：下一页懒加载未完成时，上一页被 Suspense 隐藏的 DOM 不算新页就绪', async () => {
+    configAllowed = false;
+    await open('设置');
+    let release!: () => void;
+    const gate = new Promise<void>((done) => (release = done));
+    // 测试内自建的延迟懒加载，包的是同一个 ScenesPage（不改 esign/pages.ts）：闸门打开前下一页一直挂起
+    const Slow = lazy(async () => {
+      await gate;
+      const { ScenesPage } = await import(resolve('apps/web/src/esign/ScenesPage.tsx'));
+      return { default: ScenesPage };
+    });
+    await mount(Slow);
+    const stale = host.querySelector('h1');
+    expect(stale?.textContent, '上一页标题仍在 DOM 里').toBe('签署模板');
+    expect(visible(stale!), '但已被 Suspense 隐藏').toBe(false);
+    expect(host.textContent, '上一页的无权提示也还在').toContain('暂无访问权限');
+    await expect(rendered('签署场景设置', 300)).rejects.toThrow('签署场景设置：300ms 内页面未就绪');
+    await act(async () => release());
+    await rendered('签署场景设置');
+    expect(host.querySelectorAll('h1'), '新页提交后旧页 DOM 已移除，后续断言只看到新页').toHaveLength(1);
+    expect(host.querySelector('h1')?.textContent).toBe('签署场景设置');
+    expect(host.textContent).toContain('暂无访问权限');
+    expect(host.querySelector('.ant-table-tbody tr')).toBeNull();
   });
 
   it('FE-05-22 真实配置对象授权（/me/objects 按钮恒为空）：模板新建、编辑、停用 / 启用与场景编辑入口都在', async () => {
