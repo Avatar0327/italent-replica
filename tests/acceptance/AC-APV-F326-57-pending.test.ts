@@ -9,6 +9,7 @@ import type { NodeInput } from './AC-APV-support.js';
 import {
   actionsOf,
   audits,
+  auditAtRevision,
   autoAt,
   autoRows,
   autoViewOf,
@@ -97,8 +98,8 @@ describe('AC-APV-F326-L-57 发布时才生效', () => {
 
     const view = autoViewOf(saved.latestVersion.nodes.find((node) => node.key === 'n2')!.approver);
     expect(view).toMatchObject({ id: x.id, userIds: [w.near.userId], pendingUserIds: [a2.userId] });
-    const trail = await audits(w, saved.id, 'approval.process.draft.update');
-    expect(JSON.stringify(trail.at(-1)!.after)).toContain(a2.userId);
+    const changed = await auditAtRevision(w, saved.id, saved.revision, 'approval.process.draft.update');
+    expect(JSON.stringify(changed.after)).toContain(a2.userId);
 
     expect(await approveHead(w, inflight.instance.id)).toEqual([['n2', w.near.userId]]);
     expect(await submit(people[1]!)).toEqual([w.near.userId]);

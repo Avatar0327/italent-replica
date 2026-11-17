@@ -92,21 +92,40 @@ export async function variableCount(w: TenantDb): Promise<number> {
 }
 
 export interface AuditRow {
+  revision: number;
   action: string;
   actor: string | null;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
 }
 
-/** 变量的审计，按写入先后排序（测试时钟固定、时间相同，用物理行序 ctid 还原先后；按动作名排会把 enable 排到 auto_disable 之后）。 */
+/** 固定时钟与 ctid 都不能表示变更顺序；按同事务 outbox 的命令关联到对象 revision，不过滤缺失的事件。 */
 export async function audits(w: TenantDb, objectId: string, like = 'approval.public_variable.%'): Promise<AuditRow[]> {
-  return withTenant(w.db, w.tenant.id, async (tx) =>
-    rowsOf<AuditRow>(
-      await tx.execute(sql`SELECT action, actor_user_id::text AS actor, before, after FROM audit_events
-        WHERE tenant_id=${w.tenant.id} AND object_id=${objectId} AND action LIKE ${like}
-        ORDER BY occurred_at, ctid`),
+  const rows = await withTenant(w.db, w.tenant.id, async (tx) =>
+    rowsOf<Omit<AuditRow, 'revision'> & { revision: number | null }>(
+      await tx.execute(sql`SELECT a.action, a.actor_user_id::text AS actor, a.before, a.after, o.revision
+        FROM audit_events a LEFT JOIN approval_outbox o
+          ON o.tenant_id=a.tenant_id AND o.object_id::text=a.object_id AND o.object_type=a.object_type
+          AND o.command_id=a.command_id AND o.event_type=a.action
+        WHERE a.tenant_id=${w.tenant.id} AND a.object_id=${objectId} AND a.action LIKE ${like}
+        ORDER BY o.revision, a.id`),
     ),
   );
+  for (const row of rows) expect(row.revision, `${row.action} 应有同命令、同对象的 outbox`).not.toBeNull();
+  expect(new Set(rows.map((row) => row.revision)).size, '每次对象变更应恰有一条匹配的审计').toBe(rows.length);
+  return rows.map((row) => ({ ...row, revision: row.revision! }));
+}
+
+/** 按目标操作产生的 revision 精确取一条；缺失或重复都失败，不能误用更早的同类动作。 */
+export async function auditAtRevision(
+  w: TenantDb,
+  objectId: string,
+  revision: number,
+  like = 'approval.public_variable.%',
+): Promise<AuditRow> {
+  const rows = (await audits(w, objectId, like)).filter((row) => row.revision === revision);
+  expect(rows, `revision=${revision} 应恰有一条审计`).toHaveLength(1);
+  return rows[0]!;
 }
 
 export const actionsOf = (rows: AuditRow[]) => rows.map((row) => row.action.replace('approval.public_variable.', ''));

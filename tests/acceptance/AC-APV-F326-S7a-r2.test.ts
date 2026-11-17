@@ -10,6 +10,7 @@ import type { NodeInput } from './AC-APV-support.js';
 import {
   actionsOf,
   audits,
+  auditAtRevision,
   autoAt,
   autoRows,
   autoViewOf,
@@ -68,7 +69,7 @@ describe('AC-APV-F326-S7a-r2 P2-2 保存收尾含“手工重新启用过”的�
     await draftOk(w, await newVersion(w, v2), [viaManager('n1')]);
 
     expect((await varRow(w, x.id)).status).toBe('disabled');
-    const last = (await audits(w, x.id)).at(-1)!;
+    const last = await auditAtRevision(w, x.id, (await varRow(w, x.id)).revision);
     expect(last.action).toBe('approval.public_variable.auto_disable');
     expect(last.actor).toBe(w.hr.id);
     expect(last.after).toMatchObject({ reason: '不再被引用' });
@@ -113,7 +114,8 @@ describe('AC-APV-F326-S7a-r2 P2-3 发布冲突的重选协议', () => {
 
   it('同一变量重复选择 → 400 APPROVAL_PENDING_RESOLUTION_INVALID，不写任何变量', async () => {
     const { w, other, x, saved } = await pendingWorld('s7a-r2-dup');
-    await editVariable(w, x, { defaultValue: other.userId });
+    const edited = await editVariable(w, x, { defaultValue: other.userId });
+    expect(edited.status, await edited.clone().text()).toBe(200);
     const current = await varRow(w, x.id);
     const response = await publishWith(w, saved, {
       pendingResolutions: [
@@ -173,7 +175,8 @@ describe('AC-APV-F326-S7a-r2 P2-4 pendingConflict 与发布同一判定', () => 
 
   it('对照：变量页改成第三人 → 仍报冲突', async () => {
     const { w, other, x, saved } = await pendingWorld('s7a-r2-diff');
-    await editVariable(w, x, { defaultValue: other.userId });
+    const edited = await editVariable(w, x, { defaultValue: other.userId });
+    expect(edited.status, await edited.clone().text()).toBe(200);
     expect(nodeAutoView(await readProcess(w, saved.id), 'n2')!.pendingConflict).toBe(true);
   });
 });
@@ -232,14 +235,20 @@ describe('AC-APV-F326-S7a-r2 P2-7 自动生成不得写出超过 100 人的 pers
 
 describe('AC-APV-F326-S7a-r2 P3 审计归位与停用原因', () => {
   it('选“采用设计器值”发布 → auto_update 的 after.trigger 内带 resolution，after 根层没有', async () => {
-    const { w, other, x, saved } = await pendingWorld('s7a-r2-resolution');
-    await editVariable(w, x, { defaultValue: other.userId });
+    const { w, a2, other, x, saved } = await pendingWorld('s7a-r2-resolution');
+    const edited = await editVariable(w, x, { defaultValue: other.userId });
+    expect(edited.status, await edited.clone().text()).toBe(200);
     const current = await varRow(w, x.id);
+    expect(current.revision).toBe(x.revision + 1);
+    expect(peopleOf(current)).toEqual([other.userId]);
     const done = await publishWith(w, saved, {
       pendingResolutions: [{ variableId: x.id, revision: current.revision, choice: 'designer' }],
     });
     expect(done.status, await done.clone().text()).toBe(200);
-    const last = (await audits(w, x.id)).at(-1)!;
+    const updated = await varRow(w, x.id);
+    expect(updated.revision).toBe(current.revision + 1);
+    expect(peopleOf(updated)).toEqual([a2.userId]);
+    const last = await auditAtRevision(w, x.id, updated.revision);
     expect(last.action).toBe('approval.public_variable.auto_update');
     expect(last.after).toMatchObject({
       trigger: { kind: 'publish', versionId: saved.latestVersion.id, resolution: 'designer' },
@@ -252,7 +261,7 @@ describe('AC-APV-F326-S7a-r2 P3 审计归位与停用原因', () => {
     const created = await create(w, [single('n1', w.near.userId)]);
     const x = (await autoRows(w, created.id))[0]!;
     await draftOk(w, created, [counter([specified(w.near.userId)])]);
-    const last = (await audits(w, x.id)).at(-1)!;
+    const last = await auditAtRevision(w, x.id, (await varRow(w, x.id)).revision);
     expect(last.action).toBe('approval.public_variable.auto_disable');
     expect(last.after).toMatchObject({ reason: '不再被引用' });
   });
