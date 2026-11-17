@@ -22,8 +22,26 @@ describe('AC-APV-F318a 运行', () => {
     const s = await transferScene(w);
     const people: string[] = [];
     for (let i = 0; i < 101; i++) people.push((await w.person(`合成审批人${i}`, s.from)).userId);
+    // DEC-919：同节点的指定人员合并成一个人员自动变量，上限 100（F-326-L §2.3、主设计 §5.5）。
+    // 前 50 人走指定人员，后 51 人走手工公共变量，同节点合计仍是 101 名在职候选。
+    const shared = await w.json<{ id: string }>(
+      await w.request(w.hr.id, 'POST', '/api/tenant/approval/variables', {
+        ifMatch: 0,
+        body: {
+          scope: 'public',
+          codeSuffix: 'F318A_LIMIT',
+          name: '合成会签人员',
+          dataType: 'persons',
+          defaultValue: people.slice(50),
+          usageScopes: ['process'],
+          enable: true,
+        },
+      }),
+      201,
+    );
+    const approvers = [...people.slice(0, 50).map(specified), { type: 'public_variable', value: shared.id } as const];
     await w.publishedProcess({
-      nodes: [{ key: 'many', kind: 'countersign', approvers: people.map(specified), transitionRule: { type: 'all' } }],
+      nodes: [{ key: 'many', kind: 'countersign', approvers, transitionRule: { type: 'all' } }],
     });
     const instance = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     const pending = w.pending(instance);

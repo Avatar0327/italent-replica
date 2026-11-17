@@ -31,6 +31,8 @@ const selection = {
     value === null ? null : JSON.parse(value),
   ),
 };
+export { selection as variableSelection };
+export type { VariableRow };
 const byId = (tenantId: string, id: string) => and(eq(table.tenantId, tenantId), eq(table.id, id));
 
 export async function loadVariable(tx: Tx, tenantId: string, id: string, lock = false): Promise<VariableRow> {
@@ -112,8 +114,20 @@ async function checkPeople(tx: Tx, ctx: ApprovalContext, value: VariableValues, 
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_VARIABLE_USER_INVALID', '默认值须为在职内部员工的活跃账号');
 }
 
+/** 自动变量（S7a）的审计快照多带来源位置，人工变量保持原键集合，既有审计不变。 */
 function snapshot(row: VariableRow) {
+  const origin =
+    row.origin === 'auto'
+      ? {
+          origin: row.origin,
+          originProcessId: row.originProcessId,
+          originVersionId: row.originVersionId,
+          originNodeKey: row.originNodeKey,
+          originSlot: row.originSlot,
+        }
+      : {};
   return {
+    ...origin,
     code: row.code,
     name: row.name,
     dataType: row.dataType,
@@ -124,7 +138,14 @@ function snapshot(row: VariableRow) {
     appId: row.appId,
   };
 }
-async function audited(tx: Tx, ctx: ApprovalContext, action: string, before: VariableRow | null, after: VariableRow) {
+export async function auditVariable(
+  tx: Tx,
+  ctx: ApprovalContext,
+  action: string,
+  before: VariableRow | null,
+  after: VariableRow,
+  extra: Record<string, unknown> = {},
+) {
   const kind = after.scope === 'public' ? 'public' : 'application';
   const objectType = `approval-${kind}-variable`;
   const eventType = `approval.${kind}_variable.${action}`;
@@ -133,10 +154,11 @@ async function audited(tx: Tx, ctx: ApprovalContext, action: string, before: Var
     objectType,
     objectId: after.id,
     before: before ? snapshot(before) : null,
-    after: snapshot(after),
+    after: { ...snapshot(after), ...extra },
   });
   await emitOutbox(tx, ctx, { objectType, objectId: after.id, eventType, revision: after.revision });
 }
+const audited = auditVariable;
 
 export async function createVariable(tx: Tx, ctx: ApprovalContext, input: CreateVariableInput) {
   requireNew(ctx);
@@ -169,10 +191,33 @@ export async function createVariable(tx: Tx, ctx: ApprovalContext, input: Create
   return variableDetail(tx, ctx.tenantId, row.id);
 }
 
+/** S7a：自动变量只允许改名称、默认值与说明；编码、适用范围、来源不可改（DEC-858），人工变量的 origin 同样不可改。 */
+function assertAutoVariableUnlocked(before: VariableRow, input: UpdateVariableInput) {
+  // 来源是系统登记的，任何带 origin 的修改都拒绝（人工变量沿用原“字段不可改”，自动变量给专门的机读原因）
+  if (input.origin !== undefined)
+    throw approvalError(
+      'VALIDATION_FAILED',
+      before.origin === 'auto' ? 'APPROVAL_AUTO_VARIABLE_FIELD_LOCKED' : 'APPROVAL_VARIABLE_FIELD_LOCKED',
+      '变量来源不可修改',
+    );
+  if (before.origin !== 'auto') return;
+  const sameScopes =
+    input.usageScopes === undefined ||
+    (input.usageScopes.length === before.usageScopes.length &&
+      input.usageScopes.every((scope) => before.usageScopes.includes(scope)));
+  if ((input.code !== undefined && input.code !== before.code) || !sameScopes)
+    throw approvalError(
+      'VALIDATION_FAILED',
+      'APPROVAL_AUTO_VARIABLE_FIELD_LOCKED',
+      '自动生成的变量不可修改编码和适用范围',
+    );
+}
+
 export async function updateVariable(tx: Tx, ctx: ApprovalContext, id: string, input: UpdateVariableInput) {
   // F-326-L §3.1：管理员只锁本变量，不在持有变量锁之后获取流程头、实例或业务锁。
   const before = await loadVariable(tx, ctx.tenantId, id, true);
   assertRevision(ctx.expectedRevision, before.revision);
+  assertAutoVariableUnlocked(before, input);
   for (const key of ['code', 'scope', 'appId', 'dataType'] as const) {
     if (input[key] !== undefined && input[key] !== before[key])
       throw approvalError('VALIDATION_FAILED', 'APPROVAL_VARIABLE_FIELD_LOCKED', '编码、类型和归属不可修改');
@@ -215,6 +260,29 @@ async function changeStatus(tx: Tx, ctx: ApprovalContext, before: VariableRow, s
   await audited(tx, ctx, action, before, after!);
 }
 
+/** S7a：同一版本同一位置只能有一条未停用的自动变量；启用旧变量时位置已被新变量占用 → 409，给出占位者。 */
+async function assertAutoSlotFree(tx: Tx, tenantId: string, row: VariableRow) {
+  if (row.origin !== 'auto') return;
+  const [taken] = await tx
+    .select({ id: table.id, code: table.code, name: table.name })
+    .from(table)
+    .where(
+      and(
+        eq(table.tenantId, tenantId),
+        eq(table.origin, 'auto'),
+        eq(table.originVersionId, row.originVersionId!),
+        eq(table.originNodeKey, row.originNodeKey!),
+        eq(table.originSlot, row.originSlot!),
+        sql`${table.status} <> 'disabled' AND ${table.id} <> ${row.id}`,
+      ),
+    )
+    .limit(1);
+  if (taken)
+    throw approvalError('CONFLICT', 'APPROVAL_AUTO_VARIABLE_SLOT_TAKEN', '该位置已有启用的自动变量，请先停用后再启用', {
+      occupiedBy: taken,
+    });
+}
+
 export async function setVariableStatus(
   tx: Tx,
   ctx: ApprovalContext,
@@ -226,7 +294,10 @@ export async function setVariableStatus(
   assertRevision(ctx.expectedRevision, before.revision);
   const status = statusAfter(before.status as VariableStatus, action);
   if (!status) throw approvalError('CONFLICT', 'APPROVAL_VARIABLE_STATUS_INVALID', '当前状态不允许此操作');
-  if (action === 'enable') await checkPeople(tx, ctx, valuesOf(before), true);
+  if (action === 'enable') {
+    await checkPeople(tx, ctx, valuesOf(before), true);
+    await assertAutoSlotFree(tx, ctx.tenantId, before);
+  }
   // 停用不被引用挡住（设计 §6）：运行时按“没有人”走节点空人策略；但必须确认看过引用清单的总数
   if (action === 'disable')
     await assertReferencesAcknowledged(tx, ctx.tenantId, { kind: 'variable', id }, acknowledgedReferenceCount);

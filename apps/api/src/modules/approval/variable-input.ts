@@ -38,7 +38,11 @@ const acknowledgedReferenceCount = z.number().int().min(0).max(Number.MAX_SAFE_I
 export const updateVariableSchema = z
   .strictObject({
     ...editable,
+    // 适用范围的取值合法性由 validateVariableValues 判定；自动变量要先按“范围被锁”给出专门原因（S7a），不能被枚举校验抢先拒掉
+    usageScopes: z.array(z.string()),
     acknowledgedReferenceCount,
+    // origin 只为让自动变量的改动尝试得到“已锁定”的机读原因；任何值都不会被写入
+    origin: z.unknown(),
     code: z.string(),
     scope: z.enum(VARIABLE_SCOPES),
     appId: z.enum(APP_IDS).nullable(),
