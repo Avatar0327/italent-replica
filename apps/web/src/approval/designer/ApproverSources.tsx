@@ -9,6 +9,7 @@ import { ReferenceValue } from './ReferenceValue.js';
 import {
   changeSourceType,
   REFERENCE_SOURCE_TYPES,
+  referenceOf,
   sourceInputError,
   sourceList,
   sourceOptions,
@@ -142,7 +143,8 @@ function SourceRow({
       label: item.status === 'restricted' ? `${item.label} · ${s.restricted}` : item.label,
     })) ?? [];
   const candidate = { approvalType, single, disabled: !option || option.disabled, onChange };
-  if (source.value && !values.some((item) => item.value === source.value))
+  // 已存的不可识别固定值才补成禁用项；变量 / 身份 / 组织等动态引用由 ReferenceValue 按候选回显（P2-2）
+  if (source.value && !referenceOf(source) && !values.some((item) => item.value === source.value))
     values.push({
       value: source.value,
       label: sourceValueLabel(source.value),

@@ -60,5 +60,7 @@ export const s = {
     handover_work_owner: '离职交接 → 工作交接人',
     handover_hr_admin: '离职交接 → 人事管理员',
     handover_employee: '离职交接 → 员工本人',
+    // 与身份候选接口的命名来源同名（designer-sources.ts namedRows）
+    system_admin: '系统管理员',
   } as Record<string, string>,
 };

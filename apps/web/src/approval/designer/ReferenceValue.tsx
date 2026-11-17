@@ -72,8 +72,9 @@ export function useKnownItems(
       [api, type, approvalType, key, asOf],
     ),
   );
+  // 顺序以候选列表为准，回查结果只覆盖同 ID 或追加列表外的已选项：切换来源值后候选顺序不跳动（P2-2）
   const items = new Map<string, SourceCandidate>();
-  for (const item of [...(known.data ?? []), ...(found ?? [])]) items.set(item.id, item);
+  for (const item of [...(found ?? []), ...(known.data ?? [])]) items.set(item.id, item);
   return { items, resolved: !!known.data || !!known.error };
 }
 export interface CandidateValueProps {
@@ -107,7 +108,10 @@ export function ReferenceValue({
       : []),
     {
       label: s.pick(s.types[source.type]),
-      options: [...items.values()].map((item) => ({ value: item.id, label: label(item) })),
+      // 命名来源（如身份的 system_admin）与固定取值同值时只留固定项（带受限状态），合并后 value 唯一
+      options: [...items.values()]
+        .filter((item) => !fixed.some((option) => option.value === item.id))
+        .map((item) => ({ value: item.id, label: label(item) })),
     },
   ];
   // 回查失败或对象已不存在时显示固定提示而非对象 UUID。
