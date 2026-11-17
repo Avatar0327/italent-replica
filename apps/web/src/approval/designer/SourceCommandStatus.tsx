@@ -9,9 +9,12 @@ import { sourceList, sourceSummary } from './sources.js';
 export function SourceCommandStatus({
   submission,
   labels,
+  format,
 }: {
   submission: CommandForm;
   labels: Record<string, unknown>;
+  /** 其余字段的展示投影（F-478 S7 出口分支摘要）；不传时原样显示。 */
+  format?: (field: string, value: unknown) => unknown;
 }) {
   const state = submission.state;
   const sourceField = (field: string) => /:(approver|approvers|emptyApproverSources)$/.test(field);
@@ -33,7 +36,8 @@ export function SourceCommandStatus({
   ];
   const { known, retry } = useDesignerPeople(ids);
   const names = new Map(known?.choices.map((item) => [item.value, item.label]));
-  const display = (field: string, value: unknown) => (sourceField(field) ? sourceSummary(value, names) : value);
+  const display = (field: string, value: unknown) =>
+    sourceField(field) ? sourceSummary(value, names) : format ? format(field, value) : value;
   const projected = state && {
     ...state,
     differences: state.differences?.map((diff) => ({
