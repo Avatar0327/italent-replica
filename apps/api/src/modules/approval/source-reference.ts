@@ -36,12 +36,29 @@ export interface SourceScope {
   approvalType: ApprovalTypeCode;
   /** 单人审批节点的审批人（按对象身份比对）；会签节点与空人候选为 undefined */
   singleApprover?: ApproverSource;
+  /**
+   * 正在保存的节点所在版本、节点键与空人位置的来源：自动变量在其来源版本发布前只允许来源位置（节点 × 位置）自己引用
+   * （S7a，DEC-860，主设计 §5.2⑥）。sources 里按身份出现在 emptySources 中的属空人位置，其余属审批人位置。
+   */
+  owner?: { versionId: string; nodeKey: string; emptySources: readonly ApproverSource[] };
 }
 
 const sourceInvalid = (reason: string, message: string) => approvalError('APPROVAL_SOURCE_INVALID', reason, message);
 const VARIABLE_INVALID = 'APPROVAL_SOURCE_VARIABLE_INVALID';
 const MATRIX_INVALID = 'APPROVAL_SOURCE_MATRIX_INVALID';
 const MISSING = '审批来源引用不存在或不可用';
+const AUTO_UNPUBLISHED = 'APPROVAL_SOURCE_AUTO_VARIABLE_UNPUBLISHED';
+
+function isOwnerSlot(
+  row: { origin_version_id: string | null; origin_node_key: string | null; origin_slot: string | null },
+  scope: SourceScope,
+  source: ApproverSource,
+): boolean {
+  const owner = scope.owner;
+  if (!owner) return false;
+  const slot = owner.emptySources.includes(source) ? 'empty_approver' : 'approver';
+  return row.origin_version_id === owner.versionId && row.origin_node_key === owner.nodeKey && row.origin_slot === slot;
+}
 
 /**
  * F-326 §5.2：变量 / 矩阵必须存在、同租户、已启用，并适用于该审批类型与节点位置。
@@ -65,10 +82,24 @@ async function assertVariableAndMatrixSources(
       sql`, `,
     );
   const variables = variableIds.length
-    ? rowsOf<{ id: string; scope: string; app_id: string | null; data_type: string; usage_scopes: string[] }>(
-        await tx.execute(sql`SELECT id, scope, app_id, data_type, usage_scopes FROM approval_variables
-          WHERE tenant_id=${tenantId}::uuid AND status='enabled' AND id IN (${idList(variableIds)})
-          ORDER BY id FOR SHARE`),
+    ? rowsOf<{
+        id: string;
+        scope: string;
+        app_id: string | null;
+        data_type: string;
+        usage_scopes: string[];
+        origin: string;
+        origin_version_id: string | null;
+        origin_node_key: string | null;
+        origin_slot: string | null;
+        origin_status: string | null;
+      }>(
+        await tx.execute(sql`SELECT v.id, v.scope, v.app_id, v.data_type, v.usage_scopes, v.origin,
+            v.origin_version_id::text AS origin_version_id, v.origin_node_key, v.origin_slot, pv.status AS origin_status
+          FROM approval_variables v
+          LEFT JOIN approval_process_versions pv ON pv.tenant_id=v.tenant_id AND pv.id=v.origin_version_id
+          WHERE v.tenant_id=${tenantId}::uuid AND v.status='enabled' AND v.id IN (${idList(variableIds)})
+          ORDER BY v.id FOR SHARE OF v`),
       )
     : [];
   const heads = matrixIds.length
@@ -95,6 +126,8 @@ async function assertVariableAndMatrixSources(
         throw sourceInvalid(VARIABLE_INVALID, '该公共变量的适用范围不含“流程”');
       if (row.scope === 'application' && row.app_id !== APPROVAL_TYPE_APPS[scope.approvalType])
         throw sourceInvalid(VARIABLE_INVALID, '该应用变量不属于此审批类型所在的应用');
+      if (row.origin === 'auto' && row.origin_status === 'draft' && !isOwnerSlot(row, scope, source))
+        throw sourceInvalid(AUTO_UNPUBLISHED, '该自动生成的变量所属流程版本尚未发布，暂不能被引用');
       if (row.data_type === 'persons' && scope.singleApprover === source)
         throw sourceInvalid(VARIABLE_INVALID, '多人变量只能用于会签或或签节点');
     }

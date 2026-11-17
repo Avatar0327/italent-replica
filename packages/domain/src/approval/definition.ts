@@ -1,7 +1,14 @@
 /**
  * 流程定义校验：保存草稿时做结构校验；发布时再做 DEC-018 / DEC-054 规则校验（REQ-APV-001 R4/R5、REQ-APV-002 R6）。
  */
-import { approverSourcesOf, expressionValue, relationSource, sourceKey, sourceViolation } from './sources.js';
+import {
+  approverSourcesOf,
+  expressionValue,
+  isUnselectedSpecified,
+  relationSource,
+  sourceKey,
+  sourceViolation,
+} from './sources.js';
 import { conditionViolations } from './conditions.js';
 import { transitionRuleViolations } from './countersign.js';
 import { HANDOVER_NODE_KEYS } from '../employment/exit-handover.js';
@@ -77,6 +84,7 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
 export function approverSourceViolations(node: ApprovalNode, type: ApprovalTypeDefinition): string[] {
   const violations: string[] = [];
   for (const source of [...approverSourcesOf(node), ...(node.emptyApproverSources ?? [])]) {
+    if (isUnselectedSpecified(source)) continue; // 未选人占位：保存时落成自动变量（S7a），没有值可校验
     const invalid = sourceViolation(source);
     if (invalid) violations.push(invalid);
     if (
@@ -201,6 +209,13 @@ function orgAdjustmentApproverViolation(node: ApprovalNode, type: ApprovalTypeDe
     : null;
 }
 
+/** 会签审批人是否重复；未选人占位互不相同（落成变量时合并为一条），不参与查重。服务端合并变量后用同一函数再查一次。 */
+export function countersignDuplicate(node: ApprovalNode): boolean {
+  if (!isCountersign(node)) return false;
+  const keys = node.approvers.filter((source) => !isUnselectedSpecified(source)).map(sourceKey);
+  return new Set(keys).size !== keys.length;
+}
+
 /** F-003：出口动作与会签节点的结构（审批人逐人解析，流转规则见 DEC-144）。 */
 function nodeShapeViolations(node: ApprovalNode): string[] {
   const violations: string[] = [];
@@ -209,8 +224,7 @@ function nodeShapeViolations(node: ApprovalNode): string[] {
   if (new Set(exits).size !== exits.length) violations.push(`节点 ${node.key} 的出口动作重复`);
   if (!isCountersign(node)) return violations;
   if (!node.approvers.length) violations.push(`会签节点 ${node.key} 至少需要一个审批人`);
-  if (new Set(node.approvers.map(sourceKey)).size !== node.approvers.length)
-    violations.push(`会签节点 ${node.key} 的审批人重复`);
+  if (countersignDuplicate(node)) violations.push(`会签节点 ${node.key} 的审批人重复`);
   // DEC-106：自动处理的「跳过」仅单人审批节点可选（`14` §11.6），会签节点只能自动「同意」。
   if (node.sameAssigneeResult === 'skip' || node.historySameAssigneeResult === 'skip') {
     violations.push(`会签节点 ${node.key} 的相同 / 历史相同审批人自动处理结果只能为「同意」（DEC-106）`);

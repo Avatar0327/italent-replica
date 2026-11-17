@@ -34,7 +34,8 @@ async function simulate(
   scope = 'published',
 ) {
   const response = await s.w.request(s.w.hr.id, 'POST', `${APV}/processes/${process.id}/simulate`, {
-    body: { scope, data: { values: { processCode: 'TransferProcessNew', ...values } } },
+    // S7a 起指定人员存成公共变量；仿真要带“取当前值”才会解析（F-326 §3.7），否则变量来源没有虚拟账号
+    body: { scope, resolveCurrentSources: true, data: { values: { processCode: 'TransferProcessNew', ...values } } },
   });
   return s.w.json<Simulation>(response);
 }
