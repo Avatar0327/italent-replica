@@ -338,7 +338,7 @@ function useSave(process: ProcessView, context: ProcessCommand, form: FormInstan
       return { id: process.id };
     } catch (error) {
       if (action !== 'draft') throw error;
-      const result = await locateRejection(error, { draft, edited, approvalType: full.approvalType, api });
+      const result = await locateRejection(error, { draft, approvalType: full.approvalType, api });
       point(result.located);
       throw result.error;
     }

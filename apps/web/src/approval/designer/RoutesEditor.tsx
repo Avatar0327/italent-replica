@@ -229,7 +229,9 @@ function ConditionItems({
   const conditions = branch.conditions ?? { expression: '', items: [] };
   const update = (next: Partial<typeof conditions>) => onChange({ ...branch, conditions: { ...conditions, ...next } });
   const items = conditions.items;
-  const no = Math.max(0, ...items.map((item) => item.no)) + 1;
+  // 服务端要求编号在 1～上限内（item_no 的库范围）：新条件取最小的未用编号，已有编号不动，表达式里的引用保持不变。
+  const used = new Set(items.map((item) => item.no));
+  const no = Array.from({ length: MAX_ROUTE_CONDITION_ITEMS }, (_, index) => index + 1).find((n) => !used.has(n));
   return (
     <>
       {items.map((item, index) => (
@@ -243,8 +245,8 @@ function ConditionItems({
       ))}
       <div className="flow-route-row">
         <Button
-          disabled={scope.disabled || items.length >= MAX_ROUTE_CONDITION_ITEMS}
-          onClick={() => update({ items: [...items, { no, field: '', operator: UNSELECTED, value: '' }] })}
+          disabled={scope.disabled || items.length >= MAX_ROUTE_CONDITION_ITEMS || no === undefined}
+          onClick={() => no && update({ items: [...items, { no, field: '', operator: UNSELECTED, value: '' }] })}
         >
           {r.addItem}
         </Button>
