@@ -702,6 +702,26 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#appendLog',
     'apps/api/src/modules/approval/store.ts#insertTask',
   ],
+  'apps/api/src/modules/approval/auto-variable-lifecycle.ts#assertResumable': [
+    '#restartError',
+    '#systemRetiredVariables',
+  ],
+  'apps/api/src/modules/approval/auto-variable-lifecycle.ts#flushAutoVariableLifecycle': [
+    '#restartError',
+    '#systemRetiredVariables',
+    'apps/api/src/modules/approval/auto-variables.ts#retireUnreferencedAutoVariables',
+    'apps/api/src/modules/approval/variables.ts#lockVariableBatch',
+  ],
+  'apps/api/src/modules/approval/auto-variable-lifecycle.ts#lockBoundProcess': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+  ],
+  'apps/api/src/modules/approval/auto-variable-lifecycle.ts#register': ['#flushAutoVariableLifecycle', '#keyOf'],
+  'apps/api/src/modules/approval/auto-variable-lifecycle.ts#registerResumeCheck': ['#register'],
+  'apps/api/src/modules/approval/auto-variable-lifecycle.ts#registerSaveClose': ['#register'],
+  'apps/api/src/modules/approval/auto-variable-lifecycle.ts#restartError': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+  ],
   'apps/api/src/modules/approval/auto-variables.ts#MAX_NAME': [
     'packages/domain/src/approval/variables.ts#VARIABLE_TEXT_FIELDS',
   ],
@@ -710,6 +730,7 @@ export const GRAPH: Graph = {
     '#assertResolutions',
     '#changeAuto',
     '#createAuto',
+    '#lockPublishBatch',
     '#pendingEntries',
     '#pendingNeedsChoice',
     '#peopleOfRow',
@@ -745,6 +766,7 @@ export const GRAPH: Graph = {
     '#valueFor',
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/variables.ts#auditVariable',
+    'apps/api/src/modules/approval/variables.ts#recordCreatedVariable',
     'apps/api/src/modules/approval/variables.ts#selection',
     'packages/domain/src/approval/variables.ts#VARIABLE_TEXT_FIELDS',
     'packages/domain/src/approval/variables.ts#textViolation',
@@ -770,7 +792,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/auto-variables.ts#inheritedVariable': [
     'apps/api/src/modules/approval/variables.ts#selection',
   ],
-  'apps/api/src/modules/approval/auto-variables.ts#lockSaveBatch': ['#retireCandidates', '#slotSources'],
+  'apps/api/src/modules/approval/auto-variables.ts#lockPublishBatch': [
+    '#variableIdsOf',
+    'apps/api/src/modules/approval/variables.ts#lockVariableBatch',
+  ],
+  'apps/api/src/modules/approval/auto-variables.ts#lockSaveBatch': [
+    '#retireCandidates',
+    '#slotSources',
+    'apps/api/src/modules/approval/variables.ts#lockVariableBatch',
+  ],
   'apps/api/src/modules/approval/auto-variables.ts#materializeNode': [
     '#materializeSlot',
     '#slotSources',
@@ -1112,11 +1142,14 @@ export const GRAPH: Graph = {
     '#writeVersionContent',
   ],
   'apps/api/src/modules/approval/definitions.ts#republishWithExceptionAdmin': [
+    'apps/api/src/modules/approval/auto-variable-lifecycle.ts#registerSaveClose',
+    'apps/api/src/modules/approval/auto-variables.ts#retireCandidates',
     'apps/api/src/modules/approval/context.ts#approvalError',
     '#audited',
     '#bump',
     '#insertVersion',
     '#loadProcess',
+    '#materializeScope',
     '#processRow',
   ],
   'apps/api/src/modules/approval/definitions.ts#rewriteNodes': [
@@ -1498,6 +1531,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/engine.ts#launch': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
+    'apps/api/src/modules/approval/auto-variable-lifecycle.ts#lockBoundProcess',
     'apps/api/src/modules/approval/definitions.ts#loadVersion',
     '#advanceTo',
     '#assertExceptionAdminAvailable',
@@ -1545,6 +1579,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/engine.ts#resume': [
     'apps/api/src/modules/approval/activations.ts#resubmitFrom',
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
+    'apps/api/src/modules/approval/auto-variable-lifecycle.ts#assertResumable',
+    'apps/api/src/modules/approval/auto-variable-lifecycle.ts#registerResumeCheck',
+    'apps/api/src/modules/approval/auto-variables.ts#variableIdsOf',
     'apps/api/src/modules/approval/context.ts#approvalError',
     '#advanceTo',
     '#assertExceptionAdminAvailable',
@@ -2784,6 +2821,7 @@ export const GRAPH: Graph = {
     '#MISSING',
     '#VARIABLE_INVALID',
     '#isOwnerSlot',
+    '#shareLockVariables',
     '#sourceInvalid',
     'packages/domain/src/approval/sources.ts#matrixSourceParts',
     'packages/domain/src/approval/type-apps.ts#APPROVAL_TYPE_APPS',
@@ -2792,6 +2830,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/settings.ts#readOrgSettings',
   ],
   'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows': ['#historicalParent', '#orgDimensionMember'],
+  'apps/api/src/modules/approval/source-reference.ts#shareLockVariables': [
+    'apps/api/src/modules/approval/variables.ts#lockVariableBatch',
+  ],
   'apps/api/src/modules/approval/source-reference.ts#sourceDimension': [
     'packages/domain/src/approval/sources.ts#SOURCE_DIMENSIONS',
   ],
@@ -3118,6 +3159,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
   ],
+  'apps/api/src/modules/approval/variables.ts#absentFrom': ['#table'],
   'apps/api/src/modules/approval/variables.ts#assertAutoSlotFree': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     '#table',
@@ -3155,9 +3197,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/variables.ts#loadVariable': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     '#byId',
+    '#lockVariableBatch',
     '#selection',
     '#table',
   ],
+  'apps/api/src/modules/approval/variables.ts#lockVariableBatch': ['#absentFrom', '#byId', '#table'],
   'apps/api/src/modules/approval/variables.ts#selection': ['#table'],
   'apps/api/src/modules/approval/variables.ts#setVariableStatus': [
     'apps/api/src/modules/approval/context.ts#approvalError',
