@@ -6,6 +6,8 @@
 import { type Tx, withTenant } from '@italent/db';
 import { buttonResource } from '@italent/domain';
 import type { Context, Hono } from 'hono';
+import { AppError } from '../../errors.js';
+import { canonicalDeletePath, readEmploymentTypeDeleteResult } from './employment-type-delete-result.js';
 import { requirePermission } from '../../authorization.js';
 import type { CommandGuard, CommandResult } from '../../commands.js';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -63,6 +65,7 @@ async function runTypeWrite(
   write: TypeWrite,
   input: unknown,
   execute: (tx: Tx, context: EmploymentContext) => Promise<CommandResult>,
+  fingerprintPath?: string,
 ) {
   const guard: CommandGuard = { before: (tx) => requireTypeWrite(tx, deps, ctx, write) };
   // 删除回执 { id, deleted } 是协议形状，不按对象字段裁剪
@@ -70,7 +73,7 @@ async function runTypeWrite(
     (body as { deleted?: boolean }).deleted
       ? body
       : trimModuleResponse(deps, ctx, EMPLOYMENT_TYPE_OBJECT, body as object);
-  return runWrite(c, deps, ctx, input, execute, { guard, project });
+  return runWrite(c, deps, ctx, input, execute, { guard, project, ...(fingerprintPath ? { fingerprintPath } : {}) });
 }
 
 export function registerEmploymentTypeRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -124,13 +127,34 @@ export function registerEmploymentTypeRoutes(router: Hono<TenantEnv>, deps: Tena
       body: await setEmploymentTypeEnabled(tx, command, id, true),
     }));
   });
+  router.get('/employment-types/:id/delete-result/:commandId', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.delete', 0, undefined, EMPLOYMENT_TYPE_OBJECT);
+    const commandId = c.req.param('commandId');
+    const originalRevision = c.req.query('revision') ?? '';
+    const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      await requireTypeWrite(tx, deps, ctx, { operation: 'delete', button: 'delete', payload: {} });
+      if (!/^[A-Za-z0-9:_-]{1,100}$/.test(commandId) || !/^\d{1,9}$/.test(originalRevision))
+        throw new AppError('VALIDATION_FAILED', '删除结果查询必须携带原命令 ID 和版本');
+      return readEmploymentTypeDeleteResult(tx, ctx, id, commandId, Number(originalRevision));
+    });
+    c.header('Cache-Control', 'private, no-store');
+    return c.json(result);
+  });
   router.delete('/employment-types/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.delete', revision(c), undefined, EMPLOYMENT_TYPE_OBJECT);
     const write = { operation: 'delete', button: 'delete', payload: {} } as const;
-    return runTypeWrite(c, deps, ctx, write, { id }, async (tx, command) => ({
-      status: 200,
-      body: await deleteEmploymentType(tx, command, id),
-    }));
+    // 与删除结果查询共用同一路径规范口径（大写 / 混合大小写 UUID 路径也要对得上本人原命令指纹）
+    const path = canonicalDeletePath(c.req.path);
+    return runTypeWrite(
+      c,
+      deps,
+      ctx,
+      write,
+      { id },
+      async (tx, command) => ({ status: 200, body: await deleteEmploymentType(tx, command, id) }),
+      path,
+    );
   });
 }

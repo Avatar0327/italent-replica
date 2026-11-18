@@ -5291,6 +5291,36 @@
         ]
       }
     },
+    "GET /api/tenant/employment/employment-types/:id/delete-result/:commandId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentType:delete"
+        ]
+      }
+    },
     "GET /api/tenant/employment/employment-types/options": {
       "edge": {
         "anonymous": {

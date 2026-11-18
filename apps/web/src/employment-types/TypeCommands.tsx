@@ -138,6 +138,7 @@ export function RowActions({
     try {
       await writer.run({
         values: {},
+        deletion: kind === 'remove',
         editableFields: [],
         send: async ({ command }) => {
           const remove = kind === 'remove';
@@ -156,6 +157,19 @@ export function RowActions({
       writer.form.clear();
       saved();
     }
+  };
+  const reload = async () => {
+    if (!writer.form.peek()?.deletion || writer.form.peek()?.status !== 'unknown') {
+      await writer.form.reload?.();
+      return;
+    }
+    const result = await writer.form.recoverDeletion((command, id) =>
+      api.request(`${rowPath(id)}/delete-result/${encodeURIComponent(command.id)}?revision=${command.revision}`),
+    );
+    if (result?.status === 'done') {
+      writer.form.clear();
+      saved(true);
+    } else if (result?.status === 'rejected') saved();
   };
   const confirmed = (kind: 'disable' | 'enable' | 'remove', text: string) => (
     <Popconfirm
@@ -182,7 +196,7 @@ export function RowActions({
         {actions.enable && confirmed('enable', m.enable)}
         {actions.remove && confirmed('remove', m.remove)}
       </Space>
-      <CommandStatus submission={writer.form} labels={labels} />
+      <CommandStatus submission={{ ...writer.form, reload }} labels={labels} />
     </Space>
   );
 }
