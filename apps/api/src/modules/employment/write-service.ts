@@ -107,6 +107,8 @@ export interface CreateEmploymentOptions {
   readonly establishmentWarnings?: EstablishmentWarning[];
   /** F-022 入职写入端口（R2-T01 接线）：添加待入职、是否有试用期；不开放给请求体。 */
   readonly entry?: EntryOptions;
+  /** F-363：待入职改期 / 编辑重建时的锁内旧用工形式，仅服务端传入。 */
+  readonly retainedEmploymentForm?: string | null;
   /** 离职创建须经 exit-application.ts 的门禁（R2-T03 §4A）；只有它持有这个凭证。 */
   readonly exitPass?: typeof EXIT_GATE_PASS;
   /**
@@ -155,6 +157,7 @@ export async function createEmploymentBusiness(
     ...normalized,
     employeeId: employee.id,
     staffId: selected?.cycle.id,
+    retainedEmploymentForm: options.retainedEmploymentForm,
   });
   const prepared = options.positionManagerDerivation ? withPositionManagerDerivation(inherited) : inherited;
   const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
