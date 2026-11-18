@@ -8,6 +8,11 @@
  * - 39-17（P2-3）改动后又改回原值：按实际可提交值判断，直接发布、不额外保存草稿；
  * - 39-18（P2-4）只有发布按钮权限：保存不可用、发布可用；
  * - 39-19（P2-5）迟到的发布成功回执不刷新用户已切换到的“查看生效版本”。
+ * 第 2 轮审查返工（同一缺陷在原用例没走到的路径上）：
+ * - 39-24（P2-1）结果未知退出重开、按原单重发后再次 409：仍有效的选择从原命令恢复，下一笔同时带 X@1 与 Y@2；
+ * - 39-25 / 39-26（P2-3）按保存的提交归一化（名称去首尾空格）判断：只差首尾空格直接发布；真实改名、空白名称仍拦；
+ * - 39-27 / 39-28（P2-4）发布只看发布按钮授权，不看节点字段权限：节点可看不可编辑时发布可用、编辑不可用；
+ *   缺 publish 按钮或对象更新操作时仍无发布入口。
  * 页面经 PAGES 登记加载；读视图与错误体形状照后端（ProcessView / approvalError），合成 ID。
  */
 import { act, createElement as h, Suspense } from 'react';
@@ -83,6 +88,12 @@ let writes: { url: string; method: string; body: unknown; headers: Headers }[];
 let reads: number;
 let view: ProcessView;
 let buttons: string[];
+let fields: { viewable: string[]; editable: string[]; update: boolean };
+const VIEWABLE = ['code', 'name', 'approvalType', 'nodes', 'conditions', 'description', 'groupName'];
+const fullAccess = () => {
+  buttons = ['update', 'newVersion', 'publish'];
+  fields = { viewable: [...VIEWABLE], editable: ['nodes'], update: true };
+};
 let publish: (body: unknown, count: number) => Response | Promise<Response>;
 
 const text = () => document.body.textContent ?? '';
@@ -167,7 +178,7 @@ beforeEach(() => {
   writes = [];
   reads = 0;
   view = processView();
-  buttons = ['update', 'newVersion', 'publish'];
+  fullAccess();
   publish = () => Response.json(published(view));
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = new URL(String(input), 'http://localhost');
@@ -191,9 +202,9 @@ beforeEach(() => {
     if (url.pathname.includes('/permission/me/objects/'))
       return Response.json({
         objectCode: 'TenantBase.ApprovalProcess',
-        dataOperations: { read: true, update: true },
-        viewableFields: ['code', 'name', 'approvalType', 'nodes', 'conditions', 'description', 'groupName'],
-        editableFields: ['nodes'],
+        dataOperations: { read: true, update: fields.update },
+        viewableFields: fields.viewable,
+        editableFields: fields.editable,
         buttons: buttons.map((buttonCode) => ({ buttonCode, level: 'detail' })),
       });
     if (url.pathname === `${BASE}/${flowId}`) {
@@ -324,6 +335,105 @@ it('AC-APV-F326-39-19 迟到的发布成功回执：用户已切到“查看生�
   expect(reads).toBe(before);
   expect(find('查看生效版本')?.className).toContain('ant-btn-primary');
   expect(text()).not.toContain('流程已发布');
+});
+
+it('AC-APV-F326-39-24 结果未知退出重开、按原单重发后再次 409：仍有效的 X 从原命令恢复，下一笔同时带 X@1 与 Y@2', async () => {
+  publish = (_body, count) => {
+    if (count === 1) return pendingConflict([conflictItem(X, 1, [A], [B]), conflictItem(Y, 1, [C], [B])]);
+    // 带两项选择的第二笔：响应丢失
+    if (count === 2) throw new TypeError('network');
+    // 按原单重发：服务端只报告 Y 又被改过（revision 2），X 的选择仍有效
+    if (count === 3) return pendingConflict([conflictItem(Y, 2, [C], [A])]);
+    return Response.json(published(view));
+  };
+  await render();
+  await click('发布');
+  let dialog = lastDialog();
+  await choose(dialog, X, '采用变量页当前值');
+  await choose(dialog, Y, '采用设计器值');
+  await click('确认发布', dialog);
+  expect(publishes()).toHaveLength(2);
+  expect(text()).toContain('处理中 / 结果待确认');
+  await reopen('本次发布的目标版本');
+  await click('回查原单');
+  await click('按原单重发');
+  expect(publishes()).toHaveLength(3);
+  expect(publishes()[2]!.headers.get('idempotency-key')).toBe(publishes()[1]!.headers.get('idempotency-key'));
+  expect(publishes()[2]!.body).toEqual(publishes()[1]!.body);
+  dialog = lastDialog();
+  expect(dialog?.textContent).toContain('人事审批-指定人员');
+  expect(dialog?.textContent).not.toContain('上级审批-指定人员');
+  await choose(dialog, Y, '采用设计器值');
+  await click('确认发布', dialog);
+  expect(publishes()).toHaveLength(4);
+  const fourth = (publishes()[3]!.body as { pendingResolutions: unknown[] }).pendingResolutions;
+  expect(fourth).toHaveLength(2);
+  expect(fourth).toEqual(
+    expect.arrayContaining([
+      { variableId: X, revision: 1, choice: 'current' },
+      { variableId: Y, revision: 2, choice: 'designer' },
+    ]),
+  );
+  expect(publishes()[3]!.headers.get('idempotency-key')).not.toBe(publishes()[2]!.headers.get('idempotency-key'));
+  expect(text()).toContain('流程已发布');
+});
+
+it('AC-APV-F326-39-25 节点名称只差首尾空格（保存会去掉）：按提交值未变，直接发布且不保存草稿', async () => {
+  await render();
+  const input = document.querySelector<HTMLInputElement>('input[aria-label="节点名称"]')!;
+  await type(input, '上级审批 ');
+  await click('发布');
+  expect(text()).not.toContain('有未保存的修改，请先保存草稿再发布');
+  expect(writes.filter((item) => item.method === 'PUT')).toHaveLength(0);
+  expect(publishes()).toHaveLength(1);
+  expect(publishes()[0]!.headers.get('if-match')).toBe('4');
+});
+
+it('AC-APV-F326-39-26 真实改名与空白名称仍按未保存拦下，不发出发布', async () => {
+  await render();
+  const input = document.querySelector<HTMLInputElement>('input[aria-label="节点名称"]')!;
+  for (const name of [' 上级审批（改） ', '   ']) {
+    await type(input, name);
+    await click('发布');
+    expect(text(), name).toContain('有未保存的修改，请先保存草稿再发布');
+    expect(publishes(), name).toHaveLength(0);
+  }
+  expect(writes).toHaveLength(0);
+});
+
+it('AC-APV-F326-39-27 节点可看不可编辑（有流程管理能力、对象更新操作与 publish 按钮）：发布可用，编辑控件不可用', async () => {
+  fields.editable = [];
+  await render('上级审批');
+  const input = document.querySelector<HTMLInputElement>('input[aria-label="节点名称"]');
+  expect(input, '节点名称').not.toBeNull();
+  expect(input!.disabled).toBe(true);
+  const save = document.querySelector<HTMLButtonElement>('button[aria-label="保存草稿"]');
+  expect(save === null || save.disabled).toBe(true);
+  const button = document.querySelector<HTMLButtonElement>('button[aria-label="发布"]');
+  expect(button, '发布按钮').not.toBeNull();
+  expect(button!.disabled).toBe(false);
+  await click('发布');
+  expect(publishes()).toHaveLength(1);
+  expect(writes.filter((item) => item.method === 'PUT')).toHaveLength(0);
+});
+
+it('AC-APV-F326-39-28 发布入口只看流程管理能力 + publish 按钮（含其依赖的更新操作），不看节点字段权限', async () => {
+  const cases = [
+    {
+      name: '节点不可看也不可编辑',
+      setup: () => (fields = { ...fields, viewable: VIEWABLE.filter((f) => f !== 'nodes'), editable: [] }),
+      usable: true,
+    },
+    { name: '缺 publish 按钮', setup: () => (buttons = ['update', 'newVersion']), usable: false },
+    { name: '缺对象更新操作', setup: () => (fields = { ...fields, update: false }), usable: false },
+  ];
+  for (const item of cases) {
+    fullAccess();
+    item.setup();
+    await reopen('合成调动流程');
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="发布"]');
+    expect(!!button && !button.disabled, item.name).toBe(item.usable);
+  }
 });
 
 // 本用例在内核存储里留结果未知的命令，最后以按原单重发落定，放在文件末尾。
