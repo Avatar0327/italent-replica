@@ -54,6 +54,8 @@ export async function replaceExit(
     {
       exitPass: EXIT_GATE_PASS,
       rescheduledExit: true,
+      // F-363：后继单复制锁内原单的用工形式，以它为沿用基准；历史记录更正不向后传播，前驱可能已是别的值
+      retainedEmploymentForm: business.payload.fields.employmentForm ?? null,
       ...(business.payload.changeType ? { changeType: business.payload.changeType } : {}),
     },
   );
