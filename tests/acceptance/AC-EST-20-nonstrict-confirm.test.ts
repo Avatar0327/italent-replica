@@ -168,6 +168,46 @@ describe('AC-EST-20 重叠调入超编：严格拒绝 / 非严格确认', () => 
       expect(approved.status).toBe('approved');
     });
 
+    it('回执丢失：带 confirmed 的命令按原命令 ID 重放，返回原结果，不再多落一条记录', async () => {
+      const { w, second } = await occupied('est20-replay');
+      const send = (confirmed: boolean) =>
+        w.session.request('POST', `/employees/${second.employee.id}/businesses`, {
+          ifMatch: second.hire.employeeRevision,
+          idempotencyKey: 'est20-replay-key',
+          body: {
+            kind: 'transfer',
+            mode: 'direct',
+            effectiveDate: '2026-10-05',
+            fields: { departmentId: w.to.id },
+            confirmed,
+          },
+        });
+      const first = await send(true);
+      expect(first.status, await first.clone().text()).toBe(201);
+      const firstId = ((await first.json()) as { id: string }).id;
+      const replay = await send(true);
+      expect(replay.status).toBe(201);
+      expect(((await replay.json()) as { id: string }).id).toBe(firstId);
+      expect(await recordCount(w, second)).toBe(2);
+      // 同一命令 ID 换成未确认的内容：指纹不同，按冲突拒绝，不能借此绕过或覆盖
+      const swapped = await send(false);
+      expect(swapped.status).toBe(409);
+      expect(await swapped.json()).toMatchObject({ error: { code: 'IDEMPOTENCY_CONFLICT' } });
+      expect(await recordCount(w, second)).toBe(2);
+    });
+
+    it('409 后重试与换入口：同一版本号带 confirmed 可重提，另一个入口同样要确认', async () => {
+      const { w, second } = await occupied('est20-reentry');
+      expect((await transfer(w, second, '2026-10-05')).status).toBe(409);
+      // 换入口（业务创建）不能绕过确认，409 没有推进员工版本号
+      const other = await create(w, second, { mode: 'direct', effectiveDate: '2026-10-05' });
+      expect(other.status).toBe(409);
+      expect(await other.json()).toMatchObject(CONFIRM);
+      const retried = await transfer(w, second, '2026-10-05', { confirmed: true });
+      expect(retried.status, await retried.clone().text()).toBe(201);
+      expect(await recordCount(w, second)).toBe(2);
+    });
+
     it('任职记录编辑：把记录改到已占满的部门，未确认 409，带 confirmed 后 200', async () => {
       const { w, second } = await occupied('est20-edit');
       const [record] = await w.session.records(second.employee.id, '2026-10-01');
