@@ -3,7 +3,7 @@
  * 非 HR 来源（员工自助变更）不得变更子集附件引用——新增 / 更换 / 清空在提交、同单重提、落地三处一致拒绝（403），
  * 与终审人是谁（含终审人恰为上传人）无关；普通字段修改与“原样带回现有引用”照常。
  */
-import { sql, withTenant } from '@italent/db';
+import { and, attachmentFiles, eq, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { applyApprovedChange } from '../../apps/api/src/modules/personnel/change-requests.js';
@@ -89,11 +89,15 @@ async function scene(label: string) {
         values,
       },
     });
+  /** 走查询构造器：PGlite 与 node-postgres 的 execute 返回形状不同（PG16 下 { rows } 解构为空） */
   const stored = async (id: string) => {
-    const { rows } = (await withTenant(w.db, w.tenant.id, (tx) =>
-      tx.execute(sql`SELECT status FROM attachment_files WHERE id=${id}::uuid`),
-    )) as unknown as { rows: { status: string }[] };
-    return rows[0]?.status;
+    const [found] = await withTenant(w.db, w.tenant.id, (tx) =>
+      tx
+        .select({ status: attachmentFiles.status })
+        .from(attachmentFiles)
+        .where(and(eq(attachmentFiles.tenantId, w.tenant.id), eq(attachmentFiles.id, id))),
+    );
+    return found?.status;
   };
   const current = async (id: string) => w.json<Subset>(await w.request(w.hr.id, 'GET', `${path}/${id}`), 200);
   /** 直接写一张待审批的存量申请，再以 executor 身份落地（模拟终审） */
