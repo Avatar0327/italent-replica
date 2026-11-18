@@ -1839,7 +1839,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/auto-regularization.ts#scanDue': ['b7f0900ac804', '32a56c17e326'],
   'apps/api/src/modules/employment/auto-regularization.ts#subjectOf': ['1ce084bf8b3b', '553425e688bc'],
   'apps/api/src/modules/employment/batch-edit.ts#MAX_BATCH_EDIT': ['f080c036a7d4', 'e3b0c44298fc'],
-  'apps/api/src/modules/employment/batch-edit.ts#batchEditEmploymentRecords': ['3c1e9465b7cb', 'c85bee214fc8'],
+  'apps/api/src/modules/employment/batch-edit.ts#batchEditEmploymentRecords': ['ef9e516dabbe', 'c85bee214fc8'],
   'apps/api/src/modules/employment/batch-edit.ts#batchSchema': ['4f07052aba3b', '6bad81ecf886'],
   'apps/api/src/modules/employment/batch-edit.ts#departmentOf': ['5c5018389e33', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/batch-edit.ts#normalizeBatchEdit': ['ef4ad2b1344e', 'd7c27d1212a3'],
