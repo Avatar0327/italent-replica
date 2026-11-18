@@ -15,6 +15,8 @@ interface Props {
   kind: InterventionKind;
   rows: PlanSummary[];
   onClose(): void;
+  /** F-406：删除提交开始领取导航回调；页面离开后仍完成命令清理和刷新。 */
+  deletionNavigation(): () => void;
   /** 写入完成（含部分成功）后刷新列表 / 详情。 */
   done(): void;
 }
@@ -62,7 +64,7 @@ function BatchIntervention(props: Props & { kind: BatchAction }) {
 }
 
 /** 计划状态动作与流程干预的统一弹窗；一次只提交一次，结果未知时锁定并要求回查原单（AGENTS.md §10）。 */
-function InterventionDialog({ kind, rows, onClose, done, command }: Props & { command: Command }) {
+function InterventionDialog({ kind, rows, onClose, done, deletionNavigation, command }: Props & { command: Command }) {
   const [receipts, setReceipts] = useState<Receipt[]>();
   if (receipts) {
     const summary = receiptSummary(receipts);
@@ -85,7 +87,8 @@ function InterventionDialog({ kind, rows, onClose, done, command }: Props & { co
   const props = { rows, onClose, command, finished };
   if (kind === 'jump') return <JumpDialog {...props} />;
   if (kind === 'transfer') return <TransferDialog {...props} />;
-  if (kind === 'start' || kind === 'delete') return <SingleConfirm kind={kind} {...props} />;
+  if (kind === 'start' || kind === 'delete')
+    return <SingleConfirm kind={kind} deletionNavigation={deletionNavigation} {...props} />;
   return <BatchDialog kind={kind} {...props} />;
 }
 
@@ -109,12 +112,23 @@ function footer(onClose: () => void, ok: () => void, disabled: boolean, busy: bo
   );
 }
 
-function SingleConfirm({ kind, rows, onClose, command, finished }: DialogProps & { kind: 'start' | 'delete' }) {
+function SingleConfirm({
+  kind,
+  rows,
+  onClose,
+  command,
+  finished,
+  deletionNavigation,
+}: DialogProps & { kind: 'start' | 'delete'; deletionNavigation(): () => void }) {
   const plan = rows.length === 1 ? rows[0] : undefined;
   const ok = async () => {
     if (!plan || plan.revision === undefined) return;
+    const deleted = kind === 'delete' ? deletionNavigation() : undefined;
     const path = kind === 'start' ? `${PLANS}/${plan.id}/start` : `${PLANS}/${plan.id}`;
-    if (await command.run(path, kind === 'start' ? 'POST' : 'DELETE', {}, plan.revision)) finished();
+    if (await command.run(path, kind === 'start' ? 'POST' : 'DELETE', {}, plan.revision)) {
+      finished();
+      deleted?.();
+    }
   };
   return (
     <Modal

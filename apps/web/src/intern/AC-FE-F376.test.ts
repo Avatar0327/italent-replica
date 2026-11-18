@@ -10,7 +10,7 @@ import {
   useNavigationGuard,
   type NavigationGuard,
   type NavigationState,
-} from './navigation.js';
+} from '../foundation/navigation.js';
 
 // F-376：写确认后的导航票据——页面仍在且领票后没有发生过任何导航才执行。
 describe('AC-FE-F376 navigation ticket', () => {

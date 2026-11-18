@@ -1,6 +1,7 @@
 import { Alert, Button, Dropdown, Form, Select, Space, Tooltip, type TableColumnsType } from 'antd';
 import { useMemo, useState, type Key, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
+import { useNavigationGuard } from '../foundation/navigation.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { FilterDrawer } from '../foundation/FilterDrawer.js';
 import { usePermissions } from '../foundation/Permissions.js';
@@ -167,6 +168,7 @@ function PlanTable({ list, permission, can, open, selection, overlays }: TablePr
 
 /** 新增 / 编辑弹窗与干预弹窗；写入后详情按新代次重读，避免继续展示旧 revision。 */
 function usePlanOverlays(reload: () => void, deleted: (ids: string[]) => void) {
+  const navigation = useNavigationGuard();
   const [version, setVersion] = useState(0);
   const [editing, setEditing] = useState<Editing>();
   const [intervention, setIntervention] = useState<{ kind: InterventionKind; rows: PlanSummary[] }>();
@@ -183,10 +185,8 @@ function usePlanOverlays(reload: () => void, deleted: (ids: string[]) => void) {
           kind={intervention.kind}
           rows={intervention.rows}
           onClose={() => setIntervention(undefined)}
-          done={() => {
-            refresh();
-            if (intervention.kind === 'delete') deleted(intervention.rows.map((row) => row.id));
-          }}
+          deletionNavigation={() => navigation(() => deleted(intervention.rows.map((row) => row.id)))}
+          done={refresh}
         />
       )}
     </>
