@@ -122,6 +122,8 @@ const entries = [
   'import-edit',
   'import-create',
   'transfer',
+  'transfer-page',
+  'transfer-page-preview',
   'preview',
   'forward-create',
   'forward-edit',
@@ -160,6 +162,21 @@ for (const entry of entries) {
             body: { items: [entry === 'import-create' ? { operation: 'create', business } : item] },
           },
         );
+      } else if (entry === 'transfer-page' || entry === 'transfer-page-preview') {
+        response = await w.s.request(
+          'POST',
+          `/transfers/employees/${w.employee.id}${entry === 'transfer-page-preview' ? '/preview' : ''}`,
+          {
+            ifMatch: owner.revision,
+            body: {
+              initiator: 'hr',
+              transferTypeCode: 'cross_department',
+              mode: 'direct',
+              effectiveDate: business.effectiveDate,
+              fields: { ...fields, departmentId: w.org.id },
+            },
+          },
+        );
       } else {
         const suffix = entry === 'transfer' ? 'businesses' : entry === 'preview' ? 'preview' : 'forward-update-preview';
         response = await w.s.request('POST', `/employees/${w.employee.id}/${suffix}`, {
@@ -171,10 +188,13 @@ for (const entry of entries) {
         await formRefused(response);
         expect(await snapshot()).toEqual(before);
       } else {
-        expect(response.status, await response.clone().text()).toBe(entry === 'transfer' ? 201 : 200);
+        expect(response.status, await response.clone().text()).toBe(
+          entry === 'transfer' || entry === 'transfer-page' ? 201 : 200,
+        );
         const records = await w.s.records(w.employee.id);
         expect(records.every((record) => record.fields.employmentForm === 'regular')).toBe(true);
-        if (entry === 'preview' || entry.startsWith('forward-')) expect(await snapshot()).toEqual(before);
+        if (entry === 'preview' || entry === 'transfer-page-preview' || entry.startsWith('forward-'))
+          expect(await snapshot()).toEqual(before);
       }
     });
   }
