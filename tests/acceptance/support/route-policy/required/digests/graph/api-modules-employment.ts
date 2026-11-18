@@ -1554,10 +1554,12 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm': ['#requireEnabledEmploymentForms'],
+  'apps/api/src/modules/employment/employment-type-delete-result.ts#canonicalDeletePath': ['#UUID_IN_PATH'],
   'apps/api/src/modules/employment/employment-type-delete-result.ts#readEmploymentTypeDeleteResult': [
     'apps/api/src/advisory-lock.ts#advisoryLock',
     'apps/api/src/advisory-lock.ts#asUuid',
     'apps/api/src/modules/command-result/service.ts#readOwnCommandResult',
+    '#canonicalDeletePath',
     'apps/api/src/modules/employment/employment-types.ts#findEmploymentType',
   ],
   'apps/api/src/modules/employment/employment-type-routes.ts#requireTypeWrite': [
@@ -1569,6 +1571,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/employment-type-routes.ts#route:DELETE /employment-types/:id': [
     'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/employment-type-delete-result.ts#canonicalDeletePath',
     '#runTypeWrite',
     'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
     'apps/api/src/modules/employment/employment-types.ts#deleteEmploymentType',

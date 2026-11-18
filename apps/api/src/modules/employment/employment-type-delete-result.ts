@@ -5,6 +5,13 @@ import { readOwnCommandResult } from '../command-result/service.js';
 import { findEmploymentType } from './employment-types.js';
 import type { EmploymentContext } from './types.js';
 
+const UUID_IN_PATH = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/** UUID 大小写不敏感（uuidParam 已按小写处理）：删除写入口与结果查询都按此规范化路径，指纹才对得上。 */
+export function canonicalDeletePath(path: string): string {
+  return path.replace(UUID_IN_PATH, (uuid) => uuid.toLowerCase());
+}
+
 /**
  * F-469 / DEC-764：只确认本人原删除命令，不从列表缺席或当前字段推断成功。
  * 与删除共用字典锁，等待正在执行的删除落定后再读台账；无台账仍可能尚未执行，返回 unknown。
@@ -18,7 +25,7 @@ export async function readEmploymentTypeDeleteResult(
 ) {
   await advisoryLock(tx, asUuid(ctx.tenantId), ':employment-types');
   const result = (status: 'deleted' | 'not_deleted' | 'unknown') => ({ commandId, id, revision, status });
-  const path = `/api/tenant/employment/employment-types/${id}`;
+  const path = canonicalDeletePath(`/api/tenant/employment/employment-types/${id}`);
   const [entry] = await tx
     .select()
     .from(commandLedger)
@@ -40,7 +47,7 @@ export async function readEmploymentTypeDeleteResult(
   const f = auditCommandFailures;
   const [history] = await tx
     .select({
-      sameDelete: sql<boolean>`bool_and(${f.method} = 'DELETE' AND ${f.path} = ${path})`,
+      sameDelete: sql<boolean>`bool_and(${f.method} = 'DELETE' AND lower(${f.path}) = ${path})`,
     })
     .from(f)
     .where(and(eq(f.tenantId, ctx.tenantId), eq(f.actorUserId, ctx.userId), eq(f.commandId, commandId)));

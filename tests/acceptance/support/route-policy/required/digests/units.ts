@@ -376,7 +376,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employment/employment-type-routes.ts': {
     requireTypeWrite: '3636823c809a',
-    'route:DELETE /employment-types/:id': 'a8e04c9cd7bc',
+    'route:DELETE /employment-types/:id': 'd3c2859fd44a',
     'route:GET /employment-types': 'dad52ab410a2',
     'route:GET /employment-types/:id/delete-result/:commandId': 'f4f4e73f0a66',
     'route:GET /employment-types/options': 'eb9222096c8c',
@@ -2334,7 +2334,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/employment-form-routes.ts#route:POST /employment-forms': '61c9dd17a075',
   'apps/api/src/modules/employment/employment-form-routes.ts#route:PUT /employment-forms/:id': '6b95ac5484dd',
   'apps/api/src/modules/employment/employment-type-routes.ts#requireTypeWrite': 'b61fb54a3077',
-  'apps/api/src/modules/employment/employment-type-routes.ts#route:DELETE /employment-types/:id': 'a31b71e89d12',
+  'apps/api/src/modules/employment/employment-type-routes.ts#route:DELETE /employment-types/:id': 'eb273a0890e0',
   'apps/api/src/modules/employment/employment-type-routes.ts#route:GET /employment-types': 'b06f8cf779da',
   'apps/api/src/modules/employment/employment-type-routes.ts#route:GET /employment-types/:id/delete-result/:commandId':
     '97960e002bc8',
