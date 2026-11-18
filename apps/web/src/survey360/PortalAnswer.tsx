@@ -1,5 +1,6 @@
 import { Alert, Button, Input, Radio, Space } from 'antd';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
+import type { Submission, Values } from '../foundation/forms/store.js';
 import type { Answer, AnswerPage, Item, PortalClient } from './portal-client.js';
 import { usePortalAnswer } from './usePortalAnswer.js';
 import { portalMessages as m } from './portal-messages.js';
@@ -45,7 +46,7 @@ export function PortalAnswer({ api, path, initial, back }: PortalAnswerProps) {
       {page.activity.status !== 'enabled' && <Alert type="warning" message={m.paused} />}
       {page.sheet.status === 'submitted' && <Alert type="success" message={m.submittedSheet} />}
       <CommandStatus
-        submission={{ ...command, reload: () => command.reread(read) }}
+        submission={{ ...command, state: reviewed(command.state, draft), reload: () => command.reread(read) }}
         labels={{ answers: m.answers, suggestion: m.suggestion }}
       />
       {command.status === 'unknown' && command.state?.latest && !command.state.readError && (
@@ -81,6 +82,12 @@ export function PortalAnswer({ api, path, initial, back }: PortalAnswerProps) {
       </Space>
     </section>
   );
+}
+
+/** 核对表“我的输入”显示页面实时答卷（即下次显式保存的内容），不显示已发出的命令快照；只改显示，不改内核槽。 */
+function reviewed(state: Submission | undefined, draft: Values) {
+  if (!state?.differences) return state;
+  return { ...state, differences: state.differences.map((diff) => ({ ...diff, mine: draft[diff.field] })) };
 }
 
 function AnswerItems({

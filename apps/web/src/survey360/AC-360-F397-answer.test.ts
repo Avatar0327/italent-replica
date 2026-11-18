@@ -514,3 +514,18 @@ it('AC-360-F397 结果未知时卸载重开：恢复已发出的答卷并保持�
   expect(host.querySelector('input[type="radio"]')).toBeNull();
   expect(requests).toHaveLength(2);
 });
+// 离开循环的保护：回执与本页答卷按比较口径仍不一致、期间又没有新输入时，停下提示，不反复发送。
+it('AC-360-F397 回执与本页答卷口径不一致时，返回只保存一次并提示，不反复发送', async () => {
+  const base = api.request;
+  api.request = (async (...args: Parameters<PortalClient['request']>) => {
+    const value = await base(...args);
+    return args[1] === 'PUT' ? { ...(value as object), suggestion: '合成改写建议' } : value;
+  }) as PortalClient['request'];
+  await render();
+  await answer();
+  await typeSuggestion('合成本页建议');
+  await click('返回评价列表');
+  expect(requests).toHaveLength(1);
+  expect(text()).toContain('有尚未保存的作答内容');
+  expect(host.querySelector('textarea')?.value).toBe('合成本页建议');
+});

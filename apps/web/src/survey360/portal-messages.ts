@@ -31,6 +31,8 @@ export const portalMessages = {
   remark: '补充说明',
   saveFirst: '修改后请先保存，再提交作答',
   unsavedInput: '有尚未保存的作答内容，请先确认保存结果并保存后再返回',
+  pausedUnsaved: '活动已暂停，未保存内容无法提交',
+  submittedUnsaved: '答卷已提交，未保存内容无法再保存',
   pending: '未评价',
   progress: '进行中',
   done: '已评价',
