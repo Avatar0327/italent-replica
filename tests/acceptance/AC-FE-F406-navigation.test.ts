@@ -83,7 +83,7 @@ let root: ReturnType<typeof createRoot>;
 let host: HTMLDivElement;
 const current = () => `${window.location.pathname}${window.location.search}`;
 async function click(label: string) {
-  const button = [...document.body.querySelectorAll('button')].find(
+  const button = Array.from(document.body.querySelectorAll('button')).find(
     (item) => item.textContent?.replace(/\s/g, '') === label,
   );
   expect(button, `应有按钮：${label}`).toBeDefined();
