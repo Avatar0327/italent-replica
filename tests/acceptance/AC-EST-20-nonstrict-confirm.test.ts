@@ -208,6 +208,26 @@ describe('AC-EST-20 重叠调入超编：严格拒绝 / 非严格确认', () => 
       expect(await recordCount(w, second)).toBe(2);
     });
 
+    it('confirmed 三态（自查 12）：未提供与 false 都要确认，null / 字符串 400，只有 true 放行', async () => {
+      const { w, second } = await occupied('est20-tristate');
+      const body = { mode: 'direct', effectiveDate: '2026-10-05' };
+      for (const confirmed of [undefined, false]) {
+        const res = await create(w, second, confirmed === undefined ? body : { ...body, confirmed });
+        expect(res.status, `confirmed=${String(confirmed)}`).toBe(409);
+        expect(await res.json()).toMatchObject(CONFIRM);
+      }
+      for (const confirmed of [null, 'true', 1]) {
+        const res = await create(w, second, { ...body, confirmed });
+        expect(res.status, `confirmed=${JSON.stringify(confirmed)}`).toBe(400);
+      }
+      for (const confirmed of [null, 'true']) {
+        const res = await transfer(w, second, '2026-10-05', { confirmed });
+        expect(res.status, `transfer confirmed=${JSON.stringify(confirmed)}`).toBe(400);
+      }
+      expect(await recordCount(w, second)).toBe(1);
+      expect((await create(w, second, { ...body, confirmed: true })).status).toBe(201);
+    });
+
     it('任职记录编辑：把记录改到已占满的部门，未确认 409，带 confirmed 后 200', async () => {
       const { w, second } = await occupied('est20-edit');
       const [record] = await w.session.records(second.employee.id, '2026-10-01');
