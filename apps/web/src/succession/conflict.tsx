@@ -1,4 +1,4 @@
-import { Button, Popconfirm, type ButtonProps } from 'antd';
+import { Button, Popconfirm, Tooltip, type ButtonProps } from 'antd';
 import { useConflictCommand, validObject } from '../foundation/forms/ConflictCommands.js';
 import { useApiClient } from '../foundation/Session.js';
 import { s } from './messages.js';
@@ -15,16 +15,17 @@ interface DeleteProps {
 }
 /**
  * 删除按钮（冲突恢复命令已上收进内核 foundation/forms/ConflictCommands，F-142）：未选中，或选中行的 id / 版本
- * 缺失、无效（如被字段权限裁剪）时只渲染禁用按钮，不进内核、不发请求；其余经 useConflictCommand 发删除命令。
+ * 缺失、无效（如被字段权限裁剪）时只渲染禁用按钮并悬停提示原因，不进内核、不发请求；其余经 useConflictCommand 发删除命令。
  */
 export function DeleteButton(props: DeleteProps) {
-  return deletable(props.row) ? (
-    <ArmedDelete {...props} row={props.row} />
-  ) : (
+  if (deletable(props.row)) return <ArmedDelete {...props} row={props.row} />;
+  const button = (
     <Button {...props.button} disabled>
       {s.delete}
     </Button>
   );
+  // F-145：选中了记录但 id / 版本无效时说明原因；未选中照旧只禁用。
+  return props.row ? <Tooltip title={s.errors.recordInvalid}>{button}</Tooltip> : button;
 }
 const deletable = (row?: DeleteProps['row']): row is NonNullable<DeleteProps['row']> => !!row && validObject(row);
 function ArmedDelete({

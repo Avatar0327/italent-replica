@@ -7,7 +7,8 @@ import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PersonSelect, TenantDatePicker } from '../foundation/selectors.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
-import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
+import { ApiError } from '../foundation/client.js';
+import { useConflictCommand, validObject } from '../foundation/forms/ConflictCommands.js';
 import { s } from './messages.js';
 import { BASE, createRecordBody, END_RECEIPT, endCommand, endReceipt, recordDateErrors } from './rules.js';
 import type { ListResult, ReadinessRef, RecordView, SuccessionType } from './types.js';
@@ -168,6 +169,8 @@ function RecordEditor({
         close();
       }}
       onSubmit={async (values) => {
+        // F-145：id / 版本缺失或无效时提交前拒绝，不进内核、不发请求；按确定性拒绝提示，草稿保留、可关闭。
+        if (row && !validObject(row)) throw new ApiError(400, 'VALIDATION_FAILED', 'fields', s.errors.recordInvalid);
         await writer.run({
           values,
           editableFields: fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name),

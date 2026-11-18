@@ -66,6 +66,8 @@ export const s = {
     endNone: '请选择在用的继任记录',
     levelRequired: '请选择等级',
     readonly: '没有可编辑的字段',
+    // F-145：记录 id / 版本被字段权限裁剪或无效，编辑、删除在提交前拒绝。
+    recordInvalid: '该继任记录缺少标识或版本，请刷新列表后重新选择。',
   } as Record<string, string>,
   map: {
     legend: '查看图例',
