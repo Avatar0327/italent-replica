@@ -54,8 +54,15 @@ export async function lockVariableBatch(
   const ledger = transactionLockLedger(tx);
   const ids = [...wanted.keys()].sort();
   if (!ledger.empty()) {
+    const missing = await absentFrom(
+      tx,
+      ctx,
+      ids.filter((id) => !ledger.held(id)),
+    );
     for (const id of ids) {
       const held = ledger.held(id);
+      // 不存在的变量没有行可锁：交给调用方随后的读取抛原业务错误（APPROVAL_VARIABLE_NOT_FOUND），不算台账程序错误
+      if (!held && missing.has(id)) continue;
       if (!held || (wanted.get(id) === 'update' && held !== 'update'))
         throw new Error(`自动变量锁台账：事务内已取过变量锁，不得再取 ${held ? '升级' : '新增'}的变量 ${id}`);
     }
@@ -63,9 +70,21 @@ export async function lockVariableBatch(
   }
   for (const id of ids) {
     const query = tx.select({ id: table.id }).from(table).where(byId(ctx.tenantId, id));
-    await (wanted.get(id) === 'update' ? query.for('update') : query.for('share'));
-    ledger.record(id, wanted.get(id)!);
+    const locked = await (wanted.get(id) === 'update' ? query.for('update') : query.for('share'));
+    // 只登记查询实际返回的行：没取到行（变量不存在）不能记成已持锁
+    if (locked.length) ledger.record(id, wanted.get(id)!);
   }
+}
+
+/** 不加锁地查出 ids 里在本租户下不存在的变量。 */
+async function absentFrom(tx: Tx, ctx: { readonly tenantId: string }, ids: readonly string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const found = await tx
+    .select({ id: table.id })
+    .from(table)
+    .where(and(eq(table.tenantId, ctx.tenantId), inArray(table.id, [...ids])));
+  const present = new Set(found.map((row) => row.id));
+  return new Set(ids.filter((id) => !present.has(id)));
 }
 
 /** 本事务新建的变量行天然被本事务独占：记为 update，后续收尾可以在这个集合内动作（台账只认已持有的锁）。 */

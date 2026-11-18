@@ -48,11 +48,9 @@ function holdingVariable<T>(w: S4World, variableId: string, body: (release: () =
 
 /** 唯一在等锁的会话，其语句确实在 approval_variables 上等（而不是别处），且有阻塞者。 */
 async function expectWaitingOnVariable(w: S4World) {
-  const waiting = await withTenant(w.db, w.tenant.id, async (tx) =>
-    rowsOf<{ query: string; blockers: number }>(
-      await tx.execute(sql`SELECT query, cardinality(pg_blocking_pids(pid)) AS blockers FROM pg_stat_activity
-        WHERE datname=current_database() AND wait_event_type='Lock' AND pid<>pg_backend_pid()`),
-    ),
+  const waiting = rowsOf<{ query: string; blockers: number }>(
+    await w.db.execute(sql`SELECT query, cardinality(pg_blocking_pids(pid)) AS blockers FROM pg_stat_activity
+      WHERE datname=current_database() AND wait_event_type='Lock'`),
   );
   expect(waiting).toHaveLength(1);
   expect(waiting[0]!.query).toMatch(/approval_variables/i);

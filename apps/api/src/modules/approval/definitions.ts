@@ -667,6 +667,7 @@ export async function publishProcess(
     await materializeScope(tx, ctx.tenantId, id, draft.id, draft, {}),
     draft,
     resolutions,
+    before.currentVersion,
   );
   if (cleaned) await rewriteNodes(tx, ctx.tenantId, draft.id, cleaned);
   await tx.execute(sql`UPDATE approval_process_versions SET status='published',published_by=${ctx.userId},
