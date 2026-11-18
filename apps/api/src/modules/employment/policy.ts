@@ -984,7 +984,15 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         'requireLinkedEmploymentRecord',
       ],
       {
-        controls: ['loginEmail', 'pendingEntry', 'probation', 'probationMonths', 'probationEndDate', 'probationResult'],
+        controls: [
+          'loginEmail',
+          'pendingEntry',
+          'probation',
+          'probationMonths',
+          'probationEndDate',
+          'probationResult',
+          'confirmed',
+        ],
       },
     ),
     ...byId,
