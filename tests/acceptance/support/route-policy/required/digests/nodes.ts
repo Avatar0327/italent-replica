@@ -1028,7 +1028,6 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/routes.ts#publishSchema': ['434b7b700d9b', 'c8efb99aadf2'],
   'apps/api/src/modules/approval/routes.ts#readCtx': ['1000dcbf3fce', '233ef381fe63'],
   'apps/api/src/modules/approval/routes.ts#registerRelayRoutes': ['38d7c369d6a3', '5aedf4826979'],
-  'apps/api/src/modules/approval/routes.ts#requireCandidateContext': ['067ccc0b2f5e', 'dc2d2aee9d8a'],
   'apps/api/src/modules/approval/routes.ts#respondDetail': ['b67cb7e8791f', '39e7f6ebf539'],
   'apps/api/src/modules/approval/routes.ts#respondOutcome': ['c2ffca922791', 'fc7f2a0ab534'],
   'apps/api/src/modules/approval/routes.ts#scope': ['751415733513', 'fa363758b0fe'],

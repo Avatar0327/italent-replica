@@ -67,31 +67,6 @@ function processWrite(call: Evidence): Obligation {
     ],
   };
 }
-/** DEC-909：矩阵场景只需管理能力；设计器场景追加既有流程对象编辑权。 */
-function candidateContext(path: string): Obligation[] {
-  const call = route('GET', path, 'await requireCandidateContext(deps, ctx, query.context)');
-  return [
-    {
-      perm: 'guard:approval.candidateContext',
-      at: [
-        call,
-        { role: 'impl', unit: `${ROUTES}#requireCandidateContext`, anchor: "if (context === 'matrix') return" },
-      ],
-    },
-    {
-      perm: 'obj:TenantBase.ApprovalProcess:update',
-      purpose: 'when:approval.candidateContext',
-      at: [
-        call,
-        {
-          role: 'impl',
-          unit: `${ROUTES}#requireCandidateContext`,
-          anchor: "action: 'object.update', resource: APPROVAL_PROCESS_OBJECT, fields: []",
-        },
-      ],
-    },
-  ];
-}
 const ADMIN_SCOPE: Evidence[] = [
   {
     role: 'impl',
@@ -336,11 +311,9 @@ export const APPROVAL: RequiredTable = {
   'POST /api/tenant/approval/matrices/:id/disable': matrixAdmin('POST', '/matrices/:id/disable'),
   'GET /api/tenant/approval/designer/source-candidates': [
     processWrite(route('GET', '/designer/source-candidates', "await requireProcessButton(deps, ctx, 'update')")),
-    ...candidateContext('/designer/source-candidates'),
   ],
   'GET /api/tenant/approval/designer/person-candidates': [
     processWrite(route('GET', '/designer/person-candidates', "await requireProcessButton(deps, ctx, 'update')")),
-    ...candidateContext('/designer/person-candidates'),
   ],
   'GET /api/tenant/approval/types': processView(route('GET', '/types', 'await requireProcessView(deps, tenantCtx(c))')),
   'GET /api/tenant/approval/processes': processView(route('GET', '/processes', 'await requireProcessView(deps, ctx)'), [

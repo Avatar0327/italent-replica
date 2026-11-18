@@ -1,18 +1,28 @@
 /** DEC-909：矩阵单元格类别校验；候选权限以真实 HTTP 核对。 */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { and, asc, auditEvents, eq, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { audits, s4World } from './AC-APV-F326-S7a-support.js';
+import { s4World, type S4World } from './AC-APV-F326-S7a-support.js';
 import { MATRICES, matrix, readMatrix, rejected, replaceMatrixRows } from './AC-APV-F326-S4-support.js';
 import { tenantApi } from './support/tenant-api.js';
 const database = useTestDb();
+
+// 矩阵创建并启用可在同一 revision 产生两条审计，不能沿用 S7a 变量的 revision 唯一性辅助断言。
+const matrixAudits = (w: S4World, id: string) =>
+  withTenant(w.db, w.tenant.id, (tx) =>
+    tx
+      .select()
+      .from(auditEvents)
+      .where(and(eq(auditEvents.tenantId, w.tenant.id), eq(auditEvents.objectId, id)))
+      .orderBy(asc(auditEvents.id)),
+  );
 
 describe('DEC-909 矩阵单元格', () => {
   it('② 角色列放部门 ID、部门列放人员 ID 均 400，结构 / revision / 审计不变', async () => {
     const w = await s4World(database().db, 's7d-cell-kind');
     const m = await matrix(w, { rows: [{ cond: [w.child], role: [w.near.userId] }] });
-    const beforeAudit = await audits(w, m.id, 'approval.matrix.%');
+    const beforeAudit = await matrixAudits(w, m.id);
     const otherTenant = await s4World(database().db, 's7d-other-tenant');
     for (const row of [
       { cond: [w.child], role: [w.child] },
@@ -23,7 +33,7 @@ describe('DEC-909 矩阵单元格', () => {
       await rejected(await replaceMatrixRows(w, m, [row]), 400, 'MATRIX_CELL_KIND_MISMATCH');
       expect(await readMatrix(w, m.id)).toEqual(m);
     }
-    expect(await audits(w, m.id, 'approval.matrix.%')).toEqual(beforeAudit);
+    expect(await matrixAudits(w, m.id)).toEqual(beforeAudit);
     // 启停不改变对象类别；资格由运行时决定。
     await withTenant(w.db, w.tenant.id, (tx) =>
       tx.execute(sql`UPDATE tenant_memberships SET status='revoked'

@@ -2318,10 +2318,6 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#ADD_SIGN_TYPES',
     'packages/domain/src/approval/types.ts#MAX_ADD_SIGNERS',
   ],
-  'apps/api/src/modules/approval/routes.ts#requireCandidateContext': [
-    'apps/api/src/authorization.ts#requirePermission',
-    'packages/domain/src/approval/catalog.ts#APPROVAL_PROCESS_OBJECT',
-  ],
   'apps/api/src/modules/approval/routes.ts#respondAttachment': [
     'apps/api/src/modules/approval/disclosure.ts#capturedAttachmentsOf',
     '#detailViewOf',
@@ -2361,14 +2357,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/designer-people.ts#designerPeopleQuery',
     'apps/api/src/modules/approval/designer-people.ts#listDesignerPeople',
     '#readCtx',
-    '#requireCandidateContext',
   ],
   'apps/api/src/modules/approval/routes.ts#route:GET /designer/source-candidates': [
     'apps/api/src/modules/approval/access.ts#requireProcessButton',
     'apps/api/src/modules/approval/designer-sources.ts#designerSourcesQuery',
     'apps/api/src/modules/approval/designer-sources.ts#listDesignerSources',
     '#readCtx',
-    '#requireCandidateContext',
   ],
   'apps/api/src/modules/approval/routes.ts#route:GET /instances': [
     'apps/api/src/modules/approval/my-applications.ts#listMyApplications',

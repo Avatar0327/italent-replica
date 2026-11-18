@@ -465,17 +465,15 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   'POST /matrices/:id/enable': processAdmin({ ...byId, write: processCommand }),
   'POST /matrices/:id/disable': processAdmin({ ...byId, write: processCommand }),
   'GET /designer/source-candidates': admin('process_matrix', {
-    guards: ['approval.candidateContext'],
     fields: fixed(
       ['id', 'name', 'enabled', 'parentId', 'multiple'],
-      'DEC-691 / F-326 §5.3 / DEC-909：设计器候选另核流程编辑权，矩阵候选只需矩阵管理权',
+      'DEC-691 / F-326 §5.3 / DEC-927：设计器与矩阵候选均只需矩阵管理权',
     ),
   }),
   'GET /designer/person-candidates': admin('process_matrix', {
-    guards: ['approval.candidateContext'],
     fields: fixed(
       ['userId', 'name', 'code', 'departmentId', 'departmentName'],
-      'DEC-686① / DEC-135 / DEC-909：设计器候选另核流程编辑权，矩阵候选只需矩阵管理权',
+      'DEC-686① / DEC-135 / DEC-927：设计器与矩阵候选均只需矩阵管理权',
     ),
   }),
   'GET /types': processView(DICTIONARY, DICTIONARY),

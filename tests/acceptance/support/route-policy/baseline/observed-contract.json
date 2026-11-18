@@ -3783,12 +3783,6 @@
       "primitives": {
         "admin": [
           "requireProcessButton"
-        ],
-        "object": [
-          "object.* 动作"
-        ],
-        "objectOp": [
-          "TenantBase.ApprovalProcess:update"
         ]
       }
     },
@@ -3811,12 +3805,6 @@
       "primitives": {
         "admin": [
           "requireProcessButton"
-        ],
-        "object": [
-          "object.* 动作"
-        ],
-        "objectOp": [
-          "TenantBase.ApprovalProcess:update"
         ]
       }
     },

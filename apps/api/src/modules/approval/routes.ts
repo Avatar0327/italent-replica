@@ -1,4 +1,3 @@
-import { requirePermission } from '../../authorization.js';
 import { registerVariableRoutes } from './variable-routes.js';
 import { registerMatrixRoutes } from './matrix-routes.js';
 import { listMyApplications, myApplicationsQuery } from './my-applications.js';
@@ -382,30 +381,17 @@ function registerHooks(deps: TenantRouteDeps) {
   });
 }
 
-/** DEC-909：矩阵编辑沿矩阵管理能力；设计器候选还须流程编辑权。 */
-async function requireCandidateContext(deps: TenantRouteDeps, ctx: TenantContext, context: 'matrix' | 'designer') {
-  if (context === 'matrix') return;
-  await requirePermission(deps.authorize, {
-    ...ctx,
-    action: 'object.update',
-    resource: APPROVAL_PROCESS_OBJECT,
-    fields: [],
-  });
-}
-
 function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/designer/source-candidates', async (c) => {
     const ctx = readCtx(c, deps);
     await requireProcessButton(deps, ctx, 'update');
     const query = designerSourcesQuery(c.req.query());
-    await requireCandidateContext(deps, ctx, query.context);
     return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => listDesignerSources(tx, ctx.tenantId, query)));
   });
   router.get('/designer/person-candidates', async (c) => {
     const ctx = readCtx(c, deps);
     await requireProcessButton(deps, ctx, 'update');
     const query = designerPeopleQuery(c.req.query());
-    await requireCandidateContext(deps, ctx, query.context);
     return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => listDesignerPeople(tx, ctx.tenantId, query)));
   });
   router.get('/types', async (c) => {

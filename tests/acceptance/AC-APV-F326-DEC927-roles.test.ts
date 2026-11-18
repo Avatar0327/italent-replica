@@ -19,9 +19,9 @@ it.each(['tenant_admin', 'system_admin', 'matrix_admin'] as const)(
     const api = tenantApi(w.db, { authorize, clock: w.clock });
     const base = { tenantId: w.tenant.id, userId };
     expect(await authorize({ ...base, action: 'admin.process_matrix' })).toBe(true);
-    expect(
-      await authorize({ ...base, action: 'object.update', resource: APPROVAL_PROCESS_OBJECT, fields: [] }),
-    ).toBe(false);
+    expect(await authorize({ ...base, action: 'object.update', resource: APPROVAL_PROCESS_OBJECT, fields: [] })).toBe(
+      false,
+    );
     for (const path of [
       '/api/tenant/approval/designer/person-candidates',
       '/api/tenant/approval/designer/source-candidates?type=department&asOf=2026-10-01',
