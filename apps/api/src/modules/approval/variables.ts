@@ -1,6 +1,16 @@
 /** F-326 S2：租户级变量配置，读写均由调用者的租户事务承载。 */
 import { count, getTableColumns, or } from 'drizzle-orm';
-import { and, approvalVariables, asc, eq, inArray, sql, type Tx } from '@italent/db';
+import {
+  and,
+  approvalProcessNodes,
+  approvalProcessVersions,
+  approvalVariables,
+  asc,
+  eq,
+  inArray,
+  sql,
+  type Tx,
+} from '@italent/db';
 import {
   statusAfter,
   variableCodeOf,
@@ -55,7 +65,35 @@ function valuesOf(row: VariableRow): VariableValues {
   };
 }
 
+/**
+ * 来源列（设计 §5.5“人工 / 自动（流程名 · 节点名）”，DEC-941）：按来源版本联接现有流程版本与节点取名，只读不落列；
+ * 名称取生成该变量的那个版本（不随后续版本改名漂移），版本或节点已不存在时为空。
+ */
+async function originNames(tx: Tx, tenantId: string, rows: VariableRow[]) {
+  const versionIds = [...new Set(rows.flatMap((row) => (row.originVersionId ? [row.originVersionId] : [])))];
+  if (!versionIds.length) return () => ({ originProcessName: null, originNodeName: null });
+  const versions = await tx
+    .select({ id: approvalProcessVersions.id, name: approvalProcessVersions.name })
+    .from(approvalProcessVersions)
+    .where(and(eq(approvalProcessVersions.tenantId, tenantId), inArray(approvalProcessVersions.id, versionIds)));
+  const nodes = await tx
+    .select({
+      versionId: approvalProcessNodes.versionId,
+      nodeKey: approvalProcessNodes.nodeKey,
+      name: approvalProcessNodes.name,
+    })
+    .from(approvalProcessNodes)
+    .where(and(eq(approvalProcessNodes.tenantId, tenantId), inArray(approvalProcessNodes.versionId, versionIds)));
+  const processName = new Map(versions.map((version) => [version.id, version.name]));
+  const nodeName = new Map(nodes.map((node) => [`${node.versionId}:${node.nodeKey}`, node.name]));
+  return (row: VariableRow) => ({
+    originProcessName: (row.originVersionId && processName.get(row.originVersionId)) ?? null,
+    originNodeName: nodeName.get(`${row.originVersionId}:${row.originNodeKey}`) ?? null,
+  });
+}
+
 async function variableViews(tx: Tx, tenantId: string, rows: VariableRow[]) {
+  const originOf = await originNames(tx, tenantId, rows);
   const userIds = [...new Set(rows.flatMap((row) => variablePersonIds(valuesOf(row))))];
   const people = userIds.length
     ? await eligibleDesignerPeople(tx, tenantId, { userIds, limit: userIds.length, offset: 0 })
@@ -71,6 +109,8 @@ async function variableViews(tx: Tx, tenantId: string, rows: VariableRow[]) {
     updatedBy: row.updatedBy,
     updatedAt: row.updatedAt.toISOString(),
     people: variablePersonIds(valuesOf(row)).flatMap((id) => (byUser.has(id) ? [byUser.get(id)!] : [])),
+    origin: row.origin as 'manual' | 'auto',
+    ...originOf(row),
   }));
 }
 

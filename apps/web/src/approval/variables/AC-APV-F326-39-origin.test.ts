@@ -21,12 +21,11 @@ const autoRow = publicVariable({
   code: 'Global.B.SynthAutoA',
   name: '上级审批-指定人员',
   usageScopes: ['process'],
-  ...({ origin: 'auto', originProcessName: '合成调动流程', originNodeName: '上级审批' } as object),
+  origin: 'auto',
+  originProcessName: '合成调动流程',
+  originNodeName: '上级审批',
 });
-const manualRow = publicVariable({
-  id: '50000000-0000-4000-8000-000000000394',
-  ...({ origin: 'manual', originProcessName: null, originNodeName: null } as object),
-});
+const manualRow = publicVariable({ id: '50000000-0000-4000-8000-000000000394' });
 const disabledAuto = { ...autoRow, id: '50000000-0000-4000-8000-000000000395', status: 'disabled' as const };
 let host: HTMLDivElement;
 let root: Root;

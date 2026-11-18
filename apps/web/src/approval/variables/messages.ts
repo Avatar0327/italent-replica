@@ -17,6 +17,14 @@ export const m = {
   usageScopes: '适用范围',
   status: '状态',
   description: '描述',
+  origin: '来源',
+  origins: {
+    manual: '人工',
+    auto: (process: string, node: string) => `自动（${process} · ${node}）`,
+  },
+  // DEC-861⑧：重新启用的自动变量若已无引用，来源流程下次保存时收尾再次停用；长期使用改由人工变量承载（设计 §5.5）
+  reenabledAuto: (process: string | null) =>
+    `已启用。若该自动变量已无流程引用，下次保存来源流程${process ? `「${process}」` : ''}时会再次停用；需要长期使用请改建人工变量`,
   updatedBy: '最近修改人',
   updatedAt: '最近修改时间',
   actions: '操作',
