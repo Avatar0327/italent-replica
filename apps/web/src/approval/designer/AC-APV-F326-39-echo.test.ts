@@ -7,7 +7,7 @@
  * 读视图形状照 apps/api enrichProcessView（AutoVariableView），合成 ID。
  */
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { Form } from 'antd';
+import { Form, type FormInstance } from 'antd';
 import type { ApprovalNode, ApproverSource } from '@italent/domain';
 import { act, h, uiHarness } from '../../../../../tests/acceptance/support/f474-ui.js';
 import { flowFixture } from '../../../../../tests/acceptance/support/f315-fixture.js';
@@ -172,4 +172,52 @@ it('AC-APV-F326-39-09 其他流程的自动变量（无 autoVariable）不显示
   const text = await show(single({ type: 'public_variable', value: OTHER }));
   expect(text).not.toContain('指定人员：');
   expect(text).not.toContain('个流程引用');
+});
+
+let form: FormInstance | undefined;
+const pickOption = async (label: string, name: string) => {
+  const select = [...ui.host.querySelectorAll<HTMLElement>('.ant-select')].find((node) =>
+    node.querySelector(`[aria-label="${label}"]`),
+  )!;
+  const before = new Set(document.querySelectorAll('.ant-select-dropdown'));
+  await act(async () => {
+    select.querySelector('.ant-select-selector')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  });
+  await settle();
+  const dropdown = [...document.querySelectorAll('.ant-select-dropdown')].find((item) => !before.has(item))!;
+  const option = [...dropdown.querySelectorAll<HTMLElement>('.ant-select-item-option')].find(
+    (item) => item.textContent === name,
+  );
+  expect(option, `选项 ${name}`).toBeDefined();
+  await act(async () => option!.click());
+  await settle();
+};
+
+it('AC-APV-F326-39-20 摘要跟随当前表单选择：改选乙后摘要与提交一致；切换来源后不再显示重建提示', async () => {
+  const version = versionOf(single(auto(X, { userIds: [A], status: 'disabled', referencingProcessCount: 1 })));
+  const node = version.nodes[0]!;
+  const field = nodeField(node.key, 'approver');
+  const Harness = () => {
+    const [instance] = Form.useForm();
+    form = instance;
+    return h(
+      Form,
+      { form: instance, initialValues: editableValues(version, 'transfer') },
+      h(ApproverSources, { node, approvalType: 'transfer' }),
+    );
+  };
+  await ui.render(h(Harness, {}), '/', undefined, { [PEOPLE]: people });
+  await settle();
+  expect(ui.host.textContent).toContain('指定人员：合成甲');
+  await act(async () => form!.setFieldValue(field, { type: 'specified', value: B }));
+  await settle();
+  await settle();
+  const submitted = buildDraft(version, { [field]: form!.getFieldValue(field) }, 'transfer').nodes[0]!;
+  expect((submitted as { approver: unknown }).approver).toEqual({ type: 'specified', value: B });
+  expect(ui.host.textContent).toContain('指定人员：合成乙');
+  expect(ui.host.textContent).not.toContain('指定人员：合成甲');
+  await pickOption('来源类型', '本对象字段');
+  expect(form!.getFieldValue(field)).toMatchObject({ type: 'object_field' });
+  expect(ui.host.textContent).not.toContain('保存后将按所列人员重新生成');
+  expect(ui.host.textContent).not.toContain('指定人员：');
 });
