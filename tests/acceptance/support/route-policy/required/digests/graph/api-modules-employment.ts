@@ -1556,6 +1556,14 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm': ['#validateSelectedEmploymentForm'],
   'apps/api/src/modules/employment/employment-forms.ts#validateSelectedEmploymentForm': ['#requireEmploymentForms'],
+  'apps/api/src/modules/employment/employment-type-delete-result.ts#canonicalDeletePath': ['#UUID_IN_PATH'],
+  'apps/api/src/modules/employment/employment-type-delete-result.ts#readEmploymentTypeDeleteResult': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+    'apps/api/src/modules/command-result/service.ts#readOwnCommandResult',
+    '#canonicalDeletePath',
+    'apps/api/src/modules/employment/employment-types.ts#findEmploymentType',
+  ],
   'apps/api/src/modules/employment/employment-type-routes.ts#requireTypeWrite': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
@@ -1565,6 +1573,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/employment-type-routes.ts#route:DELETE /employment-types/:id': [
     'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/employment-type-delete-result.ts#canonicalDeletePath',
     '#runTypeWrite',
     'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
     'apps/api/src/modules/employment/employment-types.ts#deleteEmploymentType',
@@ -1578,6 +1587,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employment-types.ts#parseEmploymentTypeView',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
   ],
+  'apps/api/src/modules/employment/employment-type-routes.ts#route:GET /employment-types/:id/delete-result/:commandId':
+    [
+      'apps/api/src/modules/employment/context.ts#readContext',
+      'apps/api/src/modules/employment/employment-type-delete-result.ts#readEmploymentTypeDeleteResult',
+      '#requireTypeWrite',
+      'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
+      'apps/api/src/modules/job/context.ts#uuidParam',
+    ],
   'apps/api/src/modules/employment/employment-type-routes.ts#route:GET /employment-types/options': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
@@ -1642,6 +1659,7 @@ export const GRAPH: Graph = {
     '#writerOf',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/employment-types.ts#findEmploymentType': ['#columns', '#live'],
   'apps/api/src/modules/employment/employment-types.ts#inputSchema': ['#date'],
   'apps/api/src/modules/employment/employment-types.ts#listEmploymentTypes': ['#LIMIT', '#columns', '#live'],
   'apps/api/src/modules/employment/employment-types.ts#lock': [

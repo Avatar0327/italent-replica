@@ -2495,6 +2495,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     write: employmentTypeWrite(NO_TYPE_BODY),
     ...byId,
   }),
+  'GET /employment-types/:id/delete-result/:commandId': object({
+    object: EMPLOYMENT_TYPE,
+    operation: 'delete',
+    button: button('delete', 'detail'),
+    scope: noScope('人员类别是租户字典，无组织 / 人员字段'),
+    fields: fixed(['commandId', 'id', 'revision', 'status'], 'F-469：本人原删除命令的最小确认协议'),
+    ...byId,
+  }),
   'DELETE /employment-types/:id': employmentTypePolicy('delete', button('delete', 'detail'), {
     write: employmentTypeWrite(NO_TYPE_BODY),
     ...byId,
