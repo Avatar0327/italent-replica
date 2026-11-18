@@ -284,5 +284,9 @@ export const hrFormText = {
   // F-504：原站保存时的确认框文案（F-481 设计 §9），确认后才发请求。
   terminateTitle: '请确认以下信息后，再继续操作',
   terminateContent: '变更后合同的生效日期晚于原合同生效日期，继续保存将终止原合同。',
+  // F-026：非严格控编超编提示（AC-EST-02）
+  establishmentTitle: '已超出设定编制',
+  establishmentContent: '保存后目标部门的人数将超出设定编制，是否继续保存？',
+  establishmentOk: '继续保存',
   confirm: '确定',
 } as const;
