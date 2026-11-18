@@ -13,4 +13,8 @@ export const p = {
   chooseCurrent: '采用变量页当前值',
   confirm: '确认发布',
   cancel: '取消',
+  target: (versionNo: number) => `本次发布的目标版本：版本 ${versionNo}`,
+  targetStatus: (status: string) => `该版本当前状态：${status}（仅供核对，不能据此确认本次发布结果）`,
+  targetMissing: '已不是最新或生效版本',
+  replay: '按原单重发',
 };

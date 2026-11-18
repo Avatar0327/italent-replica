@@ -8,6 +8,7 @@ import { usePermissions } from '../../foundation/Permissions.js';
 import { PageState } from '../../foundation/PageState.js';
 import { ApiError, rejectionMessage } from '../../foundation/client.js';
 import { createFormStore, type Latest, type Values } from '../../foundation/forms/store.js';
+import { changedFields } from '../../foundation/forms/values.js';
 import { FormCommands, useDraftRefill, type CommandForm } from '../../foundation/forms/useCommandForm.js';
 import { useConflictCommand, type Sending } from '../../foundation/forms/ConflictCommands.js';
 import { SourceCommandStatus } from './SourceCommandStatus.js';
@@ -210,9 +211,13 @@ function DetailContent({
 }) {
   if (error) return <ReadFailure error={error} retry={refresh} />;
   if (!data) return <PageState kind="loading" />;
-  return <Definition key={`${id}/${data.revision}`} process={data} onSaved={onSaved} />;
+  return <Definition key={`${id}/${data.revision}`} process={data} onSaved={onSaved} onRefresh={refresh} />;
 }
-function Definition({ process, onSaved }: { process: ProcessView; onSaved(message: string): void }) {
+interface Callbacks {
+  onSaved(message: string): void;
+  onRefresh(): void;
+}
+function Definition({ process, onSaved, onRefresh }: { process: ProcessView } & Callbacks) {
   const [view, setView] = useState<'latest' | 'current'>('latest');
   return (
     <>
@@ -234,7 +239,7 @@ function Definition({ process, onSaved }: { process: ProcessView; onSaved(messag
       {view === 'current' && process.currentVersion ? (
         <ReadOnlyVersion process={process} version={process.currentVersion} />
       ) : (
-        <LatestVersion process={process} onSaved={onSaved} />
+        <LatestVersion process={process} onSaved={onSaved} onRefresh={onRefresh} />
       )}
     </>
   );
@@ -297,16 +302,16 @@ function useProcessCommand(process: ProcessView) {
   const submission: CommandForm = command.form;
   const full = command.full.$process as ProcessView;
   const version = full.latestVersion;
-  const writable =
+  const usable =
     !permissions.loading &&
     !permissions.error &&
     full.status === 'active' &&
-    editAccess(permission, admin, action === 'draft' ? 'update' : 'newVersion') &&
     completeDefinition(version) &&
     version.status === process.latestVersion.status;
+  const writable = usable && editAccess(permission, admin, action === 'draft' ? 'update' : 'newVersion');
   const nodesVisible = !!permission?.viewableFields.includes('nodes');
-  // F-326 S7b：发布只对草稿开放，按钮权限沿用 publish 详情按钮（与保存同口径的节点字段与菜单判断）
-  const publishable = writable && action === 'draft' && editAccess(permission, admin, 'publish');
+  // F-326 S7b：发布只对草稿开放，按 publish 详情按钮独立授权，不受保存按钮权限连带（catalog 两按钮各自授权）
+  const publishable = usable && action === 'draft' && editAccess(permission, admin, 'publish');
   return { api, command, submission, full, version, writable, action, nodesVisible, publishable };
 }
 function nodeLabels(nodes: readonly ApprovalNode[]) {
@@ -371,20 +376,25 @@ function useSave(process: ProcessView, context: ProcessCommand, form: FormInstan
   };
   return { editable, submit, localError, selected, setSelected, located };
 }
-function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(message: string): void }) {
+function LatestVersion({ process, onSaved, onRefresh }: { process: ProcessView } & Callbacks) {
   const context = useProcessCommand(process);
   const { submission, full, version, writable, action, nodesVisible, publishable } = context;
   const [form] = Form.useForm();
   const save = useSave(process, context, form, onSaved);
   const [missing, setMissing] = useState<MissingSlot[]>([]);
-  const publish = usePublish(
-    process,
-    (slots) => {
+  const publish = usePublish(process, {
+    onMissing: (slots) => {
       setMissing(slots);
       if (slots[0]) save.setSelected(slots[0].nodeKey);
     },
-    () => onSaved(p.done),
-  );
+    onDone: () => onSaved(p.done),
+    onRefresh,
+  });
+  // 未保存判断按实际可提交值与服务端草稿比较：改了又改回原值不算（P2-3）
+  const unsaved = () => {
+    const draft = editableValues(version, full.approvalType);
+    return changedFields(form.getFieldsValue(true) as Values, draft, Object.keys(draft)).length > 0;
+  };
   useDraftRefill(submission, save.editable, form);
   const fields = APPROVAL_TYPES[full.approvalType as keyof typeof APPROVAL_TYPES]?.conditionFields ?? [];
   const format = (field: string, value: unknown) =>
@@ -403,7 +413,8 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
       {submission.state?.readError instanceof Error && submission.state.readError.message === m.versionChanged && (
         <Alert type="warning" message={m.versionChanged} />
       )}
-      {publishable && <PublishStatus publish={publish} />}
+      {/* 未确认的发布命令独立于“现在能否发布”显示：退出重开后最新版本已发布也仍可回查 / 按原单重发（P2-2） */}
+      {(publishable || !!publish.form.state) && <PublishStatus publish={publish} />}
       {!!save.localError && !submission.state?.error && (
         <Alert type="error" message={rejectionMessage(save.localError)} />
       )}
@@ -419,19 +430,21 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
           />
         </FormLock>
       </Form>
-      {writable && (
+      {(writable || publishable) && (
         <div className="flow-footer">
-          <Button
-            type="primary"
-            aria-label={action === 'draft' ? m.save : m.newVersion}
-            loading={submission.busy}
-            disabled={submission.locked || submission.blocked}
-            onClick={() => void save.submit()}
-          >
-            {action === 'draft' ? m.save : m.newVersion}
-          </Button>
+          {writable && (
+            <Button
+              type="primary"
+              aria-label={action === 'draft' ? m.save : m.newVersion}
+              loading={submission.busy}
+              disabled={submission.locked || submission.blocked}
+              onClick={() => void save.submit()}
+            >
+              {action === 'draft' ? m.save : m.newVersion}
+            </Button>
+          )}
           {publishable && (
-            <PublishButton publish={publish} form={form} disabled={submission.busy || submission.locked} />
+            <PublishButton publish={publish} unsaved={unsaved} disabled={submission.busy || submission.locked} />
           )}
         </div>
       )}

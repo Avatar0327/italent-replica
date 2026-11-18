@@ -5,7 +5,7 @@ import { useFormLock } from '../../foundation/forms/FormLock.js';
 import { nodeField } from './model.js';
 import { DesignerPeople } from './FallbackHandlers.js';
 import { AutoVariableInfo } from './AutoVariableInfo.js';
-import { slotAutoVariable } from './auto-variables.js';
+import { autoPeople, slotAutoVariable, type AutoVariableView } from './auto-variables.js';
 import { MatrixValue } from './MatrixValue.js';
 import { ReferenceValue } from './ReferenceValue.js';
 import {
@@ -31,15 +31,18 @@ export function ApproverSources({
   /** 发布被拒“指定人员未选择”时本位置的提示（S7b，与服务端同句） */
   missing?: string;
 }) {
+  const mainField = node.kind === 'countersign' ? 'approvers' : 'approver';
+  const name = nodeField(node.key, empty ? 'emptyApproverSources' : mainField);
+  const watched = Form.useWatch(name) as unknown;
   if (empty && node.emptyApproverPolicy !== 'specified') return null;
   const auto = slotAutoVariable(empty ? node.emptyApproverSources : approverSourcesOf(node));
+  const people = auto && selectedPeople(auto, watched);
   const label = empty ? s.empty : s.main;
-  const mainField = node.kind === 'countersign' ? 'approvers' : 'approver';
   const hint = node.kind === 'single' ? s.single : s.count;
   return (
     <section role="group" aria-label={label} className="flow-source-group">
       <Form.Item
-        name={nodeField(node.key, empty ? 'emptyApproverSources' : mainField)}
+        name={name}
         label={label}
         rules={[
           {
@@ -53,10 +56,21 @@ export function ApproverSources({
         <SourceValue node={node} approvalType={approvalType} empty={empty} />
       </Form.Item>
       {missing && <Alert type="error" showIcon message={missing} />}
-      {auto && <AutoVariableInfo auto={auto} />}
+      {auto && people && <AutoVariableInfo auto={auto} people={people} />}
       <p className="flow-muted">{empty ? s.emptyHint : hint}</p>
     </section>
   );
+}
+/**
+ * 摘要跟随当前表单选择（与提交一致）：取位置上指定人员来源里已选的人；表单值尚未就绪时取持久化人员。
+ * 该位置已不再有指定人员来源（改选了其他来源类型）时不显示自动变量摘要与“重新生成”提示。
+ */
+function selectedPeople(auto: AutoVariableView, watched: unknown): string[] | undefined {
+  const rows = sourceList(watched);
+  if (!rows) return watched === undefined ? autoPeople(auto) : undefined;
+  const specified = rows.filter((row) => row.type === 'specified');
+  if (!specified.length) return undefined;
+  return specified.flatMap((row) => (typeof row.value === 'string' && row.value !== '' ? [row.value] : []));
 }
 function SourceValue({
   value,
