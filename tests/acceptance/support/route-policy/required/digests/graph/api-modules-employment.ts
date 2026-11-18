@@ -1542,7 +1542,8 @@ export const GRAPH: Graph = {
     'apps/api/src/advisory-lock.ts#asUuid',
   ],
   'apps/api/src/modules/employment/employment-forms.ts#parseEmploymentForm': ['#inputSchema'],
-  'apps/api/src/modules/employment/employment-forms.ts#requireEnabledEmploymentForms': ['#LIMIT'],
+  'apps/api/src/modules/employment/employment-forms.ts#requireEmploymentForms': ['#LIMIT'],
+  'apps/api/src/modules/employment/employment-forms.ts#requireEnabledEmploymentForms': ['#requireEmploymentForms'],
   'apps/api/src/modules/employment/employment-forms.ts#saveEmploymentForm': [
     'apps/api/src/modules/employment/context.ts#assertRevision',
     '#LIMIT',
@@ -1553,7 +1554,8 @@ export const GRAPH: Graph = {
     '#parseEmploymentForm',
     'apps/api/src/system-actor.ts#auditActor',
   ],
-  'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm': ['#requireEnabledEmploymentForms'],
+  'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm': ['#validateSelectedEmploymentForm'],
+  'apps/api/src/modules/employment/employment-forms.ts#validateSelectedEmploymentForm': ['#requireEmploymentForms'],
   'apps/api/src/modules/employment/employment-type-routes.ts#requireTypeWrite': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
@@ -3738,15 +3740,18 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/exit-cancel.ts#cancelExit',
     'apps/api/src/modules/employment/exit-confirmation.ts#confirmExit',
-    'apps/api/src/modules/employment/exit-gate.ts#EXIT_GATE_PASS',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     '#copyRemainingDuties',
+    '#successorOptions',
     '#timingAfterReplan',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
+  ],
+  'apps/api/src/modules/employment/exit-replacement.ts#successorOptions': [
+    'apps/api/src/modules/employment/exit-gate.ts#EXIT_GATE_PASS',
   ],
   'apps/api/src/modules/employment/exit-replacement.ts#timingAfterReplan': [
     'packages/domain/src/employment/exit.ts#settleDutyTransferTiming',
@@ -4424,6 +4429,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch': [
+    'apps/api/src/modules/employment/employment-forms.ts#validateSelectedEmploymentForm',
     'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     '#prepareInheritance',
     '#restoreFrozenDefaults',
@@ -4444,7 +4450,7 @@ export const GRAPH: Graph = {
     '#selfServiceForm',
     '#setField',
     '#snapshotForm',
-    '#validateInheritedEmploymentType',
+    '#validateInheritedDictionaries',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
     'apps/api/src/modules/transfer/initiator-fields.ts#applyInitiatorFieldModes',
@@ -4465,7 +4471,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/inheritance.ts#snapshotForm': [
     'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS',
   ],
-  'apps/api/src/modules/employment/inheritance.ts#validateInheritedEmploymentType': [
+  'apps/api/src/modules/employment/inheritance.ts#validateInheritedDictionaries': [
+    'apps/api/src/modules/employment/employment-forms.ts#validateSelectedEmploymentForm',
     'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
   ],
   'apps/api/src/modules/employment/intern-actions.ts#internRowActions': [
@@ -5903,6 +5910,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/part-time/service.ts#checkNewPartTime': [
+    'apps/api/src/modules/employment/employment-forms.ts#validateSelectedEmploymentForm',
     'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
     'apps/api/src/modules/employment/part-time/linkage.ts#linkageOf',
@@ -5929,6 +5937,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
   ],
   'apps/api/src/modules/employment/part-time/service.ts#editPartTime': [
+    'apps/api/src/modules/employment/employment-forms.ts#validateSelectedEmploymentForm',
     'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
@@ -5964,6 +5973,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/service.ts#previewPartTime': [
     'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
+    'apps/api/src/modules/employment/employment-forms.ts#validateSelectedEmploymentForm',
     'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
@@ -6430,6 +6440,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/record-edit.ts#editedValues': [
     'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
+    'apps/api/src/modules/employment/employment-forms.ts#validateSelectedEmploymentForm',
     'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/fields.ts#validateCustomValue',
@@ -8404,7 +8415,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#EXIT_GATE_PASS',
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
-    'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/intern-eligibility.ts#resolveInFlightRegularization',
     'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
@@ -8423,12 +8433,12 @@ export const GRAPH: Graph = {
     '#initializeEmploymentBusiness',
     '#materializeEmploymentRecord',
     '#payloadAudit',
+    '#prepareCreatedInheritance',
     '#requireSavedBusiness',
     '#saveEntryExtras',
     '#selectEmploymentCycle',
     '#validatePreparedEmployment',
     '#withImportedUntil',
-    '#withPositionManagerDerivation',
   ],
   'apps/api/src/modules/employment/write-service.ts#cycleForMaterialization': [
     '#assertNoInternCycleSuccessor',
@@ -8489,6 +8499,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/status-hooks.ts#employeeStatusHooks',
   ],
   'apps/api/src/modules/employment/write-service.ts#payloadAudit': ['#customAudit'],
+  'apps/api/src/modules/employment/write-service.ts#prepareCreatedInheritance': [
+    'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',
+    '#withPositionManagerDerivation',
+  ],
   'apps/api/src/modules/employment/write-service.ts#propagateMaterializedStatus': [
     'apps/api/src/modules/employment/employee-status.ts#propagateEmployeeStatus',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',

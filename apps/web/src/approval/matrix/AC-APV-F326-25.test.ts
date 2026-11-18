@@ -247,9 +247,11 @@ describe('AC-APV-F326-25 列定义', () => {
     await choose(cell(2, 0), '合成测试部');
     const sources = backend.lookups.filter((url) => url.pathname.endsWith('/source-candidates'));
     expect(sources.at(-1)!.searchParams.get('type')).toBe('department');
+    expect(sources.at(-1)!.searchParams.get('context')).toBe('matrix');
     expect(sources.at(-1)!.searchParams.get('asOf')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     await choose(cell(2, 1), '合成审批人乙 · E002 · 合成测试部');
     expect(backend.lookups.at(-1)!.pathname).toMatch(/\/person-candidates$/);
+    expect(backend.lookups.at(-1)!.searchParams.get('context')).toBe('matrix');
     expect(text(cell(2, 1))).toContain('合成审批人乙');
     await save();
     expect((puts()[0]!.body.rows as { cells: unknown }[])[2]).toEqual({

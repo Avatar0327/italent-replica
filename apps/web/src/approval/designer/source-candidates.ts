@@ -36,6 +36,7 @@ export function acceptCandidates(value: unknown): CandidatePage {
   return { items: page.items, hasMore: page.hasMore };
 }
 export interface CandidateQuery {
+  readonly context?: 'matrix';
   readonly type: ApproverSourceType;
   readonly asOf: string;
   readonly keyword?: string;
@@ -46,8 +47,9 @@ export interface CandidateQuery {
   readonly pageSize?: number;
 }
 /** 已选对象按 ID 回查并带上已停用项（DEC-691 D4）；搜索只取启用项且分页上限固定。 */
-export function candidateParams({ type, asOf, keyword, ids, approvalType, page, pageSize }: CandidateQuery) {
+export function candidateParams({ type, asOf, keyword, ids, context, approvalType, page, pageSize }: CandidateQuery) {
   const params = new URLSearchParams({ type, asOf });
+  if (context) params.set('context', context);
   if (type === 'application_variable' && approvalType) params.set('approvalType', approvalType);
   if (ids?.length) {
     params.set('ids', ids.join(','));

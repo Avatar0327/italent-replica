@@ -15740,7 +15740,6 @@
           "job.employmentScope"
         ],
         "object": [
-          "object.* 动作",
           "objectContext",
           "requireObjectWrite（对象写操作权）"
         ],
