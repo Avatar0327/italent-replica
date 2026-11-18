@@ -13,7 +13,7 @@ import { canCreatePerson, type CreateReceipt } from './create-model.js';
 import { c } from './create-messages.js';
 import { ApplicationLocation, useApplicationLocation } from './ApplicationLocation.js';
 import { InternDetail } from './InternDetail.js';
-import { useNavigationGuard, type NavigationGuard } from './navigation.js';
+import { useNavigationGuard, type NavigationGuard } from '../foundation/navigation.js';
 import { m } from './messages.js';
 import {
   allowedFilters,

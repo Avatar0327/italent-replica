@@ -21,6 +21,7 @@ const candidateId = z
   .transform((v) => v.split(':').map(canonicalId).join(':'));
 
 const querySchema = z.object({
+  context: z.enum(['designer', 'matrix']).default('designer'),
   type: z.enum([...RELATION_SOURCE_TYPES, 'identity', 'object_field', ...VARIABLE_TYPES, 'matrix']),
   approvalType: z.enum(Object.keys(APPROVAL_TYPES) as [ApprovalTypeCode, ...ApprovalTypeCode[]]).optional(),
   asOf: z.string().refine(validIsoDate),
@@ -43,7 +44,9 @@ export function designerSourcesQuery(query: Record<string, string>) {
   const { type, ids, approvalType } = parsed.data;
   // 应用变量按审批类型所属应用过滤，不带类型就没有范围（设计 §5.3）；组合 id 只属于矩阵
   const invalid =
-    (type === 'application_variable' && !approvalType) || (type !== 'matrix' && ids?.some((id) => id.includes(':')));
+    (parsed.data.context === 'matrix' && !['department', 'position', 'job'].includes(type)) ||
+    (type === 'application_variable' && !approvalType) ||
+    (type !== 'matrix' && ids?.some((id) => id.includes(':')));
   if (invalid) throw new AppError('VALIDATION_FAILED', '审批来源候选查询参数不合法');
   return parsed.data;
 }
