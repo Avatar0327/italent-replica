@@ -6,6 +6,7 @@ import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
   'apps/api/src/modules/employment/activation-checks.ts#DEFAULT_ESTABLISHMENT_CHECKS': [
+    'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentAssessment',
     'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentExceeded',
   ],
   'apps/api/src/modules/employment/activation-checks.ts#activateMaterializedLinkage': [
@@ -26,8 +27,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/employment/activation-checks.ts#assertEstablishmentCapacity': ['#establishmentExceeded'],
+  'apps/api/src/modules/employment/activation-checks.ts#assertEstablishmentCapacity': [
+    '#establishmentAssessment',
+    '#requireEstablishmentConfirmed',
+  ],
   'apps/api/src/modules/employment/activation-checks.ts#checks': ['#DEFAULT_ESTABLISHMENT_CHECKS'],
+  'apps/api/src/modules/employment/activation-checks.ts#establishmentAssessment': ['#checks'],
   'apps/api/src/modules/employment/activation-checks.ts#establishmentExceeded': ['#checks'],
   'apps/api/src/modules/employment/activation-checks.ts#precheck': [
     '#establishmentExceeded',
@@ -7754,6 +7759,7 @@ export const GRAPH: Graph = {
     '#requireImportTransferAccess',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
   ],
+  'apps/api/src/modules/employment/routes.ts#deleteConfirmed': ['#splitConfirmed'],
   'apps/api/src/modules/employment/routes.ts#discloseDeletionBlock': [
     'apps/api/src/modules/employment/deletion-guards.ts#PendingApplicationError',
     'apps/api/src/modules/employment/deletion-guards.ts#ReportingCycleDeletionError',
@@ -7814,7 +7820,8 @@ export const GRAPH: Graph = {
     '#authorizeBusinessWrite',
     '#discloseDeletionBlock',
     '#routesToCancel',
-    '#submitBody',
+    '#transitionConfirmation',
+    '#transitionControls',
     'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure',
@@ -7916,6 +7923,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
   ],
   'apps/api/src/modules/employment/routes.ts#route:PATCH /businesses/:id': [
+    'apps/api/src/modules/employment/activation-checks.ts#withEstablishmentConfirmation',
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
@@ -7935,6 +7943,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
   'apps/api/src/modules/employment/routes.ts#route:PATCH /records/:id': [
+    'apps/api/src/modules/employment/activation-checks.ts#withEstablishmentConfirmation',
     'apps/api/src/modules/employment/context.ts#jsonBody',
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
@@ -7988,6 +7997,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/user-provisioning.ts#provisionEmployeeUser',
   ],
   'apps/api/src/modules/employment/routes.ts#route:POST /employees/:id/businesses': [
+    'apps/api/src/modules/employment/activation-checks.ts#withEstablishmentConfirmation',
     'apps/api/src/modules/employment/context.ts#jsonBody',
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
@@ -8006,6 +8016,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard',
     'apps/api/src/modules/employment/retirement-rehire.ts#assertNoRehireKeys',
     '#ensureHiredAccount',
+    '#splitConfirmed',
     '#splitLoginEmail',
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
     'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS',
@@ -8114,9 +8125,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
   ],
   'apps/api/src/modules/employment/routes.ts#splitLoginEmail': ['#loginEmail', '#parse'],
-  'apps/api/src/modules/employment/routes.ts#submitBody': [
+  'apps/api/src/modules/employment/routes.ts#transitionConfirmation': [
+    'apps/api/src/modules/employment/activation-checks.ts#withEstablishmentConfirmation',
+  ],
+  'apps/api/src/modules/employment/routes.ts#transitionControls': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
+    '#deleteConfirmed',
     '#parse',
+    '#submitControlSchema',
   ],
   'apps/api/src/modules/employment/status-hooks.ts#employeeStatusHooks': ['#hookContext', '#subscribers'],
   'apps/api/src/modules/employment/status-hooks.ts#registerEmployeeStatusHooks': ['#registry'],
