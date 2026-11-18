@@ -8,7 +8,6 @@ import { usePermissions } from '../../foundation/Permissions.js';
 import { PageState } from '../../foundation/PageState.js';
 import { ApiError, rejectionMessage } from '../../foundation/client.js';
 import { createFormStore, type Latest, type Values } from '../../foundation/forms/store.js';
-import { changedFields } from '../../foundation/forms/values.js';
 import { FormCommands, useDraftRefill, type CommandForm } from '../../foundation/forms/useCommandForm.js';
 import { useConflictCommand, type Sending } from '../../foundation/forms/ConflictCommands.js';
 import { SourceCommandStatus } from './SourceCommandStatus.js';
@@ -19,11 +18,13 @@ import {
   base,
   root,
   processObject,
-  buildDraft,
   assertDraftStructure,
   completeDefinition,
   editableValues,
   editAccess,
+  buttonAccess,
+  draftChanged,
+  draftSubmission,
   nodeField,
   type ProcessView,
   type VersionView,
@@ -42,7 +43,6 @@ import { r } from './route-messages.js';
 import { routesSummary } from './routes.js';
 import { RoutesEditor } from './RoutesEditor.js';
 import { useDesignerWrite } from './write.js';
-import { wireDraft } from './auto-variables.js';
 import { PublishButton, PublishStatus, usePublish, type MissingSlot } from './PublishAction.js';
 import './designer.css';
 
@@ -310,8 +310,9 @@ function useProcessCommand(process: ProcessView) {
     version.status === process.latestVersion.status;
   const writable = usable && editAccess(permission, admin, action === 'draft' ? 'update' : 'newVersion');
   const nodesVisible = !!permission?.viewableFields.includes('nodes');
-  // F-326 S7b：发布只对草稿开放，按 publish 详情按钮独立授权，不受保存按钮权限连带（catalog 两按钮各自授权）
-  const publishable = usable && action === 'draft' && editAccess(permission, admin, 'publish');
+  // F-326 S7b：发布只对草稿开放，按 publish 详情按钮独立授权，不受保存按钮权限连带（catalog 两按钮各自授权）；
+  // 发布的是服务端已有草稿、不改节点，不看节点字段权限（P2-4，后端发布入口同样没有节点编辑前置）
+  const publishable = usable && action === 'draft' && buttonAccess(permission, admin, 'publish');
   return { api, command, submission, full, version, writable, action, nodesVisible, publishable };
 }
 function nodeLabels(nodes: readonly ApprovalNode[]) {
@@ -343,8 +344,9 @@ function useSave(process: ProcessView, context: ProcessCommand, form: FormInstan
   const send = async ({ edited, command: request }: Sending) => {
     let draft: ProcessDefinition | undefined;
     try {
-      if (action === 'draft') draft = buildDraft(version, edited, full.approvalType);
-      await write(process.id, action, { ...request, body: draft ? wireDraft(draft) : {} });
+      const built = action === 'draft' ? draftSubmission(version, edited, full.approvalType) : undefined;
+      draft = built?.draft;
+      await write(process.id, action, { ...request, body: built?.body ?? {} });
       return { id: process.id };
     } catch (error) {
       if (action !== 'draft') throw error;
@@ -361,7 +363,7 @@ function useSave(process: ProcessView, context: ProcessCommand, form: FormInstan
     try {
       values = action === 'draft' ? ((await form.validateFields()) as Values) : {};
       // 本地校验在进入内核前完成；send 中的失败只能代表请求结果。
-      if (action === 'draft') buildDraft(version, values, full.approvalType);
+      if (action === 'draft') draftSubmission(version, values, full.approvalType);
     } catch (error) {
       point(localSpot(error));
       if (error instanceof Error) setLocalError(error);
@@ -390,11 +392,8 @@ function LatestVersion({ process, onSaved, onRefresh }: { process: ProcessView }
     onDone: () => onSaved(p.done),
     onRefresh,
   });
-  // 未保存判断按实际可提交值与服务端草稿比较：改了又改回原值不算（P2-3）
-  const unsaved = () => {
-    const draft = editableValues(version, full.approvalType);
-    return changedFields(form.getFieldsValue(true) as Values, draft, Object.keys(draft)).length > 0;
-  };
+  // 未保存判断与保存同一提交归一化（draftChanged）：改了又改回、只差会被去掉的首尾空格都不算（P2-3）
+  const unsaved = () => draftChanged(version, form.getFieldsValue(true) as Values, full.approvalType);
   useDraftRefill(submission, save.editable, form);
   const fields = APPROVAL_TYPES[full.approvalType as keyof typeof APPROVAL_TYPES]?.conditionFields ?? [];
   const format = (field: string, value: unknown) =>

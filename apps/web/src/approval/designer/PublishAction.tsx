@@ -58,6 +58,14 @@ const conflictsOf = (details: Values): PendingConflict[] =>
       texts(item.designerUserIds) &&
       texts(item.currentUserIds),
   );
+const CHOICES: readonly unknown[] = ['designer', 'current'];
+/** 原命令体里发出的待生效选择（内核随恢复槽保存，退出重开后仍在）；形状不符的条目丢弃，由服务端再问。 */
+const resolutionsOf = (body: Values | undefined): Resolution[] =>
+  entries(body?.pendingResolutions).flatMap((item) =>
+    typeof item.variableId === 'string' && Number.isSafeInteger(item.revision) && CHOICES.includes(item.choice)
+      ? [{ variableId: item.variableId, revision: item.revision as number, choice: item.choice as Choice }]
+      : [],
+  );
 const targetOf = (values: Values | undefined) => values?.$target as Target | undefined;
 /** 目标版本在读回详情里的状态：是最新版本或生效版本就取其状态；都不是（已被别的版本取代）为 null。 */
 const statusOf = (latest: ProcessView, target: Target) =>
@@ -79,6 +87,29 @@ function useMounted() {
     };
   }, []);
   return mounted;
+}
+/**
+ * 待生效冲突的弹窗与仍有效的选择（P2-1 单一入口）：只在发布被拒时由 settle 按被拒原命令体恢复，发布成功、取消、
+ * 版本冲突重读后由 forget 清空。新发起与按原单重发（可能已退出重开、组件内存已没有当初的选择）走同一条路。
+ */
+function usePendingChoices(mounted: { current: boolean }) {
+  const kept = useRef<Resolution[]>([]);
+  const [conflicts, setConflicts] = useState<PendingConflict[]>();
+  const forget = () => {
+    kept.current = [];
+    if (mounted.current) setConflicts(undefined);
+  };
+  /** 服务端报告过期的项重选，其余仍有效的保留（确认时一并发出）；没有待生效冲突就清空。返回是否要重选。 */
+  const settle = (sent: Resolution[], pending: PendingConflict[]) => {
+    if (!pending.length) {
+      forget();
+      return false;
+    }
+    kept.current = sent.filter((item) => !pending.some((conflict) => conflict.variableId === item.variableId));
+    setConflicts(pending);
+    return true;
+  };
+  return { kept, conflicts, forget, settle };
 }
 interface PublishHandlers {
   onMissing(slots: MissingSlot[]): void;
@@ -104,37 +135,32 @@ export function usePublish(process: ProcessView, handlers: PublishHandlers) {
   };
   const command = useConflictCommand(base, snapshot, read, { action: 'publish' });
   const [error, setError] = useState<string>();
-  const [conflicts, setConflicts] = useState<PendingConflict[]>();
-  // 同一草稿上仍有效的待生效选择：再次 409 只让过期项重选，确认时与新选择一并发出（P2-1）
-  const kept = useRef<Resolution[]>([]);
+  const choices = usePendingChoices(mounted);
   const path = `${base}/${encodeURIComponent(process.id)}/publish`;
   // 请求体就是内核保存的命令体：结果未知时按原单重发同键同体
   const send = async ({ command: sending }: Sending) =>
     acceptPublished(await request(path, 'POST', sending), process.id, sending.revision!);
   const finish = () => {
-    kept.current = [];
+    choices.forget();
     // 迟到的成功回执：命令已由内核落定，但用户已离开发起它的流程 / 版本 / 视图时不刷新页面（P2-5）
-    if (!mounted.current) return;
-    setConflicts(undefined);
-    handlers.onDone();
+    if (mounted.current) handlers.onDone();
   };
-  const fail = (failure: unknown, resolutions: Resolution[]) => {
-    const status = command.form.peek()?.status;
+  const fail = (failure: unknown) => {
+    const state = command.form.peek();
     // 结果未知与版本冲突由内核锁定并提示（回查 / 重读），不在这里清掉原命令
-    if (status === 'unknown' || status === 'conflict') return;
+    if (state?.status === 'unknown' || state?.status === 'conflict') return;
+    // 发出过的选择从刚被拒的原命令体取：按原单重发时本组件可能已退出重开，内存里没有当初的选择（P2-1）
+    const sent = resolutionsOf(state?.command?.body);
     command.form.clear();
     if (!mounted.current) return;
     const details = failure instanceof DesignerError ? failure.details : {};
     const pending = details.reason === 'APPROVAL_PENDING_VARIABLE_CONFLICT' ? conflictsOf(details) : [];
-    kept.current = resolutions.filter((item) => !pending.some((conflict) => conflict.variableId === item.variableId));
-    setConflicts(pending.length ? pending : undefined);
-    if (pending.length) return;
-    kept.current = [];
+    if (choices.settle(sent, pending)) return;
     if (details.reason === 'APPROVAL_SPECIFIED_APPROVER_REQUIRED') handlers.onMissing(slotsOf(details));
     setError(rejectionMessage(failure));
   };
   const run = async (chosen?: Resolution[]) => {
-    const resolutions = chosen ? [...kept.current, ...chosen] : [];
+    const resolutions = chosen ? [...choices.kept.current, ...chosen] : [];
     setError(undefined);
     handlers.onMissing([]);
     const values = resolutions.length ? { pendingResolutions: resolutions } : {};
@@ -142,7 +168,7 @@ export function usePublish(process: ProcessView, handlers: PublishHandlers) {
       await command.run({ values, editableFields: Object.keys(values), send });
       finish();
     } catch (failure) {
-      fail(failure, resolutions);
+      fail(failure);
     }
   };
   /** 结果未知：用户回查后显式按原单重发（同一 Idempotency-Key 与请求体），不另起命令。 */
@@ -151,7 +177,7 @@ export function usePublish(process: ProcessView, handlers: PublishHandlers) {
       await command.replay(send);
       finish();
     } catch (failure) {
-      fail(failure, []);
+      fail(failure);
     }
   };
   const reread = command.form.reload;
@@ -161,17 +187,14 @@ export function usePublish(process: ProcessView, handlers: PublishHandlers) {
       await reread();
       const state = command.form.peek();
       if (state?.status !== 'conflict' || !state.latest || state.readError) return;
-      // 版本冲突（P1-1）：不只换版本号直接发布页面没展示过的草稿；落定本次失败，重新读取页面，由用户看过后再发布
+      // 版本冲突（P1-1）：不直接发布页面没展示过的草稿，落定失败后重读页面；旧草稿上的待生效选择不带过去，由服务端再问
       command.form.confirm();
       command.form.clear();
+      choices.forget();
       if (mounted.current) handlers.onRefresh();
     });
   const form: CommandForm = { ...command.form, reload };
-  const cancel = () => {
-    kept.current = [];
-    setConflicts(undefined);
-  };
-  return { form, run, replay, error, conflicts, cancel };
+  return { form, run, replay, error, conflicts: choices.conflicts, cancel: choices.forget };
 }
 type Publish = ReturnType<typeof usePublish>;
 
