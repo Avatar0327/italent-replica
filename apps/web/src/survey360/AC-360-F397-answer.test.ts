@@ -418,3 +418,73 @@ it('AC-360-F397 冲突核对后不自动保存，用户改动后才按周期保�
   ]);
   expect(requests[1]?.body).toMatchObject({ suggestion: '合成核对后建议' });
 });
+
+// 审查 F-397 第 3 轮 P2-1：活动暂停后不得补写，但页面上未保存的内容仍须拦截刷新与返回，不能静默丢稿。
+it('AC-360-F397 保存在途时新填的答案，响应丢失后活动暂停：按原命令确认后不补写，刷新与返回仍拦截', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  twoItems();
+  await render();
+  await choose(0);
+  const release = hold();
+  failure = 'lost';
+  await tick(10_000);
+  await choose(1);
+  await release();
+  expect(text()).toContain('结果待确认');
+  failure = undefined;
+  page.activity.status = 'disabled';
+  await click('回查原单');
+  await click('按原命令确认结果');
+  expect(text()).toContain('保存成功');
+  expect(checked()).toEqual([true, true]);
+  expect(guarded()).toBe(true);
+  await click('返回评价列表');
+  expect(checked()).toEqual([true, true]);
+  expect(text()).toContain('活动已暂停，未保存内容无法提交');
+  await tick(30_000);
+  expect(requests).toHaveLength(2);
+  expect(requests[1]?.body).toEqual(requests[0]?.body);
+});
+
+// 审查 F-397 第 3 轮 P2-3：冲突核对后整卷与最新记录一致即无未保存内容，可直接返回，不发保存。
+it('AC-360-F397 保存在途时把建议改成另一页签已保存的同一值，冲突核对后可直接返回，不发保存', async () => {
+  await render();
+  await typeSuggestion('合成本页建议');
+  const release = hold();
+  failure = 'conflict';
+  await click('立即保存');
+  await typeSuggestion('合成远端建议');
+  await release();
+  failure = undefined;
+  await click('重读最新版本');
+  await click('已核对差异，继续编辑');
+  expect(guarded()).toBe(false);
+  await click('返回评价列表');
+  expect(host.querySelector('textarea')).toBeNull();
+  expect(requests).toHaveLength(1);
+});
+
+// 核对表一行的“我的输入”列（按表头定位，不依赖列序）。
+const mineCell = (label: string) => {
+  const column = [...host.querySelectorAll('th')].findIndex((th) => th.textContent === '我的输入');
+  const row = [...host.querySelectorAll('tbody tr')].find((tr) => tr.querySelector('td')?.textContent === label);
+  return row?.querySelectorAll('td')[column]?.textContent;
+};
+// 审查 F-397 第 3 轮 P2-4：核对表展示的“我的输入”须是核对后将要保存的实时草稿，不是在途命令的快照。
+it('AC-360-F397 保存在途改了建议又遇冲突：核对表“我的输入”与随后显式保存的请求体一致', async () => {
+  await render();
+  await typeSuggestion('合成发出值');
+  const release = hold();
+  failure = 'conflict';
+  await click('立即保存');
+  await typeSuggestion('合成新值');
+  await release();
+  failure = undefined;
+  await click('重读最新版本');
+  const mine = mineCell('综合建议');
+  await click('已核对差异，继续编辑');
+  await click('立即保存');
+  expect(requests[0]?.body).toMatchObject({ suggestion: '合成发出值' });
+  expect(requests[1]?.command?.revision).toBe(5);
+  expect(mine).toBe(JSON.stringify((requests[1]?.body as { suggestion?: string }).suggestion));
+});

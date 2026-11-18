@@ -168,3 +168,86 @@ it('AC-360-F397 登出断网仍丢弃本地会话并退出作答页，刷新与�
   expect(host.querySelector('input[name="password"]')).not.toBeNull();
   expect(calls.slice(loggedOut).filter((call) => call.session === session)).toEqual([]);
 });
+
+// 审查 F-397 第 3 轮 P2-2：登出（作答页卸载、换会话）后，在途保存的回执不得再触发新的作答请求。
+it('AC-360-F397 返回列表的保存在途时继续作答再登出，回执到达后不再发作答请求', async () => {
+  const key = 'survey360.portal.10000000-0000-4000-8000-000000000001';
+  const session = randomBytes(32).toString('base64url');
+  sessionStorage.setItem(key, JSON.stringify({ session, expiresAt: new Date(Date.now() + 60_000).toISOString() }));
+  const task = '/api/survey360/portal/tasks/relation/questionnaires/questionnaire';
+  const options = (id: string) => [{ id, label: `合成选项${id}`, remarkRequired: false }];
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const calls: { url: string; method: string; session: string | null }[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init: RequestInit) => {
+      const method = init.method ?? 'GET';
+      const headers = new Headers(init.headers);
+      calls.push({ url, method, session: headers.get('x-survey360-session') });
+      if (url.endsWith('/logout')) throw new TypeError('Failed to fetch');
+      const sheet = { status: 'pending', revision: 0, answers: [], suggestion: null };
+      if (url === task && method === 'GET')
+        return Response.json({
+          activity: { name: '合成活动', status: 'enabled' },
+          object: { name: '合成对象' },
+          questionnaire: {
+            id: 'questionnaire',
+            name: '合成套卷',
+            type: 'key_behavior',
+            guide: null,
+            items: [
+              { id: 'item', text: '合成题目', options: options('option') },
+              { id: 'second-item', text: '合成题目二', options: options('second-option') },
+            ],
+          },
+          sheet,
+        });
+      if (url === task) {
+        await gate;
+        const revision = Number(headers.get('if-match')) + 1;
+        return Response.json({ ...sheet, ...JSON.parse(String(init.body)), status: 'draft', revision });
+      }
+      return Response.json({
+        kind: 'answer',
+        activity: { id: 'activity', name: '合成活动', welcome: null, status: 'enabled' },
+        tasks: [
+          {
+            relationId: 'relation',
+            object: { name: '合成对象' },
+            questionnaires: [{ id: 'questionnaire', name: '合成套卷', status: 'pending' }],
+          },
+        ],
+      });
+    }),
+  );
+  const wait = async () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+  const press = async (label: string) => {
+    const button = [...host.querySelectorAll('button')].find((node) => node.textContent?.replace(/\s/g, '') === label);
+    expect(button, label).toBeDefined();
+    await act(async () => button!.click());
+    await wait();
+  };
+  const choose = async (index: number) => {
+    await act(async () => host.querySelectorAll<HTMLInputElement>('input[type="radio"]')[index]!.click());
+    await wait();
+  };
+  await act(async () => root.render(h(App)));
+  await wait();
+  await press('开始评价');
+  await choose(0);
+  await press('返回评价列表');
+  await choose(1);
+  await press('退出登录');
+  const loggedOut = calls.length;
+  expect(calls.at(-1)).toMatchObject({ url: '/api/survey360/portal/logout', method: 'POST', session });
+  expect(calls.filter((call) => call.url === task && call.method === 'PUT')).toHaveLength(1);
+  await act(async () => release());
+  await wait();
+  await wait();
+  expect(host.querySelector('input[name="password"]')).not.toBeNull();
+  expect(calls.slice(loggedOut).filter((call) => call.url.startsWith(task))).toEqual([]);
+});
