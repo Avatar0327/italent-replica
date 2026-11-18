@@ -15,6 +15,7 @@ export interface DesignerPerson {
   departmentName: string | null;
 }
 const querySchema = z.object({
+  context: z.enum(['designer', 'matrix']).default('designer'),
   keyword: z.string().trim().max(100).optional(),
   page: z.coerce.number().int().min(1).max(5000).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
