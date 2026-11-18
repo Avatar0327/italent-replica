@@ -31,6 +31,10 @@ export interface ActorOptions {
   /** 附件字段（三个）的查看 / 编辑权；默认都有 */
   attachmentView?: boolean;
   attachmentEdit?: boolean;
+  /** 只放开这些附件字段的编辑权（给出时覆盖 attachmentEdit；用于“只撤一个字段”的精确复核用例） */
+  attachmentEditFields?: readonly string[];
+  /** 另外授予完整权限的子集对象（如无附件字段的 training） */
+  extraObjects?: readonly string[];
   /** 教育经历对象的数据操作；默认新增、修改、删除都有 */
   operations?: { create: boolean; update: boolean; delete: boolean };
   /** 人员主对象 update；默认有 */
@@ -76,6 +80,7 @@ export async function personnelWorld(db: Db) {
   async function configure(profile: Awaited<ReturnType<typeof createProfile>>, o: ActorOptions) {
     const view = o.attachmentView ?? true;
     const edit = o.attachmentEdit ?? true;
+    const editable = (code: string) => (o.attachmentEditFields ? o.attachmentEditFields.includes(code) : edit);
     const subset = PERSONNEL_OBJECTS.find((x) => x.code === OBJECT)!;
     const employee = PERSONNEL_OBJECTS.find((x) => x.code === PERSONNEL_OBJECT)!;
     const put = async (code: string, body: object) => {
@@ -91,10 +96,18 @@ export async function personnelWorld(db: Db) {
       dataOperations: o.operations ?? { create: true, update: true, delete: true },
       fields: subset.fields.map((f) => {
         const attachment = ATTACHMENT_FIELDS.includes(f.code);
-        return { fieldCode: f.code, view: attachment ? view : true, edit: attachment ? edit : !f.system };
+        return { fieldCode: f.code, view: attachment ? view : true, edit: attachment ? editable(f.code) : !f.system };
       }),
       buttons: subset.buttons.map((b) => ({ buttonCode: b.code, level: b.level })),
     });
+    for (const code of o.extraObjects ?? []) {
+      const extra = PERSONNEL_OBJECTS.find((x) => x.code === code)!;
+      await put(code, {
+        dataOperations: { create: true, update: true, delete: true },
+        fields: extra.fields.map((f) => ({ fieldCode: f.code, view: true, edit: !f.system })),
+        buttons: extra.buttons.map((b) => ({ buttonCode: b.code, level: b.level })),
+      });
+    }
   }
 
   /** HR：同一身份可重新配置（撤权用例）；数据范围按 org_range 授予。 */
@@ -104,16 +117,22 @@ export async function personnelWorld(db: Db) {
     await configure(profile, options);
     await makeGrantable(world, [profile.id]);
     expect((await grant(world, user.id, profile.id)).status).toBe(201);
-    const ranges = [inside, ...(options.orgs === 'both' ? [outside] : [])];
-    const scope = await world.api.request('PUT', `/api/tenant/permission/scopes/${user.id}/TenantBase`, {
-      ...world.asAdmin,
-      ifMatch: 0,
-      body: { kind: 'org_range', orgRanges: ranges.map((r) => ({ orgId: r.id, includeDescendants: false })) },
-    });
-    expect(scope.status, await scope.clone().text()).toBe(200);
+    let scopeRevision = 0;
+    const setOrgs = async (orgs: readonly { id: string }[]) => {
+      const scope = await world.api.request('PUT', `/api/tenant/permission/scopes/${user.id}/TenantBase`, {
+        ...world.asAdmin,
+        ifMatch: scopeRevision,
+        body: { kind: 'org_range', orgRanges: orgs.map((r) => ({ orgId: r.id, includeDescendants: false })) },
+      });
+      expect(scope.status, await scope.clone().text()).toBe(200);
+      scopeRevision = ((await scope.json()) as { revision: number }).revision;
+    };
+    await setOrgs([inside, ...(options.orgs === 'both' ? [outside] : [])]);
     return {
       as: { tenant: world.tenant.id, user: user.id } as As,
       reconfigure: (o: ActorOptions) => configure(profile, o),
+      /** 把数据范围改成只含范围外部门：对象 / 字段权保留，目标员工掉出范围（事务间撤权用例） */
+      revokeScope: () => setOrgs([outside]),
     };
   }
 
@@ -177,8 +196,17 @@ export async function personnelWorld(db: Db) {
       return found;
     });
 
+  const filesOf = (userId: string) =>
+    withTenant(world.db, world.tenant.id, (tx) =>
+      tx
+        .select()
+        .from(attachmentFiles)
+        .where(and(eq(attachmentFiles.tenantId, world.tenant.id), eq(attachmentFiles.ownerUserId, userId))),
+    );
+
   return {
     ...world,
+    filesOf,
     target,
     stranger,
     inside,
