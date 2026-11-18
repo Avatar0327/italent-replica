@@ -62,12 +62,16 @@ function useOptions(kind: string, open: boolean, keyword: string) {
     const { signal } = controller;
     const load = async (): Promise<Choice[]> => {
       if (kind === 'person') {
-        const query = new URLSearchParams({ keyword, page: '1', pageSize: '50' });
+        const query = new URLSearchParams({ context: 'matrix', keyword, page: '1', pageSize: '50' });
         const page = await api.request<{ items: Person[] }>(`${PEOPLE_PATH}?${query}`, { signal });
         return page.items.map((person) => ({ value: person.userId, label: personLabel(person) }));
       }
       const asOf = tenantDate(new Date(), timezone);
-      const page = await readCandidates(api, { type: kind as ApproverSourceType, asOf, keyword }, signal);
+      const page = await readCandidates(
+        api,
+        { type: kind as ApproverSourceType, asOf, keyword, context: 'matrix' },
+        signal,
+      );
       return page.items.map((item) => ({ value: item.id, label: item.name }));
     };
     setResult(undefined);
