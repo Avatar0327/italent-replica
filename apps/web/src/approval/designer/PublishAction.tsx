@@ -31,7 +31,9 @@ interface PendingConflict {
   designerUserIds: string[];
   currentUserIds: string[];
 }
-type Choice = 'designer' | 'current';
+const CHOICES = ['designer', 'current'] as const;
+type Choice = (typeof CHOICES)[number];
+const isChoice = (value: unknown): value is Choice => CHOICES.some((choice) => choice === value);
 interface Resolution {
   variableId: string;
   revision: number;
@@ -58,12 +60,11 @@ const conflictsOf = (details: Values): PendingConflict[] =>
       texts(item.designerUserIds) &&
       texts(item.currentUserIds),
   );
-const CHOICES: readonly unknown[] = ['designer', 'current'];
 /** 原命令体里发出的待生效选择（内核随恢复槽保存，退出重开后仍在）；形状不符的条目丢弃，由服务端再问。 */
 const resolutionsOf = (body: Values | undefined): Resolution[] =>
   entries(body?.pendingResolutions).flatMap((item) =>
-    typeof item.variableId === 'string' && Number.isSafeInteger(item.revision) && CHOICES.includes(item.choice)
-      ? [{ variableId: item.variableId, revision: item.revision as number, choice: item.choice as Choice }]
+    typeof item.variableId === 'string' && Number.isSafeInteger(item.revision) && isChoice(item.choice)
+      ? [{ variableId: item.variableId, revision: item.revision as number, choice: item.choice }]
       : [],
   );
 const targetOf = (values: Values | undefined) => values?.$target as Target | undefined;
