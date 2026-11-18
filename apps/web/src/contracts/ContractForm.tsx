@@ -247,7 +247,7 @@ function useSubmit(props: Props, submission: CommandForm, fields: string[]) {
   const sourceId = typeof source?.id === 'string' ? source.id : undefined;
   return async (values: Row) => {
     // F-406：提交开始领票；命令照常确认，导航只在页面仍在且期间未导航时执行。
-    const located = navigation(navigate);
+    const located = navigation((path: string) => navigate(path));
     const chosen =
       (values.employee as Choice | undefined)?.value ?? (sourceId ? String(source?.employeeId) : employee?.value);
     const result = await submission.submit({
