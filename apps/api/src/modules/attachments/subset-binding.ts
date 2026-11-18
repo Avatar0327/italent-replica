@@ -25,8 +25,23 @@ function refsOf(kind: SubsetKind, values: Values | null): Map<string, string> {
   return refs;
 }
 
+/**
+ * DEC-937：非 HR 来源（员工自助、信息采集、同步、初始化、评估）不得新增 / 更换 / 清空附件引用。
+ * 提交、同单重提（比对现有记录与载荷）与落地（bindSubsetAttachments）共用同一条规则；未出现的键与原样带回不算变更。
+ */
+export const attachmentRefsLocked = () =>
+  new AppError('FORBIDDEN', '附件只能由人事在人员档案里维护，不能通过该来源变更');
+const refOf = (value: unknown) => (typeof value === 'string' ? value.toLowerCase() : null);
+export function assertNoAttachmentRefChange(kind: SubsetKind, previous: Values | null, values: Values) {
+  for (const field of subsetAttachmentFields(kind)) {
+    if (Object.hasOwn(values, field) && refOf(values[field]) !== refOf(previous?.[field])) throw attachmentRefsLocked();
+  }
+}
+
 export interface SubsetBindInput {
   readonly kind: SubsetKind;
+  /** 保存来源；只有 hr_direct 可以变更附件引用。 */
+  readonly source: { readonly type: string };
   readonly employeeId: string;
   readonly recordId: string;
   readonly previous: Values | null;
@@ -40,6 +55,7 @@ export async function bindSubsetAttachments(tx: Tx, ctx: BindingContext, input: 
   const added = [...next].filter(([id]) => !previous.has(id));
   const removed = [...previous.keys()].filter((id) => !next.has(id));
   if (!added.length && !removed.length) return;
+  if (input.source.type !== 'hr_direct') throw attachmentRefsLocked();
   for (const [id, field] of added) if (!UUID.test(id)) throw invalid(field);
   const files = await lockFiles(
     tx,

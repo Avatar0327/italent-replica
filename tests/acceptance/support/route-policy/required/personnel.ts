@@ -180,7 +180,7 @@ const orderCode = (method: 'GET' | 'PUT' | 'POST'): Obligation => ({
 });
 /**
  * F-479 §10（F-361②）人员子集附件的 HR 入口（subset-attachment-routes.ts）：写入口经 entry → access 复核子集对象 update，
- * 再在 write() 的事务内（含命令台账 guard.before）复核人员点范围、人员主对象 update 与任一附件字段可编辑；读入口复核
+ * 再在统一守卫 subsetAttachmentGuard 的事务内（含命令台账 guard.before）重算范围并复核人员点、人员主对象 update 与登记字段的编辑权；读入口复核
  * 子集对象查看权、人员点范围、记录归属与附件字段查看权。
  */
 const CONTENT_PATH = '/api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/attachments/:fileId/content';
@@ -189,18 +189,18 @@ const attachment = (method: string, path: string) => (anchor: string) =>
 const EDIT_CHECK: Evidence[] = [
   {
     role: 'impl',
-    unit: `${ATTACHMENT_ROUTES}#authorizeEdit`,
-    anchor: "await authorize(authorizer, { ...ctx, objectCode: PERSONNEL_OBJECT }, 'update', {})",
+    unit: `${ATTACHMENT_ROUTES}#subsetAttachmentGuard`,
+    anchor: "await authorize(authorizer, { ...fresh, objectCode: PERSONNEL_OBJECT }, 'update', {})",
   },
   {
     role: 'impl',
-    unit: `${ATTACHMENT_ROUTES}#authorizeEdit`,
-    anchor: "return await authorize(authorizer, ctx, 'update', { [field]: null })",
+    unit: `${ATTACHMENT_ROUTES}#subsetAttachmentGuard`,
+    anchor: "await authorize(authorizer, fresh, 'update', { [field]: null })",
   },
   {
     role: 'impl',
     unit: `${ATTACHMENT_ROUTES}#attachmentWrite`,
-    anchor: 'await authorizeEdit(authorizeInTransaction(deps.authorize, tx), ctx, target.kind, target.fields)',
+    anchor: 'const check = subsetAttachmentGuard(deps, ctx, target)',
   },
   ...AUTHORIZE,
 ];
@@ -216,7 +216,7 @@ const attachmentWrite = (method: string, path: string, handlerAnchor: string): O
         SUBSET_CONST,
       ),
     },
-    // fieldEdit 守卫 = 人员主对象 update + 任一附件字段可编辑（authorizeEdit；命令台账 guard.before 里重放时再复核）
+    // fieldEdit 守卫 = 事务内重算范围 + 人员主对象 update + 登记字段编辑权（subsetAttachmentGuard；命令台账 guard.before 里重放时再复核）
     { perm: 'guard:personnel.subsetAttachment.fieldEdit', at: [at(handlerAnchor), ...EDIT_CHECK, PERSON_CONST] },
   ];
 };

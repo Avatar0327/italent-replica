@@ -89,6 +89,7 @@ export async function saveSubset(
   // F-479 §10.4：附件绑定 / 解绑与子集写同一事务；非 HR 来源带不属于本人上传的文件 ID 会在此被拒（DEC-937）
   await bindSubsetAttachments(tx, ctx, {
     kind,
+    source,
     employeeId,
     recordId: String(row.id),
     previous: before,

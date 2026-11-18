@@ -64,6 +64,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
   ],
   'apps/api/src/modules/personnel/change-requests.ts#createChange': [
+    'apps/api/src/modules/attachments/subset-binding.ts#assertNoAttachmentRefChange',
     '#appendVersion',
     '#requireSelf',
     'apps/api/src/modules/personnel/store.ts#assertRevision',
@@ -91,6 +92,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/personnel/change-requests.ts#requireSelf': ['apps/api/src/modules/personnel/store.ts#rows'],
   'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction': [
+    'apps/api/src/modules/attachments/subset-binding.ts#assertNoAttachmentRefChange',
     '#appendVersion',
     '#assertSelfServiceFields',
     '#currentChangeValues',
@@ -99,6 +101,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/store.ts#lockPerson',
     'apps/api/src/modules/personnel/store.ts#update',
     'apps/api/src/modules/personnel/subset-policy.ts#runSubsetRequestPolicy',
+    'apps/api/src/modules/personnel/subsets.ts#loadSubset',
     'apps/api/src/modules/personnel/validation.ts#subsetInput',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_REQUEST_OBJECT',
   ],
@@ -439,21 +442,18 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/personnel/store.ts#insert': ['#column'],
   'apps/api/src/modules/personnel/store.ts#lockPerson': ['#rows'],
   'apps/api/src/modules/personnel/store.ts#update': ['#column'],
-  'apps/api/src/modules/personnel/subset-attachment-routes.ts#attachmentWrite': [
-    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
-    'apps/api/src/modules/personnel/access.ts#requirePerson',
-    '#authorizeEdit',
-  ],
-  'apps/api/src/modules/personnel/subset-attachment-routes.ts#authorizeEdit': [
-    'apps/api/src/modules/personnel/access.ts#authorize',
-    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
-  ],
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#attachmentWrite': ['#subsetAttachmentGuard'],
   'apps/api/src/modules/personnel/subset-attachment-routes.ts#entry': [
     'apps/api/src/modules/attachments/access.ts#sameOrigin',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/personnel/access.ts#access',
     'apps/api/src/modules/personnel/validation.ts#subsetKind',
     'packages/domain/src/personnel/fields.ts#SUBSETS',
+  ],
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#registeredField': [
+    'apps/api/src/modules/attachments/access.ts#attachmentNotFound',
+    'apps/api/src/modules/attachments/subset-read.ts#SUBSET_PURPOSE',
+    'apps/api/src/modules/attachments/subset-read.ts#parseSubsetTargetTag',
   ],
   'apps/api/src/modules/personnel/subset-attachment-routes.ts#route:DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId':
     [
@@ -466,7 +466,6 @@ export const GRAPH: Graph = {
       '#BASE',
       '#attachmentWrite',
       '#entry',
-      'packages/domain/src/personnel/fields.ts#subsetAttachmentFields',
     ],
   'apps/api/src/modules/personnel/subset-attachment-routes.ts#route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/attachments/:fileId/content':
     [
@@ -488,6 +487,7 @@ export const GRAPH: Graph = {
     [
       'apps/api/src/modules/attachments/service.ts#registerFile',
       'apps/api/src/modules/attachments/subset-read.ts#SUBSET_PURPOSE',
+      'apps/api/src/modules/attachments/subset-read.ts#subsetTargetTag',
       'apps/api/src/modules/job/context.ts#parseBody',
       'apps/api/src/modules/personnel/http.ts#safe',
       '#BASE',
@@ -507,8 +507,16 @@ export const GRAPH: Graph = {
       '#BASE',
       '#attachmentWrite',
       '#entry',
-      'packages/domain/src/personnel/fields.ts#subsetAttachmentFields',
     ],
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#subsetAttachmentGuard': [
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'apps/api/src/modules/personnel/access.ts#authorize',
+    'apps/api/src/modules/personnel/access.ts#requirePerson',
+    '#registeredField',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+    'packages/domain/src/personnel/fields.ts#subsetAttachmentFields',
+  ],
   'apps/api/src/modules/personnel/subset-policy.ts#registerSubsetPolicy': ['#POLICIES'],
   'apps/api/src/modules/personnel/subset-policy.ts#runSubsetRequestPolicy': ['#POLICIES'],
   'apps/api/src/modules/personnel/subset-policy.ts#runSubsetSavePolicy': ['#POLICIES'],

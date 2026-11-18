@@ -98,7 +98,8 @@ function subsetAttachmentWrite(): RoutePolicy {
     operation: 'update',
     button: noButton('字段级编辑权在处理函数内复核，无按钮'),
     scope: employeePoint('employeeId'),
-    // fieldEdit = 人员主对象 update + 任一附件字段可编辑（authorizeEdit，事务内再复核一次）
+    // fieldEdit = 事务内重算范围 + 人员主对象 update + 登记字段的编辑权（subsetAttachmentGuard；
+    // 登记取请求字段，上传 / 删除取文件上的登记标记）
     guards: ['personnel.subsetAttachment.fieldEdit'],
     fields: fixed(
       ['kind', 'id', 'revision', 'status', 'purpose', 'filename', 'contentType', 'byteSize', 'sha256', 'expiresAt'],

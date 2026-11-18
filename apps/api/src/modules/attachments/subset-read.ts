@@ -9,6 +9,16 @@ import { subsetAttachmentFields, SUBSETS, type SubsetKind } from '@italent/domai
 export const SUBSET_PURPOSE = 'personnel.subset_attachment';
 /** 绑定时写进 attachment_files.business_type 的载体类型；business_id 是子集记录 ID。 */
 export const SUBSET_BUSINESS_TYPE = 'personnel.subset';
+/**
+ * 未绑定文件登记时在 business_type 里记下“子集:字段”（business_id 仍为空，绑定时被 SUBSET_BUSINESS_TYPE 覆盖）：
+ * 上传 / 删除 / 同键重放据此在服务端确认登记字段，精确复核该字段编辑权（§10.3），不新增列（DEC-937）。
+ */
+export const subsetTargetTag = (kind: SubsetKind, field: string) => `${SUBSET_BUSINESS_TYPE}:${kind}:${field}`;
+export function parseSubsetTargetTag(tag: string | null): { kind: SubsetKind; field: string } | undefined {
+  const [type, kind, field, ...rest] = (tag ?? '').split(':');
+  if (type !== SUBSET_BUSINESS_TYPE || !kind || !field || rest.length) return undefined;
+  return Object.hasOwn(SUBSETS, kind) ? { kind: kind as SubsetKind, field } : undefined;
+}
 
 type Row = Record<string, unknown>;
 export const subsetKindOfObject = (objectCode: string): SubsetKind | undefined =>

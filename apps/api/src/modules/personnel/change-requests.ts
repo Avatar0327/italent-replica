@@ -15,6 +15,7 @@ import {
   type Row,
 } from './store.js';
 import { loadSubset, saveSubset } from './subsets.js';
+import { assertNoAttachmentRefChange } from '../attachments/subset-binding.js';
 import { runSubsetRequestPolicy } from './subset-policy.js';
 import { subsetInput } from './validation.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
@@ -37,10 +38,10 @@ export async function createChange(tx: Tx, ctx: PersonnelContext, input: ChangeI
   assertRevision(ctx.expectedRevision, 0);
   await requireSelf(tx, ctx, input.employeeId);
   await lockPerson(tx, ctx, input.employeeId);
-  if (input.recordId) {
-    const record = await loadSubset(tx, ctx, input.employeeId, input.subset, input.recordId);
-    assertRevision(input.targetRevision ?? 0, Number(record.revision));
-  } else assertRevision(input.targetRevision ?? 0, 0);
+  const record = input.recordId ? await loadSubset(tx, ctx, input.employeeId, input.subset, input.recordId) : null;
+  assertRevision(input.targetRevision ?? 0, Number(record?.revision ?? 0));
+  // DEC-937：员工自助不得变更附件引用（与重提、落地同一规则）
+  assertNoAttachmentRefChange(input.subset, record, input.values);
   // P0 契约：按子集登记的自助申请准入，写申请行之前拦；拒绝时审批实例（同事务随后创建）也不会产生
   await runSubsetRequestPolicy(tx, ctx, input.subset, {
     employeeId: input.employeeId,
@@ -109,6 +110,10 @@ export async function resubmitChangeInTransaction(tx: Tx, ctx: PersonnelContext,
     ...(corrected ? subsetInput(kind, corrections, true) : {}),
   };
   await assertSelfServiceFields(tx, ctx.tenantId, kind, Object.keys(values));
+  const record = before.recordId
+    ? await loadSubset(tx, ctx, String(before.employeeId), kind, String(before.recordId))
+    : null;
+  assertNoAttachmentRefChange(kind, record, values);
   // 准入放在空修正的提前返回之前：否则以 {} 重提一张待审批申请就绕过了准入（P0 契约）
   await runSubsetRequestPolicy(tx, ctx, kind, {
     employeeId: String(before.employeeId),

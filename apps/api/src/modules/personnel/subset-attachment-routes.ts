@@ -4,7 +4,7 @@
  * 写命令在事务内、查台账前复核（CommandGuard.before），撤权后同键重放得 403。
  * 不复用人员模块的 write()：它会按子集字段查看权裁剪回执，而这里的回执是文件元数据。
  */
-import { withTenant, type Tx } from '@italent/db';
+import { attachmentFiles as F, and, eq, withTenant, type Tx } from '@italent/db';
 import { PERSONNEL_OBJECT, subsetAttachmentFields, SUBSETS, type SubsetKind } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
@@ -13,15 +13,24 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { parseBody, revision, uuidParam } from '../job/context.js';
-import { authorizeInTransaction, getModuleViewableFields } from '../permission/module-access.js';
+import {
+  authorizeInTransaction,
+  getModuleViewableFields,
+  resolveModuleScopeInTransaction,
+} from '../permission/module-access.js';
 import { access, authorize, preflight, requirePerson, type AccessContext } from './access.js';
 import { loadSubset } from './subsets.js';
 import { subsetKind } from './validation.js';
 import { safe } from './http.js';
-import { sameOrigin } from '../attachments/access.js';
+import { attachmentNotFound, sameOrigin } from '../attachments/access.js';
 import { respondAttachment, readCarrierAttachment } from '../attachments/carrier-read.js';
 import * as service from '../attachments/service.js';
-import { SUBSET_BUSINESS_TYPE, SUBSET_PURPOSE } from '../attachments/subset-read.js';
+import {
+  parseSubsetTargetTag,
+  SUBSET_BUSINESS_TYPE,
+  SUBSET_PURPOSE,
+  subsetTargetTag,
+} from '../attachments/subset-read.js';
 
 const BASE = '/api/tenant/personnel/employees/:employeeId/subsets/:kind';
 const registration = z
@@ -34,39 +43,61 @@ const registration = z
   })
   .strict();
 
-/** 人员主对象 update + 子集附件字段至少一个可编辑（登记按声明的字段，上传 / 删除按任一附件字段）。 */
-async function authorizeEdit(
-  authorizer: TenantRouteDeps['authorize'],
-  ctx: AccessContext,
-  kind: SubsetKind,
-  fields: readonly string[],
-) {
-  await authorize(authorizer, { ...ctx, objectCode: PERSONNEL_OBJECT }, 'update', {});
-  let denied: AppError | undefined;
-  for (const field of fields) {
-    try {
-      return await authorize(authorizer, ctx, 'update', { [field]: null });
-    } catch (error) {
-      if (!(error instanceof AppError) || error.code !== 'FORBIDDEN') throw error;
-      denied = error;
-    }
-  }
-  throw denied!;
+/** 写入口的检查目标：登记时由请求给出字段；上传 / 删除时由服务端按文件登记的标记确认，不信请求。 */
+type Target = { kind: SubsetKind; employeeId: string } & ({ field: string } | { fileId: string });
+
+/** 已登记文件的“子集:字段”标记；文件不存在、不是本人本员工名下或标记与路径子集不符一律 404，不暴露存在性。 */
+async function registeredField(tx: Tx, ctx: AccessContext, kind: SubsetKind, employeeId: string, fileId: string) {
+  const [row] = await tx
+    .select({ tag: F.businessType })
+    .from(F)
+    .where(
+      and(
+        eq(F.tenantId, ctx.tenantId),
+        eq(F.id, fileId),
+        eq(F.purpose, SUBSET_PURPOSE),
+        eq(F.ownerUserId, ctx.userId),
+        eq(F.ownerEmployeeId, employeeId),
+      ),
+    );
+  const target = parseSubsetTargetTag(row?.tag ?? null);
+  if (!target || target.kind !== kind) throw attachmentNotFound();
+  return target.field;
+}
+
+/**
+ * 子集附件写入口的唯一守卫（DEC-431①）：登记 / 上传 / 删除、首次执行与同键重放都走它，在命令事务内、查台账前复核——
+ * 1. 在本事务内重算员工数据范围（resolveModuleScopeInTransaction），再校验员工在范围内，入口之后撤范围即时生效；
+ * 2. 人员主对象 update；
+ * 3. 登记字段（登记时取请求字段，其后取文件上的标记）的编辑权，只撤一个字段就拒绝。
+ */
+function subsetAttachmentGuard(deps: TenantRouteDeps, ctx: AccessContext, target: Target) {
+  return async (tx: Tx) => {
+    const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, ctx.objectCode);
+    const fresh = { ...ctx, scope };
+    await requirePerson(tx, fresh, target.employeeId);
+    // 没有附件字段的子集（如 training）没有附件入口：员工存在性之后返回客户端错误 400，不能落到 503
+    if (!subsetAttachmentFields(target.kind).length) throw new AppError('VALIDATION_FAILED', '该子集不支持附件');
+    const authorizer = authorizeInTransaction(deps.authorize, tx);
+    await authorize(authorizer, { ...fresh, objectCode: PERSONNEL_OBJECT }, 'update', {});
+    const field =
+      'field' in target
+        ? target.field
+        : await registeredField(tx, fresh, target.kind, target.employeeId, target.fileId);
+    await authorize(authorizer, fresh, 'update', { [field]: null });
+  };
 }
 
 async function attachmentWrite(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   ctx: AccessContext,
-  target: { kind: SubsetKind; employeeId: string; fields: readonly string[] },
+  target: Target,
   input: object,
   status: 201 | 200,
   execute: (tx: Tx, owner: service.OwnerAccess, attachment: service.AttachmentContext) => Promise<object>,
 ) {
-  const check = async (tx: Tx) => {
-    await requirePerson(tx, ctx, target.employeeId);
-    await authorizeEdit(authorizeInTransaction(deps.authorize, tx), ctx, target.kind, target.fields);
-  };
+  const check = subsetAttachmentGuard(deps, ctx, target);
   await withTenant(deps.db, ctx.tenantId, check);
   const owner = { ctx, employee: { id: target.employeeId } };
   const result = await runCommand(deps.db, ctx, {
@@ -82,7 +113,7 @@ async function attachmentWrite(
   return c.json(result.body as object, result.status as 200 | 201);
 }
 
-/** 解析路径并做对象 update 判定（子集对象 object.update + 范围）；字段级与人员主对象判定在 attachmentWrite() 里。 */
+/** 解析路径并做对象 update 判定（子集对象 object.update + 范围）；字段级与人员主对象判定在 subsetAttachmentGuard() 里。 */
 async function entry(c: Context<TenantEnv>, deps: TenantRouteDeps, expectedRevision: number) {
   sameOrigin(c);
   const kind = subsetKind(c.req.param('kind') ?? '');
@@ -102,10 +133,11 @@ export function registerSubsetAttachmentRoutes(router: Hono<TenantEnv>, deps: Te
         c,
         deps,
         ctx,
-        { kind, employeeId, fields: [field] },
+        { kind, employeeId, field },
         { field, ...rest },
         201,
-        (tx, owner, attachment) => service.registerFile(tx, owner, attachment, input, SUBSET_PURPOSE),
+        (tx, owner, attachment) =>
+          service.registerFile(tx, owner, attachment, input, SUBSET_PURPOSE, subsetTargetTag(kind, field)),
       );
     }),
   );
@@ -115,7 +147,7 @@ export function registerSubsetAttachmentRoutes(router: Hono<TenantEnv>, deps: Te
       const { kind, employeeId, ctx } = await entry(c, deps, expected);
       const id = uuidParam(c, 'fileId');
       const input = await parseBody(c, z.object({ base64: z.string() }).strict());
-      const target = { kind, employeeId, fields: subsetAttachmentFields(kind) };
+      const target = { kind, employeeId, fileId: id };
       return attachmentWrite(c, deps, ctx, target, { id, ...input }, 200, (tx, owner, attachment) =>
         service.uploadFile(tx, owner, attachment, id, expected, input.base64, SUBSET_PURPOSE),
       );
@@ -127,7 +159,7 @@ export function registerSubsetAttachmentRoutes(router: Hono<TenantEnv>, deps: Te
       const { kind, employeeId, ctx } = await entry(c, deps, expected);
       const id = uuidParam(c, 'fileId');
       if (c.req.raw.body !== null) await parseBody(c, z.object({}).strict());
-      const target = { kind, employeeId, fields: subsetAttachmentFields(kind) };
+      const target = { kind, employeeId, fileId: id };
       return attachmentWrite(c, deps, ctx, target, { id }, 200, (tx, owner, attachment) =>
         service.deleteFile(tx, owner, attachment, id, expected, SUBSET_PURPOSE),
       );

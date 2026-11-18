@@ -106,6 +106,8 @@ export async function registerFile(
   ctx: AttachmentContext,
   input: RegisterInput,
   purpose: string = EXIT_PURPOSE,
+  /** 子集附件：登记字段标记（写入未绑定行的 business_type），后续命令据此复核字段权。 */
+  targetTag?: string,
 ) {
   const { config, filename } = checkRegistration(input, purpose);
   // 同一所有人串行登记，临时文件数上限才不会被并发突破
@@ -131,6 +133,7 @@ export async function registerFile(
       purpose: input.purpose,
       ownerUserId: ctx.userId,
       ownerEmployeeId: self.employee.id,
+      ...(targetTag ? { businessType: targetTag } : {}),
       filename,
       declaredType: input.contentType,
       byteSize: input.byteSize,

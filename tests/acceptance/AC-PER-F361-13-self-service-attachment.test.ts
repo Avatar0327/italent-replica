@@ -17,6 +17,8 @@ const FIELD = 'educationCertificate';
 const BASE = '/api/tenant/approval';
 const code = async (res: Response) => ((await res.json()) as { error: { code: string } }).error.code;
 type Subset = { id: string; revision: number } & Record<string, unknown>;
+/** 详情里附件字段读出来是展开后的 { id, filename… }，没有引用时为 null */
+const refId = (value: unknown) => (value as { id?: string } | null | undefined)?.id ?? null;
 
 async function scene(label: string) {
   const w = await approvalWorld(database().db, label);
@@ -82,10 +84,10 @@ async function scene(label: string) {
       },
     });
   const stored = async (id: string) => {
-    const [row] = (await withTenant(w.db, w.tenant.id, (tx) =>
+    const { rows } = (await withTenant(w.db, w.tenant.id, (tx) =>
       tx.execute(sql`SELECT status FROM attachment_files WHERE id=${id}::uuid`),
     )) as unknown as { rows: { status: string }[] };
-    return row?.status;
+    return rows[0]?.status;
   };
   const current = async (id: string) => w.json<Subset>(await w.request(w.hr.id, 'GET', `${path}/${id}`), 200);
   return { w, s, path, file, record, submit, stored, current };
@@ -110,7 +112,7 @@ describe('AC-PER-F361-13 员工自助变更不能写附件引用（P2-1，DEC-93
     }
     expect(await stored(existing.id)).toBe('bound');
     expect(await stored(added.id)).toBe('uploaded');
-    expect((await current(bound.id))[FIELD]).toBe(existing.id);
+    expect(refId((await current(bound.id))[FIELD])).toBe(existing.id);
 
     expect((await submit(bare, { school: '乙校' })).status).toBe(201);
     const same = await submit(bound, { school: '丙校', [FIELD]: existing.id });
@@ -191,7 +193,7 @@ describe('AC-PER-F361-13 员工自助变更不能写附件引用（P2-1，DEC-93
     }
     expect(await stored(existing.id)).toBe('bound');
     expect(await stored(added.id)).toBe('uploaded');
-    expect((await current(bound.id))[FIELD]).toBe(existing.id);
-    expect((await current(bare.id))[FIELD] ?? null).toBeNull();
+    expect(refId((await current(bound.id))[FIELD])).toBe(existing.id);
+    expect(refId((await current(bare.id))[FIELD])).toBeNull();
   });
 });

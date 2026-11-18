@@ -176,10 +176,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent/model-image-format.ts#sniffImageType',
     'packages/domain/src/attachments/purposes.ts#ATTACHMENT_PURPOSES',
   ],
+  'apps/api/src/modules/attachments/subset-binding.ts#assertNoAttachmentRefChange': [
+    '#attachmentRefsLocked',
+    '#refOf',
+    'packages/domain/src/personnel/fields.ts#subsetAttachmentFields',
+  ],
   'apps/api/src/modules/attachments/subset-binding.ts#bindSubsetAttachments': [
     'apps/api/src/modules/attachments/binding.ts#lockFiles',
     'apps/api/src/modules/attachments/binding.ts#move',
     '#UUID',
+    '#attachmentRefsLocked',
     '#invalid',
     '#refsOf',
     'apps/api/src/modules/attachments/subset-read.ts#SUBSET_BUSINESS_TYPE',
@@ -192,7 +198,12 @@ export const GRAPH: Graph = {
     '#SUBSET_BUSINESS_TYPE',
     'packages/domain/src/personnel/fields.ts#subsetAttachmentFields',
   ],
+  'apps/api/src/modules/attachments/subset-read.ts#parseSubsetTargetTag': [
+    '#SUBSET_BUSINESS_TYPE',
+    'packages/domain/src/personnel/fields.ts#SUBSETS',
+  ],
   'apps/api/src/modules/attachments/subset-read.ts#subsetKindOfObject': [
     'packages/domain/src/personnel/fields.ts#SUBSETS',
   ],
+  'apps/api/src/modules/attachments/subset-read.ts#subsetTargetTag': ['#SUBSET_BUSINESS_TYPE'],
 };
