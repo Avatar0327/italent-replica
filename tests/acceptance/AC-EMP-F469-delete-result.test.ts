@@ -159,3 +159,27 @@ it('AC-EMP-F469-05 同键成功的其他动作不当删除；未来版本失败�
   expect((await request('DELETE', `/${row.id}`, future, 99)).status).toBe(409);
   expect((await json(await request('GET', resultPath(row.id, future, 99)))).status).toBe('unknown');
 });
+
+const mixedCase = (id: string) => [...id].map((ch, i) => (i % 2 ? ch.toUpperCase() : ch)).join('');
+it('AC-EMP-F469-06 大写 / 混合大小写 UUID 路径：删除成功仍确认 deleted，失败仍确认 not_deleted，错项保持 unknown', async () => {
+  for (const spell of [(id: string) => id.toUpperCase(), mixedCase]) {
+    const row = await create();
+    const path = spell(row.id);
+    const key = randomUUID();
+    expect(await json(await request('DELETE', `/${path}`, key))).toEqual({ id: row.id, deleted: true });
+    const expected = { commandId: key, id: row.id, revision: 1, status: 'deleted' };
+    for (const asked of [row.id, path, spell(row.id)])
+      expect(await json(await request('GET', resultPath(asked, key)))).toEqual(expected);
+    for (const wrong of [resultPath(row.id, key, 2), resultPath(randomUUID(), key), resultPath(row.id, randomUUID())])
+      expect((await json(await request('GET', wrong))).status).toBe('unknown');
+  }
+  const row = await create();
+  const key = randomUUID();
+  expect((await request('DELETE', `/${row.id.toUpperCase()}`, key, 0)).status).toBe(409);
+  expect(await json(await request('GET', resultPath(row.id, key, 0)))).toEqual({
+    commandId: key,
+    id: row.id,
+    revision: 0,
+    status: 'not_deleted',
+  });
+});
