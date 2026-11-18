@@ -231,9 +231,11 @@ describe('AC-EST-20 重叠调入超编：严格拒绝 / 非严格确认', () => 
     it('任职记录编辑：把记录改到已占满的部门，未确认 409，带 confirmed 后 200', async () => {
       const { w, second } = await occupied('est20-edit');
       const [record] = await w.session.records(second.employee.id, '2026-10-01');
+      // 支撑文件的 EmploymentRecord 类型没列 revision，接口回包里有（employment/types.ts EmploymentRecord）
+      const revision = (record as unknown as { revision: number }).revision;
       const edit = (extra: object) =>
         w.session.request('PATCH', `/records/${record!.id}`, {
-          ifMatch: record!.revision,
+          ifMatch: revision,
           body: { fields: { departmentId: w.to.id }, ...extra },
         });
       const unconfirmed = await edit({});
