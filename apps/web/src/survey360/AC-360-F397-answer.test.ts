@@ -14,6 +14,8 @@ let requests: { path: string; method: string; body: unknown; command?: { id: str
 let failure: 'reject' | 'unknown' | 'lost' | 'conflict' | 'stale' | undefined;
 // 写请求在途：放行前响应不到达（用于构造“保存在途时继续作答”的时序）。
 let gate: Promise<void> | undefined;
+// 命令台账：落库的命令按 ID 记下当时的响应；同一 ID 重放返回原响应、不再落库（apps/api/src/commands.ts findReplay）。
+let ledger: Map<string, AnswerPage['sheet']>;
 const path = '/tasks/relation/questionnaires/questionnaire';
 const text = () => host.textContent ?? '';
 const settle = async () => {
@@ -58,6 +60,7 @@ beforeEach(() => {
   requests = [];
   failure = undefined;
   gate = undefined;
+  ledger = new Map();
   page = {
     activity: { name: '合成活动', status: 'enabled' },
     object: { name: '合成对象' },
@@ -75,6 +78,8 @@ beforeEach(() => {
       if (method === 'GET') return structuredClone(page);
       requests.push({ path: url, method, body, ...(command ? { command } : {}) });
       if (gate) await gate;
+      const stored = command && ledger.get(command.id);
+      if (stored) return structuredClone(stored);
       if (failure === 'reject') throw new ApiError(400, 'VALIDATION_FAILED', 'fields', '请补充说明');
       if (failure === 'conflict') {
         page.sheet = { ...page.sheet, revision: 5, suggestion: '合成远端建议' };
@@ -88,6 +93,7 @@ beforeEach(() => {
           status: method === 'POST' ? 'submitted' : 'draft',
           revision: (command?.revision ?? 0) + 1,
         };
+        if (command) ledger.set(command.id, structuredClone(page.sheet));
       }
       if (failure === 'unknown') throw new ApiError(503, 'RESULT_UNKNOWN', 'unknown', '结果待确认');
       // lost：服务端已落库、响应在途丢失（网络中断），回执不可得。
@@ -306,10 +312,12 @@ const guarded = () => {
   window.dispatchEvent(event);
   return event.defaultPrevented;
 };
-const typeSuggestion = async (value: string) => {
-  const box = [...host.querySelectorAll<HTMLTextAreaElement>('textarea')].find(
+const suggestionBox = () =>
+  [...host.querySelectorAll<HTMLTextAreaElement>('textarea')].find(
     (node) => node.getAttribute('aria-label') === '综合建议',
-  )!;
+  );
+const typeSuggestion = async (value: string) => {
+  const box = suggestionBox()!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(box, value);
     box.dispatchEvent(new Event('input', { bubbles: true }));
@@ -528,4 +536,236 @@ it('AC-360-F397 回执与本页答卷口径不一致时，返回只保存一次�
   expect(requests).toHaveLength(1);
   expect(text()).toContain('有尚未保存的作答内容');
   expect(host.querySelector('textarea')?.value).toBe('合成本页建议');
+});
+
+const radio = () => host.querySelector<HTMLInputElement>('input[type="radio"]');
+// —— 第 5 轮：状态采用决策表（结果文件）逐格用例。P2-A～D 为第 4 轮审查复现场景，其余为表内补格。——
+
+// 审查 F-397 第 4 轮 P2-A：发出后改回旧确认值（清空建议）也是编辑，回执不得覆盖；补存空值后才离开。
+it('AC-360-F397 返回列表的保存在途时清空建议：回执后补存空值再离开，重开为空', async () => {
+  await render();
+  await typeSuggestion('合成撤回建议');
+  const release = hold();
+  await click('返回评价列表');
+  expect(guarded()).toBe(true);
+  await typeSuggestion('');
+  await release();
+  expect(requests.map((r) => [r.method, r.command?.revision])).toEqual([
+    ['PUT', 0],
+    ['PUT', 1],
+  ]);
+  expect(requests[1]?.body).toMatchObject({ suggestion: '' });
+  expect(radio()).toBeNull();
+  await render();
+  expect(suggestionBox()?.value).toBe('');
+});
+
+// 决策表“回查命中 × dirty”：结果未知期间改回旧值，回查读到原命令已落库也不得用服务端值覆盖。
+it('AC-360-F397 保存在途清空建议后响应丢失：回查与按原命令确认后仍为空，显式保存补存空值', async () => {
+  await render();
+  await typeSuggestion('合成发出建议');
+  const release = hold();
+  failure = 'lost';
+  await click('立即保存');
+  await typeSuggestion('');
+  await release();
+  expect(text()).toContain('结果待确认');
+  failure = undefined;
+  await click('回查原单');
+  expect(suggestionBox()?.value).toBe('');
+  await click('按原命令确认结果');
+  expect(suggestionBox()?.value).toBe('');
+  expect(guarded()).toBe(true);
+  await click('立即保存');
+  expect(requests.map((r) => [r.method, r.command?.revision])).toEqual([
+    ['PUT', 0],
+    ['PUT', 0],
+    ['PUT', 1],
+  ]);
+  expect(requests[2]?.body).toMatchObject({ suggestion: '' });
+});
+
+// 审查 F-397 第 4 轮 P2-B：原命令未确认时两端内容一致也拦刷新与返回；按原命令确认后才放行。
+it('AC-360-F397 响应丢失后回查两端一致：刷新与返回仍拦截，按原命令确认后才可离开', async () => {
+  failure = 'lost';
+  await render();
+  await answer();
+  await click('立即保存');
+  expect(text()).toContain('结果待确认');
+  failure = undefined;
+  await click('回查原单');
+  expect(text()).toContain('按原命令确认结果');
+  expect(guarded()).toBe(true);
+  await click('返回评价列表');
+  expect(radio()).not.toBeNull();
+  expect(text()).toContain('有尚未保存的作答内容');
+  expect(requests).toHaveLength(1);
+  await click('按原命令确认结果');
+  expect(requests[1]?.command).toEqual(requests[0]?.command);
+  expect(guarded()).toBe(false);
+  await click('返回评价列表');
+  expect(radio()).toBeNull();
+  expect(requests).toHaveLength(2);
+});
+
+// 审查 F-397 第 4 轮 P2-C：核对后干净离开，重开以新 GET 为准，不恢复已确认失败的旧命令快照。
+it('AC-360-F397 冲突核对后两端一致正常返回，重开以服务端答卷为准且不拦截', async () => {
+  await render();
+  await typeSuggestion('合成本页建议');
+  const release = hold();
+  failure = 'conflict';
+  await click('立即保存');
+  await typeSuggestion('合成远端建议');
+  await release();
+  failure = undefined;
+  await click('重读最新版本');
+  await click('已核对差异，继续编辑');
+  await click('返回评价列表');
+  expect(suggestionBox()).toBeUndefined();
+  await render();
+  expect(suggestionBox()?.value).toBe('合成远端建议');
+  expect(guarded()).toBe(false);
+  expect(requests).toHaveLength(1);
+});
+
+// 决策表“GET 重开 × 无未确认命令”：被拒的命令已确定失败，卸载重开以 GET 为准，不再显示旧草稿与拒绝原因。
+it('AC-360-F397 保存被拒后卸载重开：以服务端答卷为准，不恢复被拒草稿', async () => {
+  failure = 'reject';
+  await render();
+  await typeSuggestion('合成被拒建议');
+  await click('立即保存');
+  expect(text()).toContain('请补充说明');
+  await render(false);
+  await render();
+  expect(suggestionBox()?.value).toBe('');
+  expect(text()).not.toContain('请补充说明');
+  expect(guarded()).toBe(false);
+});
+
+// 决策表“GET 重开 × 有未确认命令”：只恢复命令改过的字段，其余字段取重开时的新 GET。
+it('AC-360-F397 结果未知时卸载重开：命令改过的题目按命令快照恢复，未改的建议取新 GET', async () => {
+  failure = 'stale';
+  await render();
+  await answer();
+  await click('立即保存');
+  await render(false);
+  page.sheet = { ...page.sheet, suggestion: '合成他页建议', revision: 1, status: 'draft' };
+  await render();
+  expect(checked()).toEqual([true]);
+  expect(radio()?.disabled).toBe(true);
+  expect(suggestionBox()?.value).toBe('合成他页建议');
+  expect(guarded()).toBe(true);
+  expect(requests).toHaveLength(1);
+});
+
+// 审查 F-397 第 4 轮 P2-D：重放回执是台账里的旧响应，只确认旧命令成功，不得把已读到的 submitted 与更高 revision 降回。
+it('AC-360-F397 保存响应丢失后另一页签已提交：按原命令确认后答卷仍为已提交只读', async () => {
+  await render();
+  await answer();
+  failure = 'lost';
+  await click('立即保存');
+  failure = undefined;
+  page.sheet = { ...page.sheet, status: 'submitted', revision: 2 };
+  await click('回查原单');
+  await click('按原命令确认结果');
+  expect(requests[1]?.command).toEqual(requests[0]?.command);
+  expect(requests[1]?.body).toEqual(requests[0]?.body);
+  expect(page.sheet).toMatchObject({ status: 'submitted', revision: 2 });
+  expect(radio()?.disabled).toBe(true);
+  expect(suggestionBox()?.disabled).toBe(true);
+  expect(text()).toContain('答卷已提交');
+  expect(guarded()).toBe(false);
+  await click('返回评价列表');
+  expect(radio()).toBeNull();
+  expect(requests).toHaveLength(2);
+});
+
+// 决策表“重放回执（历史）”：另一页签已存更高 revision 的草稿时，旧回执不降基线；页面仍有未保存内容，
+// 但不自动覆盖（同核对后，F-123 §136），离开提示，用户显式保存时按已读到的 revision 发出。
+it('AC-360-F397 保存响应丢失后另一页签已存新草稿：旧回执不降 revision、不自动覆盖，显式保存按新 revision', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  await render();
+  await answer();
+  const release = hold();
+  failure = 'lost';
+  await click('立即保存');
+  await typeSuggestion('合成本页建议');
+  await release();
+  failure = undefined;
+  page.sheet = { ...page.sheet, suggestion: '合成他页建议', revision: 2 };
+  await click('回查原单');
+  await click('按原命令确认结果');
+  expect(suggestionBox()?.value).toBe('合成本页建议');
+  await tick(30_000);
+  expect(requests).toHaveLength(2);
+  expect(guarded()).toBe(true);
+  await click('返回评价列表');
+  expect(text()).toContain('有尚未保存的作答内容');
+  await click('立即保存');
+  expect(requests.map((r) => [r.method, r.command?.revision])).toEqual([
+    ['PUT', 0],
+    ['PUT', 0],
+    ['PUT', 2],
+  ]);
+  expect(requests[2]?.body).toMatchObject({ suggestion: '合成本页建议' });
+});
+
+// 决策表“409 重读 × dirty”：发出后改回旧值，重读不得用远端值覆盖（本页为准，DEC-936），核对后显式保存发出空值。
+it('AC-360-F397 保存在途清空建议后版本冲突：重读保留空值，核对后显式保存发出空值', async () => {
+  await render();
+  await typeSuggestion('合成本页建议');
+  const release = hold();
+  failure = 'conflict';
+  await click('立即保存');
+  await typeSuggestion('');
+  await release();
+  failure = undefined;
+  await click('重读最新版本');
+  expect(suggestionBox()?.value).toBe('');
+  await click('已核对差异，继续编辑');
+  expect(guarded()).toBe(true);
+  await click('立即保存');
+  expect(requests[1]?.command?.revision).toBe(5);
+  expect(requests[1]?.body).toMatchObject({ suggestion: '' });
+});
+
+// 决策表“输入 × dirty”：按编辑事件判定，改了又改回也算有过编辑；拦刷新，返回时补存一次再离开。
+it('AC-360-F397 改了又改回仍算有过编辑：拦刷新，返回先保存再离开', async () => {
+  await render();
+  await typeSuggestion('合成临时建议');
+  await typeSuggestion('');
+  expect(guarded()).toBe(true);
+  await click('返回评价列表');
+  expect(requests.map((r) => [r.method, r.command?.revision])).toEqual([['PUT', 0]]);
+  expect(requests[0]?.body).toMatchObject({ suggestion: '' });
+  expect(radio()).toBeNull();
+});
+
+// 决策表“被拒 × 离开守卫”：被拒的同一份草稿不自动重发，刷新与返回都拦截。
+it('AC-360-F397 保存被拒后刷新与返回均拦截，不自动重发', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  failure = 'reject';
+  await render();
+  await answer();
+  await click('立即保存');
+  await tick(30_000);
+  expect(guarded()).toBe(true);
+  await click('返回评价列表');
+  expect(radio()).not.toBeNull();
+  expect(text()).toContain('有尚未保存的作答内容');
+  expect(requests).toHaveLength(1);
+});
+
+// 决策表“保存回执（提交）× 可编辑性 / 离开守卫”：提交回执后只读、无未保存内容，可直接返回。
+it('AC-360-F397 提交回执后只读，无未保存内容时直接返回', async () => {
+  await render();
+  await answer();
+  await click('立即保存');
+  await click('提交作答');
+  expect(radio()?.disabled).toBe(true);
+  expect(suggestionBox()?.disabled).toBe(true);
+  expect(guarded()).toBe(false);
+  await click('返回评价列表');
+  expect(radio()).toBeNull();
+  expect(requests.map((r) => r.method)).toEqual(['PUT', 'POST']);
 });
