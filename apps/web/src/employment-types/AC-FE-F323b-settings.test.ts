@@ -13,6 +13,7 @@ import { PAGES } from '../foundation/routes.js';
 import { menuNodes, type ServerSnapshot } from '../foundation/permission-snapshot.js';
 import { SessionProvider } from '../foundation/Session.js';
 import { PermissionsProvider } from '../foundation/Permissions.js';
+import { typeStore } from './commands.js';
 import { tenantDate } from '../foundation/dates.js';
 import { employmentTypePermission, employmentTypeRow } from '../../smoke/employment-type-fixtures.js';
 
@@ -111,6 +112,10 @@ beforeEach(() => {
           },
         );
       return Response.json({ ...enabledRow, enabled: false, revision: enabledRow.revision + 1 });
+    }
+    if (url.includes('/delete-result/')) {
+      const commandId = url.split('/delete-result/')[1]!.split('?')[0]!;
+      return Response.json({ commandId, id: enabledRow.id, revision: 1, status: 'deleted' });
     }
     if (url.includes(`${API}?view=disabled`)) return Response.json({ items: [disabledRow] });
     if (url.includes(`${API}?view=all`)) return Response.json({ items: [enabledRow, disabledRow] });
@@ -259,5 +264,31 @@ describe('AC-FE-F455 人员类别审查后补', () => {
     await render();
     expect(buttons()).not.toContain('新建');
     expect(posts).toEqual([]);
+  });
+  it('P3-5 删除回执丢失后回查确认记录消失，应关闭详情并释放原命令槽', async () => {
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    let removed = false;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (init?.method === 'DELETE') {
+        posts.push({ url: String(input), method: 'DELETE', body: {}, headers: new Headers(init.headers) });
+        removed = true;
+        throw new TypeError('合成断网：删除已成功但回执丢失');
+      }
+      if (removed && String(input).includes(`${API}?view=`)) return Response.json({ items: [] });
+      return original(input, init);
+    });
+    await render();
+    await click('合成类别甲');
+    await click('删除', document.querySelector('.detail-drawer')!);
+    const confirm = [...document.querySelectorAll('.ant-popconfirm button')].at(-1) as HTMLButtonElement;
+    await act(async () => confirm.click());
+    await settle();
+    expect(text()).toContain('结果待确认');
+    await click('回查原单');
+    expect(posts).toHaveLength(1);
+    expect(document.querySelector('.detail-drawer') === null, '删除确认后关闭详情').toBe(true);
+    const slot = JSON.stringify(['synthetic-tenant', 'synthetic-admin', `${API}/${enabledRow.id}`]);
+    const holder = typeStore.holder([slot]);
+    expect(holder && typeStore.get(holder), '删除确认后释放原命令').toBeUndefined();
   });
 });
