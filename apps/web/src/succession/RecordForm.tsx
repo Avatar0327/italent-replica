@@ -170,7 +170,7 @@ function RecordEditor({
       }}
       onSubmit={async (values) => {
         // F-145：id / 版本缺失或无效时提交前拒绝，不进内核、不发请求；按确定性拒绝提示，草稿保留、可关闭。
-        if (row && !validObject(row)) throw new ApiError(400, 'VALIDATION_FAILED', 'fields', s.errors.recordInvalid);
+        if (row && !validObject(row)) throw new ApiError(400, 'VALIDATION_FAILED', 'fields', s.errors.recordInvalid!);
         await writer.run({
           values,
           editableFields: fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name),
