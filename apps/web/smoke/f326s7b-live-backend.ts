@@ -4,6 +4,7 @@
  * - echo：草稿两个单人节点，n1 指定“合成乙”，n2 已选指定人员未选人（发布被“指定人员未选择”拒）；
  * - pending：已发布流程的新草稿把 n2 改成“合成待改选人”（记待生效值），随后变量页把同一变量改成“合成变量页改的人”，
  *   发布时 409 待生效冲突。
+ * - stopped：另一流程的自动变量经变量页停用（DEC-941 变量页“重新启用”提示用）；echo 的自动变量供“来源”列与锁定字段。
  * 流程对象编辑身份的授予沿用 F3 夹具（f326f3-live-backend）的做法。
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -13,6 +14,7 @@ import {
   draftOk,
   editVariable,
   newVersion,
+  firstAuto,
   placeholder,
   s4World,
   specified,
@@ -20,6 +22,7 @@ import {
   type S4World,
 } from '../../../tests/acceptance/AC-APV-F326-S7a-support.js';
 import type { NodeInput } from '../../../tests/acceptance/AC-APV-support.js';
+import { references, variableCommand } from '../../../tests/acceptance/AC-APV-F326-S4-support.js';
 import { createTestDb } from '../../../packages/testkit/src/test-db.js';
 import { createPermissionAuthorizer } from '../../../apps/api/src/modules/permission/authorizer.js';
 import { objectCatalog } from '../../../apps/api/src/modules/permission/catalog.js';
@@ -60,8 +63,25 @@ async function seed(db: Parameters<typeof s4World>[0]) {
   ]);
   const edited = await editVariable(w, await varRow(w, x.id), { defaultValue: other.userId });
   if (edited.status !== 200) throw new Error(`variable edit failed ${edited.status}: ${await edited.text()}`);
+  const stopped = await stoppedAuto(w);
   await grantProcessEditor(w);
-  return { w, processes: { echo: echo.id, pending: pending.id }, variable: x.code };
+  const sourced = await firstAuto(w, echo.id);
+  return {
+    w,
+    processes: { echo: echo.id, pending: pending.id },
+    variable: x.code,
+    variables: { sourced: sourced.code, stopped: stopped.code },
+  };
+}
+
+/** 停用一条自动变量：经变量页同一停用接口，按引用清单确认（设计 §6.2），之后可在“停用的公共变量”页签重新启用。 */
+async function stoppedAuto(w: S4World) {
+  const process = await create(w, [single('n1', '合成停用来源', specified(w.head.userId))]);
+  const auto = await firstAuto(w, process.id);
+  const { total } = await references(w, 'variables', auto.id);
+  const done = await variableCommand(w, auto, 'disable', { acknowledgedReferenceCount: total });
+  if (done.status !== 200) throw new Error(`variable disable failed ${done.status}: ${await done.text()}`);
+  return auto;
 }
 
 /** 同 F3 夹具：流程管理员 + 流程对象身份权限（含 publish 详情按钮），经真实权限接口授予。 */
@@ -110,7 +130,7 @@ function handler(db: Parameters<typeof s4World>[0], w: S4World) {
 export async function startAutoVariableBackend() {
   const handle = await createTestDb();
   try {
-    const { w, processes, variable } = await seed(handle.db);
+    const { w, processes, variable, variables } = await seed(handle.db);
     const serve = handler(handle.db, w);
     const server = createServer((req, res) => {
       serve(req, res).catch((error: unknown) => {
@@ -126,6 +146,7 @@ export async function startAutoVariableBackend() {
         admin: w.hr.id,
         processes,
         variable,
+        variables,
       },
       async close() {
         await new Promise<void>((resolve) => server.close(() => resolve()));

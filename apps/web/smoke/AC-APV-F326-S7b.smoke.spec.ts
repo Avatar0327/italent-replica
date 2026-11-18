@@ -2,6 +2,7 @@
  * F-326 S7b 浏览器集成（AC-APV-F326-39）：真实后端（隔离库 + 合成数据）+ 真实浏览器。
  * 全部 /api/tenant/** 代理到 f326s7b-live-server（真实 Hono、真实权限快照与授权、真实 S7a 自动变量与发布校验）。
  * 设计器把本流程的自动变量回显为“指定人员”；发布被“指定人员未选择”拒时标出节点；待生效冲突弹窗选值后重新发布。
+ * 变量页（DEC-941）：“来源”列、自动变量锁定字段置灰、重新启用后的再停用提示。
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +14,7 @@ interface Manifest {
   admin: string;
   processes: { echo: string; pending: string };
   variable: string;
+  variables: { sourced: string; stopped: string };
 }
 const REQUIRED = '节点「合成人事审批」的指定人员未选择，请选择人员后再发布';
 let backend: ChildProcess;
@@ -124,4 +126,29 @@ test('AC-APV-F326-39-S02 待生效值标“发布后生效”；待生效冲突�
   expect(publishes).toHaveLength(2);
   expect(publishes[1]!.body).toMatchObject({ pendingResolutions: [{ choice: 'designer' }] });
   expect(publishes[1]!.key).not.toBe(publishes[0]!.key);
+});
+
+test('AC-APV-F326-39-S03 变量页：来源列显示自动（流程名 · 节点名）；自动变量适用范围置灰；重新启用后提示可能再停用', async ({
+  context,
+  page,
+  baseURL,
+}) => {
+  await signIn(context, baseURL!);
+  await page.goto('/config-center/global/public-variables');
+  const sourced = page.getByRole('row').filter({ hasText: manifest.variables.sourced });
+  await expect(sourced).toContainText('自动（合成指定人员流程 · 合成上级审批）');
+  await sourced.getByRole('button', { name: '编辑' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('自动（合成指定人员流程 · 合成上级审批）');
+  const usage = dialog.locator('.ant-form-item').filter({ hasText: '适用范围' });
+  await expect(usage.locator('input[type="radio"]').first()).toBeDisabled();
+  await dialog.getByRole('button', { name: /取\s*消/ }).click();
+
+  await page.getByRole('tab', { name: '停用的公共变量' }).click();
+  const stopped = page.getByRole('row').filter({ hasText: manifest.variables.stopped });
+  await stopped.getByRole('button', { name: '启用' }).click();
+  await page.locator('.ant-popover').filter({ visible: true }).getByRole('button').last().click();
+  await expect(
+    visibleText(page, /已启用。若该自动变量已无流程引用，下次保存来源流程「合成指定人员流程」时会再次停用/),
+  ).toBeVisible();
 });
