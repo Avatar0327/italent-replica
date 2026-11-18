@@ -185,7 +185,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/attachments/binding.ts#lockFiles',
     'apps/api/src/modules/attachments/binding.ts#move',
     '#UUID',
-    '#attachmentRefsLocked',
+    '#assertNoAttachmentRefChange',
     '#invalid',
     '#refsOf',
     'apps/api/src/modules/attachments/subset-read.ts#SUBSET_BUSINESS_TYPE',

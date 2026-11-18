@@ -65,6 +65,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/personnel/change-requests.ts#createChange': [
     'apps/api/src/modules/attachments/subset-binding.ts#assertNoAttachmentRefChange',
+    '#SELF_SERVICE',
     '#appendVersion',
     '#requireSelf',
     'apps/api/src/modules/personnel/store.ts#assertRevision',
@@ -93,6 +94,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/personnel/change-requests.ts#requireSelf': ['apps/api/src/modules/personnel/store.ts#rows'],
   'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction': [
     'apps/api/src/modules/attachments/subset-binding.ts#assertNoAttachmentRefChange',
+    '#SELF_SERVICE',
     '#appendVersion',
     '#assertSelfServiceFields',
     '#currentChangeValues',

@@ -1233,9 +1233,9 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/personnel/change-requests.ts': {
     assertSelfServiceFields: '836b6ee170ad',
-    createChange: '52a434d124b9',
+    createChange: 'c7250d6472da',
     requireSelf: '50f3545b50d7',
-    resubmitChangeInTransaction: '68c90d80e68a',
+    resubmitChangeInTransaction: '84e90e11488f',
   },
   'apps/api/src/modules/personnel/custom-field-routes.ts': {
     'route:GET /api/tenant/personnel/custom-field-definitions': 'e1e6f951a36d',
@@ -2987,9 +2987,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/personnel/access.ts#authorize': 'd461523d213b',
   'apps/api/src/modules/personnel/access.ts#requirePerson': '26e8917a54da',
   'apps/api/src/modules/personnel/change-requests.ts#assertSelfServiceFields': '7041bcd9d078',
-  'apps/api/src/modules/personnel/change-requests.ts#createChange': '14e50c9b8828',
+  'apps/api/src/modules/personnel/change-requests.ts#createChange': '0c55fb2f1d6d',
   'apps/api/src/modules/personnel/change-requests.ts#requireSelf': '52740292ae80',
-  'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction': '70097bfcd71d',
+  'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction': '7c8efb1c9624',
   'apps/api/src/modules/personnel/custom-field-routes.ts#route:GET /api/tenant/personnel/custom-field-definitions':
     '86ea8ffffacc',
   'apps/api/src/modules/personnel/lists.ts#listOptions': '974e14f1d59d',
