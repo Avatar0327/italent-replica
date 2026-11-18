@@ -1,6 +1,6 @@
 /** F-326 S2：租户级变量配置，读写均由调用者的租户事务承载。 */
 import { count, getTableColumns, or } from 'drizzle-orm';
-import { and, approvalVariables, asc, eq, inArray, sql, type Tx } from '@italent/db';
+import { and, approvalVariables, asc, eq, inArray, sql, transactionLockLedger, type Tx } from '@italent/db';
 import {
   statusAfter,
   variableCodeOf,
@@ -37,7 +37,12 @@ const byId = (tenantId: string, id: string) => and(eq(table.tenantId, tenantId),
 
 export type VariableLockMode = 'share' | 'update';
 
-/** F-326-L §3.3 取锁入口（红提交桩：只按 id 升序取锁，尚无锁台账）。 */
+/**
+ * F-326-L §3.3 变量行取锁的唯一入口（锁序的最后一层）：一个事务只取一批，按 id 升序，同一变量只有一种最终模式（update 压过 share）。
+ * 台账（事务槽位，保存点成功并入外层、回滚丢弃）记录已持有的模式；第二次调用只能重入已持有的子集，
+ * 要 update 而台账里只有 share（SHARE→UPDATE 升级）、或要台账之外的变量，都是程序错误：抛错并让整个事务回滚（fail-closed），
+ * 不能悄悄再取一批——两个事务各取一批会互等成环。
+ */
 export async function lockVariableBatch(
   tx: Tx,
   ctx: { readonly tenantId: string },
@@ -45,15 +50,32 @@ export async function lockVariableBatch(
 ): Promise<void> {
   const wanted = new Map<string, VariableLockMode>();
   for (const { id, mode } of rows) if (mode === 'update' || !wanted.has(id)) wanted.set(id, mode);
-  for (const id of [...wanted.keys()].sort()) {
+  if (!wanted.size) return;
+  const ledger = transactionLockLedger(tx);
+  const ids = [...wanted.keys()].sort();
+  if (!ledger.empty()) {
+    for (const id of ids) {
+      const held = ledger.held(id);
+      if (!held || (wanted.get(id) === 'update' && held !== 'update'))
+        throw new Error(`自动变量锁台账：事务内已取过变量锁，不得再取 ${held ? '升级' : '新增'}的变量 ${id}`);
+    }
+    return;
+  }
+  for (const id of ids) {
     const query = tx.select({ id: table.id }).from(table).where(byId(ctx.tenantId, id));
     await (wanted.get(id) === 'update' ? query.for('update') : query.for('share'));
+    ledger.record(id, wanted.get(id)!);
   }
 }
 
+/** 本事务新建的变量行天然被本事务独占：记为 update，后续收尾可以在这个集合内动作（台账只认已持有的锁）。 */
+export function recordCreatedVariable(tx: Tx, id: string): void {
+  transactionLockLedger(tx).record(id, 'update');
+}
+
 export async function loadVariable(tx: Tx, tenantId: string, id: string, lock = false): Promise<VariableRow> {
-  const query = tx.select(selection).from(table).where(byId(tenantId, id));
-  const [row] = await (lock ? query.for('update') : query);
+  if (lock) await lockVariableBatch(tx, { tenantId }, [{ id, mode: 'update' }]);
+  const [row] = await tx.select(selection).from(table).where(byId(tenantId, id));
   if (!row) throw approvalError('NOT_FOUND', 'APPROVAL_VARIABLE_NOT_FOUND', '变量不存在');
   return row;
 }

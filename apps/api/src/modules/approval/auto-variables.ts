@@ -18,7 +18,14 @@ import {
 import { approvalError, canonicalId, rowsOf, type ApprovalContext } from './context.js';
 import type { ProcessView, VersionView } from './definitions.js';
 import { findSourceUsages, referencingProcessCounts } from './source-usages.js';
-import { auditVariable, loadVariable, variableSelection as selection, type VariableRow } from './variables.js';
+import {
+  auditVariable,
+  loadVariable,
+  lockVariableBatch,
+  recordCreatedVariable,
+  variableSelection as selection,
+  type VariableRow,
+} from './variables.js';
 
 export type Slot = 'approver' | 'empty_approver';
 const AUTO_DESCRIPTION = '通过指定人员自动生成的公共变量';
@@ -185,6 +192,7 @@ async function createAuto(
       .onConflictDoNothing({ target: [table.tenantId, table.code] })
       .returning(selection);
     if (!row) continue;
+    recordCreatedVariable(tx, row.id);
     await auditVariable(tx, ctx, 'auto_create', null, row);
     return row;
   }
@@ -344,7 +352,7 @@ export function assertNoMergedDuplicate(node: ApprovalNode) {
 
 // ───────── 保存收尾：不再被引用的自动变量停用 ─────────
 
-const variableIdsOf = (nodes: Iterable<ApprovalNode>): string[] => {
+export const variableIdsOf = (nodes: Iterable<ApprovalNode>): string[] => {
   const ids = new Set<string>();
   for (const node of nodes) {
     for (const slot of ['approver', 'empty_approver'] as const)
@@ -359,7 +367,7 @@ const variableIdsOf = (nodes: Iterable<ApprovalNode>): string[] => {
  * 不按变量当前状态筛：状态会被并发的停用 / 重新启用翻转，按它筛出的集合就不是上界，
  * 保存开始时看到“已停用”的变量，到收尾时可能已被重新启用（审查 rf326s7a_2 P2-1）；是否真停用由收尾在锁内重读状态决定。
  */
-async function retireCandidates(tx: Tx, ctx: ApprovalContext, scope: MaterializeScope): Promise<string[]> {
+export async function retireCandidates(tx: Tx, ctx: ApprovalContext, scope: MaterializeScope): Promise<string[]> {
   const referenced = variableIdsOf(scope.previous?.values() ?? []);
   const rows = await tx
     .select({ id: table.id })
@@ -405,13 +413,11 @@ export async function lockSaveBatch(
           modes.set(source.value, 'share');
   const update = await retireCandidates(tx, ctx, scope);
   for (const id of update) modes.set(id, 'update');
-  for (const [id, mode] of [...modes].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
-    await tx.execute(
-      mode === 'update'
-        ? sql`SELECT id FROM approval_variables WHERE tenant_id=${ctx.tenantId}::uuid AND id=${id}::uuid FOR UPDATE`
-        : sql`SELECT id FROM approval_variables WHERE tenant_id=${ctx.tenantId}::uuid AND id=${id}::uuid FOR SHARE`,
-    );
-  }
+  await lockVariableBatch(
+    tx,
+    ctx,
+    [...modes].map(([id, mode]) => ({ id, mode })),
+  );
   return { update };
 }
 
@@ -499,6 +505,12 @@ export async function applyPendingAutoVariables(
   const entries = pendingEntries(draft);
   assertResolutions(entries, resolutions);
   if (!entries.length) return null;
+  // 待生效变量一批取锁（升序，事务中段至多这一批，F-326-L §3.3）；之后逐个读取都是重入
+  await lockVariableBatch(
+    tx,
+    ctx,
+    entries.map((entry) => ({ id: entry.source.value, mode: 'update' as const })),
+  );
   const replaced = new Map<string, string>();
   const conflicts: Record<string, unknown>[] = [];
   const writes: { entry: PendingEntry; row: VariableRow | null; people: string[] | null; resolution?: string }[] = [];
