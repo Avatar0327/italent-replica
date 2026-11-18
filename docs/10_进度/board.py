@@ -116,7 +116,7 @@ def sh(c):
 def sync(d):
     s = d.setdefault("stats", {})
     try:
-        s["merged"] = int(sh("gh pr list --state merged --limit 500 --json number --jq length") or s.get("merged", 0))
+        s["merged"] = int(sh("gh pr list --state merged --limit 2000 --json number --jq length") or s.get("merged", 0))
         s["open"] = int(sh("gh pr list --state open --json number --jq length") or s.get("open", 0))
     except ValueError:
         pass
@@ -140,7 +140,7 @@ def live_prs():
                              json.loads(sh(f"gh api --paginate repos/{{owner}}/{{repo}}/issues/{p['number']}/comments --jq '[.[] | {{created_at, body}}]' | jq -s add") or "[]") or []]
             cd = sh(f"gh api repos/{{owner}}/{{repo}}/commits/{p['headRefOid']} --jq .commit.committer.date")
             p["commits"] = [{"committedDate": cd}] if cd else []
-        merged = json.loads(sh("gh pr list --state merged --limit 500 --json number,title,mergedAt") or "[]")
+        merged = json.loads(sh("gh pr list --state merged --limit 2000 --json number,title,mergedAt") or "[]")
     except ValueError:
         return None
     paused = set()

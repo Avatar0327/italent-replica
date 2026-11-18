@@ -64,6 +64,10 @@ test.beforeAll(async () => {
     backend.once('exit', (code) => reject(new Error(`F478S7 backend exited ${code}: ${errors}`)));
   });
 });
+test.afterEach(async ({ context }) => {
+  // 在每测 context 销毁前等转发回调完成，避免在途 fetch 因测试结束而失败。
+  await context.unrouteAll({ behavior: 'wait' });
+});
 test.afterAll(async () => {
   if (!backend || backend.exitCode !== null) return;
   const exited = new Promise<void>((resolve) => backend.once('exit', () => resolve()));

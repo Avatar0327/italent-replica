@@ -157,3 +157,31 @@ export async function assertRoleColumnsUnused(
     items: items.slice(0, USAGE_PAGE_LIMIT),
   });
 }
+
+/** §5.5④：同 §6.1 的三类在用版本；按流程去重，不返回其他流程标识、名称。 */
+export async function referencingProcessCounts(tx: Tx, tenantId: string, variableIds: readonly string[]) {
+  if (!variableIds.length) return new Map<string, number>();
+  const resumable = sql.join(
+    RESUMABLE_INSTANCE_STATUSES.map((status) => sql`${status}`),
+    sql`, `,
+  );
+  const ids = sql.join(
+    variableIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const rows = rowsOf<{ id: string; n: number }>(
+    await tx.execute(sql`
+    WITH slot AS (${slots(tenantId)})
+    SELECT s.src->>'value' AS id, count(DISTINCT p.id)::int AS n
+    FROM slot s
+    JOIN approval_process_versions v ON v.tenant_id=${tenantId}::uuid AND v.id=s.version_id
+    JOIN approval_processes p ON p.tenant_id=v.tenant_id AND p.id=v.process_id
+    WHERE s.src->>'type'='public_variable' AND s.src->>'value' IN (${ids})
+      AND ((p.status='active' AND (v.status='draft' OR p.current_version_id=v.id))
+        OR (v.status<>'draft' AND EXISTS (
+          SELECT 1 FROM approval_instances i WHERE i.tenant_id=v.tenant_id AND i.version_id=v.id
+            AND i.status IN (${resumable}))))
+    GROUP BY s.src->>'value'`),
+  );
+  return new Map(rows.map((row) => [row.id, Number(row.n)]));
+}

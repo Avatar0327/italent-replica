@@ -60,7 +60,7 @@ describe('AC-APV-F318c 保存及候选契约', () => {
     await orgVersion(w, w.child, { enabled: false });
     const api = (allow: boolean) =>
       tenantApi(w.db, {
-        authorize: (q) => allow && q.action === 'admin.process_matrix',
+        authorize: (q) => allow && (q.action === 'admin.process_matrix' || q.action === 'object.update'),
         clock: w.clock,
       });
     const get = (query: string, allow = true) => api(allow).request('GET', `${path}?${query}`, w.as(w.hr.id));
