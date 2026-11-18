@@ -465,10 +465,16 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   'POST /matrices/:id/enable': processAdmin({ ...byId, write: processCommand }),
   'POST /matrices/:id/disable': processAdmin({ ...byId, write: processCommand }),
   'GET /designer/source-candidates': admin('process_matrix', {
-    fields: fixed(['id', 'name', 'enabled', 'parentId', 'multiple'], 'DEC-691 / DEC-686① / F-326 §5.3'),
+    fields: fixed(
+      ['id', 'name', 'enabled', 'parentId', 'multiple'],
+      'DEC-691 / F-326 §5.3 / DEC-927：设计器与矩阵候选均只需矩阵管理权',
+    ),
   }),
   'GET /designer/person-candidates': admin('process_matrix', {
-    fields: fixed(['userId', 'name', 'code', 'departmentId', 'departmentName'], 'DEC-686① / DEC-135'),
+    fields: fixed(
+      ['userId', 'name', 'code', 'departmentId', 'departmentName'],
+      'DEC-686① / DEC-135 / DEC-927：设计器与矩阵候选均只需矩阵管理权',
+    ),
   }),
   'GET /types': processView(DICTIONARY, DICTIONARY),
   // status 非法值 .catch('active')，不报错

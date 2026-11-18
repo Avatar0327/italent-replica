@@ -4,6 +4,7 @@ import {
   lockSaveBatch,
   assertNoMergedDuplicate,
   enrichProcessView,
+  unselectedSpecifiedSlots,
   materializeNode,
   retireUnreferencedAutoVariables,
   type MaterializeScope,
@@ -643,6 +644,17 @@ export async function publishProcess(
   }
   const [violation] = publishViolations(draft);
   if (violation) throw approvalError('VALIDATION_FAILED', violation.reason, violation.message);
+  const slots = await unselectedSpecifiedSlots(tx, ctx.tenantId, id, draft);
+  const first = slots[0];
+  if (first) {
+    const position = first.slot === 'empty_approver' ? '审批人为空时的' : '的';
+    throw approvalError(
+      'VALIDATION_FAILED',
+      'APPROVAL_SPECIFIED_APPROVER_REQUIRED',
+      `节点「${first.nodeName}」${position}指定人员未选择，请选择人员后再发布`,
+      { slots },
+    );
+  }
   assertRoutesValid(draft.nodes, before.approvalType, true);
   await assertExceptionAdminMember(tx, ctx.tenantId, draft.exceptionAdminUserId!);
   if (!draft.isFallback) await assertUniquePriority(tx, ctx.tenantId, before, draft.priority);

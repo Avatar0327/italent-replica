@@ -1,4 +1,5 @@
 /** F-326 S3，设计 §7 AC-04/05/07/09/19/20/28。全部经 createApp 与租户事务。 */
+import { seedCellObjects } from './AC-APV-F326-S7d-cell-fixture.js';
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -87,8 +88,10 @@ describe('审批矩阵管理与结构审计', () => {
     return request('POST', BASE, { code: `M${uniqueSuffix()}`, name: '合成矩阵', ...over });
   }
   const read = async (id: string) => json<Matrix>(await request('GET', `${BASE}/${id}`));
-  const save = async (m: Matrix, input: Structure, key?: string) =>
-    json<Matrix>(await request('PUT', `${BASE}/${m.id}/structure`, { revision: m.revision, ...input }, key));
+  const save = async (m: Matrix, input: Structure, key?: string) => {
+    await seedCellObjects(w.db, w.tenant.id, input);
+    return json<Matrix>(await request('PUT', `${BASE}/${m.id}/structure`, { revision: m.revision, ...input }, key));
+  };
   async function rejectStructure(m: Matrix, input: unknown, reason?: string) {
     const before = await read(m.id);
     const body = await json<{ error: { code: string; details: { reason: string } } }>(
@@ -163,6 +166,7 @@ describe('审批矩阵管理与结构审计', () => {
       { method: 'POST', path: '/disable', input: {} },
     ];
     for (const write of writes) {
+      if (write.method === 'PUT') await seedCellObjects(w.db, w.tenant.id, write.input as Structure);
       const command = randomUUID();
       const payload = { revision: m.revision, ...write.input };
       const path = `${BASE}/${m.id}${write.path}`;
@@ -348,6 +352,7 @@ describe('审批矩阵管理与结构审计', () => {
   it.runIf(!!process.env.TEST_DATABASE_URL)('AC-05：真 PG 两连接竞争同一 revision 只提交一次结构与审计', async () => {
     const m = await create();
     const inputs = [basic(), basic()];
+    for (const input of inputs) await seedCellObjects(w.db, w.tenant.id, input);
     const responses = await withHeldLock(
       {
         run: (fn) => withTenant(w.db, w.tenant.id, fn),

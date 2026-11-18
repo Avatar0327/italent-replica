@@ -695,8 +695,10 @@ test('复核-草稿冲突时交接人已经改为另一人，核对与重提须�
   await expect(form).not.toContainText('合成接收人');
   // 差异表列出交接人：原值甲、最新值乙
   const row = dialog(page).getByRole('row').filter({ hasText: '工作交接人' });
-  await expect(row).toContainText(receiver);
-  await expect(row).toContainText(subordinate);
+  await expect(row).toContainText('合成接收人');
+  await expect(row).toContainText('合成下属');
+  await expect(row).not.toContainText(receiver);
+  await expect(row).not.toContainText(subordinate);
   await resume.click();
   await expect(form).toContainText('合成下属');
   await dialog(page)

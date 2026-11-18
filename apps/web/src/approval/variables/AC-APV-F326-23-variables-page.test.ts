@@ -237,6 +237,7 @@ describe('AC-APV-F326-23 公共变量管理页', () => {
     ]);
     expect(cells(draft.id).slice(2, 6)).toEqual(['字符串', '--', '流程', '草稿']);
     expect(reads.some((url) => url.startsWith(PEOPLE) && url.includes(ADMIN_USER))).toBe(true);
+    expect(reads.filter((url) => url.startsWith(PEOPLE)).every((url) => url.includes('context=matrix'))).toBe(true);
   });
 
   it('行操作按状态：启用 编辑 / 停用 / 更多；草稿 编辑 / 启用 / 更多；停用 编辑 / 启用；全页无删除', async () => {
