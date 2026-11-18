@@ -35,6 +35,22 @@ export { selection as variableSelection };
 export type { VariableRow };
 const byId = (tenantId: string, id: string) => and(eq(table.tenantId, tenantId), eq(table.id, id));
 
+export type VariableLockMode = 'share' | 'update';
+
+/** F-326-L §3.3 取锁入口（红提交桩：只按 id 升序取锁，尚无锁台账）。 */
+export async function lockVariableBatch(
+  tx: Tx,
+  ctx: { readonly tenantId: string },
+  rows: readonly { readonly id: string; readonly mode: VariableLockMode }[],
+): Promise<void> {
+  const wanted = new Map<string, VariableLockMode>();
+  for (const { id, mode } of rows) if (mode === 'update' || !wanted.has(id)) wanted.set(id, mode);
+  for (const id of [...wanted.keys()].sort()) {
+    const query = tx.select({ id: table.id }).from(table).where(byId(ctx.tenantId, id));
+    await (wanted.get(id) === 'update' ? query.for('update') : query.for('share'));
+  }
+}
+
 export async function loadVariable(tx: Tx, tenantId: string, id: string, lock = false): Promise<VariableRow> {
   const query = tx.select(selection).from(table).where(byId(tenantId, id));
   const [row] = await (lock ? query.for('update') : query);

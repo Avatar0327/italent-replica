@@ -54,6 +54,7 @@ import {
 } from './activations.js';
 import { viewableWithForeign } from './foreign-fields.js';
 import { approvalError, auditApproval, emitOutbox, type ApprovalContext, type Row } from './context.js';
+import { lockBoundProcess } from './auto-variable-lifecycle.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import { candidates, conditionContext, evaluate, noProcessMessage, replicaMatch } from './matching.js';
 import { applyMessageRules, notifyTodo } from './notifications.js';
@@ -1026,6 +1027,7 @@ async function launch(
   snapshot: BusinessSnapshot,
   matched: Awaited<ReturnType<typeof matchProcess>>,
 ): Promise<InstanceRow> {
+  await lockBoundProcess(tx, ctx, matched);
   const instance = await insertInstance(tx, ctx, request, snapshot, matched);
   // F-048 设计 §5.2：冻结第 1 轮主体（单主体业务只有异动员工本人），之后的提交预检与路由读冻结值
   await freezeSubjects(
