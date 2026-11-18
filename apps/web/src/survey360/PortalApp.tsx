@@ -69,21 +69,19 @@ function Portal({ tenantId }: { tenantId: string }) {
     setError('');
     setSession(value);
   };
-  const logout = async () => {
-    try {
-      await api.request('/logout', 'POST', {});
-      storeSession(tenantId);
-      setSession(undefined);
-      setError('');
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : m.unknown);
-    }
+  // F-076 §4.8：登出无论成败都先丢弃本地令牌并退出作答视图；旧令牌只用于这次作废请求。
+  // 登出幂等，未送达的会话 8 小时后由服务端过期。
+  const logout = () => {
+    storeSession(tenantId);
+    setSession(undefined);
+    setError('');
+    void api.request('/logout', 'POST', {}).catch(() => undefined);
   };
   return (
     <>
       <header className="survey-toolbar">
         <h1>{m.title}</h1>
-        {session && <Button onClick={() => void logout()}>{m.logout}</Button>}
+        {session && <Button onClick={logout}>{m.logout}</Button>}
       </header>
       {error && <Alert type="error" message={error} />}
       {session ? <Tasks key={session.session} api={api} /> : <Login api={api} loggedIn={loggedIn} />}

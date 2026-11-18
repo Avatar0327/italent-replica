@@ -23,6 +23,7 @@ export function PortalAnswer({ api, path, initial, back }: PortalAnswerProps) {
     setAnswer,
     read,
     run,
+    leave,
     replay,
     setNotice,
     setDraft,
@@ -31,7 +32,9 @@ export function PortalAnswer({ api, path, initial, back }: PortalAnswerProps) {
     <section className="survey-panel">
       <header>
         <h1>{page.questionnaire.name}</h1>
-        <Button onClick={back}>{m.back}</Button>
+        <Button disabled={command.busy} onClick={() => void leave(back)}>
+          {m.back}
+        </Button>
       </header>
       <p>
         {page.object.name}
