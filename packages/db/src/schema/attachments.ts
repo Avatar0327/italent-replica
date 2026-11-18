@@ -77,7 +77,10 @@ export const attachmentFiles = pgTable(
       'attachment_files_status',
       sql`${t.status} IN ('registered','uploaded','bound','detached','pending_cleanup','purged')`,
     ),
-    check('attachment_files_purpose', sql`${t.purpose} IN ('exit.handwritten_application')`),
+    check(
+      'attachment_files_purpose',
+      sql`${t.purpose} IN ('exit.handwritten_application','personnel.subset_attachment')`,
+    ),
     check('attachment_files_size', sql`${t.byteSize} BETWEEN 1 AND ${sql.raw(String(ATTACHMENT_MAX_BYTES))}`),
     check('attachment_files_hash', sql`${t.sha256} ~ '^[a-f0-9]{64}$'`),
     check(

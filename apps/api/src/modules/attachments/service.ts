@@ -14,7 +14,6 @@ import {
 import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { AppError } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
-import type { SelfAccess } from '../employee-self-service/access.js';
 import { decodeImage, sniffImageType, validateImageMetadata } from '../talent/model-image-format.js';
 import { PgBlobStore } from './blob-store.js';
 import { attachmentNotFound } from './access.js';
@@ -26,6 +25,14 @@ export interface AttachmentContext extends TenantContext {
   readonly now: Date;
   readonly commandId: string;
 }
+
+/** 文件所有人：上传人 + 目标员工。员工自助是“本人 + 本人”，HR 维护子集是“HR + 被维护员工”（§10.2）。 */
+export interface OwnerAccess {
+  readonly ctx: Pick<TenantContext, 'tenantId' | 'userId'>;
+  readonly employee: { readonly id: string };
+}
+
+export const EXIT_PURPOSE = 'exit.handwritten_application';
 
 export interface RegisterInput {
   readonly purpose: string;
@@ -42,8 +49,11 @@ const limitsOf = (config: AttachmentPurposeConfig) => ({
   limitText: `${config.maxBytes / 1024 / 1024}MiB`,
 });
 
-/** 本人名下、尚未绑定的文件；锁行以串行化上传 / 删除。别人的、不存在的、跨租户的（RLS）一律同一个 404。 */
-async function ownFile(tx: Tx, self: SelfAccess, id: string, lock: boolean): Promise<FileRow> {
+/**
+ * 所有人名下、指定用途、尚未绑定的文件；锁行以串行化上传 / 删除。别人的、别的用途的、不存在的、跨租户的（RLS）一律同一个 404。
+ * 用途过滤让 exit 入口读不到子集用途的文件，反之亦然（§10.2）。
+ */
+async function ownFile(tx: Tx, self: OwnerAccess, id: string, lock: boolean, purpose: string): Promise<FileRow> {
   const query = tx
     .select()
     .from(F)
@@ -51,6 +61,7 @@ async function ownFile(tx: Tx, self: SelfAccess, id: string, lock: boolean): Pro
       and(
         eq(F.tenantId, self.ctx.tenantId),
         eq(F.id, id),
+        eq(F.purpose, purpose),
         eq(F.ownerUserId, self.ctx.userId),
         eq(F.ownerEmployeeId, self.employee.id),
         inArray(F.status, ['registered', 'uploaded']),
@@ -61,9 +72,10 @@ async function ownFile(tx: Tx, self: SelfAccess, id: string, lock: boolean): Pro
   return row;
 }
 
-function checkRegistration(input: RegisterInput) {
+function checkRegistration(input: RegisterInput, purpose: string) {
   const config = attachmentPurpose(input.purpose);
-  if (!config) throw new AppError('VALIDATION_FAILED', '附件用途不支持');
+  // 入口只登记自己的用途：exit 入口不能登记子集用途，反之亦然
+  if (!config || input.purpose !== purpose) throw new AppError('VALIDATION_FAILED', '附件用途不支持');
   const filename = sanitizeAttachmentFilename(input.filename);
   if (!filename) throw new AppError('VALIDATION_FAILED', '文件名无效');
   if (!/^[a-f0-9]{64}$/.test(input.sha256)) throw new AppError('VALIDATION_FAILED', 'sha256 必须为 64 位十六进制');
@@ -88,8 +100,14 @@ function unsupportedType(): never {
 const lockOwnerRegistration = (tx: Tx, ctx: Pick<AttachmentContext, 'tenantId' | 'userId'>) =>
   advisoryLock(tx, asUuid(ctx.tenantId), ':', asUuid(ctx.userId), ':attachments');
 
-export async function registerFile(tx: Tx, self: SelfAccess, ctx: AttachmentContext, input: RegisterInput) {
-  const { config, filename } = checkRegistration(input);
+export async function registerFile(
+  tx: Tx,
+  self: OwnerAccess,
+  ctx: AttachmentContext,
+  input: RegisterInput,
+  purpose: string = EXIT_PURPOSE,
+) {
+  const { config, filename } = checkRegistration(input, purpose);
   // 同一所有人串行登记，临时文件数上限才不会被并发突破
   await lockOwnerRegistration(tx, ctx);
   const [counted] = await tx
@@ -127,13 +145,14 @@ export async function registerFile(tx: Tx, self: SelfAccess, ctx: AttachmentCont
 
 export async function uploadFile(
   tx: Tx,
-  self: SelfAccess,
+  self: OwnerAccess,
   ctx: AttachmentContext,
   id: string,
   expectedRevision: number,
   base64: string,
+  purpose: string = EXIT_PURPOSE,
 ) {
-  const before = await ownFile(tx, self, id, true);
+  const before = await ownFile(tx, self, id, true, purpose);
   if (before.revision !== expectedRevision) throw new AppError('REVISION_CONFLICT', '附件已变化，请刷新后重新提交');
   if (before.status !== 'registered') throw new AppError('CONFLICT', '附件已上传，不能重复上传');
   const config = ATTACHMENT_PURPOSES[before.purpose as keyof typeof ATTACHMENT_PURPOSES];
@@ -162,12 +181,13 @@ export async function uploadFile(
 /** 本人删除未绑定文件：只改状态，字节由清理任务（S3）释放。 */
 export async function deleteFile(
   tx: Tx,
-  self: SelfAccess,
+  self: OwnerAccess,
   ctx: AttachmentContext,
   id: string,
   expectedRevision: number,
+  purpose: string = EXIT_PURPOSE,
 ) {
-  const before = await ownFile(tx, self, id, true);
+  const before = await ownFile(tx, self, id, true, purpose);
   if (before.revision !== expectedRevision) throw new AppError('REVISION_CONFLICT', '附件已变化，请刷新后重新提交');
   const [row] = await tx
     .update(F)
@@ -179,13 +199,13 @@ export async function deleteFile(
 }
 
 /** 读变体 readTemporary：只给本人名下未绑定（registered / uploaded）的元数据。 */
-export async function readTemporaryMeta(tx: Tx, self: SelfAccess, id: string) {
-  return receipt(await ownFile(tx, self, id, false));
+export async function readTemporaryMeta(tx: Tx, self: OwnerAccess, id: string) {
+  return receipt(await ownFile(tx, self, id, false, EXIT_PURPOSE));
 }
 
 /** 内容只给 uploaded；registered 还没有字节，同样 404。 */
-export async function readTemporaryContent(tx: Tx, self: SelfAccess, id: string) {
-  const row = await ownFile(tx, self, id, false);
+export async function readTemporaryContent(tx: Tx, self: OwnerAccess, id: string) {
+  const row = await ownFile(tx, self, id, false, EXIT_PURPOSE);
   if (row.status !== 'uploaded' || !row.contentType) throw attachmentNotFound();
   const bytes = await PgBlobStore.read(tx, self.ctx.tenantId, id);
   if (!bytes) throw attachmentNotFound();

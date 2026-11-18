@@ -12,7 +12,6 @@ import { FIELD, OTHER_FIELD, personnelWorld, PURPOSE, type As, type F361World } 
 const database = useTestDb();
 let w: F361World;
 let hr: { as: As };
-type Expanded = { id: string; filename: string; contentType: string; byteSize: number } | null;
 type Subset = { id: string; revision: number } & Record<string, unknown>;
 
 beforeAll(async () => {
@@ -65,11 +64,13 @@ describe('AC-PER-F361-01 HR 上传 → 绑定 → 读取展开 → 下载', () =
       200,
     );
     expect(global.items.find((i) => i.id === created.id)?.[FIELD]).toMatchObject({ id: uploaded.id });
-    const nested = await w.json<{ subsets?: Record<string, Subset[]> }>(
+    const nested = await w.json<{ subsets?: Record<string, { items: Subset[] }> }>(
       await w.api.request('GET', `/api/tenant/personnel/employees/${w.target.id}?includeSubsets=true`, hr.as),
       200,
     );
-    expect(nested.subsets?.education?.find((i) => i.id === created.id)?.[FIELD]).toMatchObject({ id: uploaded.id });
+    expect(nested.subsets?.education?.items.find((i) => i.id === created.id)?.[FIELD]).toMatchObject({
+      id: uploaded.id,
+    });
 
     const content = await w.download(hr.as, w.target.id, created.id, uploaded.id);
     expect(content.status).toBe(200);
