@@ -25,6 +25,7 @@ import {
   s4World,
   saveDraft,
   specified,
+  storedNodes,
   varRow,
   variableCount,
   type S4World,
@@ -91,6 +92,12 @@ async function conflictWorld(label: string) {
   return { w, a, a2, a3, a4, x, r1, saved, submit, inflight, next };
 }
 
+/** 库内版本节点 n2 的来源（读视图会裁掉 pendingRevision 等内部键，所以直接读节点表）。 */
+const storedN2 = async (w: S4World, versionId: string) =>
+  (await storedNodes(w, versionId)).find((node) => node.node_key === 'n2')!.approver_expression;
+const publishAudits = async (w: S4World, processId: string) =>
+  (await audits(w, processId, 'approval.process.publish')).length;
+
 const publishView = async (w: S4World, id: string) => (await readProcess(w, id)).currentVersion!;
 type Version = Awaited<ReturnType<typeof readProcess>>['latestVersion'];
 const slotOf = (version: Version, key = 'n2') => autoViewOf(version.nodes.find((node) => node.key === key)!.approver);
@@ -130,11 +137,19 @@ describe('AC-APV-F326-57 ⑤ 手工改动冲突（DEC-864③）', () => {
     expect(draftSlot(draft)).toMatchObject({ pendingUserIds: [a2.userId] });
     expect((await publishView(w, a.id)).id).toBe(before.id);
     expect(actionsOf(await audits(w, x.id))).toEqual(['auto_create', 'update']);
+    // 库内：草稿节点仍带待生效值与记录时的变量 revision（r0），没有新增 publish 审计（仅 v1 的一条）
+    expect(await storedN2(w, saved.latestVersion.id)).toEqual({
+      type: 'public_variable',
+      value: x.id,
+      pendingUserIds: [a2.userId],
+      pendingRevision: x.revision,
+    });
+    expect(await publishAudits(w, a.id)).toBe(1);
     expect(await submit(await next())).toEqual([a3.userId]);
   });
 
   it('⑤甲 选“用设计器值”（新命令 ID）→ 200；X 为 A2、revision r1+1，恰好一条 auto_update 记发布人与 resolution', async () => {
-    const { w, a2, x, r1, saved, submit, next } = await conflictWorld('s7e1-57-designer');
+    const { w, a, a2, x, r1, saved, submit, next } = await conflictWorld('s7e1-57-designer');
     await rejected(await publishWith(w, saved), 409, 'APPROVAL_PENDING_VARIABLE_CONFLICT');
     const ok = await publishWith(w, saved, {
       pendingResolutions: [{ variableId: x.id, revision: r1, choice: 'designer' }],
@@ -150,11 +165,14 @@ describe('AC-APV-F326-57 ⑤ 手工改动冲突（DEC-864③）', () => {
     expect(trail[2]).toMatchObject({ actor: w.hr.id });
     expect(trail[2]!.after).toMatchObject({ trigger: pendingTrigger(saved.latestVersion.id, 'designer') });
     expect(trail[2]!.before).toMatchObject({ defaultValue: expect.anything() });
+    // 库内：v2 节点指向 X 且待生效键已清；发布留下第 2 条 publish 审计
+    expect(await storedN2(w, saved.latestVersion.id)).toEqual({ type: 'public_variable', value: x.id });
+    expect(await publishAudits(w, a.id)).toBe(2);
     expect(await submit(await next())).toEqual([a2.userId]);
   });
 
   it('⑤乙 选“保留变量页值”→ 200；X 仍为 A3、revision 不变、无 auto_update；v2 节点无待生效键', async () => {
-    const { w, a3, x, r1, saved, submit, next } = await conflictWorld('s7e1-57-current');
+    const { w, a, a3, x, r1, saved, submit, next } = await conflictWorld('s7e1-57-current');
     const ok = await publishWith(w, saved, {
       pendingResolutions: [{ variableId: x.id, revision: r1, choice: 'current' }],
     });
@@ -168,6 +186,9 @@ describe('AC-APV-F326-57 ⑤ 手工改动冲突（DEC-864③）', () => {
     expect(slotOf(published.currentVersion as unknown as Version)).toMatchObject({ id: x.id });
     expect(JSON.stringify(published.currentVersion)).not.toContain('pending');
     expect((await publishView(w, saved.id)).id).toBe(saved.latestVersion.id);
+    // 库内：保留变量页值时同样清掉待生效键（含 pendingRevision），并留下第 2 条 publish 审计
+    expect(await storedN2(w, saved.latestVersion.id)).toEqual({ type: 'public_variable', value: x.id });
+    expect(await publishAudits(w, a.id)).toBe(2);
     expect(await submit(await next())).toEqual([a3.userId]);
   });
 
@@ -192,20 +213,20 @@ describe('AC-APV-F326-57 ⑤ 手工改动冲突（DEC-864③）', () => {
   });
 
   it('⑤丁 选择里的 variableId 不是本草稿的待生效变量 → 400 APPROVAL_PENDING_RESOLUTION_INVALID，无写入', async () => {
-    const { w, a, x, r1, saved } = await conflictWorld('s7e1-57-invalid');
+    const { w, a, x, saved } = await conflictWorld('s7e1-57-invalid');
     const stranger = await w.publish(await create(w, [single('n1', w.near.userId)], { name: '无关流程' }));
     const other = await autoAt(w, stranger.id, 'n1');
     const row = await varRow(w, x.id);
+    // 只提交无关变量：条数（1）不超过待生效位置数（1），拒绝只能来自“选择须属于本草稿”的校验；
+    // 若去掉该校验，X 的冲突没有选择，会变成 409 APPROVAL_PENDING_VARIABLE_CONFLICT
     const response = await publishWith(w, saved, {
-      pendingResolutions: [
-        { variableId: x.id, revision: r1, choice: 'designer' },
-        { variableId: other.id, revision: other.revision, choice: 'designer' },
-      ],
+      pendingResolutions: [{ variableId: other.id, revision: other.revision, choice: 'designer' }],
     });
     await rejected(response, 400, 'APPROVAL_PENDING_RESOLUTION_INVALID');
     expect(await varRow(w, x.id)).toEqual(row);
     expect(await varRow(w, other.id)).toEqual(other);
     expect((await readProcess(w, a.id)).latestVersion.status).toBe('draft');
+    expect(await publishAudits(w, a.id)).toBe(1);
   });
 
   it('⑤戊 变量页改成与待生效值相同 → 发布 200 不写 X；变量被停用 → 发布 200，新建 person 变量，X 保持停用', async () => {
@@ -215,6 +236,7 @@ describe('AC-APV-F326-57 ⑤ 手工改动冲突（DEC-864③）', () => {
     const settled = await varRow(same.w, same.x.id);
     expect((await publishWith(same.w, same.saved)).status).toBe(200);
     expect(await varRow(same.w, same.x.id)).toEqual(settled);
+    expect(await storedN2(same.w, same.saved.latestVersion.id)).toEqual({ type: 'public_variable', value: same.x.id });
 
     const off = await conflictWorld('s7e1-57-disabled');
     const { total } = await references(off.w, 'variables', off.x.id);
@@ -232,6 +254,8 @@ describe('AC-APV-F326-57 ⑤ 手工改动冲突（DEC-864③）', () => {
     )!;
     expect(created).toMatchObject({ data_type: 'person', origin_version_id: off.saved.latestVersion.id });
     expect(peopleOf(created)).toEqual([off.a2.userId]);
+    // 库内：发布后的 v2 节点 2 指向新建的变量（不是停用的 X），且没有残留待生效键
+    expect(await storedN2(off.w, off.saved.latestVersion.id)).toEqual({ type: 'public_variable', value: created.id });
   });
 });
 
