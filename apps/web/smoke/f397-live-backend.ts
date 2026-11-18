@@ -10,11 +10,10 @@ export async function startPortalBackend() {
     const { w, s, creds } = await issuedScene(db.db, 'F397');
     const cred = creds.get(s.person.P1.id)!;
     w.setNow(new Date().toISOString());
-    const started = Date.now();
     const server = createServer((req, res) => {
       void (async () => {
         if (req.url === '/__smoke/expire') {
-          w.setNow(new Date(started + 8 * 3_600_000 + 1000).toISOString());
+          w.setNow(new Date(Date.now() + 8 * 3_600_000 + 1000).toISOString());
           res.writeHead(204).end();
           return;
         }

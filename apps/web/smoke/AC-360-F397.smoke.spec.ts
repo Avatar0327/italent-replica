@@ -16,7 +16,7 @@ test.use({ trace: 'off' });
 test.beforeAll(async () => {
   test.setTimeout(240_000);
   backend = spawn(process.execPath, [fileURLToPath(new URL('./f397-live-server.mjs', import.meta.url))], {
-    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
   });
   manifest = await new Promise<Manifest>((resolve, reject) => {
     let errors = '';
@@ -54,7 +54,7 @@ async function login(page: Page, wrong = false) {
   await expect(page.getByRole('heading', { name: '360 评估作答' })).toBeVisible();
   await page.getByLabel('序列号', { exact: true }).fill(manifest.serial);
   await page.getByLabel('密码', { exact: true }).fill(wrong ? manifest.wrong : manifest.password);
-  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.getByRole('button', { name: /登\s*录/, exact: true }).click();
 }
 test('AC-360-F397-01 登录成功后保存并提交真实答卷', async ({ page }) => {
   await login(page);
@@ -73,7 +73,7 @@ test('AC-360-F397-02 错误凭据统一拒绝且可改正', async ({ page }) => 
   await login(page, true);
   await expect(page.getByText('您输入的密码和序列号不匹配，请重新输入', { exact: true })).toBeVisible();
   await expect(page.getByLabel('序列号', { exact: true })).toHaveValue(manifest.serial);
-  await expect(page.getByRole('button', { name: '登录', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /登\s*录/, exact: true })).toBeEnabled();
 });
 test('AC-360-F397-03 服务端八小时过期返回登录页并清除会话', async ({ page, request }) => {
   await login(page);
