@@ -8384,6 +8384,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/retire-rehire-eligibility.ts#sequencePredecessorKind',
     '#sequenceViolation',
   ],
+  'apps/api/src/modules/employment/write-service.ts#assertDirectRegularizationIdle': [
+    'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
+  ],
   'apps/api/src/modules/employment/write-service.ts#assertDirectTransferAllowed': [
     'apps/api/src/modules/employment/configuration.ts#readEmploymentSettings',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -8415,9 +8418,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#EXIT_GATE_PASS',
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
+    'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/intern-eligibility.ts#resolveInFlightRegularization',
-    'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentEmployee',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/retire-rehire-waiting.ts#bindRehireRetirement',
@@ -8426,6 +8429,7 @@ export const GRAPH: Graph = {
     '#appendEmploymentPayload',
     '#appendEmploymentState',
     '#assertBusinessSequence',
+    '#assertDirectRegularizationIdle',
     '#assertDirectTransferAllowed',
     '#assertEmployTypeUsage',
     '#defaultChangeType',
@@ -8433,12 +8437,12 @@ export const GRAPH: Graph = {
     '#initializeEmploymentBusiness',
     '#materializeEmploymentRecord',
     '#payloadAudit',
-    '#prepareCreatedInheritance',
     '#requireSavedBusiness',
     '#saveEntryExtras',
     '#selectEmploymentCycle',
     '#validatePreparedEmployment',
     '#withImportedUntil',
+    '#withPositionManagerDerivation',
   ],
   'apps/api/src/modules/employment/write-service.ts#cycleForMaterialization': [
     '#assertNoInternCycleSuccessor',
@@ -8499,10 +8503,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/status-hooks.ts#employeeStatusHooks',
   ],
   'apps/api/src/modules/employment/write-service.ts#payloadAudit': ['#customAudit'],
-  'apps/api/src/modules/employment/write-service.ts#prepareCreatedInheritance': [
-    'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',
-    '#withPositionManagerDerivation',
-  ],
   'apps/api/src/modules/employment/write-service.ts#propagateMaterializedStatus': [
     'apps/api/src/modules/employment/employee-status.ts#propagateEmployeeStatus',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
