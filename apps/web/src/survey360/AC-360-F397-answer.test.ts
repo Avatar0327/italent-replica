@@ -488,3 +488,29 @@ it('AC-360-F397 保存在途改了建议又遇冲突：核对表“我的输入�
   expect(requests[1]?.command?.revision).toBe(5);
   expect(mine).toBe(JSON.stringify((requests[1]?.body as { suggestion?: string }).suggestion));
 });
+// 第 4 轮结构改动（重开恢复不再经内核回填推送，改为挂载时按槽恢复）的不回退守卫：
+// 结果未知时页面真正卸载再打开，仍显示已发出的命令快照、仍锁定，返回与刷新照常拦截，不生成新命令。
+it('AC-360-F397 结果未知时卸载重开：恢复已发出的答卷并保持锁定，回查重放原命令后才可返回', async () => {
+  failure = 'stale';
+  await render();
+  await answer();
+  await click('立即保存');
+  expect(text()).toContain('结果待确认');
+  await render(false);
+  expect(host.querySelector('input[type="radio"]')).toBeNull();
+  await render();
+  expect(checked()).toEqual([true]);
+  expect(host.querySelector<HTMLInputElement>('input[type="radio"]')?.disabled).toBe(true);
+  expect(guarded()).toBe(true);
+  await click('返回评价列表');
+  expect(text()).toContain('有尚未保存的作答内容');
+  expect(requests).toHaveLength(1);
+  failure = undefined;
+  await click('回查原单');
+  await click('按原命令确认结果');
+  expect(requests[1]?.command).toEqual(requests[0]?.command);
+  expect(guarded()).toBe(false);
+  await click('返回评价列表');
+  expect(host.querySelector('input[type="radio"]')).toBeNull();
+  expect(requests).toHaveLength(2);
+});
