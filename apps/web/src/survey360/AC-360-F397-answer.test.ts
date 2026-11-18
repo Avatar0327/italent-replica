@@ -12,6 +12,8 @@ let page: AnswerPage;
 let api: PortalClient;
 let requests: { path: string; method: string; body: unknown; command?: { id: string; revision?: number } }[];
 let failure: 'reject' | 'unknown' | 'lost' | 'conflict' | 'stale' | undefined;
+// 写请求在途：放行前响应不到达（用于构造“保存在途时继续作答”的时序）。
+let gate: Promise<void> | undefined;
 const path = '/tasks/relation/questionnaires/questionnaire';
 const text = () => host.textContent ?? '';
 const settle = async () => {
@@ -55,6 +57,7 @@ beforeEach(() => {
   root = createRoot(host);
   requests = [];
   failure = undefined;
+  gate = undefined;
   page = {
     activity: { name: '合成活动', status: 'enabled' },
     object: { name: '合成对象' },
@@ -71,6 +74,7 @@ beforeEach(() => {
     request: vi.fn(async (url = '', method = 'GET', body, command) => {
       if (method === 'GET') return structuredClone(page);
       requests.push({ path: url, method, body, ...(command ? { command } : {}) });
+      if (gate) await gate;
       if (failure === 'reject') throw new ApiError(400, 'VALIDATION_FAILED', 'fields', '请补充说明');
       if (failure === 'conflict') {
         page.sheet = { ...page.sheet, revision: 5, suggestion: '合成远端建议' };
@@ -287,3 +291,130 @@ for (const refused of ['reject', 'conflict'] as const)
     });
     expect(text()).toContain('保存成功');
   });
+
+const hold = () => {
+  let open!: () => void;
+  gate = new Promise<void>((resolve) => (open = resolve));
+  return async () => {
+    gate = undefined;
+    await act(async () => open());
+    await settle();
+  };
+};
+const guarded = () => {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+};
+const typeSuggestion = async (value: string) => {
+  const box = [...host.querySelectorAll<HTMLTextAreaElement>('textarea')].find(
+    (node) => node.getAttribute('aria-label') === '综合建议',
+  )!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(box, value);
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await settle();
+};
+const both = [
+  { itemId: 'item', optionId: 'option' },
+  { itemId: 'second-item', optionId: 'second-option' },
+];
+
+// 审查 F-397 第 2 轮 P2-A：返回列表的保存在途时新填的答案，回执后须先保存再离开。
+it('AC-360-F397 返回列表的保存在途时新填的答案先保存再离开，重开两题都在', async () => {
+  twoItems();
+  await render();
+  await choose(0);
+  const release = hold();
+  await click('返回评价列表');
+  await choose(1);
+  await release();
+  await render();
+  expect(checked()).toEqual([true, true]);
+  expect(requests.map((r) => [r.method, r.path, r.command?.revision])).toEqual([
+    ['PUT', path, 0],
+    ['PUT', path, 1],
+  ]);
+  expect(requests[1]?.body).toMatchObject({ answers: both });
+});
+
+// 审查 F-397 第 2 轮 P2-B：自动保存在途时新填的答案与原命令快照分开保护；重放仍与原请求逐字节一致。
+it('AC-360-F397 自动保存在途时新填的答案，响应丢失后回查原单仍保留，离开仍提示，按原命令重放', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  twoItems();
+  await render();
+  await choose(0);
+  const release = hold();
+  failure = 'lost';
+  await tick(10_000);
+  await choose(1);
+  await release();
+  expect(text()).toContain('结果待确认');
+  expect(checked()).toEqual([true, true]);
+  expect(guarded()).toBe(true);
+  // 返回列表会丢掉在途后新填的内容：留在本页提示，不离开。
+  await click('返回评价列表');
+  expect(checked()).toEqual([true, true]);
+  expect(text()).toContain('有尚未保存的作答内容');
+  failure = undefined;
+  await click('回查原单');
+  expect(checked()).toEqual([true, true]);
+  expect(guarded()).toBe(true);
+  await click('按原命令确认结果');
+  const [lost, replayed] = requests;
+  expect([replayed?.method, replayed?.path]).toEqual([lost?.method, lost?.path]);
+  expect(replayed?.command).toEqual(lost?.command);
+  expect(replayed?.body).toEqual(lost?.body);
+  expect(lost?.body).toMatchObject({ answers: [{ itemId: 'item', optionId: 'option' }] });
+  expect(checked()).toEqual([true, true]);
+  await tick(10_000);
+  expect(requests.map((r) => [r.method, r.command?.revision])).toEqual([
+    ['PUT', 0],
+    ['PUT', 0],
+    ['PUT', 1],
+  ]);
+  expect(requests[2]?.body).toMatchObject({ answers: both });
+});
+
+it('AC-360-F397 自动保存在途时新填的答案，版本冲突重读后仍保留，离开仍提示', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  twoItems();
+  await render();
+  await choose(0);
+  const release = hold();
+  failure = 'conflict';
+  await tick(10_000);
+  await choose(1);
+  await release();
+  failure = undefined;
+  await click('重读最新版本');
+  expect(checked()).toEqual([true, true]);
+  expect(guarded()).toBe(true);
+  await click('已核对差异，继续编辑');
+  expect(checked()).toEqual([true, true]);
+  await click('立即保存');
+  expect(requests[1]?.command?.revision).toBe(5);
+  expect(requests[1]?.body).toMatchObject({ answers: both, suggestion: '合成远端建议' });
+});
+
+// 审查 F-397 第 2 轮 P2-C：F-123 §136 核对只解锁；下次写入须由用户显式发起（新输入或点保存）。
+it('AC-360-F397 冲突核对后不自动保存，用户改动后才按周期保存', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  await render();
+  await answer();
+  failure = 'conflict';
+  await click('立即保存');
+  failure = undefined;
+  await click('重读最新版本');
+  await click('已核对差异，继续编辑');
+  await tick(30_000);
+  expect(requests).toHaveLength(1);
+  await typeSuggestion('合成核对后建议');
+  await tick(10_000);
+  expect(requests.map((r) => [r.method, r.command?.revision])).toEqual([
+    ['PUT', 0],
+    ['PUT', 5],
+  ]);
+  expect(requests[1]?.body).toMatchObject({ suggestion: '合成核对后建议' });
+});
