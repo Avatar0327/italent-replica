@@ -2,7 +2,7 @@
  * F-326 S7a（DEC-858 ～ DEC-861）：设计器里选“指定人员”时，服务端把人员落成自动公共变量，节点库内只存 public_variable。
  * 位置（slot）= 节点 × approver / empty_approver；一个版本的一个位置最多一条未停用的自动变量（唯一索引兜底）。
  * 本文件只处理“保存时生成 / 复用 / 待生效”“发布时落地待生效值”“视图回显”和“不再被引用时停用”，
- * 不碰模拟、发布检查和实例运行（S7d / S7e）。
+ * S7d 补有效值发布检查与引用数；模拟和实例运行由各自模块负责。
  */
 import { and, approvalVariables as table, eq, inArray, sql, type Tx } from '@italent/db';
 import {
@@ -17,7 +17,7 @@ import {
 } from '@italent/domain';
 import { approvalError, canonicalId, rowsOf, type ApprovalContext } from './context.js';
 import type { ProcessView, VersionView } from './definitions.js';
-import { findSourceUsages } from './source-usages.js';
+import { findSourceUsages, referencingProcessCounts } from './source-usages.js';
 import { auditVariable, loadVariable, variableSelection as selection, type VariableRow } from './variables.js';
 
 export type Slot = 'approver' | 'empty_approver';
@@ -593,6 +593,7 @@ export interface AutoVariableView {
   userIds: string[] | null;
   pendingUserIds?: string[];
   pendingConflict?: true;
+  referencingProcessCount: number;
 }
 
 /** 本流程节点位置上的自动变量在视图里回显；对外不暴露库内的待生效键，改用 autoVariable.pendingUserIds。 */
@@ -615,6 +616,11 @@ export async function enrichProcessView(tx: Tx, tenantId: string, view: ProcessV
       )
     : [];
   const byId = new Map(rows.map((row) => [row.id, row]));
+  const counts = await referencingProcessCounts(
+    tx,
+    tenantId,
+    rows.map((row) => row.id),
+  );
   const enrichSource =
     (node: ApprovalNode, slot: Slot) =>
     (source: ApproverSource): ApproverSource => {
@@ -627,6 +633,7 @@ export async function enrichProcessView(tx: Tx, tenantId: string, view: ProcessV
         code: row.code,
         status: row.status,
         revision: Number(row.revision),
+        referencingProcessCount: counts.get(row.id) ?? 0,
         userIds: value === null ? null : Array.isArray(value) ? (value as string[]) : [value as string],
         ...(pendingUserIds ? { pendingUserIds: [...pendingUserIds] } : {}),
         ...(pendingUserIds &&
@@ -655,4 +662,35 @@ export async function enrichProcessView(tx: Tx, tenantId: string, view: ProcessV
       ? latestVersion
       : enrichVersion(view.currentVersion);
   return { ...view, latestVersion, currentVersion };
+}
+
+/** §5.5②：只检查本流程本位置的指定人员；有效值优先取草稿待生效值。 */
+export async function unselectedSpecifiedSlots(tx: Tx, tenantId: string, processId: string, draft: VersionView) {
+  const ids = variableIdsOf(draft.nodes);
+  if (!ids.length) return [];
+  const rows = await tx
+    .select(selection)
+    .from(table)
+    .where(
+      and(
+        eq(table.tenantId, tenantId),
+        eq(table.origin, 'auto'),
+        eq(table.originProcessId, processId),
+        inArray(table.id, ids),
+      ),
+    );
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const missing: { nodeKey: string; nodeName: string; slot: Slot }[] = [];
+  for (const node of draft.nodes) {
+    for (const slot of ['approver', 'empty_approver'] as const) {
+      if (slot === 'empty_approver' && node.emptyApproverPolicy !== 'specified') continue;
+      const empty = slotSources(node, slot).some((source) => {
+        const row = source.type === 'public_variable' ? byId.get(source.value) : undefined;
+        if (!row || row.originNodeKey !== node.key || row.originSlot !== slot) return false;
+        return !(source.pendingUserIds ?? peopleOfRow(row))?.length;
+      });
+      if (empty) missing.push({ nodeKey: node.key, nodeName: node.name, slot });
+    }
+  }
+  return missing;
 }
