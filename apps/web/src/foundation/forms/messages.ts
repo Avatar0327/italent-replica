@@ -13,6 +13,7 @@ export const messages = {
   none: '字段值无变化，请核对最新版本后继续。',
   invalidReceipt: '原单回执无效，请重新查询。',
   invalidObject: '记录标识无效，请刷新列表后重试。',
+  notDeleted: '已确认原命令未删除记录，请刷新后重新操作。',
   rejected: '服务器已拒绝，请修改后重提。',
   failedRead: '读取失败，输入已保留，请重新读取。',
   blocked: '本对象有未确认的其他操作，确认结果前不能发起新操作。',

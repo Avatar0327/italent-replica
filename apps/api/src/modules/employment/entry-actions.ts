@@ -205,6 +205,7 @@ async function replacePendingEntry(
       customFields: record.customFields,
     },
     {
+      retainedEmploymentForm: record.fields.employmentForm,
       entry: {
         pendingEntry: true,
         entryStatus: input.entryStatus,

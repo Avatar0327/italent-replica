@@ -1,6 +1,7 @@
 import { Alert, Button, Form, Input, Space, type TableColumnsType } from 'antd';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
+import { useNavigationGuard } from '../foundation/navigation.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { slotKey } from '../foundation/forms/slot.js';
@@ -131,6 +132,7 @@ export function TemplateList() {
 
 /** 新增 / 编辑、复制、状态确认与“创建后启用”弹窗；写入后详情按新代次重读，避免继续展示旧 revision。 */
 function useTemplateOverlays(reload: () => void, deleted: (id: string) => void) {
+  const navigation = useNavigationGuard();
   const [editing, setEditing] = useState<{ template?: Template }>();
   const [copying, setCopying] = useState<Template>();
   const [confirming, setConfirming] = useState<{ row: Template; action: Confirmable }>();
@@ -166,10 +168,8 @@ function useTemplateOverlays(reload: () => void, deleted: (id: string) => void) 
           key={`${confirming.row.id}/${confirming.action}`}
           {...confirming}
           close={() => setConfirming(undefined)}
-          done={(action) => {
-            if (action === 'delete') deleted(confirming.row.id);
-            refresh();
-          }}
+          deletionNavigation={() => navigation(() => deleted(confirming.row.id))}
+          done={refresh}
         />
       )}
     </>
@@ -233,15 +233,23 @@ function columns(
 }
 
 /** 启用 / 停用 / 删除：页面级命令，关闭再打开仍是同一条命令，结果未知时“确定”保持禁用。 */
-function ConfirmDialog(props: { row: Template; action: Confirmable; close(): void; done(action: Confirmable): void }) {
-  const { row, action, close, done } = props;
+function ConfirmDialog(props: {
+  row: Template;
+  action: Confirmable;
+  close(): void;
+  done(): void;
+  deletionNavigation(): () => void;
+}) {
+  const { row, action, close, done, deletionNavigation } = props;
   const command = useTemplateCommand(row.id, action);
   const ok = async () => {
+    const deleted = action === 'delete' ? deletionNavigation() : undefined;
     const path = `${IDP_API}/templates/${row.id}${action === 'delete' ? '' : `/${action}`}`;
     const outcome = await command.run(path, action === 'delete' ? 'DELETE' : 'POST', {}, row.revision!);
     if (!outcome) return;
     command.clear();
-    done(action);
+    deleted?.();
+    done();
     close();
   };
   return (

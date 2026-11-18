@@ -21,6 +21,7 @@ import { AppError } from '../../../errors.js';
 import { auditActor } from '../../../system-actor.js';
 import { auditEmployment, requireEmployeeInScope, requireScopedEmploymentObject } from '../context.js';
 import { validateSelectedEmploymentType } from '../employment-types.js';
+import { validateSelectedEmploymentForm } from '../employment-forms.js';
 import { sequenceForNewPost } from '../field-derivations.js';
 import type { ForwardFieldChange } from '../forward-rules.js';
 import { appendForwardPayload } from '../forward-store.js';
@@ -93,7 +94,7 @@ export interface CreatedPartTime {
  * D-1～D-10 与 D-5 的统一校验（员工行锁内，直接新增、新增申请的创建 / 修改 / 提交 / 审批编辑 / 落地共用，§4.3A 调用表）：
  * 主职周期边界 → 外派 / 借调唯一 → 部门可用性与引用 → 自定义字段。不含数据范围（入口各自判）。
  * excludeRequestId：申请自己的草稿 / 审批中版本不算“另一张在途新增申请”。
- * savedType：申请已保存版本的人员类别（F-323）；沿用它可以是已停用项，新选 / 改选须启用。
+ * saved：申请锁内旧字典引用（F-323 / F-363）；沿用它可以是已停用项，新选 / 改选须启用。
  */
 export async function checkNewPartTime(
   tx: Tx,
@@ -101,7 +102,7 @@ export async function checkNewPartTime(
   employee: { readonly id: string; readonly code: string | null },
   normalized: NormalizedPartTime,
   excludeRequestId?: string,
-  savedType?: string | null,
+  saved?: Pick<PresetFields, 'employmentType' | 'employmentForm'>,
 ) {
   const { cycle, warnings } = await assertPartTimeWithinCycle(tx, ctx, {
     employeeId: employee.id,
@@ -110,7 +111,8 @@ export async function checkNewPartTime(
   });
   await assertExclusiveTypeFree(tx, ctx, normalized, undefined, excludeRequestId);
   const fields = partTimePresetFields(normalized, { jobNumber: employee.code, employType: cycle.employType as never });
-  await validateSelectedEmploymentType(tx, ctx.tenantId, fields.employmentType, savedType ?? null);
+  await validateSelectedEmploymentType(tx, ctx.tenantId, fields.employmentType, saved?.employmentType ?? null);
+  await validateSelectedEmploymentForm(tx, ctx.tenantId, fields.employmentForm, saved?.employmentForm ?? null);
   await validatePartTimeReferences(tx, ctx, normalized, fields);
   const custom = await validatePartTimeCustomFields(tx, ctx, normalized.customFields);
   // §4.8：联动人员保存时就校验（负责人的组织写范围、下属在职 / 资格 / 范围），不留“记录说是负责人、组织上不是”的半套
@@ -243,6 +245,7 @@ export async function previewPartTime(
   await assertExclusiveTypeFree(tx, ctx, normalized);
   const derived = { jobNumber: employee.code, employType: cycle.employType as never };
   await validateSelectedEmploymentType(tx, ctx.tenantId, normalized.fields.employmentType, null);
+  await validateSelectedEmploymentForm(tx, ctx.tenantId, normalized.fields.employmentForm, null);
   await validatePartTimeReferences(tx, ctx, normalized, partTimePresetFields(normalized, derived));
   await validatePartTimeCustomFields(tx, ctx, normalized.customFields);
   await validatePartTimeLinkage(
@@ -440,6 +443,12 @@ export async function editPartTime(
   if (plan.changes.length) {
     const kept = business.payload.fields.employmentType;
     await validateSelectedEmploymentType(tx, ctx.tenantId, plan.fields.employmentType, kept);
+    await validateSelectedEmploymentForm(
+      tx,
+      ctx.tenantId,
+      plan.fields.employmentForm,
+      business.payload.fields.employmentForm,
+    );
     await validatePartTimeReferences(tx, ctx, target, plan.fields);
   } else if (row.endDate !== null && endDate !== null && endDate > row.endDate)
     await assertEmploymentDepartmentAvailableWithin(

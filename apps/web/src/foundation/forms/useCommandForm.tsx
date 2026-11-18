@@ -65,6 +65,13 @@ export function usePinnedCommand(slots: readonly string[], entry: string, store?
       if (result && result.status !== 'unknown') owner.unpin(scoped, holder);
       return result;
     },
+    async recoverDeletion(read: Parameters<FormStore['recoverDeletion']>[1]) {
+      const holder = owner.holder(scoped) ?? own;
+      const result = await owner.recoverDeletion(holder, read);
+      if (result && owner.get(holder) === result && ['done', 'rejected'].includes(result.status))
+        owner.unpin(scoped, holder);
+      return result;
+    },
     /** 存储里的当前状态（不是渲染时的快照）：异步流程中途据此核对恢复槽上有没有新的未确认命令。 */
     peek: () => owner.get(owner.holder(scoped) ?? own),
     reread: (read: (id?: string) => Promise<Latest>) => owner.reread(key, read),
