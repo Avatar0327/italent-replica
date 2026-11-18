@@ -135,6 +135,8 @@ export const s = {
     no: '否',
     actions: '操作',
     deleteConfirm: '确定删除该项吗？',
+    // F-145：字典条目 id / 版本被裁剪或无效，编辑提交前拒绝。
+    rowInvalid: '该条目缺少标识或版本，请刷新列表后重试。',
     rules: '规则条件',
     rulesReadonly: '规则条件在本页只读，按服务端已保存的内容展示。',
     expression: '条件表达式',

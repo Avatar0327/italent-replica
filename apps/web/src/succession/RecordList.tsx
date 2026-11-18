@@ -135,7 +135,13 @@ function RecordActions(props: {
       )}
       {/* 删除只对单条：后端是逐条删除，多选删除做不到整体成功或整体失败（DEC-067 批量）。 */}
       {permission.can('delete') && (
-        <DeleteButton base={`${BASE}/records`} row={one} settled={settled} button={{ type: 'primary' }} />
+        <DeleteButton
+          base={`${BASE}/records`}
+          row={one}
+          settled={settled}
+          button={{ type: 'primary' }}
+          invalidHint={s.errors.recordInvalid}
+        />
       )}
       <Tooltip title={s.importPending}>
         <Button disabled>{s.import}</Button>

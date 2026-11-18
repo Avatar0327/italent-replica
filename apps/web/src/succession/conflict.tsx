@@ -1,4 +1,5 @@
 import { Button, Popconfirm, Tooltip, type ButtonProps } from 'antd';
+import { ApiError } from '../foundation/client.js';
 import { useConflictCommand, validObject } from '../foundation/forms/ConflictCommands.js';
 import { useApiClient } from '../foundation/Session.js';
 import { s } from './messages.js';
@@ -12,10 +13,19 @@ interface DeleteProps {
   settled(error?: unknown): void;
   button?: ButtonProps;
   title?: string;
+  /** 选中行 id / 版本无效时悬停的原因提示，由调用方按对象给出；不传则只禁用（设置页字典沿用原行为）。 */
+  invalidHint?: string;
+}
+/**
+ * F-145（DEC-431①）：继任模块写入口的统一前置校验。本次实际要组包（路径、If-Match、请求体）的对象逐条过内核
+ * validObject，有无效的按确定性拒绝（400）抛出：在 writer.run 之前，不进内核、不发请求，表单显示 message、草稿保留。
+ */
+export function requireObjects(items: readonly { id?: string; revision?: number }[], message: string) {
+  if (!items.every(validObject)) throw new ApiError(400, 'VALIDATION_FAILED', 'fields', message);
 }
 /**
  * 删除按钮（冲突恢复命令已上收进内核 foundation/forms/ConflictCommands，F-142）：未选中，或选中行的 id / 版本
- * 缺失、无效（如被字段权限裁剪）时只渲染禁用按钮并悬停提示原因，不进内核、不发请求；其余经 useConflictCommand 发删除命令。
+ * 缺失、无效（如被字段权限裁剪）时只渲染禁用按钮，不进内核、不发请求；其余经 useConflictCommand 发删除命令。
  */
 export function DeleteButton(props: DeleteProps) {
   if (deletable(props.row)) return <ArmedDelete {...props} row={props.row} />;
@@ -24,8 +34,8 @@ export function DeleteButton(props: DeleteProps) {
       {s.delete}
     </Button>
   );
-  // F-145：选中了记录但 id / 版本无效时说明原因；未选中照旧只禁用。
-  return props.row ? <Tooltip title={s.errors.recordInvalid}>{button}</Tooltip> : button;
+  // F-145：选中行无效且调用方给了提示时说明原因；未选中、或调用方未给提示（字典）照旧只禁用。
+  return props.row && props.invalidHint ? <Tooltip title={props.invalidHint}>{button}</Tooltip> : button;
 }
 const deletable = (row?: DeleteProps['row']): row is NonNullable<DeleteProps['row']> => !!row && validObject(row);
 function ArmedDelete({
