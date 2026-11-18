@@ -37,8 +37,9 @@ const auto = (id: string, extra: Record<string, unknown> = {}) =>
   }) as unknown as ApproverSource;
 function processView() {
   const flow = flowFixture();
-  flow.latestVersion.nodes[0]!.approver = auto(X, { userIds: [A], referencingProcessCount: 1 });
-  flow.latestVersion.nodes[1]!.approver = auto(Y, { userIds: null, referencingProcessCount: 1 });
+  const [manager, hr] = flow.latestVersion.nodes as unknown as { approver: ApproverSource }[];
+  manager!.approver = auto(X, { userIds: [A], referencingProcessCount: 1 });
+  hr!.approver = auto(Y, { userIds: null, referencingProcessCount: 1 });
   return flow;
 }
 
@@ -191,9 +192,9 @@ it('AC-APV-F326-39-11 发布被“指定人员未选择”拒：按 details.slot
   expect(publishes()[0]!.headers.get('if-match')).toBe('4');
   expect(text()).toContain(REQUIRED);
   const marked = [...document.querySelectorAll('[data-node-missing="true"]')].map((node) => squash(node));
-  expect(marked).toEqual(['人事审批']);
+  expect(marked).toEqual(['2人事审批']);
   // 标出的节点被选中，审批人来源处同句提示
-  expect(squash(document.querySelector('[aria-current="true"]'))).toBe('人事审批');
+  expect(squash(document.querySelector('[aria-current="true"]'))).toBe('2人事审批');
   expect(document.querySelector('.flow-source-group .ant-alert-error')?.textContent).toContain(REQUIRED);
 });
 

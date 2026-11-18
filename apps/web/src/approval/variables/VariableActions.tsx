@@ -16,12 +16,24 @@ import {
   type VariableRow,
 } from './model.js';
 import type { useImpactConfirm } from './References.js';
+import { DesignerError, useDesignerRequest } from '../designer/write.js';
 
 const snapshotOf = (row: VariableRow) => ({ id: row.id, revision: row.revision, values: { ...row } });
+
+/** 启用撞上同位置已启用的自动变量（F-326-L §5.5）：给占位变量编码，引导改用或回设计器重选人员。 */
+function reasonOf(error: unknown) {
+  const details = error instanceof DesignerError ? error.details : {};
+  const occupied = details.occupiedBy as { code?: unknown } | undefined;
+  if (details.reason === 'APPROVAL_AUTO_VARIABLE_SLOT_TAKEN' && typeof occupied?.code === 'string')
+    return m.slotTaken(occupied.code);
+  return rejectionMessage(error);
+}
 
 /** 启停命令：结果未知时命令钉在本行、按钮锁定待回查；其余失败（含 409 引用已变化）提示原因并刷新，不自动重提。 */
 function useRowCommand(row: VariableRow, saved: () => void, failed: (reason: string) => void) {
   const api = useApiClient();
+  // 共享客户端不保留 details；启停改走保留 details 的请求（同口径请求头），以读 SLOT_TAKEN 的 occupiedBy
+  const request = useDesignerRequest();
   const read = async () => snapshotOf(parseRow(await api.request<unknown>(rowPath(row.id))));
   const writer = useConflictCommand(VARIABLES_PATH, snapshotOf(row), read, { action: 'row' });
   const run = async (kind: 'enable' | 'disable', acknowledged?: number) => {
@@ -31,14 +43,14 @@ function useRowCommand(row: VariableRow, saved: () => void, failed: (reason: str
         editableFields: [],
         send: async ({ command }) => {
           const body = acknowledged === undefined ? {} : { acknowledgedReferenceCount: acknowledged };
-          const raw = await api.request(rowPath(row.id, kind), { method: 'POST', command: { ...command, body } });
+          const raw = await request(rowPath(row.id, kind), 'POST', { ...command, body });
           return parseReceipt(raw, { id: row.id, revision: (command.revision ?? 0) + 1 });
         },
       });
       saved();
     } catch (error) {
       if (writer.form.peek()?.status === 'unknown') return;
-      failed(rejectionMessage(error));
+      failed(reasonOf(error));
       writer.form.clear();
       saved();
     }

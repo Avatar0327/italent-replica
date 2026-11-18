@@ -1,9 +1,11 @@
 import { useRef } from 'react';
 import { Alert, Button, Form, Select } from 'antd';
-import type { ApprovalNode, ApproverSource } from '@italent/domain';
+import { approverSourcesOf, type ApprovalNode, type ApproverSource } from '@italent/domain';
 import { useFormLock } from '../../foundation/forms/FormLock.js';
 import { nodeField } from './model.js';
 import { DesignerPeople } from './FallbackHandlers.js';
+import { AutoVariableInfo } from './AutoVariableInfo.js';
+import { slotAutoVariable } from './auto-variables.js';
 import { MatrixValue } from './MatrixValue.js';
 import { ReferenceValue } from './ReferenceValue.js';
 import {
@@ -21,12 +23,16 @@ export function ApproverSources({
   node,
   approvalType,
   empty = false,
+  missing,
 }: {
   node: ApprovalNode;
   approvalType: string;
   empty?: boolean;
+  /** 发布被拒“指定人员未选择”时本位置的提示（S7b，与服务端同句） */
+  missing?: string;
 }) {
   if (empty && node.emptyApproverPolicy !== 'specified') return null;
+  const auto = slotAutoVariable(empty ? node.emptyApproverSources : approverSourcesOf(node));
   const label = empty ? s.empty : s.main;
   const mainField = node.kind === 'countersign' ? 'approvers' : 'approver';
   const hint = node.kind === 'single' ? s.single : s.count;
@@ -46,6 +52,8 @@ export function ApproverSources({
       >
         <SourceValue node={node} approvalType={approvalType} empty={empty} />
       </Form.Item>
+      {missing && <Alert type="error" showIcon message={missing} />}
+      {auto && <AutoVariableInfo auto={auto} />}
       <p className="flow-muted">{empty ? s.emptyHint : hint}</p>
     </section>
   );

@@ -3,6 +3,7 @@ import type { ProcessView, VersionView } from '../../../../api/src/modules/appro
 import { ApiError } from '../../foundation/client.js';
 import type { ObjectPermission } from '../../foundation/permission-model.js';
 import type { Values } from '../../foundation/forms/store.js';
+import { echoSource, echoSources } from './auto-variables.js';
 import { supportsFallback, fallbackError } from './fallback.js';
 import { m } from './messages.js';
 import { normalizeRoutes, routesInputError, routesShape } from './routes.js';
@@ -103,8 +104,10 @@ export function editableValues(version: Pick<VersionView, 'nodes'>, approvalType
 }
 function nodeValue(node: ApprovalNode, field: string) {
   if (field === 'routes') return structuredClone(node.routes ?? []);
-  if (field === 'emptyApproverSources') return structuredClone(node.emptyApproverSources ?? []);
-  if (field === 'approver' || field === 'approvers') return structuredClone(node[field as keyof ApprovalNode]);
+  // S7b：本位置自动变量回显为指定人员（auto-variables.ts），未编辑也按回显值提交
+  if (field === 'emptyApproverSources') return structuredClone(echoSources(node.emptyApproverSources ?? []));
+  if (field === 'approvers' && 'approvers' in node) return structuredClone(echoSources(node.approvers));
+  if (field === 'approver' && 'approver' in node) return structuredClone(echoSource(node.approver));
   if (field === 'fallbackUserIds') return Array.isArray(node.fallbackUserIds) ? [...node.fallbackUserIds] : [];
   if (field.startsWith('actions.')) return node.actions?.[field.slice(8) as keyof ApprovalNode['actions']];
   return node[field as keyof ApprovalNode];
@@ -166,7 +169,10 @@ export function buildDraft(version: VersionView, edited: Values, approvalType?: 
       const actions = { ...node.actions };
       for (const field of nodeFields(node, approvalType)) {
         const key = nodeField(node.key, field);
-        if (!(key in edited)) continue;
+        if (!(key in edited)) {
+          if (sourceFields(node).includes(field)) values[field] = nodeValue(node, field);
+          continue;
+        }
         if (field.startsWith('actions.')) Object.assign(actions, { [field.slice(8)]: edited[key] });
         else if (field === 'routes') values.routes = normalizeRoutes(edited[key] as ExitRoute[]);
         else values[field] = field === 'name' ? (edited[key] as string).trim() : edited[key];

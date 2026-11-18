@@ -29,6 +29,7 @@ import {
   type ProcessSummary,
 } from './model.js';
 import { m } from './messages.js';
+import { p } from './publish-messages.js';
 import { useRead } from './useRead.js';
 import { Conditions, OtherNodeProperties } from './ReadConfiguration.js';
 import { FallbackHandlers } from './FallbackHandlers.js';
@@ -40,6 +41,8 @@ import { r } from './route-messages.js';
 import { routesSummary } from './routes.js';
 import { RoutesEditor } from './RoutesEditor.js';
 import { useDesignerWrite } from './write.js';
+import { wireDraft } from './auto-variables.js';
+import { PublishButton, PublishStatus, usePublish, type MissingSlot } from './PublishAction.js';
 import './designer.css';
 
 // 模块切换不能丢失未知命令；内核按租户 + 身份 + 稳定流程 ID 隔离恢复槽（DEC-464、F-142）。
@@ -302,7 +305,9 @@ function useProcessCommand(process: ProcessView) {
     completeDefinition(version) &&
     version.status === process.latestVersion.status;
   const nodesVisible = !!permission?.viewableFields.includes('nodes');
-  return { api, command, submission, full, version, writable, action, nodesVisible };
+  // F-326 S7b：发布只对草稿开放，按钮权限沿用 publish 详情按钮（与保存同口径的节点字段与菜单判断）
+  const publishable = writable && action === 'draft' && editAccess(permission, admin, 'publish');
+  return { api, command, submission, full, version, writable, action, nodesVisible, publishable };
 }
 function nodeLabels(nodes: readonly ApprovalNode[]) {
   return Object.fromEntries(
@@ -334,7 +339,7 @@ function useSave(process: ProcessView, context: ProcessCommand, form: FormInstan
     let draft: ProcessDefinition | undefined;
     try {
       if (action === 'draft') draft = buildDraft(version, edited, full.approvalType);
-      await write(process.id, action, { ...request, body: draft ?? {} });
+      await write(process.id, action, { ...request, body: draft ? wireDraft(draft) : {} });
       return { id: process.id };
     } catch (error) {
       if (action !== 'draft') throw error;
@@ -368,9 +373,18 @@ function useSave(process: ProcessView, context: ProcessCommand, form: FormInstan
 }
 function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(message: string): void }) {
   const context = useProcessCommand(process);
-  const { submission, full, version, writable, action, nodesVisible } = context;
+  const { submission, full, version, writable, action, nodesVisible, publishable } = context;
   const [form] = Form.useForm();
   const save = useSave(process, context, form, onSaved);
+  const [missing, setMissing] = useState<MissingSlot[]>([]);
+  const publish = usePublish(
+    process,
+    (slots) => {
+      setMissing(slots);
+      if (slots[0]) save.setSelected(slots[0].nodeKey);
+    },
+    () => onSaved(p.done),
+  );
   useDraftRefill(submission, save.editable, form);
   const fields = APPROVAL_TYPES[full.approvalType as keyof typeof APPROVAL_TYPES]?.conditionFields ?? [];
   const format = (field: string, value: unknown) =>
@@ -389,6 +403,7 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
       {submission.state?.readError instanceof Error && submission.state.readError.message === m.versionChanged && (
         <Alert type="warning" message={m.versionChanged} />
       )}
+      {publishable && <PublishStatus publish={publish} />}
       {!!save.localError && !submission.state?.error && (
         <Alert type="error" message={rejectionMessage(save.localError)} />
       )}
@@ -400,6 +415,7 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
             selected={save.selected}
             onSelect={save.setSelected}
             located={save.located}
+            missing={missing}
           />
         </FormLock>
       </Form>
@@ -414,6 +430,9 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
           >
             {action === 'draft' ? m.save : m.newVersion}
           </Button>
+          {publishable && (
+            <PublishButton publish={publish} form={form} disabled={submission.busy || submission.locked} />
+          )}
         </div>
       )}
     </>
@@ -441,10 +460,12 @@ function NodeNav({
   nodes,
   active,
   onSelect,
+  missing,
 }: {
   nodes: readonly ApprovalNode[];
   active: string;
   onSelect(key: string): void;
+  missing?: readonly MissingSlot[];
 }) {
   return (
     <nav className="flow-nodes" aria-label={m.nodes}>
@@ -454,6 +475,8 @@ function NodeNav({
           key={node.key}
           type={active === node.key ? 'primary' : 'text'}
           aria-current={active === node.key ? 'true' : undefined}
+          danger={missing?.some((slot) => slot.nodeKey === node.key)}
+          data-node-missing={missing?.some((slot) => slot.nodeKey === node.key) ? 'true' : undefined}
           onClick={() => onSelect(node.key)}
         >
           <span className="flow-node-number">{index + 1}</span>
@@ -463,12 +486,17 @@ function NodeNav({
     </nav>
   );
 }
+const missingText = (missing: readonly MissingSlot[] | undefined, node: ApprovalNode, slot: string) => {
+  const hit = missing?.find((item) => item.nodeKey === node.key && item.slot === slot);
+  return hit && p.missing(hit.nodeName, hit.slot);
+};
 function NodeProperties({
   nodes,
   approvalType,
   selected,
   onSelect,
   located,
+  missing,
 }: {
   nodes: readonly ApprovalNode[] | undefined;
   approvalType: string;
@@ -476,6 +504,8 @@ function NodeProperties({
   selected?: string;
   onSelect?(key: string): void;
   located?: Located;
+  /** 发布被“指定人员未选择”拒时标出的位置（F-326 S7b）。 */
+  missing?: readonly MissingSlot[];
 }) {
   const [own, setOwn] = useState<string>();
   if (!nodes) return <Alert type="info" message={m.missingNodes} />;
@@ -484,7 +514,7 @@ function NodeProperties({
   const active = nodes.find((node) => node.key === current) ?? nodes[0]!;
   return (
     <div className="flow-node-layout">
-      <NodeNav nodes={nodes} active={active.key} onSelect={onSelect ?? setOwn} />
+      <NodeNav nodes={nodes} active={active.key} onSelect={onSelect ?? setOwn} missing={missing} />
       <div className="flow-properties">
         <h3>{m.properties}</h3>
         <Descriptions
@@ -504,8 +534,13 @@ function NodeProperties({
         {/* 全部节点字段保持挂载，切换节点不丢未提交输入；只隐藏非当前节点。 */}
         {nodes.map((node) => (
           <div key={node.key} hidden={node.key !== active.key}>
-            <ApproverSources node={node} approvalType={approvalType} />
-            <ApproverSources node={node} approvalType={approvalType} empty />
+            <ApproverSources node={node} approvalType={approvalType} missing={missingText(missing, node, 'approver')} />
+            <ApproverSources
+              node={node}
+              approvalType={approvalType}
+              empty
+              missing={missingText(missing, node, 'empty_approver')}
+            />
             <FallbackHandlers node={node} approvalType={approvalType} />
             <RoutesEditor node={node} nodes={nodes} approvalType={approvalType} located={located} />
             {attributes.map((field) =>
