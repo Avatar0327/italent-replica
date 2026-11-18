@@ -260,7 +260,10 @@ describe('AC-EST-20 重叠调入超编：严格拒绝 / 非严格确认', () => 
       const unconfirmed = await remove();
       expect(unconfirmed.status, await unconfirmed.clone().text()).toBe(409);
       expect(await unconfirmed.json()).toMatchObject(CONFIRM);
-      const confirmed = await remove({ confirmed: true });
+      // DELETE 历来忽略随带字段（reason 等）：只校验 confirmed 的类型，不得把其余键判 400（AC-EXIT-cancel-round2）
+      const typed = await remove({ reason: '误录入', confirmed: 'true' });
+      expect(typed.status, await typed.clone().text()).toBe(400);
+      const confirmed = await remove({ reason: '误录入', confirmed: true });
       expect(confirmed.status, await confirmed.clone().text()).toBe(200);
     });
   });

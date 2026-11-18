@@ -721,8 +721,8 @@ function transitionConfirmation(action: string, ctx: EmploymentContext, confirme
   return action === 'submit' || action === 'delete' ? withEstablishmentConfirmation(ctx, confirmed) : ctx;
 }
 
-/** 提交 / 删除的可选控制键：离职提交的在途调动确认令牌（§8）与非严格控编超编确认（F-026）；其余参数一律 400。 */
-const transitionControlSchema = z.strictObject({
+/** 提交的可选控制键：离职提交的在途调动确认令牌（§8）与非严格控编超编确认（F-026）；其余参数一律 400。 */
+const submitControlSchema = z.strictObject({
   pendingTransferAck: z.string().max(200).optional(),
   confirmed: z.boolean().optional(),
 });
@@ -731,16 +731,23 @@ async function transitionControls(
   action: string,
 ): Promise<{ ack: string | undefined; confirmed: boolean | undefined }> {
   const none = { ack: undefined, confirmed: undefined };
-  if (action !== 'submit' && action !== 'delete') return none;
-  // DELETE 历来不要求请求体：只在带了 JSON 内容时解析，空体照旧
-  if (action === 'delete' ? !(await hasBody(c)) : !c.req.header('content-type')) return none;
-  const body = parse(transitionControlSchema, await jsonBody(c));
-  if (action === 'delete' && body.pendingTransferAck !== undefined)
-    throw new AppError('VALIDATION_FAILED', '删除不接受在途调动确认令牌');
+  if (action === 'delete') return { ack: undefined, confirmed: await deleteConfirmed(c) };
+  if (action !== 'submit' || !c.req.header('content-type')) return none;
+  const body = parse(submitControlSchema, await jsonBody(c));
   return { ack: body.pendingTransferAck, confirmed: body.confirmed };
 }
-async function hasBody(c: Context<TenantEnv>): Promise<boolean> {
-  return !!c.req.header('content-type') && (await c.req.raw.clone().text()).trim() !== '';
+/**
+ * DELETE 历来忽略请求体（常带 reason 等随带字段，AC-EXIT-cancel-round2），不得收紧成严格校验：
+ * 只宽松读取 confirmed，其余键照旧忽略；confirmed 给了却不是布尔值才 400（F-026）。
+ */
+async function deleteConfirmed(c: Context<TenantEnv>): Promise<boolean | undefined> {
+  if (!c.req.header('content-type')) return undefined;
+  const body: unknown = await c.req.raw
+    .clone()
+    .json()
+    .catch(() => undefined);
+  if (body === null || typeof body !== 'object' || Array.isArray(body) || !('confirmed' in body)) return undefined;
+  return splitConfirmed(body).confirmed;
 }
 
 /** 创建请求体里的非严格控编超编确认标记，与任职字段分开（F-026）：不进字段校验与字段权限。 */
