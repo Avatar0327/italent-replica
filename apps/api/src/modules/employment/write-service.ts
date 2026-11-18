@@ -153,13 +153,7 @@ export async function createEmploymentBusiness(
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
     ? undefined
     : await selectEmploymentCycle(tx, ctx, employee.id, normalized);
-  const inherited = await prepareInheritance(tx, ctx, {
-    ...normalized,
-    employeeId: employee.id,
-    staffId: selected?.cycle.id,
-    retainedEmploymentForm: options.retainedEmploymentForm,
-  });
-  const prepared = options.positionManagerDerivation ? withPositionManagerDerivation(inherited) : inherited;
+  const prepared = await prepareCreatedInheritance(tx, ctx, employee.id, normalized, selected?.cycle.id, options);
   const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
     staffId: selected?.cycle.id ?? '',
     predecessor: selected?.predecessor ?? null,
@@ -213,6 +207,24 @@ export async function createEmploymentBusiness(
   const created = { ...payloadAudit(payload), ...pendingAudit };
   await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, created);
   return requireSavedBusiness(tx, ctx, id);
+}
+
+/** 新建继承与可信派生统一组装；待入职重建的基准只从服务端 options 传入（F-363）。 */
+async function prepareCreatedInheritance(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: NormalizedEmploymentInput,
+  staffId: string | undefined,
+  options: CreateEmploymentOptions,
+) {
+  const inherited = await prepareInheritance(tx, ctx, {
+    ...input,
+    employeeId,
+    staffId,
+    retainedEmploymentForm: options.retainedEmploymentForm,
+  });
+  return options.positionManagerDerivation ? withPositionManagerDerivation(inherited) : inherited;
 }
 
 /** 导入入职段落地时把有终点带给部门可用性校验（设计 §4.3）；普通入职原样透传。 */
