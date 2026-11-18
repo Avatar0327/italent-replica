@@ -33,7 +33,7 @@ describe('DEC-909 矩阵单元格', () => {
     expect(saved.status, await saved.clone().text()).toBe(200);
   });
 
-  it('① 仅矩阵权限：矩阵场景 200、设计器 403；无权限账号 403', async () => {
+  it('① DEC-927：仅矩阵权限在矩阵、设计器两场景均 200；无权限账号均 403', async () => {
     const w = await s4World(database().db, 's7d-cell-access');
     const user = await w.member('合成矩阵管理员');
     const api = tenantApi(w.db, {
@@ -48,7 +48,10 @@ describe('DEC-909 矩阵单元格', () => {
     for (const path of paths) {
       const matrixPath = `${path}${path.includes('?') ? '&' : '?'}context=matrix`;
       expect((await api.request('GET', matrixPath, w.as(user))).status).toBe(200);
-      expect((await api.request('GET', path, w.as(user))).status).toBe(403);
+      expect((await api.request('GET', path, w.as(user))).status).toBe(200);
+      const designerPath = `${path}${path.includes('?') ? '&' : '?'}context=designer`;
+      expect((await api.request('GET', designerPath, w.as(user))).status).toBe(200);
+      expect((await api.request('GET', designerPath, w.as(w.subject.userId))).status).toBe(403);
       expect((await api.request('GET', path, w.as(w.subject.userId))).status).toBe(403);
       expect((await api.request('GET', matrixPath, w.as(w.subject.userId))).status).toBe(403);
     }
