@@ -11,7 +11,7 @@ let root: Root;
 let page: AnswerPage;
 let api: PortalClient;
 let requests: { path: string; method: string; body: unknown; command?: { id: string; revision?: number } }[];
-let failure: 'reject' | 'unknown' | 'conflict' | 'stale' | undefined;
+let failure: 'reject' | 'unknown' | 'lost' | 'conflict' | 'stale' | undefined;
 const path = '/tasks/relation/questionnaires/questionnaire';
 const text = () => host.textContent ?? '';
 const settle = async () => {
@@ -86,11 +86,14 @@ beforeEach(() => {
         };
       }
       if (failure === 'unknown') throw new ApiError(503, 'RESULT_UNKNOWN', 'unknown', '结果待确认');
+      // lost：服务端已落库、响应在途丢失（网络中断），回执不可得。
+      if (failure === 'lost') throw new ApiError(0, 'NETWORK_ERROR', 'unknown', '结果待确认');
       return structuredClone(page.sheet);
     }) as PortalClient['request'],
   };
 });
 afterEach(async () => {
+  vi.useRealTimers();
   await act(async () => root.unmount());
   host.remove();
   vi.unstubAllGlobals();
@@ -180,3 +183,107 @@ it('AC-360-F397 从要求说明的选项切换后不提交不可见的旧备注'
   await click('立即保存');
   expect(requests[0]?.body).toMatchObject({ answers: [{ itemId: 'item', optionId: 'second', remark: '' }] });
 });
+
+const tick = async (ms: number) => {
+  await act(async () => {
+    vi.advanceTimersByTime(ms);
+  });
+  await settle();
+};
+const twoItems = () =>
+  page.questionnaire.items.push({
+    id: 'second-item',
+    text: '合成题目二',
+    options: [{ id: 'second-option', label: '合成选项二', remarkRequired: false }],
+  });
+const choose = async (index: number) => {
+  await act(async () => host.querySelectorAll<HTMLInputElement>('input[type="radio"]')[index]!.click());
+  await settle();
+};
+const checked = () => [...host.querySelectorAll<HTMLInputElement>('input[type="radio"]')].map((r) => r.checked);
+
+// 审查 F-397 第 1 轮 P2-1：规格 E3-R22 作答页每 10 秒自动保存、支持断点续答。
+it('AC-360-F397 E3-R22 每 10 秒自动保存草稿，返回列表再打开恢复作答', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  await render();
+  await answer();
+  await tick(9_000);
+  expect(requests).toHaveLength(0);
+  await tick(1_000);
+  expect(requests.map((r) => [r.method, r.path, r.command?.revision])).toEqual([['PUT', path, 0]]);
+  expect(requests[0]?.body).toMatchObject({ answers: [{ itemId: 'item', optionId: 'option' }] });
+  await tick(30_000);
+  expect(requests).toHaveLength(1);
+  await click('返回评价列表');
+  await render();
+  expect(checked()).toEqual([true]);
+});
+
+it('AC-360-F397 E3-R22 未到自动保存就返回列表时先保存草稿，不丢答案', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  await render();
+  await answer();
+  const leave = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(leave);
+  expect(leave.defaultPrevented).toBe(true);
+  await click('返回评价列表');
+  expect(requests.map((r) => [r.method, r.path])).toEqual([['PUT', path]]);
+  await render();
+  expect(checked()).toEqual([true]);
+});
+
+it('AC-360-F397 E3-R22 自动保存结果未知期间锁定，不另起保存命令', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  failure = 'unknown';
+  await render();
+  await answer();
+  await tick(10_000);
+  expect(text()).toContain('结果待确认');
+  await tick(60_000);
+  await click('返回评价列表');
+  await render();
+  await tick(60_000);
+  expect(text()).toContain('结果待确认');
+  expect(requests).toHaveLength(1);
+});
+
+// 审查 F-397 第 1 轮 P2-2：提交被拒 / 冲突后改走保存，结果未知的重放必须固定为原保存命令。
+for (const refused of ['reject', 'conflict'] as const)
+  it(`AC-360-F397 提交${refused === 'reject' ? '被拒' : '冲突'}后补答保存遇响应丢失，回查后按原保存命令重放`, async () => {
+    twoItems();
+    await render();
+    await choose(0);
+    await click('立即保存');
+    expect(text()).toContain('保存成功');
+    failure = refused;
+    await click('提交作答');
+    if (refused === 'conflict') {
+      await click('重读最新版本');
+      await click('已核对差异，继续编辑');
+    } else expect(text()).toContain('请补充说明');
+    failure = 'lost';
+    await choose(1);
+    await click('立即保存');
+    expect(text()).toContain('结果待确认');
+    failure = undefined;
+    await click('回查原单');
+    await click('按原命令确认结果');
+    const [saved, submitted, lost, replayed] = requests;
+    expect([saved, submitted, lost].map((r) => [r?.method, r?.path])).toEqual([
+      ['PUT', path],
+      ['POST', `${path}/submit`],
+      ['PUT', path],
+    ]);
+    expect(requests).toHaveLength(4);
+    expect([replayed?.method, replayed?.path]).toEqual([lost?.method, lost?.path]);
+    expect(replayed?.command).toEqual(lost?.command);
+    expect(replayed?.command?.revision).toBe(refused === 'conflict' ? 5 : 1);
+    expect(replayed?.body).toEqual(lost?.body);
+    expect(lost?.body).toMatchObject({
+      answers: [
+        { itemId: 'item', optionId: 'option' },
+        { itemId: 'second-item', optionId: 'second-option' },
+      ],
+    });
+    expect(text()).toContain('保存成功');
+  });
