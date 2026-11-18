@@ -1,6 +1,6 @@
 import { Alert, Button, Checkbox, Descriptions, Form, Modal, Space, message } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RefSelect } from '../contracts/references.js';
+import { NameOf, RefSelect } from '../contracts/references.js';
 import { newCommand, rejectionMessage } from '../foundation/client.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
@@ -227,7 +227,11 @@ function RetireEditor(props: EditorProps) {
         </Space>
       }
     >
-      <CommandStatus submission={cmd.form} labels={m.fields} />
+      <CommandStatus
+        submission={cmd.form}
+        labels={m.fields}
+        renderers={{ handoverEmployeeId: (id) => <NameOf path={people} id={id} /> }}
+      />
       {!!error && !cmd.form.state?.error && <Alert type="error" showIcon message={rejectionMessage(error)} />}
       {!!draft && <Alert type="info" message={m.draftCreated} />}
       <FormLock locked={locked || !!draft}>
