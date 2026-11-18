@@ -8,6 +8,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createApp } from '../../apps/api/src/app.js';
 import { createDevIdentityResolver, devIdentityHeaders } from '../../apps/api/src/identity.js';
 import { seedTenantWithMember } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const base = '/api/tenant/employment/employment-types';
@@ -24,7 +25,7 @@ beforeAll(async () => {
   member = await seedTenantWithMember(db, 'f469');
   other = await seedTenantWithMember(db, 'f469-other');
   const meta = () => ({ actorUserId: null, commandId: randomUUID() });
-  const user = await createUser(db, { email: `f469-${randomUUID()}@example.com`, displayName: '合成成员' }, meta());
+  const user = await createUser(db, { email: `f469-${uniqueSuffix()}@example.com`, displayName: '合成成员' }, meta());
   await grantMembership(db, { tenantId: member.tenant.id, userId: user.id, expectedRevision: 0 }, meta());
   peer = user.id;
   const app = createApp({
@@ -126,6 +127,7 @@ it('AC-EMP-F469-03 查不到和非本人、跨租户不确认；撤销删除数�
   const path = resultPath(row.id, key);
   for (const as of [other, { ...member, user: { ...member.user, id: peer } }])
     expect((await json(await request('GET', path, randomUUID(), 1, undefined, as))).status).toBe('unknown');
+  expect((await request('GET', path, randomUUID(), 1, undefined, { ...member, user: other.user })).status).toBe(403);
   const before = await snapshot();
   for (const action of ['object.delete', 'button']) {
     deny = action;
@@ -141,4 +143,15 @@ it('AC-EMP-F469-04 参数非法拒绝，缺失版本不能猜测', async () => {
   const id = randomUUID();
   for (const path of [resultPath('bad', 'key'), `/${id}/delete-result/key`, resultPath(id, 'key', -1)])
     expect((await request('GET', path)).status).toBe(400);
+});
+
+it('AC-EMP-F469-05 同键成功的其他动作不当删除；未来版本失败不能据此解锁', async () => {
+  const row = await create();
+  expect((await json(await request('GET', resultPath(row.id, randomUUID())))).status).toBe('unknown');
+  const key = randomUUID();
+  expect((await request('POST', `/${row.id}/disable`, key)).status).toBe(200);
+  expect((await json(await request('GET', resultPath(row.id, key)))).status).toBe('unknown');
+  const future = randomUUID();
+  expect((await request('DELETE', `/${row.id}`, future, 99)).status).toBe(409);
+  expect((await json(await request('GET', resultPath(row.id, future, 99)))).status).toBe('unknown');
 });

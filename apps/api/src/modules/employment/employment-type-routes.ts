@@ -6,6 +6,8 @@
 import { type Tx, withTenant } from '@italent/db';
 import { buttonResource } from '@italent/domain';
 import type { Context, Hono } from 'hono';
+import { AppError } from '../../errors.js';
+import { readEmploymentTypeDeleteResult } from './employment-type-delete-result.js';
 import { requirePermission } from '../../authorization.js';
 import type { CommandGuard, CommandResult } from '../../commands.js';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -123,6 +125,20 @@ export function registerEmploymentTypeRoutes(router: Hono<TenantEnv>, deps: Tena
       status: 200,
       body: await setEmploymentTypeEnabled(tx, command, id, true),
     }));
+  });
+  router.get('/employment-types/:id/delete-result/:commandId', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.delete', 0, undefined, EMPLOYMENT_TYPE_OBJECT);
+    const commandId = c.req.param('commandId');
+    const originalRevision = c.req.query('revision') ?? '';
+    const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      await requireTypeWrite(tx, deps, ctx, { operation: 'delete', button: 'delete', payload: {} });
+      if (!/^[A-Za-z0-9:_-]{1,100}$/.test(commandId) || !/^\d{1,9}$/.test(originalRevision))
+        throw new AppError('VALIDATION_FAILED', '删除结果查询必须携带原命令 ID 和版本');
+      return readEmploymentTypeDeleteResult(tx, ctx, id, commandId, Number(originalRevision));
+    });
+    c.header('Cache-Control', 'private, no-store');
+    return c.json(result);
   });
   router.delete('/employment-types/:id', async (c) => {
     const id = uuidParam(c);

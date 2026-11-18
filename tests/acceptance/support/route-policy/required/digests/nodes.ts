@@ -2004,6 +2004,10 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/employment-forms.ts#requireEnabledEmploymentForms': ['57b5285fb5a7', 'ea17867c928f'],
   'apps/api/src/modules/employment/employment-forms.ts#saveEmploymentForm': ['0ceb05e15330', '39f443147190'],
   'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm': ['f9b0efbb28e2', 'dd866026cf90'],
+  'apps/api/src/modules/employment/employment-type-delete-result.ts#readEmploymentTypeDeleteResult': [
+    '09ad5e4efb65',
+    '995e6f04906e',
+  ],
   'apps/api/src/modules/employment/employment-type-routes.ts#requireTypeWrite': ['3636823c809a', 'b61fb54a3077'],
   'apps/api/src/modules/employment/employment-type-routes.ts#runTypeWrite': ['83634bee5545', '63b83ba11786'],
   'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT': ['7c1aebe67637', '962a8dd9a03e'],
@@ -2015,6 +2019,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/employment-types.ts#deleteEmploymentType': ['8946b1c27fb8', '7157ee2800e3'],
   'apps/api/src/modules/employment/employment-types.ts#employmentTypeName': ['84d4d560292a', '8e8b5e8a0e1c'],
   'apps/api/src/modules/employment/employment-types.ts#employmentTypeNames': ['0fe4ad598372', '16bebf042660'],
+  'apps/api/src/modules/employment/employment-types.ts#findEmploymentType': ['3dc36fee2419', '8b91b4aec47a'],
   'apps/api/src/modules/employment/employment-types.ts#inputSchema': ['111ee669c409', 'c55695164440'],
   'apps/api/src/modules/employment/employment-types.ts#listEmploymentTypes': ['18dad8c00fe1', '035d07fbe57c'],
   'apps/api/src/modules/employment/employment-types.ts#live': ['44fbd2ff2a1d', 'f544e502d3bb'],

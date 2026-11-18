@@ -495,6 +495,26 @@
       "obj:TenantBase.EmploymentType:view"
     ]
   },
+  "GET /api/tenant/employment/employment-types/:id/delete-result/:commandId": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "74eba753ac15",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentType#delete@detail",
+      "obj:TenantBase.EmploymentType:delete"
+    ]
+  },
   "GET /api/tenant/employment/employment-types/options": {
     "all": {
       "status": 200

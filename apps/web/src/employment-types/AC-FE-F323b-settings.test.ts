@@ -291,4 +291,50 @@ describe('AC-FE-F455 人员类别审查后补', () => {
     const holder = typeStore.holder([slot]);
     expect(holder && typeStore.get(holder), '删除确认后释放原命令').toBeUndefined();
   });
+
+  it('F-469 查询未知 / 无权 / 错命令时保持锁定；再次查到权威结果才释放', async () => {
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    let reply: unknown = { status: 'unknown' };
+    let deleted = false;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (init?.method === 'DELETE') {
+        posts.push({ url, method: 'DELETE', body: {}, headers: new Headers(init.headers) });
+        deleted = true;
+        throw new TypeError('合成断网');
+      }
+      if (url.includes('/delete-result/')) {
+        if (typeof reply === 'number') return Response.json({}, { status: reply });
+        return Response.json({
+          commandId: posts[0]!.headers.get('idempotency-key'),
+          id: enabledRow.id,
+          revision: 1,
+          ...(reply as object),
+        });
+      }
+      if (deleted && url.includes(`${API}?view=`)) return Response.json({ items: [] });
+      return original(input, init);
+    });
+    await render();
+    await click('合成类别甲');
+    await click('删除', document.querySelector('.detail-drawer')!);
+    const confirm = [...document.querySelectorAll('.ant-popconfirm button')].at(-1) as HTMLButtonElement;
+    await act(async () => confirm.click());
+    await settle();
+    for (reply of [404, 403, { status: 'unknown' }, { status: 'deleted', commandId: 'wrong' }]) {
+      await click('回查原单');
+      expect(text()).toContain('结果待确认');
+      expect(document.querySelector('.detail-drawer')).not.toBeNull();
+      expect(
+        [...document.querySelectorAll<HTMLButtonElement>('.detail-drawer button')].find(
+          (node) => node.textContent?.replace(/\s/g, '') === '删除',
+        )?.disabled,
+      ).toBe(true);
+      expect(posts).toHaveLength(1);
+    }
+    reply = { status: 'deleted' };
+    await click('回查原单');
+    expect(document.querySelector('.detail-drawer')).toBeNull();
+    expect(posts).toHaveLength(1);
+  });
 });
