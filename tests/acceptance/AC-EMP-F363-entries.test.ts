@@ -45,15 +45,24 @@ for (const action of ['postpone', 'edit', 'complete'] as const) {
 }
 
 it('AC-EMP-F363-24：延后继承在落地时沿用停用前驱，显式改选仍拒绝', async () => {
+  const configure = async (s: Awaited<ReturnType<typeof employmentSession>>) => {
+    const response = await s.request('PUT', '/transfers/settings', {
+      ifMatch: 0,
+      body: { unrestrictTargetDepartment: true, autoPopulate: false },
+    });
+    expect(response.status).toBe(200);
+  };
   const w = await world('deferred');
+  await configure(w.s);
   expect((await disableForm(w.s.request)).status).toBe(200);
   const response = await w.s.request('POST', `/employees/${w.employee.id}/businesses`, {
     ifMatch: w.hire.employeeRevision,
-    body: { kind: 'transfer', mode: 'direct', formId: 'ungrouped-custom', effectiveDate: '2026-09-20' },
+    body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-20' },
   });
   expect(response.status, await response.clone().text()).toBe(201);
   expect(await response.json()).toMatchObject({ record: { fields: { employmentForm: 'regular' } } });
   const other = await world('deferred-reselect', 'consultant');
+  await configure(other.s);
   expect((await disableForm(other.s.request)).status).toBe(200);
   await formRefused(
     await other.s.request('POST', `/employees/${other.employee.id}/businesses`, {
@@ -61,7 +70,6 @@ it('AC-EMP-F363-24：延后继承在落地时沿用停用前驱，显式改选�
       body: {
         kind: 'transfer',
         mode: 'direct',
-        formId: 'ungrouped-custom',
         effectiveDate: '2026-09-20',
         fields: { employmentForm: 'regular' },
       },
@@ -85,6 +93,27 @@ async function world(label: string, code = 'regular') {
     employee.revision,
   );
   return { db, s, org, employee, hire };
+}
+
+for (const preview of [false, true]) {
+  it(`AC-EMP-F363-25：兼职${preview ? '预览' : '直接新增'}无继承基准，主职同值也不能新选停用项`, async () => {
+    const w = await world(`new-side-${preview}`);
+    expect((await disableForm(w.s.request)).status).toBe(200);
+    const path = `/employees/${w.employee.id}/part-times${preview ? '/preview' : ''}`;
+    const body = {
+      partTimeType: 'part_time',
+      startDate: '2026-09-10',
+      fields: { departmentId: w.org.id, employmentForm: 'regular' },
+    };
+    const before = await stateSnapshot(w.db, w.s.tenant.id, w.employee.id);
+    await formRefused(await w.s.request('POST', path, { ifMatch: w.hire.employeeRevision, body }));
+    expect(await stateSnapshot(w.db, w.s.tenant.id, w.employee.id)).toEqual(before);
+    const cleared = await w.s.request('POST', path, {
+      ifMatch: w.hire.employeeRevision,
+      body: { ...body, fields: { ...body.fields, employmentForm: null } },
+    });
+    expect(cleared.status, await cleared.clone().text()).toBe(preview ? 200 : 201);
+  });
 }
 
 const entries = [
@@ -219,7 +248,12 @@ it('AC-EMP-F363-22：兼职新增申请、草稿编辑、提交、审批编辑�
     }),
   );
   expect(await w.writes()).toEqual(beforeEdit);
-  await w.decide(kept.id, w.approvers.pHrbp, 'edit', { requestRemark: '审批保留原引用' });
+  const keptView = await w.instance(kept.id);
+  const keptTask = w.pending(keptView)[0]!;
+  const edit = await w.taskAction(keptTask.assigneeUserId, keptTask.id, 'edit', keptView.revision, {
+    fields: { requestRemark: '审批保留原引用' },
+  });
+  expect(edit.status, await edit.clone().text()).toBe(200);
   await w.approveAll(kept.id);
   const landed = await w.ok(await api.one(kept.id));
   expect(landed).toMatchObject({ status: 'effective', fields: { employmentForm: 'regular' } });
