@@ -30,6 +30,7 @@ export const portalMessages = {
   suggestion: '综合建议',
   remark: '补充说明',
   saveFirst: '修改后请先保存，再提交作答',
+  unsavedInput: '有尚未保存的作答内容，请先确认保存结果并保存后再返回',
   pending: '未评价',
   progress: '进行中',
   done: '已评价',

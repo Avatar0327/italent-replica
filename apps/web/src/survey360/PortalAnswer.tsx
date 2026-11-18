@@ -15,18 +15,18 @@ export function PortalAnswer({ api, path, initial, back }: PortalAnswerProps) {
     page,
     draft,
     notice,
+    warning,
     reminder,
     command,
     readonly,
     dirty,
     answers,
     setAnswer,
+    setSuggestion,
     read,
     run,
     leave,
     replay,
-    setNotice,
-    setDraft,
   } = usePortalAnswer(api, path, initial);
   return (
     <section className="survey-panel">
@@ -59,13 +59,11 @@ export function PortalAnswer({ api, path, initial, back }: PortalAnswerProps) {
           maxLength={5000}
           disabled={readonly}
           value={String(draft.suggestion ?? '')}
-          onChange={(event) => {
-            setNotice('');
-            setDraft((old) => ({ ...old, suggestion: event.target.value }));
-          }}
+          onChange={(event) => setSuggestion(event.target.value)}
         />
       </label>
       {dirty && !readonly && <p>{m.saveFirst}</p>}
+      {warning && <Alert type="warning" message={warning} />}
       {notice && <Alert type="success" message={notice} />}
       {reminder && <Alert type="warning" message={m.reminder} />}
       <Space className="survey-portal-actions">
