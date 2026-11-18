@@ -6,7 +6,6 @@ export const s = {
   add: '添加来源',
   remove: '移除来源',
   choose: '请选择',
-  unsupported: '暂不支持',
   fixedGroup: '固定取值',
   pick: (type: string) => `指定${type}`,
   pickPlaceholder: '搜索并选择',
@@ -14,6 +13,11 @@ export const s = {
   disabledObject: '已停用',
   objectUnavailable: '引用对象未读取',
   candidatesMore: '仅显示前 50 项，请输入名称缩小范围',
+  matrix: '矩阵',
+  roleColumn: '角色列',
+  matrixMore: '矩阵与角色列超过 2000 项，仅显示前 2000 项',
+  multipleVariable: '多人变量只能用于会签或或签节点',
+  multipleColumn: '允许多人的角色列只能用于会签或或签节点',
   modes: {
     self: '所选组织本级',
     descendants: '包含下级组织',
@@ -56,5 +60,11 @@ export const s = {
     handover_work_owner: '离职交接 → 工作交接人',
     handover_hr_admin: '离职交接 → 人事管理员',
     handover_employee: '离职交接 → 员工本人',
+    // F-478 S3 新来源（设计 §5）：返聘后两项只对退休类型开放，可选性仍由 sourceOptions 按类型判定
+    subject_employee: '主体员工本人',
+    // 与身份候选接口的命名来源同名（designer-sources.ts namedRows）
+    system_admin: '系统管理员',
+    rehire_direct_manager: '返聘后直线经理',
+    rehire_department_hrbp: '返聘后 HRBP',
   } as Record<string, string>,
 };
