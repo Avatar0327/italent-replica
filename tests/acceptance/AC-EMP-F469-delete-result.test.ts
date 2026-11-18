@@ -43,7 +43,11 @@ beforeAll(async () => {
       headers,
       ...(chunks.length ? { body: Buffer.concat(chunks) } : {}),
     });
-    response.writeHead(result.status, Object.fromEntries(result.headers.entries()));
+    const responseHeaders: Record<string, string> = {};
+    result.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+    response.writeHead(result.status, responseHeaders);
     response.end(Buffer.from(await result.arrayBuffer()));
   });
   server.listen(0, '127.0.0.1');
