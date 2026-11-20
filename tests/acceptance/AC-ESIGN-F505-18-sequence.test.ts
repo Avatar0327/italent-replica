@@ -30,7 +30,7 @@ async function sequenceWorld() {
     postId: s.target.id,
     sequenceId: s.oldSequence.id,
   };
-  const response = await addHire(s.world, employee, {
+  const response = await addHire(s.world as unknown as Parameters<typeof addHire>[0], employee, {
     kind: 'hire',
     mode: 'direct',
     effectiveDate: '2026-10-20',
