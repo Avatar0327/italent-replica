@@ -44,46 +44,50 @@ export const mapPreferences = {
 
 export const test = base.extend({
   page: async ({ page }, use) => {
-    await page.route('**/__demo/personas', (route) =>
-      route.fulfill({
-        json: {
-          tenantId: tenant,
-          current: route.request().headers().cookie?.includes(user) ? user : null,
-          personas: [{ userId: user, name: '合成演示用户', role: '演示身份', entry: '/staff' }],
-        },
-      }),
-    );
-    await page.route('**/api/tenant/**', (route) => {
-      const path = new URL(route.request().url()).pathname;
-      let body: unknown = { items: [], total: 0, hasDataPermission: true };
-      if (path.endsWith('/permission/me/snapshot')) body = snapshotFixture;
-      if (path.includes('/permission/me/objects/'))
-        body = {
-          objectCode: decodeURIComponent(path.split('/').at(-1)!),
-          dataOperations: { read: true },
-          viewableFields: ['name'],
-          editableFields: [],
-          buttons: [],
-        };
-      if (path.endsWith('/permission/admin-menus'))
-        body = {
-          items: [{ code: 'users.all', path: '用户管理/全部用户', implemented: true, editable: false }],
-        };
-      if (path.endsWith('/self-service/profile'))
-        body = {
-          employee: { id: employee, name: '合成员工', code: 'DEMO-001' },
-          timezone: 'Asia/Shanghai',
-          today: '2026-10-12',
-          record: null,
-        };
-      if (path.endsWith('/transfers/manager')) body = { canApply: false, canViewReporting: false };
-      if (path.endsWith('/succession/maps/position/preferences')) body = mapPreferences;
-      if (path.endsWith('/transfers/catalog')) body = { types: [], reasons: [], today: '2026-10-12' };
-      return route.fulfill({ json: body });
-    });
+    await demoRoutes(page);
     await use(page);
   },
 });
+/** 演示身份与租户接口的默认夹具；同一浏览器上下文里另开的页面（F-110 双标签页用例）也装这一套。 */
+export async function demoRoutes(page: Page) {
+  await page.route('**/__demo/personas', (route) =>
+    route.fulfill({
+      json: {
+        tenantId: tenant,
+        current: route.request().headers().cookie?.includes(user) ? user : null,
+        personas: [{ userId: user, name: '合成演示用户', role: '演示身份', entry: '/staff' }],
+      },
+    }),
+  );
+  await page.route('**/api/tenant/**', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    let body: unknown = { items: [], total: 0, hasDataPermission: true };
+    if (path.endsWith('/permission/me/snapshot')) body = snapshotFixture;
+    if (path.includes('/permission/me/objects/'))
+      body = {
+        objectCode: decodeURIComponent(path.split('/').at(-1)!),
+        dataOperations: { read: true },
+        viewableFields: ['name'],
+        editableFields: [],
+        buttons: [],
+      };
+    if (path.endsWith('/permission/admin-menus'))
+      body = {
+        items: [{ code: 'users.all', path: '用户管理/全部用户', implemented: true, editable: false }],
+      };
+    if (path.endsWith('/self-service/profile'))
+      body = {
+        employee: { id: employee, name: '合成员工', code: 'DEMO-001' },
+        timezone: 'Asia/Shanghai',
+        today: '2026-10-12',
+        record: null,
+      };
+    if (path.endsWith('/transfers/manager')) body = { canApply: false, canViewReporting: false };
+    if (path.endsWith('/succession/maps/position/preferences')) body = mapPreferences;
+    if (path.endsWith('/transfers/catalog')) body = { types: [], reasons: [], today: '2026-10-12' };
+    return route.fulfill({ json: body });
+  });
+}
 export { expect };
 
 /**

@@ -1,12 +1,14 @@
 import { actionButton } from './action-button.js';
-import { test, expect, user, employee, seedDemoUser, snapshotFixture } from './fixtures.js';
+import { test, expect, user, employee, demoRoutes, seedDemoUser, snapshotFixture } from './fixtures.js';
 import type { Page } from '@playwright/test';
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
 const instance = '40000000-0000-4000-8000-000000000001';
 const task = '50000000-0000-4000-8000-000000000001';
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }) => approvalFixtures(page));
+/** 审批中心与调动的固定夹具；F-110 双标签页用例在同一上下文另开的页面上也装这一套。 */
+async function approvalFixtures(page: Page) {
   await page.route('**/permission/me/objects/TenantBase.EmploymentRecord', (route) =>
     route.fulfill({
       json: {
@@ -50,7 +52,7 @@ test.beforeEach(async ({ page }) => {
     return route.fulfill({ json: currentView === 'completed' ? detail(5, 'approved') : detail() });
   });
   await transferFixtures(page);
-});
+}
 // 与 GET /approval/instances/:id 同形；动作接口成功时也返回这份详情（routes.ts respondOutcome → respondDetail）。
 function detail(revision = 4, status = 'running') {
   return {
@@ -556,6 +558,63 @@ test('AC-FE-F110-13 审批同意未知：整页刷新后仍锁定，查询结果
   await expect(page.getByText('刷新前提交的命令结果待确认；提交内容未在本页保存，请先查询结果。')).toHaveCount(0);
   expect(await page.evaluate(() => sessionStorage.getItem('italent.commands.pending:approval'))).toBeNull();
   expect(writes).toBe(1);
+});
+
+test('AC-FE-F110-16 双标签页：A 页同意结果未知期间 B 页同一审批单锁定、不发出新命令；A 查到确定失败后 B 才放行', async ({
+  page,
+}) => {
+  const locked = '本单有未确认的“同意”操作，请打开核对结果；确认前不能发起其他操作。';
+  const keys: string[] = [];
+  const other = await page.context().newPage();
+  await demoRoutes(other);
+  await approvalFixtures(other);
+  for (const tab of [page, other]) {
+    // 第一次（A 页）回执丢失；之后的同意按真实成功回执返回动作后的详情。
+    await tab.route('**/api/tenant/approval/tasks/*/approve', (route) => {
+      keys.push(route.request().headers()['idempotency-key']!);
+      return keys.length === 1
+        ? route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } })
+        : route.fulfill({ json: detail(5, 'approved') });
+    });
+    // F-120 审批命令确定失败的真实投影：摘要三项为 null。
+    await tab.route('**/api/tenant/commands/*/result', (route) =>
+      route.fulfill({
+        json: {
+          commandId: keys[0],
+          status: 'failed',
+          commandType: 'POST /api/tenant/approval/tasks/:id/approve',
+          businessType: null,
+          businessId: null,
+          revision: null,
+          httpStatus: 409,
+          completedAt: '2026-10-12T04:00:00.000Z',
+        },
+      }),
+    );
+  }
+  // B 页先打开同一审批单，A 页随后同意、回执丢失。
+  await switchIdentity(other, '/approval');
+  await openTodo(other);
+  await switchIdentity(page, '/approval');
+  await openTodo(page);
+  await page.getByRole('button', { name: button('同意') }).click();
+  await actionButton(page, '保存').click();
+  await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toBeVisible();
+
+  await expect(other.getByText(locked)).toBeVisible();
+  await expect(other.getByRole('button', { name: button('驳回') })).toBeDisabled();
+  expect(keys).toHaveLength(1);
+
+  await page.getByRole('button', { name: button('取消') }).click();
+  await page.getByRole('button', { name: '查询结果', exact: true }).click();
+  await expect(page.getByText(locked)).toHaveCount(0);
+  await expect(other.getByText(locked)).toHaveCount(0);
+  await other.getByRole('button', { name: button('同意') }).click();
+  await actionButton(other, '保存').click();
+  await expect.poll(() => keys.length).toBe(2);
+  expect(keys[1]).not.toBe(keys[0]);
+  expect(await other.evaluate(() => localStorage.getItem('italent.commands.pending:approval'))).toBeNull();
+  await other.close();
 });
 
 test('AC-FE-R1c-07c DEC-502①(a) 回执 revision 未超过本次提交按结果未知锁定，不提示成功', async ({ page }) => {
