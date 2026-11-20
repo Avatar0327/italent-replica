@@ -634,6 +634,9 @@ export const MODULE_OBJECTS = {
       // 待入职列表带出的 Offer 同步值（BE-14b2）：合同公司、试用期月数，只读
       'contractCompanyId',
       'probationMonths',
+      // F-535：同时返聘计划的试用期字段可查看，计划创建后不可编辑。
+      'probation',
+      'probationEndDate',
       // 人员状态 / 入职状态只经业务流转写入（F-022，15 §9.3）：可授查看，不可授编辑。
       'employeeStatus',
       'entryStatus',

@@ -97,8 +97,10 @@ describe('AC-RT-F535 本单返聘计划回读', () => {
     const other = await x.createdRehire(x.rehireBody(LAST_WORK_DAY, 'direct', secondPlan), second.id);
 
     const expected = { ...plan, contract, formId: 'standard', customFields: {} };
-    expect((await x.extension(retired.id)).rehire_plan).toEqual(expected);
-    expect.soft(await x.detail(retired.id)).toMatchObject({ reEmployed: true, rehire: expected });
+    expect((await x.extension(retired.id))?.rehire_plan).toEqual(expected);
+    const detail = await x.detail(retired.id);
+    expect(detail.reEmployed).toBe(true);
+    expect.soft(detail.rehire).toEqual(expected);
     expect.soft((await x.detail(other.id)).rehire).toEqual({ ...secondPlan, formId: 'standard', customFields: {} });
     const row = (await x.list('all')).items.find((item) => item.id === retired.id);
     expect(row).toBeDefined();
