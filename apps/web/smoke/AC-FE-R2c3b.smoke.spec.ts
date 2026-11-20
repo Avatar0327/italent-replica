@@ -41,7 +41,10 @@ test.afterAll(async () => {
   server.kill('SIGTERM');
   await done;
 });
-test.afterEach(async ({ context }) => context.unrouteAll({ behavior: 'wait' }));
+test.afterEach(async ({ page, context }) => {
+  await page.unrouteAll({ behavior: 'wait' });
+  await context.unrouteAll({ behavior: 'wait' });
+});
 
 async function open(page: Page, tab = '预计退休日期') {
   await seedDemoUser(page);
@@ -202,4 +205,80 @@ test('服务端拒绝无效适用组织，保留规则名称和退休年龄并�
   await expect(dialog.getByLabel('退休年龄（岁）')).toHaveValue('60');
   await expect(dialog.getByRole('button', { name: /^保\s*存$/ })).toBeEnabled();
   await expect(namedRule(page, '合成保留输入')).toHaveCount(0);
+});
+
+test('版本冲突重读最新规则，保留自己改过的值并按新版本重提', async ({ page, request }) => {
+  const name = '合成并发规则';
+  const body = {
+    name,
+    purpose: 'expected_date',
+    ruleType: 'fixed_age',
+    priority: 1,
+    orgIds: [live.organization.id],
+    retirementAgeYears: 55,
+    conditions: [{ fieldCode: 'employType', operator: 'in', values: ['internal'] }],
+  };
+  const initial = await request.post(`${live.url}${root}`, {
+    headers: { 'if-match': '0', 'idempotency-key': crypto.randomUUID() },
+    data: body,
+  });
+  expect(initial.status()).toBe(201);
+  const rule = (await initial.json()) as { id: string; revision: number };
+  await open(page);
+  await namedRule(page, name).getByRole('button', { name: '编辑', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('退休年龄（岁）').fill('56');
+  const concurrent = await request.put(`${live.url}${root}/${rule.id}`, {
+    headers: { 'if-match': String(rule.revision), 'idempotency-key': crypto.randomUUID() },
+    data: { ...body, priority: 4 },
+  });
+  expect(concurrent.status()).toBe(200);
+  await dialog.getByRole('button', { name: /^保\s*存$/ }).click();
+  await expect(dialog.getByText(/版本冲突：输入已保留/)).toBeVisible();
+  await dialog.getByRole('button', { name: '重读最新版本' }).click();
+  await dialog.getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  await expect(dialog.getByLabel('优先级')).toHaveValue('4');
+  await expect(dialog.getByLabel('退休年龄（岁）')).toHaveValue('56');
+  await dialog.getByRole('button', { name: /^保\s*存$/ }).click();
+  await expect(dialog).toHaveCount(0);
+  const result = await request.get(`${live.url}${root}?purpose=expected_date`);
+  expect((await result.json()).items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: rule.id, revision: 3, priority: 4, retirementAgeYears: 56 }),
+    ]),
+  );
+});
+
+test('写入已提交但回执丢失，跨页签重开新建仍锁定，原规则只出现一次', async ({ page, request }) => {
+  await open(page);
+  let writes = 0;
+  await page.route(
+    (url) => url.pathname === root && !url.search,
+    async (route) => {
+      const sent = route.request();
+      if (sent.method() !== 'POST') return route.fallback();
+      writes += 1;
+      const response = await request.post(`${live.url}${root}`, {
+        headers: sent.headers(),
+        data: sent.postDataBuffer()!,
+      });
+      expect(response.status()).toBe(201);
+      await route.abort('connectionreset');
+    },
+  );
+  const name = '合成回执丢失';
+  const dialog = await newRule(page, name, live.organization.name);
+  await dialog.getByLabel('退休年龄（岁）').fill('60');
+  await dialog.getByRole('button', { name: /^保\s*存$/ }).click();
+  await expect(dialog.getByText(/结果待确认/)).toBeVisible();
+  await dialog.getByRole('button', { name: /^取\s*消$/ }).click();
+  await page.getByRole('tab', { name: '弹性退休范围' }).click();
+  await page.getByRole('tab', { name: '预计退休日期' }).click();
+  await button(page, '添加规则').click();
+  await expect(dialog.getByText(/结果待确认/)).toBeVisible();
+  await expect(dialog.getByLabel('规则名称')).toHaveValue(name);
+  await expect(dialog.getByRole('button', { name: /^保\s*存$/ })).toBeDisabled();
+  const result = await request.get(`${live.url}${root}?purpose=expected_date`);
+  expect((await result.json()).items.filter((item: { name: string }) => item.name === name)).toHaveLength(1);
+  expect(writes).toBe(1);
 });
