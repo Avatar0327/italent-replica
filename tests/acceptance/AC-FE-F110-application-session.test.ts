@@ -11,7 +11,7 @@ const offline = async () => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.resetModules();
-  sessionStorage.clear();
+  localStorage.clear();
 });
 /** F-120 真实接口形状（apps/api/src/modules/command-result/service.ts）。 */
 const resultOf = (commandId: string, status: 'succeeded' | 'failed') => ({
@@ -38,7 +38,7 @@ describe('AC-FE-F110 自助调动抽屉刷新恢复', () => {
     };
     const before = await import('../../apps/web/src/self-service/pages/application-session.js');
     await expect(before.runApplicationCommand(scope, command, offline)).rejects.toThrow('处理中 / 结果待确认');
-    const raw = sessionStorage.getItem('italent.commands.pending:transfer')!;
+    const raw = localStorage.getItem('italent.commands.pending:transfer')!;
     expect(raw).toContain(command.commandId);
     expect(raw).not.toContain(secret);
     vi.resetModules();
@@ -66,6 +66,6 @@ describe('AC-FE-F110 自助调动抽屉刷新恢复', () => {
       pending: null,
       saved: { id: business, status: 'in_review' },
     });
-    expect(sessionStorage.getItem('italent.commands.pending:transfer')).toBeNull();
+    expect(localStorage.getItem('italent.commands.pending:transfer')).toBeNull();
   });
 });

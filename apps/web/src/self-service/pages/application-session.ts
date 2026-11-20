@@ -20,8 +20,8 @@ export interface ApplicationSession {
   resultPending: boolean;
   queryFailed: boolean;
 }
-// F-110：未确认锁定交给内核（transferCommands，会话恢复记录只存命令 ID、员工、单号、动作、生效日），
-// 整页刷新后仍只读，只能按原命令 ID 查询结果解锁。提交内容摘要与已保存单据只在本页内存，不落存储。
+// F-110：未确认锁定交给内核（transferCommands，恢复记录各标签页共用，只存命令 ID、员工、单号、动作、生效日），
+// 整页刷新、另开标签页后仍只读，只能按原命令 ID 查询结果解锁。提交内容摘要与已保存单据只在本页内存，不落存储。
 const commands = new Map<string, ApplicationCommand>();
 const saved = new Map<string, TransferBusiness>();
 const cache = new Map<string, { state?: Submission; saved?: TransferBusiness; value: ApplicationSession }>();
@@ -81,6 +81,8 @@ export async function runApplicationCommand(
   command: ApplicationCommand,
   execute: Parameters<ApplicationCommandRunner>[1],
 ) {
+  // 先对齐别的标签页的未确认命令（F-110 第 2 轮 P2-2）：别页结果未知时本页同样只读，不换新 ID 执行。
+  transferCommands.sync();
   if (isLocked(transferCommands.get(scope))) throw new ApplicationCommandHandled(m.processing);
   // 上一条已确定被拒：新命令按本次动作 / 对象起算，不沿用被拒命令的上下文。
   transferCommands.clear(scope);

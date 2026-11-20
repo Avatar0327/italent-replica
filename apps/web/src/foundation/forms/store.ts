@@ -1,7 +1,7 @@
 import { newCommand, type Command } from '../client.js';
 import type { ResultVerdict } from './command-result.js';
 import { messages } from './messages.js';
-import type { CommandRecovery, PendingRecord } from './recovery.js';
+import { RecoveryConflict, type CommandRecovery, type PendingRecord } from './recovery.js';
 import { changedFields, refillDraft, sameValue, type Values } from './values.js';
 export type { Values } from './values.js';
 export interface Latest {
@@ -33,7 +33,7 @@ export interface Submission {
   context?: Values;
   /** F-469：只有显式删除命令可走删除结果查询；随恢复槽保留。 */
   deletion?: boolean;
-  /** F-110：刷新后从恢复记录载入，只有命令 ID 没有请求体：只能查询结果，不能原样重发。 */
+  /** F-110：从恢复记录载入（刷新前或别的标签页的命令），只有命令 ID 没有请求体：只能查询结果，不能原样重发。 */
   restored?: boolean;
   /** F-110：结果查询返回 404（不是确定结论），仍保持只读并提示稍后再查。 */
   resultPending?: boolean;
@@ -100,6 +100,8 @@ export function createFormStore(options: { recovery?: CommandRecovery } = {}) {
   return {
     get: (key: string) => entries.get(key),
     ...pins,
+    /** F-110：按共享恢复记录对齐别的标签页的未确认命令；提交前由内核与入口调用，storage 事件也会触发。 */
+    sync: core.sync,
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => void listeners.delete(listener);
@@ -164,22 +166,49 @@ export type FormStore = ReturnType<typeof createFormStore>;
 function createCore(recovery?: CommandRecovery) {
   const entries = new Map<string, Submission>();
   const pinned = new Map<string, string>();
-  for (const record of recovery?.load() ?? []) {
-    entries.set(record.key, restoredState(record));
-    record.slots.forEach((slot) => pinned.set(slot, record.key));
-  }
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach((listener) => listener());
   const pins = createPins(notify, pinned);
+  /**
+   * F-110 第 2 轮 P2-2：恢复记录各标签页共用。载入别页（或刷新前）的未确认命令并锁定；
+   * 别页已落定、记录已删的恢复条目放开。本页自己发出的命令和未锁定的槽不受影响；记录读不出时不动任何条目。
+   */
+  const sync = () => {
+    const records = recovery?.load();
+    if (!records) return;
+    const adopted = records.filter(
+      (record) => !isLocked(entries.get(record.key)) && entries.get(record.key)?.command?.id !== record.commandId,
+    );
+    adopted.forEach((record) => {
+      entries.set(record.key, restoredState(record));
+      record.slots
+        .filter((slot) => !isLocked(entries.get(pinned.get(slot) ?? '')))
+        .forEach((slot) => pinned.set(slot, record.key));
+    });
+    const settled = [...entries].filter(
+      ([key, state]) =>
+        state.restored &&
+        state.status === 'unknown' &&
+        !state.reading &&
+        !records.some((record) => record.key === key && record.commandId === state.command?.id),
+    );
+    settled.forEach(([key]) => {
+      entries.delete(key);
+      [...pinned].filter(([, holder]) => holder === key).forEach(([slot]) => pinned.delete(slot));
+    });
+    if (adopted.length || settled.length) notify();
+  };
+  sync();
+  recovery?.watch?.(sync);
   const put = (key: string, state: Submission) => {
     entries.set(key, state);
     notify();
   };
-  /** 发送前先登记恢复记录；写不进去就不发出（抛错由调用方转成被拒）。 */
-  const persist = (key: string, state: Submission) =>
+  /** 发送前先登记恢复记录；别页已占用或写不进去就不发出（抛错由调用方转成被拒）。 */
+  const persist = (key: string, state: Submission, slots: string[]) =>
     recovery?.save({
       key,
-      slots: pins.slotsOf(key),
+      slots,
       commandId: state.command!.id,
       revision: state.command!.revision,
       businessId: state.businessId,
@@ -214,15 +243,18 @@ function createCore(recovery?: CommandRecovery) {
     // 迟到查询不能覆盖新状态；同一次查询期间 replay/reread 也会被 reading 挡住。
     return land(key, reading, next);
   };
-  return { entries, listeners, notify, pins, put, persist, land, recover };
+  return { entries, listeners, notify, pins, put, persist, land, recover, sync };
 }
 type Core = ReturnType<typeof createCore>;
 
-/** 首次提交：登记恢复记录后才发出；锁定中原样返回。 */
+/** 首次提交：登记恢复记录后才发出；锁定中（含别的标签页未确认）原样返回。 */
 async function submitTo(core: Core, key: string, input: SubmitInput) {
+  // 槽在同步前取：同步可能把本条目的槽改钉到别页的命令上，登记时仍须按这些槽核对占用。
+  const slots = core.pins.slotsOf(key);
+  core.sync();
   const existing = core.entries.get(key);
   if (isLocked(existing)) return existing!;
-  // 刷新后恢复的条目没有草稿与基线：结果落定后按本次表单输入重新起算。
+  // 从恢复记录载入的条目没有草稿与基线：结果落定后按本次表单输入重新起算。
   const prior = existing?.status === 'done' || existing?.restored ? undefined : existing;
   const baseline = prior?.baseline ?? input.baseline;
   const revision = prior?.revision ?? input.revision;
@@ -246,9 +278,13 @@ async function submitTo(core: Core, key: string, input: SubmitInput) {
   };
   core.put(key, state);
   try {
-    core.persist(key, state);
-  } catch {
-    core.land(key, state, { ...state, status: 'rejected', error: new Error(messages.recoveryUnavailable) });
+    core.persist(key, state, slots);
+  } catch (error) {
+    const other = error instanceof RecoveryConflict;
+    const reason = other ? messages.otherTab : messages.recoveryUnavailable;
+    core.land(key, state, { ...state, status: 'rejected', error: new Error(reason) });
+    // 别页抢先登记了同一条目或槽：再同步一次，本页锁到那条命令上。
+    if (other) core.sync();
     return core.entries.get(key)!;
   }
   core.land(key, state, await delivered(state, input.send));
@@ -284,7 +320,7 @@ function resultOutcome(verdict: ResultVerdict): Partial<Submission> {
     return { status: 'rejected', resultPending: undefined, error: new Error(messages.resultFailed) };
   return { resultPending: true };
 }
-/** 刷新后载入的未确认命令：只有命令 ID 与上下文，没有请求体和草稿。 */
+/** 从恢复记录载入的未确认命令（刷新前或别的标签页）：只有命令 ID 与上下文，没有请求体和草稿。 */
 function restoredState(record: PendingRecord): Submission {
   return {
     status: 'unknown',

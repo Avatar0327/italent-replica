@@ -1,15 +1,15 @@
-// F-110：HR 调动的命令存储挂在模块级并接会话恢复记录：关闭表单、切换路由、整页刷新后结果未知的命令仍锁定，
-// 只能按原命令 ID 查询结果解锁（不另起命令）。各员工的命令另钉到调动集合槽：一条未确认时，本会话的调动写入都锁定
-// （保留 DEC-464 处理标记“一条未确认、整页只读”的口径），重选别人也看得到这条命令。
+// F-110：HR 调动的命令存储挂在模块级并接共享恢复记录：关闭表单、切换路由、整页刷新、另开标签页后结果未知的命令
+// 仍锁定，只能按原命令 ID 查询结果解锁（不另起命令）。各员工的命令另钉到调动集合槽：一条未确认时，本会话的调动写入
+// 都锁定（保留 DEC-464 处理标记“一条未确认、整页只读”的口径），重选别人、别的标签页也看得到这条命令。
 import { createApiClient } from '../foundation/client.js';
 import { queryCommandResult } from '../foundation/forms/command-result.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
-import { sessionRecovery } from '../foundation/forms/recovery.js';
+import { sharedRecovery } from '../foundation/forms/recovery.js';
 import { createFormStore } from '../foundation/forms/store.js';
 import { EMPLOYMENT_API, TRANSFER_API, transferRequest } from './api.js';
 import type { TransferBusiness } from './types.js';
 
-export const transferCommands = createFormStore({ recovery: sessionRecovery('transfer') });
+export const transferCommands = createFormStore({ recovery: sharedRecovery('transfer') });
 export const transferSlot = TRANSFER_API;
 export const transferEntry = (employeeId: string) => `${TRANSFER_API}/employees/${employeeId}`;
 

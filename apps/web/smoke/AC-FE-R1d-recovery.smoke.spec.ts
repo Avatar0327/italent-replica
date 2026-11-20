@@ -162,9 +162,9 @@ test('AC-FE-F110-11 本人提交未知：关闭重开、整页刷新后仍锁定
   await openForm(page, false);
   await expect(drawer).toContainText('处理中 / 结果待确认');
   await expect(drawer).toContainText(command);
-  await expect(drawer).toContainText('刷新前的提交内容未在本页保存');
+  await expect(drawer).toContainText('刷新前或其他标签页的提交内容未在本页保存');
   await expect(drawer.getByRole('button', { name: '提交', exact: true })).toHaveCount(0);
-  const record = await page.evaluate(() => sessionStorage.getItem('italent.commands.pending:transfer'));
+  const record = await page.evaluate(() => localStorage.getItem('italent.commands.pending:transfer'));
   expect(record).toContain(command);
   await drawer.getByRole('button', { name: '查询结果', exact: true }).click();
   await expect(drawer).toContainText('暂未查到本次命令的结果，可能仍在处理中，请稍后再查询。');
@@ -172,7 +172,7 @@ test('AC-FE-F110-11 本人提交未知：关闭重开、整页刷新后仍锁定
   await drawer.getByRole('button', { name: '查询结果', exact: true }).click();
   await expect(drawer).toContainText('申请已提交审批，请在“我的申请”核对。');
   await expect(drawer).not.toContainText('处理中 / 结果待确认');
-  expect(await page.evaluate(() => sessionStorage.getItem('italent.commands.pending:transfer'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('italent.commands.pending:transfer'))).toBeNull();
   expect(queries).toEqual([`/api/tenant/commands/${command}/result`, `/api/tenant/commands/${command}/result`]);
   expect(writes).toBe(1);
 });

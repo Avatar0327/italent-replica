@@ -17,7 +17,7 @@ type Reread = Awaited<ReturnType<typeof loadPreview>>;
 /**
  * HR 调动写入。版本冲突走 F-142 内核（#350 第 1 轮 P2-2）：冲突后表单锁定，重读最新预览、核对“变更前”差异，
  * 确认后保留仍可编辑的已改字段、换上最新预览，由用户主动重提；重提的 If-Match 取内核记下的最新版本。
- * 处理中 / 结果未知由同一内核按会话恢复记录锁定（F-110）：幂等键就是内核命令 ID，查询结果只按这个 ID。
+ * 处理中 / 结果未知由同一内核按共享恢复记录锁定（F-110）：幂等键就是内核命令 ID，查询结果只按这个 ID。
  */
 export function useHrTransferCommand(
   tenantId: string,

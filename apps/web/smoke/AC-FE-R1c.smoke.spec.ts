@@ -551,12 +551,16 @@ test('AC-FE-F110-13 审批同意未知：整页刷新后仍锁定，查询结果
   await page.reload();
   await openTodo(page);
   await expect(page.getByText('本单有未确认的“同意”操作，请打开核对结果；确认前不能发起其他操作。')).toBeVisible();
-  await expect(page.getByText('刷新前提交的命令结果待确认；提交内容未在本页保存，请先查询结果。')).toBeVisible();
+  await expect(
+    page.getByText('刷新前或其他标签页提交的命令结果待确认；提交内容未在本页保存，请先查询结果。'),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: button('驳回') })).toBeDisabled();
   await page.getByRole('button', { name: '查询结果', exact: true }).click();
   await expect(page.getByText('本单有未确认的“同意”操作，请打开核对结果；确认前不能发起其他操作。')).toHaveCount(0);
-  await expect(page.getByText('刷新前提交的命令结果待确认；提交内容未在本页保存，请先查询结果。')).toHaveCount(0);
-  expect(await page.evaluate(() => sessionStorage.getItem('italent.commands.pending:approval'))).toBeNull();
+  await expect(
+    page.getByText('刷新前或其他标签页提交的命令结果待确认；提交内容未在本页保存，请先查询结果。'),
+  ).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('italent.commands.pending:approval'))).toBeNull();
   expect(writes).toBe(1);
 });
 
@@ -901,7 +905,7 @@ test('AC-FE-R1c-11 DEC-511 刷新后重选同一人带出暂存，提交走新�
   expect(bodies[1]!.linkage).toBeUndefined();
 });
 
-// F-110 取代原“不再保存命令编号”：会话恢复记录只存命令 ID 与对象（不存字段原文），刷新后仍只读，查询结果解锁。
+// F-110 取代原“不再保存命令编号”：共享恢复记录只存命令 ID 与对象（不存字段原文），刷新后仍只读，查询结果解锁。
 test('AC-FE-R1c-12 AC-FE-F110-12 创建未知关闭刷新后仍只读，按原命令 ID 查询结果解锁', async ({ page }) => {
   let writes = 0;
   let command = '';
@@ -938,7 +942,7 @@ test('AC-FE-R1c-12 AC-FE-F110-12 创建未知关闭刷新后仍只读，按原�
   await page.reload();
   await openHr(page);
   await expectReadonly(page);
-  const record = await page.evaluate(() => sessionStorage.getItem('italent.commands.pending:transfer'));
+  const record = await page.evaluate(() => localStorage.getItem('italent.commands.pending:transfer'));
   expect(record).toContain(command);
   expect(record).not.toContain('合成工作地');
   await page.getByRole('button', { name: '查询结果', exact: true }).click();

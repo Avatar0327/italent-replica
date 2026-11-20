@@ -8,7 +8,7 @@ import { transferCommands, transferEntry, transferSlot } from '../../apps/web/sr
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  sessionStorage.clear();
+  localStorage.clear();
 });
 const offline = async () => {
   throw new TypeError('合成断网');
@@ -32,7 +32,7 @@ it('AC-FE-R1c-11 DEC-464 处理标记按租户 / 身份隔离，不再存暂存�
   expect(transferCommands.holder([slot])).toBeDefined();
   expect(transferCommands.holder([scoped(tenant, 'other').slot])).toBeUndefined();
   expect(transferCommands.holder([scoped(randomUUID()).slot])).toBeUndefined();
-  expect(Object.keys(sessionStorage)).toEqual(['italent.commands.pending:transfer']);
+  expect(Object.keys(localStorage)).toEqual(['italent.commands.pending:transfer']);
 });
 
 it('AC-FE-R1c-12 DEC-464 未确认标记禁止新命令，只持久化命令 ID 与对账字段、不存载荷', async () => {
@@ -41,13 +41,13 @@ it('AC-FE-R1c-12 DEC-464 未确认标记禁止新命令，只持久化命令 ID 
   await transferCommands.submit(entry, { ...payload, send });
   expect(send).not.toHaveBeenCalled();
   const id = transferCommands.get(entry)!.command!.id;
-  expect(JSON.parse(sessionStorage.getItem('italent.commands.pending:transfer')!)).toEqual([
+  expect(JSON.parse(localStorage.getItem('italent.commands.pending:transfer')!)).toEqual([
     { key: entry, slots: [slot], commandId: id, revision: 5 },
   ]);
 });
 
 it('AC-FE-R1c-12 DEC-464 存储不可用必须在写请求之前失败', async () => {
-  vi.stubGlobal('sessionStorage', {
+  vi.stubGlobal('localStorage', {
     getItem: () => null,
     setItem: () => {
       throw new Error('quota');
@@ -60,11 +60,11 @@ it('AC-FE-R1c-12 DEC-464 存储不可用必须在写请求之前失败', async (
   expect(send).not.toHaveBeenCalled();
 });
 
-it('AC-FE-R1c-12 DEC-464 会话损坏时不发出新命令，也不能通过完成回执覆盖存储', async () => {
-  sessionStorage.setItem('italent.commands.pending:transfer', '{');
+it('AC-FE-R1c-12 DEC-464 恢复记录损坏时不发出新命令，也不能通过完成回执覆盖存储', async () => {
+  localStorage.setItem('italent.commands.pending:transfer', '{');
   const { entry } = scoped(randomUUID());
   const send = vi.fn(async () => ({ id: 'synthetic-business' }));
   expect(await transferCommands.submit(entry, { ...payload, send })).toMatchObject({ status: 'rejected' });
   expect(send).not.toHaveBeenCalled();
-  expect(sessionStorage.getItem('italent.commands.pending:transfer')).toBe('{');
+  expect(localStorage.getItem('italent.commands.pending:transfer')).toBe('{');
 });

@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../apps/web/src/foundation/client.js';
 import { queryCommandResult } from '../../apps/web/src/foundation/forms/command-result.js';
-import { sessionRecovery } from '../../apps/web/src/foundation/forms/recovery.js';
+import { sharedRecovery } from '../../apps/web/src/foundation/forms/recovery.js';
 import { createFormStore, isLocked, type ResultReader } from '../../apps/web/src/foundation/forms/store.js';
 
 // 期望值手写：恢复记录只有对账字段，没有字段原文（派发单第三节第 3 条）。
@@ -23,10 +23,10 @@ const offline = async () => {
 const name = () => `f110-${randomUUID()}`;
 afterEach(() => {
   vi.unstubAllGlobals();
-  sessionStorage.clear();
+  localStorage.clear();
 });
 async function unknownIn(recoveryName: string) {
-  const store = createFormStore({ recovery: sessionRecovery(recoveryName) });
+  const store = createFormStore({ recovery: sharedRecovery(recoveryName) });
   store.pin(['slot'], 'entry');
   await store.submit('entry', { ...input, send: offline });
   return { store, command: store.get('entry')!.command! };
@@ -47,7 +47,7 @@ describe('AC-FE-F110 跨抽屉 / 刷新恢复未确认命令', () => {
   it('AC-FE-F110-01 结果未知只存命令 ID、版本、对象与槽，不存字段原文；新存储（刷新）载入后仍锁定', async () => {
     const recoveryName = name();
     const { command } = await unknownIn(recoveryName);
-    const raw = sessionStorage.getItem(`italent.commands.pending:${recoveryName}`)!;
+    const raw = localStorage.getItem(`italent.commands.pending:${recoveryName}`)!;
     expect(JSON.parse(raw)).toEqual([
       {
         key: 'entry',
@@ -59,7 +59,7 @@ describe('AC-FE-F110 跨抽屉 / 刷新恢复未确认命令', () => {
       },
     ]);
     expect(raw).not.toContain(secret);
-    const reloaded = createFormStore({ recovery: sessionRecovery(recoveryName) });
+    const reloaded = createFormStore({ recovery: sharedRecovery(recoveryName) });
     expect(reloaded.holder(['slot'])).toBe('entry');
     expect(reloaded.get('entry')).toMatchObject({ status: 'unknown', restored: true, command: { id: command.id } });
     // 同内容不能换新命令 ID 重提，也不能按原键重放（请求体没存）。
@@ -72,14 +72,14 @@ describe('AC-FE-F110 跨抽屉 / 刷新恢复未确认命令', () => {
   });
 
   it('AC-FE-F110-02 存储写不进去时不发出命令，按被拒处理、输入保留', async () => {
-    vi.stubGlobal('sessionStorage', {
+    vi.stubGlobal('localStorage', {
       getItem: () => null,
       setItem: () => {
         throw new Error('quota');
       },
       removeItem: () => {},
     });
-    const store = createFormStore({ recovery: sessionRecovery(name()) });
+    const store = createFormStore({ recovery: sharedRecovery(name()) });
     const send = vi.fn(async () => ({ id: 'synthetic-business' }));
     const result = await store.submit('entry', { ...input, send });
     expect(send).not.toHaveBeenCalled();
@@ -91,13 +91,13 @@ describe('AC-FE-F110 跨抽屉 / 刷新恢复未确认命令', () => {
   it('AC-FE-F110-03 查询成功：按原命令 ID 查、放开锁并删掉恢复记录', async () => {
     const recoveryName = name();
     const { command } = await unknownIn(recoveryName);
-    const reloaded = createFormStore({ recovery: sessionRecovery(recoveryName) });
+    const reloaded = createFormStore({ recovery: sharedRecovery(recoveryName) });
     const read = vi.fn<ResultReader>(async () => ({ status: 'succeeded' }));
     const result = await reloaded.recoverResult('entry', read);
     expect(read.mock.calls[0]![0].id).toBe(command.id);
     expect(result?.status).toBe('done');
     expect(isLocked(reloaded.get('entry'))).toBe(false);
-    expect(sessionStorage.getItem(`italent.commands.pending:${recoveryName}`)).toBeNull();
+    expect(localStorage.getItem(`italent.commands.pending:${recoveryName}`)).toBeNull();
   });
 
   it('AC-FE-F110-04 查询确定失败：保留输入、可改正后以新命令 ID 重提', async () => {
@@ -161,7 +161,7 @@ describe('AC-FE-F110 跨抽屉 / 刷新恢复未确认命令', () => {
 
   it('AC-FE-F110-07 迟到回执按命令 ID 对账：不覆盖后来的命令，也不删后来命令的恢复记录', async () => {
     const recoveryName = name();
-    const store = createFormStore({ recovery: sessionRecovery(recoveryName) });
+    const store = createFormStore({ recovery: sharedRecovery(recoveryName) });
     let late!: (value: { id: string }) => void;
     const first = store.submit('entry', {
       ...input,
@@ -171,13 +171,13 @@ describe('AC-FE-F110 跨抽屉 / 刷新恢复未确认命令', () => {
         }),
     });
     // 第一条在途时另一个存储实例（刷新后的页面）查到确定失败并重提了第二条，仍未知。
-    const reloaded = createFormStore({ recovery: sessionRecovery(recoveryName) });
+    const reloaded = createFormStore({ recovery: sharedRecovery(recoveryName) });
     await reloaded.recoverResult('entry', async () => ({ status: 'failed', httpStatus: 503 }));
     await reloaded.submit('entry', { ...input, send: offline });
     const second = reloaded.get('entry')!.command!.id;
     late({ id: 'synthetic-business' });
     await first;
-    const records = JSON.parse(sessionStorage.getItem(`italent.commands.pending:${recoveryName}`)!);
+    const records = JSON.parse(localStorage.getItem(`italent.commands.pending:${recoveryName}`)!);
     expect(records).toMatchObject([{ key: 'entry', commandId: second }]);
     // 旧页面上的第一条落定为完成，不影响刷新后页面里仍未知的第二条。
     expect(store.get('entry')?.status).toBe('done');

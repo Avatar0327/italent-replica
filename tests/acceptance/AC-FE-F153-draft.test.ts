@@ -97,7 +97,7 @@ const model: TransferFormModel = {
 };
 
 // AC-FE-F153-01 原测 hr-session 只保留 processing、丢弃旧草稿索引；F-110 起 hr-session 撤掉，HR 调动锁定改由内核
-// 会话恢复记录承载（只存命令 ID、版本、对象与槽，不存草稿），由 AC-FE-F110-01 / AC-FE-R1c-12 覆盖。
+// 共享恢复记录承载（只存命令 ID、版本、对象与槽，不存草稿），由 AC-FE-F110-01 / AC-FE-R1c-12 覆盖。
 
 it('AC-FE-F153-02 读取暂存按真实接口形状核对：单号、人员、revision、联动版本不符一律视为读取失败', () => {
   const parsed = parseDraft(draftId, employee, business, linkage);

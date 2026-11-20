@@ -479,8 +479,8 @@ test('AC-FE-F153-19 #350 第 2 轮 P2-2 回执员工版本未推进：按结果�
   await expect.poll(() => sent).toEqual(['4']);
   await expect(page.getByRole('status').filter({ hasText: '处理中，请在我的申请中查看' })).toBeVisible();
   await expect(page.getByText('调动申请已提交审批。')).toHaveCount(0);
-  // F-110：处理中标记改由内核会话恢复记录承担，只存原命令 ID 与对象，供刷新后仍锁定、按原 ID 查询结果。
-  const records = await page.evaluate(() => JSON.parse(sessionStorage.getItem('italent.commands.pending:transfer')!));
+  // F-110：处理中标记改由内核共享恢复记录承担，只存原命令 ID 与对象，供刷新后仍锁定、按原 ID 查询结果。
+  const records = await page.evaluate(() => JSON.parse(localStorage.getItem('italent.commands.pending:transfer')!));
   expect(records).toMatchObject([{ commandId: command, revision: 4, businessId: employee }]);
 });
 

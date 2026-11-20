@@ -85,7 +85,7 @@ export function CommandStatus({
     </Space>
   );
 }
-/** F-110：结果未知给“查询结果”（按原命令 ID）；刷新后恢复的命令没有可对的表单，不给回查原单。 */
+/** F-110：结果未知给“查询结果”（按原命令 ID）；从恢复记录载入的命令（刷新前、别的标签页）没有可对的表单，不给回查原单。 */
 function StatusActions({ submission }: { submission: CommandForm }) {
   const { state, reload, queryResult } = submission;
   if (!state) return null;

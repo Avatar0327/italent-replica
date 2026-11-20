@@ -65,6 +65,8 @@ export function usePinnedCommand(slots: readonly string[], entry: string, store?
     locked: isLocked(state),
     busy: state?.status === 'submitting',
     async submit(input: SubmitInput) {
+      // 先对齐别的标签页的未确认命令（F-110 第 2 轮 P2-2）：槽被别页占着时锁在那条命令上，不另起命令。
+      owner.sync();
       const holder = owner.holder(scoped);
       const held = holder === undefined || holder === own ? undefined : owner.get(holder);
       if (isLocked(held)) return held!;

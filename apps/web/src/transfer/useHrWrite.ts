@@ -18,7 +18,7 @@ function validReceipt(receipt: TransferBusiness, sent: number) {
   return Number.isInteger(receipt.employeeRevision) && receipt.employeeRevision > sent;
 }
 /**
- * HR 调动的回执核对与提示。处理中 / 结果未知的锁定由 F-123 内核（transfer/commands.ts，会话恢复记录）持有（F-110）；
+ * HR 调动的回执核对与提示。处理中 / 结果未知的锁定由 F-123 内核（transfer/commands.ts，共享恢复记录）持有（F-110）；
  * 卸载后才到的回执按结果未知处理（界面已关，不替用户确认），由用户按原命令 ID 查询结果解锁。
  */
 export function useHrWrite() {
