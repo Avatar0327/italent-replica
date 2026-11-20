@@ -108,6 +108,7 @@ export const s = {
     zoomReset: '重置缩放',
   },
   assign: {
+    invalid: '该继任地图条目缺少标识或版本，请关闭后重读地图。',
     mode: '赋值方式',
     rule: '按规则计算',
     manual: '手动赋值',

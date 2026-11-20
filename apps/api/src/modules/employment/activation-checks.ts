@@ -14,7 +14,11 @@ import { isDetachedRecord } from './timeline.js';
  * TODO(需取证 Q-M0-48)：原站到期当天是否再校验（目标组织 / 职位停用、编制不足）、失败如何表现，待 10-10 回查；
  * 原站很可能没有失败分支（`08` §17），本判定为复刻自定，取证后只需调整本文件。
  */
-import { employmentEstablishmentExceeded } from '../establishment/employment-check.js';
+import {
+  employmentEstablishmentAssessment,
+  employmentEstablishmentExceeded,
+  type EstablishmentAssessment,
+} from '../establishment/employment-check.js';
 import type { Tx } from '@italent/db';
 import type { OrgId } from '@italent/domain';
 import { AppError, type ErrorCode } from '../../errors.js';
@@ -66,11 +70,14 @@ export interface ActivationTarget {
 /** 编制单一判定入口：定时生效与调动保存（R1-T09）共用同一口径，按严格控制判定调入是否超编。 */
 export interface EmploymentActivationChecks {
   establishmentExceeded(tx: Tx, ctx: EmploymentContext, target: ActivationTarget): Promise<boolean>;
+  /** 三态判定（F-026）：交互保存区分严格拒绝与非严格确认；注入实现没给时按 establishmentExceeded 折成 strict / none。 */
+  establishmentAssessment?(tx: Tx, ctx: EmploymentContext, target: ActivationTarget): Promise<EstablishmentAssessment>;
 }
 
 /** 默认生产实现；测试可注入同一判定入口。 */
 export const DEFAULT_ESTABLISHMENT_CHECKS: EmploymentActivationChecks = {
   establishmentExceeded: employmentEstablishmentExceeded,
+  establishmentAssessment: employmentEstablishmentAssessment,
 };
 let checks: EmploymentActivationChecks = DEFAULT_ESTABLISHMENT_CHECKS;
 export function registerEmploymentActivationChecks(implementation: EmploymentActivationChecks): void {
@@ -78,6 +85,14 @@ export function registerEmploymentActivationChecks(implementation: EmploymentAct
 }
 export function establishmentExceeded(tx: Tx, ctx: EmploymentContext, target: ActivationTarget): Promise<boolean> {
   return checks.establishmentExceeded(tx, ctx, target);
+}
+async function establishmentAssessment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget,
+): Promise<EstablishmentAssessment> {
+  if (checks.establishmentAssessment) return checks.establishmentAssessment(tx, ctx, target);
+  return (await checks.establishmentExceeded(tx, ctx, target)) ? 'strict' : 'none';
 }
 export interface EstablishmentWarning {
   readonly businessId: string;
@@ -89,7 +104,13 @@ export async function assertEstablishmentCapacity(
   target: ActivationTarget,
   warnings?: EstablishmentWarning[],
 ) {
-  if (!(await establishmentExceeded(tx, ctx, target))) return;
+  const assessment = await establishmentAssessment(tx, ctx, target);
+  if (assessment === 'none') return;
+  if (assessment === 'warning') {
+    // 非严格控编：DEC-015 导入 / 批量只给提示（收集器路径不拦）；交互保存要求用户确认后带 confirmed 重提（F-026）。
+    if (!warnings) requireEstablishmentConfirmed(ctx, target);
+    return;
+  }
   // DEC-015 仅内部导入端口提供警告收集器；HTTP 单笔保存与定时生效不能关闭严格校验。
   if (warnings) {
     if (!warnings.some((item) => item.businessId === target.businessId))
@@ -97,6 +118,24 @@ export async function assertEstablishmentCapacity(
     return;
   }
   throw new AppError('CONFLICT', '已超出设定编制，不可继续操作', { reason: 'ESTABLISHMENT_EXCEEDED' });
+}
+
+/** 与 offer / 实习转正同一确认信封（CONFIRMATION_REQUIRED + warnings）；整单在命令事务内回滚。 */
+function requireEstablishmentConfirmed(ctx: EmploymentContext, target: ActivationTarget) {
+  const confirmation = ctx.establishmentConfirmation;
+  if (!confirmation || confirmation.confirmed) return;
+  throw new AppError('CONFLICT', '已超出设定编制，确认后继续保存', {
+    reason: 'CONFIRMATION_REQUIRED',
+    warnings: [{ departmentId: target.departmentId, reason: 'ESTABLISHMENT_EXCEEDED' }],
+  });
+}
+
+/** 交互保存路由用：本次请求是否带 confirmed（缺省 false）。定时生效 / 审批通过等系统路径不调用，保持严格兜底。 */
+export function withEstablishmentConfirmation(
+  ctx: EmploymentContext,
+  confirmed: boolean | undefined,
+): EmploymentContext {
+  return { ...ctx, establishmentConfirmation: { confirmed: confirmed === true } };
 }
 
 /** 业务规则拒绝：按租户数据确定的结果，重跑也不会变，记为失败交 HR 修正。 */

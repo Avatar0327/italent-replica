@@ -16,6 +16,8 @@ import { AppError } from '../../errors.js';
 import { isActiveAccount } from '../approval/resolver.js';
 import { auditEmployment } from '../employment/context.js';
 import { personnelHooks } from '../employment/personnel-hooks.js';
+import { loadEmploymentRecord } from '../employment/read-model.js';
+import { bumpAndNotifyEntry } from '../employment/record-edit.js';
 import {
   bumpEmploymentBusiness,
   insertEmploymentRow,
@@ -268,7 +270,12 @@ async function appendSequenceVersion(tx: Tx, ctx: EmploymentContext, target: Seq
     explicitFieldCodes: [...new Set([...business.payload.explicitFieldCodes, 'preset:sequenceId'])],
     createdAt: ctx.now.toISOString(),
   });
-  await bumpEmploymentBusiness(tx, ctx, business);
+  // F-505 设计 §6.2：序列同步直接追加待入职记录的业务内容，同事务通知来源变化（已落地才有记录可判断是否待入职）
+  const entry = target.effective
+    ? await loadEmploymentRecord(tx, ctx.tenantId, business.id, tenantLocalDate(ctx.now, ctx.timezone))
+    : null;
+  if (entry) await bumpAndNotifyEntry(tx, ctx, business, entry);
+  else await bumpEmploymentBusiness(tx, ctx, business);
   await auditEmployment(
     tx,
     { ...ctx, userId: SYSTEM_USER_ID },

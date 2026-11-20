@@ -589,7 +589,7 @@ function transition(action: 'submit' | 'withdraw' | 'revoke' | 'delete'): Obliga
       [fn(EMP, 'registerBusinessTransitions', 'transferBusinessContext(tx, ctx, id,'), ...BUSINESS_SOURCE],
     ),
     linkage(
-      fn(EMP, 'registerBusinessTransitions', 'const business = await transitionEmployment(tx, checked, {'),
+      fn(EMP, 'registerBusinessTransitions', 'const business = await transitionEmployment(tx, confirmable, {'),
       '状态迁移（撤回 / 撤销 / 删除）改写后续记录前按 DEC-178 复核',
     ),
   ];
@@ -2006,7 +2006,8 @@ export const EMPLOYMENT: RequiredTable = {
         TRF,
         'DELETE',
         '/transfers/employees/:id/draft/:businessId',
-        'const deleted = await releaseTransferDraft(tx, checked, id, { businessId, revision: ctx.expectedRevision })',
+        'const deleted = await releaseTransferDraft(tx, confirmable, id, ' +
+          '{ businessId, revision: ctx.expectedRevision })',
       ),
       '删暂存单走 transitionEmployment delete 内核，同 DELETE /businesses/:id',
     ),
@@ -2362,7 +2363,7 @@ export const EMPLOYMENT: RequiredTable = {
         EMP,
         'POST',
         '/employees/:id/businesses',
-        'const business = await createEmploymentBusiness(tx, context, id, input, entry ? { entry } : {})',
+        'const business = await createEmploymentBusiness(tx, confirmable, id, input, entry ? { entry } : {})',
       ),
     ),
   ],
@@ -2504,7 +2505,7 @@ export const EMPLOYMENT: RequiredTable = {
       ),
     ),
     linkage(
-      at(EMP, 'PATCH', '/businesses/:id', 'body: await updateEmploymentBusiness(tx, checked, id, input)'),
+      at(EMP, 'PATCH', '/businesses/:id', 'await updateEmploymentBusiness(tx, confirmable, id, input)'),
       'F-140：共用改期编排的联动守卫；通用 approved / effective 日期编辑仍先拒绝',
     ),
     businessWrite(at(EMP, 'PATCH', '/businesses/:id', 'const current = await authorizeBusinessWrite(deps, ctx, id)')),
@@ -3168,7 +3169,14 @@ export const EMPLOYMENT: RequiredTable = {
     directOperation(
       at(EMP, 'PATCH', '/records/:id', 'requireScopedEmploymentObject(tx, ctx, current.employeeId, departmentId, id)'),
     ),
-    linkage(at(EMP, 'PATCH', '/records/:id', 'body: await editEmploymentRecord(tx, context, id, input)')),
+    linkage(
+      at(
+        EMP,
+        'PATCH',
+        '/records/:id',
+        'body: await editEmploymentRecord(tx, withEstablishmentConfirmation(context, input.confirmed), id, input)',
+      ),
+    ),
   ],
   'POST /api/tenant/employment/employees/:id/import': [
     ob(

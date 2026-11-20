@@ -4,7 +4,16 @@
  */
 import type { MenuNode, ServerSnapshot } from '../foundation/permission-snapshot.js';
 import { s } from './messages.js';
-import type { LevelRules, MapItem, MapResult, Preferences, RecordView, RuleRow, SuccessionType } from './types.js';
+import type {
+  LevelResult,
+  LevelRules,
+  MapItem,
+  MapResult,
+  Preferences,
+  RecordView,
+  RuleRow,
+  SuccessionType,
+} from './types.js';
 
 export const BASE = '/api/tenant/succession';
 export const READINESS_PATH = '/api/tenant/talent-review/readiness-levels';
@@ -87,7 +96,8 @@ export function deleteReceipt(response: unknown) {
   return { id: view.id };
 }
 export const PREFS_RECEIPT = 'preferences';
-const isStrings = (value: unknown) => Array.isArray(value) && value.every((item) => typeof item === 'string');
+export const isStrings = (value: unknown): value is readonly string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string');
 /** 偏好回执按真实 DTO 逐项核对（map-routes.ts PUT /maps/:kind/preferences）；层级只有二到四级。 */
 export function isPreferences(response: unknown): response is Preferences {
   const view = response as Partial<Record<keyof Preferences, unknown>> | null;
@@ -129,18 +139,54 @@ export function preferenceBody(full: Record<string, unknown>, edited: Record<str
     showPositionsWithoutSuccessor: !!merged.showPositionsWithoutSuccessor,
   };
 }
-/** 赋值没有单条读取接口：重读整张地图，按节点 ID 取结果行；未评定时版本为 0。 */
-export function assignLatest(map: MapResult, id: string, kind: 'position' | 'org') {
+/** position-map.ts 的默认色投影不含 revision；只有该字段可见时，才可用投影形状区分已有行。 */
+function isDefaultPositionRisk(id: string, level: LevelResult, fields: readonly string[]) {
+  if (!isStrings(fields) || !fields.includes('revision')) return false;
+  const shape = {
+    positionId: level.positionId === id,
+    levelId: level.levelId === null,
+    levelName: level.levelName === null,
+    levelColor: typeof level.levelColor === 'string',
+    computedAt: level.computedAt === null,
+    resultAsOf: level.resultAsOf === null,
+  };
+  // resultAsOf 跟随 computedAt 披露；任何额外的键都说明这不是默认投影（例如 id、method）。
+  const projected = Object.entries(shape).filter(([key]) => fields.includes(key === 'resultAsOf' ? 'computedAt' : key));
+  return (
+    projected.length > 0 && Object.keys(level).length === projected.length && projected.every(([, match]) => match)
+  );
+}
+
+/** 只有职位地图需要结合风险结果字段权限识别默认投影；组织地图的结果带服务端版本。 */
+export function assignSnapshot(
+  id: string,
+  level: LevelResult | null | undefined,
+  positionRiskFields: readonly string[] = [],
+) {
+  const levelId = level?.levelId;
+  const first =
+    level === undefined ||
+    (level !== null && level.revision === undefined && isDefaultPositionRisk(id, level, positionRiskFields));
+  return {
+    id,
+    revision: first ? 0 : level?.revision,
+    values: { mode: levelId ? 'manual' : 'rule', levelId: levelId ?? undefined },
+  };
+}
+
+/** 赋值没有单条读取接口：重读整张地图，按节点 ID 取结果投影。 */
+export function assignLatest(
+  map: MapResult,
+  id: string,
+  kind: 'position' | 'org',
+  positionRiskFields?: readonly string[],
+) {
   const items = map.items.flatMap((item) => [item, ...(item.keyPositions ?? [])]);
   const item = items.find((entry) => entry.id === id);
   if (!item) throw new Error('assignMissing');
-  const level = kind === 'position' ? item.risk : item.health;
-  return { id, revision: level?.revision ?? 0, values: assignValues(level?.levelId) };
+  const fields = kind === 'position' && map.items.includes(item) ? positionRiskFields : undefined;
+  return assignSnapshot(id, kind === 'position' ? item.risk : item.health, fields);
 }
-export const assignValues = (levelId?: string | null) => ({
-  mode: levelId ? 'manual' : 'rule',
-  levelId: levelId ?? undefined,
-});
 
 /** 组织地图：关键职位挂在所属组织下，作为子卡片（接口 keyPositions[]，字段受地图对象权限控制）。 */
 export function orgMapItems(items: readonly MapItem[]): MapItem[] {
