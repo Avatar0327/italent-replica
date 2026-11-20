@@ -1,8 +1,10 @@
 import { approverSourcesOf, type ApprovalNode, type ExitRoute, type ProcessDefinition } from '@italent/domain';
 import type { ProcessView, VersionView } from '../../../../api/src/modules/approval/definitions.js';
 import { ApiError } from '../../foundation/client.js';
-import type { ObjectPermission } from '../../foundation/permission-model.js';
+import { canButton, fieldAccess, type ObjectPermission } from '../../foundation/permission-model.js';
 import type { Values } from '../../foundation/forms/store.js';
+import { changedFields, sameValue } from '../../foundation/forms/values.js';
+import { echoSource, echoSources, wireDraft } from './auto-variables.js';
 import { supportsFallback, fallbackError } from './fallback.js';
 import { m } from './messages.js';
 import { normalizeRoutes, routesInputError, routesShape } from './routes.js';
@@ -103,8 +105,10 @@ export function editableValues(version: Pick<VersionView, 'nodes'>, approvalType
 }
 function nodeValue(node: ApprovalNode, field: string) {
   if (field === 'routes') return structuredClone(node.routes ?? []);
-  if (field === 'emptyApproverSources') return structuredClone(node.emptyApproverSources ?? []);
-  if (field === 'approver' || field === 'approvers') return structuredClone(node[field as keyof ApprovalNode]);
+  // S7b：本位置自动变量回显为指定人员（auto-variables.ts），未编辑也按回显值提交
+  if (field === 'emptyApproverSources') return structuredClone(echoSources(node.emptyApproverSources ?? []));
+  if (field === 'approvers' && 'approvers' in node) return structuredClone(echoSources(node.approvers));
+  if (field === 'approver' && 'approver' in node) return structuredClone(echoSource(node.approver));
   if (field === 'fallbackUserIds') return Array.isArray(node.fallbackUserIds) ? [...node.fallbackUserIds] : [];
   if (field.startsWith('actions.')) return node.actions?.[field.slice(8) as keyof ApprovalNode['actions']];
   return node[field as keyof ApprovalNode];
@@ -166,7 +170,10 @@ export function buildDraft(version: VersionView, edited: Values, approvalType?: 
       const actions = { ...node.actions };
       for (const field of nodeFields(node, approvalType)) {
         const key = nodeField(node.key, field);
-        if (!(key in edited)) continue;
+        if (!(key in edited)) {
+          if (sourceFields(node).includes(field)) values[field] = nodeValue(node, field);
+          continue;
+        }
         if (field.startsWith('actions.')) Object.assign(actions, { [field.slice(8)]: edited[key] });
         else if (field === 'routes') values.routes = normalizeRoutes(edited[key] as ExitRoute[]);
         else values[field] = field === 'name' ? (edited[key] as string).trim() : edited[key];
@@ -175,14 +182,40 @@ export function buildDraft(version: VersionView, edited: Values, approvalType?: 
     }),
   };
 }
+/**
+ * 草稿的提交归一化（P2-3 单一入口）：表单值 → 整份草稿（buildDraft：校验、名称去首尾空格、出口规范化）→
+ * 请求体（wireDraft：未选人 value:null）。保存的请求体、保存前本地校验、发布前的未保存判定都经它。
+ */
+export function draftSubmission(version: VersionView, edited: Values, approvalType?: string) {
+  const draft = buildDraft(version, edited, approvalType);
+  return { draft, body: wireDraft(draft) };
+}
+/**
+ * 发布前“有未保存的修改”：按提交归一化后的请求体与“不改任何字段”的请求体比较。改了又改回、只差保存会去掉的
+ * 首尾空格都不算；真实改动算；归一化失败（名称空白等保存会拒的输入）也算，交保存提示，不发布服务端旧草稿。
+ */
+export function draftChanged(version: VersionView, values: Values, approvalType?: string) {
+  const baseline = editableValues(version, approvalType);
+  const fields = changedFields(values, baseline, Object.keys(baseline));
+  if (!fields.length) return false;
+  try {
+    const edited = Object.fromEntries(fields.map((field) => [field, values[field]]));
+    const unchanged = draftSubmission(version, {}, approvalType).body;
+    return !sameValue(draftSubmission(version, edited, approvalType).body, unchanged);
+  } catch {
+    return true;
+  }
+}
+/**
+ * 流程详情按钮的前端入口（P2-4 单一入口）：流程管理能力 + 对象更新操作（catalog 里这些按钮依赖 update）+ 该详情按钮。
+ * 后端保存 / 发布 / 新建版本只校验流程管理能力（access.ts requireProcessButton），前端入口是它的子集。
+ */
+export function buttonAccess(permission: ObjectPermission | undefined, admin: boolean, button: string) {
+  return admin && !!permission?.dataOperations.update && canButton(permission, button, 'detail');
+}
+/** 编辑入口（保存草稿 / 新建版本）：按钮入口之外还要节点可看、可编辑（F-315）。发布不改节点，只看 buttonAccess。 */
 export function editAccess(permission: ObjectPermission | undefined, admin: boolean, button: string) {
-  return !!(
-    admin &&
-    permission?.dataOperations.update &&
-    permission.buttons.some((item) => item.buttonCode === button && item.level === 'detail') &&
-    permission.viewableFields.includes('nodes') &&
-    permission.editableFields.includes('nodes')
-  );
+  return buttonAccess(permission, admin, button) && fieldAccess(permission, 'nodes').editable;
 }
 export function validProcess(value: unknown, id: string): value is ProcessView {
   return (

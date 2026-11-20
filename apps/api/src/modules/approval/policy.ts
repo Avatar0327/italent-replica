@@ -415,8 +415,11 @@ const VARIABLE_FIELDS = fixed(
     'updatedBy',
     'updatedAt',
     'people',
+    'origin',
+    'originProcessName',
+    'originNodeName',
   ],
-  'F-326 §4.3：管理员配置，人员回显仅姓名、工号、部门',
+  'F-326 §4.3：管理员配置，人员回显仅姓名、工号、部门；来源与来源流程 / 节点名（DEC-941）',
 );
 const REFERENCE_FIELDS = fixed(['items', 'total'], 'F-326 §6 引用清单：仅流程 / 节点名称与计数，不含审批人');
 const variableConfig = write(
