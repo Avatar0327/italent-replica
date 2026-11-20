@@ -23,6 +23,7 @@ export interface Sending {
   command: Command<Values>;
 }
 export interface Run {
+  deletion?: boolean;
   values: Values;
   editableFields: readonly string[];
   send(request: Sending): Promise<{ id: string }>;
@@ -65,10 +66,11 @@ export function useConflictCommand(
   const command = forAction(pinned, action);
   const full = command.state?.latest?.values ?? current.values;
   const reload = read && current.id !== undefined ? () => command.reread(read) : undefined;
-  const run = async ({ values, editableFields, send }: Run) => {
+  const run = async ({ values, editableFields, send, deletion }: Run) => {
     if (invalid) throw new Error(messages.invalidObject);
     const outcome = await command.submit({
       values,
+      deletion,
       baseline: current.values,
       editableFields,
       revision: current.revision,

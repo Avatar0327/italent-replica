@@ -605,14 +605,24 @@ export async function runWrite(
    * project：固定形状回执（不是任职对象）的显式投影，替代通用任职字段裁剪，可异步（按当前权限再裁剪，首次与重放同一出口）；
    * 缺省两项与之前完全相同。
    */
-  options: { readonly guard?: CommandGuard; readonly project?: (body: unknown) => unknown | Promise<unknown> } = {},
+  options: {
+    readonly guard?: CommandGuard;
+    readonly project?: (body: unknown) => unknown | Promise<unknown>;
+    /** 请求指纹用的规范化路径；缺省取原始请求路径（F-469：删除结果查询需与写入口同口径）。 */
+    readonly fingerprintPath?: string;
+  } = {},
 ) {
   const key = c.req.header('idempotency-key');
   const scoped = isScopedGuard(options.guard) ? options.guard : undefined;
   const guard = scoped ? withReplayRecheck(deps, ctx, key!, scoped) : options.guard;
   const result = await runCommand(deps.db, ctx, {
     id: key,
-    fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input },
+    fingerprint: {
+      method: c.req.method,
+      path: options.fingerprintPath ?? c.req.path,
+      revision: ctx.expectedRevision,
+      input,
+    },
     ...(guard ? { guard } : {}),
     execute: async (tx, commandId) => {
       const base = scoped

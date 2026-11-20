@@ -1,4 +1,7 @@
-/** F-140 §3.4：替代是一次命令；前单撤销与后继 approved 的整体 ΔO / ΔP 由上游统一校验。 */
+/**
+ * F-140 §3.4：替代是一次命令；前单撤销与后继 approved 的整体 ΔO / ΔP 由上游统一校验。
+ * F-363：后继单复制锁内原单的用工形式，以它为沿用基准；历史记录更正不向后传播，前驱可能已是别的值。
+ */
 import { exitRequests, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { inheritAttachments } from '../attachments/binding.js';
@@ -51,11 +54,7 @@ export async function replaceExit(
       fields,
       customFields: business.payload.customFields,
     },
-    {
-      exitPass: EXIT_GATE_PASS,
-      rescheduledExit: true,
-      ...(business.payload.changeType ? { changeType: business.payload.changeType } : {}),
-    },
+    successorOptions(business),
   );
   const successor = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: created.revision }, created.id);
   if (successor.state !== 'approved') await appendEmploymentState(tx, ctx, successor, 'approved');
@@ -100,6 +99,15 @@ export async function replaceExit(
     next: successor.payload,
     successor: await requireSavedBusiness(tx, ctx, created.id),
     hints: [] as DownstreamItem[],
+  };
+}
+
+function successorOptions(business: LockedEmploymentBusiness) {
+  return {
+    exitPass: EXIT_GATE_PASS,
+    rescheduledExit: true as const,
+    retainedEmploymentForm: business.payload.fields.employmentForm ?? null,
+    ...(business.payload.changeType ? { changeType: business.payload.changeType } : {}),
   };
 }
 
