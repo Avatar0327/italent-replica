@@ -20,6 +20,7 @@ const DEPARTMENT = '26000000-0000-4000-8000-000000000002';
 const BUSINESS = '26000000-0000-4000-8000-000000000021';
 const TODAY = '2026-11-20';
 const SAVE_PATH = `/api/tenant/employment/transfers/employees/${EMPLOYEE}`;
+const DRAFT_PATH = `${SAVE_PATH}/draft`;
 const TITLE = '已超出设定编制';
 const CONTENT = '保存后目标部门的人数将超出设定编制，是否继续保存？';
 const fields = ['effectiveDate', 'transferTypeCode', 'reasonCode', 'adjustSalary', 'isChangeContract'];
@@ -78,11 +79,18 @@ const preview = {
 };
 
 /** 按序返回的保存应答：最后一条重复使用。 */
-let saves: Reply[];
+let saves: (Reply | Promise<Reply>)[];
 let posts: { body: Record<string, unknown>; key: string | null }[];
-function replyOf(url: URL, method: string): Reply {
+let hasDraft: boolean;
+let deletes: { body: unknown; key: string | null; revision: string | null }[];
+function replyOf(url: URL, method: string): Reply | Promise<Reply> {
   const path = url.pathname;
   if (path === SAVE_PATH && method === 'POST') return saves[Math.min(posts.length - 1, saves.length - 1)]!;
+  if (path === `${DRAFT_PATH}/${BUSINESS}` && method === 'DELETE') {
+    if (deletes.length === 1) return needConfirm();
+    hasDraft = false;
+    return ok({ id: BUSINESS, revision: 2, status: 'deleted' });
+  }
   if (path === '/api/tenant/employment/transfers/catalog')
     return ok({
       today: TODAY,
@@ -94,7 +102,11 @@ function replyOf(url: URL, method: string): Reply {
   if (path === '/api/tenant/employment/employees')
     return ok({ items: [{ id: EMPLOYEE, name: '合成员工', code: 'DEMO-026', revision: 3 }] });
   if (path === `${SAVE_PATH}/preview`) return ok(preview);
-  if (path === `${SAVE_PATH}/draft`) return ok({ draft: null });
+  if (path === DRAFT_PATH)
+    return ok({ draft: hasDraft ? { id: BUSINESS, revision: 1, transferTypeCode: 'transfer' } : null });
+  if (path === `/api/tenant/employment/businesses/${BUSINESS}`) return ok({ ...receipt(), status: 'draft' });
+  if (path === `/api/tenant/employment/transfers/${BUSINESS}/linkage`)
+    return ok({ businessId: BUSINESS, revision: 1, options: null });
   if (path === '/api/tenant/transfer/insurance-origin')
     return ok({ regionCode: null, planId: null, companyId: null, planName: null, companyName: null });
   return ok({ items: [], hasDataPermission: true });
@@ -105,6 +117,8 @@ let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   posts = [];
+  hasDraft = false;
+  deletes = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string, init: RequestInit = {}) => {
@@ -115,7 +129,15 @@ beforeEach(() => {
           body: JSON.parse(String(init.body)) as Record<string, unknown>,
           key: new Headers(init.headers).get('idempotency-key'),
         });
-      const reply = replyOf(url, method);
+      if (method === 'DELETE' && url.pathname === `${DRAFT_PATH}/${BUSINESS}`) {
+        const headers = new Headers(init.headers);
+        deletes.push({
+          body: init.body ? JSON.parse(String(init.body)) : undefined,
+          key: headers.get('idempotency-key'),
+          revision: headers.get('if-match'),
+        });
+      }
+      const reply = await replyOf(url, method);
       return new Response(JSON.stringify(reply.body), {
         status: reply.status ?? 200,
         headers: { 'content-type': 'application/json' },
@@ -268,5 +290,34 @@ describe('AC-FE-F026 非严格控编超编：保存先确认，确认后带 conf
     await settle(50);
     expect(dialogs()).toHaveLength(1);
     expect(posts).toHaveLength(1);
+  });
+
+  it('AC-FE-F026-07 保存请求在途离页，迟到的 409 不在新页面弹确认框', async () => {
+    let respond!: (reply: Reply) => void;
+    saves = [new Promise<Reply>((resolve) => (respond = resolve))];
+    await open();
+    await click(button('保存'));
+    expect(posts).toHaveLength(1);
+    await act(async () => root.render(frame(h('main', {}, '新页面'))));
+    expect(host.textContent).toBe('新页面');
+    await act(async () => respond(needConfirm()));
+    await settle(50);
+    expect(dialogs()).toHaveLength(0);
+    expect(posts).toHaveLength(1);
+  });
+
+  it('AC-FE-F026-08 清除暂存要求超编确认，确认后同版本换命令 ID 重提', async () => {
+    hasDraft = true;
+    await open('apply');
+    await click(host.querySelector('.transfer-link'));
+    expect(dialogs()).toHaveLength(1);
+    expect(dialogs()[0]?.textContent).toContain('清除暂存');
+    expect(deletes).toHaveLength(1);
+    await click(dialogButton(true));
+    expect(deletes).toHaveLength(2);
+    expect(deletes[1]).toMatchObject({ body: { confirmed: true }, revision: deletes[0]?.revision });
+    expect(deletes[1]?.key).toBeTruthy();
+    expect(deletes[1]?.key).not.toBe(deletes[0]?.key);
+    expect(host.querySelector('.transfer-link')).toBeNull();
   });
 });

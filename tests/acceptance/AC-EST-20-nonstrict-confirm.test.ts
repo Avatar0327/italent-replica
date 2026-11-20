@@ -7,8 +7,10 @@
  *   带 confirmed 以新命令重提返回 201，新增一条任职记录。
  */
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { withLoginEmail } from './AC-EMP-support.js';
 import { activationWorld } from './AC-TRF-activation-support.js';
+import { revocable, snapshot } from './support/revocable-rights.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -58,6 +60,112 @@ const transfer = (w: World, person: Person, date: string, extra: Record<string, 
   });
 const recordCount = async (w: World, person: Person) =>
   (await w.session.records(person.employee.id, '2026-12-31')).length;
+
+type ConfirmationKind = 'transfer' | 'intern_regularization' | 'retire_rehire';
+
+async function revocableCreate(label: string, kind: ConfirmationKind = 'transfer') {
+  const w = await fixture(label, false);
+  const first = await w.hired('先占编者');
+  expect((await transfer(w, first, '2026-10-20')).status).toBe(201);
+  const { person: second, revision } = await personToConfirm(w, kind);
+  const { rights, authorize } = revocable();
+  const api = tenantApi(w.db, { authorize, clock: () => new Date('2026-10-01T01:00:00Z') });
+  const send = (confirmed: boolean) =>
+    api.request('POST', `/api/tenant/employment/employees/${second.employee.id}/businesses`, {
+      user: w.session.user.id,
+      tenant: w.session.tenant.id,
+      ifMatch: revision,
+      idempotencyKey: confirmed ? 'est20-confirmed' : 'est20-warning',
+      body: withLoginEmail(second.employee.id, {
+        kind,
+        mode: 'direct',
+        effectiveDate: '2026-10-05',
+        fields: { departmentId: w.to.id },
+        confirmed,
+      }),
+    });
+  const warning = await send(false);
+  expect(warning.status, await warning.clone().text()).toBe(409);
+  expect(await warning.json()).toMatchObject({ error: { details: { reason: 'CONFIRMATION_REQUIRED' } } });
+  const revokeDepartmentWrite = () => {
+    rights.deny = (request) => request.action === 'object.create' && (request.fields ?? []).includes('departmentId');
+  };
+  return { w, second, send, revokeDepartmentWrite };
+}
+
+async function personToConfirm(w: World, kind: ConfirmationKind) {
+  if (kind === 'intern_regularization') {
+    const employee = await w.session.employee('待转正实习生');
+    const hire = await w.session.business(
+      employee.id,
+      {
+        kind: 'hire',
+        mode: 'direct',
+        effectiveDate: '2026-09-01',
+        fields: { departmentId: w.from.id, employType: 'intern' },
+      },
+      employee.revision,
+    );
+    return { person: { employee, hire }, revision: hire.employeeRevision };
+  }
+  const person = await w.hired('待确认者');
+  if (kind !== 'retire_rehire') return { person, revision: person.hire.employeeRevision };
+  const retired = await w.session.business(
+    person.employee.id,
+    { kind: 'retirement', mode: 'direct', lastWorkDate: '2026-09-20', fields: {} },
+    person.hire.employeeRevision,
+  );
+  return { person, revision: retired.employeeRevision };
+}
+
+describe('AC-EST-20 通用新建确认命令在事务内复核当前权限', () => {
+  it.each(['首次确认', '直接重放'])('%s 撤销部门创建字段权返回 403，业务与台账不变', async (phase) => {
+    const x = await revocableCreate(`est20-revoke-${phase}`);
+    if (phase === '直接重放') {
+      const first = await x.send(true);
+      expect(first.status, await first.clone().text()).toBe(201);
+    }
+    const before = await snapshot(x.w.db, x.w.session.tenant.id);
+    x.revokeDepartmentWrite();
+    const response = await x.send(true);
+    expect(response.status, await response.clone().text()).toBe(403);
+    expect(await recordCount(x.w, x.second)).toBe(phase === '首次确认' ? 1 : 2);
+    expect(await snapshot(x.w.db, x.w.session.tenant.id)).toEqual(before);
+  });
+
+  it('提交已成功但回执丢失：回查前撤权返回 403，同一命令只写入一次', async () => {
+    const x = await revocableCreate('est20-revoke-after-commit');
+    const transaction = x.w.db.transaction.bind(x.w.db);
+    let committed: Awaited<ReturnType<typeof snapshot>>;
+    const spy = vi.spyOn(x.w.db, 'transaction').mockImplementation(async (callback, config) => {
+      const result = await transaction(callback, config);
+      if (!committed && result && typeof result === 'object' && 'status' in result && result.status === 201) {
+        committed = await snapshot(x.w.db, x.w.session.tenant.id);
+        x.revokeDepartmentWrite();
+        throw new Error('合成提交回执丢失');
+      }
+      return result;
+    });
+    try {
+      const response = await x.send(true);
+      expect(committed).toBeDefined();
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect(await recordCount(x.w, x.second)).toBe(2);
+      expect(await snapshot(x.w.db, x.w.session.tenant.id)).toEqual(committed);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it.each(['intern_regularization', 'retire_rehire'] as const)('AC-EST-20 %s 共用通用创建的确认授权', async (kind) => {
+    const x = await revocableCreate(`est20-revoke-${kind}`, kind);
+    const before = await snapshot(x.w.db, x.w.session.tenant.id);
+    x.revokeDepartmentWrite();
+    const response = await x.send(true);
+    expect(response.status, await response.clone().text()).toBe(403);
+    expect(await snapshot(x.w.db, x.w.session.tenant.id)).toEqual(before);
+  });
+});
 
 const ORDERS = [
   { name: '先存 10-20 再存 10-05', first: '2026-10-20', second: '2026-10-05' },
