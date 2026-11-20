@@ -973,6 +973,7 @@ test('AC-FE-F110-18 HR 超编确认重提断线：刷新后仍按第二条命令
   await page.route('**/api/tenant/commands/*/result', (route) => {
     const path = new URL(route.request().url()).pathname;
     queries.push(path);
+    if (queries.length === 1) return route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND' } } });
     if (path === resultPath(writes[0]!) || !resultReady) {
       // B 的查询也收到一份迟到的 A 失败摘要，必须按命令 ID 拒绝这份回执。
       return route.fulfill({
@@ -1025,6 +1026,10 @@ test('AC-FE-F110-18 HR 超编确认重提断线：刷新后仍按第二条命令
   const [first, retry] = writes as [string, string];
   expect(retry).not.toBe(first);
   expect.soft(await pendingIds(), '响应丢失时只登记确认重提的命令 B').toEqual([retry]);
+  await query.click();
+  await expect.poll(() => queries).toHaveLength(1);
+  expect.soft(queries, '刷新前按 B 查询').toEqual([resultPath(retry)]);
+  await expect(page.getByText('暂未查到本次命令的结果，可能仍在处理中，请稍后再查询。')).toBeVisible();
 
   await closeHr(page);
   await page.reload();
@@ -1032,24 +1037,25 @@ test('AC-FE-F110-18 HR 超编确认重提断线：刷新后仍按第二条命令
   await expect(query).toBeVisible();
   expect.soft(await pendingIds(), '整页刷新后仍只登记 B').toEqual([retry]);
   await query.click();
-  await expect.poll(() => queries).toEqual([resultPath(retry)]);
+  await expect.poll(() => queries).toEqual([resultPath(retry), resultPath(retry)]);
   await expect(query).toBeEnabled();
   await expectReadonly(page);
   expect(await pendingIds()).toEqual([retry]);
 
   resultReady = true;
   await query.click();
-  await expect.poll(() => queries).toHaveLength(2);
+  await expect.poll(() => queries).toHaveLength(3);
   await expect(query).toBeEnabled();
   await expectReadonly(page);
   expect(await pendingIds()).toEqual([retry]);
 
   businessReady = true;
+  const readBack = page.waitForResponse((response) => response.url().endsWith(`/employment/businesses/${draftId}`));
   await query.click();
-  await expect(page.getByText('直接调动已保存并生效。', { exact: true })).toBeVisible();
+  expect((await readBack).status()).toBe(200);
   await expect.poll(pendingIds).toEqual([]);
   await expect(query).toHaveCount(0);
-  expect(queries).toEqual(Array<string>(3).fill(resultPath(retry)));
+  expect(queries).toEqual(Array<string>(4).fill(resultPath(retry)));
   expect(writes).toHaveLength(2);
 });
 
