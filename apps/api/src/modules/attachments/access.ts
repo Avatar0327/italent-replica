@@ -6,6 +6,7 @@
  * 其他入口（HR、经理、审批）不经这里，临时文件对它们不可见。
  */
 import { type Tx } from '@italent/db';
+import type { Context } from 'hono';
 import { AppError } from '../../errors.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { requireApplicationAccess } from '../employee-self-service/application-access.js';
@@ -25,4 +26,11 @@ export async function requireAttachmentRead(tx: Tx, self: SelfAccess): Promise<v
   await requireApplicationAccess(tx, self, 'exit');
   const visible = await getModuleViewableFieldsInTransaction(self.deps, self.ctx, EMPLOYMENT_OBJECT, tx);
   if (!visible?.has(ATTACHMENT_FIELD)) throw attachmentNotFound();
+}
+
+/** 写请求同源校验：跨站（Origin 不符或 sec-fetch-site=cross-site）一律 403。 */
+export function sameOrigin(c: Context) {
+  const origin = c.req.header('origin');
+  if ((origin && origin !== new URL(c.req.url).origin) || c.req.header('sec-fetch-site') === 'cross-site')
+    throw new AppError('FORBIDDEN', '只接受同源写请求');
 }

@@ -64,6 +64,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
   ],
   'apps/api/src/modules/personnel/change-requests.ts#createChange': [
+    'apps/api/src/modules/attachments/subset-binding.ts#assertNoAttachmentRefChange',
+    '#SELF_SERVICE',
     '#appendVersion',
     '#requireSelf',
     'apps/api/src/modules/personnel/store.ts#assertRevision',
@@ -91,6 +93,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/personnel/change-requests.ts#requireSelf': ['apps/api/src/modules/personnel/store.ts#rows'],
   'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction': [
+    'apps/api/src/modules/attachments/subset-binding.ts#assertNoAttachmentRefChange',
+    '#SELF_SERVICE',
     '#appendVersion',
     '#assertSelfServiceFields',
     '#currentChangeValues',
@@ -99,6 +103,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/store.ts#lockPerson',
     'apps/api/src/modules/personnel/store.ts#update',
     'apps/api/src/modules/personnel/subset-policy.ts#runSubsetRequestPolicy',
+    'apps/api/src/modules/personnel/subsets.ts#loadSubset',
     'apps/api/src/modules/personnel/validation.ts#subsetInput',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_REQUEST_OBJECT',
   ],
@@ -203,6 +208,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/personnel/fields.ts#SUBSETS',
   ],
   'apps/api/src/modules/personnel/http.ts#write': [
+    'apps/api/src/modules/attachments/subset-read.ts#expandSubsetAttachments',
+    'apps/api/src/modules/attachments/subset-read.ts#subsetKindOfObject',
     'apps/api/src/modules/avatar/references.ts#employeeAvatars',
     'apps/api/src/modules/personnel/access.ts#authorizeTx',
     'apps/api/src/modules/personnel/access.ts#requirePerson',
@@ -344,6 +351,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_REQUEST_OBJECT',
   ],
   'apps/api/src/modules/personnel/routes.ts#nestedSubsets': [
+    'apps/api/src/modules/attachments/subset-read.ts#expandSubsetAttachments',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
     'apps/api/src/modules/personnel/lists.ts#UNSORTED',
     'apps/api/src/modules/personnel/lists.ts#listFieldVisibility',
@@ -436,6 +444,81 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/personnel/store.ts#insert': ['#column'],
   'apps/api/src/modules/personnel/store.ts#lockPerson': ['#rows'],
   'apps/api/src/modules/personnel/store.ts#update': ['#column'],
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#attachmentWrite': ['#subsetAttachmentGuard'],
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#entry': [
+    'apps/api/src/modules/attachments/access.ts#sameOrigin',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/personnel/access.ts#access',
+    'apps/api/src/modules/personnel/validation.ts#subsetKind',
+    'packages/domain/src/personnel/fields.ts#SUBSETS',
+  ],
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#registeredField': [
+    'apps/api/src/modules/attachments/access.ts#attachmentNotFound',
+    'apps/api/src/modules/attachments/subset-read.ts#SUBSET_PURPOSE',
+    'apps/api/src/modules/attachments/subset-read.ts#parseSubsetTargetTag',
+  ],
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#route:DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId':
+    [
+      'apps/api/src/modules/attachments/service.ts#deleteFile',
+      'apps/api/src/modules/attachments/subset-read.ts#SUBSET_PURPOSE',
+      'apps/api/src/modules/job/context.ts#parseBody',
+      'apps/api/src/modules/job/context.ts#revision',
+      'apps/api/src/modules/job/context.ts#uuidParam',
+      'apps/api/src/modules/personnel/http.ts#safe',
+      '#BASE',
+      '#attachmentWrite',
+      '#entry',
+    ],
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/attachments/:fileId/content':
+    [
+      'apps/api/src/modules/attachments/carrier-read.ts#readCarrierAttachment',
+      'apps/api/src/modules/attachments/carrier-read.ts#respondAttachment',
+      'apps/api/src/modules/attachments/subset-read.ts#SUBSET_BUSINESS_TYPE',
+      'apps/api/src/modules/job/context.ts#uuidParam',
+      'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+      'apps/api/src/modules/personnel/access.ts#access',
+      'apps/api/src/modules/personnel/access.ts#preflight',
+      'apps/api/src/modules/personnel/http.ts#safe',
+      '#BASE',
+      'apps/api/src/modules/personnel/subsets.ts#loadSubset',
+      'apps/api/src/modules/personnel/validation.ts#subsetKind',
+      'packages/domain/src/personnel/fields.ts#SUBSETS',
+      'packages/domain/src/personnel/fields.ts#subsetAttachmentFields',
+    ],
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#route:POST /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments':
+    [
+      'apps/api/src/modules/attachments/service.ts#registerFile',
+      'apps/api/src/modules/attachments/subset-read.ts#SUBSET_PURPOSE',
+      'apps/api/src/modules/attachments/subset-read.ts#subsetTargetTag',
+      'apps/api/src/modules/job/context.ts#parseBody',
+      'apps/api/src/modules/personnel/http.ts#safe',
+      '#BASE',
+      '#attachmentWrite',
+      '#entry',
+      '#registration',
+      'packages/domain/src/personnel/fields.ts#subsetAttachmentFields',
+    ],
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#route:POST /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId/upload':
+    [
+      'apps/api/src/modules/attachments/service.ts#uploadFile',
+      'apps/api/src/modules/attachments/subset-read.ts#SUBSET_PURPOSE',
+      'apps/api/src/modules/job/context.ts#parseBody',
+      'apps/api/src/modules/job/context.ts#revision',
+      'apps/api/src/modules/job/context.ts#uuidParam',
+      'apps/api/src/modules/personnel/http.ts#safe',
+      '#BASE',
+      '#attachmentWrite',
+      '#entry',
+    ],
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#subsetAttachmentGuard': [
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'apps/api/src/modules/personnel/access.ts#authorize',
+    'apps/api/src/modules/personnel/access.ts#requirePerson',
+    '#registeredField',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+    'packages/domain/src/personnel/fields.ts#subsetAttachmentFields',
+  ],
   'apps/api/src/modules/personnel/subset-policy.ts#registerSubsetPolicy': ['#POLICIES'],
   'apps/api/src/modules/personnel/subset-policy.ts#runSubsetRequestPolicy': ['#POLICIES'],
   'apps/api/src/modules/personnel/subset-policy.ts#runSubsetSavePolicy': ['#POLICIES'],
@@ -454,6 +537,7 @@ export const GRAPH: Graph = {
     ],
   'apps/api/src/modules/personnel/subset-routes.ts#route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind':
     [
+      'apps/api/src/modules/attachments/subset-read.ts#expandSubsetAttachments',
       'apps/api/src/modules/job/context.ts#pageQuery',
       'apps/api/src/modules/job/context.ts#uuidParam',
       'apps/api/src/modules/personnel/access.ts#access',
@@ -468,6 +552,7 @@ export const GRAPH: Graph = {
     ],
   'apps/api/src/modules/personnel/subset-routes.ts#route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id':
     [
+      'apps/api/src/modules/attachments/subset-read.ts#expandSubsetAttachments',
       'apps/api/src/modules/job/context.ts#uuidParam',
       'apps/api/src/modules/personnel/access.ts#access',
       'apps/api/src/modules/personnel/access.ts#preflight',
@@ -496,6 +581,7 @@ export const GRAPH: Graph = {
       'packages/domain/src/personnel/fields.ts#SUBSETS',
     ],
   'apps/api/src/modules/personnel/subset-routes.ts#route:GET /api/tenant/personnel/subsets/:kind': [
+    'apps/api/src/modules/attachments/subset-read.ts#expandSubsetAttachments',
     'apps/api/src/modules/job/context.ts#pageQuery',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/personnel/access.ts#access',
@@ -563,7 +649,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/personnel/fields.ts#SUBSETS',
   ],
   'apps/api/src/modules/personnel/subsets.ts#saveSubset': [
-    'apps/api/src/modules/personnel/attachments.ts#validateAttachments',
+    'apps/api/src/modules/attachments/subset-binding.ts#bindSubsetAttachments',
     'apps/api/src/modules/personnel/store.ts#assertRevision',
     'apps/api/src/modules/personnel/store.ts#lockPerson',
     'apps/api/src/modules/personnel/subset-policy.ts#runSubsetSavePolicy',

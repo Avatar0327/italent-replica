@@ -1539,6 +1539,45 @@
         ]
       }
     },
+    "DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "personnel",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "personnel.subset"
+        ],
+        "object": [
+          "personnel access"
+        ],
+        "objectOp": [
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:update"
+        ],
+        "scope": [
+          "personnel access",
+          "requirePerson / preflight"
+        ],
+        "scopePoint": [
+          "requirePerson / preflight"
+        ]
+      }
+    },
     "DELETE /api/tenant/qualification/categories/:id": {
       "edge": {
         "anonymous": {
@@ -10177,6 +10216,41 @@
         ],
         "fieldsOut": [
           "trim()"
+        ],
+        "object": [
+          "personnel access"
+        ],
+        "objectOp": [
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
+        ],
+        "scope": [
+          "personnel access",
+          "requirePerson / preflight"
+        ],
+        "scopePoint": [
+          "requirePerson / preflight"
+        ]
+      }
+    },
+    "GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/attachments/:fileId/content": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "personnel",
+      "primitives": {
+        "domain": [
+          "personnel.subset"
         ],
         "object": [
           "personnel access"
@@ -26101,6 +26175,83 @@
         ],
         "scope": [
           "personnel access"
+        ]
+      }
+    },
+    "POST /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "personnel",
+      "primitives": {
+        "command": [
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "personnel.subset"
+        ],
+        "object": [
+          "personnel access"
+        ],
+        "objectOp": [
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:update"
+        ],
+        "scope": [
+          "personnel access",
+          "requirePerson / preflight"
+        ],
+        "scopePoint": [
+          "requirePerson / preflight"
+        ]
+      }
+    },
+    "POST /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId/upload": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "personnel",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "personnel.subset"
+        ],
+        "object": [
+          "personnel access"
+        ],
+        "objectOp": [
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:update"
+        ],
+        "scope": [
+          "personnel access",
+          "requirePerson / preflight"
+        ],
+        "scopePoint": [
+          "requirePerson / preflight"
         ]
       }
     },
