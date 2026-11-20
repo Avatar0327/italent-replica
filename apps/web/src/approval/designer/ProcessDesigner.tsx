@@ -18,17 +18,20 @@ import {
   base,
   root,
   processObject,
-  buildDraft,
   assertDraftStructure,
   completeDefinition,
   editableValues,
   editAccess,
+  buttonAccess,
+  draftChanged,
+  draftSubmission,
   nodeField,
   type ProcessView,
   type VersionView,
   type ProcessSummary,
 } from './model.js';
 import { m } from './messages.js';
+import { p } from './publish-messages.js';
 import { useRead } from './useRead.js';
 import { Conditions, OtherNodeProperties } from './ReadConfiguration.js';
 import { FallbackHandlers } from './FallbackHandlers.js';
@@ -40,6 +43,7 @@ import { r } from './route-messages.js';
 import { routesSummary } from './routes.js';
 import { RoutesEditor } from './RoutesEditor.js';
 import { useDesignerWrite } from './write.js';
+import { PublishButton, PublishStatus, usePublish, type MissingSlot } from './PublishAction.js';
 import './designer.css';
 
 // 模块切换不能丢失未知命令；内核按租户 + 身份 + 稳定流程 ID 隔离恢复槽（DEC-464、F-142）。
@@ -207,9 +211,13 @@ function DetailContent({
 }) {
   if (error) return <ReadFailure error={error} retry={refresh} />;
   if (!data) return <PageState kind="loading" />;
-  return <Definition key={`${id}/${data.revision}`} process={data} onSaved={onSaved} />;
+  return <Definition key={`${id}/${data.revision}`} process={data} onSaved={onSaved} onRefresh={refresh} />;
 }
-function Definition({ process, onSaved }: { process: ProcessView; onSaved(message: string): void }) {
+interface Callbacks {
+  onSaved(message: string): void;
+  onRefresh(): void;
+}
+function Definition({ process, onSaved, onRefresh }: { process: ProcessView } & Callbacks) {
   const [view, setView] = useState<'latest' | 'current'>('latest');
   return (
     <>
@@ -231,7 +239,7 @@ function Definition({ process, onSaved }: { process: ProcessView; onSaved(messag
       {view === 'current' && process.currentVersion ? (
         <ReadOnlyVersion process={process} version={process.currentVersion} />
       ) : (
-        <LatestVersion process={process} onSaved={onSaved} />
+        <LatestVersion process={process} onSaved={onSaved} onRefresh={onRefresh} />
       )}
     </>
   );
@@ -294,15 +302,18 @@ function useProcessCommand(process: ProcessView) {
   const submission: CommandForm = command.form;
   const full = command.full.$process as ProcessView;
   const version = full.latestVersion;
-  const writable =
+  const usable =
     !permissions.loading &&
     !permissions.error &&
     full.status === 'active' &&
-    editAccess(permission, admin, action === 'draft' ? 'update' : 'newVersion') &&
     completeDefinition(version) &&
     version.status === process.latestVersion.status;
+  const writable = usable && editAccess(permission, admin, action === 'draft' ? 'update' : 'newVersion');
   const nodesVisible = !!permission?.viewableFields.includes('nodes');
-  return { api, command, submission, full, version, writable, action, nodesVisible };
+  // F-326 S7b：发布只对草稿开放，按 publish 详情按钮独立授权，不受保存按钮权限连带（catalog 两按钮各自授权）；
+  // 发布的是服务端已有草稿、不改节点，不看节点字段权限（P2-4，后端发布入口同样没有节点编辑前置）
+  const publishable = usable && action === 'draft' && buttonAccess(permission, admin, 'publish');
+  return { api, command, submission, full, version, writable, action, nodesVisible, publishable };
 }
 function nodeLabels(nodes: readonly ApprovalNode[]) {
   return Object.fromEntries(
@@ -333,8 +344,9 @@ function useSave(process: ProcessView, context: ProcessCommand, form: FormInstan
   const send = async ({ edited, command: request }: Sending) => {
     let draft: ProcessDefinition | undefined;
     try {
-      if (action === 'draft') draft = buildDraft(version, edited, full.approvalType);
-      await write(process.id, action, { ...request, body: draft ?? {} });
+      const built = action === 'draft' ? draftSubmission(version, edited, full.approvalType) : undefined;
+      draft = built?.draft;
+      await write(process.id, action, { ...request, body: built?.body ?? {} });
       return { id: process.id };
     } catch (error) {
       if (action !== 'draft') throw error;
@@ -351,7 +363,7 @@ function useSave(process: ProcessView, context: ProcessCommand, form: FormInstan
     try {
       values = action === 'draft' ? ((await form.validateFields()) as Values) : {};
       // 本地校验在进入内核前完成；send 中的失败只能代表请求结果。
-      if (action === 'draft') buildDraft(version, values, full.approvalType);
+      if (action === 'draft') draftSubmission(version, values, full.approvalType);
     } catch (error) {
       point(localSpot(error));
       if (error instanceof Error) setLocalError(error);
@@ -366,11 +378,22 @@ function useSave(process: ProcessView, context: ProcessCommand, form: FormInstan
   };
   return { editable, submit, localError, selected, setSelected, located };
 }
-function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(message: string): void }) {
+function LatestVersion({ process, onSaved, onRefresh }: { process: ProcessView } & Callbacks) {
   const context = useProcessCommand(process);
-  const { submission, full, version, writable, action, nodesVisible } = context;
+  const { submission, full, version, writable, action, nodesVisible, publishable } = context;
   const [form] = Form.useForm();
   const save = useSave(process, context, form, onSaved);
+  const [missing, setMissing] = useState<MissingSlot[]>([]);
+  const publish = usePublish(process, {
+    onMissing: (slots) => {
+      setMissing(slots);
+      if (slots[0]) save.setSelected(slots[0].nodeKey);
+    },
+    onDone: () => onSaved(p.done),
+    onRefresh,
+  });
+  // 未保存判断与保存同一提交归一化（draftChanged）：改了又改回、只差会被去掉的首尾空格都不算（P2-3）
+  const unsaved = () => draftChanged(version, form.getFieldsValue(true) as Values, full.approvalType);
   useDraftRefill(submission, save.editable, form);
   const fields = APPROVAL_TYPES[full.approvalType as keyof typeof APPROVAL_TYPES]?.conditionFields ?? [];
   const format = (field: string, value: unknown) =>
@@ -389,6 +412,8 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
       {submission.state?.readError instanceof Error && submission.state.readError.message === m.versionChanged && (
         <Alert type="warning" message={m.versionChanged} />
       )}
+      {/* 未确认的发布命令独立于“现在能否发布”显示：退出重开后最新版本已发布也仍可回查 / 按原单重发（P2-2） */}
+      {(publishable || !!publish.form.state) && <PublishStatus publish={publish} />}
       {!!save.localError && !submission.state?.error && (
         <Alert type="error" message={rejectionMessage(save.localError)} />
       )}
@@ -400,20 +425,26 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
             selected={save.selected}
             onSelect={save.setSelected}
             located={save.located}
+            missing={missing}
           />
         </FormLock>
       </Form>
-      {writable && (
+      {(writable || publishable) && (
         <div className="flow-footer">
-          <Button
-            type="primary"
-            aria-label={action === 'draft' ? m.save : m.newVersion}
-            loading={submission.busy}
-            disabled={submission.locked || submission.blocked}
-            onClick={() => void save.submit()}
-          >
-            {action === 'draft' ? m.save : m.newVersion}
-          </Button>
+          {writable && (
+            <Button
+              type="primary"
+              aria-label={action === 'draft' ? m.save : m.newVersion}
+              loading={submission.busy}
+              disabled={submission.locked || submission.blocked}
+              onClick={() => void save.submit()}
+            >
+              {action === 'draft' ? m.save : m.newVersion}
+            </Button>
+          )}
+          {publishable && (
+            <PublishButton publish={publish} unsaved={unsaved} disabled={submission.busy || submission.locked} />
+          )}
         </div>
       )}
     </>
@@ -441,10 +472,12 @@ function NodeNav({
   nodes,
   active,
   onSelect,
+  missing,
 }: {
   nodes: readonly ApprovalNode[];
   active: string;
   onSelect(key: string): void;
+  missing?: readonly MissingSlot[];
 }) {
   return (
     <nav className="flow-nodes" aria-label={m.nodes}>
@@ -454,6 +487,8 @@ function NodeNav({
           key={node.key}
           type={active === node.key ? 'primary' : 'text'}
           aria-current={active === node.key ? 'true' : undefined}
+          danger={missing?.some((slot) => slot.nodeKey === node.key)}
+          data-node-missing={missing?.some((slot) => slot.nodeKey === node.key) ? 'true' : undefined}
           onClick={() => onSelect(node.key)}
         >
           <span className="flow-node-number">{index + 1}</span>
@@ -463,12 +498,17 @@ function NodeNav({
     </nav>
   );
 }
+const missingText = (missing: readonly MissingSlot[] | undefined, node: ApprovalNode, slot: string) => {
+  const hit = missing?.find((item) => item.nodeKey === node.key && item.slot === slot);
+  return hit && p.missing(hit.nodeName, hit.slot);
+};
 function NodeProperties({
   nodes,
   approvalType,
   selected,
   onSelect,
   located,
+  missing,
 }: {
   nodes: readonly ApprovalNode[] | undefined;
   approvalType: string;
@@ -476,6 +516,8 @@ function NodeProperties({
   selected?: string;
   onSelect?(key: string): void;
   located?: Located;
+  /** 发布被“指定人员未选择”拒时标出的位置（F-326 S7b）。 */
+  missing?: readonly MissingSlot[];
 }) {
   const [own, setOwn] = useState<string>();
   if (!nodes) return <Alert type="info" message={m.missingNodes} />;
@@ -484,7 +526,7 @@ function NodeProperties({
   const active = nodes.find((node) => node.key === current) ?? nodes[0]!;
   return (
     <div className="flow-node-layout">
-      <NodeNav nodes={nodes} active={active.key} onSelect={onSelect ?? setOwn} />
+      <NodeNav nodes={nodes} active={active.key} onSelect={onSelect ?? setOwn} missing={missing} />
       <div className="flow-properties">
         <h3>{m.properties}</h3>
         <Descriptions
@@ -504,8 +546,13 @@ function NodeProperties({
         {/* 全部节点字段保持挂载，切换节点不丢未提交输入；只隐藏非当前节点。 */}
         {nodes.map((node) => (
           <div key={node.key} hidden={node.key !== active.key}>
-            <ApproverSources node={node} approvalType={approvalType} />
-            <ApproverSources node={node} approvalType={approvalType} empty />
+            <ApproverSources node={node} approvalType={approvalType} missing={missingText(missing, node, 'approver')} />
+            <ApproverSources
+              node={node}
+              approvalType={approvalType}
+              empty
+              missing={missingText(missing, node, 'empty_approver')}
+            />
             <FallbackHandlers node={node} approvalType={approvalType} />
             <RoutesEditor node={node} nodes={nodes} approvalType={approvalType} located={located} />
             {attributes.map((field) =>

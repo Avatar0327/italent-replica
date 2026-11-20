@@ -352,3 +352,13 @@ export const SUBSETS = {
   },
 } as const satisfies Record<string, { table: string; objectCode: string; fields: readonly PersonnelField[] }>;
 export type SubsetKind = keyof typeof SUBSETS;
+/** 子集里存附件文件 ID 的字段（F-479 §10.1）；员工主表的 idPhoto / idFront / idBack 不在此列（DEC-438）。 */
+const SUBSET_ATTACHMENT_FIELD_CODES: ReadonlySet<string> = new Set([
+  'educationCertificate',
+  'degreeCertificate',
+  'attachmentId',
+  'idFront',
+  'idBack',
+]);
+export const subsetAttachmentFields = (kind: SubsetKind): string[] =>
+  SUBSETS[kind].fields.filter((f) => SUBSET_ATTACHMENT_FIELD_CODES.has(f.code)).map((f) => f.code);

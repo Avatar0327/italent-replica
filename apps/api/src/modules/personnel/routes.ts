@@ -13,6 +13,7 @@ import { readEmployee, readTenure } from './employee-read.js';
 import { appendEmployee } from './employee-write.js';
 import { body, safe, write } from './http.js';
 import { listEmployees, listFieldVisibility, listOptions, listSubsets, trimSubset, UNSORTED } from './lists.js';
+import { registerSubsetAttachmentRoutes } from './subset-attachment-routes.js';
 import { registerSubsetRoutes } from './subset-routes.js';
 import { registerChangeRequestRoutes } from './request-routes.js';
 import { camel, rows } from './store.js';
@@ -21,6 +22,7 @@ import { dateValue, employeeInput, parse } from './validation.js';
 import { registerPersonnelHooks } from '../employment/personnel-hooks.js';
 import { currentPersonName } from './employee-projection.js';
 import { syncEmploymentHistory } from './employment-sync.js';
+import { expandSubsetAttachments } from '../attachments/subset-read.js';
 import { registerAttachment } from './attachments.js';
 import { z } from 'zod';
 
@@ -104,6 +106,7 @@ export function registerPersonnelRoutes(router: Hono<TenantEnv>, deps: TenantRou
   );
   registerEmployeeReads(router, deps);
   registerSubsetRoutes(router, deps);
+  registerSubsetAttachmentRoutes(router, deps);
   registerChangeRequestRoutes(router, deps);
 }
 function registerEmployeeReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -147,8 +150,13 @@ async function nestedSubsets(deps: TenantRouteDeps, ctx: AccessContext, id: stri
     const scope = await resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
     const context = { ...ctx, objectCode, scope };
     const fields = await listFieldVisibility(deps, context);
-    const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listSubsets(tx, context, kind, { limit: 50, offset: 0 }, UNSORTED, id),
+    const items = await withTenant(deps.db, ctx.tenantId, async (tx) =>
+      expandSubsetAttachments(
+        tx,
+        ctx.tenantId,
+        kind,
+        await listSubsets(tx, context, kind, { limit: 50, offset: 0 }, UNSORTED, id),
+      ),
     );
     result[kind] = { items: items.map((row) => trimSubset(row, fields)), pageSize: 50 };
   }

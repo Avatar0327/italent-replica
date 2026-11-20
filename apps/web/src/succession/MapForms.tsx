@@ -4,15 +4,20 @@ import { RemoteSelect, Failure, useRead } from '../evaluation/runtime.js';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
+import type { ApiClient } from '../foundation/client.js';
 import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
+import { slotKey } from '../foundation/forms/slot.js';
+import { useCommandForm } from '../foundation/forms/useCommandForm.js';
+import { requireObjects } from './conflict.js';
 import { s } from './messages.js';
 import { targetPaths } from './RecordForm.js';
 import {
   assignBody,
   assignLatest,
-  assignValues,
+  assignSnapshot,
   BASE,
   isPreferences,
+  isStrings,
   preferenceBody,
   preferenceLatest,
   preferenceReceipt,
@@ -26,8 +31,26 @@ export const depthOptions = [2, 3, 4].map((value) => ({ value, label: s.map.dept
 const editableNames = (fields: FormField[]) =>
   fields.filter((field) => field.access.visible && field.access.editable).map((field) => field.name);
 
+// 地图读回和表单打开后权限都可能变化，只有需推断默认投影版本时才重查字段明细。
+async function readRiskFields(api: ApiClient) {
+  const path = `/api/tenant/permission/me/objects/${result.position}`;
+  const response = await api.request<{ viewableFields?: unknown } | null>(path);
+  const fields = response?.viewableFields;
+  return isStrings(fields) ? fields : undefined;
+}
+
+/** 没有单条读取接口：重读整张地图，按节点取结果投影。 */
+async function readAssignment(api: ApiClient, mapPath: string, id: string, kind: Kind) {
+  const map = await api.request<MapResult>(mapPath);
+  let latest = assignLatest(map, id, kind);
+  if (kind === 'position' && latest.revision === undefined)
+    latest = assignLatest(map, id, kind, await readRiskFields(api));
+  requireObjects([latest], s.assign.invalid);
+  return { ...latest, revision: latest.revision! };
+}
+
 /**
- * Q-M0-178：按规则计算发 levelId=null；手动赋值从启用等级中选；版本取结果行，未评定时为 0。
+ * Q-M0-178：按规则计算发 levelId=null；手动赋值从启用等级中选。
  * 编辑权只看结果对象 levelId 的 editableFields；赋值方式不是接口字段，跟随 levelId。
  */
 export function AssignDialog(props: { kind: Kind; item: MapItem; mapPath: string; close(): void; saved(): void }) {
@@ -39,14 +62,18 @@ export function AssignDialog(props: { kind: Kind; item: MapItem; mapPath: string
   const path = `${results}/${item.id}`;
   const options = useRead<ListResult<LevelOption>>(`${BASE}/${segment}-levels/options`);
   const current = kind === 'position' ? item.risk : item.health;
-  const baseline = assignValues(current?.levelId);
-  // 没有单条读取接口：冲突后重读整张地图，按节点取结果行（重读 → 核对差异 → 继续编辑）。
-  const writer = useConflictCommand(
-    results,
-    { id: item.id, revision: current?.revision ?? 0, values: baseline },
-    async () => assignLatest(await api.request<MapResult>(props.mapPath), item.id, kind),
-  );
-  const access = permission.field('levelId');
+  const object = permission.snapshot.objects[result[kind]];
+  const snapshot = assignSnapshot(item.id, current, kind === 'position' ? object?.viewableFields : undefined);
+  const baseline = snapshot.values;
+  const readLatest = () => readAssignment(api, props.mapPath, item.id, kind);
+  const writer = useConflictCommand(results, { ...snapshot, revision: snapshot.revision ?? Number.NaN }, readLatest);
+  // 版本无效时内核不从快照挂槽；仍按稳定对象槽读取已在途的命令，保留结果待确认的锁定。
+  const pending = useCommandForm(slotKey(results, item.id));
+  const submission = writer.invalid ? { ...pending, reload: () => pending.reread(readLatest) } : writer.form;
+  const access =
+    isStrings(object?.viewableFields) && isStrings(object?.editableFields)
+      ? permission.field('levelId')
+      : { visible: false, editable: false };
   const modes = [
     { value: 'rule', label: s.assign.rule },
     { value: 'manual', label: s.assign.manual },
@@ -78,24 +105,27 @@ export function AssignDialog(props: { kind: Kind; item: MapItem; mapPath: string
       open
       mode="modal"
       recordKey={path}
-      submission={writer.form}
+      submission={submission}
       title={kind === 'position' ? s.map.assignRisk : s.map.assignHealth}
       initialValues={baseline}
       groups={[{ title: item.name, fields }]}
       onClose={() => {
-        // 冲突或结果未知时关掉：刷新地图回查，重开即按新版本解锁。
-        if (writer.stale) props.saved();
+        // 版本不可用、冲突或结果未知时，关闭后刷新地图回查。
+        if (writer.invalid || writer.stale) props.saved();
         props.close();
       }}
       onSubmit={async (values) => {
         const editableFields = editableNames(fields);
         if (!editableFields.length) throw new Error(s.errors.readonly);
+        requireObjects([snapshot], s.assign.invalid);
         // 赋值方式与等级是一组：两项都在表单里，按当前表单值组装（手动未选等级时本地即报错）。
         const merged = { ...writer.full, ...values };
         const mode = merged.mode as 'rule' | 'manual';
         const levelId = merged.levelId as string | undefined;
         if (mode === 'manual' && !levelId) throw new Error(s.errors.levelRequired);
         const body = assignBody(mode, levelId);
+        if (current && current.revision === undefined && snapshot.revision === 0 && !writer.form.state?.latest)
+          requireObjects([assignSnapshot(item.id, current, await readRiskFields(api))], s.assign.invalid);
         await writer.run({
           values,
           editableFields,

@@ -3,13 +3,12 @@ import { ATTACHMENT_PURPOSES } from '@italent/domain';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { runCommand } from '../../commands.js';
-import { AppError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { selfAccess } from '../employee-self-service/access.js';
 import type { SelfAccess } from '../employee-self-service/access.js';
 import { parseBody, revision, uuidParam } from '../job/context.js';
-import { requireAttachmentRead, requireAttachmentWrite } from './access.js';
+import { requireAttachmentRead, requireAttachmentWrite, sameOrigin } from './access.js';
 import { respondAttachment } from './carrier-read.js';
 import * as service from './service.js';
 
@@ -96,10 +95,4 @@ async function write(
   });
   c.header('Cache-Control', 'private, no-store');
   return c.json(result.body as object, result.status as 200 | 201);
-}
-
-function sameOrigin(c: Context) {
-  const origin = c.req.header('origin');
-  if ((origin && origin !== new URL(c.req.url).origin) || c.req.header('sec-fetch-site') === 'cross-site')
-    throw new AppError('FORBIDDEN', '只接受同源写请求');
 }
