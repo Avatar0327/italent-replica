@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import type { LevelResult } from '../src/succession/types.js';
 import { test, expect } from './fixtures.js';
 import {
   button,
@@ -26,6 +27,165 @@ async function openMap(page: Page, tab: string) {
   await openMenu(page, '继任地图与列表');
   await page.getByRole('tab', { name: tab, exact: true }).click();
 }
+
+async function openRiskDialog(page: Page) {
+  const card = page.getByRole('article', { name: '合成研发总监', exact: true });
+  await card.getByRole('button', { name: '卡片操作' }).click();
+  await page.getByRole('menuitem', { name: '设置风险等级', exact: true }).click();
+  return page.getByRole('dialog', { name: '设置风险等级', exact: true });
+}
+
+const riskResult = (revision: number, levelId: string | null) => ({
+  id: ids.position,
+  positionId: ids.position,
+  levelId,
+  levelName: levelId ? '高风险' : null,
+  levelColor: '#E34D59',
+  method: levelId ? 'manual' : 'computed',
+  computedAt: null,
+  revision,
+});
+
+async function mockPositionRisk(page: Page, read: () => LevelResult | undefined) {
+  await page.route(/\/succession\/maps\/position(\?|$)/, (route) => {
+    const [first, ...rest] = positionMap.items;
+    const { risk: _risk, ...card } = first!;
+    const risk = read();
+    // position-map.ts：结果不披露时整个键省略；字段裁剪后仍可返回 risk 对象。
+    return route.fulfill({ json: { ...positionMap, items: [risk === undefined ? card : { ...card, risk }, ...rest] } });
+  });
+}
+
+const assignHint = '该继任地图条目缺少标识或版本，请关闭后重读地图。';
+// position-map.ts 的默认色投影，computedAt 可见时会同时返回 resultAsOf。
+const defaultPositionRisk = {
+  positionId: ids.position,
+  levelId: null,
+  levelName: null,
+  levelColor: '#7498FB',
+  computedAt: null,
+  resultAsOf: null,
+};
+const defaultRiskFields = ['positionId', 'levelId', 'levelName', 'levelColor', 'computedAt'];
+const storedRiskFields = [...defaultRiskFields, 'id', 'method', 'revision'];
+
+test('AC-FE-F534-04 有版本查看权时，职位默认色卡片首次手动指定带版本 0', async ({ page }) => {
+  await objectAccess(page, 'Succession.RiskResult', storedRiskFields, ['levelId']);
+  await mockPositionRisk(page, () => defaultPositionRisk);
+  const puts: { revision?: string; body: unknown }[] = [];
+  await page.route(`**/succession/risk-results/${ids.position}`, (route) => {
+    const request = route.request();
+    puts.push({ revision: ifMatch(request), body: request.postDataJSON() });
+    return route.fulfill({ json: riskResult(1, ids.level) });
+  });
+  await openMap(page, '职位继任地图');
+  const dialog = await openRiskDialog(page);
+  await dialog.getByRole('radio', { name: '手动赋值' }).check();
+  await choose(page, dialog, '指定风险等级', '高风险');
+  await button(dialog, '保存').click();
+  await expect.poll(async () => puts.length > 0 || (await dialog.getByText(assignHint).isVisible())).toBe(true);
+  expect(puts).toEqual([{ revision: '0', body: { levelId: ids.level } }]);
+  await expect(dialog).toBeHidden();
+});
+
+for (const { name, response } of [
+  { name: '字符串', response: { viewableFields: storedRiskFields.join(',') } },
+  { name: '对象', response: { viewableFields: { revision: true } } },
+  { name: '含非字符串元素的数组', response: { viewableFields: [...storedRiskFields, 0] } },
+  { name: '字段缺失', response: {} },
+  { name: '响应为 null', response: null },
+]) {
+  test(`AC-FE-F534-05 保存前权限读取异常（${name}）：不发 PUT，恢复后保存一次`, async ({ page }) => {
+    const objectCode = 'Succession.RiskResult';
+    await objectAccess(page, objectCode, storedRiskFields, ['levelId']);
+    await mockPositionRisk(page, () => defaultPositionRisk);
+    const puts: { revision?: string; body: unknown }[] = [];
+    await page.route(`**/succession/risk-results/${ids.position}`, (route) => {
+      const request = route.request();
+      puts.push({ revision: ifMatch(request), body: request.postDataJSON() });
+      return route.fulfill({ json: riskResult(1, ids.level) });
+    });
+    await openMap(page, '职位继任地图');
+    const dialog = await openRiskDialog(page);
+    await dialog.getByRole('radio', { name: '手动赋值' }).check();
+    await choose(page, dialog, '指定风险等级', '高风险');
+    // 首开已用正常权限。仅替换这次保存前的权限重读。
+    await page.route(`**/permission/me/objects/${objectCode}`, (route) => route.fulfill({ json: response }));
+    await button(dialog, '保存').click();
+    await expect.poll(async () => puts.length > 0 || (await dialog.getByRole('alert').isVisible())).toBe(true);
+    expect(puts).toEqual([]);
+    await expect(dialog.getByText(assignHint)).toBeVisible();
+
+    await objectAccess(page, objectCode, storedRiskFields, ['levelId']);
+    await saveAgain(dialog);
+    await expect(dialog).toBeHidden();
+    expect(puts).toEqual([{ revision: '0', body: { levelId: ids.level } }]);
+  });
+}
+
+for (const { name, risk, revision } of [
+  { name: '结果键缺席', risk: undefined, revision: '0' },
+  { name: '正常版本', risk: riskResult(3, ids.level), revision: '3' },
+]) {
+  test(`AC-FE-F534-01 ${name}：指定等级带正确版本提交`, async ({ page }) => {
+    await mockPositionRisk(page, () => risk);
+    const puts: { revision?: string; body: unknown }[] = [];
+    await page.route(`**/succession/risk-results/${ids.position}`, (route) => {
+      const request = route.request();
+      puts.push({ revision: ifMatch(request), body: request.postDataJSON() });
+      return route.fulfill({ json: riskResult(Number(revision) + 1, null) });
+    });
+    await openMap(page, '职位继任地图');
+    const dialog = await openRiskDialog(page);
+    await dialog.getByRole('radio', { name: '按规则计算' }).check();
+    await button(dialog, '保存').click();
+    await expect(dialog).toBeHidden();
+    expect(puts).toEqual([{ revision, body: { levelId: null } }]);
+  });
+}
+
+test('AC-FE-F534-01 结果投影缺版本：提示重读且不发 PUT，关闭后重读地图', async ({ page }) => {
+  let reads = 0;
+  await objectAccess(page, 'Succession.RiskResult', ['levelId'], ['levelId']);
+  await mockPositionRisk(page, () => (++reads, { levelId: ids.level }));
+  const revisions: (string | undefined)[] = [];
+  await page.route(`**/succession/risk-results/${ids.position}`, (route) => {
+    revisions.push(ifMatch(route.request()));
+    return route.fulfill({ json: { levelId: null } });
+  });
+  await openMap(page, '职位继任地图');
+  const dialog = await openRiskDialog(page);
+  await dialog.getByRole('radio', { name: '按规则计算' }).check();
+  await button(dialog, '保存').click();
+  await expect.poll(async () => revisions.length > 0 || (await dialog.getByText(assignHint).isVisible())).toBe(true);
+  expect(revisions).toEqual([]);
+  await expect(dialog.getByText(assignHint)).toBeVisible();
+  const before = reads;
+  await button(dialog, '取消').click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => reads).toBeGreaterThan(before);
+});
+
+test('AC-FE-F534-03 结果待确认：地图刷新后版本被裁剪，同一对象重开仍锁定', async ({ page }) => {
+  let putCount = 0;
+  await mockPositionRisk(page, () => (putCount ? { levelId: ids.level } : riskResult(1, ids.level)));
+  await page.route(`**/succession/risk-results/${ids.position}`, (route) => {
+    putCount += 1;
+    return route.abort();
+  });
+  await openMap(page, '职位继任地图');
+  const dialog = await openRiskDialog(page);
+  await dialog.getByRole('radio', { name: '按规则计算' }).check();
+  await button(dialog, '保存').click();
+  await expect(dialog.getByText(/结果待确认/)).toBeVisible();
+  await button(dialog, '取消').click();
+  await expect(dialog).toBeHidden();
+  const reopened = await openRiskDialog(page);
+  await expect(reopened.getByText(/结果待确认/)).toBeVisible();
+  await expect(reopened.getByRole('button', { name: '回查原单', exact: true })).toBeVisible();
+  await expect(button(reopened, '保存')).toBeDisabled();
+  expect(putCount).toBe(1);
+});
 
 test('AC-FE-R3d1-09 批量结束回执是 {items}：判为成功、关闭弹窗并刷新列表', async ({ page }) => {
   const errors = watchErrors(page);
@@ -90,31 +250,41 @@ test('AC-FE-R3d1-10 个人筛选偏好：无 id 回执可连续保存，冲突�
   expect(unexpected(errors)).toEqual([]);
 });
 
-test('AC-FE-R3d1-11 风险等级赋值冲突后重读地图、核对差异、继续保存', async ({ page }) => {
+test('AC-FE-R3d1-11 / AC-FE-F534-02 风险等级冲突后重读，裁剪版本时保留冲突，读到版本再保存', async ({ page }) => {
   const errors = watchErrors(page);
-  let rejected = false;
+  let risk: LevelResult = riskResult(1, ids.level);
+  await objectAccess(page, 'Succession.RiskResult', storedRiskFields, ['levelId']);
   const revisions: (string | undefined)[] = [];
-  await page.route(`**/succession/risk-results/${ids.position}`, (route) => {
+  await page.route(`**/succession/risk-results/${ids.position}`, async (route) => {
     revisions.push(ifMatch(route.request()));
-    if (!rejected) return ((rejected = true), route.fulfill(conflict));
-    return route.fulfill({ json: { id: ids.position, levelId: null, revision: 5 } });
+    if (revisions.length === 1) {
+      // 结果变为未命中等级，权限又隐藏 id/method/revision，投影与默认色完全相同。
+      risk = defaultPositionRisk;
+      await objectAccess(page, 'Succession.RiskResult', defaultRiskFields, ['levelId']);
+      return route.fulfill(conflict);
+    }
+    return route.fulfill({ json: riskResult(5, null) });
   });
-  // 冲突后重读地图：别处已把结果改到版本 4。
-  await page.route(/\/succession\/maps\/position(\?|$)/, (route) => {
-    const [first, ...rest] = positionMap.items;
-    const risk = { ...first!.risk, revision: rejected ? 4 : 1 };
-    return route.fulfill({ json: { ...positionMap, items: [{ ...first, risk }, ...rest] } });
-  });
+  await mockPositionRisk(page, () => risk);
   await openMap(page, '职位继任地图');
-  const card = page.locator('.succession-card', { hasText: '合成研发总监' });
-  await card.getByRole('button', { name: '卡片操作' }).click();
-  await page.getByRole('menuitem', { name: '设置风险等级', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '设置风险等级', exact: true });
+  const dialog = await openRiskDialog(page);
   await dialog.getByRole('radio', { name: '按规则计算' }).check();
   await button(dialog, '保存').click();
   await settledConflict(dialog);
-  await dialog.getByRole('button', { name: '重读最新版本' }).click();
-  await dialog.getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  const reload = dialog.getByRole('button', { name: '重读最新版本' });
+  const confirm = dialog.getByRole('button', { name: '已核对差异，继续编辑' });
+  await reload.click();
+  const readError = dialog.getByText('读取失败，输入已保留，请重新读取。');
+  await expect.poll(async () => (await confirm.isVisible()) || (await readError.isVisible())).toBe(true);
+  await expect(confirm).toBeHidden();
+  await expect(readError).toBeVisible();
+  await expect(button(dialog, '保存')).toBeDisabled();
+  expect(revisions).toEqual(['1']);
+
+  risk = riskResult(4, ids.level);
+  await objectAccess(page, 'Succession.RiskResult', storedRiskFields, ['levelId']);
+  await reload.click();
+  await confirm.click();
   await saveAgain(dialog);
   await expect(dialog).toBeHidden();
   expect(revisions).toEqual(['1', '4']);

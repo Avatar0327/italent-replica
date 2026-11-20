@@ -11,6 +11,8 @@ import { requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
+import { withEstablishmentConfirmation } from '../employment/activation-checks.js';
+import { deleteConfirmed } from '../employment/establishment-confirmation.js';
 import {
   readContext,
   readPageContext,
@@ -162,11 +164,12 @@ function registerDraftRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     );
     await requireEmploymentWrite(ctx, 'delete', {}, 'Employment.Delete');
     await authorizeBusinessWrite(deps, ctx, businessId, id);
+    const confirmed = await deleteConfirmed(c);
     return runWrite(
       c,
       deps,
       ctx,
-      { employeeId: id, businessId },
+      { employeeId: id, businessId, ...(confirmed === undefined ? {} : { confirmed }) },
       async (tx, context) => {
         const checked = await transferBusinessContext(
           tx,
@@ -174,7 +177,8 @@ function registerDraftRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           businessId,
           'command',
         );
-        const deleted = await releaseTransferDraft(tx, checked, id, { businessId, revision: ctx.expectedRevision });
+        const confirmable = withEstablishmentConfirmation(checked, confirmed);
+        const deleted = await releaseTransferDraft(tx, confirmable, id, { businessId, revision: ctx.expectedRevision });
         if (!deleted) throw new AppError('NOT_FOUND', '没有可清除的暂存单');
         return { status: 200, body: deleted };
       },

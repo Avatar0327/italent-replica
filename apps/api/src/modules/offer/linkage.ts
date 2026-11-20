@@ -30,6 +30,7 @@ import { readEffectiveSetting } from '../tenant-settings/service.js';
 import type { OfferContext } from './context.js';
 import { currentEntryIds, findOfferByPendingEntry } from './entry-link.js';
 import { audit, facts, save, type OfferRow } from './service.js';
+import { publishOfferChange } from './source-events.js';
 import { inboundEmploymentContext, type OfferSyncContext } from './sync-lock.js';
 import { assertContractDates, present, profilePatch } from './sync.js';
 
@@ -192,5 +193,6 @@ export const offerEntryHooks: EntryOfferHooks = {
       .where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, before.id)))
       .returning();
     await audit(tx, ctx, Object.keys(restore).length ? 'entry_restore' : 'entry_relink', before.id, before, after!);
+    await publishOfferChange(tx, ctx, before, after!, false);
   },
 };

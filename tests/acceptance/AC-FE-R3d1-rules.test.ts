@@ -7,6 +7,7 @@ import type { ServerSnapshot } from '../../apps/web/src/foundation/permission-sn
 import {
   assignBody,
   assignLatest,
+  assignSnapshot,
   createRecordBody,
   END_RECEIPT,
   endCommand,
@@ -196,6 +197,65 @@ describe('AC-FE-R3d1 真实回执形状（第 2 轮）', () => {
       values: { mode: 'rule', levelId: undefined },
     });
     expect(() => assignLatest(map, 'x', 'org')).toThrow();
+  });
+
+  it('AC-FE-F534-02 赋值重读保留裁剪后的版本缺失及服务端明确返回的 0', () => {
+    const org = { id: 'o', name: '合成部门', parentId: null };
+    const position = { id: 'p', name: '合成职位', parentId: null };
+    const map = {
+      items: [
+        { ...org, health: { levelId: 'h' } },
+        { ...position, risk: {} },
+        { ...org, id: 'new', health: { levelId: null, revision: 0 } },
+      ],
+    };
+    expect(assignLatest(map, 'o', 'org').revision).toBeUndefined();
+    expect(assignLatest(map, 'p', 'position').revision).toBeUndefined();
+    expect(assignLatest(map, 'new', 'org').revision).toBe(0);
+  });
+
+  it('AC-FE-F534-04 职位地图默认色投影仅在可确认版本可见时作为首次指定', () => {
+    const risk = {
+      positionId: 'p',
+      levelId: null,
+      levelName: null,
+      levelColor: '#7498FB',
+      computedAt: null,
+      resultAsOf: null,
+    };
+    const fields = ['id', 'positionId', 'levelId', 'levelName', 'levelColor', 'computedAt', 'method', 'revision'];
+    const position = { id: 'p', name: '合成职位', parentId: null, risk };
+    const map = { items: [position] };
+    expect(assignSnapshot('p', risk, fields).revision).toBe(0);
+    expect(assignLatest(map, 'p', 'position', fields).revision).toBe(0);
+    expect(assignLatest(map, 'p', 'position').revision).toBeUndefined();
+    expect(
+      assignLatest(
+        map,
+        'p',
+        'position',
+        fields.filter((field) => field !== 'revision'),
+      ).revision,
+    ).toBeUndefined();
+    expect(assignSnapshot('p', { levelId: null }, ['levelId', 'revision']).revision).toBe(0);
+    expect(assignSnapshot('p', { levelId: null }, fields).revision).toBeUndefined();
+    expect(assignSnapshot('p', { ...risk, id: 'p' }, fields).revision).toBeUndefined();
+    expect(assignSnapshot('p', { ...risk, positionId: 'other' }, fields).revision).toBeUndefined();
+    const orgMap = { items: [{ id: 'o', name: '合成部门', parentId: null, keyPositions: [position] }] };
+    expect(assignLatest(orgMap, 'p', 'position', fields).revision).toBeUndefined();
+  });
+
+  it.each([
+    ['字符串', 'levelId,revision'],
+    ['对象', { levelId: true, revision: true }],
+    ['含非字符串元素的数组', ['levelId', 'revision', 0]],
+  ])('AC-FE-F534-05 %s权限字段不能作为首开或重读的版本证据', (_, raw) => {
+    const risk = { levelId: null };
+    const map = { items: [{ id: 'p', name: '合成职位', parentId: null, risk }] };
+    // 模拟未经校验的接口值，类型标注本身不能证明响应有效。
+    const fields = raw as unknown as readonly string[];
+    expect(assignSnapshot('p', risk, fields).revision).toBeUndefined();
+    expect(assignLatest(map, 'p', 'position', fields).revision).toBeUndefined();
   });
 });
 
