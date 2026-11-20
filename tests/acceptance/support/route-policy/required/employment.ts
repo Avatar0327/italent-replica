@@ -29,6 +29,8 @@ const allPeopleImpl = (anchor: string): Evidence => ({
 });
 const RETIRE = `${SRC}/employment/retirement-routes.ts`;
 const RETIRE_VIEWS = `${SRC}/employment/retirement-view-routes.ts`;
+const RETIRE_ACTIONS = `${SRC}/employment/retirement-actions.ts`;
+const RETIRE_READ = `${SRC}/employment/retirement-views.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
 const ENTRY_CONTRACT = `${SRC}/employment/entry-contract.ts`;
 const REHIRE = `${SRC}/employment/retirement-rehire.ts`;
@@ -1034,15 +1036,22 @@ const RETIRE_CANCEL: CancelEntry = {
     "await requireEmploymentWrite(ctx, 'update', {}, RETIREMENT_BUTTONS.cancel, undefined, { commandOnly: true })",
 };
 const EXIT_CANCEL_READ = "const ctx = await readContext(c, deps, 'object.update', revision(c))";
-function exitCancelEntry(method: string, path: string, entry: CancelEntry = EXIT_CANCEL): Obligation[] {
+const RETIRE_RESTORE_PERMISSION = fn(RETIRE_ACTIONS, 'requireRetirementRestorePermission', RETIRE_CANCEL.buttonText);
+function exitCancelEntry(
+  method: string,
+  path: string,
+  entry: CancelEntry = EXIT_CANCEL,
+  buttonAccess?: readonly Evidence[],
+): Obligation[] {
   const call = (text: string) => at(entry.file, method, path, text);
+  const access = buttonAccess ?? [call(entry.buttonText)];
   return [
     ob(
       `obj:${RECORD}:update`,
       ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
-      [call(EXIT_CANCEL_READ), READ, call(entry.buttonText), WRITE_OBJECT],
+      [call(EXIT_CANCEL_READ), READ, ...access, WRITE_OBJECT],
     ),
-    ob(`btn:${RECORD}#${entry.button}@detail`, [], [call(entry.buttonText), WRITE_BUTTON]),
+    ob(`btn:${RECORD}#${entry.button}@detail`, [], [...access, WRITE_BUTTON]),
   ];
 }
 function exitCancelCommand(entry: CancelEntry = EXIT_CANCEL): Obligation[] {
@@ -1058,10 +1067,74 @@ function exitCancelCommand(entry: CancelEntry = EXIT_CANCEL): Obligation[] {
 }
 function exitCancelRestore(entry: CancelEntry = EXIT_CANCEL): Obligation[] {
   const path = `${entry.base}/:id/restore`;
+  const buttonAccess =
+    entry === RETIRE_CANCEL
+      ? [at(entry.file, 'POST', path, 'await requireRetirementRestorePermission(ctx)'), RETIRE_RESTORE_PERMISSION]
+      : undefined;
   return [
-    ...exitCancelEntry('POST', path, entry),
+    ...exitCancelEntry('POST', path, entry, buttonAccess),
     businessWrite(at(entry.file, 'POST', path, 'await authorizeBusinessWrite(deps, ctx, id)')),
   ];
+}
+
+function retirementRestoreDisclosure(path: '/retirements' | '/retirements/:id'): Obligation[] {
+  const entry =
+    path === '/retirements'
+      ? [at(RETIRE_VIEWS, 'GET', path, 'await retirementRestoreContext(c, deps)')]
+      : [
+          at(RETIRE_VIEWS, 'GET', path, 'await projectRetirementDetail(deps, ctx, detail, read, c)'),
+          fn(RETIRE_VIEWS, 'projectRetirementDetail', 'await retirementRestoreContext(detailRequest, deps)'),
+        ];
+  const permission = fn(
+    RETIRE_ACTIONS,
+    'retirementRestoreContext',
+    'await permits(() => requireRetirementRestorePermission(ctx))',
+  );
+  const scope = fn(
+    RETIRE_ACTIONS,
+    'retirementRestoreActions',
+    'requireBusinessWriteScope(tx, authorize, ctx, item.id, item.employeeId)',
+  );
+  return [
+    {
+      perm: `obj:${RECORD}:update`,
+      purpose: 'disclosure:restore',
+      need: NONE,
+      facts: ['object:object.* 动作'],
+      at: [
+        ...entry,
+        fn(RETIRE_ACTIONS, 'retirementRestoreContext', "await tryWriteContext(c, deps, 'object.update')"),
+        WRITE_CONTEXT,
+        READ,
+        scope,
+        BUSINESS_WRITE,
+      ],
+    },
+    {
+      perm: `btn:${RECORD}#${RETIRE_CANCEL.button}@detail`,
+      purpose: 'disclosure:restore',
+      need: NONE,
+      facts: [],
+      at: [...entry, permission, RETIRE_RESTORE_PERMISSION, WRITE_BUTTON, RECORD_CONST],
+    },
+  ];
+}
+
+function retirementRehireDisclosure(path: '/retirements/:id' | '/retirements/employees/:id/in-flight'): Obligation {
+  return {
+    perm: `obj:${CONTRACT}:view`,
+    purpose: 'disclosure:rehireContract',
+    need: NONE,
+    facts: ['object:object.* 动作'],
+    at: [
+      at(RETIRE_VIEWS, 'GET', path, 'await projectRetirementDetail(deps, ctx, detail, read'),
+      fn(RETIRE_VIEWS, 'projectRetirementDetail', 'await retirementRehireDetail(tx, deps, ctx, detail, show)'),
+      fn(RETIRE_READ, 'retirementRehireDetail', "action: 'object.view', resource: CONTRACT_OBJECT"),
+      fn(RETIRE_READ, 'retirementRehireDetail', 'isEmploymentRecordVisible(tx, ctx.tenantId, scope, owner)'),
+      fn(RETIRE_READ, 'retirementRehireDetail', 'getModuleViewableFieldsInTransaction(deps, ctx, CONTRACT_OBJECT, tx)'),
+      { role: 'const', unit: 'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT', anchor: `'${CONTRACT}'` },
+    ],
+  };
 }
 function exitCancellationPatch(entry: CancelEntry = EXIT_CANCEL): Obligation[] {
   const path = `${entry.base}/cancellations/:id`;
@@ -4330,6 +4403,7 @@ export const EMPLOYMENT: RequiredTable = {
   // ---- R2-T04 BE-5d1 退休五视图与详情（retirement-view-routes.ts registerRetirementViews）-------------------------------
   'GET /api/tenant/employment/retirements': [
     recordView(at(RETIRE_VIEWS, 'GET', '/retirements', "const ctx = await readPageContext(c, deps, 'list')")),
+    ...retirementRestoreDisclosure('/retirements'),
   ],
   // F-410 按员工查在途退休单：入口只判员工对象查看权（readContext object.view + 资源 id），内容走详情同一裁剪
   'GET /api/tenant/employment/retirements/employees/:id/in-flight': [
@@ -4347,12 +4421,15 @@ export const EMPLOYMENT: RequiredTable = {
         RECORD_CONST,
       ],
     ),
+    retirementRehireDisclosure('/retirements/employees/:id/in-flight'),
   ],
   'GET /api/tenant/employment/retirements/:id': [
     recordView(at(RETIRE_VIEWS, 'GET', '/retirements/:id', "const ctx = await readPageContext(c, deps, 'detail')"), [
       'object:readPageContext',
       'object:object.* 动作',
     ]),
+    ...retirementRestoreDisclosure('/retirements/:id'),
+    retirementRehireDisclosure('/retirements/:id'),
   ],
   'GET /api/tenant/employment/exits/dictionaries/:dict': [
     ob(
