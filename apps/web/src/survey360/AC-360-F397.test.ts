@@ -261,8 +261,12 @@ function heldSaveFixture() {
   const task = '/api/survey360/portal/tasks/relation/questionnaires/questionnaire';
   const sheet = { status: 'pending', revision: 0, answers: [], suggestion: null };
   const item = { id: 'item', text: '合成题目', options: [{ id: 'option', label: '合成选项', remarkRequired: false }] };
-  const fixture = { release: () => undefined as void, puts: 0 };
-  const gate = new Promise<void>((resolve) => (fixture.release = resolve));
+  let gate = Promise.resolve();
+  const fixture = {
+    release: () => undefined as void,
+    puts: 0,
+    hold: () => void (gate = new Promise<void>((resolve) => (fixture.release = resolve))),
+  };
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init: RequestInit) => {
@@ -321,6 +325,7 @@ it('AC-360-F397 保存在途时退出并重登、重开同一答卷：继承的�
   await pressButton('开始评价');
   await act(async () => radio().click());
   await settle();
+  fixture.hold();
   await pressButton('立即保存');
   expect(fixture.puts).toBe(1);
   await pressButton('退出登录');
@@ -335,6 +340,13 @@ it('AC-360-F397 保存在途时退出并重登、重开同一答卷：继承的�
   expect(radio().checked).toBe(true);
   expect(radio().disabled).toBe(false);
   expect(fixture.puts).toBe(1);
+  // 守卫：之后本次挂载自己发出的保存在途时可继续作答。
+  fixture.hold();
+  await pressButton('立即保存');
+  expect(fixture.puts).toBe(2);
+  expect(radio().disabled).toBe(false);
+  await act(async () => fixture.release());
+  await settle();
 });
 
 it('AC-360-F397 对照：本次挂载发出的保存在途时仍可继续作答', async () => {
@@ -344,6 +356,7 @@ it('AC-360-F397 对照：本次挂载发出的保存在途时仍可继续作答'
   await pressButton('开始评价');
   await act(async () => radio().click());
   await settle();
+  fixture.hold();
   await pressButton('立即保存');
   expect(fixture.puts).toBe(1);
   expect(radio().checked).toBe(true);

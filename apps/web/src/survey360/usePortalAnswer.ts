@@ -93,6 +93,7 @@ export function usePortalAnswer(api: PortalClient, path: string, initial: Answer
     // 重放固定为原命令当初的动作（槽上下文），不取页面当前按钮。
     const original = command.state?.context?.operation;
     if (original !== 'save' && original !== 'submit') return;
+    ref.current.inherited = false;
     const outcome = await command.replay((request) => send(request, original));
     if (outcome?.status === 'done') command.clear();
   };
@@ -142,6 +143,7 @@ function runner({ command, ref, generation, path, send, reset }: Runner) {
       marks.edits.clear();
       marks.held = false;
     }
+    marks.inherited = false;
     const outcome = await command.submit({
       values: operation === 'save' ? live : {},
       baseline: sheetValues(page.sheet),
@@ -164,7 +166,9 @@ function useLiveSheet(initial: AnswerPage, command: CommandForm) {
   // 确认的答卷是本页自己的副本：调用方之后改动传入的对象，不能悄悄改掉 dirty 的比较基准。
   const [page, setPage] = useState(() => structuredClone(initial));
   const [draft, setDraft] = useState<Values>(() => restored(page.sheet, command.state));
-  const ref = useRef({ page, live: draft, edits: new Set<string>(), seq: 0, held: false });
+  // 打开时槽里已有未确认命令：是继承来的，本次挂载发出命令前按只读处理（DEC-948）。
+  const inherited = isLocked(command.state);
+  const ref = useRef({ page, live: draft, edits: new Set<string>(), seq: 0, held: false, inherited });
   useEffect(() => {
     if (!isLocked(command.peek())) command.clear();
   }, []);

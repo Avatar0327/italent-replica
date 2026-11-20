@@ -22,6 +22,11 @@ export interface Marks {
   edits: ReadonlySet<string>;
   /** 暂缓自动保存：冲突核对后、历史回执后为真，直到用户新输入或显式保存（F-123 §136）。 */
   held: boolean;
+  /**
+   * 槽里的未确认命令是打开前继承的（上一挂载 / 上一会话发出），本次挂载还没发出过命令（DEC-948）：
+   * 其结果确认前只读；本次挂载发出保存或重放后为假。
+   */
+  inherited: boolean;
 }
 
 export interface Adoption {
@@ -60,8 +65,9 @@ export function restored(sheet: Sheet, state: Submission | undefined): Values {
 export function answerState(state: Submission | undefined, page: AnswerPage, draft: Values, marks: Marks) {
   const operation = state?.context?.operation;
   const busy = state?.status === 'submitting';
-  // 保存在途时仍可继续作答（自动保存不打断输入）；提交在途、结果未知、冲突待核对时只读。
-  const saving = busy && operation === 'save';
+  // 本次挂载发出的保存在途时仍可继续作答（自动保存不打断输入）；重开继承的在途保存、提交在途、结果未知、
+  // 冲突待核对时只读（DEC-948）。
+  const saving = busy && operation === 'save' && !marks.inherited;
   const submitted = page.sheet.status === 'submitted';
   const paused = !submitted && page.activity.status !== 'enabled';
   const locked = isLocked(state);
