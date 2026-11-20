@@ -209,4 +209,16 @@ describe('AC-FE-F110 跨抽屉 / 刷新恢复未确认命令', () => {
     await expect(transferResult('synthetic-tenant', id, onBusiness)).rejects.toThrow('原单回执无效，请重新查询。');
     expect(onBusiness).not.toHaveBeenCalled();
   });
+  it('AC-FE-F110-10 回执缺省字段统一成 null：缺 revision 不能被当作版本已推进', async () => {
+    const id = randomUUID();
+    const { revision: _omitted, httpStatus: _status, ...partial } = resultOf(id, 'succeeded');
+    const confirm = vi.fn(async (result: { revision: number | null; httpStatus: number | null }) => {
+      expect(result.revision).toBeNull();
+      expect(result.httpStatus).toBeNull();
+      return undefined;
+    });
+    const api = { request: vi.fn(async () => partial) as never };
+    await expect(queryCommandResult(api, id, confirm)).resolves.toEqual({ status: 'succeeded' });
+    expect(confirm).toHaveBeenCalledTimes(1);
+  });
 });
