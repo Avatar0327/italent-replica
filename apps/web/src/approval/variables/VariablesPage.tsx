@@ -16,6 +16,7 @@ import {
   isAllScopes,
   listPath,
   orderedScopes,
+  originText,
   parsePage,
   type Tab,
   type VariableRow,
@@ -118,6 +119,9 @@ function columnsOf(
     ...(scope === 'public'
       ? [{ key: 'usage', title: m.usageScopes, render: (_: unknown, row: VariableRow) => usageText(row.usageScopes) }]
       : []),
+    ...(scope === 'public'
+      ? [{ key: 'origin', title: m.origin, render: (_: unknown, row: VariableRow) => originText(row) }]
+      : []),
     { key: 'status', title: m.status, render: (_: unknown, row: VariableRow) => m.statuses[row.status] ?? row.status },
     ...(scope === 'public'
       ? [
@@ -152,7 +156,8 @@ function VariableList({ scope, app }: { scope: ScopeKind; app?: string }) {
   const { rows, total, error, loading, reload, offset, setOffset } = useRows(scope, app, tab);
   const [editing, setEditing] = useState<{ row?: VariableRow }>();
   const [viewing, setViewing] = useState<VariableRow>();
-  const [notice, setNotice] = useState<string>();
+  // 列表上方的结果提示：失败原因（error）或成功后的说明（success，如重新启用自动变量的再停用提示），后到的替换先到的
+  const [banner, setBanner] = useState<{ type: 'error' | 'success'; text: string }>();
   const impact = useImpactConfirm();
   const nameOf = usePeopleNames(rows.map((row) => row.updatedBy).filter((id): id is string => !!id));
   const labels = m.tabs(scope);
@@ -163,7 +168,8 @@ function VariableList({ scope, app }: { scope: ScopeKind; app?: string }) {
       edit={() => setEditing({ row })}
       references={() => setViewing(row)}
       saved={reload}
-      failed={setNotice}
+      failed={(text) => setBanner({ type: 'error', text })}
+      notify={(text) => setBanner({ type: 'success', text })}
     />
   ));
   return (
@@ -181,12 +187,14 @@ function VariableList({ scope, app }: { scope: ScopeKind; app?: string }) {
         onChange={(key) => {
           setTab(key as Tab);
           setOffset(0);
-          setNotice(undefined);
+          setBanner(undefined);
         }}
         items={TABS.map((key) => ({ key, label: labels[key] }))}
       />
       <Alert type="info" showIcon message={m.hint[scope]} />
-      {notice && <Alert type="error" showIcon closable message={notice} onClose={() => setNotice(undefined)} />}
+      {banner && (
+        <Alert type={banner.type} showIcon closable message={banner.text} onClose={() => setBanner(undefined)} />
+      )}
       {!!error && <PageState kind="error" error={error} retry={reload} />}
       {!error && loading && <PageState kind="loading" />}
       {!error && !loading && (

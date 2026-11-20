@@ -11,7 +11,7 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import { ListPage } from '../foundation/templates.js';
 import { ConflictCommands, useConflictCommand } from '../foundation/forms/ConflictCommands.js';
-import { DeleteButton } from './conflict.js';
+import { DeleteButton, requireObjects } from './conflict.js';
 import { s } from './messages.js';
 import { BASE, READINESS_PATH, ruleLines } from './rules.js';
 import './succession.css';
@@ -399,6 +399,8 @@ function DictionaryForm({ kind, row, close, saved }: { kind: Kind; row?: Row; cl
         close();
       }}
       onSubmit={async (values) => {
+        // F-145（DEC-431① 同类）：条目 id / 版本被裁剪或无效时提交前拒绝，提示不提“继任记录”。
+        if (row) requireObjects([row], s.settings.rowInvalid);
         await writer.run({
           values,
           editableFields: fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name),

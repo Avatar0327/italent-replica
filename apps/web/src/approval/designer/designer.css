@@ -133,3 +133,13 @@
   flex: 1;
   min-width: 160px;
 }
+/* S7b 自动变量回显：编码小字、摘要与引用数分行 */
+.flow-auto-variable {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.flow-auto-code {
+  font-size: 12px;
+}

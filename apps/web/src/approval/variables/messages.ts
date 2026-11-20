@@ -17,6 +17,14 @@ export const m = {
   usageScopes: '适用范围',
   status: '状态',
   description: '描述',
+  origin: '来源',
+  origins: {
+    manual: '人工',
+    auto: (process: string, node: string) => `自动（${process} · ${node}）`,
+  },
+  // DEC-861⑧：重新启用的自动变量若已无引用，来源流程下次保存时收尾再次停用；长期使用改由人工变量承载（设计 §5.5）
+  reenabledAuto: (process: string | null) =>
+    `已启用。若该自动变量已无流程引用，下次保存来源流程${process ? `「${process}」` : ''}时会再次停用；需要长期使用请改建人工变量`,
   updatedBy: '最近修改人',
   updatedAt: '最近修改时间',
   actions: '操作',
@@ -45,6 +53,7 @@ export const m = {
   confirm: '确定',
   cancel: '取消',
   close: '关闭',
+  slotTaken: (code: string) => `该位置已有自动变量${code}，请改用它，或在流程设计器里重新选择人员`,
   confirmEnable: (scope: ScopeKind, name: string) => `确定启用${kind[scope]}「${name}」吗？`,
   confirmDisable: (scope: ScopeKind, name: string) => `确定停用${kind[scope]}「${name}」吗？`,
   impactTitle: (action: string) => `${action}影响`,

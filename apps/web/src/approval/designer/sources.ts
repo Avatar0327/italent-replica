@@ -9,6 +9,7 @@ import {
   relationSource,
   RELATION_SOURCE_TYPES,
   sourceKey,
+  isUnselectedSpecified,
   sourceViolation,
   type ApprovalNode,
   type ApproverSource,
@@ -102,7 +103,9 @@ export function sourceInputError(value: unknown, node: ApprovalNode, approvalTyp
   const sources = (multiple ? value : [value]) as ApproverSource[];
   if (!empty && sources.length === 0) return s.required;
   if (sources.length > 200) return s.limit;
-  if (new Set(sources.map(sourceKey)).size !== sources.length) return s.duplicate;
+  // 未选人占位（S7b）不参与查重：会签可以留多行待选，保存时后端合成一个自动变量
+  const chosen = sources.filter((source) => !isUnselectedSpecified(source));
+  if (new Set(chosen.map(sourceKey)).size !== chosen.length) return s.duplicate;
   const options = sourceOptions(node, approvalType);
   for (const source of sources) {
     const option = options.find((item) => item.value === source.type);
@@ -138,7 +141,9 @@ export function sourceSummary(value: unknown, names: ReadonlyMap<string, string>
     sources
       ?.map((source) =>
         source.type === 'specified'
-          ? (names.get(source.value) ?? s.personUnavailable)
+          ? isUnselectedSpecified(source)
+            ? s.unselected
+            : (names.get(source.value) ?? s.personUnavailable)
           : `${s.types[source.type]} → ${sourceValueLabel(source.value)}`,
       )
       .join('、') ?? s.unknown
