@@ -260,7 +260,7 @@ export async function transitionEmployment(
   } else {
     await appendEmploymentState(tx, ctx, business, STATE_AFTER[input.action]);
   }
-  await assertReleasedEstablishment(tx, ctx, business.id, business.employeeId, released);
+  await assertReleasedEstablishment(tx, ctx, business.id, business.employeeId, released, input.action === 'delete');
   if (input.action === 'submit') await clearSubmittedRegularizationDraft(tx, ctx, business);
   // 一条命令只增加一次业务 revision；approve→effective 的两条状态事件不各自递增头版本。
   await bumpEmploymentBusiness(tx, ctx, business);

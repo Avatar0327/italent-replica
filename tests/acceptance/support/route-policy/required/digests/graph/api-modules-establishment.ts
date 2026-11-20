@@ -121,6 +121,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/establishment/store.ts#audit',
   ],
   'apps/api/src/modules/establishment/carried-transfer.ts#assertReleasedEstablishment': [
+    'apps/api/src/modules/employment/activation-checks.ts#assertEstablishmentCapacity',
     'apps/api/src/modules/establishment/capacity-read.ts#readCapacity',
     'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentExceeded',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -253,6 +254,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/establishment/membership-windows.ts#membershipWindows',
     'apps/api/src/modules/establishment/schemes.ts#loadScheme',
   ],
+  'apps/api/src/modules/establishment/employment-check.ts#checksEmploymentCapacity': ['#CAPACITY_KINDS'],
   'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentAssessment': [
     '#evaluateEstablishment',
   ],
@@ -267,8 +269,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'apps/api/src/modules/establishment/carried-transfer.ts#reconcileCarriedEstablishment',
-    '#CAPACITY_KINDS',
     '#capacityExcesses',
+    '#checksEmploymentCapacity',
     'apps/api/src/modules/establishment/store.ts#lockEstablishment',
     'apps/api/src/modules/establishment/transfer-service.ts#targetCapacities',
     'apps/api/src/system-actor.ts#auditActor',

@@ -40,6 +40,7 @@ import { ReadPanel } from './ReadPanel.js';
 import { useRead } from './useRead.js';
 import type { ProfileSubset } from './useSubsetAccess.js';
 import { m, subsetLabels } from './messages.js';
+import { sendWithEstablishmentConfirm, useEstablishmentConfirm } from '../transfer/establishment-confirm.js';
 import './personnel.css';
 
 type Api = ReturnType<typeof useApiClient>;
@@ -402,6 +403,7 @@ function RecordForm({
   saved(): void;
 }) {
   const api = useApiClient();
+  const confirmEstablishment = useEstablishmentConfirm();
   const path = `${records}/${encodeURIComponent(record.id)}`;
   const preset = (raw: Row) => ({ ...((raw.fields ?? {}) as Values) });
   const values = preset(record);
@@ -431,10 +433,17 @@ function RecordForm({
           values: submitted,
           editableFields: editable,
           send: async ({ command }) => {
-            const raw = await api.request(path, {
-              method: 'PATCH',
-              command: { ...command, body: recordBody(command.body) },
-            });
+            // F-026：改到已超编的部门先确认，确认后带 confirmed 以新命令重提（服务端已整单回滚，旧命令无台账）；取消保留输入
+            const patch = (confirmed: boolean) =>
+              api.request(path, {
+                method: 'PATCH',
+                command: {
+                  ...command,
+                  ...(confirmed ? { id: crypto.randomUUID() } : {}),
+                  body: { ...recordBody(command.body), ...(confirmed ? { confirmed: true } : {}) },
+                },
+              });
+            const raw = await sendWithEstablishmentConfirm(patch, confirmEstablishment);
             return recordReceipt(raw, { id: record.id, revision: revisionOf(command) });
           },
         });

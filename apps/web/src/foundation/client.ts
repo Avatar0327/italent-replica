@@ -48,6 +48,8 @@ function fieldErrors(details: unknown): FieldError[] {
 export class ApiError extends Error {
   readonly fieldErrors: FieldError[];
   readonly serverMessage?: string;
+  /** 服务端给的机器原因码（details.reason）：只用于程序判断，不显示给用户（DEC-045）。 */
+  readonly reason?: string;
   constructor(
     readonly status: number,
     readonly code: string,
@@ -60,6 +62,8 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.fieldErrors = fieldErrors(details?.details);
     this.serverMessage = details?.message;
+    const reason = (details?.details as { reason?: unknown } | undefined)?.reason;
+    this.reason = typeof reason === 'string' ? reason : undefined;
   }
 }
 

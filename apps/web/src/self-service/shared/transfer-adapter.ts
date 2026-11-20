@@ -13,6 +13,8 @@ export interface TransferFormAdapter {
     model: TransferFormModel,
     action: TransferAction,
     commandId: string,
+    /** F-026：非严格控编超编，用户确认后重提时为 true。 */
+    confirmed?: boolean,
   ) => Promise<TransferBusiness>;
   readonly queryReferences: (
     tenantId: string,

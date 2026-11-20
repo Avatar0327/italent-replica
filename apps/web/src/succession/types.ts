@@ -45,9 +45,12 @@ export interface ListResult<T> {
 }
 export interface LevelResult {
   id?: string;
+  positionId?: string;
   levelId?: string | null;
   levelName?: string | null;
   levelColor?: string | null;
+  computedAt?: string | null;
+  resultAsOf?: string | null;
   revision?: number;
 }
 export interface MapSuccessor {
