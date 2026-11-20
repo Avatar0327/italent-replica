@@ -2,6 +2,10 @@
 // @vitest-environment happy-dom
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { installWebLocks } from './support/web-locks.js';
+
+// F-110 第 3 轮：调动 / 审批命令登记恢复记录须拿跨标签页锁，测试环境装一份 Web Locks。
+installWebLocks();
 
 // 只用动态导入既有模块：基线上按行为变红（刷新后丢锁），不是因缺新模块报错。期望值手写。
 const secret = '合成敏感说明';

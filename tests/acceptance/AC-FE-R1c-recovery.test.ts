@@ -5,6 +5,10 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it, vi } from 'vitest';
 import { transferCommands, transferEntry, transferSlot } from '../../apps/web/src/transfer/commands.js';
+import { installWebLocks } from './support/web-locks.js';
+
+// F-110 第 3 轮：调动 / 审批命令登记恢复记录须拿跨标签页锁，测试环境装一份 Web Locks。
+installWebLocks();
 
 afterEach(() => {
   vi.unstubAllGlobals();

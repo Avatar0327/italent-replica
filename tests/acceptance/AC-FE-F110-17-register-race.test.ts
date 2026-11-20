@@ -7,7 +7,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { installWebLocks } from './AC-FE-F110-locks-support.js';
+import { installWebLocks } from './support/web-locks.js';
 
 const RECORDS = 'italent.commands.pending:transfer';
 const OTHER_TAB = '其他标签页有该对象未确认的命令，本次命令未发出；请等待结果或先查询结果。';
@@ -44,13 +44,9 @@ class BarrierStorage {
 const shared = new BarrierStorage();
 type Tab = Awaited<ReturnType<typeof openTab>>;
 let current: Tab | undefined;
-let uninstall: () => void;
+installWebLocks();
 
-beforeEach(() => {
-  uninstall = installWebLocks();
-});
 afterEach(() => {
-  uninstall();
   vi.unstubAllGlobals();
   vi.resetModules();
   shared.clear();

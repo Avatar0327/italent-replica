@@ -21,11 +21,12 @@ export interface CommandRecovery {
   /** 读不出（存储不可用、记录损坏）时返回 undefined：内核不据此接管或放开任何条目。 */
   load(): PendingRecord[] | undefined;
   /**
-   * 发送前登记：写入前再读一次，已有别的命令占着同一条目或同一恢复槽（别的标签页抢先发出）时抛 RecoveryConflict、
-   * 不写入；写不进去时抛错。两种情况内核都不发出命令。
+   * 发送前登记（第 3 轮：跨标签页互斥）：在锁内读占用、检查、写入，已有别的命令占着同一条目或同一恢复槽时
+   * 以 RecoveryConflict 拒绝、不写入；拿不到锁（浏览器不支持 Web Locks）或写不进去时以其他错误拒绝。内核都不发出命令。
    */
-  save(record: PendingRecord): void;
-  remove(key: string, commandId: string): void;
+  save(record: PendingRecord): Promise<void>;
+  /** 删本命令的记录，同样在锁内读改写；失败不抛（结果已在内存落定）。 */
+  remove(key: string, commandId: string): Promise<void>;
   /** 别的标签页改了记录（storage 事件）时回调；返回取消订阅。 */
   watch?(listener: () => void): () => void;
 }
@@ -59,6 +60,16 @@ export function sharedRecovery(name: string): CommandRecovery {
     if (records.length) localStorage.setItem(storageKey, JSON.stringify(records));
     else localStorage.removeItem(storageKey);
   };
+  /**
+   * 第 3 轮 P2：同一存储数组的读—查—写（登记与删除）都放进同名的 Web Locks 独占锁：同源各标签页按请求先后串行，
+   * 不会两页都读到空记录后各自写入并发出。锁按存储键整份加（记录是一个数组，按条目 / 槽分锁仍会互相覆盖）；
+   * 条目键与槽已含租户与身份，存储键按业务分开。浏览器不支持时拿不到确定占用，一律拒绝登记（不发出），不退回无锁读写。
+   */
+  const exclusive = <T>(run: () => T): Promise<T> => {
+    const locks = globalThis.navigator?.locks;
+    if (!locks) return Promise.reject(new Error('cross-tab lock unavailable'));
+    return locks.request(storageKey, { mode: 'exclusive' }, run) as Promise<T>;
+  };
   return {
     load() {
       try {
@@ -68,19 +79,21 @@ export function sharedRecovery(name: string): CommandRecovery {
       }
     },
     save(record) {
-      const records = read();
-      if (records.some((item) => occupies(item, record))) throw new RecoveryConflict('command pending elsewhere');
-      write([...records.filter((item) => item.key !== record.key), record]);
+      return exclusive(() => {
+        const records = read();
+        if (records.some((item) => occupies(item, record))) throw new RecoveryConflict('command pending elsewhere');
+        write([...records.filter((item) => item.key !== record.key), record]);
+      });
     },
     remove(key, commandId) {
-      try {
-        // 只删本命令的记录：同条目后来的命令不受迟到结果影响。
+      // 只删本命令的记录：同条目后来的命令、别页刚登记的命令都不受影响。
+      return exclusive(() => {
         const records = read();
         const kept = records.filter((item) => item.key !== key || item.commandId !== commandId);
         if (kept.length !== records.length) write(kept);
-      } catch {
+      }).catch(() => {
         // 存储损坏或不可用：内存里的结果已落定；损坏的存储保持原样，下次保存仍会拒绝发出。
-      }
+      });
     },
     watch(listener) {
       if (typeof window === 'undefined') return () => {};

@@ -13,6 +13,10 @@ import { useTestDb } from '@italent/testkit';
 import { Window } from 'happy-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { approvalWorld, transferScene } from './AC-APV-support.js';
+import { installWebLocks } from './support/web-locks.js';
+
+// F-110 第 3 轮：调动 / 审批命令登记恢复记录须拿跨标签页锁，测试环境装一份 Web Locks。
+installWebLocks();
 
 // API / PGlite 保留 Node 的 URL、Request、Response、fetch；antd 渲染所需的其余 DOM 全局取自 happy-dom，只补 Node 没有的。
 const domWindow = new Window({ url: 'http://localhost' });

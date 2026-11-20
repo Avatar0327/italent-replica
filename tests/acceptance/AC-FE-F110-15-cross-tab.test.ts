@@ -7,6 +7,10 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { installWebLocks } from './support/web-locks.js';
+
+// F-110 第 3 轮：调动 / 审批命令登记恢复记录须拿跨标签页锁，测试环境装一份 Web Locks。
+installWebLocks();
 
 /** 最小 Web Storage：每个标签页一份会话存储，两页共用一份本地存储。 */
 class MemoryStorage {

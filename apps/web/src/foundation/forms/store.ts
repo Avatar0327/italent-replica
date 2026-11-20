@@ -204,8 +204,8 @@ function createCore(recovery?: CommandRecovery) {
     entries.set(key, state);
     notify();
   };
-  /** 发送前先登记恢复记录；别页已占用或写不进去就不发出（抛错由调用方转成被拒）。 */
-  const persist = (key: string, state: Submission, slots: string[]) =>
+  /** 发送前先登记恢复记录（跨标签页互斥）；别页已占用、拿不到锁或写不进去就不发出（拒绝由调用方转成被拒）。 */
+  const persist = async (key: string, state: Submission, slots: string[]) =>
     recovery?.save({
       key,
       slots,
@@ -222,7 +222,8 @@ function createCore(recovery?: CommandRecovery) {
   const land = (key: string, from: Submission, next: Submission) => {
     if (entries.get(key) !== from) return undefined;
     put(key, next);
-    if (next.command && !['submitting', 'unknown'].includes(next.status)) recovery?.remove(key, next.command.id);
+    // 删除在同一把跨标签页锁内异步执行，与各页登记按请求先后串行，不阻塞落地；失败不影响已落定的结果。
+    if (next.command && !['submitting', 'unknown'].includes(next.status)) void recovery?.remove(key, next.command.id);
     return next;
   };
   const recover = async (
@@ -276,9 +277,10 @@ async function submitTo(core: Core, key: string, input: SubmitInput) {
     deletion: input.deletion,
     latest: prior?.latest,
   };
+  // 先置处理中再等锁：等锁期间本页同条目再提交被 isLocked 挡住，storage 同步也不接管处理中的条目。
   core.put(key, state);
   try {
-    core.persist(key, state, slots);
+    await core.persist(key, state, slots);
   } catch (error) {
     const other = error instanceof RecoveryConflict;
     const reason = other ? messages.otherTab : messages.recoveryUnavailable;

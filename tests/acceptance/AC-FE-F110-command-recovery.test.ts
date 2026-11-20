@@ -6,6 +6,10 @@ import { ApiError } from '../../apps/web/src/foundation/client.js';
 import { queryCommandResult } from '../../apps/web/src/foundation/forms/command-result.js';
 import { sharedRecovery } from '../../apps/web/src/foundation/forms/recovery.js';
 import { createFormStore, isLocked, type ResultReader } from '../../apps/web/src/foundation/forms/store.js';
+import { installWebLocks } from './support/web-locks.js';
+
+// F-110 第 3 轮：调动 / 审批命令登记恢复记录须拿跨标签页锁，测试环境装一份 Web Locks。
+installWebLocks();
 
 // 期望值手写：恢复记录只有对账字段，没有字段原文（派发单第三节第 3 条）。
 const secret = '合成敏感说明';
@@ -170,6 +174,8 @@ describe('AC-FE-F110 跨抽屉 / 刷新恢复未确认命令', () => {
           late = resolve;
         }),
     });
+    // 登记在锁内异步完成：等第一条登记并发出后再开刷新后的页面。
+    await vi.waitFor(() => expect(late).toBeDefined());
     // 第一条在途时另一个存储实例（刷新后的页面）查到确定失败并重提了第二条，仍未知。
     const reloaded = createFormStore({ recovery: sharedRecovery(recoveryName) });
     await reloaded.recoverResult('entry', async () => ({ status: 'failed', httpStatus: 503 }));
