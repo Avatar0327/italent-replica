@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { APPROVAL, counter, matrix, matrixSource, s4World } from './AC-APV-F326-S4-support.js';
+import { job } from './AC-APV-F318c-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -16,12 +17,19 @@ const PATH: Record<Dimension, string> = { position: 'record.positionId', job: 'r
 
 async function scene(label: string, approvalType: string, dimension: Dimension) {
   const w = await s4World(database().db, label);
-  const hit = randomUUID();
+  const makeReference = async () => {
+    const post = await job(w, 'posts');
+    return dimension === 'position'
+      ? job(w, 'positions', { name: `合成职位${post.id}`, postId: post.id, orgId: w.child })
+      : post;
+  };
+  const hit = (await makeReference()).id;
+  const other = (await makeReference()).id;
   const m = await matrix(w, {
     dimension,
     rows: [
       { cond: [hit], role: [w.head.userId] },
-      { cond: [randomUUID()], role: [w.near.userId] },
+      { cond: [other], role: [w.near.userId] },
     ],
   });
   const process = await w.publishedProcess({

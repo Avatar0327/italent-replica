@@ -33,6 +33,15 @@ export const s = {
   limit: '审批人来源最多 200 条',
   emptyHint: '仅编辑指定人员策略的候选来源；与兜底处理人分别保存。',
   personUnavailable: '人员信息未读取',
+  unselected: '未选择',
+  // S7b：本位置自动变量回显（主设计 §5.5 ④）
+  auto: {
+    summary: (people: string) => `指定人员：${people}`,
+    disabled: '已停用',
+    regenerate: '保存后将按所列人员重新生成',
+    usage: (count: number) => `该变量被 ${count} 个流程引用`,
+    pending: '发布后生效',
+  },
   personSelected: '指定人员（已选）',
   unknown: '来源信息未读取',
   types: {

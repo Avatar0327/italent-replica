@@ -28,11 +28,10 @@ interface Candidate {
   multiple?: boolean;
 }
 const page = (w: S4World, query: string, allow = true) =>
-  tenantApi(w.db, { authorize: (q) => allow && q.action === 'admin.process_matrix', clock: w.clock }).request(
-    'GET',
-    `${PATH}?${query}`,
-    w.as(w.hr.id),
-  );
+  tenantApi(w.db, {
+    authorize: (q) => allow && (q.action === 'admin.process_matrix' || q.action === 'object.update'),
+    clock: w.clock,
+  }).request('GET', `${PATH}?${query}`, w.as(w.hr.id));
 const items = async (w: S4World, query: string) => {
   const response = await page(w, query);
   expect(response.status, await response.clone().text()).toBe(200);

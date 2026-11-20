@@ -3,6 +3,7 @@
  * AC-APV-F326-08（S4 部分）/ 10 / 11 / 12 / 16 / 17；AC-13 / 18 在 AC-APV-F326-S4-lifecycle.test.ts。
  * 全部经真实 HTTP 入口与引擎；租户数据用 withTenant 读取，可在 app_owner 下通过。
  */
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { change, job, orgVersion, resolved, source } from './AC-APV-F318c-support.js';
@@ -306,9 +307,14 @@ describe('AC-APV-F326-11 取值为空与失效', () => {
   it('角色格里的非成员与已离职人员被过滤；人员变量的人员离职后取空', async () => {
     const w = await s4World(database().db, 'eval-filter');
     const left = await w.person('合成离职人', w.staff);
+    const revoked = await w.member('合成待撤销成员');
     const m = await matrix(w, {
-      rows: [{ cond: [w.child], role: [left.userId, randomId(), w.near.userId] }],
+      rows: [{ cond: [w.child], role: [left.userId, revoked, w.near.userId] }],
     });
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`UPDATE tenant_memberships SET status='revoked'
+      WHERE tenant_id=${w.tenant.id} AND user_id=${revoked}::uuid`),
+    );
     const v = await variable(w, { defaultValue: left.userId });
     expect(await resolved(w, matrixSource(m, m.roleId))).toEqual([left.userId, w.near.userId].sort());
     expect(await resolved(w, varSource('public_variable', v.id))).toEqual([left.userId]);

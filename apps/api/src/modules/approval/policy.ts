@@ -415,8 +415,11 @@ const VARIABLE_FIELDS = fixed(
     'updatedBy',
     'updatedAt',
     'people',
+    'origin',
+    'originProcessName',
+    'originNodeName',
   ],
-  'F-326 §4.3：管理员配置，人员回显仅姓名、工号、部门',
+  'F-326 §4.3：管理员配置，人员回显仅姓名、工号、部门；来源与来源流程 / 节点名（DEC-941）',
 );
 const REFERENCE_FIELDS = fixed(['items', 'total'], 'F-326 §6 引用清单：仅流程 / 节点名称与计数，不含审批人');
 const variableConfig = write(
@@ -465,10 +468,16 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   'POST /matrices/:id/enable': processAdmin({ ...byId, write: processCommand }),
   'POST /matrices/:id/disable': processAdmin({ ...byId, write: processCommand }),
   'GET /designer/source-candidates': admin('process_matrix', {
-    fields: fixed(['id', 'name', 'enabled', 'parentId', 'multiple'], 'DEC-691 / DEC-686① / F-326 §5.3'),
+    fields: fixed(
+      ['id', 'name', 'enabled', 'parentId', 'multiple'],
+      'DEC-691 / F-326 §5.3 / DEC-927：设计器与矩阵候选均只需矩阵管理权',
+    ),
   }),
   'GET /designer/person-candidates': admin('process_matrix', {
-    fields: fixed(['userId', 'name', 'code', 'departmentId', 'departmentName'], 'DEC-686① / DEC-135'),
+    fields: fixed(
+      ['userId', 'name', 'code', 'departmentId', 'departmentName'],
+      'DEC-686① / DEC-135 / DEC-927：设计器与矩阵候选均只需矩阵管理权',
+    ),
   }),
   'GET /types': processView(DICTIONARY, DICTIONARY),
   // status 非法值 .catch('active')，不报错

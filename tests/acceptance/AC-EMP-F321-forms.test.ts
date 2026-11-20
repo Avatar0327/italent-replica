@@ -122,7 +122,7 @@ it('AC-EMP-F321-02：任职合法编码保存并返回名称；未知值明确 4
   expect(await w.s.records(e.id)).toEqual([]);
 });
 
-it('AC-EMP-F321-03：停用项不能新选、历史名称仍可读；配置写带 revision 与命令幂等', async () => {
+it('AC-EMP-F321-03：停用项同值重存沿用、历史名称仍可读；配置写带 revision 与命令幂等', async () => {
   const w = await world('disabled');
   const form = (await w.list()).find((i) => i.name === '兼职人员')!;
   const hired = await w.hire(form.code);
@@ -142,7 +142,7 @@ it('AC-EMP-F321-03：停用项不能新选、历史名称仍可读；配置写�
     ifMatch: hired.revision,
     body: { fields: { employmentForm: form.code } },
   });
-  expect(result.status, await result.clone().text()).toBe(422);
+  expect(result.status, await result.clone().text()).toBe(200);
   expect((await w.s.record(hired.id)).fields).toMatchObject({ employmentFormName: '兼职人员' });
 });
 

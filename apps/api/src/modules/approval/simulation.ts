@@ -7,7 +7,7 @@ import { limitApprovers } from './source-resolver.js';
  * 并给出按出口动作生成的流转规则（DEC-144）。
  * 例外（F-326 §3.7）：`currentSources` 仅由流程管理员显式开启，才把变量 / 矩阵来源按当前值补进虚拟输入
  * （simulation-current.ts）；默认路径不读矩阵表，对象查看者拿不到这些来源里的真实用户。
- * 默认路径只读一处变量表：被模拟流程自己的自动变量取已发布值（`withOwnAutoVariables`，DEC-919，§3.7 ⑥）。
+ * 默认路径只读一处变量表：被模拟流程自己的自动变量取有效值（`withOwnAutoVariables`，DEC-919，§3.7 ⑥）。
  */
 import { sql, type Tx } from '@italent/db';
 import {
@@ -95,26 +95,33 @@ const managerOf = (data: SimulationData, candidate: Candidate): Candidate => ({
  * DEC-919（F-326 §3.7 ⑥ 的已发布值子集）：被模拟流程自己的自动变量是流程定义的一部分（`GET /processes/:id` 本来就回显），
  * 虚拟路径里直接取已发布的默认值，是“虚拟账号”，不查真实资格，与原 `specified` 一致。集合按 `origin_process_id`
  * 一次查出，不逐来源查；停用的变量与运行时一样按“没有人”。人工变量、其他流程的自动变量不在集合里，仍走原路径。
- * 调用方给的虚拟值（含当前值路径已解析好的）优先，所以 `resolveCurrentSources` 的结果不受影响。待生效值随 S7e。
+ * 调用方给的虚拟值（含当前值路径已解析好的）优先，`resolveCurrentSources` 的结果不受影响。
+ * 草稿节点的待生效值在 virtualSources 按位置取用。
  */
+const OWN_AUTO = Symbol('ownAutoVariables');
+type EffectiveData = SimulationData & {
+  [OWN_AUTO]?: { values: Readonly<Record<string, readonly string[]>>; draft: boolean };
+};
+
 async function withOwnAutoVariables(
   tx: Tx,
   tenantId: string,
   processId: string,
+  version: VersionView,
   data: SimulationData,
-): Promise<SimulationData> {
-  const rows = rowsOf<{ id: string; data_type: string; value: string | null }>(
-    await tx.execute(sql`SELECT id, data_type, default_value::text AS value FROM approval_variables
-      WHERE tenant_id=${tenantId}::uuid AND origin='auto' AND origin_process_id=${processId}::uuid
-        AND status='enabled'`),
+): Promise<EffectiveData> {
+  const rows = rowsOf<{ id: string; data_type: string; value: string | null; status: string }>(
+    await tx.execute(sql`SELECT id, data_type, status, default_value::text AS value FROM approval_variables
+      WHERE tenant_id=${tenantId}::uuid AND origin='auto' AND origin_process_id=${processId}::uuid`),
   );
   const own: Record<string, readonly string[]> = {};
   for (const row of rows) {
     const defaultValue = row.value === null ? null : JSON.parse(row.value);
     const key = sourceKey({ type: 'public_variable', value: row.id });
-    own[key] = variablePersonIds({ dataType: row.data_type as VariableDataType, defaultValue });
+    own[key] =
+      row.status === 'enabled' ? variablePersonIds({ dataType: row.data_type as VariableDataType, defaultValue }) : [];
   }
-  return { ...data, sourceRelations: { ...own, ...data.sourceRelations } };
+  return { ...data, [OWN_AUTO]: { values: own, draft: version.status === 'draft' } };
 }
 
 function virtualSources(source: ApproverSource, data: SimulationData, facts: RoutingFacts): Candidate[] {
@@ -124,7 +131,14 @@ function virtualSources(source: ApproverSource, data: SimulationData, facts: Rou
   else if (value) ids = [data.relations?.[value] ?? null];
   else if (source.type === 'specified') ids = [source.value];
   else if (source.type === 'context_variable') ids = facts.previousApprovedUserIds ?? [];
-  else ids = data.sourceRelations?.[sourceKey(source)] ?? [];
+  else {
+    const key = sourceKey(source);
+    const own = (data as EffectiveData)[OWN_AUTO];
+    const pending = (source as ApproverSource & { pendingUserIds?: readonly string[] }).pendingUserIds;
+    // 待生效值属于这个位置，不能覆盖同一变量在本流程其他位置的普通引用。
+    const effective = own?.draft && key in own.values ? (pending ?? own.values[key]) : own?.values[key];
+    ids = data.sourceRelations?.[key] ?? effective ?? [];
+  }
   return ids.length ? ids.map(virtualCandidate) : [virtualCandidate(null)];
 }
 
@@ -406,7 +420,7 @@ export async function simulateProcess(
   const given = currentSources
     ? await withCurrentSources(tx, ctx, version, process.approvalType, request.data)
     : request.data;
-  const data = await withOwnAutoVariables(tx, ctx.tenantId, processId, given);
+  const data = await withOwnAutoVariables(tx, ctx.tenantId, processId, version, given);
   const conditions = evaluateCondition(version.conditions, context);
   const walk = walkOf(version, process.approvalType, context);
   const nodes = simulateNodes(ctx, version, data, walk);
@@ -447,7 +461,10 @@ export async function simulateByObject(
     replicaVersion && currentSources
       ? await withCurrentSources(tx, ctx, replicaVersion, request.approvalType, request.data)
       : request.data;
-  const data = replica ? await withOwnAutoVariables(tx, ctx.tenantId, replica.processId, given) : given;
+  const data =
+    replica && replicaVersion
+      ? await withOwnAutoVariables(tx, ctx.tenantId, replica.processId, replicaVersion, given)
+      : given;
   const blockers = replicaVersion ? preflight(ctx, replicaVersion, data) : [];
   return {
     approvalType: request.approvalType,

@@ -3,6 +3,7 @@ import { SUBSETS } from '@italent/domain';
 import type { Hono } from 'hono';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
+import { expandSubsetAttachments } from '../attachments/subset-read.js';
 import { pageQuery, revision, uuidParam } from '../job/context.js';
 import { getModuleViewableFields } from '../permission/module-access.js';
 import { access, preflight, trim, trimWithFields } from './access.js';
@@ -25,8 +26,8 @@ export function registerSubsetRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
         const page = pageQuery(c);
         const options = await listOptions(c, deps, ctx);
         const fields = await listFieldVisibility(deps, ctx);
-        const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-          listSubsets(tx, ctx, kind, page, options, employeeId),
+        const items = await withTenant(deps.db, ctx.tenantId, async (tx) =>
+          expandSubsetAttachments(tx, ctx.tenantId, kind, await listSubsets(tx, ctx, kind, page, options, employeeId)),
         );
         return c.json({
           items: items.map((row) => trimSubset(row, fields)),
@@ -46,8 +47,12 @@ function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const ctx = await access(c, deps, SUBSETS[kind].objectCode, 'view');
       const employeeId = uuidParam(c, 'employeeId');
       await preflight(deps, ctx, employeeId);
-      const item = await withTenant(deps.db, ctx.tenantId, (tx) => loadSubset(tx, ctx, employeeId, kind, uuidParam(c)));
-      return c.json(await trim(deps, ctx, ctx.objectCode, subsetDto(item, kind)));
+      const [item] = await withTenant(deps.db, ctx.tenantId, async (tx) =>
+        expandSubsetAttachments(tx, ctx.tenantId, kind, [
+          subsetDto(await loadSubset(tx, ctx, employeeId, kind, uuidParam(c)), kind),
+        ]),
+      );
+      return c.json(await trim(deps, ctx, ctx.objectCode, item!));
     }),
   );
   router.get(`${base}/:id/history`, (c) =>

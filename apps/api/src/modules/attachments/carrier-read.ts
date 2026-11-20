@@ -49,6 +49,7 @@ async function boundRows(
   businessId: string,
   ids: readonly string[],
   statuses: readonly CarrierStatus[] = LIVE_STATUSES,
+  businessType: string = EXIT_BUSINESS_TYPE,
 ) {
   if (!ids.length) return [];
   const rows = await tx
@@ -58,7 +59,7 @@ async function boundRows(
   return rows.filter(
     (row) =>
       (statuses as readonly string[]).includes(row.status) &&
-      row.businessType === EXIT_BUSINESS_TYPE &&
+      row.businessType === businessType &&
       lower(row.businessId ?? '') === lower(businessId),
   );
 }
@@ -162,12 +163,13 @@ export async function readCarrierAttachment(
   refs: readonly string[] | null | undefined,
   fileId: string,
   read: CarrierReadMode = { mode: 'live' },
+  businessType: string = EXIT_BUSINESS_TYPE,
 ): Promise<{ row: FileRow; bytes: Uint8Array }> {
   const id = lower(fileId);
   if (!(refs ?? []).some((ref) => lower(ref) === id)) throw missingFile();
   if (read.mode === 'frozen' && !read.captured.some((item) => lower(item) === id)) throw missingFile();
   const statuses = read.mode === 'frozen' ? FROZEN_STATUSES : LIVE_STATUSES;
-  const [row] = await boundRows(tx, tenantId, businessId, [id], statuses);
+  const [row] = await boundRows(tx, tenantId, businessId, [id], statuses, businessType);
   if (!row?.contentType) throw missingFile();
   const bytes = await PgBlobStore.read(tx, tenantId, row.id);
   if (!bytes) throw missingFile();

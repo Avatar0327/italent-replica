@@ -56,6 +56,15 @@ const subsetKind = (method: string, path: string, position = 'object'): BranchIn
   ]),
 ];
 const SUBSET = '/employees/:employeeId/subsets/:kind';
+// F-479 §10 子集附件路由（personnel/subset-attachment-routes.ts）：写入口经 entry 取 kind，读入口在处理函数里取
+const SUBSET_ATTACHMENT_FILE = `${SRC}/personnel/subset-attachment-routes.ts`;
+const SUBSET_KIND_CALL = "const kind = subsetKind(c.req.param('kind') ?? '')";
+const subsetAttachmentKind = (unit: string, position = 'object'): BranchInput[] => [
+  input(position, 'personnel.subset', 'param', 'kind', [
+    call(`${SUBSET_ATTACHMENT_FILE}#${unit}`, SUBSET_KIND_CALL),
+    impl(`${SRC}/personnel/validation.ts#subsetKind`, 'Object.hasOwn(SUBSETS, value)'),
+  ]),
+];
 
 const PART_TIME_REQUEST = `${SRC}/employment/part-time/request-routes.ts`;
 // ---- 任职导入（employment/routes.ts + forward-import.ts）：items[*].operation ∈ create / edit -------------------------
@@ -179,6 +188,12 @@ export const BRANCH_INPUTS: Readonly<Record<string, readonly BranchInput[]>> = {
   [`POST ${PERSONNEL}${SUBSET}`]: subsetKind('POST', SUBSET),
   [`PATCH ${PERSONNEL}${SUBSET}/:id`]: subsetKind('PATCH', `${SUBSET}/:id`),
   [`DELETE ${PERSONNEL}${SUBSET}/:id`]: subsetKind('DELETE', `${SUBSET}/:id`),
+  [`POST ${PERSONNEL}${SUBSET}/attachments`]: subsetAttachmentKind('entry'),
+  [`POST ${PERSONNEL}${SUBSET}/attachments/:fileId/upload`]: subsetAttachmentKind('entry'),
+  [`DELETE ${PERSONNEL}${SUBSET}/attachments/:fileId`]: subsetAttachmentKind('entry'),
+  [`GET ${PERSONNEL}${SUBSET}/:id/attachments/:fileId/content`]: subsetAttachmentKind(
+    `route:GET ${PERSONNEL}${SUBSET}/:id/attachments/:fileId/content`,
+  ),
 
   'POST /api/tenant/contracts/commands': [
     input('operation', 'contracts.operation', 'body', 'operation', [
