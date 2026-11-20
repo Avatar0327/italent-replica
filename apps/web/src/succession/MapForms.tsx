@@ -8,7 +8,6 @@ import type { ApiClient } from '../foundation/client.js';
 import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { useCommandForm } from '../foundation/forms/useCommandForm.js';
-import type { ObjectPermission } from '../foundation/permission-model.js';
 import { requireObjects } from './conflict.js';
 import { s } from './messages.js';
 import { targetPaths } from './RecordForm.js';
@@ -18,6 +17,7 @@ import {
   assignSnapshot,
   BASE,
   isPreferences,
+  isStrings,
   preferenceBody,
   preferenceLatest,
   preferenceReceipt,
@@ -32,8 +32,12 @@ const editableNames = (fields: FormField[]) =>
   fields.filter((field) => field.access.visible && field.access.editable).map((field) => field.name);
 
 // 地图读回和表单打开后权限都可能变化，只有需推断默认投影版本时才重查字段明细。
-const readRiskFields = async (api: ApiClient) =>
-  (await api.request<ObjectPermission>(`/api/tenant/permission/me/objects/${result.position}`)).viewableFields;
+async function readRiskFields(api: ApiClient) {
+  const path = `/api/tenant/permission/me/objects/${result.position}`;
+  const response = await api.request<{ viewableFields?: unknown } | null>(path);
+  const fields = response?.viewableFields;
+  return isStrings(fields) ? fields : undefined;
+}
 
 /** 没有单条读取接口：重读整张地图，按节点取结果投影。 */
 async function readAssignment(api: ApiClient, mapPath: string, id: string, kind: Kind) {
@@ -58,15 +62,18 @@ export function AssignDialog(props: { kind: Kind; item: MapItem; mapPath: string
   const path = `${results}/${item.id}`;
   const options = useRead<ListResult<LevelOption>>(`${BASE}/${segment}-levels/options`);
   const current = kind === 'position' ? item.risk : item.health;
-  const riskFields = kind === 'position' ? permission.snapshot.objects[result.position]?.viewableFields : undefined;
-  const snapshot = assignSnapshot(item.id, current, riskFields);
+  const object = permission.snapshot.objects[result[kind]];
+  const snapshot = assignSnapshot(item.id, current, kind === 'position' ? object?.viewableFields : undefined);
   const baseline = snapshot.values;
   const readLatest = () => readAssignment(api, props.mapPath, item.id, kind);
   const writer = useConflictCommand(results, { ...snapshot, revision: snapshot.revision ?? Number.NaN }, readLatest);
   // 版本无效时内核不从快照挂槽；仍按稳定对象槽读取已在途的命令，保留结果待确认的锁定。
   const pending = useCommandForm(slotKey(results, item.id));
   const submission = writer.invalid ? { ...pending, reload: () => pending.reread(readLatest) } : writer.form;
-  const access = permission.field('levelId');
+  const access =
+    isStrings(object?.viewableFields) && isStrings(object?.editableFields)
+      ? permission.field('levelId')
+      : { visible: false, editable: false };
   const modes = [
     { value: 'rule', label: s.assign.rule },
     { value: 'manual', label: s.assign.manual },

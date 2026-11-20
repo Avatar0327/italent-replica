@@ -96,7 +96,8 @@ export function deleteReceipt(response: unknown) {
   return { id: view.id };
 }
 export const PREFS_RECEIPT = 'preferences';
-const isStrings = (value: unknown) => Array.isArray(value) && value.every((item) => typeof item === 'string');
+export const isStrings = (value: unknown): value is readonly string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string');
 /** 偏好回执按真实 DTO 逐项核对（map-routes.ts PUT /maps/:kind/preferences）；层级只有二到四级。 */
 export function isPreferences(response: unknown): response is Preferences {
   const view = response as Partial<Record<keyof Preferences, unknown>> | null;
@@ -140,7 +141,7 @@ export function preferenceBody(full: Record<string, unknown>, edited: Record<str
 }
 /** position-map.ts 的默认色投影不含 revision；只有该字段可见时，才可用投影形状区分已有行。 */
 function isDefaultPositionRisk(id: string, level: LevelResult, fields: readonly string[]) {
-  if (!fields.includes('revision')) return false;
+  if (!isStrings(fields) || !fields.includes('revision')) return false;
   const shape = {
     positionId: level.positionId === id,
     levelId: level.levelId === null,
