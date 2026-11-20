@@ -15,6 +15,7 @@ import {
   integer,
   jsonb,
   numeric,
+  pgSequence,
   pgTable,
   primaryKey,
   smallint,
@@ -260,6 +261,60 @@ const CHANGE_TYPES = sql.raw(
 function changeTypeRule(name: string, changeType: AnyPgColumn) {
   return check(name, sql`${changeType} IN (${CHANGE_TYPES})`);
 }
+
+export const employmentOriginSeq = pgSequence('employment_origin_seq');
+
+export const employmentFieldOrigins = pgTable(
+  'employment_field_origins',
+  {
+    tenantId: tenantId(),
+    id: id(),
+    seq: bigint('seq', { mode: 'bigint' })
+      .notNull()
+      .default(sql`nextval('employment_origin_seq')`),
+    employeeId: uuid('employee_id').notNull(),
+    businessId: uuid('business_id').notNull(),
+    payloadVersionId: uuid('payload_version_id').notNull(),
+    recordId: uuid('record_id'),
+    fieldCode: text('field_code').notNull(),
+    originKind: text('origin_kind').notNull(),
+    value: jsonb('value'),
+    sourceBusinessId: uuid('source_business_id'),
+    sourceVersionNo: integer('source_version_no'),
+    sourceRecordId: uuid('source_record_id'),
+    matchBefore: jsonb('match_before'),
+    derivationRule: text('derivation_rule'),
+    referenceId: uuid('reference_id'),
+    refSeq: bigint('ref_seq', { mode: 'bigint' }),
+    reason: text('reason'),
+    commandId: text('command_id'),
+    actorUserId: uuid('actor_user_id').notNull(),
+    createdAt: utc(),
+  },
+  (t): PgTableExtraConfigValue[] => [
+    foreignKey({
+      name: 'employment_field_origins_payload_fk',
+      columns: [t.tenantId, t.employeeId, t.businessId, t.payloadVersionId],
+      foreignColumns: [
+        employmentPayloadVersions.tenantId,
+        employmentPayloadVersions.employeeId,
+        employmentPayloadVersions.businessId,
+        employmentPayloadVersions.id,
+      ],
+    }),
+    check(
+      'employment_field_origins_kind_check',
+      sql`${t.originKind} IN ('inherit','deferred','resolved','none','copy','employee-input','hr-input',
+        'system-input','approval-edit','hr-record','forward-update','derive','derive-edit','sequence-sync',
+        'status-propagate','retain','fallback','restore')`,
+    ),
+    index('employment_field_origins_business_field').on(t.tenantId, t.businessId, t.fieldCode, t.seq.desc()),
+    index('employment_field_origins_source').on(t.tenantId, t.employeeId, t.sourceBusinessId),
+    index('employment_field_origins_anchor')
+      .on(t.tenantId, t.businessId, t.fieldCode, t.derivationRule, t.referenceId, t.seq.desc())
+      .where(sql`${t.derivationRule} IS NOT NULL`),
+  ],
+);
 
 export const employmentPayloadVersions = pgTable(
   'employment_payload_versions',
