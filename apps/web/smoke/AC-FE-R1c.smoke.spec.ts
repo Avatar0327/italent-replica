@@ -513,6 +513,50 @@ test('AC-FE-R1c-07 结果未知锁定：不能重提或换动作，关闭重开�
   expect(writes).toBe(1);
 });
 
+test('AC-FE-F110-13 审批同意未知：整页刷新后仍锁定，查询结果成功读回详情并解锁', async ({ page }) => {
+  let writes = 0;
+  let command = '';
+  let confirmed = false;
+  await page.route('**/api/tenant/approval/tasks/*/approve', (route) => {
+    writes++;
+    command = route.request().headers()['idempotency-key']!;
+    return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } });
+  });
+  await page.route(`**/api/tenant/approval/instances/${instance}`, (route) =>
+    route.fulfill({ json: confirmed ? detail(5, 'approved') : detail() }),
+  );
+  await page.route('**/api/tenant/commands/*/result', (route) => {
+    confirmed = true;
+    return route.fulfill({
+      json: {
+        commandId: command,
+        status: 'succeeded',
+        commandType: 'POST /api/tenant/approval/tasks/:taskId/approve',
+        businessType: 'approval_instance',
+        businessId: instance,
+        revision: 5,
+        httpStatus: 200,
+        completedAt: '2026-10-12T04:00:00.000Z',
+      },
+    });
+  });
+  await switchIdentity(page, '/approval');
+  await openTodo(page);
+  await page.getByRole('button', { name: button('同意') }).click();
+  await actionButton(page, '保存').click();
+  await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toBeVisible();
+  await page.reload();
+  await openTodo(page);
+  await expect(page.getByText('本单有未确认的“同意”操作，请打开核对结果；确认前不能发起其他操作。')).toBeVisible();
+  await expect(page.getByText('刷新前提交的命令结果待确认；提交内容未在本页保存，请先查询结果。')).toBeVisible();
+  await expect(page.getByRole('button', { name: button('驳回') })).toBeDisabled();
+  await page.getByRole('button', { name: '查询结果', exact: true }).click();
+  await expect(page.getByText('本单有未确认的“同意”操作，请打开核对结果；确认前不能发起其他操作。')).toHaveCount(0);
+  await expect(page.getByText('刷新前提交的命令结果待确认；提交内容未在本页保存，请先查询结果。')).toHaveCount(0);
+  expect(await page.evaluate(() => sessionStorage.getItem('italent.commands.pending:approval'))).toBeNull();
+  expect(writes).toBe(1);
+});
+
 test('AC-FE-R1c-07c DEC-502①(a) 回执 revision 未超过本次提交按结果未知锁定，不提示成功', async ({ page }) => {
   let writes = 0;
   await page.route(`**/api/tenant/approval/instances/${instance}`, (route) => route.fulfill({ json: detail() }));
@@ -797,14 +841,33 @@ test('AC-FE-R1c-11 DEC-511 刷新后重选同一人带出暂存，提交走新�
   expect(bodies[1]!.linkage).toBeUndefined();
 });
 
-test('AC-FE-R1c-12 DEC-464 创建未知关闭刷新后只读，不再保存命令编号', async ({ page }) => {
+// F-110 取代原“不再保存命令编号”：会话恢复记录只存命令 ID 与对象（不存字段原文），刷新后仍只读，查询结果解锁。
+test('AC-FE-R1c-12 AC-FE-F110-12 创建未知关闭刷新后仍只读，按原命令 ID 查询结果解锁', async ({ page }) => {
   let writes = 0;
   let command = '';
+  const queries: string[] = [];
   await page.route('**/transfers/employees/' + employee, (route) => {
     writes++;
     command = route.request().headers()['idempotency-key']!;
     return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } });
   });
+  await page.route('**/api/tenant/commands/*/result', (route) => {
+    queries.push(new URL(route.request().url()).pathname);
+    if (queries.length === 1) return route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND' } } });
+    return route.fulfill({
+      json: {
+        commandId: command,
+        status: 'succeeded',
+        commandType: 'POST /api/tenant/employment/transfers/employees/:employeeId',
+        businessType: 'transfer',
+        businessId: draftId,
+        revision: 1,
+        httpStatus: 200,
+        completedAt: '2026-10-12T02:00:00.000Z',
+      },
+    });
+  });
+  await page.route('**/employment/businesses/' + draftId, (route) => route.fulfill({ json: draftBusiness }));
   await switchIdentity(page, '/transfer');
   await openHr(page);
   await page.locator('select[name="employeeId"]').selectOption(employee);
@@ -814,7 +877,16 @@ test('AC-FE-R1c-12 DEC-464 创建未知关闭刷新后只读，不再保存命�
   await page.reload();
   await openHr(page);
   await expectReadonly(page);
-  expect(await page.evaluate(() => JSON.stringify(sessionStorage))).not.toContain(command);
+  const record = await page.evaluate(() => sessionStorage.getItem('italent.commands.pending:transfer'));
+  expect(record).toContain(command);
+  expect(record).not.toContain('合成工作地');
+  await page.getByRole('button', { name: '查询结果', exact: true }).click();
+  await expect(page.getByText('暂未查到本次命令的结果，可能仍在处理中，请稍后再查询。')).toBeVisible();
+  await expectReadonly(page);
+  await page.getByRole('button', { name: '查询结果', exact: true }).click();
+  await expect(page.getByText('信息暂存成功，下次选择此人可自动带出')).toBeVisible();
+  await expect(page.getByText(processing, { exact: true })).toHaveCount(0);
+  expect(queries).toEqual([`/api/tenant/commands/${command}/result`, `/api/tenant/commands/${command}/result`]);
   expect(writes).toBe(1);
 });
 

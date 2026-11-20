@@ -115,12 +115,66 @@ for (const entry of [
     await expect(drawer).toContainText(command);
     await expect(drawer).toContainText(employee);
     await expect(drawer).toContainText('2026-10-13');
-    await expect(drawer).toContainText('如确认未提交成功，请刷新后重新发起');
+    await expect(drawer).toContainText('查询确认原命令未执行成功后，可核对原输入重新提交。');
     await expect(drawer.getByRole('button', { name: '提交', exact: true })).toHaveCount(0);
     await expect(drawer.getByRole('button', { name: '回查结果', exact: true })).toHaveCount(0);
     expect(writes).toBe(1);
   });
 }
+
+test('AC-FE-F110-11 本人提交未知：关闭重开、整页刷新后仍锁定，按原命令 ID 查询结果解锁', async ({ page }) => {
+  let command = '';
+  let writes = 0;
+  const queries: string[] = [];
+  await page.route('**/self-service/transfer', (route) => {
+    writes++;
+    command = route.request().headers()['idempotency-key']!;
+    return route.abort('failed');
+  });
+  // F-120 真实形状：先 404（查不到，可能仍在处理），再 200 succeeded 指向本次调动单。
+  await page.route('**/api/tenant/commands/*/result', (route) => {
+    queries.push(new URL(route.request().url()).pathname);
+    if (queries.length === 1) return route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND' } } });
+    return route.fulfill({
+      json: {
+        commandId: command,
+        status: 'succeeded',
+        commandType: 'POST /api/tenant/employment/self-service/transfer',
+        businessType: 'transfer',
+        businessId: business,
+        revision: 1,
+        httpStatus: 201,
+        completedAt: '2026-10-13T02:00:00.000Z',
+      },
+    });
+  });
+  await page.route(`**/employment/businesses/${business}`, (route) =>
+    route.fulfill({ json: { ...draft, revision: 1, status: 'in_review' } }),
+  );
+  const drawer = await setup(page, false);
+  await drawer.getByRole('button', { name: '提交', exact: true }).click();
+  await expect.poll(() => writes).toBe(1);
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await openForm(page, false);
+  await expect(drawer).toContainText(command);
+  await page.reload();
+  await openForm(page, false);
+  await expect(drawer).toContainText('处理中 / 结果待确认');
+  await expect(drawer).toContainText(command);
+  await expect(drawer).toContainText('刷新前的提交内容未在本页保存');
+  await expect(drawer.getByRole('button', { name: '提交', exact: true })).toHaveCount(0);
+  const record = await page.evaluate(() => sessionStorage.getItem('italent.commands.pending:transfer'));
+  expect(record).toContain(command);
+  await drawer.getByRole('button', { name: '查询结果', exact: true }).click();
+  await expect(drawer).toContainText('暂未查到本次命令的结果，可能仍在处理中，请稍后再查询。');
+  await expect(drawer).toContainText(command);
+  await drawer.getByRole('button', { name: '查询结果', exact: true }).click();
+  await expect(drawer).toContainText('申请已提交审批，请在“我的申请”核对。');
+  await expect(drawer).not.toContainText('处理中 / 结果待确认');
+  expect(await page.evaluate(() => sessionStorage.getItem('italent.commands.pending:transfer'))).toBeNull();
+  expect(queries).toEqual([`/api/tenant/commands/${command}/result`, `/api/tenant/commands/${command}/result`]);
+  expect(writes).toBe(1);
+});
 
 test('AC-FE-R1d-2 经理暂存关闭重开读取完整原单，刷新草稿后按原 ID 与 revision 提交', async ({ page }) => {
   let reads = 0;
@@ -222,7 +276,8 @@ test('AC-FE-R1d-2 本人申请确认成功后可以显式新建，未确认保�
   expect(commands[0]).not.toBe(commands[1]);
 });
 
-test('AC-FE-R1d-2 查看我的申请后返回不清除原命令，只有整页刷新才重新发起', async ({ page }) => {
+// F-110 取代原“整页刷新才重新发起”：刷新后仍锁定，只能按原命令 ID 查询结果解锁（见 AC-FE-F110-11）。
+test('AC-FE-R1d-2 查看我的申请后返回不清除原命令，整页刷新后仍锁定', async ({ page }) => {
   let writes = 0;
   await page.route('**/self-service/transfer', (route) => {
     writes++;
@@ -240,7 +295,9 @@ test('AC-FE-R1d-2 查看我的申请后返回不清除原命令，只有整页�
   expect(writes).toBe(1);
   await page.reload();
   await openForm(page, false);
-  await expect(drawer.getByRole('button', { name: '提交', exact: true })).toBeEnabled();
+  await expect(drawer).toContainText('处理中 / 结果待确认');
+  await expect(drawer.getByRole('button', { name: '提交', exact: true })).toHaveCount(0);
+  expect(writes).toBe(1);
 });
 
 for (const manager of [false, true]) {

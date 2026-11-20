@@ -463,14 +463,14 @@ test('AC-FE-F153-18 #350 第 2 轮 P2-1 已确认冲突后换人再换回：按�
   await expect(page.getByText('调动申请已提交审批。')).toBeVisible();
 });
 
-test('AC-FE-F153-19 #350 第 2 轮 P2-2 回执员工版本未推进：按结果未知锁定，不报成功、保留 processing 标记', async ({
-  page,
-}) => {
+test('AC-FE-F153-19 #350 第 2 轮 P2-2 回执员工版本未推进：按结果未知锁定，不报成功、保留恢复记录', async ({ page }) => {
   await backend(page, (route) => route.fulfill({ json: business }));
   await stash(page);
   const sent: (string | undefined)[] = [];
+  let command = '';
   await page.route('**/transfers/employees/' + employee, (route) => {
     sent.push(route.request().headers()['if-match']);
+    command = route.request().headers()['idempotency-key']!;
     // 陈旧回执：业务单 revision 2，员工版本仍是发出的 4，不是本次写入的结果。
     return route.fulfill({ json: { ...receipt, revision: 2, employeeRevision: 4, status: 'in_review' } });
   });
@@ -479,11 +479,9 @@ test('AC-FE-F153-19 #350 第 2 轮 P2-2 回执员工版本未推进：按结果�
   await expect.poll(() => sent).toEqual(['4']);
   await expect(page.getByRole('status').filter({ hasText: '处理中，请在我的申请中查看' })).toBeVisible();
   await expect(page.getByText('调动申请已提交审批。')).toHaveCount(0);
-  const session = await page.evaluate(() => {
-    const key = Object.keys(sessionStorage).find((item) => item.startsWith('italent.transfer.l2:'))!;
-    return JSON.parse(sessionStorage.getItem(key)!);
-  });
-  expect(session).toEqual({ processing: true });
+  // F-110：处理中标记改由内核会话恢复记录承担，只存原命令 ID 与对象，供刷新后仍锁定、按原 ID 查询结果。
+  const records = await page.evaluate(() => JSON.parse(sessionStorage.getItem('italent.commands.pending:transfer')!));
+  expect(records).toMatchObject([{ commandId: command, revision: 4, businessId: employee }]);
 });
 
 test('AC-FE-F181b-08 清空会话并刷新，按服务端带出；清除发 DELETE 后再选不带出', async ({ page }) => {
