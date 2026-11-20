@@ -1,4 +1,4 @@
-import { sql, users, eq, grantMembership, withPlatform, withTenant } from '@italent/db';
+import { sql, users, eq, grantMembership, withPlatform, withTenant, type Tx } from '@italent/db';
 import * as domain from '@italent/domain';
 import { testDbMode, useTestDb } from '@italent/testkit';
 import { expect, it, vi } from 'vitest';
@@ -22,19 +22,18 @@ async function resolved(w: World, scene: Scene): Promise<Source> {
   return { scene, sourceId: (source.offerId ?? source.businessId)!, sourceRevision: source.sourceRevision };
 }
 
-async function initiate(
-  w: World,
-  source: Source,
-  templateIds: string[],
-  options: {
-    commandId?: string;
-    authorize?: typeof allowAll;
-  } = {},
-) {
+type InitiationOptions = {
+  commandId?: string;
+  authorize?: typeof allowAll;
+  clock?: () => Date;
+  afterSourceLock?: () => void;
+};
+
+function runInitiation(w: World, source: Source, templateIds: string[], options: InitiationOptions = {}) {
   const ctx = { ...w.ctx(), expectedRevision: source.sourceRevision, tenantName: w.session.tenant.name };
-  const result = await runSourceSignCommand(
+  return runSourceSignCommand(
     w.db,
-    { authorize: options.authorize ?? allowAll, clock: () => ctx.now },
+    { authorize: options.authorize ?? allowAll, clock: options.clock ?? (() => ctx.now) },
     ctx,
     {
       scene: source.scene,
@@ -49,10 +48,15 @@ async function initiate(
         SELECT revision FROM ${table} WHERE tenant_id=${w.tenantId} AND id=${source.sourceId}::uuid FOR UPDATE
       `),
         );
+        options.afterSourceLock?.();
         return { revision: row!.revision, employeeId: w.employeeId, ownerDepartmentId: w.from.id };
       },
     },
   );
+}
+
+async function initiate(w: World, source: Source, templateIds: string[], options?: InitiationOptions) {
+  const result = await runInitiation(w, source, templateIds, options);
   expect(result.status).toBe(201);
   return result.body as { sourceId: string; taskId: string };
 }
@@ -274,4 +278,132 @@ it.each(SCENES)('AC-11 %s 期限精确、企业免自动提醒、锁后到期提
   const next = await initiate(w, source, [template.id]);
   expect(next.taskId).not.toBe(taskId);
   expect(await w.taskRow(next.taskId)).toMatchObject({ status: 'signing', revision: 1 });
+});
+
+async function crossDeadlineWhileBlocked<T>(
+  w: World,
+  lockRow: (tx: Tx) => Promise<unknown>,
+  table: string,
+  run: () => Promise<T>,
+  crossDeadline: () => void,
+) {
+  let signalLocked!: (pid: number) => void;
+  let release!: () => void;
+  const locked = new Promise<number>((resolve) => {
+    signalLocked = resolve;
+  });
+  const unlocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const holding = withTenant(w.db, w.tenantId, async (tx) => {
+    await lockRow(tx);
+    const [row] = rowsOf<{ pid: number }>(await tx.execute(sql`SELECT pg_backend_pid() AS pid`));
+    signalLocked(row!.pid);
+    await unlocked;
+  });
+  const blocker = await Promise.race([
+    locked,
+    holding.then(() => {
+      throw new Error('持锁事务提前退出');
+    }),
+  ]);
+  const pending = Promise.resolve().then(run);
+  try {
+    await vi.waitFor(
+      async () => {
+        const waiting = await w.db.execute(sql`SELECT pid FROM pg_stat_activity
+        WHERE datname=current_database() AND wait_event_type='Lock'
+          AND ${blocker}::int=ANY(pg_blocking_pids(pid))
+          AND query ILIKE ${`%FROM%${table}%FOR UPDATE%`}`);
+        expect(rowsOf(waiting)).toHaveLength(1);
+      },
+      { timeout: 5000 },
+    );
+    crossDeadline();
+  } finally {
+    release();
+    await Promise.allSettled([holding, pending]);
+  }
+  await holding;
+  return pending;
+}
+
+it.each(SCENES)('AC-11 %s 等锁跨截止时间，结束旧任务并成功发起新任务', async (scene) => {
+  const w = await sharedWorld(db().db, `reissue-after-lock-${scene}`);
+  const source = await resolved(w, scene);
+  const template = await w.template();
+  const original = await initiate(w, source, [template.id]);
+  const old = await w.taskRow(original.taskId);
+  const deadline = old.expiresAt;
+  let now = new Date(deadline.getTime() - 1);
+  w.setNow(now);
+  const advance = () => {
+    now = deadline;
+  };
+  const run = (options?: InitiationOptions) =>
+    runInitiation(w, source, [template.id], { clock: () => now, ...options });
+
+  // 真 PG 分别证实来源锁和在途任务锁的等待。PGlite 单连接，在来源锁返回时推进注入时钟。
+  const waitTable = scene === 'offer' ? 'offers' : 'esign_tasks';
+  const waitId = scene === 'offer' ? source.sourceId : old.id;
+  const attempt =
+    testDbMode() === 'pg'
+      ? crossDeadlineWhileBlocked(
+          w,
+          (tx) =>
+            tx.execute(sql`
+        SELECT id FROM ${sql.identifier(waitTable)} WHERE tenant_id=${w.tenantId} AND id=${waitId} FOR UPDATE
+      `),
+          waitTable,
+          run,
+          advance,
+        )
+      : run({ afterSourceLock: advance });
+  const outcome = await attempt.catch((error: unknown) => error);
+  expect.soft(await w.taskRow(old.id), '旧任务在同一发起事务到期').toMatchObject({
+    status: 'expired',
+    currentNode: null,
+    expiredAt: deadline,
+    revision: 2,
+  });
+  expect(outcome, '新任务发起应返回 201').toMatchObject({ status: 201, body: { sourceId: source.sourceId } });
+  const { taskId } = (outcome as { body: { taskId: string } }).body;
+  expect(taskId).not.toBe(old.id);
+  expect(await w.taskRow(taskId)).toMatchObject({
+    scene,
+    status: 'signing',
+    revision: 1,
+    initiatedAt: deadline,
+    expiresAt: new Date(deadline.getTime() + 2 * DAY),
+  });
+  expect(await w.notices()).toEqual([]);
+});
+
+it('AC-11 定时提醒候选等锁跨截止时间，不再发送到期前提醒', async () => {
+  const w = await sharedWorld(db().db, 'reminder-after-lock');
+  const task = await w.fixture('entry', await w.template(), true);
+  const before = new Date(task.expiresAt.getTime() - 1);
+  let now = before;
+  const advance = () => {
+    now = task.expiresAt;
+  };
+  const run = (clock: () => Date) => runESignJobs(w.db, { clock });
+  if (testDbMode() === 'pg') {
+    await crossDeadlineWhileBlocked(
+      w,
+      (tx) =>
+        tx.execute(sql`
+      SELECT id FROM esign_tasks WHERE tenant_id=${w.tenantId} AND id=${task.id} FOR UPDATE
+    `),
+      'esign_tasks',
+      () => run(() => now),
+      advance,
+    );
+  } else {
+    await run(vi.fn(() => task.expiresAt).mockReturnValueOnce(before));
+  }
+  expect.soft(await w.taskRow(task.id)).toMatchObject({ expiryRemindedAt: null, revision: 1 });
+  expect(await w.notices()).toEqual([]);
+  await run(() => task.expiresAt);
+  expect(await w.taskRow(task.id)).toMatchObject({ status: 'expired', expiredAt: task.expiresAt, revision: 2 });
 });
