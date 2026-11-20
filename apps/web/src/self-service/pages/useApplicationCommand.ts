@@ -3,12 +3,13 @@ import type { TransferBusiness } from '../../transfer/types.js';
 import type { ApplicationCommandRunner } from '../shared/application-command.js';
 import {
   clearConfirmedApplication,
+  queryApplicationResult,
   readApplicationSession,
   runApplicationCommand,
   subscribeApplicationSession,
 } from './application-session.js';
 
-/** 同一页面内的路由重挂载只恢复只读标记或已知单号，不恢复在途命令。 */
+/** 路由重挂载、关闭重开、整页刷新都恢复只读标记（F-110）；在途命令只能按原命令 ID 查询结果，不重发。 */
 export function useApplicationCommand(scope: string, onSaved?: (result: TransferBusiness) => void) {
   const state = useSyncExternalStore(subscribeApplicationSession, () => readApplicationSession(scope));
   const run: ApplicationCommandRunner = async (command, execute) => {
@@ -16,5 +17,11 @@ export function useApplicationCommand(scope: string, onSaved?: (result: Transfer
     onSaved?.(result);
     return result;
   };
-  return { ...state, run, clearConfirmed: () => clearConfirmedApplication(scope) };
+  return {
+    ...state,
+    run,
+    query: (tenantId: string) => queryApplicationResult(scope, tenantId),
+    clearConfirmed: () => clearConfirmedApplication(scope),
+  };
 }
+export type ApplicationState = ReturnType<typeof useApplicationCommand>;

@@ -1,6 +1,6 @@
 import { loadPreview, reloadSavedModel, savedNotice } from './transfer-loading.js';
 import { useHrTransferCommand } from '../../transfer/useHrTransferCommand.js';
-import { applicationCommand, type ApplicationCommandRunner } from './application-command.js';
+import { ApplicationCommandHandled, applicationCommand, type ApplicationCommandRunner } from './application-command.js';
 import type { TransferFormAdapter } from './transfer-adapter.js';
 import { useEffect, useRef, useState } from 'react';
 import { missingTransferRequiredFields } from '@italent/domain';
@@ -73,7 +73,7 @@ export function useTransferForm(
     adapter,
     runCommand,
   );
-  const hr = useHrTransferCommand(tenantId, model, loadingPreview, setModel, hrScope);
+  const hr = useHrTransferCommand(tenantId, model, loadingPreview, setModel);
   const commands = hrScope ? hr : legacy;
   useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator, !adapter);
   useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator, !adapter);
@@ -208,6 +208,7 @@ function useTransferCommand(
       setSaved(result);
       setNotice(savedNotice(result, action));
     } catch (cause) {
+      if (cause instanceof ApplicationCommandHandled) return;
       if (!(cause instanceof TransferApiError) || cause.status >= 500) {
         setUnknownCommand(commandId);
         setError(text.unknown);

@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react';
-import { createFormStore } from '../foundation/forms/store.js';
-import { useCommandForm, type CommandForm } from '../foundation/forms/useCommandForm.js';
+import { usePinnedCommand, type CommandForm } from '../foundation/forms/useCommandForm.js';
 import { loadPreview, savedNotice } from '../self-service/shared/transfer-loading.js';
 import { text } from './messages.js';
 import { missingTransferRequiredFields } from '@italent/domain';
 import { saveTransfer } from './api.js';
 import { draftValues, editableKeys, previewRecord, withReread } from './hr-conflict.js';
 import { terminatesOriginalContract } from './hr-form-model.js';
+import { transferCommands, transferEntry, transferResult, transferSlot } from './commands.js';
 import type { TransferAction, TransferFormModel } from './types.js';
 import { useHrWrite } from './useHrWrite.js';
 import { useTerminateConfirm } from './useTerminateConfirm.js';
@@ -17,20 +17,21 @@ type Reread = Awaited<ReturnType<typeof loadPreview>>;
 /**
  * HR 调动写入。版本冲突走 F-142 内核（#350 第 1 轮 P2-2）：冲突后表单锁定，重读最新预览、核对“变更前”差异，
  * 确认后保留仍可编辑的已改字段、换上最新预览，由用户主动重提；重提的 If-Match 取内核记下的最新版本。
+ * 处理中 / 结果未知由同一内核按会话恢复记录锁定（F-110）：幂等键就是内核命令 ID，查询结果只按这个 ID。
  */
 export function useHrTransferCommand(
   tenantId: string,
   model: TransferFormModel,
   loadingPreview: boolean,
   setModel: SetModel,
-  scope?: string,
 ) {
-  const write = useHrWrite(scope);
+  const write = useHrWrite();
   const confirmTerminate = useTerminateConfirm();
-  const [action, setAction] = useState<TransferAction>('draft');
-  // 冲突状态随本表单存在：关掉表单即放弃本次尝试，重开按新预览的版本提交；结果未知另由会话处理标记锁定（DEC-464）。
-  const [store] = useState(createFormStore);
-  const command = useCommandForm(`transfer/employees/${model.employeeId}`, store);
+  const [chosen, setAction] = useState<TransferAction>('draft');
+  const command = usePinnedCommand([transferSlot], transferEntry(model.employeeId), transferCommands);
+  // 刷新后恢复的命令按它当初的动作给提示（动作存在命令上下文里，不进请求体）。
+  const action = (command.state?.context?.action as TransferAction | undefined) ?? chosen;
+  const processing = command.status === 'submitting' || command.status === 'unknown';
   const reread = useRef<{ employeeId: string; loaded: Reread }>(undefined);
   let commandNotice = '';
   if (write.result) {
@@ -49,7 +50,11 @@ export function useHrTransferCommand(
   };
   const conflict: CommandForm = {
     ...command,
-    reload: () => command.reread(read),
+    // 处理中整页只读，原单回查没有可对的表单；只给按原命令 ID 查询结果（F-120）。
+    reload: processing ? undefined : () => command.reread(read),
+    queryResult: async () => {
+      await command.recoverResult((sent) => transferResult(tenantId, sent.id, write.setResult));
+    },
     confirm: () => {
       const latest = reread.current;
       reread.current = undefined;
@@ -59,10 +64,10 @@ export function useHrTransferCommand(
   };
   return {
     saved: write.result,
-    processing: write.processing,
+    processing,
     commandError: write.error,
     commandNotice,
-    busy: write.processing || command.locked,
+    busy: command.locked,
     conflict,
     needsReload: false,
     unknownCommand: '',
@@ -83,12 +88,12 @@ export function useHrTransferCommand(
         editableFields: editableKeys(preview),
         revision: record.revision,
         businessId: model.employeeId,
+        context: { action },
         send: async (sent) => {
           // 回执按实际发出的 If-Match 核对（#350 第 2 轮 P2-2）。
           const revision = sent.revision ?? record.revision;
-          const save = (id: string) => saveTransfer(tenantId, model, action, id, revision);
           const { employeeId } = model;
-          await write.run(save, { employeeId, revision });
+          await write.run(() => saveTransfer(tenantId, model, action, sent.id, revision), { employeeId, revision });
           // 内核按员工记录核对回执；业务单回执已由 useHrWrite 校验并保存。
           return { id: model.employeeId };
         },

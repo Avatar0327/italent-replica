@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApiClient } from '../foundation/index.js';
+import { queryCommandResult } from '../foundation/forms/command-result.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
 import { lockedContext, type Values } from '../foundation/forms/store.js';
 import { acceptReceipt, approvalFailure, approvalRequest, readApproval } from './api.js';
@@ -51,6 +52,21 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
         values: context && context.action !== 'urge' ? editValues(detail, context.action) : {},
       };
     });
+  // F-120 成功分支：结果须落在本实例且版本推进过发出的版本（同 acceptReceipt），再读回详情交给页面。
+  // 已确认成功即关闭弹窗、清槽：原动作已完成，不能在同一弹窗里再起一条命令。
+  const queryResult = async () => {
+    const result = await command.recoverResult((sent) =>
+      queryCommandResult(api, sent.id, async (result) => {
+        if (result.businessId !== row.id || result.revision === null || result.revision <= (sent.revision ?? -1))
+          throw new Error(kernel.invalidReceipt);
+        onRead(await readApproval(api, row.id));
+        return row.id;
+      }),
+    );
+    if (result?.status !== 'done') return;
+    command.clear();
+    setChosen(undefined);
+  };
   const open = (action: ApprovalAction, detail: ApprovalDetail, exit?: string) => {
     // 被拒或已完成的槽可以清掉重来；锁定的槽 clear 无效，仍按槽里的动作打开。
     command.clear();
@@ -92,7 +108,7 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
     command.clear();
   }
   return {
-    command: { ...command, reload },
+    command: { ...command, reload, queryResult },
     /** 弹窗只在用户点了按钮后打开；锁定时标题与提交仍按槽里的动作。 */
     action: chosen && context?.action !== 'urge' ? context?.action : undefined,
     exit: chosen && context?.action !== 'urge' ? context?.exit : undefined,

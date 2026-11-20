@@ -4,7 +4,6 @@
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { beginHrWrite, finishHrWrite, readHrSession } from '../../apps/web/src/transfer/hr-session.js';
 import {
   applyPendingDraft,
   catalogType,
@@ -24,7 +23,6 @@ afterEach(() => {
   sessionStorage.clear();
 });
 
-const scope = JSON.stringify(['tenant', 'identity']);
 const employee = '30000000-0000-4000-8000-000000000001';
 const draftId = '60000000-0000-4000-8000-000000000001';
 // GET /api/tenant/employment/businesses/:id 的真实形状（read-model.ts）：fields 为完整预置字段快照，不含调动元数据。
@@ -98,14 +96,8 @@ const model: TransferFormModel = {
   linkage: emptyLinkage,
 };
 
-it('AC-FE-F153-01 F-181b 会话只保留 processing，直接丢弃旧草稿索引', () => {
-  sessionStorage.setItem(`italent.transfer.l2:${scope}`, JSON.stringify({ processing: false, drafts: { invalid: 3 } }));
-  expect(readHrSession(scope)).toEqual({ processing: false });
-  beginHrWrite(scope);
-  expect(readHrSession(scope).processing).toBe(true);
-  finishHrWrite(scope);
-  expect(JSON.parse(sessionStorage.getItem(`italent.transfer.l2:${scope}`)!)).toEqual({ processing: false });
-});
+// AC-FE-F153-01 原测 hr-session 只保留 processing、丢弃旧草稿索引；F-110 起 hr-session 撤掉，HR 调动锁定改由内核
+// 会话恢复记录承载（只存命令 ID、版本、对象与槽，不存草稿），由 AC-FE-F110-01 / AC-FE-R1c-12 覆盖。
 
 it('AC-FE-F153-02 读取暂存按真实接口形状核对：单号、人员、revision、联动版本不符一律视为读取失败', () => {
   const parsed = parseDraft(draftId, employee, business, linkage);
@@ -292,11 +284,10 @@ it.each([
   ['陈旧回执：员工版本 4 没有推进过发出的 5', 4, false],
 ])('AC-FE-F153-07 #350 第 2 轮 P2-2 %s', async (_name, employeeRevision, accepted) => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  finishHrWrite(scope);
   const root = createRoot(document.createElement('div'));
   let state!: ReturnType<typeof useHrWrite>;
   function Probe() {
-    state = useHrWrite(scope);
+    state = useHrWrite();
     return null;
   }
   try {
@@ -311,13 +302,11 @@ it.each([
     if (accepted) {
       expect(failure).toBeUndefined();
       expect(state.result).toMatchObject({ id: draftId, status: 'in_review', employeeRevision: 6 });
-      expect(readHrSession(scope).processing).toBe(false);
       return;
     }
-    // 失配不是本次写入的结果：不报成功，保持处理中锁定（结果未知，DEC-464）。
+    // 失配不是本次写入的结果：不报成功，抛结果未知交内核锁定（DEC-464；锁定见 AC-FE-R1c-12）。
     expect(failure).toMatchObject({ message: text.unknown });
     expect(state.result).toBeNull();
-    expect(readHrSession(scope).processing).toBe(true);
   } finally {
     await act(() => root.unmount());
   }
