@@ -57,6 +57,36 @@ async function mockPositionRisk(page: Page, read: () => LevelResult | undefined)
 }
 
 const assignHint = '该继任地图条目缺少标识或版本，请关闭后重读地图。';
+// position-map.ts 的默认色投影，computedAt 可见时会同时返回 resultAsOf。
+const defaultPositionRisk = {
+  positionId: ids.position,
+  levelId: null,
+  levelName: null,
+  levelColor: '#7498FB',
+  computedAt: null,
+  resultAsOf: null,
+};
+const defaultRiskFields = ['positionId', 'levelId', 'levelName', 'levelColor', 'computedAt'];
+const storedRiskFields = [...defaultRiskFields, 'id', 'method', 'revision'];
+
+test('AC-FE-F534-04 有版本查看权时，职位默认色卡片首次手动指定带版本 0', async ({ page }) => {
+  await objectAccess(page, 'Succession.RiskResult', storedRiskFields, ['levelId']);
+  await mockPositionRisk(page, () => defaultPositionRisk);
+  const puts: { revision?: string; body: unknown }[] = [];
+  await page.route(`**/succession/risk-results/${ids.position}`, (route) => {
+    const request = route.request();
+    puts.push({ revision: ifMatch(request), body: request.postDataJSON() });
+    return route.fulfill({ json: riskResult(1, ids.level) });
+  });
+  await openMap(page, '职位继任地图');
+  const dialog = await openRiskDialog(page);
+  await dialog.getByRole('radio', { name: '手动赋值' }).check();
+  await choose(page, dialog, '指定风险等级', '高风险');
+  await button(dialog, '保存').click();
+  await expect.poll(async () => puts.length > 0 || (await dialog.getByText(assignHint).isVisible())).toBe(true);
+  expect(puts).toEqual([{ revision: '0', body: { levelId: ids.level } }]);
+  await expect(dialog).toBeHidden();
+});
 
 for (const { name, risk, revision } of [
   { name: '结果键缺席', risk: undefined, revision: '0' },
@@ -117,6 +147,7 @@ test('AC-FE-F534-03 结果待确认：地图刷新后版本被裁剪，同一对
   await expect(dialog).toBeHidden();
   const reopened = await openRiskDialog(page);
   await expect(reopened.getByText(/结果待确认/)).toBeVisible();
+  await expect(reopened.getByRole('button', { name: '回查原单', exact: true })).toBeVisible();
   await expect(button(reopened, '保存')).toBeDisabled();
   expect(putCount).toBe(1);
 });
@@ -187,11 +218,14 @@ test('AC-FE-R3d1-10 个人筛选偏好：无 id 回执可连续保存，冲突�
 test('AC-FE-R3d1-11 / AC-FE-F534-02 风险等级冲突后重读，裁剪版本时保留冲突，读到版本再保存', async ({ page }) => {
   const errors = watchErrors(page);
   let risk: LevelResult = riskResult(1, ids.level);
+  await objectAccess(page, 'Succession.RiskResult', storedRiskFields, ['levelId']);
   const revisions: (string | undefined)[] = [];
-  await page.route(`**/succession/risk-results/${ids.position}`, (route) => {
+  await page.route(`**/succession/risk-results/${ids.position}`, async (route) => {
     revisions.push(ifMatch(route.request()));
     if (revisions.length === 1) {
-      risk = { levelId: ids.level };
+      // 结果变为未命中等级，权限又隐藏 id/method/revision，投影与默认色完全相同。
+      risk = defaultPositionRisk;
+      await objectAccess(page, 'Succession.RiskResult', defaultRiskFields, ['levelId']);
       return route.fulfill(conflict);
     }
     return route.fulfill({ json: riskResult(5, null) });
@@ -213,6 +247,7 @@ test('AC-FE-R3d1-11 / AC-FE-F534-02 风险等级冲突后重读，裁剪版本�
   expect(revisions).toEqual(['1']);
 
   risk = riskResult(4, ids.level);
+  await objectAccess(page, 'Succession.RiskResult', storedRiskFields, ['levelId']);
   await reload.click();
   await confirm.click();
   await saveAgain(dialog);

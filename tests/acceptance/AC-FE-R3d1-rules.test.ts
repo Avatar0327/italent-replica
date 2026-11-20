@@ -7,6 +7,7 @@ import type { ServerSnapshot } from '../../apps/web/src/foundation/permission-sn
 import {
   assignBody,
   assignLatest,
+  assignSnapshot,
   createRecordBody,
   END_RECEIPT,
   endCommand,
@@ -211,6 +212,37 @@ describe('AC-FE-R3d1 真实回执形状（第 2 轮）', () => {
     expect(assignLatest(map, 'o', 'org').revision).toBeUndefined();
     expect(assignLatest(map, 'p', 'position').revision).toBeUndefined();
     expect(assignLatest(map, 'new', 'org').revision).toBe(0);
+  });
+
+  it('AC-FE-F534-04 职位地图默认色投影仅在可确认版本可见时作为首次指定', () => {
+    const risk = {
+      positionId: 'p',
+      levelId: null,
+      levelName: null,
+      levelColor: '#7498FB',
+      computedAt: null,
+      resultAsOf: null,
+    };
+    const fields = ['id', 'positionId', 'levelId', 'levelName', 'levelColor', 'computedAt', 'method', 'revision'];
+    const position = { id: 'p', name: '合成职位', parentId: null, risk };
+    const map = { items: [position] };
+    expect(assignSnapshot('p', risk, fields).revision).toBe(0);
+    expect(assignLatest(map, 'p', 'position', fields).revision).toBe(0);
+    expect(assignLatest(map, 'p', 'position').revision).toBeUndefined();
+    expect(
+      assignLatest(
+        map,
+        'p',
+        'position',
+        fields.filter((field) => field !== 'revision'),
+      ).revision,
+    ).toBeUndefined();
+    expect(assignSnapshot('p', { levelId: null }, ['levelId', 'revision']).revision).toBe(0);
+    expect(assignSnapshot('p', { levelId: null }, fields).revision).toBeUndefined();
+    expect(assignSnapshot('p', { ...risk, id: 'p' }, fields).revision).toBeUndefined();
+    expect(assignSnapshot('p', { ...risk, positionId: 'other' }, fields).revision).toBeUndefined();
+    const orgMap = { items: [{ id: 'o', name: '合成部门', parentId: null, keyPositions: [position] }] };
+    expect(assignLatest(orgMap, 'p', 'position', fields).revision).toBeUndefined();
   });
 });
 
