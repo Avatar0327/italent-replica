@@ -2,18 +2,18 @@
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant, type Db, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ADAPTERS, type BusinessAdapter } from '../../apps/api/src/modules/approval/adapters.js';
 import { cancel } from '../../apps/api/src/modules/approval/actions.js';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import type * as Lifecycle from '../../apps/api/src/modules/approval/auto-variable-lifecycle.js';
-import type * as Store from '../../apps/api/src/modules/approval/store.js';
+import type * as Context from '../../apps/api/src/modules/approval/context.js';
 import type * as Variables from '../../apps/api/src/modules/approval/variables.js';
 import type { InstanceView } from './AC-APV-support.js';
 import {
   act,
   baseline,
   discard,
-  employmentWithdraw,
   enabled,
   instanceState,
   instanceTrigger,
@@ -27,11 +27,11 @@ import {
   terminalNodes,
   withdraw,
 } from './AC-APV-F326-50-lifecycle-support.js';
-import { instanceRow, personnelChange, rejected } from './AC-APV-F326-S4-support.js';
+import { instanceRow, personnelChange, rejected, variable } from './AC-APV-F326-S4-support.js';
 import {
   create,
   dispatch,
-  draftOk,
+  saveDraft,
   editVariable,
   publicVar,
   publishWith,
@@ -41,7 +41,6 @@ import {
   varRow,
   type S4World,
 } from './AC-APV-F326-S7a-support.js';
-import { useSubjectMapping } from './support/f048.js';
 import { idleInTransaction, lockWaiters, settledOrBlocked, withRelease } from './support/pg-interleave.js';
 
 type Point = 'matched' | 'persisted' | 'before-lock' | 'locked';
@@ -74,23 +73,30 @@ vi.mock('../../apps/api/src/modules/approval/auto-variable-lifecycle.js', async 
     },
   };
 });
-vi.mock('../../apps/api/src/modules/approval/store.js', async (original) => {
-  const actual = await original<typeof Store>();
+vi.mock('../../apps/api/src/modules/approval/context.js', async (original) => {
+  const actual = await original<typeof Context>();
   return {
     ...actual,
-    updateInstance: async (...args: Parameters<typeof actual.updateInstance>) => {
-      const saved = await actual.updateInstance(...args);
-      await pause('persisted', args[0], [saved.id, saved.versionId]);
-      return saved;
+    auditApproval: async (...args: Parameters<typeof actual.auditApproval>) => {
+      const entry = args[2];
+      const versionId = entry.after?.versionId;
+      if (entry.objectType === 'approval-instance' && typeof versionId === 'string')
+        await pause('persisted', args[0], [entry.objectId, versionId]);
+      return actual.auditApproval(...args);
     },
   };
 });
 const database = useTestDb();
-const mapSubjects = useSubjectMapping();
+const personnel = ADAPTERS.personnel_change as { subjects?: BusinessAdapter['subjects'] };
+const originalSubjects = personnel.subjects;
+afterEach(() => {
+  personnel.subjects = originalSubjects;
+});
 const world = (label: string) => s4World(database().db, label);
 const opener = (promise: Promise<unknown>, label: string) =>
-  promise.then(() => {
-    throw new Error(`请求提前结束，未到达 ${label}`);
+  promise.then(async (result) => {
+    const response = result instanceof Response ? `（HTTP ${result.status} ${await result.clone().text()}）` : '';
+    throw new Error(`请求提前结束，未到达 ${label}${response}`);
   });
 
 function gate(point: Point, id: string) {
@@ -113,7 +119,20 @@ function gate(point: Point, id: string) {
   };
   gates.push(entry);
   return {
-    wait: (request: Promise<unknown>) => Promise.race([arrived, opener(request, point)]),
+    wait: async (request: Promise<unknown>) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          arrived,
+          opener(request, point),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`等待 ${point} 屏障超时`)), 5000);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
     release: () => {
       const at = gates.indexOf(entry);
       if (at >= 0) gates.splice(at, 1);
@@ -124,11 +143,17 @@ function gate(point: Point, id: string) {
 
 async function waitsForVariable(db: Db, request: Promise<unknown>, blocker: number) {
   expect(await settledOrBlocked(db, request, 1), '另一事务应等待同一批变量行').toBe('blocked');
-  const [row] = rowsOf<{ query: string; blocker: boolean }>(
-    await db.execute(sql`SELECT query, ${blocker} = ANY(pg_blocking_pids(pid)) AS blocker FROM pg_stat_activity
-      WHERE datname=current_database() AND wait_event_type='Lock'`),
+  const [row] = rowsOf<{ query: string; blocker: boolean; on_variables: boolean }>(
+    await db.execute(sql`SELECT a.query, ${blocker} = ANY(pg_blocking_pids(a.pid)) AS blocker,
+      EXISTS (SELECT 1 FROM pg_locks l WHERE l.pid=a.pid AND l.relation='approval_variables'::regclass
+        AND l.mode='RowShareLock' AND l.granted) AS on_variables
+      FROM pg_stat_activity a WHERE a.datname=current_database() AND a.wait_event_type='Lock'`),
   );
-  expect(row).toMatchObject({ query: expect.stringMatching(/approval_variables.*for update/is), blocker: true });
+  expect(row).toMatchObject({
+    query: expect.stringMatching(/approval_variables.*for update/is),
+    blocker: true,
+    on_variables: true,
+  });
 }
 
 async function clean(w: S4World) {
@@ -138,33 +163,53 @@ async function clean(w: S4World) {
 
 const complete = async (w: S4World, i: InstanceView) => w.json<InstanceView>(await act(w, i, 'approve'));
 
+// 节点 1 走人工变量，生命周期一批只能锁节点 2 的 X。等待对象有区分力，不会看到另一条自动变量的等待而误判。
+async function singleAutoBaseline(w: S4World, approvalType = 'transfer') {
+  const first = await variable(w, { defaultValue: w.head.userId });
+  return baseline(w, approvalType, [
+    node('n1', publicVar(first.id), { exits: ['approve', 'disagree'] }),
+    node('n2', specified(w.near.userId)),
+  ]);
+}
+
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-326-L 生命周期（真 PG 强制交错，PGlite 跳过）', () => {
   it('AC-52 ① 通过先取 X、撤回等 X，后者重新读取并且只停用一次', async () => {
     const w = await world('interleave-last-withdraw');
-    const { a, x } = await baseline(w);
-    const i1 = await complete(w, (await dispatch(w)).instance);
+    const { a, x } = await singleAutoBaseline(w, 'personnel_change');
+    const submit = await personnelSubmitter(w);
+    const i1 = await complete(w, await submit(w.subject));
     const person = await w.person('合成并发员工', w.child);
-    const i2 = (await dispatch(w, person.employeeId)).instance;
+    const i2 = await submit(person);
     await w.publish(await replacement(w, a));
     const held = gate('locked', x.id);
-    await withRelease(held.release, async ({ track }) => {
-      const first = track(act(w, i1, 'approve'));
-      const pid = await held.wait(first);
-      const second = track(employmentWithdraw(w, i2));
-      await waitsForVariable(w.db, second, pid);
-      await enabled(w, x);
-      held.release();
-      expect((await w.json<InstanceView>(await first)).status).toBe('approved');
-      await w.json(await second);
-    });
+    const afterFirst = gate('locked', x.id);
+    await withRelease(
+      () => {
+        held.release();
+        afterFirst.release();
+      },
+      async ({ track }) => {
+        const first = track(act(w, i1, 'approve'));
+        const pid = await held.wait(first);
+        const second = track(w.instanceAction(person.userId, i2.id, 'withdraw', i2.revision));
+        await waitsForVariable(w.db, second, pid);
+        held.release();
+        expect((await w.json<InstanceView>(await first)).status).toBe('approved');
+        await afterFirst.wait(second);
+        await enabled(w, x);
+        afterFirst.release();
+        await w.json(await second);
+      },
+    );
     await systemRetirement(w, x, a, instanceTrigger(i2.id, 'withdrawn'));
     await clean(w);
   });
 
   it.each([false, true])('AC-52 ②④ 均已写实例再同时进提交前，共享变量跨流程=%s', async (cross) => {
     const w = await world(`interleave-shared-${cross}`);
-    const { a, x } = await baseline(w);
-    const i1 = await complete(w, (await dispatch(w)).instance);
+    const { a, x } = await singleAutoBaseline(w, cross ? 'transfer' : 'personnel_change');
+    const person = await w.person('合成第二位员工', w.child);
+    const submit = await personnelSubmitter(w);
     const b = cross
       ? await w.publish(
           await create(w, [node('b', publicVar(x.id))], {
@@ -172,10 +217,9 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-326-L 生命周期（�
           }),
         )
       : a;
-    const person = await w.person('合成第二位员工', w.child);
-    const i2 = cross
-      ? (await (await personnelChange(w)).submit()).instance
-      : await complete(w, (await dispatch(w, person.employeeId)).instance);
+    const i1 = await complete(w, cross ? (await dispatch(w, person.employeeId)).instance : await submit(person));
+    const otherInstance = await submit(w.subject);
+    const i2 = cross ? otherInstance : await complete(w, otherInstance);
     await w.publish(await replacement(w, a));
     if (cross) await w.publish(await replacement(w, b));
     const l1 = gate('persisted', i1.id);
@@ -204,8 +248,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-326-L 生命周期（�
 
   it('AC-52 ③ 两个批量事务按相反顺序逐单作废，提交前合并锁 X / Y', async () => {
     const w = await world('interleave-batch');
-    const { a, x } = await baseline(w);
-    const { a: b, x: y } = await baseline(w, 'personnel_change');
+    const { a, x } = await singleAutoBaseline(w);
+    const { a: b, x: y } = await singleAutoBaseline(w, 'personnel_change');
     const person = await w.person('合成第二位申请人', w.child);
     const submit = await personnelSubmitter(w);
     const transfer1 = (await dispatch(w)).instance;
@@ -257,8 +301,9 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-326-L 生命周期（�
 
   it.each(['publish', 'discard'] as const)('AC-54 ①③ 匹配后暂停，%s 提交先于流程头重验', async (change) => {
     const w = await world(`interleave-bind-${change}`);
-    const { a, x } = await baseline(w);
-    const v2 = change === 'publish' ? await replacement(w, a) : null;
+    const { a, x } = await singleAutoBaseline(w);
+    const v2 =
+      change === 'publish' ? await replacement(w, a, [node('n1', specified(w.head.userId)), node('n2')]) : null;
     const business = await w.application(w.subject.employeeId, { departmentId: w.staff });
     const initial = await w.business(business.id);
     const bound = gate('matched', a.id);
@@ -292,7 +337,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-326-L 生命周期（�
 
   it.each([false, true])('AC-55 ④ 撤回重提与最后一单结束争用 X，重提先锁=%s', async (resumeFirst) => {
     const w = await world(`interleave-resume-${resumeFirst}`);
-    const { a, x } = await baseline(w, 'personnel_change');
+    const { a, x } = await singleAutoBaseline(w, 'personnel_change');
     const submit = await personnelSubmitter(w);
     const i = await w.json<InstanceView>(await withdraw(w, await submit(w.subject)));
     const secondPerson = await w.person('合成在途发起人', w.child);
@@ -320,11 +365,11 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-326-L 生命周期（�
 
   it.each([false, true])('AC-58 ② 保存移除 B 草稿引用 × A 最后一单通过，保存先锁=%s', async (saveFirst) => {
     const w = await world(`interleave-save-${saveFirst}`);
-    const { a, x } = await baseline(w);
+    const { a, x } = await singleAutoBaseline(w);
     const b = await create(w, [node('b', publicVar(x.id))], { approvalType: 'personnel_change' });
     const i = await complete(w, (await dispatch(w)).instance);
     await w.publish(await replacement(w, a));
-    const save = () => draftOk(w, b, [node('b')]);
+    const save = () => saveDraft(w, b, [node('b')]);
     const finish = () => act(w, i, 'approve');
     const lock = gate('locked', x.id);
     const early = gate('before-lock', x.id);
@@ -345,8 +390,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-326-L 生命周期（�
         late.release();
         await waitsForVariable(w.db, second, pid);
         lock.release();
-        const results = await Promise.all([first, second]);
-        await w.json((saveFirst ? results[1] : results[0]) as Response);
+        for (const response of await Promise.all([first, second])) await w.json(response);
       },
     );
     if (saveFirst) await systemRetirement(w, x, a, instanceTrigger(i.id, 'approved'));
@@ -359,11 +403,11 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-326-L 生命周期（�
 
   it('AC-51 ③ / AC-59 ① 两个发起即通过的实例兼容版本外键，只在变量处等待', async () => {
     const w = await world('interleave-automatic-launch');
-    const { a, x } = await baseline(w, 'transfer', terminalNodes(w));
-    mapSubjects(() => [w.head.employeeId]);
+    const { a, x } = await baseline(w, 'personnel_change', terminalNodes(w));
+    // 同 F-048 夹具，在业务适配器提供冻结主体；两笔申请仍执行真实提交、路由、持久化与外键检查。
+    personnel.subjects = async () => [w.head.employeeId];
     const person = await w.person('合成并发对象', w.child);
-    const first = await w.application(w.subject.employeeId, { departmentId: w.staff });
-    const second = await w.application(person.employeeId, { departmentId: w.staff });
+    const submit = await personnelSubmitter(w);
     const l1 = gate('persisted', a.latestVersion.id);
     const l2 = gate('persisted', a.latestVersion.id);
     const held = gate('locked', x.id);
@@ -374,39 +418,41 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-326-L 生命周期（�
         held.release();
       },
       async ({ track }) => {
-        const one = track(w.submitRaw(first));
+        const one = track(submit(w.subject));
         await l1.wait(one);
-        const two = track(w.submitRaw(second));
+        const two = track(submit(person));
         await l2.wait(two);
         l1.release();
         l2.release();
-        const pid = await held.wait(Promise.all([one, two]));
-        await waitsForVariable(w.db, Promise.all([one, two]), pid);
+        const both = Promise.all([one, two]);
+        const pid = await held.wait(both);
+        await waitsForVariable(w.db, both, pid);
         held.release();
-        await w.json(await one);
-        await w.json(await two);
+        for (const i of await both) {
+          expect(i.status).toBe('approved');
+          expect((await instanceState(w, i.id)).version_id).toBe(a.latestVersion.id);
+        }
       },
     );
-    for (const business of [first, second]) {
-      const i = await w.instanceOf(business.id);
-      expect(i.status).toBe('approved');
-      expect((await instanceState(w, i.id)).version_id).toBe(a.latestVersion.id);
-    }
     await enabled(w, x);
     await clean(w);
   });
 
   it.each([false, true])('AC-60 returned 重提当场通过 × 发布，重提先锁=%s', async (resumeFirst) => {
     const w = await world(`interleave-returned-${resumeFirst}`);
+    const firstNode = await variable(w, { defaultValue: w.head.userId });
     const { a, x } = await baseline(w, 'personnel_change', [
-      node('n1', specified(w.head.userId)),
-      node('n2', specified(w.near.userId), { historySameAssigneeSkip: true, rejectResubmit: 'rejecting_node' }),
+      node('n1', publicVar(firstNode.id)),
+      node('n2', specified(w.near.userId), {
+        actions: { avoidSelf: false, avoidSubjects: true },
+        rejectResubmit: 'rejecting_node',
+      }),
     ]);
     const { instance } = await (await personnelChange(w)).submit();
     const i = await w.json<InstanceView>(await act(w, await complete(w, instance), 'reject'));
     expect(i.status).toBe('returned');
     const v2 = await replacement(w, a);
-    await w.json(await editVariable(w, x, { defaultValue: w.head.userId }));
+    await w.json(await editVariable(w, x, { defaultValue: w.subject.userId }));
     const current = await varRow(w, x.id);
     const submit = () => w.instanceAction(w.subject.userId, i.id, 'resubmit', i.revision);
     const publish = () => publishWith(w, v2);

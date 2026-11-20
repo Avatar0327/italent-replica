@@ -4,7 +4,7 @@
  *    乙（异常管理员 U）审批通过 I1，经适配器 lockPerson 持主体员工 E，在 openRun 之后、提交前暂停；
  *    甲执行 U → U′ 交接，阻塞在 E 的员工行上，阻塞者是乙的会话（pg_blocking_pids），且测试侧记录的重发调用为空——
  *    “先预锁员工、再重发”由重发调用边界证明，不靠另一条连接读到的已提交版本；放行后两边都成功、各重发一次。
- *    “乙提交前取 X 不等待”要普通审批结束的登记挂点，随 S7e2 补齐。
+ *    乙提交前取得 X 的 UPDATE 锁，甲解除员工行等待后才重发。
  * ③ 交接 / 恢复重发推迟的保存收尾（审查 P2-3）：Z 是被管理员手工重新启用过、已无任何引用的本流程自动变量。
  *    交接使 I2（会签合席）在同一事务内结束：测试在该事务内读取——重发返回时、I2 持久化时 Z 仍启用；提交后 Z 停用，
  *    只多一条 auto_disable；交接的操作者为交接操作人，restore 路径为空操作者；reason 都是“不再被引用”。
@@ -26,6 +26,7 @@ import {
 import { createTestDb, useTestDb } from '@italent/testkit';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import type * as ApprovalContextModule from '../../apps/api/src/modules/approval/context.js';
+import type * as ApprovalVariablesModule from '../../apps/api/src/modules/approval/variables.js';
 import type * as ApprovalDefinitionsModule from '../../apps/api/src/modules/approval/definitions.js';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import { registerSaveClose } from '../../apps/api/src/modules/approval/auto-variable-lifecycle.js';
@@ -107,7 +108,7 @@ vi.mock('../../apps/api/src/modules/approval/definitions.js', async (original) =
   };
 });
 vi.mock('../../apps/api/src/modules/approval/variables.js', async (original) => {
-  const actual = await original<typeof import('../../apps/api/src/modules/approval/variables.js')>();
+  const actual = await original<typeof ApprovalVariablesModule>();
   return {
     ...actual,
     lockVariableBatch: async (...args: Parameters<typeof actual.lockVariableBatch>) => {
@@ -210,7 +211,7 @@ async function reenabledWithCountersign(w: S4World, olderInstance = false) {
   let process = v2;
   if (olderInstance) {
     // X 留在 v2 和另一流程草稿，确保重发的保存收尾候选不含 X，等待只能来自 I2 的生命周期登记。
-    await create(w, [{ key: 'only', approver: publicVar(x.id) }]);
+    await create(w, [counter([publicVar(x.id)], { key: 'only' })]);
     process = await w.publish(await draftOk(w, await newVersion(w, v2), [viaManager('replacement')]));
   }
   const on = await variableCommand(w, await varRow(w, z.id), 'enable');

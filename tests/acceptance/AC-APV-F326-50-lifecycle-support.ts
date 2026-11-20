@@ -43,7 +43,11 @@ export async function baseline(w: S4World, approvalType = 'transfer', nodes?: No
   return { a, x };
 }
 
-export async function replacement(w: S4World, a: ProcessView, nodes = [node('n1')]) {
+export async function replacement(
+  w: S4World,
+  a: ProcessView,
+  nodes = [node('n1', specified(w.head.userId)), node('n2')],
+) {
   return draftOk(w, await newVersion(w, a), nodes);
 }
 
@@ -142,7 +146,7 @@ export function instanceState(w: S4World, id: string) {
 export function terminalNodes(w: S4World): NodeInput[] {
   // 复用 F-048 主体回避夹具：两笔申请的冻结主体均含同一审批人。
   const actions = { avoidSelf: false, avoidSubjects: true };
-  return [node('n1', specified(w.head.userId), { actions }), node('n2', specified(w.head.userId), { actions })];
+  return [node('n2', specified(w.head.userId), { actions })];
 }
 
 export async function personnelSubmitter(w: S4World) {

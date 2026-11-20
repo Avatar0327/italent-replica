@@ -52,6 +52,18 @@ const CONTENT_KEYS: readonly string[] = [
   'columns',
 ];
 
+const PUBLIC_VARIABLE_RETIREMENT_KEYS = [
+  'reason',
+  'processId',
+  'versionId',
+  'versionNo',
+  'trigger',
+  'trigger.kind',
+  'trigger.instanceId',
+  'trigger.status',
+  'trigger.newVersionId',
+];
+
 const CONTENT_FIELD = 'nodes';
 
 /** 精确路径集合 + 受控动态路径；沿用 ExactAuditFields 的语义（不按末段回退），has() 另认可合规的动态键。 */
@@ -69,11 +81,19 @@ export class ControlledAuditFields extends ExactAuditFields {
 }
 
 /** 由查看人在「审批流程」对象上的可见字段推出变量 / 矩阵审计的可见键；undefined = 不受字段限制。 */
-export function approvalContentFields(viewable: ReadonlySet<string> | undefined): ReadonlySet<string> | undefined {
+export function approvalContentFields(
+  viewable: ReadonlySet<string> | undefined,
+  extra: readonly string[] = [],
+): ReadonlySet<string> | undefined {
   if (viewable === undefined) return undefined;
   const keys = Object.entries(BASIC_KEYS)
     .filter(([, field]) => viewable.has(field))
     .map(([key]) => key);
   const content = viewable.has(CONTENT_FIELD);
-  return new ControlledAuditFields(content ? [...keys, ...CONTENT_KEYS] : keys, content);
+  return new ControlledAuditFields(content ? [...keys, ...CONTENT_KEYS, ...extra] : keys, content);
+}
+
+/** F-326-L §2.4：系统停用的触发信息沿用节点字段权限，只对公共变量的审计登记。 */
+export function approvalPublicVariableFields(viewable: ReadonlySet<string> | undefined) {
+  return approvalContentFields(viewable, PUBLIC_VARIABLE_RETIREMENT_KEYS);
 }

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { systemRetiredVariables } from '../../apps/api/src/modules/approval/auto-variable-lifecycle.js';
 import type * as Context from '../../apps/api/src/modules/approval/context.js';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
+import { auditApi } from './AC-AUD-support.js';
 import type { InstanceView, ProcessView } from './AC-APV-support.js';
 import {
   act,
@@ -110,6 +111,7 @@ describe('AC-APV-F326-50 最后一单结束后停用', () => {
     await w.publish(await replacement(w, a));
     const ready = await w.json<InstanceView>(await act(w, instance, 'approve'));
     const before = await w.business(ready.businessId);
+    const beforeDetail = await w.detail(ready.id);
     failAudit.id = x.id;
     try {
       expect((await act(w, ready, 'approve')).status, '提交前发生存储错误时整个结束命令应失败').toBe(503);
@@ -117,7 +119,7 @@ describe('AC-APV-F326-50 最后一单结束后停用', () => {
       failAudit.id = '';
     }
     expect(await w.business(ready.businessId)).toEqual(before);
-    expect(await w.detail(ready.id)).toEqual(ready);
+    expect(await w.detail(ready.id)).toEqual(beforeDetail);
     await enabled(w, x);
   });
 });
@@ -292,11 +294,10 @@ describe('AC-APV-F326-56 流程作废', () => {
     const a = await create(
       w,
       [
-        counter([specified(w.near.userId)], { key: 'other_handover', emptyApproverPolicy: 'exception_admin' }),
+        counter([specified(w.near.userId)], { key: 'other_handover', ...{ emptyApproverPolicy: 'exception_admin' } }),
         counter([node('n').approver!], {
           key: 'work_handover',
-          emptyApproverPolicy: 'specified',
-          emptyApproverSources: [specified(w.head.userId)],
+          ...{ emptyApproverPolicy: 'specified', emptyApproverSources: [specified(w.head.userId)] },
         }),
       ],
       { approvalType: 'exit_handover' },
@@ -338,6 +339,10 @@ describe('AC-APV-F326-58 保存收尾与系统停用区分', () => {
     const v2 = await w.publish(draft);
     const withdrawn = i ? await w.json<InstanceView>(await withdraw(w, i)) : null;
     await systemRetirement(w, x, a, i ? instanceTrigger(i.id, 'withdrawn') : publishTrigger(draft));
+    const audit = auditApi(w.db, w.clock);
+    const filter = { objectId: x.id, action: 'approval.public_variable.auto_disable' };
+    const { items: systemList } = await audit.dataChanges(w.as(w.hr.id), filter);
+    expect(systemList).toMatchObject([{ operator: { userId: null, name: '系统' } }]);
     await w.json(await variableCommand(w, await varRow(w, x.id), 'enable'));
     await replacement(w, v2);
     const trail = await retired(w, x);
@@ -352,6 +357,8 @@ describe('AC-APV-F326-58 保存收尾与系统停用区分', () => {
       expect(await varRow(w, x.id)).toMatchObject({ status: 'disabled', updated_by: w.hr.id });
       expect(trail).toHaveLength(2);
       expect(trail[1]).toMatchObject({ actor: w.hr.id, after: { reason: SAVED } });
+      const { items: saveList } = await audit.dataChanges(w.as(w.hr.id), filter);
+      expect(saveList.map(({ operator }) => operator.userId)).toEqual(expect.arrayContaining([w.hr.id, null]));
       const system = await withTenant(w.db, w.tenant.id, (tx) =>
         systemRetiredVariables(
           tx,
