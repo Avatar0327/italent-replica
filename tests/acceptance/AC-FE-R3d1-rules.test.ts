@@ -197,6 +197,21 @@ describe('AC-FE-R3d1 真实回执形状（第 2 轮）', () => {
     });
     expect(() => assignLatest(map, 'x', 'org')).toThrow();
   });
+
+  it('AC-FE-F534-02 赋值重读保留裁剪后的版本缺失及服务端明确返回的 0', () => {
+    const org = { id: 'o', name: '合成部门', parentId: null };
+    const position = { id: 'p', name: '合成职位', parentId: null };
+    const map = {
+      items: [
+        { ...org, health: { levelId: 'h' } },
+        { ...position, risk: {} },
+        { ...org, id: 'new', health: { levelId: null, revision: 0 } },
+      ],
+    };
+    expect(assignLatest(map, 'o', 'org').revision).toBeUndefined();
+    expect(assignLatest(map, 'p', 'position').revision).toBeUndefined();
+    expect(assignLatest(map, 'new', 'org').revision).toBe(0);
+  });
 });
 
 describe('AC-FE-R3d1 地图数据与规则展示（第 2 轮）', () => {
