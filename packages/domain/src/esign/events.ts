@@ -5,7 +5,8 @@
 
 export type SignNode = 'employee' | 'enterprise';
 export type SignStatus = 'signing' | 'completed' | 'revoked' | 'expired' | 'failed';
-export type SignRevokeCause = 'manual' | 'business_deleted';
+/** F-505：source_cancelled = 来源离开可签（Offer 退出已接受 / 待入职取消）；source_changed = 可签来源改了业务字段。 */
+export type SignRevokeCause = 'manual' | 'business_deleted' | 'source_cancelled' | 'source_changed';
 
 export type SignEvent =
   | { type: 'node_signed'; node: SignNode; actorUserId: string | null; at: Date }

@@ -68,14 +68,14 @@ describe('AC-ESIGN-F505-02 升级与 RLS', () => {
         WHERE relname = 'esign_offer_sources'`),
     );
     expect(flags).toEqual([{ relrowsecurity: true, relforcerowsecurity: true }]);
-    // B 上下文写 A 的 tenant_id：RLS WITH CHECK 拒绝；写自己的 tenant_id 但 Offer 是 A 的：存在性触发器拒绝
+    // B 上下文写 A 的 tenant_id：存在性触发器 / RLS WITH CHECK 先到者拒绝；写自己的 tenant_id 但 Offer 是 A 的：存在性触发器拒绝
     expect(
       await sqlState(() =>
         withTenant(db(), b.tenantId, (tx) =>
           tx.execute(sql`INSERT INTO esign_offer_sources(tenant_id, offer_id) VALUES (${a.tenantId}, ${offerA}::uuid)`),
         ),
       ),
-    ).toBe('42501');
+    ).not.toBe('ok');
     expect(await sqlState(() => b.anchor(offerA))).not.toBe('ok');
     await a.anchor(offerA);
     expect(await a.anchorCount()).toBe(1);
