@@ -65,6 +65,7 @@ export function usePortalAnswer(api: PortalClient, path: string, initial: Answer
     const confirmed = current() ? adopt(latest, [...ref.current.edits, ...pendingFields(command.peek())]).page : latest;
     return { id: path, revision: confirmed.sheet.revision, values: sheetValues(confirmed.sheet) };
   };
+  useInheritedSettle(command, ref, read);
   const send = async (request: Command<Values>, operation: Operation) => {
     const current = generation();
     const result = await sendSheet(api, path, request, operation);
@@ -129,13 +130,18 @@ interface Runner {
 /** 保存 / 提交经同一入口：按当前确认的答卷与 revision 发出；完成后放开恢复槽，代次变了就不再让调用方继续。 */
 function runner({ command, ref, generation, path, send, reset }: Runner) {
   return async (operation: Operation) => {
+    const current = generation();
+    // DEC-948：继承命令完成后的新基线还在确认时先等它，本次命令才带确认后的 revision；期间代次变了就不发。
+    if (ref.current.settling) {
+      await ref.current.settling;
+      if (!current()) return false;
+    }
     // 已有未确认命令时内核不会发出新命令：此时不得清编辑记录。
     if (isLocked(command.peek())) return false;
     reset();
     // 已确定失败（被拒、冲突核对后）的另一动作不得把上下文留给本次：否则结果未知时会按旧动作重放。
     const prior = command.peek();
     if (prior && prior.context?.operation !== operation) command.clear();
-    const current = generation();
     const marks = ref.current;
     const { live, page } = marks;
     // 规则 ②：保存发出即清零编辑记录，之后的输入才算“发出后有过编辑”；显式保存也解除暂缓。
@@ -168,7 +174,9 @@ function useLiveSheet(initial: AnswerPage, command: CommandForm) {
   const [draft, setDraft] = useState<Values>(() => restored(page.sheet, command.state));
   // 打开时槽里已有未确认命令：是继承来的，本次挂载发出命令前按只读处理（DEC-948）。
   const inherited = isLocked(command.state);
-  const ref = useRef({ page, live: draft, edits: new Set<string>(), seq: 0, held: false, inherited });
+  // 继承命令完成后本挂载确认新基线的重读（useInheritedSettle）；确认完成前为该 Promise。
+  const settling = undefined as Promise<void> | undefined;
+  const ref = useRef({ page, live: draft, edits: new Set<string>(), seq: 0, held: false, inherited, settling });
   useEffect(() => {
     if (!isLocked(command.peek())) command.clear();
   }, []);
@@ -181,6 +189,29 @@ function useLiveSheet(initial: AnswerPage, command: CommandForm) {
     setPage(next);
   };
   return { ref, page, draft, assign, showPage };
+}
+
+/**
+ * DEC-948：打开时继承的未确认命令由上一挂载发出，回执按代次检查只交内核落定，本页的确认答卷仍是打开时的 GET。
+ * 该命令完成后，本挂载按自己的代次经回查同一入口 read 重读并采用（adoptSheet：revision 单调、保留本页编辑），
+ * 确认新基线；之后暂缓自动保存直到新输入或显式保存，确认期间发出的保存 / 提交先等它，不以旧 revision 重复保存。
+ */
+function useInheritedSettle(command: CommandForm, ref: LiveRef, read: () => Promise<unknown>) {
+  useEffect(() => {
+    const marks = ref.current;
+    const state = command.peek();
+    if (!marks.inherited || (state && state.status !== 'done')) return;
+    marks.inherited = false;
+    marks.held = true;
+    const settling = read().then(
+      () => undefined,
+      () => undefined,
+    );
+    marks.settling = settling;
+    void settling.then(() => {
+      if (marks.settling === settling) marks.settling = undefined;
+    });
+  }, [command.state]);
 }
 
 /** 会话代次：卸载（含登出）、换会话客户端或换活动路径时递增；generation() 取当前代次，返回的函数核对是否仍是它。 */
