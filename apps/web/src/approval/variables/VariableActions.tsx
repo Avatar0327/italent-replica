@@ -8,6 +8,7 @@ import { useConflictCommand } from '../../foundation/forms/ConflictCommands.js';
 import { m } from './messages.js';
 import {
   VARIABLES_PATH,
+  isAuto,
   parseReceipt,
   parseReferences,
   parseRow,
@@ -16,12 +17,29 @@ import {
   type VariableRow,
 } from './model.js';
 import type { useImpactConfirm } from './References.js';
+import { DesignerError, useDesignerRequest } from '../designer/write.js';
 
 const snapshotOf = (row: VariableRow) => ({ id: row.id, revision: row.revision, values: { ...row } });
 
+/** 启用撞上同位置已启用的自动变量（F-326-L §5.5）：给占位变量编码，引导改用或回设计器重选人员。 */
+function reasonOf(error: unknown) {
+  const details = error instanceof DesignerError ? error.details : {};
+  const occupied = details.occupiedBy as { code?: unknown } | undefined;
+  if (details.reason === 'APPROVAL_AUTO_VARIABLE_SLOT_TAKEN' && typeof occupied?.code === 'string')
+    return m.slotTaken(occupied.code);
+  return rejectionMessage(error);
+}
+
 /** 启停命令：结果未知时命令钉在本行、按钮锁定待回查；其余失败（含 409 引用已变化）提示原因并刷新，不自动重提。 */
-function useRowCommand(row: VariableRow, saved: () => void, failed: (reason: string) => void) {
+function useRowCommand(
+  row: VariableRow,
+  saved: () => void,
+  failed: (reason: string) => void,
+  notify: (info: string) => void,
+) {
   const api = useApiClient();
+  // 共享客户端不保留 details；启停改走保留 details 的请求（同口径请求头），以读 SLOT_TAKEN 的 occupiedBy
+  const request = useDesignerRequest();
   const read = async () => snapshotOf(parseRow(await api.request<unknown>(rowPath(row.id))));
   const writer = useConflictCommand(VARIABLES_PATH, snapshotOf(row), read, { action: 'row' });
   const run = async (kind: 'enable' | 'disable', acknowledged?: number) => {
@@ -31,14 +49,15 @@ function useRowCommand(row: VariableRow, saved: () => void, failed: (reason: str
         editableFields: [],
         send: async ({ command }) => {
           const body = acknowledged === undefined ? {} : { acknowledgedReferenceCount: acknowledged };
-          const raw = await api.request(rowPath(row.id, kind), { method: 'POST', command: { ...command, body } });
+          const raw = await request(rowPath(row.id, kind), 'POST', { ...command, body });
           return parseReceipt(raw, { id: row.id, revision: (command.revision ?? 0) + 1 });
         },
       });
+      if (kind === 'enable' && isAuto(row)) notify(m.reenabledAuto(row.originProcessName ?? null));
       saved();
     } catch (error) {
       if (writer.form.peek()?.status === 'unknown') return;
-      failed(rejectionMessage(error));
+      failed(reasonOf(error));
       writer.form.clear();
       saved();
     }
@@ -54,9 +73,11 @@ export function VariableActions(props: {
   saved(): void;
   /** 失败原因显示在列表上方（不依赖静态 message，切页签前一直可见）。 */
   failed(reason: string): void;
+  /** 成功后的提示（如重新启用自动变量的再停用说明），同样显示在列表上方。 */
+  notify(info: string): void;
 }) {
-  const { row, impact, edit, references, saved, failed } = props;
-  const { api, form, run } = useRowCommand(row, saved, failed);
+  const { row, impact, edit, references, saved, failed, notify } = props;
+  const { api, form, run } = useRowCommand(row, saved, failed, notify);
   const locked = form.locked;
   const actions = rowActions(row.status);
   // 停用前影响确认：引用清单读失败就不停用（保守），提示原因

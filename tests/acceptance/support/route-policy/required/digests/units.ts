@@ -1234,9 +1234,9 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/personnel/change-requests.ts': {
     assertSelfServiceFields: '836b6ee170ad',
-    createChange: 'f6ecb10e5da4',
+    createChange: 'c7250d6472da',
     requireSelf: '50f3545b50d7',
-    resubmitChangeInTransaction: '9cd09bdbc1fa',
+    resubmitChangeInTransaction: '84e90e11488f',
   },
   'apps/api/src/modules/personnel/custom-field-routes.ts': {
     'route:GET /api/tenant/personnel/custom-field-definitions': 'e1e6f951a36d',
@@ -1254,7 +1254,7 @@ export const DIGESTS: Digests = {
     'route:POST /api/tenant/personnel/change-requests': '9ed96f8f6519',
   },
   'apps/api/src/modules/personnel/routes.ts': {
-    nestedSubsets: '1147d5252f0d',
+    nestedSubsets: '7700e15bd7ca',
     'route:GET /api/tenant/personnel/employees': 'e944b0c797ef',
     'route:GET /api/tenant/personnel/employees/:id': 'd5ccb9ca1aeb',
     'route:GET /api/tenant/personnel/employees/:id/history': '91fa9765d77c',
@@ -1262,22 +1262,32 @@ export const DIGESTS: Digests = {
     'route:PATCH /api/tenant/personnel/employees/:id': 'c869de2ed539',
     'route:POST /api/tenant/personnel/employees/:id/attachments': 'a58c9e435628',
   },
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts': {
+    attachmentWrite: '4763a186401f',
+    entry: '3dfe1727fad3',
+    'route:DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId': 'cc298cb8dad3',
+    'route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/attachments/:fileId/content':
+      '8a149204083d',
+    'route:POST /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments': 'd3b928e59d36',
+    'route:POST /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId/upload': '85deadfa796b',
+    subsetAttachmentGuard: '25f00507a44e',
+  },
   'apps/api/src/modules/personnel/subset-policy.ts': {
     runSubsetRequestPolicy: 'a7b813f0f2cc',
     runSubsetSavePolicy: '44cf9b874025',
   },
   'apps/api/src/modules/personnel/subset-routes.ts': {
     'route:DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id': 'bde6aa354051',
-    'route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind': 'ac1c3233b271',
-    'route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id': 'f788de7268d9',
+    'route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind': 'c498d3939b51',
+    'route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id': '98110f41f4c0',
     'route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/history': '64f3db79d396',
-    'route:GET /api/tenant/personnel/subsets/:kind': 'ac1c3233b271',
+    'route:GET /api/tenant/personnel/subsets/:kind': 'c498d3939b51',
     'route:PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id': '41ad6fb5572e',
     'route:POST /api/tenant/personnel/employees/:employeeId/subsets/:kind': '20890855ef42',
   },
   'apps/api/src/modules/personnel/subsets.ts': {
     loadSubset: 'ce8761631bb3',
-    saveSubset: '41c8e4175207',
+    saveSubset: 'c231acf7d9bf',
   },
   'apps/api/src/modules/personnel/validation.ts': {
     subsetKind: '32c4ff0735e7',
@@ -2173,11 +2183,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/variable-routes.ts#route:POST /variables/:id/enable': '202630627f45',
   'apps/api/src/modules/approval/variable-routes.ts#variableWrite': '7dfc530cda1f',
   'apps/api/src/modules/attachments/access.ts#requireAttachmentWrite': '2caf4216be75',
-  'apps/api/src/modules/attachments/routes.ts#route:DELETE /api/tenant/attachments/:id': 'b56eb342a68f',
+  'apps/api/src/modules/attachments/routes.ts#route:DELETE /api/tenant/attachments/:id': 'd3df4647237c',
   'apps/api/src/modules/attachments/routes.ts#route:GET /api/tenant/attachments/:id': '770500656b4f',
   'apps/api/src/modules/attachments/routes.ts#route:GET /api/tenant/attachments/:id/content': '15477fec9d91',
-  'apps/api/src/modules/attachments/routes.ts#route:POST /api/tenant/attachments': '40a73a98efac',
-  'apps/api/src/modules/attachments/routes.ts#route:POST /api/tenant/attachments/:id/upload': '291c1a95c942',
+  'apps/api/src/modules/attachments/routes.ts#route:POST /api/tenant/attachments': '2b554c4fdd26',
+  'apps/api/src/modules/attachments/routes.ts#route:POST /api/tenant/attachments/:id/upload': '9fac9089d0bc',
   'apps/api/src/modules/attachments/routes.ts#write': 'a2d494eb0825',
   'apps/api/src/modules/avatar/routes.ts#present': '2253c4be6de7',
   'apps/api/src/modules/avatar/routes.ts#route:DELETE /api/tenant/account/avatar': '27ba4d2c7ef8',
@@ -2980,9 +2990,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/personnel/access.ts#authorize': 'd461523d213b',
   'apps/api/src/modules/personnel/access.ts#requirePerson': '26e8917a54da',
   'apps/api/src/modules/personnel/change-requests.ts#assertSelfServiceFields': '7041bcd9d078',
-  'apps/api/src/modules/personnel/change-requests.ts#createChange': '117ca6e13d2d',
+  'apps/api/src/modules/personnel/change-requests.ts#createChange': '0c55fb2f1d6d',
   'apps/api/src/modules/personnel/change-requests.ts#requireSelf': '52740292ae80',
-  'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction': 'bb506cf15a3b',
+  'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction': '7c8efb1c9624',
   'apps/api/src/modules/personnel/custom-field-routes.ts#route:GET /api/tenant/personnel/custom-field-definitions':
     '86ea8ffffacc',
   'apps/api/src/modules/personnel/lists.ts#listOptions': '974e14f1d59d',
@@ -2993,30 +3003,41 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/personnel/request-routes.ts#route:GET /api/tenant/personnel/change-requests/:id':
     'eebd89a9a129',
   'apps/api/src/modules/personnel/request-routes.ts#route:POST /api/tenant/personnel/change-requests': '4322865d1474',
-  'apps/api/src/modules/personnel/routes.ts#nestedSubsets': 'e84939c40cbe',
+  'apps/api/src/modules/personnel/routes.ts#nestedSubsets': '6c90b80c5e70',
   'apps/api/src/modules/personnel/routes.ts#route:GET /api/tenant/personnel/employees': '032728e6b253',
   'apps/api/src/modules/personnel/routes.ts#route:GET /api/tenant/personnel/employees/:id': 'f1a11815f32c',
   'apps/api/src/modules/personnel/routes.ts#route:GET /api/tenant/personnel/employees/:id/history': '113d1cb4db2b',
   'apps/api/src/modules/personnel/routes.ts#route:GET /api/tenant/personnel/employees/:id/tenure': 'ba994d6e2c21',
   'apps/api/src/modules/personnel/routes.ts#route:PATCH /api/tenant/personnel/employees/:id': '9a181ede059d',
   'apps/api/src/modules/personnel/routes.ts#route:POST /api/tenant/personnel/employees/:id/attachments': '0a1b85a8a097',
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#attachmentWrite': '97d05774a0de',
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#entry': '77002bf6afcf',
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#route:DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId':
+    'cb46e0ca2cdc',
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/attachments/:fileId/content':
+    '8a5cc22c8949',
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#route:POST /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments':
+    'bdf2b91bc3b1',
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#route:POST /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId/upload':
+    'ee54de533e63',
+  'apps/api/src/modules/personnel/subset-attachment-routes.ts#subsetAttachmentGuard': 'c046ff486655',
   'apps/api/src/modules/personnel/subset-policy.ts#runSubsetRequestPolicy': '669777e317b8',
   'apps/api/src/modules/personnel/subset-policy.ts#runSubsetSavePolicy': '669777e317b8',
   'apps/api/src/modules/personnel/subset-routes.ts#route:DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id':
     '59c7a670dc0e',
   'apps/api/src/modules/personnel/subset-routes.ts#route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind':
-    '223980a33169',
+    '2afdbc45cd41',
   'apps/api/src/modules/personnel/subset-routes.ts#route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id':
-    'bd02b112f583',
+    'e221216ebb90',
   'apps/api/src/modules/personnel/subset-routes.ts#route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/history':
     '6c633db3b404',
-  'apps/api/src/modules/personnel/subset-routes.ts#route:GET /api/tenant/personnel/subsets/:kind': '223980a33169',
+  'apps/api/src/modules/personnel/subset-routes.ts#route:GET /api/tenant/personnel/subsets/:kind': '2afdbc45cd41',
   'apps/api/src/modules/personnel/subset-routes.ts#route:PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id':
     '8dc6a3889b48',
   'apps/api/src/modules/personnel/subset-routes.ts#route:POST /api/tenant/personnel/employees/:employeeId/subsets/:kind':
     'f47f1b358f8b',
   'apps/api/src/modules/personnel/subsets.ts#loadSubset': 'bc78878b4643',
-  'apps/api/src/modules/personnel/subsets.ts#saveSubset': 'd4935f12d818',
+  'apps/api/src/modules/personnel/subsets.ts#saveSubset': '846a2dc246ed',
   'apps/api/src/modules/personnel/validation.ts#subsetKind': '048cb30b5057',
   'apps/api/src/modules/qualification/access.ts#BUTTON_LEVEL': 'e3b0c44298fc',
   'apps/api/src/modules/qualification/access.ts#accessSql': 'e0db634d2049',

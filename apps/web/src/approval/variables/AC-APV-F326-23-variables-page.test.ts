@@ -209,7 +209,8 @@ describe('AC-APV-F326-23 公共变量管理页', () => {
     expect(rowOf(enabled.id)).toBeNull();
   });
 
-  it('列：编码 / 名称 / 数据类型 / 默认值 / 适用范围 / 状态 / 描述 / 最近修改人 / 最近修改时间 / 操作', async () => {
+  // DEC-941（F-326 S7b，设计 §5.5）：公共变量列表在适用范围后多一列“来源”
+  it('列：编码 / 名称 / 数据类型 / 默认值 / 适用范围 / 来源 / 状态 / 描述 / 最近修改人 / 最近修改时间 / 操作', async () => {
     await render(PUBLIC_PATH, 'public-variables');
     expect(headers()).toEqual([
       '编码',
@@ -217,6 +218,7 @@ describe('AC-APV-F326-23 公共变量管理页', () => {
       '数据类型',
       '默认值',
       '适用范围',
+      '来源',
       '状态',
       '描述',
       '最近修改人',
@@ -224,18 +226,19 @@ describe('AC-APV-F326-23 公共变量管理页', () => {
       '操作',
     ]);
     const row = cells(enabled.id);
-    expect(row.slice(0, 9)).toEqual([
+    expect(row.slice(0, 10)).toEqual([
       'Global.B.SynthPerson',
       '合成审批人变量',
       '人员',
       '合成员工甲',
       '全部',
+      '人工',
       '启用',
       '合成说明',
       '合成管理员',
       '2026-11-02 11:04',
     ]);
-    expect(cells(draft.id).slice(2, 6)).toEqual(['字符串', '--', '流程', '草稿']);
+    expect(cells(draft.id).slice(2, 7)).toEqual(['字符串', '--', '流程', '人工', '草稿']);
     expect(reads.some((url) => url.startsWith(PEOPLE) && url.includes(ADMIN_USER))).toBe(true);
     expect(reads.filter((url) => url.startsWith(PEOPLE)).every((url) => url.includes('context=matrix'))).toBe(true);
   });

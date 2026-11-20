@@ -68,6 +68,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/attachments/carrier-read.ts#idsWithBytes': ['#lower'],
   'apps/api/src/modules/attachments/carrier-read.ts#readCarrierAttachment': [
+    'apps/api/src/modules/attachments/binding.ts#EXIT_BUSINESS_TYPE',
     'apps/api/src/modules/attachments/blob-store.ts#PgBlobStore',
     '#FROZEN_STATUSES',
     '#LIVE_STATUSES',
@@ -79,8 +80,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/attachments/filename.ts#attachmentDisposition',
   ],
   'apps/api/src/modules/attachments/routes.ts#route:DELETE /api/tenant/attachments/:id': [
+    'apps/api/src/modules/attachments/access.ts#sameOrigin',
     '#ATTACHMENTS_BASE',
-    '#sameOrigin',
     '#write',
     'apps/api/src/modules/attachments/service.ts#deleteFile',
     'apps/api/src/modules/job/context.ts#parseBody',
@@ -103,16 +104,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
   'apps/api/src/modules/attachments/routes.ts#route:POST /api/tenant/attachments': [
+    'apps/api/src/modules/attachments/access.ts#sameOrigin',
     '#ATTACHMENTS_BASE',
     '#registration',
-    '#sameOrigin',
     '#write',
     'apps/api/src/modules/attachments/service.ts#registerFile',
     'apps/api/src/modules/job/context.ts#parseBody',
   ],
   'apps/api/src/modules/attachments/routes.ts#route:POST /api/tenant/attachments/:id/upload': [
+    'apps/api/src/modules/attachments/access.ts#sameOrigin',
     '#ATTACHMENTS_BASE',
-    '#sameOrigin',
     '#write',
     'apps/api/src/modules/attachments/service.ts#uploadFile',
     'apps/api/src/modules/job/context.ts#parseBody',
@@ -134,6 +135,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/attachments/service.ts#deleteFile': [
     'apps/api/src/modules/attachments/audit.ts#receipt',
     'apps/api/src/modules/attachments/audit.ts#record',
+    '#EXIT_PURPOSE',
     '#ownFile',
   ],
   'apps/api/src/modules/attachments/service.ts#lockOwnerRegistration': [
@@ -146,15 +148,18 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/attachments/service.ts#readTemporaryContent': [
     'apps/api/src/modules/attachments/access.ts#attachmentNotFound',
     'apps/api/src/modules/attachments/blob-store.ts#PgBlobStore',
+    '#EXIT_PURPOSE',
     '#ownFile',
   ],
   'apps/api/src/modules/attachments/service.ts#readTemporaryMeta': [
     'apps/api/src/modules/attachments/audit.ts#receipt',
+    '#EXIT_PURPOSE',
     '#ownFile',
   ],
   'apps/api/src/modules/attachments/service.ts#registerFile': [
     'apps/api/src/modules/attachments/audit.ts#receipt',
     'apps/api/src/modules/attachments/audit.ts#record',
+    '#EXIT_PURPOSE',
     '#checkRegistration',
     '#lockOwnerRegistration',
   ],
@@ -162,6 +167,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/attachments/audit.ts#receipt',
     'apps/api/src/modules/attachments/audit.ts#record',
     'apps/api/src/modules/attachments/blob-store.ts#PgBlobStore',
+    '#EXIT_PURPOSE',
     '#HOUR',
     '#limitsOf',
     '#ownFile',
@@ -170,4 +176,34 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent/model-image-format.ts#sniffImageType',
     'packages/domain/src/attachments/purposes.ts#ATTACHMENT_PURPOSES',
   ],
+  'apps/api/src/modules/attachments/subset-binding.ts#assertNoAttachmentRefChange': [
+    '#attachmentRefsLocked',
+    '#refOf',
+    'packages/domain/src/personnel/fields.ts#subsetAttachmentFields',
+  ],
+  'apps/api/src/modules/attachments/subset-binding.ts#bindSubsetAttachments': [
+    'apps/api/src/modules/attachments/binding.ts#lockFiles',
+    'apps/api/src/modules/attachments/binding.ts#move',
+    '#UUID',
+    '#assertNoAttachmentRefChange',
+    '#invalid',
+    '#refsOf',
+    'apps/api/src/modules/attachments/subset-read.ts#SUBSET_BUSINESS_TYPE',
+    'apps/api/src/modules/attachments/subset-read.ts#SUBSET_PURPOSE',
+  ],
+  'apps/api/src/modules/attachments/subset-binding.ts#refsOf': [
+    'packages/domain/src/personnel/fields.ts#subsetAttachmentFields',
+  ],
+  'apps/api/src/modules/attachments/subset-read.ts#expandSubsetAttachments': [
+    '#SUBSET_BUSINESS_TYPE',
+    'packages/domain/src/personnel/fields.ts#subsetAttachmentFields',
+  ],
+  'apps/api/src/modules/attachments/subset-read.ts#parseSubsetTargetTag': [
+    '#SUBSET_BUSINESS_TYPE',
+    'packages/domain/src/personnel/fields.ts#SUBSETS',
+  ],
+  'apps/api/src/modules/attachments/subset-read.ts#subsetKindOfObject': [
+    'packages/domain/src/personnel/fields.ts#SUBSETS',
+  ],
+  'apps/api/src/modules/attachments/subset-read.ts#subsetTargetTag': ['#SUBSET_BUSINESS_TYPE'],
 };
