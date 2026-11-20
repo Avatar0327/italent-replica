@@ -4,7 +4,16 @@
  */
 import type { MenuNode, ServerSnapshot } from '../foundation/permission-snapshot.js';
 import { s } from './messages.js';
-import type { LevelRules, MapItem, MapResult, Preferences, RecordView, RuleRow, SuccessionType } from './types.js';
+import type {
+  LevelResult,
+  LevelRules,
+  MapItem,
+  MapResult,
+  Preferences,
+  RecordView,
+  RuleRow,
+  SuccessionType,
+} from './types.js';
 
 export const BASE = '/api/tenant/succession';
 export const READINESS_PATH = '/api/tenant/talent-review/readiness-levels';
@@ -129,18 +138,23 @@ export function preferenceBody(full: Record<string, unknown>, edited: Record<str
     showPositionsWithoutSuccessor: !!merged.showPositionsWithoutSuccessor,
   };
 }
-/** 赋值没有单条读取接口：重读整张地图，按节点 ID 取结果行；未评定时版本为 0。 */
+/** 地图结果键缺席时按首次赋值处理；投影存在时，字段权限裁剪的版本保持缺失。 */
+export function assignSnapshot(id: string, level: LevelResult | null | undefined) {
+  const levelId = level?.levelId;
+  return {
+    id,
+    revision: level === undefined ? 0 : level?.revision,
+    values: { mode: levelId ? 'manual' : 'rule', levelId: levelId ?? undefined },
+  };
+}
+
+/** 赋值没有单条读取接口：重读整张地图，按节点 ID 取结果投影。 */
 export function assignLatest(map: MapResult, id: string, kind: 'position' | 'org') {
   const items = map.items.flatMap((item) => [item, ...(item.keyPositions ?? [])]);
   const item = items.find((entry) => entry.id === id);
   if (!item) throw new Error('assignMissing');
-  const level = kind === 'position' ? item.risk : item.health;
-  return { id, revision: level?.revision ?? 0, values: assignValues(level?.levelId) };
+  return assignSnapshot(id, kind === 'position' ? item.risk : item.health);
 }
-export const assignValues = (levelId?: string | null) => ({
-  mode: levelId ? 'manual' : 'rule',
-  levelId: levelId ?? undefined,
-});
 
 /** 组织地图：关键职位挂在所属组织下，作为子卡片（接口 keyPositions[]，字段受地图对象权限控制）。 */
 export function orgMapItems(items: readonly MapItem[]): MapItem[] {
