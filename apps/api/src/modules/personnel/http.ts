@@ -5,6 +5,7 @@ import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
+import { expandSubsetAttachments, subsetKindOfObject } from '../attachments/subset-read.js';
 import { employeeAvatars } from '../avatar/references.js';
 import { authorizeTx, requirePerson, trim, type AccessContext } from './access.js';
 import type { Row } from './store.js';
@@ -47,7 +48,11 @@ export async function write(
   // Replays are a read under current rights, not a cached authorization decision.
   const value = await withTenant(deps.db, ctx.tenantId, async (tx) => {
     await requirePerson(tx, ctx, employeeId);
-    const receipt = result.body as Row;
+    const subset = subsetKindOfObject(ctx.objectCode);
+    // F-479 §10.5：子集写回执的附件字段与读取同口径展开（按回执当前状态，重放也一样）
+    const receipt = subset
+      ? (await expandSubsetAttachments(tx, ctx.tenantId, subset, [result.body as Row]))[0]!
+      : (result.body as Row);
     // DEC-327：头像是当前账号投影，不能随旧业务回执冻结；其余字段和 revision 保留原命令结果。
     if (ctx.objectCode !== PERSONNEL_OBJECT || c.req.method !== 'PATCH') return receipt;
     const avatars = await employeeAvatars(tx, ctx.tenantId, [employeeId]);

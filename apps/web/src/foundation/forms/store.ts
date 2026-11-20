@@ -29,6 +29,8 @@ export interface Submission {
   readError?: unknown;
   /** 命令上下文（业务时点、动作等）：不进请求体，随槽保存，换日期 / 动作 / 入口重开时以它为准。 */
   context?: Values;
+  /** F-469：只有显式删除命令可走删除结果查询；随恢复槽保留。 */
+  deletion?: boolean;
 }
 export interface SubmitInput {
   values: Values;
@@ -39,6 +41,8 @@ export interface SubmitInput {
   businessId?: string;
   patchOnly?: boolean;
   context?: Values;
+  /** F-469：只有显式删除命令可走删除结果查询；随恢复槽保留。 */
+  deletion?: boolean;
   send(command: Command<Values>): Promise<{ id: string }>;
 }
 /** F-141 起对外的比较名；实现只有 values.ts 的 sameValue 一份（DEC-502②），空值口径相同：0 与 false 不算空。 */
@@ -79,7 +83,7 @@ function createPins(notify: () => void) {
   };
 }
 /**
- * DEC-464/473/475：状态由页面持有；没有解锁未知命令或自动重放的接口。
+ * DEC-464/473/475：状态由页面持有；没有强制解锁未知命令或自动重放的接口。
  * 结果未知只能由用户显式按原命令重发（replay：同一命令 ID、请求体、版本；台账同键同内容回放第一次的结果，AGENTS §10）。
  */
 export function createFormStore() {
@@ -95,9 +99,7 @@ export function createFormStore() {
     ...createPins(notify),
     subscribe(listener: () => void) {
       listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
+      return () => void listeners.delete(listener);
     },
     clear(key: string) {
       if (isLocked(entries.get(key))) return;
@@ -125,6 +127,7 @@ export function createFormStore() {
         businessId: input.businessId,
         // 未完成的命令沿用它当初的上下文，与基线、版本同理。
         context: prior?.context ?? input.context,
+        deletion: input.deletion,
         latest: prior?.latest,
       };
       put(key, state);
@@ -146,6 +149,7 @@ export function createFormStore() {
       put(key, { ...state, reading: true, readError: undefined });
       put(key, await rereadState(state, read));
     },
+    recoverDeletion: (key: string, read: DeletionReader) => recoverDeletion(entries, put, key, read),
     /** 当前不可提交的已改字段改取最新记录（见 settledState）；有改动时返回改后的状态，没有改动返回 undefined。 */
     settle(key: string, submittable: readonly string[]) {
       const state = entries.get(key);
@@ -167,6 +171,49 @@ export function createFormStore() {
   };
 }
 export type FormStore = ReturnType<typeof createFormStore>;
+
+type DeletionReader = (command: Command<Values>, id: string) => Promise<unknown>;
+/** F-469：查询权威结果，不重发命令；回执须匹配命令、对象、原版本，查询失败也不能解锁。 */
+async function recoverDeletion(
+  entries: Map<string, Submission>,
+  put: (key: string, state: Submission) => void,
+  key: string,
+  read: DeletionReader,
+) {
+  const state = entries.get(key);
+  if (state?.status !== 'unknown' || !state.deletion || !state.command || !state.businessId || state.reading)
+    return undefined;
+  const reading = { ...state, reading: true, readError: undefined };
+  put(key, reading);
+  let next: Submission;
+  try {
+    const raw = await read(state.command, state.businessId);
+    const result = raw as { commandId?: unknown; id?: unknown; revision?: unknown; status?: unknown } | null;
+    if (
+      result?.commandId !== state.command.id ||
+      result.id !== state.businessId ||
+      result.revision !== state.command.revision ||
+      !['deleted', 'not_deleted', 'unknown'].includes(String(result.status))
+    )
+      throw new Error(messages.invalidReceipt);
+    let status: Submission['status'] = 'unknown';
+    if (result.status === 'deleted') status = 'done';
+    if (result.status === 'not_deleted') status = 'rejected';
+    next = {
+      ...state,
+      status,
+      reading: false,
+      readError: undefined,
+      error: status === 'rejected' ? new Error(messages.notDeleted) : state.error,
+    };
+  } catch (readError) {
+    next = { ...state, reading: false, readError };
+  }
+  // 迟到查询不能覆盖新状态；同一次查询期间 replay/reread 也会被 reading 挡住。
+  if (entries.get(key) !== reading) return undefined;
+  put(key, next);
+  return next;
+}
 
 /** 发出 state 里的命令，返回按回执落定的状态：首次提交与原命令重放共用同一判定。 */
 async function delivered(state: Submission, send: SubmitInput['send']): Promise<Submission> {

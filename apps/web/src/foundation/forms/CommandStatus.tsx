@@ -1,14 +1,24 @@
 import { Alert, Button, Space, Table } from 'antd';
+import type { ReactNode } from 'react';
 import { rejectionMessage } from '../client.js';
+import type { Difference } from './store.js';
 import type { CommandForm } from './useCommandForm.js';
 import { messages as m } from './messages.js';
 const display = (value: unknown) => (value === undefined ? '—' : JSON.stringify(value));
+type FieldRenderers = Partial<Record<string, (value: unknown) => ReactNode>>;
+function displayDifference(value: unknown, diff: Difference, renderers: FieldRenderers) {
+  const render = Object.hasOwn(renderers, diff.field) ? renderers[diff.field] : undefined;
+  return render ? render(value) : display(value);
+}
 export function CommandStatus({
   submission,
   labels = {},
+  renderers = {},
 }: {
   submission: CommandForm;
   labels?: Record<string, unknown>;
+  /** 冲突差异按字段显示引用名等内容；未配置的字段沿用默认显示。 */
+  renderers?: FieldRenderers;
 }) {
   const { state, reload, confirm } = submission;
   if (submission.blocked && !state) return <Alert type="warning" showIcon message={m.blocked} />;
@@ -48,7 +58,7 @@ export function CommandStatus({
               ...(['before', 'latest', 'mine'] as const).map((key) => ({
                 title: m[key],
                 dataIndex: key,
-                render: display,
+                render: (value: unknown, diff: Difference) => displayDifference(value, diff, renderers),
               })),
             ]}
           />

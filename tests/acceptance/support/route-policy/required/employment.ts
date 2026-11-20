@@ -1253,7 +1253,7 @@ function employmentTypeRoute(
   operation: 'view' | 'create' | 'update' | 'delete',
   button?: readonly [string, 'list' | 'detail'],
 ): Obligation[] {
-  const rev = operation === 'view' ? '0' : 'revision(c)';
+  const rev = method === 'GET' ? '0' : 'revision(c)';
   const entry = at(
     ET,
     method,
@@ -1270,7 +1270,9 @@ function employmentTypeRoute(
   return [
     ob(
       `obj:${EMPLOYMENT_TYPE}:${operation}`,
-      operation === 'view' ? facts : [...facts, OBJECT_WRITE_FACT],
+      // 探测器对 GET 不观测「写专用」原语（primitives.ts：writeOnly）；删除结果查询（GET）复用删除的数据操作权，
+      // 权限检查仍在（requireTypeWrite 的 delete 分支），只是不登记探测器在 GET 上看不到的对象写操作权事实。
+      operation === 'view' || method === 'GET' ? facts : [...facts, OBJECT_WRITE_FACT],
       operation === 'view' ? [entry, READ, ET_CONST] : [entry, READ, write, ET_CONST],
     ),
     ...(button
@@ -4414,6 +4416,12 @@ export const EMPLOYMENT: RequiredTable = {
     '/employment-types/:id/enable',
     'update',
     ['enable', 'detail'],
+  ),
+  'GET /api/tenant/employment/employment-types/:id/delete-result/:commandId': employmentTypeRoute(
+    'GET',
+    '/employment-types/:id/delete-result/:commandId',
+    'delete',
+    ['delete', 'detail'],
   ),
   'DELETE /api/tenant/employment/employment-types/:id': employmentTypeRoute(
     'DELETE',

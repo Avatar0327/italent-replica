@@ -107,6 +107,8 @@ export interface CreateEmploymentOptions {
   readonly establishmentWarnings?: EstablishmentWarning[];
   /** F-022 入职写入端口（R2-T01 接线）：添加待入职、是否有试用期；不开放给请求体。 */
   readonly entry?: EntryOptions;
+  /** F-363：待入职改期 / 编辑重建时的锁内旧用工形式，仅服务端传入。 */
+  readonly retainedEmploymentForm?: string | null;
   /** 离职创建须经 exit-application.ts 的门禁（R2-T03 §4A）；只有它持有这个凭证。 */
   readonly exitPass?: typeof EXIT_GATE_PASS;
   /**
@@ -145,9 +147,7 @@ export async function createEmploymentBusiness(
   await resolveInFlightRegularization(tx, ctx, employee, normalized);
   assertEmployTypeUsage(normalized);
   await assertDirectTransferAllowed(tx, ctx, employee.id, normalized);
-  // 29 PB-R9：直接转正即“提交”，有转正流程在审批中时拒绝；申请在提交时判（transitions.ts）
-  if (normalized.kind === 'regularization' && normalized.mode === 'direct' && !options.generatedByAssessment)
-    await assertProbationProcessesIdle(tx, ctx, { employeeId: employee.id, action: 'regularize' });
+  await assertDirectRegularizationIdle(tx, ctx, employee.id, normalized, options);
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
     ? undefined
     : await selectEmploymentCycle(tx, ctx, employee.id, normalized);
@@ -155,6 +155,7 @@ export async function createEmploymentBusiness(
     ...normalized,
     employeeId: employee.id,
     staffId: selected?.cycle.id,
+    retainedEmploymentForm: options.retainedEmploymentForm,
   });
   const prepared = options.positionManagerDerivation ? withPositionManagerDerivation(inherited) : inherited;
   const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
@@ -210,6 +211,18 @@ export async function createEmploymentBusiness(
   const created = { ...payloadAudit(payload), ...pendingAudit };
   await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, created);
   return requireSavedBusiness(tx, ctx, id);
+}
+
+// 29 PB-R9：直接转正即“提交”，有转正流程在审批中时拒绝；申请在提交时判（transitions.ts）
+async function assertDirectRegularizationIdle(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: NormalizedEmploymentInput,
+  options: CreateEmploymentOptions,
+) {
+  if (input.kind === 'regularization' && input.mode === 'direct' && !options.generatedByAssessment)
+    await assertProbationProcessesIdle(tx, ctx, { employeeId, action: 'regularize' });
 }
 
 /** 导入入职段落地时把有终点带给部门可用性校验（设计 §4.3）；普通入职原样透传。 */
