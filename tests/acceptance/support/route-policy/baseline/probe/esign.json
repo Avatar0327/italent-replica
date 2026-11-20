@@ -65,6 +65,30 @@
       "btn:TenantBase.ESignRecord#ESignRecord.Download@list"
     ]
   },
+  "GET /api/tenant/esign/scenes/entry": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.ESignSettings"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.ESignSettings:view"
+    ]
+  },
+  "GET /api/tenant/esign/scenes/offer": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.ESignSettings"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.ESignSettings:view"
+    ]
+  },
   "GET /api/tenant/esign/scenes/transfer": {
     "all": {
       "status": 200
@@ -190,6 +214,30 @@
     "trace": [
       "btn:TenantBase.EmploymentRecord#MulLaunchESignTranfer@list",
       "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "PUT /api/tenant/esign/scenes/entry": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "35b289034ba8",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.ESignSettings:update"
+    ]
+  },
+  "PUT /api/tenant/esign/scenes/offer": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "35b289034ba8",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.ESignSettings:update"
     ]
   },
   "PUT /api/tenant/esign/scenes/transfer": {

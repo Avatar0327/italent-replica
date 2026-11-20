@@ -52,6 +52,12 @@ it.each(SCENES)('AC-10 %s 三条生产路径只向当前接收人投递最小正
   const selected = await w.template('ZZ_F505_静态正文', 'ZZ_F505_文件名不可进入通知');
   const task = await w.fixture(scene, selected, true);
   expect(await w.notices()).toEqual([]);
+  const employeeRemindKey = uniqueSuffix();
+  await json(await w.action('remind', task, employeeRemindKey));
+  await json(await w.action('remind', task, employeeRemindKey));
+  expect((await w.notices()).map(({ template, recipient }) => [template, recipient])).toEqual([
+    ['esign_remind', w.employeeUser],
+  ]);
 
   const at = new Date(START.getTime() + DAY);
   expect(await runESignJobs(w.db, { clock: () => new Date(at.getTime() - 1) })).toMatchObject({ reminded: 0 });
@@ -59,7 +65,7 @@ it.each(SCENES)('AC-10 %s 三条生产路径只向当前接收人投递最小正
   expect(await runESignJobs(w.db, { clock: () => at })).toMatchObject({ reminded: 0 });
   w.setNow(at);
   const ready = await json<Task>(await w.sign(w.employeeUser, await w.taskRow(task.id)));
-  expect(await w.notices()).toHaveLength(1);
+  expect(await w.notices()).toHaveLength(2);
   const remindKey = uniqueSuffix();
   await json(await w.action('remind', ready, remindKey));
   await json(await w.action('remind', ready, remindKey));
@@ -85,7 +91,7 @@ it.each(SCENES)('AC-10 %s 三条生产路径只向当前接收人投递最小正
   const recipientTemplates = (role: string) =>
     ['esign_remind', `esign_completed_${role}`, `esign_revoked_${role}`].sort();
   expect(initiator.map((n) => n.template).sort()).toEqual(recipientTemplates('initiator'));
-  expect(employee.map((n) => n.template).sort()).toEqual(recipientTemplates('employee'));
+  expect(employee.map((n) => n.template).sort()).toEqual([...recipientTemplates('employee'), 'esign_remind'].sort());
   for (const item of [...initiator, ...employee]) {
     expect(item.sender).toBeNull();
     expect(item).not.toHaveProperty('payload');
@@ -98,7 +104,7 @@ it.each(SCENES)('AC-10 %s 三条生产路径只向当前接收人投递最小正
     expect(item.body).toBe(body);
   }
   const rows = await w.notices();
-  expect(rows).toHaveLength(6);
+  expect(rows).toHaveLength(7);
   for (const row of rows) expect(row.payload).toEqual({ scene, taskNumber: row.taskId });
   const other = await w.member();
   expect(await get(other.user.id)).toEqual([]);

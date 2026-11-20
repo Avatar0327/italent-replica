@@ -1,8 +1,9 @@
-import { and, eq, esignTaskFiles, esignTasks, sql, withTenant, type Db } from '@italent/db';
+import { and, eq, esignTaskFiles, esignTasks, grantMembership, sql, withTenant, type Db } from '@italent/db';
 import type { Authorizer } from '@italent/api';
 import { expect } from 'vitest';
 import { userOfPerson } from '../../apps/api/src/modules/approval/resolver.js';
-import { sourceWorld, rowsOf } from './AC-ESIGN-F505-support.js';
+import { insertAnchor, insertOffer, insertTask, rowsOf, type TaskSeed } from './AC-ESIGN-F505-support.js';
+import { employmentSession } from './AC-EMP-support.js';
 import { json } from './AC-TRF-F481-s3a-support.js';
 import { cmd, seedTenantWithMember, tenantApi, type RequestOptions } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -16,26 +17,46 @@ export const DAY = 86_400_000;
 export type Task = typeof esignTasks.$inferSelect;
 
 export async function sharedWorld(db: Db, label: string) {
-  const w = await sourceWorld(db, label);
-  const { tenantId, userId } = w;
-  const employeeId = w.person.employee.id;
-  const employeeUser = await withTenant(db, tenantId, (tx) => userOfPerson(tx, tenantId, employeeId));
-  expect(employeeUser).toBeTruthy();
+  const session = await employmentSession(db, `ZZ_F505_${label}`);
+  session.setNow(START.toISOString());
+  const tenantId = session.tenant.id;
+  const userId = session.user.id;
+  const as = { user: userId, tenant: tenantId };
+  const from = await session.org('ZZ_F505_调出部门', { establishedOn: '2026-01-01' });
+  const to = await session.org('ZZ_F505_调入部门', { establishedOn: '2026-01-01' });
+  const hire = async (name: string, departmentId = from.id) => {
+    const employee = await session.employee(name);
+    const hire = await session.business(
+      employee.id,
+      {
+        kind: 'hire',
+        mode: 'direct',
+        effectiveDate: '2026-09-01',
+        fields: { departmentId },
+      },
+      employee.revision,
+    );
+    const user = await withTenant(db, tenantId, (tx) => userOfPerson(tx, tenantId, employee.id));
+    expect(user).toBeTruthy();
+    return { employeeId: employee.id, departmentId, hire, employeeUser: user! };
+  };
+  const person = await hire(`ZZ_F505_EMP_${label}`);
+  const { employeeId, employeeUser } = person;
   let now = START;
   const restricted = (authorize?: Authorizer) => {
     const api = tenantApi(db, { clock: () => now, ...(authorize ? { authorize } : {}) });
     return (method: string, path: string, opts: RequestOptions = {}) =>
-      api.request(method, path.startsWith('/api/') ? path : ESIGN + path, { ...w.as, ...opts });
+      api.request(method, path.startsWith('/api/') ? path : ESIGN + path, { ...as, ...opts });
   };
   const call = restricted();
   const template = (body = 'ZZ_F505_静态正文', name = 'ZZ_F505_签署模板') =>
     call('POST', '/templates', { body: { name, body, code: uniqueSuffix() } }).then((res) =>
       json<{ id: string; name: string; body: string }>(res, 201),
     );
-  const source = async (scene: Scene) => {
-    if (scene === 'entry') return { scene, businessId: w.entryBusinessId, sourceRevision: w.person.hire.revision };
-    const offerId = await w.offer();
-    await w.anchor(offerId);
+  const source = async (scene: Scene, owner = person) => {
+    if (scene === 'entry') return { scene, businessId: owner.hire.id, sourceRevision: owner.hire.revision };
+    const offerId = await insertOffer(db, tenantId, userId, 'accepted');
+    await insertAnchor(db, tenantId, offerId);
     return { scene, offerId, sourceRevision: 1 };
   };
   const taskRow = (id: string) =>
@@ -46,15 +67,15 @@ export async function sharedWorld(db: Db, label: string) {
         .where(and(eq(esignTasks.id, id), eq(esignTasks.tenantId, tenantId)));
       return row!;
     });
-  const fixture = async (scene: Scene, selected: { id: string; name: string; body: string }, remind = false) => {
-    const resolved = await source(scene);
-    const id = await w.task({ ...resolved, employeeId });
+  type Selected = { id: string; name: string; body: string };
+  const seedFiles = async (seed: TaskSeed, selected: Selected, owner = person, remind = false) => {
+    const id = await insertTask(db, tenantId, userId, seed);
     await withTenant(db, tenantId, async (tx) => {
       await tx
         .update(esignTasks)
         .set({
-          employeeSignerUserId: employeeUser,
-          ownerDepartmentId: w.from.id,
+          employeeSignerUserId: owner.employeeUser,
+          ownerDepartmentId: owner.departmentId,
           initiatedAt: now,
           expiresAt: new Date(now.getTime() + 2 * DAY),
           remindBeforeExpiry: remind,
@@ -71,6 +92,22 @@ export async function sharedWorld(db: Db, label: string) {
     });
     return taskRow(id);
   };
+  const fixture = async (scene: Scene, selected: Selected, remind = false, owner = person) =>
+    seedFiles({ ...(await source(scene, owner)), employeeId: owner.employeeId }, selected, owner, remind);
+  const transferFixture = async (selected: Selected) => {
+    const current = await session.getEmployee(employeeId);
+    const business = await session.business(
+      employeeId,
+      {
+        kind: 'transfer',
+        mode: 'direct',
+        effectiveDate: '2026-10-10',
+        fields: { departmentId: to.id },
+      },
+      current.revision,
+    );
+    return seedFiles({ scene: 'transfer', businessId: business.id, employeeId }, selected);
+  };
   const sign = (user: string, task: Pick<Task, 'id' | 'revision'>, idempotencyKey = uniqueSuffix()) =>
     call('POST', `/mine/${task.id}/sign`, { user, body: { revision: task.revision }, idempotencyKey });
   const action = (
@@ -80,7 +117,6 @@ export async function sharedWorld(db: Db, label: string) {
   ) => call('POST', `/records/${verb}`, { body: { items: [{ id, revision }] }, idempotencyKey });
   const member = async () => {
     const other = await seedTenantWithMember(db, 'ZZ_F505_OTHER');
-    const { grantMembership } = await import('@italent/db');
     await grantMembership(db, { tenantId, userId: other.user.id, expectedRevision: 0 }, cmd());
     return other;
   };
@@ -110,8 +146,22 @@ export async function sharedWorld(db: Db, label: string) {
           ),
     );
   return {
-    ...w,
     db,
+    session,
+    tenantId,
+    userId,
+    as,
+    from,
+    to,
+    hire,
+    taskCount: () =>
+      withTenant(db, tenantId, async (tx) => {
+        const [row] = rowsOf<{ n: number }>(
+          await tx.execute(sql`SELECT count(*)::int AS n FROM esign_tasks WHERE tenant_id=${tenantId}`),
+        );
+        return row!.n;
+      }),
+    transferFixture,
     call,
     restricted,
     template,
@@ -119,7 +169,7 @@ export async function sharedWorld(db: Db, label: string) {
     taskRow,
     fixture,
     employeeId,
-    employeeUser: employeeUser!,
+    employeeUser,
     sign,
     action,
     member,
@@ -132,7 +182,7 @@ export async function sharedWorld(db: Db, label: string) {
       tenantId,
       userId,
       now,
-      timezone: w.session.tenant.timezone,
+      timezone: session.tenant.timezone,
       expectedRevision: 0,
       commandId: uniqueSuffix(),
     }),

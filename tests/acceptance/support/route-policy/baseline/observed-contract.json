@@ -6968,6 +6968,62 @@
         ]
       }
     },
+    "GET /api/tenant/esign/scenes/entry": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "fieldsOut": [
+          "trim()"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ESignSettings:view"
+        ]
+      }
+    },
+    "GET /api/tenant/esign/scenes/offer": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "fieldsOut": [
+          "trim()"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ESignSettings:view"
+        ]
+      }
+    },
     "GET /api/tenant/esign/scenes/transfer": {
       "edge": {
         "anonymous": {
@@ -31062,6 +31118,78 @@
         ],
         "objectOp": [
           "TenantBase.EmploymentSettings:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/esign/scenes/entry": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trim()"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ESignSettings:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/esign/scenes/offer": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trim()"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ESignSettings:update"
         ]
       }
     },

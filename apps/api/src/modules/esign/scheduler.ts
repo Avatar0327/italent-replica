@@ -1,6 +1,6 @@
 /** F-481 §5.4：按任务快照过期 / 提醒；租户目录分页，单任务事务，失败下轮重试。 */
-import { and, eq, esignTaskFiles, esignTasks, sql, withPlatform, withTenant, type Db, type Tx } from '@italent/db';
-import { esignFileLabel, ESIGN_NOTICE_BUSINESS_TYPE, ESIGN_REMIND_TEMPLATE, ESIGN_SCENE_LABEL } from '@italent/domain';
+import { and, eq, esignTasks, sql, withPlatform, withTenant, type Db, type Tx } from '@italent/db';
+import { ESIGN_NOTICE_BUSINESS_TYPE, ESIGN_REMIND_TEMPLATE } from '@italent/domain';
 import { classifyCommandFailure } from '../../audit/failures.js';
 import { runCommand } from '../../commands.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
@@ -11,6 +11,8 @@ import type { EmploymentContext } from '../employment/types.js';
 import { expireSignTask } from './expiry.js';
 import { simulatedProvider } from './provider.js';
 import type { SignTask } from './sign-events.js';
+import { reminderPayload } from './notice-payload.js';
+import { signTaskSourceAudit } from './task-source.js';
 
 const PAGE_SIZE = 100;
 const DAY_MS = 24 * 60 * 60_000;
@@ -136,11 +138,6 @@ async function runCandidate(db: Db, tenant: Tenant, candidate: Candidate, kind: 
 
 async function remind(tx: Tx, ctx: EmploymentContext, task: SignTask) {
   const recipientUserId = task.employeeSignerUserId!;
-  const files = await tx
-    .select({ name: esignTaskFiles.templateName })
-    .from(esignTaskFiles)
-    .where(and(eq(esignTaskFiles.tenantId, ctx.tenantId), eq(esignTaskFiles.taskId, task.id)))
-    .orderBy(esignTaskFiles.seq);
   await tx
     .update(esignTasks)
     .set({
@@ -156,7 +153,7 @@ async function remind(tx: Tx, ctx: EmploymentContext, task: SignTask) {
     'esign-task',
     task.id,
     { expiryRemindedAt: null },
-    { expiryRemindedAt: ctx.now.toISOString(), recipientUserId, method: 'expiry_remind' },
+    { ...signTaskSourceAudit(task), expiryRemindedAt: ctx.now.toISOString(), recipientUserId, method: 'expiry_remind' },
     undefined,
     undefined,
     { employeeId: task.employeeId, orgId: task.ownerDepartmentId },
@@ -174,11 +171,7 @@ async function remind(tx: Tx, ctx: EmploymentContext, task: SignTask) {
     {
       recipientUserId,
       templateCode: ESIGN_REMIND_TEMPLATE,
-      payload: {
-        场景: ESIGN_SCENE_LABEL,
-        文件名称: esignFileLabel(files.map((f) => f.name)),
-        截止时间: deadlineLabel(task.expiresAt, ctx.timezone),
-      },
+      payload: await reminderPayload(tx, ctx.tenantId, task, () => deadlineLabel(task.expiresAt, ctx.timezone)),
     },
   );
 }
