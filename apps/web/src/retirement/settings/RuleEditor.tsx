@@ -102,7 +102,7 @@ function conditions(): FormField[] {
     control: <ConditionSelect field={key} />,
     access,
     rules: [
-      { type: 'array', min: 1, required: key === RETIREMENT_REQUIRED_CONDITION, message: s.required },
+      ...(key === RETIREMENT_REQUIRED_CONDITION ? [{ ...required, type: 'array' as const, min: 1 }] : []),
       { type: 'array', defaultField: { type: 'string', max: 100, whitespace: true } },
     ],
   }));
