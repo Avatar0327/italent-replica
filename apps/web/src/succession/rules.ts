@@ -138,22 +138,53 @@ export function preferenceBody(full: Record<string, unknown>, edited: Record<str
     showPositionsWithoutSuccessor: !!merged.showPositionsWithoutSuccessor,
   };
 }
-/** 地图结果键缺席时按首次赋值处理；投影存在时，字段权限裁剪的版本保持缺失。 */
-export function assignSnapshot(id: string, level: LevelResult | null | undefined) {
+/** position-map.ts 的默认色投影不含 revision；只有该字段可见时，才可用投影形状区分已有行。 */
+function isDefaultPositionRisk(id: string, level: LevelResult, fields: readonly string[]) {
+  if (!fields.includes('revision')) return false;
+  const shape = {
+    positionId: level.positionId === id,
+    levelId: level.levelId === null,
+    levelName: level.levelName === null,
+    levelColor: typeof level.levelColor === 'string',
+    computedAt: level.computedAt === null,
+    resultAsOf: level.resultAsOf === null,
+  };
+  // resultAsOf 跟随 computedAt 披露；任何额外的键都说明这不是默认投影（例如 id、method）。
+  const projected = Object.entries(shape).filter(([key]) => fields.includes(key === 'resultAsOf' ? 'computedAt' : key));
+  return (
+    projected.length > 0 && Object.keys(level).length === projected.length && projected.every(([, match]) => match)
+  );
+}
+
+/** 只有职位地图需要结合风险结果字段权限识别默认投影；组织地图的结果带服务端版本。 */
+export function assignSnapshot(
+  id: string,
+  level: LevelResult | null | undefined,
+  positionRiskFields: readonly string[] = [],
+) {
   const levelId = level?.levelId;
+  const first =
+    level === undefined ||
+    (level !== null && level.revision === undefined && isDefaultPositionRisk(id, level, positionRiskFields));
   return {
     id,
-    revision: level === undefined ? 0 : level?.revision,
+    revision: first ? 0 : level?.revision,
     values: { mode: levelId ? 'manual' : 'rule', levelId: levelId ?? undefined },
   };
 }
 
 /** 赋值没有单条读取接口：重读整张地图，按节点 ID 取结果投影。 */
-export function assignLatest(map: MapResult, id: string, kind: 'position' | 'org') {
+export function assignLatest(
+  map: MapResult,
+  id: string,
+  kind: 'position' | 'org',
+  positionRiskFields?: readonly string[],
+) {
   const items = map.items.flatMap((item) => [item, ...(item.keyPositions ?? [])]);
   const item = items.find((entry) => entry.id === id);
   if (!item) throw new Error('assignMissing');
-  return assignSnapshot(id, kind === 'position' ? item.risk : item.health);
+  const fields = kind === 'position' && map.items.includes(item) ? positionRiskFields : undefined;
+  return assignSnapshot(id, kind === 'position' ? item.risk : item.health, fields);
 }
 
 /** 组织地图：关键职位挂在所属组织下，作为子卡片（接口 keyPositions[]，字段受地图对象权限控制）。 */
