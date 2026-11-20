@@ -88,6 +88,41 @@ test('AC-FE-F534-04 有版本查看权时，职位默认色卡片首次手动指
   await expect(dialog).toBeHidden();
 });
 
+for (const { name, response } of [
+  { name: '字符串', response: { viewableFields: storedRiskFields.join(',') } },
+  { name: '对象', response: { viewableFields: { revision: true } } },
+  { name: '含非字符串元素的数组', response: { viewableFields: [...storedRiskFields, 0] } },
+  { name: '字段缺失', response: {} },
+  { name: '响应为 null', response: null },
+]) {
+  test(`AC-FE-F534-05 保存前权限读取异常（${name}）：不发 PUT，恢复后保存一次`, async ({ page }) => {
+    const objectCode = 'Succession.RiskResult';
+    await objectAccess(page, objectCode, storedRiskFields, ['levelId']);
+    await mockPositionRisk(page, () => defaultPositionRisk);
+    const puts: { revision?: string; body: unknown }[] = [];
+    await page.route(`**/succession/risk-results/${ids.position}`, (route) => {
+      const request = route.request();
+      puts.push({ revision: ifMatch(request), body: request.postDataJSON() });
+      return route.fulfill({ json: riskResult(1, ids.level) });
+    });
+    await openMap(page, '职位继任地图');
+    const dialog = await openRiskDialog(page);
+    await dialog.getByRole('radio', { name: '手动赋值' }).check();
+    await choose(page, dialog, '指定风险等级', '高风险');
+    // 首开已用正常权限。仅替换这次保存前的权限重读。
+    await page.route(`**/permission/me/objects/${objectCode}`, (route) => route.fulfill({ json: response }));
+    await button(dialog, '保存').click();
+    await expect.poll(async () => puts.length > 0 || (await dialog.getByRole('alert').isVisible())).toBe(true);
+    expect(puts).toEqual([]);
+    await expect(dialog.getByText(assignHint)).toBeVisible();
+
+    await objectAccess(page, objectCode, storedRiskFields, ['levelId']);
+    await saveAgain(dialog);
+    await expect(dialog).toBeHidden();
+    expect(puts).toEqual([{ revision: '0', body: { levelId: ids.level } }]);
+  });
+}
+
 for (const { name, risk, revision } of [
   { name: '结果键缺席', risk: undefined, revision: '0' },
   { name: '正常版本', risk: riskResult(3, ids.level), revision: '3' },

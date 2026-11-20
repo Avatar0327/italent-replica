@@ -244,6 +244,19 @@ describe('AC-FE-R3d1 真实回执形状（第 2 轮）', () => {
     const orgMap = { items: [{ id: 'o', name: '合成部门', parentId: null, keyPositions: [position] }] };
     expect(assignLatest(orgMap, 'p', 'position', fields).revision).toBeUndefined();
   });
+
+  it.each([
+    ['字符串', 'levelId,revision'],
+    ['对象', { levelId: true, revision: true }],
+    ['含非字符串元素的数组', ['levelId', 'revision', 0]],
+  ])('AC-FE-F534-05 %s权限字段不能作为首开或重读的版本证据', (_, raw) => {
+    const risk = { levelId: null };
+    const map = { items: [{ id: 'p', name: '合成职位', parentId: null, risk }] };
+    // 模拟未经校验的接口值，类型标注本身不能证明响应有效。
+    const fields = raw as unknown as readonly string[];
+    expect(assignSnapshot('p', risk, fields).revision).toBeUndefined();
+    expect(assignLatest(map, 'p', 'position', fields).revision).toBeUndefined();
+  });
 });
 
 describe('AC-FE-R3d1 地图数据与规则展示（第 2 轮）', () => {
