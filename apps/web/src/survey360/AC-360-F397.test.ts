@@ -265,11 +265,15 @@ function heldSaveFixture() {
   const options = ['option', 'other'].map((id) => ({ id, label: `合成选项${id}`, remarkRequired: false }));
   const item = { id: 'item', text: '合成题目', options };
   let gate = Promise.resolve();
+  let reading = Promise.resolve();
   const fixture = {
     release: () => undefined as void,
+    releaseRead: () => undefined as void,
     puts: 0,
     revisions: [] as number[],
     hold: () => void (gate = new Promise<void>((resolve) => (fixture.release = resolve))),
+    /** 暂缓之后的答卷 GET：返回放行时的服务端答卷。 */
+    holdRead: () => void (reading = new Promise<void>((resolve) => (fixture.releaseRead = resolve))),
   };
   vi.stubGlobal(
     'fetch',
@@ -282,13 +286,15 @@ function heldSaveFixture() {
           session: randomBytes(32).toString('base64url'),
           expiresAt: new Date(Date.now() + 60_000).toISOString(),
         });
-      if (url === task && method === 'GET')
+      if (url === task && method === 'GET') {
+        await reading;
         return Response.json({
           activity: { name: '合成活动', status: 'enabled' },
           object: { name: '合成对象' },
           questionnaire: { id: 'questionnaire', name: '合成套卷', type: 'key_behavior', guide: null, items: [item] },
           sheet,
         });
+      }
       if (url === task) {
         fixture.puts += 1;
         const expected = Number(headers.get('if-match'));
@@ -325,8 +331,12 @@ async function pressButton(label: string) {
   await settle();
 }
 const radio = (index = 0) => host.querySelectorAll<HTMLInputElement>('input[type="radio"]')[index]!;
-
-it('AC-360-F397 保存在途时退出并重登、重开同一答卷：继承的保存未确认前只读，原回执到达后恢复可写', async () => {
+const autosaveTwice = () =>
+  act(async () => {
+    vi.advanceTimersByTime(AUTOSAVE_MS * 2);
+  });
+/** 选答案、立即保存并暂缓回执，退出、重登同一评价者、重开同一答卷（GET 返回保存前的 revision 0）。 */
+async function reopenWithHeldSave() {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   const fixture = heldSaveFixture();
   await act(async () => root.render(h(App)));
@@ -343,6 +353,11 @@ it('AC-360-F397 保存在途时退出并重登、重开同一答卷：继承的�
   // GET 已完成，原保存仍未返回：恢复原命令的答案，但不可再作答。
   expect(radio().checked).toBe(true);
   expect(radio().disabled).toBe(true);
+  return fixture;
+}
+
+it('AC-360-F397 保存在途时退出并重登、重开同一答卷：继承的保存未确认前只读，原回执到达后恢复可写', async () => {
+  const fixture = await reopenWithHeldSave();
   await act(async () => fixture.release());
   await settle();
   await settle();
@@ -350,9 +365,7 @@ it('AC-360-F397 保存在途时退出并重登、重开同一答卷：继承的�
   expect(radio().disabled).toBe(false);
   expect(fixture.puts).toBe(1);
   // 第 6 轮审查 P2-1：原回执到达后不做任何输入，跨过自动保存周期，不得以旧 revision 再发 PUT、不得再次锁定。
-  await act(async () => {
-    vi.advanceTimersByTime(AUTOSAVE_MS * 2);
-  });
+  await autosaveTwice();
   await settle();
   expect(fixture.revisions).toEqual([0]);
   expect(radio().checked).toBe(true);
@@ -366,6 +379,40 @@ it('AC-360-F397 保存在途时退出并重登、重开同一答卷：继承的�
   expect(radio(1).disabled).toBe(false);
   await act(async () => fixture.release());
   await settle();
+  expect(radio(1).checked).toBe(true);
+  expect(radio(1).disabled).toBe(false);
+});
+
+// 原回执已落定、本挂载确认新基线的 GET 还未返回：这段时间里跨过自动保存周期也不发 PUT，GET 返回后也不补发。
+it('AC-360-F397 重开继承保存：原回执后新基线确认前跨过自动保存周期，不重复保存', async () => {
+  const fixture = await reopenWithHeldSave();
+  fixture.holdRead();
+  await act(async () => fixture.release());
+  await settle();
+  await autosaveTwice();
+  await settle();
+  await act(async () => fixture.releaseRead());
+  await settle();
+  await autosaveTwice();
+  await settle();
+  expect(fixture.revisions).toEqual([0]);
+  expect(radio().checked).toBe(true);
+  expect(radio().disabled).toBe(false);
+});
+
+// 同一时间段内新输入并显式保存：等新基线确认后再发，带原回执之后的 revision，本页输入保留（DEC-936）。
+it('AC-360-F397 重开继承保存：新基线确认前的新输入与显式保存，确认后带回执之后的 revision 发出', async () => {
+  const fixture = await reopenWithHeldSave();
+  fixture.holdRead();
+  await act(async () => fixture.release());
+  await settle();
+  await act(async () => radio(1).click());
+  await settle();
+  await pressButton('立即保存');
+  expect(fixture.revisions).toEqual([0]);
+  await act(async () => fixture.releaseRead());
+  await settle();
+  expect(fixture.revisions).toEqual([0, 1]);
   expect(radio(1).checked).toBe(true);
   expect(radio(1).disabled).toBe(false);
 });
