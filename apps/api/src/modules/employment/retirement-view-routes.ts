@@ -10,7 +10,7 @@ import {
   tenantLocalDate,
 } from '@italent/domain';
 import { withTenant } from '@italent/db';
-import type { Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
@@ -24,13 +24,16 @@ import { day, parse, requireViewableExitFilters, viewableIn } from './exit-route
 import { inFlightApplications } from './exit-gate.js';
 import { normalizedUuid } from './fields.js';
 import { loadEmploymentBusiness } from './read-model.js';
+import { retirementRestoreActions, retirementRestoreContext } from './retirement-actions.js';
 import {
   listRetirementBills,
   listRetirementPersons,
   loadRetirementDetail,
   RETIREMENT_CANCELLED_VIEW,
+  retirementRehireDetail,
   trimRetirementDetail,
 } from './retirement-views.js';
+import type { EmploymentContext } from './types.js';
 
 const FALLBACK_UPCOMING_DAYS = 30;
 const IN_FLIGHT_STATES = ['draft', 'in_review', 'approved', 'rejected'] as const;
@@ -73,6 +76,28 @@ function shownRetirement<D extends object>(
   };
 }
 
+async function projectRetirementDetail(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  detail: NonNullable<Awaited<ReturnType<typeof loadRetirementDetail>>>,
+  read: EmploymentRead,
+  detailRequest?: Context<TenantEnv>,
+) {
+  const { shown, show, contentView } = shownRetirement(detail, read, await viewableIn(deps, ctx));
+  const restore =
+    detailRequest && detail.cancellation && show.employment('status')
+      ? await retirementRestoreContext(detailRequest, deps)
+      : undefined;
+  const projected = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const actions = await retirementRestoreActions(tx, restore, detail);
+    // F-476 P4：办理份未冻结返聘计划，不得从现值回填，也不得借用已办读取的数据范围例外。
+    const { rehire, contract } = read.frozen ? {} : await retirementRehireDetail(tx, deps, ctx, detail, show);
+    const payload = rehire === undefined ? shown : { ...shown, rehire };
+    return trimRetirementDetail({ ...payload, ...actions }, { ...show, contract });
+  });
+  return { ...projected, contentView };
+}
+
 function registerRetirementInFlight(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // F-410：员工当前在途的退休单（草稿 / 审批中 / 已批准 / 已驳回，与互斥门禁同一集合）；没有则 item 为 null。
   // 入口以此接续草稿，不再只信页面缓存（DEC-727）。员工范围外与不存在同一个 404；单据内容走详情同一裁剪。
@@ -95,8 +120,7 @@ function registerRetirementInFlight(router: Hono<TenantEnv>, deps: TenantRouteDe
         : null;
     if (!detail || !read) return c.json({ item: null });
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
-    const { shown, show, contentView } = shownRetirement(detail, read, await viewableIn(deps, ctx));
-    return c.json({ item: { ...trimRetirementDetail(shown, show), contentView } });
+    return c.json({ item: await projectRetirementDetail(deps, ctx, detail, read) });
   });
 }
 
@@ -119,6 +143,10 @@ export function registerRetirementViews(router: Hono<TenantEnv>, deps: TenantRou
       ...(query.departmentId ? { departmentIds: [query.departmentId] } : {}),
     };
     requireViewableExitFilters(requested, show);
+    const restore =
+      show.employment('status') && (query.view === 'all' || query.view === RETIREMENT_CANCELLED_VIEW)
+        ? await retirementRestoreContext(c, deps)
+        : undefined;
     const asOf = query.asOf ?? tenantLocalDate(ctx.now, ctx.timezone);
     const at = { asOf, timezone: ctx.timezone };
     const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
@@ -150,7 +178,7 @@ export function registerRetirementViews(router: Hono<TenantEnv>, deps: TenantRou
         );
         return { ...persons, ...(query.view === 'upcoming' ? { upcomingDays } : {}) };
       }
-      return listRetirementBills(tx, ctx.tenantId, { view: query.view, at, page, show, filter }, ctx.scope);
+      return listRetirementBills(tx, ctx.tenantId, { view: query.view, at, page, show, filter }, ctx.scope, restore);
     });
     return c.json({
       ...result,
@@ -160,6 +188,10 @@ export function registerRetirementViews(router: Hono<TenantEnv>, deps: TenantRou
       hasDataPermission: ctx.scope?.hasDataPermission ?? true,
     });
   });
+  registerRetirementDetail(router, deps);
+}
+
+function registerRetirementDetail(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // 详情：范围外 / 不存在 / 不是退休单同一个 404；先按任职业务口径（DEC-177）确认可见，再取退休详情
   router.get('/retirements/:id', async (c) => {
     const id = uuidParam(c);
@@ -175,7 +207,6 @@ export function registerRetirementViews(router: Hono<TenantEnv>, deps: TenantRou
     );
     if (!detail) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
-    const { shown, show, contentView } = shownRetirement(detail, read, await viewableIn(deps, ctx));
-    return c.json({ ...trimRetirementDetail(shown, show), contentView });
+    return c.json(await projectRetirementDetail(deps, ctx, detail, read, c));
   });
 }

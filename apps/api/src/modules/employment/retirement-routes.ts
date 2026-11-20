@@ -34,6 +34,7 @@ import {
 import { previewExit } from './exit-preview.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import type { BusinessWriteGuard } from './entry-routes.js';
+import { requireRetirementRestorePermission } from './retirement-actions.js';
 import { assertRetirementFields, assertRetirementImmutableKeys } from './retirement-application.js';
 import { rehireGuard, requireRehireWrite, resolveRehirePlan, splitRehireOptions } from './retirement-rehire.js';
 import { exitCommandGuard, exitEditGuard } from './replay-guard.js';
@@ -183,7 +184,7 @@ function registerRetirementCancel(
   router.post('/retirements/:id/restore', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.update', revision(c));
-    await requireEmploymentWrite(ctx, 'update', {}, RETIREMENT_BUTTONS.cancel, undefined, { commandOnly: true });
+    await requireRetirementRestorePermission(ctx);
     await authorizeBusinessWrite(deps, ctx, id);
     await requireExitBusiness(deps, ctx, id, KIND);
     return rejectRestore(KIND);
