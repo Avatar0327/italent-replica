@@ -29,6 +29,7 @@ import {
   type PendingContract,
   type PendingContractNotice,
 } from './entry-pending-contract.js';
+import { bumpAndNotifyEntry } from './record-edit.js';
 import { loadPendingProbation, loadPendingProbationState, savePendingProbation } from './entry-probation.js';
 import { bumpEmploymentBusiness, lockEmploymentEmployee, type LockedEmploymentBusiness } from './record-store.js';
 import { transitionEmployment } from './transitions.js';
@@ -324,7 +325,9 @@ export async function editPendingEntry(
     ).business;
   const before = await loadPendingProbation(tx, ctx, recordId);
   await savePendingProbation(tx, ctx, record.employeeId, recordId, input.probation);
-  await bumpEmploymentBusiness(tx, ctx, business);
+  // F-505 设计 §6.2：试用期实际变化才是来源变化（同 ID 原地改），同事务发 changed；值没变只 +1 revision，不发
+  if (before === input.probation) await bumpEmploymentBusiness(tx, ctx, business);
+  else await bumpAndNotifyEntry(tx, ctx, business, record);
   await auditEmployment(
     tx,
     ctx,

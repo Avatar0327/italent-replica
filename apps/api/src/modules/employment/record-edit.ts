@@ -160,7 +160,7 @@ function customAudit(fields: CustomFields): Record<string, CustomFields[string]>
 }
 
 /** 业务头 revision +1；F-505：待入职记录原地编辑（同 ID、revision 变）= 来源在可签状态下改了内容，同事务发 changed 事件。 */
-async function bumpAndNotifyEntry(
+export async function bumpAndNotifyEntry(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
