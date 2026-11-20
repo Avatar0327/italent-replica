@@ -15,6 +15,8 @@ export const GRAPH: Graph = {
     '#ESIGN_REVOKED_INITIATOR_TEMPLATE',
   ],
   'packages/domain/src/esign/notice-templates.ts#renderEsignNotice': ['#ESIGN_NOTICE_TEMPLATES', '#fill'],
+  'packages/domain/src/esign/source-events.ts#classifyOfferChange': ['#isOfferSignable'],
+  'packages/domain/src/esign/source-events.ts#isOfferSignable': ['#SIGNABLE_OFFER_STATUSES'],
   'packages/domain/src/esign/variables.ts#renderTemplateBody': [
     '#ESIGN_EMPTY_VALUE',
     '#ESIGN_TEMPLATE_VARIABLES',
