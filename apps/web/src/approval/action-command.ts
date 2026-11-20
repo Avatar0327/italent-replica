@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useApiClient } from '../foundation/index.js';
-import { queryCommandResult } from '../foundation/forms/command-result.js';
+import { queryCommandResult, type CommandResult } from '../foundation/forms/command-result.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
 import { lockedContext, type Values } from '../foundation/forms/store.js';
 import { acceptReceipt, approvalFailure, approvalRequest, readApproval } from './api.js';
 import { approvalNotice, confirmNotice } from './before-approve.js';
 import { actionTask, editFields, editValues } from './edit-model.js';
-import { ApiError } from '../foundation/client.js';
+import { ApiError, type ApiClient } from '../foundation/client.js';
 import { messages as m } from './messages.js';
 import { useApprovalCommand } from './commands.js';
 import type { ApprovalAction, ApprovalDetail, ApprovalRow } from './types.js';
@@ -21,6 +21,25 @@ type ActionContext = {
   /** F-478 S5：所选出口（接口 exits.code）；旧形状兜底时没有，请求体也不带。 */
   exit?: string;
 };
+/**
+ * F-120 成功分支核对：审批台账只存 { instanceId }，摘要的实例 ID / 版本按真实投影为 null（AC-FE-F110-14）。
+ * 以命令 ID 匹配的成功结论为准，摘要有值才核对；再读回槽内原实例：实例一致、版本推进过发出的版本
+ * （同 acceptReceipt）才算确认。催办不推进版本（同 parseUrgeReceipt），不低于发出的版本即可。
+ */
+async function confirmResult(
+  api: ApiClient,
+  instanceId: string,
+  sent: { revision?: number; urge: boolean },
+  result: CommandResult,
+): Promise<ApprovalDetail> {
+  const floor = sent.revision ?? -1;
+  const advanced = (revision: number) => (sent.urge ? revision >= floor : revision > floor);
+  if (result.businessId !== null && result.businessId !== instanceId) throw new Error(kernel.invalidReceipt);
+  if (result.revision !== null && !advanced(result.revision)) throw new Error(kernel.invalidReceipt);
+  const detail = await readApproval(api, instanceId);
+  if (detail.id !== instanceId || !advanced(detail.revision)) throw new Error(kernel.invalidReceipt);
+  return detail;
+}
 /** 各动作可编辑的字段：意见、转交对象；撤销不带字段（后端 strictObject 只收这些键）。 */
 export const actionFields: Record<ApprovalAction, readonly string[]> = {
   approve: ['comment'],
@@ -52,14 +71,12 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
         values: context && context.action !== 'urge' ? editValues(detail, context.action) : {},
       };
     });
-  // F-120 成功分支：结果须落在本实例且版本推进过发出的版本（同 acceptReceipt），再读回详情交给页面。
   // 已确认成功即关闭弹窗、清槽：原动作已完成，不能在同一弹窗里再起一条命令。
   const queryResult = async () => {
+    const urge = pending?.action === 'urge';
     const result = await command.recoverResult((sent) =>
       queryCommandResult(api, sent.id, async (result) => {
-        if (result.businessId !== row.id || result.revision === null || result.revision <= (sent.revision ?? -1))
-          throw new Error(kernel.invalidReceipt);
-        onRead(await readApproval(api, row.id));
+        onRead(await confirmResult(api, row.id, { revision: sent.revision, urge }, result));
         return row.id;
       }),
     );
