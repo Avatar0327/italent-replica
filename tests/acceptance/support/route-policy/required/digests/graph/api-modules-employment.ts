@@ -1706,7 +1706,9 @@ export const GRAPH: Graph = {
     '#DEFAULT_CANCEL_REASON',
     '#assertRemark',
     '#logEntryAction',
+    'apps/api/src/modules/employment/entry-source-events.ts#entrySourceEvents',
     'apps/api/src/modules/employment/rehire-account.ts#withdrawRehireAccount',
+    'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
   ],
   'apps/api/src/modules/employment/entry-actions.ts#cancelPendingEntryForOfferRefusal': [
@@ -1725,6 +1727,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation',
     'apps/api/src/modules/employment/entry-probation.ts#savePendingProbation',
     'apps/api/src/modules/employment/fields.ts#businessDate',
+    'apps/api/src/modules/employment/record-edit.ts#bumpAndNotifyEntry',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
@@ -1952,6 +1955,8 @@ export const GRAPH: Graph = {
     '#prepareEntryAction',
     'apps/api/src/modules/employment/replay-guard.ts#pendingActionGuard',
   ],
+  'apps/api/src/modules/employment/entry-source-events.ts#entrySourceEvents': ['#publicContext', '#subscribers'],
+  'apps/api/src/modules/employment/entry-source-events.ts#subscribers': ['#registry'],
   'apps/api/src/modules/employment/entry-views.ts#entryViewPredicate': [
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
@@ -6429,6 +6434,11 @@ export const GRAPH: Graph = {
     '#columnName',
     'apps/api/src/modules/employment/types.ts#PRESET_FIELD_NAMES',
   ],
+  'apps/api/src/modules/employment/record-edit.ts#bumpAndNotifyEntry': [
+    'apps/api/src/modules/employment/employee-status.ts#isPendingEntryRecord',
+    'apps/api/src/modules/employment/entry-source-events.ts#entrySourceEvents',
+    'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
+  ],
   'apps/api/src/modules/employment/record-edit.ts#editEmploymentRecord': [
     'apps/api/src/modules/employment/activation-checks.ts#assertEstablishmentCapacity',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -6441,10 +6451,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/forward-update.ts#forwardUpdateEmployment',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
+    '#bumpAndNotifyEntry',
     '#customAudit',
     '#editedRecordReporting',
     '#editedValues',
-    'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
     'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailable',
     'apps/api/src/modules/employment/references.ts#validateEmploymentReferences',
@@ -8349,6 +8359,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/transitions.ts#detachedSnapshot': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/transitions.ts#emitEntryDeleted': [
+    'apps/api/src/modules/employment/entry-source-events.ts#entrySourceEvents',
+  ],
   'apps/api/src/modules/employment/transitions.ts#exitGateFor': [
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitGate',
@@ -8362,6 +8375,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/transitions.ts#transitionEmployment': [
     'apps/api/src/modules/employment/activation-checks.ts#assertEstablishmentCapacity',
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/late-transfer.ts#postponeLateTransfer',
@@ -8381,6 +8395,7 @@ export const GRAPH: Graph = {
     '#assertSubmitPreconditions',
     '#assertTransition',
     '#deleteEmploymentBusiness',
+    '#emitEntryDeleted',
     '#exitGateFor',
     '#sealOnSubmit',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',

@@ -15,7 +15,8 @@ import { sql, type Db, type Tx } from '@italent/db';
 import { resolveLateExecution, tenantLocalDate } from '@italent/domain';
 import { runCommand, type CommandResult } from '../../commands.js';
 import { AppError } from '../../errors.js';
-import { assertRegularizationNotPropagated } from './employee-status.js';
+import { ENTRY_KINDS, assertRegularizationNotPropagated } from './employee-status.js';
+import { entrySourceEvents } from './entry-source-events.js';
 import { releasePendingContract } from './entry-pending-contract.js';
 import { clearPendingProbation } from './entry-probation.js';
 import { assertProbationProcessesIdle } from './probation-guard.js';
@@ -234,6 +235,8 @@ export async function transitionEmployment(
     ? await reverseCarriedEstablishment(tx, ctx, business.id)
     : [];
   if (input.action === 'delete') {
+    // F-505：入职类业务（待入职）被物理删除——手动删除、改期 / 编辑替换旧记录、Offer 失效删待入职都经此一处
+    if (ENTRY_KINDS.includes(business.payload.kind)) await emitEntryDeleted(tx, ctx, business.id);
     const previous = await deleteEmploymentBusiness(tx, ctx, business, input.cancelling === true, input.restoreUntil);
     const { kind, effectiveDate } = business.payload;
     await personnelHooks.sync(tx, ctx, business.employeeId, business.id, kind, effectiveDate);
@@ -556,4 +559,8 @@ function deletionSnapshot(raw: Record<string, unknown>): Record<string, unknown>
   const { customFields, ...snapshot } = camelRow(raw);
   const custom = customFields as Readonly<Record<string, unknown>>;
   return { ...snapshot, ...Object.fromEntries(Object.entries(custom).map(([id, value]) => [`custom:${id}`, value])) };
+}
+
+async function emitEntryDeleted(tx: Tx, ctx: EmploymentContext, id: string) {
+  await entrySourceEvents.emit(tx, ctx, { source: 'entry', sourceId: id, change: 'deleted', revision: null });
 }

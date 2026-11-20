@@ -17,6 +17,7 @@ import {
 import { AppError } from '../../errors.js';
 import { auditEmployment } from './context.js';
 import { entryOfferHooks } from './entry-offer-hooks.js';
+import { entrySourceEvents } from './entry-source-events.js';
 import { changePendingEntryStatus, lockPendingEntry } from './employee-status.js';
 import { businessDate } from './fields.js';
 import { withdrawRehireAccount } from './rehire-account.js';
@@ -28,6 +29,7 @@ import {
   type PendingContract,
   type PendingContractNotice,
 } from './entry-pending-contract.js';
+import { bumpAndNotifyEntry } from './record-edit.js';
 import { loadPendingProbation, loadPendingProbationState, savePendingProbation } from './entry-probation.js';
 import { bumpEmploymentBusiness, lockEmploymentEmployee, type LockedEmploymentBusiness } from './record-store.js';
 import { transitionEmployment } from './transitions.js';
@@ -101,6 +103,13 @@ async function cancelEntryCore(
     { entryStatus: before.entryStatus },
     { entryStatus: record.entryStatus, reason, remark: input.remark ?? null },
   );
+  // F-505：取消入职 = 来源离开可签；Offer 拒绝联动取消与手动取消同走本内核，已取消的幂等返回不发事件
+  await entrySourceEvents.emit(tx, ctx, {
+    source: 'entry',
+    sourceId: recordId,
+    change: 'left_signable',
+    revision: (await requireSavedBusiness(tx, ctx, recordId)).revision,
+  });
   return { record, changed: true };
 }
 
@@ -317,7 +326,9 @@ export async function editPendingEntry(
     ).business;
   const before = await loadPendingProbation(tx, ctx, recordId);
   await savePendingProbation(tx, ctx, record.employeeId, recordId, input.probation);
-  await bumpEmploymentBusiness(tx, ctx, business);
+  // F-505 设计 §6.2：试用期实际变化才是来源变化（同 ID 原地改），同事务发 changed；值没变只 +1 revision，不发
+  if (before === input.probation) await bumpEmploymentBusiness(tx, ctx, business);
+  else await bumpAndNotifyEntry(tx, ctx, business, record);
   await auditEmployment(
     tx,
     ctx,
