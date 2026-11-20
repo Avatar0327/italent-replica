@@ -14,6 +14,10 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionProvider, type Session } from '../foundation/Session.js';
 import { TransferApplication } from '../self-service/shared/TransferApplication.js';
+import { installWebLocks } from '../../../../tests/acceptance/support/web-locks.js';
+
+// F-110 第 3 轮：调动 / 审批命令登记恢复记录须拿跨标签页锁，测试环境装一份 Web Locks。
+installWebLocks();
 
 const EMPLOYEE = '26000000-0000-4000-8000-000000000001';
 const DEPARTMENT = '26000000-0000-4000-8000-000000000002';
