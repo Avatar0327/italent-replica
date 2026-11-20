@@ -65,10 +65,10 @@ export function sharedRecovery(name: string): CommandRecovery {
    * 不会两页都读到空记录后各自写入并发出。锁按存储键整份加（记录是一个数组，按条目 / 槽分锁仍会互相覆盖）；
    * 条目键与槽已含租户与身份，存储键按业务分开。浏览器不支持时拿不到确定占用，一律拒绝登记（不发出），不退回无锁读写。
    */
-  const exclusive = <T>(run: () => T): Promise<T> => {
+  const exclusive = async <T>(run: () => T): Promise<T> => {
     const locks = globalThis.navigator?.locks;
-    if (!locks) return Promise.reject(new Error('cross-tab lock unavailable'));
-    return locks.request(storageKey, { mode: 'exclusive' }, run) as Promise<T>;
+    if (!locks) throw new Error('cross-tab lock unavailable');
+    return locks.request(storageKey, { mode: 'exclusive' }, run);
   };
   return {
     load() {
@@ -85,15 +85,17 @@ export function sharedRecovery(name: string): CommandRecovery {
         write([...records.filter((item) => item.key !== record.key), record]);
       });
     },
-    remove(key, commandId) {
-      // 只删本命令的记录：同条目后来的命令、别页刚登记的命令都不受影响。
-      return exclusive(() => {
-        const records = read();
-        const kept = records.filter((item) => item.key !== key || item.commandId !== commandId);
-        if (kept.length !== records.length) write(kept);
-      }).catch(() => {
+    async remove(key, commandId) {
+      try {
+        // 只删本命令的记录：同条目后来的命令、别页刚登记的命令都不受影响。
+        await exclusive(() => {
+          const records = read();
+          const kept = records.filter((item) => item.key !== key || item.commandId !== commandId);
+          if (kept.length !== records.length) write(kept);
+        });
+      } catch {
         // 存储损坏或不可用：内存里的结果已落定；损坏的存储保持原样，下次保存仍会拒绝发出。
-      });
+      }
     },
     watch(listener) {
       if (typeof window === 'undefined') return () => {};
