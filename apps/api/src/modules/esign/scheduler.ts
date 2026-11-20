@@ -32,7 +32,8 @@ function report(error: unknown, onError: Options['onError'], scope: object) {
 
 /** 沿用现有调度器：平台事务只枚举启用租户，业务读写及命令台账始终处于租户 RLS 下。 */
 export async function runESignJobs(db: Db, options: Options = {}) {
-  const now = (options.clock ?? (() => new Date()))();
+  const clock = options.clock ?? (() => new Date());
+  const now = clock();
   let tenantCursor: string | null = null;
   const counts = { expired: 0, reminded: 0, skipped: 0, failed: 0 };
   for (;;) {
@@ -51,7 +52,7 @@ export async function runESignJobs(db: Db, options: Options = {}) {
             const candidates = await dueCandidates(db, tenant.id, kind, now, cursor);
             for (const candidate of candidates) {
               try {
-                const result = await runCandidate(db, tenant, candidate, kind, now);
+                const result = await runCandidate(db, tenant, candidate, kind, now, clock);
                 counts[result] += 1;
               } catch (error) {
                 // runCommand 已回查台账并记录分类失败审计；这里只报调度日志，不重复记失败。
@@ -90,7 +91,7 @@ async function dueCandidates(db: Db, tenantId: string, kind: Kind, now: Date, cu
   );
 }
 
-async function runCandidate(db: Db, tenant: Tenant, candidate: Candidate, kind: Kind, now: Date) {
+async function runCandidate(db: Db, tenant: Tenant, candidate: Candidate, kind: Kind, now: Date, clock: () => Date) {
   // DEC-052：提醒按任务 + 动作 + 接收人去重；任务固定过期时刻，过期动作一生只执行一次。
   const commandId =
     kind === 'expired'
@@ -115,18 +116,20 @@ async function runCandidate(db: Db, tenant: Tenant, candidate: Candidate, kind: 
         .for('update');
       let outcome: 'expired' | 'reminded' | 'skipped' = 'skipped';
       if (task?.status === 'signing') {
+        // 扫描时间只用于选候选，等待行锁期间可能已跨过提醒截止时间。
+        const execution = { ...ctx, now: clock() };
         if (kind === 'expired') {
-          const after = await expireSignTask(tx, ctx, task.id);
+          const after = await expireSignTask(tx, execution, task.id);
           if (after.status === 'expired') outcome = 'expired';
         } else if (
           task.remindBeforeExpiry &&
           task.currentNode === 'employee' &&
           !task.expiryRemindedAt &&
           task.employeeSignerUserId &&
-          now.getTime() < task.expiresAt.getTime() &&
-          now.getTime() >= task.expiresAt.getTime() - DAY_MS
+          execution.now.getTime() < task.expiresAt.getTime() &&
+          execution.now.getTime() >= task.expiresAt.getTime() - DAY_MS
         ) {
-          await remind(tx, ctx, task);
+          await remind(tx, execution, task);
           outcome = 'reminded';
         }
       }

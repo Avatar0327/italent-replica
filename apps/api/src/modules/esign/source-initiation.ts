@@ -80,7 +80,8 @@ export function runSourceSignCommand(db: Db, deps: SourceSignDeps, ctx: SourceSi
         .from(esignTasks)
         .where(and(matchesSource, eq(esignTasks.status, 'signing')))
         .for('update');
-      const execution = { ...ctx, commandId };
+      // F-505 §5：期间可能等过来源锁和任务锁，用拿锁时的时间判断是否到期。
+      const execution = { ...ctx, commandId, now: deps.clock() };
       if (active && (await expireSignTask(tx, execution, active.id)).status === 'signing')
         throw new AppError('CONFLICT', '已有签署中的任务', { reason: 'ESIGN_TASK_IN_PROGRESS' });
       const { templates, fields } = await lockSourceTemplates(tx, ctx.tenantId, templateIds);
