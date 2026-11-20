@@ -1931,7 +1931,8 @@ export const EMPLOYMENT: RequiredTable = {
         TRF,
         'DELETE',
         '/transfers/employees/:id/draft/:businessId',
-        'const deleted = await releaseTransferDraft(tx, checked, id, { businessId, revision: ctx.expectedRevision })',
+        'const deleted = await releaseTransferDraft(tx, confirmable, id, ' +
+          '{ businessId, revision: ctx.expectedRevision })',
       ),
       '删暂存单走 transitionEmployment delete 内核，同 DELETE /businesses/:id',
     ),

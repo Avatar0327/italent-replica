@@ -700,9 +700,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
   ],
   'apps/api/src/modules/transfer/routes.ts#route:DELETE /transfers/employees/:id/draft/:businessId': [
+    'apps/api/src/modules/employment/activation-checks.ts#withEstablishmentConfirmation',
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/establishment-confirmation.ts#deleteConfirmed',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/draft-slot.ts#releaseTransferDraft',

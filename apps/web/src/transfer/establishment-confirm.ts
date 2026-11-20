@@ -7,6 +7,11 @@ const establishmentText: ConfirmText = {
   okText: h.establishmentOk,
   cancelText: h.cancel,
 };
+const establishmentDeleteText: ConfirmText = {
+  ...establishmentText,
+  content: h.establishmentDeleteContent,
+  okText: h.establishmentDeleteOk,
+};
 
 /**
  * 服务端要求确认超编的 409（F-026，AC-EST-02）：非严格控编超出设定编制时整单回滚并返回 CONFIRMATION_REQUIRED，
@@ -19,8 +24,8 @@ export function needsEstablishmentConfirm(error: unknown): boolean {
 }
 
 /** 超编确认框：取消即不重提，调用方保留用户输入。 */
-export function useEstablishmentConfirm() {
-  return useConfirmDialog(establishmentText);
+export function useEstablishmentConfirm(action: 'save' | 'delete' = 'save') {
+  return useConfirmDialog(action === 'save' ? establishmentText : establishmentDeleteText);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { App } from 'antd';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 
 interface OpenConfirm {
   readonly destroy: () => void;
@@ -19,18 +19,22 @@ export interface ConfirmText {
 export function useConfirmDialog(text: ConfirmText) {
   const { modal } = App.useApp();
   const open = useRef<OpenConfirm>(undefined);
-  useEffect(
-    () => () => {
-      open.current?.destroy();
-      open.current?.settle(false);
-    },
-    [],
-  );
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      const pending = open.current;
+      pending?.settle(false);
+      pending?.destroy();
+    };
+  }, []);
   return useCallback(
     () =>
       new Promise<boolean>((resolve) => {
-        if (open.current) return resolve(false);
+        if (!mounted.current || open.current) return resolve(false);
         const settle = (confirmed: boolean) => {
+          if (open.current?.settle !== settle) return;
           open.current = undefined;
           resolve(confirmed);
         };

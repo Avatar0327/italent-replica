@@ -288,5 +288,7 @@ export const hrFormText = {
   establishmentTitle: '已超出设定编制',
   establishmentContent: '保存后目标部门的人数将超出设定编制，是否继续保存？',
   establishmentOk: '继续保存',
+  establishmentDeleteContent: '清除暂存后目标部门的人数将超出设定编制，是否继续清除？',
+  establishmentDeleteOk: '继续清除',
   confirm: '确定',
 } as const;

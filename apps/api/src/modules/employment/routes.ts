@@ -1,5 +1,7 @@
 import { CUSTOM_FIELD_OBJECT_TYPES } from '@italent/domain';
 import { withEstablishmentConfirmation } from './activation-checks.js';
+import { deleteConfirmed, splitConfirmed } from './establishment-confirmation.js';
+import { checksEmploymentCapacity } from '../establishment/employment-check.js';
 import { customFieldWriteGuard } from './custom-field-guard.js';
 import { listVisibleCustomFields } from '../personnel/custom-field-directory.js';
 import { composeBusiness, disclosedBy, selectEmploymentRead, type EmploymentRead } from './approval-content.js';
@@ -39,6 +41,7 @@ import {
   queryDate,
   runWrite,
   uuidParam,
+  requireEmployeeInScope,
   requireEmploymentScope,
   requireEmploymentWrite,
   requireScopedEmploymentObject,
@@ -297,6 +300,9 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
       lastWorkDate: input.lastWorkDate!,
       exit,
     };
+    const guard = isExitKind(input.kind)
+      ? exitCommandGuard(deps, ctx, 'create', gate, { departmentId: input.fields.departmentId })
+      : genericCapacityCreateGuard(deps, ctx, id, input, rawInput as object);
     return runWrite(
       c,
       deps,
@@ -331,10 +337,37 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
         if (NEW_CYCLE_KINDS.includes(input.kind)) await ensureHiredAccount(tx, context, id, email);
         return { status: 201, body: business };
       },
-      isExitKind(input.kind)
-        ? { guard: exitCommandGuard(deps, ctx, 'create', gate, { departmentId: input.fields.departmentId }) }
-        : {},
+      { guard },
     );
+  });
+}
+
+/** 通用新建的编制确认共用事务内授权；普通调动另校验发起来源和直接调动开关。 */
+function genericCapacityCreateGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: ReturnType<typeof normalizeEmploymentInput>,
+  rawInput: object,
+) {
+  if (!checksEmploymentCapacity(input.kind)) return undefined;
+  return sameOrderScopeGuard(deps, ctx, {
+    authorize: async (tx, scoped) => {
+      await requirePermission(scoped.authorize!, {
+        ...scoped,
+        action: 'object.create',
+        resource: EMPLOYMENT_OBJECT,
+        fields: [],
+      });
+      await requireEmploymentWrite(scoped, 'create', rawInput, 'Employment.Create');
+      const creator = await requireEmployeeInScope(tx, scoped, employeeId);
+      if (input.kind === 'transfer') {
+        await requireTransferSource(tx, scoped, employeeId, 'hr');
+        if (input.mode === 'direct') await requireDirectTransfer(tx, scoped);
+      }
+      if (input.fields.departmentId !== undefined)
+        requireEmploymentScope(scoped, employeeId, input.fields.departmentId, creator);
+    },
   });
 }
 
@@ -736,29 +769,6 @@ async function transitionControls(
   const body = parse(submitControlSchema, await jsonBody(c));
   return { ack: body.pendingTransferAck, confirmed: body.confirmed };
 }
-/**
- * DELETE 历来忽略请求体（常带 reason 等随带字段，AC-EXIT-cancel-round2），不得收紧成严格校验：
- * 只宽松读取 confirmed，其余键照旧忽略；confirmed 给了却不是布尔值才 400（F-026）。
- */
-async function deleteConfirmed(c: Context<TenantEnv>): Promise<boolean | undefined> {
-  if (!c.req.header('content-type')) return undefined;
-  const body: unknown = await c.req.raw
-    .clone()
-    .json()
-    .catch(() => undefined);
-  if (body === null || typeof body !== 'object' || Array.isArray(body) || !('confirmed' in body)) return undefined;
-  return splitConfirmed(body).confirmed;
-}
-
-/** 创建请求体里的非严格控编超编确认标记，与任职字段分开（F-026）：不进字段校验与字段权限。 */
-function splitConfirmed(body: unknown): { rawInput: unknown; confirmed: boolean | undefined } {
-  if (body === null || typeof body !== 'object' || Array.isArray(body) || !('confirmed' in body))
-    return { rawInput: body, confirmed: undefined };
-  const { confirmed, ...rest } = body as Record<string, unknown>;
-  if (typeof confirmed !== 'boolean') throw new AppError('VALIDATION_FAILED', 'confirmed 必须为布尔值');
-  return { rawInput: rest, confirmed };
-}
-
 /** 提交不接受客户端参数：流程编码由审批中心按业务派生（PR #35 第二轮清单 14），带任何字段一律 400。 */
 async function emptySubmitBody(c: Context<TenantEnv>): Promise<void> {
   if (c.req.header('content-type')) parse(z.strictObject({}), await jsonBody(c));
