@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import type { Page } from '@playwright/test';
 import { otherSettingsMenu } from './account-stop-fixtures.js';
-import { choose } from './contracts-fixtures.js';
+import { choose, item } from './contracts-fixtures.js';
 import { settingsPermission } from './exit-fixtures.js';
 import { expect, seedDemoUser, snapshotFixture, test } from './fixtures.js';
 
@@ -194,6 +194,63 @@ test('B67 按内置法定上下限保存规则并保存自动计算开关', asyn
     ]),
   );
 });
+
+const clearConditionCases = [
+  { tab: '预计退休日期', purpose: 'expected_date', rule: { retirementAgeYears: 55 }, optional: ['性别'] },
+  {
+    tab: '弹性退休范围',
+    purpose: 'flexible_range',
+    rule: { earliestFunction: 'statutory_earliest', latestFunction: 'statutory_latest' },
+    optional: ['性别', '国籍'],
+  },
+] as const;
+
+for (const { tab, purpose, rule, optional } of clearConditionCases) {
+  test(`${tab}：清空可选人员条件后可保存，雇佣关系仍必填`, async ({ page, request }) => {
+    const name = `合成清空条件规则-${tab}`;
+    const employment = { fieldCode: 'employType', operator: 'in', values: ['internal'] };
+    const conditions = [
+      { fieldCode: 'gender', operator: 'in', values: ['female'] },
+      ...(purpose === 'flexible_range' ? [{ fieldCode: 'nationality', operator: 'in', values: ['CN'] }] : []),
+      employment,
+    ];
+    const created = await request.post(`${live.url}${root}`, {
+      headers: { 'if-match': '0', 'idempotency-key': crypto.randomUUID() },
+      data: { ...rule, name, purpose, priority: 1, orgIds: [live.organization.id], conditions },
+    });
+    expect(created.status()).toBe(201);
+    const { id, revision } = (await created.json()) as { id: string; revision: number };
+    const read = async () => {
+      const response = await request.get(`${live.url}${root}?purpose=${purpose}`);
+      expect(response.ok()).toBe(true);
+      const { items } = (await response.json()) as { items: { id: string }[] };
+      return items.find((row) => row.id === id);
+    };
+    await open(page, tab);
+    const updates: string[] = [];
+    page.on('request', (sent) => {
+      if (sent.method() === 'PUT' && new URL(sent.url()).pathname === `${root}/${id}`) updates.push(sent.url());
+    });
+    await namedRule(page, name).getByRole('button', { name: '编辑', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    const save = dialog.getByRole('button', { name: /^保\s*存$/ });
+    const removeValue = (label: string) => item(dialog, label).locator('.ant-select-selection-item-remove').click();
+    await removeValue('雇佣关系');
+    await save.click();
+    await expect(item(dialog, '雇佣关系').getByText('请填写此项', { exact: true })).toBeVisible();
+    expect(updates).toHaveLength(0);
+    expect(await read()).toMatchObject({ revision, conditions });
+
+    await choose(dialog, '雇佣关系', '内部员工');
+    for (const label of optional) await removeValue(label);
+    await save.click();
+    await expect
+      .poll(read, { message: '实际后端应保存规则并移除已清空的可选条件' })
+      .toMatchObject({ revision: revision + 1, conditions: [employment] });
+    await expect(dialog).toHaveCount(0);
+    expect(updates).toHaveLength(1);
+  });
+}
 
 test('服务端拒绝无效适用组织，保留规则名称和退休年龄并展示原因', async ({ page }) => {
   await open(page);
