@@ -4,6 +4,7 @@ import { loadPreview, savedNotice } from '../self-service/shared/transfer-loadin
 import { text } from './messages.js';
 import { missingTransferRequiredFields } from '@italent/domain';
 import { saveTransfer } from './api.js';
+import { sendWithEstablishmentConfirm, useEstablishmentConfirm } from './establishment-confirm.js';
 import { draftValues, editableKeys, previewRecord, withReread } from './hr-conflict.js';
 import { terminatesOriginalContract } from './hr-form-model.js';
 import { transferCommands, transferEntry, transferResult, transferSlot } from './commands.js';
@@ -27,6 +28,7 @@ export function useHrTransferCommand(
 ) {
   const write = useHrWrite();
   const confirmTerminate = useTerminateConfirm();
+  const confirmEstablishment = useEstablishmentConfirm();
   const [chosen, setAction] = useState<TransferAction>('draft');
   const command = usePinnedCommand([transferSlot], transferEntry(model.employeeId), transferCommands);
   // 刷新后恢复的命令按它当初的动作给提示（动作存在命令上下文里，不进请求体）。
@@ -93,7 +95,14 @@ export function useHrTransferCommand(
           // 回执按实际发出的 If-Match 核对（#350 第 2 轮 P2-2）。
           const revision = sent.revision ?? record.revision;
           const { employeeId } = model;
-          await write.run(() => saveTransfer(tenantId, model, action, sent.id, revision), { employeeId, revision });
+          // F-026：非严格控编超编先确认，确认后带 confirmed 以新命令 ID 重提；取消保留输入、不再发请求。
+          // 首次请求的幂等键是内核命令 ID（F-110，恢复记录按它查询）；确认重提按 F-026 另起一个 ID。
+          const save = (confirmed: boolean) => () =>
+            saveTransfer(tenantId, model, action, confirmed ? crypto.randomUUID() : sent.id, revision, confirmed);
+          await sendWithEstablishmentConfirm(
+            (confirmed) => write.run(save(confirmed), { employeeId, revision }),
+            confirmEstablishment,
+          );
           // 内核按员工记录核对回执；业务单回执已由 useHrWrite 校验并保存。
           return { id: model.employeeId };
         },

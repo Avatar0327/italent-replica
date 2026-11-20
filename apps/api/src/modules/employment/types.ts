@@ -144,6 +144,12 @@ export interface EmploymentContext {
   readonly systemProxy?: boolean;
   /** 组织调整执行器调用时带本单 ID，本单的暂停行不拦本单写入（R2-T08 §7.6）。 */
   readonly orgAdjustmentId?: string;
+  /**
+   * 交互保存入口的超编确认（F-026，AC-EST-02）：只由 HTTP 保存路由设置。带它时非严格控编超编先 409
+   * CONFIRMATION_REQUIRED（整单回滚），客户端带 confirmed 重提放行；严格控编照旧拒绝。
+   * 不带它（定时生效、审批通过、导入、批量、内部联动）保持原口径：只拒绝严格控编超编，不要求确认。
+   */
+  readonly establishmentConfirmation?: { readonly confirmed: boolean };
 }
 
 export interface EmploymentBusinessInput {

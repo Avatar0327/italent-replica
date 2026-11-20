@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { employmentApprovalHooks } from '../employment/approval-hooks.js';
+import { withEstablishmentConfirmation } from '../employment/activation-checks.js';
 import { auditEmployment, requireEmploymentWrite } from '../employment/context.js';
 import { readEmploymentSettings } from '../employment/configuration.js';
 import { normalizeEmploymentInput } from '../employment/fields.js';
@@ -41,6 +42,8 @@ const schema = z.strictObject({
   customFields: z.record(z.string(), z.unknown()).optional(),
   submit: z.boolean().default(false),
   withEstablishment: z.boolean().optional(),
+  // F-026：非严格控编超编的确认标记（控制键，不是任职字段；不进字段权限校验）。
+  confirmed: z.boolean().optional(),
   // R1-T10：是否变更合同、调整薪资、试岗、交接、调整兼职、转交职责（input.ts 细校验）。
   linkage: z.unknown().optional(),
 });
@@ -49,6 +52,8 @@ export interface TransferInput {
   readonly transferTypeCode: string;
   readonly reasonCode?: string;
   readonly submit: boolean;
+  /** F-026：客户端已确认非严格控编超编提示；缺省 false。 */
+  readonly confirmed: boolean;
   readonly writable: Readonly<Record<string, unknown>>;
   readonly employment: NormalizedEmploymentInput;
   readonly linkage: LinkageOptions | null;
@@ -103,13 +108,16 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
       employment.fields,
       ctx.selfServiceEmployeeId,
     );
-  const writable = Object.fromEntries(Object.entries(input).filter(([key]) => !['submit', 'linkage'].includes(key)));
+  const writable = Object.fromEntries(
+    Object.entries(input).filter(([key]) => !['submit', 'linkage', 'confirmed'].includes(key)),
+  );
   return {
     writable,
     initiator: input.initiator,
     transferTypeCode: input.transferTypeCode,
     ...(input.reasonCode ? { reasonCode: input.reasonCode } : {}),
     submit: input.submit,
+    confirmed: input.confirmed === true,
     employment,
     linkage,
   };
@@ -146,7 +154,10 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
     ...dutySubordinateIds(linkage),
   ]);
   await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
+  const { confirmed } = input;
   input = { ...(await normalizeTransferInput(tx, ctx, { ...input.writable, submit: input.submit })), linkage };
+  // 创建与随后的提交共用同一确认标记（F-026）：非严格控编超编先 409 CONFIRMATION_REQUIRED，整单回滚。
+  ctx = withEstablishmentConfirmation(ctx, confirmed);
   const prepared = await prepareInheritance(tx, ctx, { ...input.employment, employeeId });
   const sourceContext = { ...ctx, transferTarget: undefined };
   ctx = await transferTargetContext(tx, sourceContext, employeeId, input, prepared.fields.departmentId);

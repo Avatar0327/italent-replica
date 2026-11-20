@@ -5,6 +5,11 @@ import { ReadState } from './parts.js';
 import { messages as m } from './messages.js';
 import { statusText, valueText } from './model.js';
 import { EMPLOYMENT_API, submitSavedTransfer } from '../../transfer/api.js';
+import {
+  needsEstablishmentConfirm,
+  sendWithEstablishmentConfirm,
+  useEstablishmentConfirm,
+} from '../../transfer/establishment-confirm.js';
 import { presetLabels, text as t } from '../../transfer/messages.js';
 import type { TransferBusiness } from '../../transfer/types.js';
 import type { ApplicationCommandRunner } from '../shared/application-command.js';
@@ -29,26 +34,31 @@ export function SavedApplication({
 }) {
   const read = useRead<Draft>(`${EMPLOYMENT_API}/businesses/${id}`);
   const [mustRead, setMustRead] = useState(false);
+  const confirmEstablishment = useEstablishmentConfirm();
   const draft = read.data;
   const valid = draft?.id === id && Number.isInteger(draft.revision) && typeof draft.status === 'string';
   const submit = async () => {
     if (!draft || !valid || !run || locked || mustRead) return;
     setMustRead(true);
-    const commandId = crypto.randomUUID();
     try {
-      await run(
-        {
-          commandId,
-          businessId: id,
-          employeeId: draft.employeeId ?? m.unread,
-          effectiveDate: draft.effectiveDate,
-          action: 'submit',
-          summary: { revision: draft.revision },
-        },
-        () => submitSavedTransfer(tenantId, draft, commandId),
-      );
-    } catch {
-      // 页面级入口保留未确认标记或显示确定的拒绝；不自动重试。
+      // F-026：提交时部门已超编则先确认，确认后带 confirmed 以新命令重提；取消不发请求，草稿保持可再提交
+      await sendWithEstablishmentConfirm(async (confirmed) => {
+        const commandId = crypto.randomUUID();
+        return run(
+          {
+            commandId,
+            businessId: id,
+            employeeId: draft.employeeId ?? m.unread,
+            effectiveDate: draft.effectiveDate,
+            action: 'submit',
+            summary: { revision: draft.revision },
+          },
+          () => submitSavedTransfer(tenantId, draft, commandId, confirmed),
+        );
+      }, confirmEstablishment);
+    } catch (cause) {
+      // 页面级入口保留未确认标记或显示确定的拒绝；不自动重试。取消超编确认没有发请求，草稿版本未变，不必强制重读。
+      if (needsEstablishmentConfirm(cause)) setMustRead(false);
     }
   };
   return (

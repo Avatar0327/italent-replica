@@ -3190,6 +3190,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/variables.ts#variableViews': [
     'apps/api/src/modules/approval/designer-people.ts#eligibleDesignerPeople',
     'apps/api/src/modules/approval/variable-input.ts#variablePersonIds',
+    '#originNames',
     '#valuesOf',
   ],
   'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure': [

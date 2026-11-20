@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { requestError, TransferApiError } from './api.js';
+import { needsEstablishmentConfirm } from './establishment-confirm.js';
 import { text } from './messages.js';
 import type { TransferBusiness } from './types.js';
 
@@ -41,12 +42,14 @@ export function useHrWrite() {
       setResult(receipt);
       return receipt;
     } catch (cause) {
-      // 版本冲突由内核提示并引导重读，不再重复一条“重新读取表单”；5xx / 网络错误由内核锁成结果未知。
+      // 版本冲突由内核提示并引导重读，不再重复一条“重新读取表单”；超编确认由确认框处理（F-026），取消不留错误提示；
+      // 5xx / 网络错误由内核锁成结果未知。
       if (
         mounted.current &&
         cause instanceof TransferApiError &&
         cause.status < 500 &&
-        cause.code !== 'REVISION_CONFLICT'
+        cause.code !== 'REVISION_CONFLICT' &&
+        !needsEstablishmentConfirm(cause)
       )
         setError(requestError(cause));
       throw cause;

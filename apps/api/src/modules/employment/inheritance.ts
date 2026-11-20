@@ -1,5 +1,6 @@
 import { applyInitiatorFieldModes } from '../transfer/initiator-fields.js';
 import { validateSelectedEmploymentType } from './employment-types.js';
+import { validateSelectedEmploymentForm } from './employment-forms.js';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
@@ -61,6 +62,8 @@ export interface InheritanceInput {
   readonly fields?: Partial<PresetFields>;
   readonly customFields?: CustomFields;
   readonly staffId?: string;
+  /** F-363：仅待入职重建服务传入锁内旧引用；不由 HTTP 请求体解析。 */
+  readonly retainedEmploymentForm?: string | null;
 }
 
 // 非调动业务及历史 R1-T05 表单继续使用原有继承语义；调动真实表单从租户配置解析。
@@ -205,17 +208,25 @@ async function selfServiceForm(
   return configured;
 }
 
-/** 人员类别（F-323）：新建以合格前驱为沿用基准，新周期无前驱；修改既有申请（带冻结表单）不在此判定，
+/** 任职字典（F-323 / F-363）：新建以合格前驱为沿用基准，新周期无前驱；修改既有申请（带冻结表单）不在此判定，
  * 由 prepareEmploymentPatch 在字段合并后以本单旧值为基准判定。 */
-async function validateInheritedEmploymentType(
+async function validateInheritedDictionaries(
   tx: Tx,
   tenantId: string,
   fields: EmploymentRecord['fields'],
   eligible: EmploymentRecord | null,
   frozenForm: TrustedFormSnapshot | undefined,
+  retainedEmploymentForm?: string | null,
 ) {
-  if (!frozenForm)
+  if (!frozenForm) {
     await validateSelectedEmploymentType(tx, tenantId, fields.employmentType, eligible?.fields.employmentType);
+    await validateSelectedEmploymentForm(
+      tx,
+      tenantId,
+      fields.employmentForm,
+      retainedEmploymentForm === undefined ? eligible?.fields.employmentForm : retainedEmploymentForm,
+    );
+  }
 }
 
 function frozenFormModes(frozenForm: TrustedFormSnapshot) {
@@ -292,7 +303,7 @@ export async function prepareInheritance(
     derivedOrigins,
     employee.code,
   );
-  await validateInheritedEmploymentType(tx, ctx.tenantId, fields, eligible, frozenForm);
+  await validateInheritedDictionaries(tx, ctx.tenantId, fields, eligible, frozenForm, input.retainedEmploymentForm);
   applyCustomInheritance(
     input,
     metadata,
@@ -334,6 +345,14 @@ export async function prepareEmploymentPatch(
     input.effectiveDate !== previous.effectiveDate && !merged.explicitFieldCodes.includes('preset:employmentType');
   const baseline = reinherited ? merged.fields.employmentType : previous.fields.employmentType;
   await validateSelectedEmploymentType(tx, ctx.tenantId, merged.fields.employmentType, baseline);
+  const formReinherited =
+    input.effectiveDate !== previous.effectiveDate && !merged.explicitFieldCodes.includes('preset:employmentForm');
+  await validateSelectedEmploymentForm(
+    tx,
+    ctx.tenantId,
+    merged.fields.employmentForm,
+    formReinherited ? merged.fields.employmentForm : previous.fields.employmentForm,
+  );
   return merged;
 }
 

@@ -85,7 +85,12 @@ export async function releaseTransferDraft(
     await dropSlot(tx, ctx, employeeId);
     return null;
   }
-  const context = { ...ctx, expectedRevision: expected?.revision ?? slot.revision };
+  const context = {
+    ...ctx,
+    expectedRevision: expected?.revision ?? slot.revision,
+    // 覆盖或提交时释放旧单属于内部步骤，显式清除暂存才需要确认回退超编。
+    establishmentConfirmation: expected ? ctx.establishmentConfirmation : undefined,
+  };
   const deleted = await transitionEmployment(tx, context, { id: slot.businessId, action: 'delete' });
   await employmentApprovalHooks.deleted(tx, context, slot.businessId);
   await dropSlot(tx, ctx, employeeId);

@@ -42,6 +42,7 @@ import { assertOfferRevision, type OfferContext } from './context.js';
 import { findOfferByPendingEntry } from './entry-link.js';
 import { audit, lockOffer, offerDto, type OfferRow } from './service.js';
 import { assertNoStrictQuota } from './establishment.js';
+import { offerFieldsChanged, publishOfferChange } from './source-events.js';
 import { inboundEmploymentContext, lockOfferSyncScope, type OfferSyncContext } from './sync-lock.js';
 
 export type { OfferSyncContext };
@@ -231,6 +232,7 @@ export async function saveSync(
     .where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, before.id)))
     .returning();
   await audit(tx, ctx, action, before.id, before, after!);
+  await publishOfferChange(tx, ctx, before, after!, offerFieldsChanged(before, patch));
   return after!;
 }
 
@@ -351,5 +353,6 @@ export async function linkEmployee(tx: Tx, ctx: OfferContext, id: string, employ
     .where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, id)))
     .returning();
   await audit(tx, ctx, 'link_employee', id, before, after!);
+  await publishOfferChange(tx, ctx, before, after!, false);
   return offerDto(after!);
 }

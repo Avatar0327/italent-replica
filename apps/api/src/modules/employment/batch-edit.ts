@@ -1,6 +1,7 @@
 /**
  * 批量编辑任职记录（R1-T16，AC-AUD-03；原站组织员工对象操作日志的「批量编辑」，docs/02_业务建模/20 §3）。
- * 同一组字段写到多条有效任职记录，逐条复用单条编辑端口（字段校验、向后更新、人员同步、字段级审计都与单条一致）。
+ * 同一组字段写到多条有效任职记录，逐条复用单条编辑端口（字段校验、人员同步、字段级审计都与单条一致）；
+ * 以 entry='batch_edit' 调用，只保存所选记录，不向后更新未来记录（REQ-EMP-003 / 07 A7，F-532）。
  * - 整体成功或整体失败（AGENTS.md §10「批量」）：任一条 revision 过期或校验失败，整单回滚，不留操作日志；
  * - 上限 100 条，同一记录不得在一单内重复出现；
  * - 取锁顺序（PR #50 / F-008：员工 → 业务 → 实例）：按（员工, 业务）排序后逐条加锁，并发的两单按同一顺序取锁；
@@ -58,9 +59,10 @@ export async function batchEditEmploymentRecords(tx: Tx, ctx: EmploymentContext,
   });
   const saved = new Map<string, unknown>();
   for (const item of ordered) {
+    // REQ-EMP-003 / 07 A7：批量编辑只保存所选记录，不向后传播（entry 决定 isForwardEditSupported）
     saved.set(
       item.id,
-      await editEmploymentRecord(tx, { ...ctx, expectedRevision: item.revision }, item.id, input.patch),
+      await editEmploymentRecord(tx, { ...ctx, expectedRevision: item.revision }, item.id, input.patch, 'batch_edit'),
     );
   }
   await recordOperationLog(tx, {

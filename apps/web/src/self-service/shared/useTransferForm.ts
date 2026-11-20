@@ -1,4 +1,5 @@
 import { loadPreview, reloadSavedModel, savedNotice } from './transfer-loading.js';
+import { sendWithEstablishmentConfirm, useEstablishmentConfirm } from '../../transfer/establishment-confirm.js';
 import { useHrTransferCommand } from '../../transfer/useHrTransferCommand.js';
 import { ApplicationCommandHandled, applicationCommand, type ApplicationCommandRunner } from './application-command.js';
 import type { TransferFormAdapter } from './transfer-adapter.js';
@@ -186,6 +187,7 @@ function useTransferCommand(
   const [unknownCommand, setUnknownCommand] = useState('');
   const [needsReload, setNeedsReload] = useState(false);
   const requestInProgress = useRef(false);
+  const ask = useEstablishmentConfirm();
   const submit = async (action: TransferAction) => {
     if (
       needsReload ||
@@ -201,16 +203,16 @@ function useTransferCommand(
     requestInProgress.current = true;
     setBusy(true);
     setError('');
-    const commandId = crypto.randomUUID();
+    const command = { id: crypto.randomUUID() };
     try {
-      const result = await executeTransfer(tenantId, { model, action, commandId, saved, adapter, runCommand });
+      const result = await executeConfirmed(tenantId, { model, action, saved, adapter, runCommand }, command, ask);
       if (!result.id || !Number.isInteger(result.revision) || !result.status) throw new Error(text.unknown);
       setSaved(result);
       setNotice(savedNotice(result, action));
     } catch (cause) {
       if (cause instanceof ApplicationCommandHandled) return;
       if (!(cause instanceof TransferApiError) || cause.status >= 500) {
-        setUnknownCommand(commandId);
+        setUnknownCommand(command.id);
         setError(text.unknown);
       } else setError(requestError(cause));
       if (cause instanceof TransferApiError && cause.code === 'REVISION_CONFLICT') {
@@ -252,6 +254,22 @@ function useTransferCommand(
   };
 }
 
+/**
+ * F-026：非严格控编超编先确认，确认后带 confirmed 以新命令 ID 重提（command.id 随之更新，结果未知时锁的是最后一次）；
+ * 取消则抛出原错误，保留输入、不再发请求。
+ */
+function executeConfirmed(
+  tenantId: string,
+  input: Omit<Parameters<typeof executeTransfer>[1], 'commandId' | 'confirmed'>,
+  command: { id: string },
+  ask: () => Promise<boolean>,
+) {
+  return sendWithEstablishmentConfirm((confirmed) => {
+    if (confirmed) command.id = crypto.randomUUID();
+    return executeTransfer(tenantId, { ...input, commandId: command.id, confirmed });
+  }, ask);
+}
+
 function executeTransfer(
   tenantId: string,
   input: {
@@ -261,13 +279,16 @@ function executeTransfer(
     saved: TransferBusiness | null;
     adapter?: TransferFormAdapter;
     runCommand?: ApplicationCommandRunner;
+    confirmed: boolean;
   },
 ) {
-  const { model, action, commandId, saved, adapter, runCommand } = input;
+  const { model, action, commandId, saved, adapter, runCommand, confirmed } = input;
   const execute = () =>
     saved
-      ? submitSavedTransfer(tenantId, saved, commandId)
-      : (adapter?.save ?? saveTransfer)(tenantId, model, action, commandId);
+      ? submitSavedTransfer(tenantId, saved, commandId, confirmed)
+      : adapter
+        ? adapter.save(tenantId, model, action, commandId, confirmed)
+        : saveTransfer(tenantId, model, action, commandId, model.preview!.employeeRevision, confirmed);
   return runCommand ? runCommand(applicationCommand(model, action, commandId, saved), execute) : execute();
 }
 

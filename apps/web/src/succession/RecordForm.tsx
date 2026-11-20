@@ -8,6 +8,7 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { PersonSelect, TenantDatePicker } from '../foundation/selectors.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
+import { requireObjects } from './conflict.js';
 import { s } from './messages.js';
 import { BASE, createRecordBody, END_RECEIPT, endCommand, endReceipt, recordDateErrors } from './rules.js';
 import type { ListResult, ReadinessRef, RecordView, SuccessionType } from './types.js';
@@ -168,6 +169,8 @@ function RecordEditor({
         close();
       }}
       onSubmit={async (values) => {
+        // F-145：id / 版本缺失或无效时提交前拒绝，不进内核、不发请求；按确定性拒绝提示，草稿保留、可关闭。
+        if (row) requireObjects([row], s.errors.recordInvalid!);
         await writer.run({
           values,
           editableFields: fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name),
@@ -247,6 +250,11 @@ export function EndForm({ rows, close, saved }: { rows: RecordView[]; close(): v
         if (!editableFields.includes('endDate')) throw new Error(s.errors.readonly);
         // 先在本地组装（未选在用记录、超上限即时报错），再交给命令；重读核对后 full 是逐条读回的最新记录。
         const body = endBody(writer.full.rows as RecordView[], values);
+        // F-145：逐条校验本次实际组包的记录（409 重读后是读回的最新记录，字段可能被裁剪），不只校验初选。
+        requireObjects(
+          body.items.map((item) => ({ id: item.id, revision: item.expectedRevision })),
+          s.errors.recordInvalid!,
+        );
         await writer.run({
           values,
           editableFields,
