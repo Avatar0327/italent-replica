@@ -41,25 +41,11 @@ export async function initiateSignTask(tx: Tx, ctx: EmploymentContext, input: In
 
   const settings = await getSceneSettings(tx, ctx.tenantId, input.source.scene);
   const id = randomUUID();
-  const files: (typeof esignTaskFiles.$inferInsert)[] = [];
-  if (!failureReason) {
-    // 查询和权限错误必须向外传播；只捕获纯渲染错误。
-    const variables = await input.loadVariables();
-    try {
-      files.push(
-        ...input.templates.map((template, index) => ({
-          tenantId: ctx.tenantId,
-          taskId: id,
-          seq: index + 1,
-          templateId: template.id,
-          templateName: template.name,
-          content: renderTemplateBody(template.body, variables),
-        })),
-      );
-    } catch {
-      failureReason = 'RENDER_FAILED';
-    }
-  }
+  // 先完成查询，再进入只捕获纯渲染异常的函数。
+  const { files, failureReason: renderFailure } = failureReason
+    ? { files: [], failureReason: null }
+    : renderSignFiles(ctx.tenantId, id, input.templates, await input.loadVariables());
+  failureReason ??= renderFailure;
 
   const [task] = await tx
     .insert(esignTasks)
@@ -118,4 +104,25 @@ export async function initiateSignTask(tx: Tx, ctx: EmploymentContext, input: In
     { employeeId: task!.employeeId, orgId: task!.ownerDepartmentId },
   );
   return task!;
+}
+
+function renderSignFiles(
+  tenantId: string,
+  taskId: string,
+  templates: readonly Template[],
+  variables: EsignVariableValues,
+) {
+  try {
+    const files = templates.map((template, index) => ({
+      tenantId,
+      taskId,
+      seq: index + 1,
+      templateId: template.id,
+      templateName: template.name,
+      content: renderTemplateBody(template.body, variables),
+    }));
+    return { files, failureReason: null };
+  } catch {
+    return { files: [], failureReason: 'RENDER_FAILED' as const };
+  }
 }

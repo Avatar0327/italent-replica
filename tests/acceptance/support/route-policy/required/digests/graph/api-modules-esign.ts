@@ -30,10 +30,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/resolver.ts#isActiveAccount',
     'apps/api/src/modules/approval/resolver.ts#userOfPerson',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#renderSignFiles',
     'apps/api/src/modules/esign/provider.ts#simulatedProvider',
     'apps/api/src/modules/esign/service.ts#getSceneSettings',
     'apps/api/src/modules/esign/task-source.ts#signTaskSourceAudit',
     'packages/domain/src/esign/settings.ts#esignExpiresAt',
+  ],
+  'apps/api/src/modules/esign/initiation.ts#renderSignFiles': [
     'packages/domain/src/esign/variables.ts#renderTemplateBody',
   ],
   'apps/api/src/modules/esign/input.ts#createTemplateSchema': ['#body', '#name', '#sortOrder'],
