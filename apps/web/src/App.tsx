@@ -8,6 +8,7 @@ import { Shell } from './foundation/Shell.js';
 import { annotations } from './annotations/index.js';
 import { theme } from './foundation/theme.js';
 import { initialTenantId } from './demo/tenant.js';
+import { PortalApp } from './survey360/PortalApp.js';
 
 const emptySession: Session = {
   tenantId: '',
@@ -18,6 +19,7 @@ const emptySession: Session = {
   source: 'server',
 };
 export function App({ session = { ...emptySession, tenantId: initialTenantId() } }: { session?: Session }) {
+  if (/^\/survey360\/portal(?:\/|$)/.test(window.location.pathname)) return <PortalApp />;
   return (
     <ConfigProvider locale={zhCN} theme={theme}>
       <AntApp>

@@ -15,7 +15,7 @@ import {
   type Row,
 } from './store.js';
 import { validateDates } from './validation.js';
-import { validateAttachments } from './attachments.js';
+import { bindSubsetAttachments } from '../attachments/subset-binding.js';
 import { runSubsetSavePolicy, type SubsetSource } from './subset-policy.js';
 
 export async function loadSubset(
@@ -45,7 +45,6 @@ export async function saveSubset(
   source: SubsetSource = { type: 'hr_direct', id: null },
 ) {
   await lockPerson(tx, ctx, employeeId);
-  await validateAttachments(tx, ctx, employeeId, patch);
   const before = id ? await loadSubset(tx, ctx, employeeId, kind, id) : null;
   assertRevision(ctx.expectedRevision, Number(before?.revision ?? 0));
   if (before?.isThisCompany) {
@@ -87,6 +86,15 @@ export async function saveSubset(
   validateDates(row);
   // P0 契约：按子集登记的落地前复核（HR / 自助落地 / 信息采集同一处），锁人后、写入前
   await runSubsetSavePolicy(tx, ctx, kind, { before, row, deleted, source });
+  // F-479 §10.4：附件绑定 / 解绑与子集写同一事务；非 HR 来源变更任一附件字段引用在此被拒（DEC-937，逐字段）
+  await bindSubsetAttachments(tx, ctx, {
+    kind,
+    source,
+    employeeId,
+    recordId: String(row.id),
+    previous: before,
+    next: deleted ? null : row,
+  });
   await clearFlags(tx, ctx, kind, row);
   await persistSubset(tx, ctx, kind, before, row);
   await reflectFlags(tx, ctx, employeeId, kind);

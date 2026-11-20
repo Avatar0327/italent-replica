@@ -40,6 +40,7 @@ import {
   all,
   BAD_REQUEST,
   button,
+  fixed,
   listScope,
   noButton,
   noFields,
@@ -89,6 +90,27 @@ const detailButton = noButton('详情只按对象查看权，无按钮');
 function personnelWrite(fields: FieldsFrom, targets: string, preconditions?: readonly string[]): WritePolicy {
   const result = { generic: { targets, locator: 'personnel.employee' } };
   return write(fields, 'personnel.write', result, preconditions ? { preconditions } : {});
+}
+/** F-479 §10 子集附件写入口：回执只含文件元数据；命令台账 single，字段级编辑权在处理函数内复核。 */
+function subsetAttachmentWrite(): RoutePolicy {
+  return object({
+    object: SUBSET_OBJECT,
+    operation: 'update',
+    button: noButton('字段级编辑权在处理函数内复核，无按钮'),
+    scope: employeePoint('employeeId'),
+    // fieldEdit = 事务内重算范围 + 人员主对象 update + 登记字段的编辑权（subsetAttachmentGuard；
+    // 登记取请求字段，上传 / 删除取文件上的登记标记）
+    guards: ['personnel.subsetAttachment.fieldEdit'],
+    fields: fixed(
+      ['kind', 'id', 'revision', 'status', 'purpose', 'filename', 'contentType', 'byteSize', 'sha256', 'expiresAt'],
+      'attachments/service.ts receipt（F-479 设计 §10.8）',
+    ),
+    write: write('body', 'personnel.write', none('回执只含文件元数据，不含字节；目标员工点校验已在 requirePerson'), {
+      ledger: 'single',
+      preconditions: ['ownFile'],
+    }),
+    ...byUuid,
+  });
 }
 /** 子集列表（两条路径共用处理函数）：`listOptions` 守卫 + `listSubsets` 的 personScope 谓词 + trimSubset。 */
 function subsetList(scope: ScopePolicy): RoutePolicy {
@@ -251,7 +273,7 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     scope: employeePoint('employeeId'),
     guards: subsetPolicy,
     fields: subsetShape,
-    write: personnelWrite('body', 'employeeId', ['lockPerson', 'validateAttachments', 'assertRevision']),
+    write: personnelWrite('body', 'employeeId', ['lockPerson', 'bindSubsetAttachments', 'assertRevision']),
     ...byUuid,
   }),
   [`PATCH ${SUBSET}/:id`]: object({
@@ -261,7 +283,12 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     scope: employeePoint('employeeId'),
     guards: subsetPolicy,
     fields: subsetShape,
-    write: personnelWrite('body', 'employeeId', ['lockPerson', 'validateAttachments', 'loadSubset', 'assertRevision']),
+    write: personnelWrite('body', 'employeeId', [
+      'lockPerson',
+      'bindSubsetAttachments',
+      'loadSubset',
+      'assertRevision',
+    ]),
     ...byUuid,
   }),
   [`DELETE ${SUBSET}/:id`]: object({
@@ -273,6 +300,21 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     fields: subsetShape,
     // 本单位经历（isThisCompany）由任职记录维护，删除 → 409 CONFLICT（saveSubset）
     write: personnelWrite(none('删除不提取字段'), 'employeeId', ['lockPerson', 'loadSubset', 'assertRevision']),
+    ...byUuid,
+  }),
+  // ---- subset-attachment-routes.ts：人员子集附件（F-479 §10，F-361②）------------------------------------------
+  // 写：子集对象 update + 人员主对象 update + 任一附件字段可编辑（处理函数内）+ personScope 点校验；
+  // 读：子集对象查看权 + 附件字段查看权（无权 → 404 不暴露存在性）+ 点校验。文件归属（上传人 + 目标员工）是数据定位。
+  [`POST ${SUBSET}/attachments`]: subsetAttachmentWrite(),
+  [`POST ${SUBSET}/attachments/:fileId/upload`]: subsetAttachmentWrite(),
+  [`DELETE ${SUBSET}/attachments/:fileId`]: subsetAttachmentWrite(),
+  [`GET ${SUBSET}/:id/attachments/:fileId/content`]: object({
+    object: SUBSET_OBJECT,
+    operation: 'view',
+    button: detailButton,
+    scope: employeePoint('employeeId'),
+    guards: ['personnel.subset.byId', 'personnel.subsetAttachment.fieldView'],
+    fields: fixed(['<binary>'], '附件字节：attachment、nosniff、sandbox CSP、no-store'),
     ...byUuid,
   }),
   // ---- request-routes.ts：个人信息变更申请（PersonalInformationChange，DEC-085）-----------------------------------

@@ -12,6 +12,7 @@ import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const ROUTES = 'apps/api/src/modules/personnel/routes.ts';
 const SUBSET_ROUTES = 'apps/api/src/modules/personnel/subset-routes.ts';
+const ATTACHMENT_ROUTES = 'apps/api/src/modules/personnel/subset-attachment-routes.ts';
 const ACCESS = 'apps/api/src/modules/personnel/access.ts';
 const PERSON = 'TenantBase.EmployeeInformation';
 const SUBSET =
@@ -177,6 +178,49 @@ const orderCode = (method: 'GET' | 'PUT' | 'POST'): Obligation => ({
     },
   ],
 });
+/**
+ * F-479 §10（F-361②）人员子集附件的 HR 入口（subset-attachment-routes.ts）：写入口经 entry → access 复核子集对象 update，
+ * 再在统一守卫 subsetAttachmentGuard 的事务内（含命令台账 guard.before）重算范围并复核人员点、人员主对象 update 与登记字段的编辑权；读入口复核
+ * 子集对象查看权、人员点范围、记录归属与附件字段查看权。
+ */
+const CONTENT_PATH = '/api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/attachments/:fileId/content';
+const attachment = (method: string, path: string) => (anchor: string) =>
+  call(ATTACHMENT_ROUTES, method, `/employees/:employeeId/subsets/:kind${path}`, anchor);
+const EDIT_CHECK: Evidence[] = [
+  {
+    role: 'impl',
+    unit: `${ATTACHMENT_ROUTES}#subsetAttachmentGuard`,
+    anchor: "await authorize(authorizer, { ...fresh, objectCode: PERSONNEL_OBJECT }, 'update', {})",
+  },
+  {
+    role: 'impl',
+    unit: `${ATTACHMENT_ROUTES}#subsetAttachmentGuard`,
+    anchor: "await authorize(authorizer, fresh, 'update', { [field]: null })",
+  },
+  {
+    role: 'impl',
+    unit: `${ATTACHMENT_ROUTES}#attachmentWrite`,
+    anchor: 'const check = subsetAttachmentGuard(deps, ctx, target)',
+  },
+  ...AUTHORIZE,
+];
+const attachmentWrite = (method: string, path: string, handlerAnchor: string): Obligation[] => {
+  const at = attachment(method, path);
+  return [
+    {
+      ...op(
+        at,
+        `obj:${SUBSET}:update`,
+        'const { kind, employeeId, ctx } = await entry(c, deps,',
+        ['object:personnel access', SUBSET_OP('update')],
+        SUBSET_CONST,
+      ),
+    },
+    // fieldEdit 守卫 = 事务内重算范围 + 人员主对象 update + 登记字段编辑权（subsetAttachmentGuard；命令台账 guard.before 里重放时再复核）
+    { perm: 'guard:personnel.subsetAttachment.fieldEdit', at: [at(handlerAnchor), ...EDIT_CHECK, PERSON_CONST] },
+  ];
+};
+
 const VIEW_LIST = "const ctx = await access(c, deps, SUBSETS[kind].objectCode, 'view', {}, undefined, 0, 'list')";
 
 export const PERSONNEL: RequiredTable = {
@@ -385,6 +429,48 @@ export const PERSONNEL: RequiredTable = {
       SUBSET_CONST,
     ),
     subsetPolicy(subset('DELETE', '/:id')('saveSubset(tx, ctx, employeeId, kind, {}, id, true)')),
+  ],
+  'POST /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments': attachmentWrite(
+    'POST',
+    '/attachments',
+    'return attachmentWrite(',
+  ),
+  'POST /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId/upload': attachmentWrite(
+    'POST',
+    '/attachments/:fileId/upload',
+    'return attachmentWrite(c, deps, ctx, target, { id, ...input }, 200',
+  ),
+  'DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId': attachmentWrite(
+    'DELETE',
+    '/attachments/:fileId',
+    'return attachmentWrite(c, deps, ctx, target, { id }, 200',
+  ),
+  'GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/attachments/:fileId/content': [
+    op(
+      attachment('GET', '/:id/attachments/:fileId/content'),
+      `obj:${SUBSET}:view`,
+      "const ctx = await access(c, deps, SUBSETS[kind].objectCode, 'view')",
+      ['object:personnel access', SUBSET_OP('view')],
+      SUBSET_CONST,
+    ),
+    byId(
+      attachment('GET', '/:id/attachments/:fileId/content'),
+      'const record = await loadSubset(tx, ctx, employeeId, kind, uuidParam(c));',
+    ),
+    {
+      perm: 'guard:personnel.subsetAttachment.fieldView',
+      at: [
+        attachment(
+          'GET',
+          '/:id/attachments/:fileId/content',
+        )('const viewable = await getModuleViewableFields(deps, ctx, ctx.objectCode)'),
+        {
+          role: 'impl',
+          unit: `${ATTACHMENT_ROUTES}#route:GET ${CONTENT_PATH}`,
+          anchor: '.filter((field) => viewable === undefined || viewable.has(field))',
+        },
+      ],
+    },
   ],
   'POST /api/tenant/personnel/change-requests': [
     {

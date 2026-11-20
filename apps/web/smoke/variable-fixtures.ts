@@ -1,6 +1,7 @@
 /**
  * F-326 F1 变量管理页夹具：形状照抄后端序列化（apps/api/src/modules/approval/variables.ts variableViews：
- * valuesOf + id / status / revision / createdBy / createdAt / updatedBy / updatedAt / people；
+ * valuesOf + id / status / revision / createdBy / createdAt / updatedBy / updatedAt / people /
+ * origin / originProcessName / originNodeName（DEC-941）；
  * 引用清单照 source-usages.ts SourceUsage 与 sourceUsagePage 的 { items, total }）。全部为合成数据。
  */
 export const ADMIN_USER = '20000000-0000-4000-8000-000000000001';
@@ -29,6 +30,9 @@ export interface VariableFixture {
     departmentId: string | null;
     departmentName: string | null;
   }[];
+  origin: 'manual' | 'auto';
+  originProcessName: string | null;
+  originNodeName: string | null;
 }
 
 export function publicVariable(over: Partial<VariableFixture> = {}): VariableFixture {
@@ -49,6 +53,9 @@ export function publicVariable(over: Partial<VariableFixture> = {}): VariableFix
     updatedBy: ADMIN_USER,
     updatedAt: '2026-11-02T03:04:05.000Z',
     people: [{ userId: PERSON_A, name: '合成员工甲', code: 'E001', departmentId: null, departmentName: '合成部门' }],
+    origin: 'manual',
+    originProcessName: null,
+    originNodeName: null,
     ...over,
   };
 }

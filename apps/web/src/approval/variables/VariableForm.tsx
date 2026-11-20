@@ -20,13 +20,15 @@ import type { Values } from '../../foundation/forms/store.js';
 import { changedFields } from '../../foundation/forms/values.js';
 import { m, type ScopeKind } from './messages.js';
 import {
-  EDIT_FIELDS,
   VARIABLES_PATH,
   createBody,
   createdReceipt,
   defaultValueOf,
   editValues,
+  editableFields,
+  isAuto,
   isAllScopes,
+  originText,
   parseReceipt,
   parseReferences,
   parseRow,
@@ -165,6 +167,25 @@ function UsageScopesInput(props: { value?: string[]; onChange?: (value: string[]
   );
 }
 
+type FieldOf = (name: string, label: string, control: ReactNode, rules?: FormField['rules']) => FormField;
+/** 公共变量的适用范围：自动变量由来源流程维护，适用范围置灰不可改，并显示来源（DEC-941，设计 §5.5）。 */
+function usageFields(
+  row: VariableRow | undefined,
+  field: FieldOf,
+  fixed: (n: string, l: string, d: string) => FormField,
+) {
+  if (row && isAuto(row))
+    return [
+      field('usageScopes', m.usageScopes, <UsageScopesInput disabled />),
+      fixed('origin', m.origin, originText(row)),
+    ];
+  return [
+    field('usageScopes', m.usageScopes, <UsageScopesInput />, [
+      check((value) => usageScopesViolation((value as string[]) ?? []), m.usageRequired),
+    ]),
+  ];
+}
+
 function formFields(scope: ScopeKind, row: VariableRow | undefined): FormField[] {
   const field = (name: string, label: string, control: ReactNode, rules: FormField['rules'] = []): FormField => ({
     name,
@@ -206,13 +227,7 @@ function formFields(scope: ScopeKind, row: VariableRow | undefined): FormField[]
     field('defaultValue', m.defaultValue, <DefaultValueInput dataType={fixedType} people={row?.people ?? []} />, [
       defaultRule,
     ]),
-    ...(scope === 'public'
-      ? [
-          field('usageScopes', m.usageScopes, <UsageScopesInput />, [
-            check((value) => usageScopesViolation((value as string[]) ?? []), m.usageRequired),
-          ]),
-        ]
-      : []),
+    ...(scope === 'public' ? usageFields(row, field, fixed) : []),
     ...(row
       ? []
       : [
@@ -275,7 +290,7 @@ export function VariableForm(props: {
     read,
     row ? { action: 'edit' } : {},
   );
-  const editable = row?.scope === 'public' ? [...EDIT_FIELDS] : ['name', 'defaultValue'];
+  const editable = row ? editableFields(row) : [];
   const submitEdit = async (current: VariableRow, values: Values) => {
     const next = editValues(current, values);
     if (!changedFields(next, writer.full, editable).length) return;

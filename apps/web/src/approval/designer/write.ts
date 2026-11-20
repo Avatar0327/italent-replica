@@ -44,13 +44,16 @@ export class DesignerError extends ApiError {
   }
 }
 
-/** 草稿保存 / 新建版本的写入：请求头与上下文校验同共享客户端；回执仍须绑定本次 revision。 */
-export function useDesignerWrite() {
+/**
+ * 设计器写请求：请求头与上下文校验同共享客户端，错误保留 details（DesignerError）；回执由调用方核对。
+ * S7b 起发布、变量页启用（要读 SLOT_TAKEN 的 occupiedBy）也走这里。
+ */
+export function useDesignerRequest() {
   const session = useSession();
   const latest = useRef(session);
   latest.current = session;
   return useMemo(
-    () => async (id: string, action: 'draft' | 'versions', command: Command) => {
+    () => async (path: string, method: 'PUT' | 'POST', command: Command) => {
       const context = latest.current;
       if (!context.tenantId) throw new ApiError(401, 'TENANT_CONTEXT_REQUIRED', 'login', ui.login);
       const headers = new Headers({
@@ -61,8 +64,8 @@ export function useDesignerWrite() {
       if (command.revision !== undefined) headers.set('if-match', String(command.revision));
       let response: Response;
       try {
-        response = await fetch(`${base}/${encodeURIComponent(id)}/${action}`, {
-          method: action === 'draft' ? 'PUT' : 'POST',
+        response = await fetch(path, {
+          method,
           headers,
           credentials: 'same-origin',
           body: JSON.stringify(command.body),
@@ -70,18 +73,31 @@ export function useDesignerWrite() {
       } catch {
         throw new ApiError(0, 'NETWORK_ERROR', 'unknown', ui.uncertain);
       }
-      const payload = await response.json().catch(() => undefined);
+      const payload: unknown = await response.json().catch(() => undefined);
       if (latest.current.tenantId !== context.tenantId || latest.current.identityKey !== context.identityKey)
         throw new DOMException('Context changed', 'AbortError');
       if (!response.ok) {
-        const { code = 'REQUEST_FAILED', message, details } = payload?.error ?? {};
+        const { code = 'REQUEST_FAILED', message, details } = (payload as { error?: Values } | undefined)?.error ?? {};
         const retry = response.headers.get('retry-after');
         const after = retry && /^\d+$/.test(retry) ? Number(retry) : undefined;
-        throw new DesignerError(response.status, code, message, details, after);
+        throw new DesignerError(response.status, code as string, message as string | undefined, details, after);
       }
       if (payload === undefined) throw new ApiError(502, 'INVALID_RESPONSE', 'unknown', ui.failed);
-      return acceptProcessReceipt(payload, id, command.revision!);
+      return payload;
     },
     [],
+  );
+}
+
+/** 草稿保存 / 新建版本：回执仍须绑定本次 revision。 */
+export function useDesignerWrite() {
+  const request = useDesignerRequest();
+  return useMemo(
+    () => async (id: string, action: 'draft' | 'versions', command: Command) => {
+      const path = `${base}/${encodeURIComponent(id)}/${action}`;
+      const payload = await request(path, action === 'draft' ? 'PUT' : 'POST', command);
+      return acceptProcessReceipt(payload, id, command.revision!);
+    },
+    [request],
   );
 }
