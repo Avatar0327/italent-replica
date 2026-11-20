@@ -11,6 +11,8 @@ export class TransferApiError extends Error {
     readonly code: string,
     message: string,
     readonly status: number,
+    /** 服务端机器原因码，只供程序判断（如编制超编要求确认），不显示给用户。 */
+    readonly reason?: string,
   ) {
     super(message);
   }
@@ -37,7 +39,7 @@ export async function transferRequest<T>(tenantId: string, path: string, options
   } catch (cause) {
     // 兼容现有表单的未知结果判定（>=500 锁住命令）；网络中断同样不能直接重提。
     if (cause instanceof ApiError)
-      throw new TransferApiError(cause.code, transferErrorMessage(cause), cause.status || 503);
+      throw new TransferApiError(cause.code, transferErrorMessage(cause), cause.status || 503, cause.reason);
     throw cause;
   }
 }
@@ -133,7 +135,7 @@ function employmentTypeChoices(
   );
 }
 /** 保存载荷：HR 入口带联动（R1-T10），本人申请不带（`12` 附录）。 */
-export function transferBody(model: TransferFormModel, action: TransferAction) {
+export function transferBody(model: TransferFormModel, action: TransferAction, confirmed = false) {
   const linkage = model.initiator === 'employee' ? undefined : linkagePayload(model.linkage, sourceDepartment(model));
   return {
     ...previewInput(model),
@@ -144,6 +146,8 @@ export function transferBody(model: TransferFormModel, action: TransferAction) {
       ? { withEstablishment: model.withEstablishment === true }
       : {}),
     ...(linkage ? { linkage } : {}),
+    // F-026：非严格控编超编，用户在确认框点“继续保存”后带上；首次提交不带
+    ...(confirmed ? { confirmed: true } : {}),
   };
 }
 /** revision 缺省取预览的员工版本；HR 冲突重读核对后由 F-142 内核给出最新版本。 */
@@ -153,18 +157,24 @@ export function saveTransfer(
   action: TransferAction,
   commandId: string,
   revision = model.preview!.employeeRevision,
+  confirmed = false,
 ) {
-  const body = transferBody(model, action);
+  const body = transferBody(model, action, confirmed);
   return transferRequest<TransferBusiness>(tenantId, `${TRANSFER_API}/employees/${model.employeeId}`, {
     method: 'POST',
     body: JSON.stringify(body),
     headers: { 'if-match': String(revision), 'idempotency-key': commandId },
   });
 }
-export function submitSavedTransfer(tenantId: string, business: TransferBusiness, commandId: string) {
+export function submitSavedTransfer(
+  tenantId: string,
+  business: TransferBusiness,
+  commandId: string,
+  confirmed = false,
+) {
   return transferRequest<TransferBusiness>(tenantId, `${EMPLOYMENT_API}/businesses/${business.id}/submit`, {
     method: 'POST',
-    body: '{}',
+    body: JSON.stringify(confirmed ? { confirmed: true } : {}),
     headers: { 'if-match': String(business.revision), 'idempotency-key': commandId },
   });
 }

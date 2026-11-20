@@ -52,6 +52,10 @@ export async function listEmploymentForms(tx: Tx, tenantId: string) {
 
 /** F-263 校验入口：在调用方 withTenant 事务中校验至多 500 个编码；不存在 / 跨租户 / 停用均 422。 */
 export async function requireEnabledEmploymentForms(tx: Tx, tenantId: string, codes: readonly string[]) {
+  await requireEmploymentForms(tx, tenantId, codes, true);
+}
+
+async function requireEmploymentForms(tx: Tx, tenantId: string, codes: readonly string[], enabledOnly: boolean) {
   if (!codes.length) return;
   if (codes.length > LIMIT) throw new AppError('PAYLOAD_TOO_LARGE', '用工形式校验超过上限');
   const found = await tx
@@ -61,7 +65,7 @@ export async function requireEnabledEmploymentForms(tx: Tx, tenantId: string, co
     .for('share');
   const byCode = new Map(found.map((row) => [row.code, row.enabled]));
   for (const code of codes) {
-    if (byCode.get(code) === true) continue;
+    if (byCode.get(code) === true || (!enabledOnly && byCode.has(code))) continue;
     throw new AppError('EMPLOYMENT_FORM_INVALID', '用工形式不存在或已停用', {
       field: 'employmentForm',
       reason: byCode.get(code) === false ? 'EMPLOYMENT_FORM_DISABLED' : 'EMPLOYMENT_FORM_UNKNOWN',
@@ -69,11 +73,20 @@ export async function requireEnabledEmploymentForms(tx: Tx, tenantId: string, co
   }
 }
 
-/** 只接受本租户引用；null / 未给不选用字典，空字符串并非清空。供任职 / 兼职所有写入共用。 */
+/**
+ * F-363 对齐 F-323a R3：最终值等于基准即沿用（仍须存在于本租户），否则新选 / 改选须启用。
+ * 新建以合格前驱为基准，新周期 / 新增兼职无前驱；修改以锁内本单旧值为准，不能拿员工当前值替代。
+ * null / 未给不选用字典，空字符串并非清空。所有用工形式引用的改选判定只经此入口。
+ */
+export async function validateSelectedEmploymentForm(tx: Tx, tenantId: string, value: unknown, baseline: unknown) {
+  if (value === null || value === undefined) return;
+  if (typeof value !== 'string') throw new AppError('EMPLOYMENT_FORM_INVALID', '用工形式必须是字典编码');
+  await requireEmploymentForms(tx, tenantId, [value], value !== baseline);
+}
+
+/** 存储 / 传播 / 落地只搬运已判定的引用；仍校验存在与租户归属，不把搬运误判为新选。 */
 export async function validateEmploymentForm(tx: Tx, tenantId: string, code: unknown) {
-  if (code === null || code === undefined) return;
-  if (typeof code !== 'string') throw new AppError('EMPLOYMENT_FORM_INVALID', '用工形式必须是字典编码');
-  await requireEnabledEmploymentForms(tx, tenantId, [code]);
+  await validateSelectedEmploymentForm(tx, tenantId, code, code);
 }
 
 /** 名称补充发生在字段权限裁剪后；停用项仍可显示历史名称。遍历已裁剪的任职、兼职及前驱快照。 */

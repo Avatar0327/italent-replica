@@ -361,6 +361,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employee-self-service/routes.ts#selfTransferGuard': [
     'apps/api/src/modules/employee-self-service/access.ts#requireSelfServiceButtons',
+    'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferInput',
   ],
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferInput': [
     'apps/api/src/modules/employee-self-service/access.ts#transferFieldAccess',

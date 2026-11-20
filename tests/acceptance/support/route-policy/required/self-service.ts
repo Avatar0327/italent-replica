@@ -132,11 +132,11 @@ const PREVIEW_BUTTONS_CALL = {
   anchor: 'await requireSelfServiceButtons(tx, ctx)',
 } as const;
 const SUBMIT_BUTTONS_GUARD = [
-  { role: 'call', unit: `${ROUTES}#route:POST /transfer`, anchor: '{ guard: selfTransferGuard(self) }' },
+  { role: 'call', unit: `${ROUTES}#route:POST /transfer`, anchor: '{ guard: selfTransferGuard(self, raw, deps) }' },
   {
     role: 'impl',
     unit: `${ROUTES}#selfTransferGuard`,
-    anchor: 'before: (tx) => requireSelfServiceButtons(tx, self.ctx)',
+    anchor: 'await requireSelfServiceButtons(tx, self.ctx)',
   },
 ] as const;
 
@@ -308,7 +308,15 @@ export const SELF_SERVICE: RequiredTable = {
     {
       perm: 'guard:selfService.transferInput',
       facts: ['guard:selfService.transferInput'],
-      at: [route('POST', '/transfer', 'const input = await ownTransferInput(tx, ctx, raw, deps)'), TRANSFER_INPUT_IMPL],
+      at: [
+        SUBMIT_BUTTONS_GUARD[0],
+        {
+          role: 'impl',
+          unit: `${ROUTES}#selfTransferGuard`,
+          anchor: 'await ownTransferInput(tx, self.ctx, raw, deps)',
+        },
+        TRANSFER_INPUT_IMPL,
+      ],
     },
     {
       perm: 'obj:TenantBase.EmploymentRecord:create',
@@ -316,7 +324,12 @@ export const SELF_SERVICE: RequiredTable = {
       inner: { role: 'required' },
       facts: ['object:object.* 动作', 'object:requireObjectWrite（对象写操作权）'],
       at: [
-        route('POST', '/transfer', 'const input = await ownTransferInput(tx, ctx, raw, deps)'),
+        SUBMIT_BUTTONS_GUARD[0],
+        {
+          role: 'impl',
+          unit: `${ROUTES}#selfTransferGuard`,
+          anchor: 'await ownTransferInput(tx, self.ctx, raw, deps)',
+        },
         { role: 'impl', unit: `${TRANSFER}#ownTransferInput`, anchor: 'await requireTransferWrite(' },
         { role: 'impl', unit: `${SERVICE}#createTransfer`, anchor: 'await requireTransferWrite(ctx, input)' },
         ...CREATE_WRITE,

@@ -11,6 +11,7 @@ export interface CarriedWorldOptions {
   readonly matched?: boolean;
   readonly reserve?: number;
   readonly mode?: 'local' | 'inclusive' | 'both';
+  readonly targetStrict?: boolean;
 }
 
 export async function carriedWorld(db: Db, label: string, options: CarriedWorldOptions = {}) {
@@ -49,12 +50,12 @@ export async function carriedWorld(db: Db, label: string, options: CarriedWorldO
   });
   expect(schemeResponse.status).toBe(201);
   const scheme = (await schemeResponse.json()) as { id: string };
-  async function capacity(orgId: string, positionId: string, count: number, reserve: number) {
+  async function capacity(orgId: string, positionId: string, count: number, reserve: number, strictControl = true) {
     const response = await write('establishment/capacities', {
       orgId,
       schemeId: scheme.id,
       periodStart: '2026-01-01',
-      strictControl: true,
+      strictControl,
       reservedLocal: mode === 'inclusive' ? 0 : reserve,
       ...(mode === 'local' ? {} : { reservedInclusive: reserve }),
       subdivisions: [
@@ -69,7 +70,7 @@ export async function carriedWorld(db: Db, label: string, options: CarriedWorldO
     return ((await response.json()) as { id: string }).id;
   }
   const sourceCapacity = await capacity(w.from.id, sourcePosition, 2, options.reserve ?? 1);
-  const targetCapacity = await capacity(w.to.id, targetPosition, 0, 0);
+  const targetCapacity = await capacity(w.to.id, targetPosition, 0, 0, options.targetStrict);
   async function hired(name = '带编员工') {
     const employee = await w.session.employee(name);
     const hire = await w.session.business(

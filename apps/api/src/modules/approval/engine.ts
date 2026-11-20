@@ -54,6 +54,8 @@ import {
 } from './activations.js';
 import { viewableWithForeign } from './foreign-fields.js';
 import { approvalError, auditApproval, emitOutbox, type ApprovalContext, type Row } from './context.js';
+import { assertResumable, lockBoundProcess, registerResumeCheck } from './auto-variable-lifecycle.js';
+import { variableIdsOf } from './auto-variables.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import { candidates, conditionContext, evaluate, noProcessMessage, replicaMatch } from './matching.js';
 import { applyMessageRules, notifyTodo } from './notifications.js';
@@ -1026,6 +1028,7 @@ async function launch(
   snapshot: BusinessSnapshot,
   matched: Awaited<ReturnType<typeof matchProcess>>,
 ): Promise<InstanceRow> {
+  await lockBoundProcess(tx, ctx, matched);
   const instance = await insertInstance(tx, ctx, request, snapshot, matched);
   // F-048 设计 §5.2：冻结第 1 轮主体（单主体业务只有异动员工本人），之后的提交预检与路由读冻结值
   await freezeSubjects(
@@ -1131,6 +1134,10 @@ export async function resume(tx: Tx, ctx: ApprovalContext, instanceId: string): 
     throw approvalError('CONFLICT', 'APPROVAL_NOT_RETURNED', '只有被驳回或已撤回的申请可以重提');
   if (!mayResubmit(run.instance.initiatorUserId, ctx.userId))
     throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有原发起人可以重新提交');
+  // F-326-L §6.2：事务中段只做不加锁的预检；权威判定登记到提交前，与变量一批锁同批（中段不持变量锁，§3.1）
+  const autoCandidates = variableIdsOf(run.version.nodes);
+  await assertResumable(tx, ctx, run.version, autoCandidates);
+  registerResumeCheck(tx, ctx, run.version, autoCandidates);
   const rejecting = afterWithdraw ? null : run.instance.returnedFromNodeKey;
   const toRejecting =
     rejecting !== null && run.version.nodes[nodeIndex(run, rejecting)]!.rejectResubmit === 'rejecting_node';

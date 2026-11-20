@@ -21,7 +21,8 @@ import type { ExitView } from './exit-queries.js';
 // 视图归属（离职中 / 已完成 / 撤销）由视图名这一显式查询参数决定，是业务入口本身（设计 §3.2），不另按状态字段权拦截。
 
 export type Dependency =
-  { readonly field: string; readonly object?: 'employee' } | { readonly field: null; readonly why: string };
+  | { readonly field: string; readonly object?: 'employee' | 'contract' }
+  | { readonly field: null; readonly why: string };
 
 const independent = (why: string): Dependency => ({ field: null, why });
 export const on = (field: string): Dependency => ({ field });

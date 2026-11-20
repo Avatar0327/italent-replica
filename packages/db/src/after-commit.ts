@@ -5,10 +5,15 @@ import type { Tx } from './tenant-context.js';
 
 type Effect = () => Promise<void>;
 type BeforeCommitBatch = { payloads: unknown[]; flush: (tx: Tx, payloads: unknown[]) => Promise<void> };
+/** F-326-L §3.3：事务内已持有的行锁模式；键由调用方定（变量 id 全局唯一）。 */
+export type HeldLockMode = 'share' | 'update';
 type Frame = {
   db: Db;
   effects: Map<string, Effect>;
   beforeCommit: Map<string, BeforeCommitBatch>;
+  /** 本层（根事务或保存点）新取的行锁；保存点成功并入外层，回滚则丢弃（PostgreSQL 回滚保存点即释放其锁） */
+  locks: Map<string, HeldLockMode>;
+  parent?: Frame;
   open: boolean;
 };
 const frames = new WeakMap<Tx, Frame>();
@@ -35,6 +40,34 @@ export function beforeTransactionCommit<T>(
     payloads: [payload],
     flush: (current, payloads) => flush(current, payloads as T[]),
   });
+}
+
+/**
+ * F-326-L §3.3 锁台账：同一事务（含其保存点）内已持有的行锁。取锁入口据此判断“只重入已持有的子集、不 SHARE→UPDATE 升级”，
+ * 违反时由调用方抛程序错误，整个事务回滚（fail-closed）。台账与提交前任务同在事务槽位上，必须登记在受管理的事务内。
+ */
+export function transactionLockLedger(tx: Tx) {
+  const frame = frames.get(tx);
+  if (!frame?.open) throw new Error('锁台账必须登记在当前有效事务内');
+  return {
+    /** 当前事务链上持有的最强模式；update 压过 share。 */
+    held(key: string): HeldLockMode | undefined {
+      let found: HeldLockMode | undefined;
+      for (let level: Frame | undefined = frame; level; level = level.parent) {
+        const mode = level.locks.get(key);
+        if (mode === 'update') return mode;
+        found ??= mode;
+      }
+      return found;
+    },
+    empty(): boolean {
+      for (let level: Frame | undefined = frame; level; level = level.parent) if (level.locks.size) return false;
+      return true;
+    },
+    record(key: string, mode: HeldLockMode) {
+      if (mode === 'update' || !frame.locks.has(key)) frame.locks.set(key, mode);
+    },
+  };
 }
 
 /** 必须登记在受管理的事务上；新入口遗漏事务包装时直接拒绝写入，不能静默留下未消费任务。 */
@@ -70,7 +103,14 @@ async function consume(effects: Map<string, Effect>) {
 export function trackTransactionCommits(db: Db, root: Db = db, parent?: Frame): Db {
   const transaction = db.transaction.bind(db);
   db.transaction = async (fn, config) => {
-    const frame: Frame = { db: root, effects: new Map(), beforeCommit: new Map(), open: true };
+    const frame: Frame = {
+      db: root,
+      effects: new Map(),
+      beforeCommit: new Map(),
+      locks: new Map(),
+      parent,
+      open: true,
+    };
     const result = await transaction(async (tx) => {
       frames.set(tx, frame);
       trackTransactionCommits(tx, root, frame);
@@ -90,6 +130,8 @@ export function trackTransactionCommits(db: Db, root: Db = db, parent?: Frame): 
     if (parent) {
       for (const [key, batch] of frame.beforeCommit) appendBeforeCommit(parent, key, batch);
       for (const [key, effect] of frame.effects) parent.effects.set(key, effect);
+      for (const [key, mode] of frame.locks)
+        if (mode === 'update' || !parent.locks.has(key)) parent.locks.set(key, mode);
     } else await consume(frame.effects);
     return result;
   };

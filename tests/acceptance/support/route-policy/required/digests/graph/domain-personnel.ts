@@ -21,5 +21,6 @@ export const GRAPH: Graph = {
     '#EMPLOYEE_EDITABLE_FIELDS',
     '#EMPLOYEE_REFLECTED_FIELDS',
   ],
+  'packages/domain/src/personnel/fields.ts#subsetAttachmentFields': ['#SUBSETS', '#SUBSET_ATTACHMENT_FIELD_CODES'],
   'packages/domain/src/personnel/tenure.ts#computeTenure': ['#day', '#decimalYears'],
 };

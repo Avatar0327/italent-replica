@@ -1,6 +1,17 @@
 /** F-326 S2：租户级变量配置，读写均由调用者的租户事务承载。 */
 import { count, getTableColumns, or } from 'drizzle-orm';
-import { and, approvalVariables, asc, eq, inArray, sql, type Tx } from '@italent/db';
+import {
+  and,
+  approvalProcessNodes,
+  approvalProcessVersions,
+  approvalVariables,
+  asc,
+  eq,
+  inArray,
+  sql,
+  transactionLockLedger,
+  type Tx,
+} from '@italent/db';
 import {
   statusAfter,
   variableCodeOf,
@@ -35,9 +46,66 @@ export { selection as variableSelection };
 export type { VariableRow };
 const byId = (tenantId: string, id: string) => and(eq(table.tenantId, tenantId), eq(table.id, id));
 
+export type VariableLockMode = 'share' | 'update';
+
+/**
+ * F-326-L §3.3 变量行取锁的唯一入口（锁序的最后一层）：一个事务只取一批，按 id 升序，同一变量只有一种最终模式（update 压过 share）。
+ * 台账（事务槽位，保存点成功并入外层、回滚丢弃）记录已持有的模式；第二次调用只能重入已持有的子集，
+ * 要 update 而台账里只有 share（SHARE→UPDATE 升级）、或要台账之外的变量，都是程序错误：抛错并让整个事务回滚（fail-closed），
+ * 不能悄悄再取一批——两个事务各取一批会互等成环。
+ */
+export async function lockVariableBatch(
+  tx: Tx,
+  ctx: { readonly tenantId: string },
+  rows: readonly { readonly id: string; readonly mode: VariableLockMode }[],
+): Promise<void> {
+  const wanted = new Map<string, VariableLockMode>();
+  for (const { id, mode } of rows) if (mode === 'update' || !wanted.has(id)) wanted.set(id, mode);
+  if (!wanted.size) return;
+  const ledger = transactionLockLedger(tx);
+  const ids = [...wanted.keys()].sort();
+  if (!ledger.empty()) {
+    const missing = await absentFrom(
+      tx,
+      ctx,
+      ids.filter((id) => !ledger.held(id)),
+    );
+    for (const id of ids) {
+      const held = ledger.held(id);
+      // 不存在的变量没有行可锁：交给调用方随后的读取抛原业务错误（APPROVAL_VARIABLE_NOT_FOUND），不算台账程序错误
+      if (!held && missing.has(id)) continue;
+      if (!held || (wanted.get(id) === 'update' && held !== 'update'))
+        throw new Error(`自动变量锁台账：事务内已取过变量锁，不得再取 ${held ? '升级' : '新增'}的变量 ${id}`);
+    }
+    return;
+  }
+  for (const id of ids) {
+    const query = tx.select({ id: table.id }).from(table).where(byId(ctx.tenantId, id));
+    const locked = await (wanted.get(id) === 'update' ? query.for('update') : query.for('share'));
+    // 只登记查询实际返回的行：没取到行（变量不存在）不能记成已持锁
+    if (locked.length) ledger.record(id, wanted.get(id)!);
+  }
+}
+
+/** 不加锁地查出 ids 里在本租户下不存在的变量。 */
+async function absentFrom(tx: Tx, ctx: { readonly tenantId: string }, ids: readonly string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const found = await tx
+    .select({ id: table.id })
+    .from(table)
+    .where(and(eq(table.tenantId, ctx.tenantId), inArray(table.id, [...ids])));
+  const present = new Set(found.map((row) => row.id));
+  return new Set(ids.filter((id) => !present.has(id)));
+}
+
+/** 本事务新建的变量行天然被本事务独占：记为 update，后续收尾可以在这个集合内动作（台账只认已持有的锁）。 */
+export function recordCreatedVariable(tx: Tx, id: string): void {
+  transactionLockLedger(tx).record(id, 'update');
+}
+
 export async function loadVariable(tx: Tx, tenantId: string, id: string, lock = false): Promise<VariableRow> {
-  const query = tx.select(selection).from(table).where(byId(tenantId, id));
-  const [row] = await (lock ? query.for('update') : query);
+  if (lock) await lockVariableBatch(tx, { tenantId }, [{ id, mode: 'update' }]);
+  const [row] = await tx.select(selection).from(table).where(byId(tenantId, id));
   if (!row) throw approvalError('NOT_FOUND', 'APPROVAL_VARIABLE_NOT_FOUND', '变量不存在');
   return row;
 }
@@ -55,7 +123,35 @@ function valuesOf(row: VariableRow): VariableValues {
   };
 }
 
+/**
+ * 来源列（设计 §5.5“人工 / 自动（流程名 · 节点名）”，DEC-941）：按来源版本联接现有流程版本与节点取名，只读不落列；
+ * 名称取生成该变量的那个版本（不随后续版本改名漂移），版本或节点已不存在时为空。
+ */
+async function originNames(tx: Tx, tenantId: string, rows: VariableRow[]) {
+  const versionIds = [...new Set(rows.flatMap((row) => (row.originVersionId ? [row.originVersionId] : [])))];
+  if (!versionIds.length) return () => ({ originProcessName: null, originNodeName: null });
+  const versions = await tx
+    .select({ id: approvalProcessVersions.id, name: approvalProcessVersions.name })
+    .from(approvalProcessVersions)
+    .where(and(eq(approvalProcessVersions.tenantId, tenantId), inArray(approvalProcessVersions.id, versionIds)));
+  const nodes = await tx
+    .select({
+      versionId: approvalProcessNodes.versionId,
+      nodeKey: approvalProcessNodes.nodeKey,
+      name: approvalProcessNodes.name,
+    })
+    .from(approvalProcessNodes)
+    .where(and(eq(approvalProcessNodes.tenantId, tenantId), inArray(approvalProcessNodes.versionId, versionIds)));
+  const processName = new Map(versions.map((version) => [version.id, version.name]));
+  const nodeName = new Map(nodes.map((node) => [`${node.versionId}:${node.nodeKey}`, node.name]));
+  return (row: VariableRow) => ({
+    originProcessName: (row.originVersionId && processName.get(row.originVersionId)) ?? null,
+    originNodeName: nodeName.get(`${row.originVersionId}:${row.originNodeKey}`) ?? null,
+  });
+}
+
 async function variableViews(tx: Tx, tenantId: string, rows: VariableRow[]) {
+  const originOf = await originNames(tx, tenantId, rows);
   const userIds = [...new Set(rows.flatMap((row) => variablePersonIds(valuesOf(row))))];
   const people = userIds.length
     ? await eligibleDesignerPeople(tx, tenantId, { userIds, limit: userIds.length, offset: 0 })
@@ -71,6 +167,8 @@ async function variableViews(tx: Tx, tenantId: string, rows: VariableRow[]) {
     updatedBy: row.updatedBy,
     updatedAt: row.updatedAt.toISOString(),
     people: variablePersonIds(valuesOf(row)).flatMap((id) => (byUser.has(id) ? [byUser.get(id)!] : [])),
+    origin: row.origin as 'manual' | 'auto',
+    ...originOf(row),
   }));
 }
 

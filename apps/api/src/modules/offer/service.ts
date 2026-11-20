@@ -59,6 +59,7 @@ import { withOfferNames } from './read-names.js';
 import { requireQuotaConfirmed } from './establishment.js';
 import { cancelLinkedEntry, deleteLinkedEntry, pushEditToEntry, readOfferLinkageSetting } from './linkage.js';
 import type { OfferPush } from './linkage.js';
+import { offerFieldsChanged, publishOfferChange } from './source-events.js';
 import { lockOfferSyncScope } from './sync-lock.js';
 import { requireNotBlacklisted, type OfferIdentity } from './identity.js';
 import type { OfferCreateInput, OfferInvalidateInput, OfferTransferInput, OfferUpdateInput } from './input.js';
@@ -356,6 +357,8 @@ export async function save(tx: Tx, ctx: OfferContext, before: OfferRow, action: 
   if (after!.approvalStatus === 'approved' && after!.plannedEntryDate !== before.plannedEntryDate)
     await refreshApprovedDashboardDate(tx, ctx, 'offer', before.id, after!.plannedEntryDate);
   await audit(tx, ctx, action, before.id, before, after!);
+  // F-505：来源事件在同一事务内发出（本片没有订阅方）；离开可签 / 可签中改业务字段由 publishOfferChange 判定
+  await publishOfferChange(tx, ctx, before, after!, offerFieldsChanged(before, patch));
   // 写响应同样给沿记录链解析后的最新待入职 ID（编辑并同步会替换记录换 ID）
   return offerDto(after!, (await currentEntryIds(tx, ctx.tenantId, [after!])).get(after!.id));
 }
@@ -490,6 +493,8 @@ export async function deleteOffer(tx: Tx, ctx: OfferContext, id: string) {
     .from(offerSendRecords)
     .where(and(eq(offerSendRecords.tenantId, ctx.tenantId), eq(offerSendRecords.offerId, id)))
     .orderBy(asc(offerSendRecords.createdAt), asc(offerSendRecords.id));
+  // F-505：先发 deleted 事件，订阅方（S3）撤销在途签署并标记锚点后，库级守卫才放行物理删除
+  await publishOfferChange(tx, ctx, before, null, false);
   await guarded(() => tx.delete(offers).where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, id))), true);
   await audit(tx, ctx, 'delete', id, sendRecords.length ? { ...before, sendRecords } : before, null);
   return { id, deleted: true };

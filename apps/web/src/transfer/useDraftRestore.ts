@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { createFormStore } from '../foundation/forms/store.js';
+import { createFormStore, type SubmitInput } from '../foundation/forms/store.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { useCommandForm, type CommandForm } from '../foundation/forms/useCommandForm.js';
 import { TRANSFER_API, TransferApiError } from './api.js';
 import { clearDraft, restoreDraft } from './draft-restore.js';
 import { deleteServerDraft, readServerDraft, type ServerDraft } from './draft-server.js';
+import { needsEstablishmentConfirm, useEstablishmentConfirm } from './establishment-confirm.js';
 import type { TransferFormModel } from './types.js';
 
 // 页面层共用一份内核存储，关闭表单、切换视图或入口不销毁未确认命令（同合同模块）；刷新恢复归 F-110。
@@ -18,6 +19,7 @@ export function useDraftRestore(tenantId: string, scope: string | undefined, emp
   const [draft, setDraft] = useState<ServerDraft | null>(null);
   const command = useCommandForm(slotKey(`${TRANSFER_API}/employees`, employeeId || undefined), store);
   const active = useRef<AbortController | undefined>(undefined);
+  const askDelete = useEstablishmentConfirm('delete');
   const apply = (latest: ServerDraft | null, reset: boolean) => {
     setDraft(latest);
     setStatus(latest ? 'restored' : 'idle');
@@ -66,19 +68,21 @@ export function useDraftRestore(tenantId: string, scope: string | undefined, emp
     clear: async () => {
       if (!scope || !draft || command.locked || status === 'loading') return;
       command.clear();
-      const outcome = await command.submit({
-        values: { ...draft },
-        baseline: { ...draft },
-        editableFields: Object.keys(draft),
-        revision: draft.revision,
-        businessId: employeeId,
-        send: async (sent) => {
+      const signal = active.current?.signal;
+      const submit = (confirmed: boolean) =>
+        submitDraftDeletion(command.submit, draft, confirmed, async (sent) => {
           await deleteServerDraft(tenantId, employeeId, draft.id, sent);
-          // 成功后重读仍在 submitting 内，读取失败则 unknown，不留下可重复提交的解锁窗口。
-          await load(true, active.current?.signal);
+          // 重读仍在 submitting 内，读取失败保留 unknown。
+          await load(true, signal);
           return { id: employeeId };
-        },
-      });
+        });
+      let outcome = await submit(false);
+      if (outcome.status === 'rejected' && needsEstablishmentConfirm(outcome.error)) {
+        command.clear();
+        if (signal?.aborted || !(await askDelete()) || signal?.aborted) return;
+        // 确定拒绝后用内核创建新命令，确认参数也留在命令中供结果未知时恢复。
+        outcome = await submit(true);
+      }
       if (outcome.status === 'conflict') await reload();
       if (outcome.status === 'rejected' && outcome.error instanceof TransferApiError && outcome.error.status === 404) {
         setStatus('loading');
@@ -91,6 +95,23 @@ export function useDraftRestore(tenantId: string, scope: string | undefined, emp
       }
     },
   };
+}
+
+function submitDraftDeletion(
+  submit: CommandForm['submit'],
+  draft: ServerDraft,
+  confirmed: boolean,
+  send: SubmitInput['send'],
+) {
+  const values = { ...draft, ...(confirmed ? { confirmed } : {}) };
+  return submit({
+    values,
+    baseline: { ...draft },
+    editableFields: Object.keys(values),
+    revision: draft.revision,
+    businessId: draft.employeeId,
+    send,
+  });
 }
 
 function restoredModel(current: TransferFormModel, latest: ServerDraft): TransferFormModel {

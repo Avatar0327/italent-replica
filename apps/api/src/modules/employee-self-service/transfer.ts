@@ -17,6 +17,8 @@ const inputSchema = z.strictObject({
   reasonCode: z.string().trim().min(1).max(100).optional(),
   fields: z.record(z.string(), z.unknown()).optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
+  // F-026：非严格控编超编的确认标记
+  confirmed: z.boolean().optional(),
 });
 
 /** 本人入口固定业务类型与提交动作，客户端不能借 mode/initiator/employeeId 提权。 */

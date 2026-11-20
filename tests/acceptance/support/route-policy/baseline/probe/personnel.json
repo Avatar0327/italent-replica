@@ -19,6 +19,25 @@
       "obj:TenantBase.Awards:delete"
     ]
   },
+  "DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Awards/-"
+    ],
+    "trace": [
+      "obj:TenantBase.Awards:update"
+    ]
+  },
   "GET /api/tenant/personnel/change-requests/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -86,6 +105,25 @@
     ]
   },
   "GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Awards/TenantBase.Awards.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.Awards:view"
+    ]
+  },
+  "GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/attachments/:fileId/content": {
     "all": {
       "code": "NOT_FOUND",
       "error": "dd3b675d03b7",
@@ -273,6 +311,44 @@
     },
     "scopeQueries": [],
     "trace": []
+  },
+  "POST /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "d87d8715986d",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Awards/-"
+    ],
+    "trace": [
+      "obj:TenantBase.Awards:update"
+    ]
+  },
+  "POST /api/tenant/personnel/employees/:employeeId/subsets/:kind/attachments/:fileId/upload": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "505add1ab501",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Awards/-"
+    ],
+    "trace": [
+      "obj:TenantBase.Awards:update"
+    ]
   },
   "POST /api/tenant/personnel/employees/:id/attachments": {
     "all": {

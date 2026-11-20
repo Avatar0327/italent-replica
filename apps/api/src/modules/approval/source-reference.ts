@@ -12,6 +12,7 @@ import {
 } from '@italent/domain';
 import { readOrgSettings } from '../org/settings.js';
 import { approvalError, rowsOf } from './context.js';
+import { lockVariableBatch } from './variables.js';
 
 type Dimension = (typeof SOURCE_DIMENSIONS)[keyof typeof SOURCE_DIMENSIONS];
 export const sourceDimension = (type: RelationSourceType) =>
@@ -60,6 +61,14 @@ function isOwnerSlot(
   return row.origin_version_id === owner.versionId && row.origin_node_key === owner.nodeKey && row.origin_slot === slot;
 }
 
+/** 变量行取共享锁一律经锁台账（F-326-L §3.3）：设计器保存已在同一批里持有，这里只是重入。 */
+const shareLockVariables = (tx: Tx, tenantId: string, ids: readonly string[]) =>
+  lockVariableBatch(
+    tx,
+    { tenantId },
+    ids.map((id) => ({ id, mode: 'share' as const })),
+  );
+
 /**
  * F-326 §5.2：变量 / 矩阵必须存在、同租户、已启用，并适用于该审批类型与节点位置。
  * 被引用行取共享锁并按 id 排序：与管理员停用 / 改值 / 删列（FOR UPDATE）串行，且多节点加锁顺序一致。
@@ -81,6 +90,7 @@ async function assertVariableAndMatrixSources(
       ids.map((id) => sql`${id}::uuid`),
       sql`, `,
     );
+  await shareLockVariables(tx, tenantId, variableIds);
   const variables = variableIds.length
     ? rowsOf<{
         id: string;
@@ -99,7 +109,7 @@ async function assertVariableAndMatrixSources(
           FROM approval_variables v
           LEFT JOIN approval_process_versions pv ON pv.tenant_id=v.tenant_id AND pv.id=v.origin_version_id
           WHERE v.tenant_id=${tenantId}::uuid AND v.status='enabled' AND v.id IN (${idList(variableIds)})
-          ORDER BY v.id FOR SHARE OF v`),
+          ORDER BY v.id`),
       )
     : [];
   const heads = matrixIds.length
