@@ -5,7 +5,7 @@
  * 撤销通知写失败时源操作 / 任务 / 审计 / 锚点整体回滚的业务断言留 S3（需发起与撤销服务）。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { pgErrorCode, sql, withTenant } from '@italent/db';
 import { type ESignSourceEvent, isLockOrderViolation, SOURCE_LOCK_ORDER } from '@italent/domain';
 import { testDbMode, useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -126,6 +126,7 @@ describe('AC-ESIGN-F505-18 锁序契约', () => {
     const outcomes = await Promise.allSettled([forward, reverse]);
     const failed = outcomes.filter((outcome) => outcome.status === 'rejected');
     expect(failed).toHaveLength(1);
-    expect(String((failed[0] as PromiseRejectedResult).reason)).toMatch(/deadlock|死锁|40P01/);
+    // Drizzle 把驱动错误包在 Failed query 里，按 SQLSTATE 判（40P01 = deadlock_detected），不依赖文案
+    expect(pgErrorCode((failed[0] as PromiseRejectedResult).reason)).toBe('40P01');
   });
 });

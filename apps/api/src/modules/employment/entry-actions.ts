@@ -17,6 +17,7 @@ import {
 import { AppError } from '../../errors.js';
 import { auditEmployment } from './context.js';
 import { entryOfferHooks } from './entry-offer-hooks.js';
+import { entrySourceEvents } from './entry-source-events.js';
 import { changePendingEntryStatus, lockPendingEntry } from './employee-status.js';
 import { businessDate } from './fields.js';
 import { withdrawRehireAccount } from './rehire-account.js';
@@ -101,6 +102,13 @@ async function cancelEntryCore(
     { entryStatus: before.entryStatus },
     { entryStatus: record.entryStatus, reason, remark: input.remark ?? null },
   );
+  // F-505：取消入职 = 来源离开可签；Offer 拒绝联动取消与手动取消同走本内核，已取消的幂等返回不发事件
+  await entrySourceEvents.emit(tx, ctx, {
+    source: 'entry',
+    sourceId: recordId,
+    change: 'left_signable',
+    revision: (await requireSavedBusiness(tx, ctx, recordId)).revision,
+  });
   return { record, changed: true };
 }
 
