@@ -70,6 +70,10 @@ export async function affectsEstablishmentOccupancy(
  */
 const CAPACITY_KINDS: readonly string[] = ['transfer', 'intern_regularization', 'retire_rehire'];
 
+export function checksEmploymentCapacity(kind: string): boolean {
+  return CAPACITY_KINDS.includes(kind);
+}
+
 /** 编制判定结果：严格控编超编（拒绝）、非严格控编超编（提示后由用户确认）、未超编。 */
 export type EstablishmentAssessment = 'strict' | 'warning' | 'none';
 
@@ -138,7 +142,7 @@ async function evaluateEstablishment(
   const excesses: CapacityExcess[] = [];
   const none = { assessment: 'none' as const, excesses };
   // 普通入口按 kind 过滤；导入范围绕开这个过滤，普通 hire 照旧不判（设计 §4.3）
-  if ((!imported && !CAPACITY_KINDS.includes(target.kind)) || !target.departmentId) return none;
+  if ((!imported && !checksEmploymentCapacity(target.kind)) || !target.departmentId) return none;
   // 人员锁在调用方已获取；编制锁只保护容量/占编读取，不在持编制锁后获取其他员工锁。
   await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
   // 导入的人员还不存在：没有前驱、没有业务载荷、没有携带编制，字段全部来自行本身

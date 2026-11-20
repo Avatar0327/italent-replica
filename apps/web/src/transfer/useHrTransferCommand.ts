@@ -5,6 +5,7 @@ import { loadPreview, savedNotice } from '../self-service/shared/transfer-loadin
 import { text } from './messages.js';
 import { missingTransferRequiredFields } from '@italent/domain';
 import { saveTransfer } from './api.js';
+import { sendWithEstablishmentConfirm, useEstablishmentConfirm } from './establishment-confirm.js';
 import { draftValues, editableKeys, previewRecord, withReread } from './hr-conflict.js';
 import { terminatesOriginalContract } from './hr-form-model.js';
 import type { TransferAction, TransferFormModel } from './types.js';
@@ -27,6 +28,7 @@ export function useHrTransferCommand(
 ) {
   const write = useHrWrite(scope);
   const confirmTerminate = useTerminateConfirm();
+  const confirmEstablishment = useEstablishmentConfirm();
   const [action, setAction] = useState<TransferAction>('draft');
   // 冲突状态随本表单存在：关掉表单即放弃本次尝试，重开按新预览的版本提交；结果未知另由会话处理标记锁定（DEC-464）。
   const [store] = useState(createFormStore);
@@ -86,9 +88,14 @@ export function useHrTransferCommand(
         send: async (sent) => {
           // 回执按实际发出的 If-Match 核对（#350 第 2 轮 P2-2）。
           const revision = sent.revision ?? record.revision;
-          const save = (id: string) => saveTransfer(tenantId, model, action, id, revision);
+          const save = (confirmed: boolean) => (id: string) =>
+            saveTransfer(tenantId, model, action, id, revision, confirmed);
           const { employeeId } = model;
-          await write.run(save, { employeeId, revision });
+          // F-026：非严格控编超编先确认，确认后带 confirmed 以新命令重提（write.run 每次发新命令 ID）；取消保留输入、不再发请求
+          await sendWithEstablishmentConfirm(
+            (confirmed) => write.run(save(confirmed), { employeeId, revision }),
+            confirmEstablishment,
+          );
           // 内核按员工记录核对回执；业务单回执已由 useHrWrite 校验并保存。
           return { id: model.employeeId };
         },

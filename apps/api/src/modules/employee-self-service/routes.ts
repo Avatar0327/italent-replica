@@ -118,31 +118,32 @@ function registerTransferRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) 
   module.post('/transfer', async (c) => {
     const self = await selfAccess(c, deps, revision(c));
     const raw = await jsonBody(c);
-    // 首次与幂等重放都按当前字段权限检查，事务中再次检查本人绑定。
-    await withTenant(deps.db, self.ctx.tenantId, (tx) => ownTransferInput(tx, self.ctx, raw, deps));
+    const input = await withTenant(deps.db, self.ctx.tenantId, (tx) => ownTransferInput(tx, self.ctx, raw, deps));
     const commandInput = { employeeId: self.employee.id, input: raw };
     return runWrite(
       c,
       self.deps,
       self.ctx,
       commandInput,
-      async (tx, ctx) => {
-        await self.check(tx);
-        const input = await ownTransferInput(tx, ctx, raw, deps);
-        return { status: 201, body: await createTransfer(tx, ctx, self.employee.id, input) };
-      },
-      { guard: selfTransferGuard(self) },
+      async (tx, ctx) => ({ status: 201, body: await createTransfer(tx, ctx, self.employee.id, input) }),
+      { guard: selfTransferGuard(self, raw, deps) },
     );
   });
 }
 
 /**
- * 三个本人调动按钮的命令内复核（契约 §2.3.1）：接 CommandGuard.before，runCommand 的三个出口（首次执行、直接重放、失败后回查）
- * 都经 ledgerExit 先过它，所以撤权后重放拿不到原 201。只设 before：结果可见性仍由 runWrite 返回后的 authorizeEmploymentResult 复核。
+ * 本人绑定、三个调动按钮（契约 §2.3.1）与字段编辑权在查台账前复核，覆盖首次执行、直接重放和失败后回查。
+ * 结果可见性仍由 runWrite 的 authorizeEmploymentResult 复核。
  * 工厂放在这里而不是 access.ts：检查函数留在 access.ts，才能让 F-039 的 delete-precondition 变异体生成。
  */
-function selfTransferGuard(self: SelfAccess): CommandGuard {
-  return { before: (tx) => requireSelfServiceButtons(tx, self.ctx) };
+function selfTransferGuard(self: SelfAccess, raw: unknown, deps: TenantRouteDeps): CommandGuard {
+  return {
+    before: async (tx) => {
+      await self.check(tx);
+      await requireSelfServiceButtons(tx, self.ctx);
+      await ownTransferInput(tx, self.ctx, raw, deps);
+    },
+  };
 }
 
 async function readSelfApplication(c: Context<TenantEnv>, deps: TenantRouteDeps, item: OwnApplication) {

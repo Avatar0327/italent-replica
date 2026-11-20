@@ -410,31 +410,34 @@ export async function reconcileCarriedEstablishment(tx: Tx, ctx: EmploymentConte
   await carryEstablishment(tx, ctx, target.businessId, target.effectiveDate, source?.fields ?? {}, target.fields ?? {});
 }
 
-/** 回退后，原调入方被其他业务占用的编制仍需严格控编；调用者已将本单置为撤销/删除。 */
+/** 回退后检查原调入方的剩余占用；交互 DELETE 走 F-026 确认，系统回退与重新分配只判严格控编。 */
 export async function assertReleasedEstablishment(
   tx: Tx,
   ctx: EmploymentContext,
   businessId: string,
   employeeId: string,
   allocations: readonly Allocation[],
+  deleting = false,
 ) {
+  if (!allocations.length) return;
   const { employmentEstablishmentExceeded } = await import('./employment-check.js');
+  const { assertEstablishmentCapacity } = await import('../employment/activation-checks.js');
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   for (const row of allocations.filter((row) => row.localDelta > 0 || row.inclusiveDelta > 0)) {
     const capacity = await readCapacity(tx, ctx.tenantId, row.capacityId, today);
     if (capacity.periodEnd < today) continue;
     const effectiveDate = capacity.periodStart > today ? capacity.periodStart : today;
-    if (
-      await employmentEstablishmentExceeded(tx, ctx, {
-        businessId,
-        employeeId,
-        kind: 'transfer',
-        effectiveDate,
-        departmentId: capacity.orgId,
-        positionId: row.positionId,
-        occupancyOnly: true,
-      })
-    )
+    const target: ActivationTarget = {
+      businessId,
+      employeeId,
+      kind: 'transfer',
+      effectiveDate,
+      departmentId: capacity.orgId,
+      positionId: row.positionId,
+      occupancyOnly: true,
+    };
+    if (deleting && ctx.establishmentConfirmation) await assertEstablishmentCapacity(tx, ctx, target);
+    else if (await employmentEstablishmentExceeded(tx, ctx, target))
       throw new AppError('CONFLICT', '回退带编调动后将超出严格控制编制', { reason: 'ESTABLISHMENT_EXCEEDED' });
   }
 }

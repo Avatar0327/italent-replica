@@ -34,8 +34,13 @@ export async function readServerDraft(tenantId: string, employeeId: string, sign
   throw new Error(text.draftRestoreFailed);
 }
 /** 删除回执与 DELETE /businesses/:id 同形；只校验稳定标识、版本及未被裁剪的状态。 */
-export async function deleteServerDraft(tenantId: string, employeeId: string, id: string, command: Command) {
-  // 这个端点的替换原因在 error.details.reason；通用客户端不保留 details，局部读取真实错误信封。
+export async function deleteServerDraft(
+  tenantId: string,
+  employeeId: string,
+  id: string,
+  command: Command<Readonly<Record<string, unknown>>>,
+) {
+  // 暂存替换与 revision 冲突走同一重读入口；超编确认保留服务端原因码。
   const response = await fetch(`${draftPath(employeeId)}/${id}`, {
     method: 'DELETE',
     credentials: 'same-origin',
@@ -45,6 +50,7 @@ export async function deleteServerDraft(tenantId: string, employeeId: string, id
       'If-Match': String(command.revision),
       'Idempotency-Key': command.id,
     }),
+    ...(command.body?.confirmed === true ? { body: JSON.stringify({ confirmed: true }) } : {}),
   });
   const receipt = await response.json();
   if (!response.ok) {
@@ -57,6 +63,7 @@ export async function deleteServerDraft(tenantId: string, employeeId: string, id
       code,
       response.status === 403 ? text.draftDeleteForbidden : (error?.message ?? text.unknown),
       response.status,
+      error?.details?.reason,
     );
   }
   if (
