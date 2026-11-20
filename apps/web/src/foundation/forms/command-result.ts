@@ -21,7 +21,8 @@ export type ResultVerdict =
 export const commandResultPath = (commandId: string) => `/api/tenant/commands/${encodeURIComponent(commandId)}/result`;
 
 // 缺省字段按 null 处理（设计「缺失时」列），类型不符才算无效。
-const nullable = (value: unknown, type: 'string' | 'number') => value == null || typeof value === type;
+const absent = (value: unknown) => value === null || value === undefined;
+const nullable = (value: unknown, type: 'string' | 'number') => absent(value) || typeof value === type;
 /** 按真实接口形状校验；命令 ID 不是本次查询的一律当作无效回执（迟到 / 串号回执不能落到当前命令上）。 */
 export function parseCommandResult(raw: unknown, commandId: string): CommandResult {
   const result = raw as Partial<CommandResult> | null;
@@ -30,10 +31,18 @@ export function parseCommandResult(raw: unknown, commandId: string): CommandResu
     (result.status === 'succeeded' || result.status === 'failed') &&
     nullable(result.businessId, 'string') &&
     nullable(result.businessType, 'string') &&
-    (result.revision == null || Number.isSafeInteger(result.revision)) &&
-    (result.httpStatus == null || Number.isSafeInteger(result.httpStatus));
+    (absent(result.revision) || Number.isSafeInteger(result.revision)) &&
+    (absent(result.httpStatus) || Number.isSafeInteger(result.httpStatus));
   if (!valid) throw new Error(messages.invalidReceipt);
-  return result as CommandResult;
+  // 缺省字段统一成 null：调用方按 === null 判断，不能因字段缺失绕过版本核对。
+  return {
+    ...(result as CommandResult),
+    commandType: result.commandType ?? null,
+    businessType: result.businessType ?? null,
+    businessId: result.businessId ?? null,
+    revision: result.revision ?? null,
+    httpStatus: result.httpStatus ?? null,
+  };
 }
 
 /** 唯一的结果查询入口（附件、实习、调动、审批共用）。 */
