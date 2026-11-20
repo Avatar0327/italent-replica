@@ -5,6 +5,3 @@ export const ESIGN_DECLARED: ModuleDeclared = {
   /** 状态码相同、错误体不同，由实际行为证明非法标识声明适用的端点 */
   sameStatusInvalidId: ['PATCH /api/tenant/esign/templates/:id', 'POST /api/tenant/esign/mine/:id/sign'],
 };
-
-/** F-505 S2 静态路径清单；配置对象无范围、无按钮、无标识参数。 */
-export const ESIGN_SOURCE_SETTINGS = ['offer', 'entry'] as const;

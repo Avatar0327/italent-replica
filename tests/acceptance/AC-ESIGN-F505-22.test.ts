@@ -18,11 +18,12 @@ import {
   readFrozenRecorded,
   writeFrozenRecorded,
 } from './support/route-policy/recorded.js';
-import { ESIGN_SOURCE_SETTINGS } from './support/route-policy/required/declared/esign.js';
 
 const db = useTestDb();
 const recorder = createRecorder();
 const SETTINGS = 'TenantBase.ESignSettings';
+/** F-505 S2 静态路径清单；配置对象无范围、无按钮、无标识参数。 */
+const ESIGN_SOURCE_SETTINGS = ['offer', 'entry'] as const;
 const endpoints = new Set(
   ESIGN_SOURCE_SETTINGS.flatMap((scene) => ['GET', 'PUT'].map((method) => `${method} ${ESIGN}/scenes/${scene}`)),
 );
