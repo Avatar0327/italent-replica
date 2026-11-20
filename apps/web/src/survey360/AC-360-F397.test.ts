@@ -4,6 +4,7 @@ import { act, createElement as h } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { App } from '../App.js';
+import { AUTOSAVE_MS } from './usePortalAnswer.js';
 
 let host: HTMLDivElement;
 let root: Root;
@@ -259,12 +260,15 @@ function heldSaveFixture() {
   const session = randomBytes(32).toString('base64url');
   sessionStorage.setItem(key, JSON.stringify({ session, expiresAt: new Date(Date.now() + 60_000).toISOString() }));
   const task = '/api/survey360/portal/tasks/relation/questionnaires/questionnaire';
-  const sheet = { status: 'pending', revision: 0, answers: [], suggestion: null };
-  const item = { id: 'item', text: '合成题目', options: [{ id: 'option', label: '合成选项', remarkRequired: false }] };
+  // 合成服务端：保存落库并推进 revision，If-Match 与当前 revision 不符时 409（同后端 answering 的版本校验）。
+  let sheet: Record<string, unknown> = { status: 'pending', revision: 0, answers: [], suggestion: null };
+  const options = ['option', 'other'].map((id) => ({ id, label: `合成选项${id}`, remarkRequired: false }));
+  const item = { id: 'item', text: '合成题目', options };
   let gate = Promise.resolve();
   const fixture = {
     release: () => undefined as void,
     puts: 0,
+    revisions: [] as number[],
     hold: () => void (gate = new Promise<void>((resolve) => (fixture.release = resolve))),
   };
   vi.stubGlobal(
@@ -287,9 +291,13 @@ function heldSaveFixture() {
         });
       if (url === task) {
         fixture.puts += 1;
+        const expected = Number(headers.get('if-match'));
+        fixture.revisions.push(expected);
         await gate;
-        const revision = Number(headers.get('if-match')) + 1;
-        return Response.json({ ...sheet, ...JSON.parse(String(init.body)), status: 'draft', revision });
+        if (expected !== sheet.revision)
+          return Response.json({ error: { code: 'REVISION_CONFLICT', message: '版本冲突' } }, { status: 409 });
+        sheet = { ...sheet, ...JSON.parse(String(init.body)), status: 'draft', revision: expected + 1 };
+        return Response.json(sheet);
       }
       return Response.json({
         kind: 'answer',
@@ -316,9 +324,10 @@ async function pressButton(label: string) {
   await act(async () => button!.click());
   await settle();
 }
-const radio = () => host.querySelector<HTMLInputElement>('input[type="radio"]')!;
+const radio = (index = 0) => host.querySelectorAll<HTMLInputElement>('input[type="radio"]')[index]!;
 
 it('AC-360-F397 保存在途时退出并重登、重开同一答卷：继承的保存未确认前只读，原回执到达后恢复可写', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   const fixture = heldSaveFixture();
   await act(async () => root.render(h(App)));
   await settle();
@@ -340,13 +349,25 @@ it('AC-360-F397 保存在途时退出并重登、重开同一答卷：继承的�
   expect(radio().checked).toBe(true);
   expect(radio().disabled).toBe(false);
   expect(fixture.puts).toBe(1);
-  // 守卫：之后本次挂载自己发出的保存在途时可继续作答。
+  // 第 6 轮审查 P2-1：原回执到达后不做任何输入，跨过自动保存周期，不得以旧 revision 再发 PUT、不得再次锁定。
+  await act(async () => {
+    vi.advanceTimersByTime(AUTOSAVE_MS * 2);
+  });
+  await settle();
+  expect(fixture.revisions).toEqual([0]);
+  expect(radio().checked).toBe(true);
+  expect(radio().disabled).toBe(false);
+  // 随后新输入的保存带原回执之后的 revision；本次挂载发出的保存在途时可继续作答。
+  await act(async () => radio(1).click());
+  await settle();
   fixture.hold();
   await pressButton('立即保存');
-  expect(fixture.puts).toBe(2);
-  expect(radio().disabled).toBe(false);
+  expect(fixture.revisions).toEqual([0, 1]);
+  expect(radio(1).disabled).toBe(false);
   await act(async () => fixture.release());
   await settle();
+  expect(radio(1).checked).toBe(true);
+  expect(radio(1).disabled).toBe(false);
 });
 
 it('AC-360-F397 对照：本次挂载发出的保存在途时仍可继续作答', async () => {
