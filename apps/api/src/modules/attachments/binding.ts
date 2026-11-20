@@ -60,7 +60,7 @@ export interface BindInput {
   readonly actor: string;
 }
 
-async function lockFiles(tx: Tx, tenantId: string, ids: readonly string[]) {
+export async function lockFiles(tx: Tx, tenantId: string, ids: readonly string[]) {
   if (!ids.length) return new Map<string, FileRow>();
   const rows = await tx
     .select()
@@ -71,7 +71,7 @@ async function lockFiles(tx: Tx, tenantId: string, ids: readonly string[]) {
   return new Map(rows.map((row) => [row.id.toLowerCase(), row]));
 }
 
-async function move(tx: Tx, ctx: BindingContext, before: FileRow, operation: string, set: Partial<FileRow>) {
+export async function move(tx: Tx, ctx: BindingContext, before: FileRow, operation: string, set: Partial<FileRow>) {
   const [after] = await tx
     .update(F)
     .set({ ...set, revision: before.revision + 1, updatedAt: ctx.now })

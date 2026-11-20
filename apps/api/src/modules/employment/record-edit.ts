@@ -23,6 +23,7 @@ import { assertEmploymentDepartmentAvailable, validateEmploymentReferences } fro
 import { isPendingEntryRecord } from './employee-status.js';
 import { entrySourceEvents } from './entry-source-events.js';
 import { validateSelectedEmploymentType } from './employment-types.js';
+import { validateSelectedEmploymentForm } from './employment-forms.js';
 import { recordWindow } from './reporting-cycle.js';
 import { requireSavedBusiness } from './write-service.js';
 import type { EmploymentBusinessPatch, EmploymentContext, EmploymentRecord, CustomFields } from './types.js';
@@ -51,6 +52,7 @@ export async function editedValues(
   await requireScopedEmploymentObject(tx, ctx, record.employeeId, record.fields.departmentId, record.id);
   await requireScopedEmploymentObject(tx, ctx, record.employeeId, fields.departmentId, record.id);
   await validateSelectedEmploymentType(tx, ctx.tenantId, fields.employmentType, record.fields.employmentType);
+  await validateSelectedEmploymentForm(tx, ctx.tenantId, fields.employmentForm, record.fields.employmentForm);
   return { fields, customFields };
 }
 

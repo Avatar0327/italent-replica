@@ -43,6 +43,10 @@ export type VariableRow = {
   updatedBy: string | null;
   updatedAt: string;
   people: Person[];
+  /** 来源（DEC-941，后端 variableViews）：自动变量带来源流程名与节点名（按来源版本取，可能为空）。 */
+  origin?: 'manual' | 'auto';
+  originProcessName?: string | null;
+  originNodeName?: string | null;
 };
 export interface Reference {
   processId: string;
@@ -166,6 +170,19 @@ export function createBody(scope: ScopeKind, app: string | undefined, values: Re
   };
 }
 
+export const isAuto = (row: VariableRow) => row.origin === 'auto';
+/** 来源列：人工 / 自动（流程名 · 节点名）；名称缺失（来源版本或节点已不存在）显示占位。 */
+export const originText = (row: VariableRow) =>
+  isAuto(row) ? m.origins.auto(row.originProcessName || m.missing, row.originNodeName || m.missing) : m.origins.manual;
+/**
+ * 编辑可改字段：应用变量只改名称、默认值；自动变量的适用范围固定为“流程”（设计 §5.5，后端 400
+ * APPROVAL_AUTO_VARIABLE_FIELD_LOCKED），不进提交体。
+ */
+export function editableFields(row: VariableRow): string[] {
+  if (row.scope !== 'public') return ['name', 'defaultValue'];
+  return EDIT_FIELDS.filter((name) => !(isAuto(row) && name === 'usageScopes'));
+}
+
 /** 编辑：表单值换成与行同形的值，交给内核按基线算改动字段（只发改过的）。 */
 export function editValues(row: VariableRow, values: Record<string, unknown>) {
   const result: Record<string, unknown> = {
@@ -173,7 +190,7 @@ export function editValues(row: VariableRow, values: Record<string, unknown>) {
     defaultValue: defaultValueOf(row.dataType, values.defaultValue),
   };
   if (row.scope === 'public') {
-    result.usageScopes = orderedScopes(values.usageScopes as string[]);
+    if (!isAuto(row)) result.usageScopes = orderedScopes(values.usageScopes as string[]);
     result.description =
       typeof values.description === 'string' && values.description !== '' ? values.description : null;
   }

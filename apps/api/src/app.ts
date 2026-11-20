@@ -143,6 +143,12 @@ export function createApp(deps: AppDeps = {}): Hono {
         path: /^\/api\/tenant\/attachments\/[^/]+\/upload$/,
         maxSize: ATTACHMENT_BODY_LIMIT,
       },
+      // F-361②（F-479 §10）：人员子集附件上传，上限同上
+      {
+        method: 'POST',
+        path: /^\/api\/tenant\/personnel\/employees\/[^/]+\/subsets\/[^/]+\/attachments\/[^/]+\/upload$/,
+        maxSize: ATTACHMENT_BODY_LIMIT,
+      },
       {
         method: 'POST',
         path: /^\/api\/tenant\/account\/avatar\/attachments\/[^/]+\/upload$/,

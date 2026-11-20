@@ -1,5 +1,5 @@
 {
-  "id": "f6c03970-eced-41e1-85ea-c26596cdf56c",
+  "id": "4c39e6ad-2d28-4c24-b430-4be52ded9659",
   "prevId": "fa24c684-5d73-44eb-bdb3-b96923024838",
   "version": "7",
   "dialect": "postgresql",
@@ -47260,7 +47260,7 @@
         },
         "attachment_files_purpose": {
           "name": "attachment_files_purpose",
-          "value": "\"attachment_files\".\"purpose\" IN ('exit.handwritten_application')"
+          "value": "\"attachment_files\".\"purpose\" IN ('exit.handwritten_application','personnel.subset_attachment')"
         },
         "attachment_files_size": {
           "name": "attachment_files_size",
@@ -68712,66 +68712,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.esign_offer_sources": {
-      "name": "esign_offer_sources",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "offer_id": {
-          "name": "offer_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "esign_offer_sources_tenant_id_tenants_id_fk": {
-          "name": "esign_offer_sources_tenant_id_tenants_id_fk",
-          "tableFrom": "esign_offer_sources",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "esign_offer_sources_tenant_id_offer_id_pk": {
-          "name": "esign_offer_sources_tenant_id_offer_id_pk",
-          "columns": [
-            "tenant_id",
-            "offer_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.esign_scene_settings": {
       "name": "esign_scene_settings",
       "schema": "",
@@ -68866,7 +68806,7 @@
       "checkConstraints": {
         "esign_scene_settings_scene": {
           "name": "esign_scene_settings_scene",
-          "value": "\"esign_scene_settings\".\"scene\" IN ('transfer', 'offer', 'entry')"
+          "value": "\"esign_scene_settings\".\"scene\" IN ('transfer')"
         },
         "esign_scene_settings_validity": {
           "name": "esign_scene_settings_validity",
@@ -69013,13 +68953,7 @@
           "name": "business_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
-        },
-        "offer_id": {
-          "name": "offer_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "employee_id": {
           "name": "employee_id",
@@ -69130,19 +69064,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "source_revision": {
-          "name": "source_revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "variable_read_fields": {
-          "name": "variable_read_fields",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::text[]"
-        },
         "expired_at": {
           "name": "expired_at",
           "type": "timestamp with time zone",
@@ -69218,17 +69139,11 @@
           "method": "btree",
           "with": {}
         },
-        "esign_tasks_one_signing_business": {
-          "name": "esign_tasks_one_signing_business",
+        "esign_tasks_one_signing": {
+          "name": "esign_tasks_one_signing",
           "columns": [
             {
               "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "scene",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -69241,50 +69156,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"esign_tasks\".\"status\" = 'signing' AND \"esign_tasks\".\"business_id\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "esign_tasks_one_signing_offer": {
-          "name": "esign_tasks_one_signing_offer",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "offer_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"esign_tasks\".\"status\" = 'signing' AND \"esign_tasks\".\"scene\" = 'offer'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "esign_tasks_offer": {
-          "name": "esign_tasks_offer",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "offer_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
+          "where": "\"esign_tasks\".\"status\" = 'signing'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -69360,21 +69232,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "esign_tasks_offer_fk": {
-          "name": "esign_tasks_offer_fk",
-          "tableFrom": "esign_tasks",
-          "tableTo": "esign_offer_sources",
-          "columnsFrom": [
-            "tenant_id",
-            "offer_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "offer_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "esign_tasks_employee_fk": {
           "name": "esign_tasks_employee_fk",
           "tableFrom": "esign_tasks",
@@ -69421,23 +69278,11 @@
       "checkConstraints": {
         "esign_tasks_scene": {
           "name": "esign_tasks_scene",
-          "value": "\"esign_tasks\".\"scene\" IN ('transfer', 'offer', 'entry')"
-        },
-        "esign_tasks_source": {
-          "name": "esign_tasks_source",
-          "value": "(\"esign_tasks\".\"scene\" IN ('transfer', 'entry') AND \"esign_tasks\".\"business_id\" IS NOT NULL AND \"esign_tasks\".\"offer_id\" IS NULL)\n        OR (\"esign_tasks\".\"scene\" = 'offer' AND \"esign_tasks\".\"business_id\" IS NULL AND \"esign_tasks\".\"offer_id\" IS NOT NULL)"
-        },
-        "esign_tasks_source_revision": {
-          "name": "esign_tasks_source_revision",
-          "value": "(\"esign_tasks\".\"scene\" = 'transfer' AND (\"esign_tasks\".\"source_revision\" IS NULL OR \"esign_tasks\".\"source_revision\" > 0))\n        OR (\"esign_tasks\".\"scene\" <> 'transfer' AND \"esign_tasks\".\"source_revision\" IS NOT NULL AND \"esign_tasks\".\"source_revision\" > 0)"
-        },
-        "esign_tasks_variable_fields": {
-          "name": "esign_tasks_variable_fields",
-          "value": "\"esign_tasks\".\"variable_read_fields\" IN (ARRAY[]::text[], ARRAY['name']::text[], ARRAY['code']::text[],\n        ARRAY['name', 'code']::text[])"
+          "value": "\"esign_tasks\".\"scene\" IN ('transfer')"
         },
         "esign_tasks_origin": {
           "name": "esign_tasks_origin",
-          "value": "\"esign_tasks\".\"origin\" IN ('activation', 'manual') AND (\"esign_tasks\".\"scene\" = 'transfer' OR \"esign_tasks\".\"origin\" = 'manual')"
+          "value": "\"esign_tasks\".\"origin\" IN ('activation', 'manual')"
         },
         "esign_tasks_status": {
           "name": "esign_tasks_status",
@@ -69457,7 +69302,7 @@
         },
         "esign_tasks_revoke_cause": {
           "name": "esign_tasks_revoke_cause",
-          "value": "\"esign_tasks\".\"revoke_cause\" IS NULL OR \"esign_tasks\".\"revoke_cause\" IN\n        ('manual', 'business_deleted', 'source_cancelled', 'source_changed')"
+          "value": "\"esign_tasks\".\"revoke_cause\" IS NULL OR \"esign_tasks\".\"revoke_cause\" IN ('manual', 'business_deleted')"
         },
         "esign_tasks_validity": {
           "name": "esign_tasks_validity",
