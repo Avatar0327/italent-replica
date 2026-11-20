@@ -1702,6 +1702,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation',
     'apps/api/src/modules/employment/entry-probation.ts#savePendingProbation',
     'apps/api/src/modules/employment/fields.ts#businessDate',
+    'apps/api/src/modules/employment/record-edit.ts#bumpAndNotifyEntry',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
