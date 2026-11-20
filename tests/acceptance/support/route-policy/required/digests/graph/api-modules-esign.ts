@@ -60,7 +60,6 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/esign/notice-payload.ts#reminderPayload': [
     '#minimalSignNotice',
-    'apps/api/src/modules/esign/record-access.ts#taskFiles',
     'packages/domain/src/esign/notice-templates.ts#ESIGN_SCENE_LABEL',
     'packages/domain/src/esign/notice-templates.ts#esignFileLabel',
   ],

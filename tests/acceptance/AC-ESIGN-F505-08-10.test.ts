@@ -96,11 +96,9 @@ it.each(SCENES)('AC-10 %s 三条生产路径只向当前接收人投递最小正
     expect(item.sender).toBeNull();
     expect(item).not.toHaveProperty('payload');
     const label = `${names[scene]}任务（${item.businessId}）`;
-    const body = item.template.includes('revoked')
-      ? `${label}已撤销。`
-      : item.template.includes('completed')
-        ? `${label}已完成，请到“我的签署”查看。`
-        : `您有一项${label}待处理，请到“我的签署”查看。`;
+    let body = `您有一项${label}待处理，请到“我的签署”查看。`;
+    if (item.template.includes('revoked')) body = `${label}已撤销。`;
+    if (item.template.includes('completed')) body = `${label}已完成，请到“我的签署”查看。`;
     expect(item.body).toBe(body);
   }
   const rows = await w.notices();
