@@ -48,6 +48,7 @@ import {
   draftOk,
   manager,
   newVersion,
+  publicVar,
   publishWith,
   readProcess,
   s4World,
@@ -55,7 +56,13 @@ import {
   varRow,
 } from './AC-APV-F326-S7a-support.js';
 import { cmd } from './support/tenant-api.js';
-import { idleInTransaction, lockWaiters, settledOrBlocked, withRelease } from './support/pg-interleave.js';
+import {
+  idleInTransaction,
+  lockWaiters,
+  settledOrBlocked,
+  withHeldLock,
+  withRelease,
+} from './support/pg-interleave.js';
 
 const hook = vi.hoisted(() => ({
   step: '',
@@ -64,6 +71,7 @@ const hook = vi.hoisted(() => ({
   release: (): void => undefined,
   pause: async (_tx: unknown): Promise<void> => undefined,
   approverPid: 0,
+  lockedIds: [] as string[],
   /** 测试侧记录：交接对 republishWithExceptionAdmin 的每次调用（流程 ID），用来证明重发的调用边界。 */
   republished: [] as string[],
   /** 事务内观察点（读 Z / 实例状态，用的是交接事务自己的 tx）；未设置时为空操作。 */
@@ -95,6 +103,21 @@ vi.mock('../../apps/api/src/modules/approval/definitions.js', async (original) =
       const result = await actual.republishWithExceptionAdmin(...args);
       await hook.observe('republish-returned', args[0]);
       return result;
+    },
+  };
+});
+vi.mock('../../apps/api/src/modules/approval/variables.js', async (original) => {
+  const actual = await original<typeof import('../../apps/api/src/modules/approval/variables.js')>();
+  return {
+    ...actual,
+    lockVariableBatch: async (...args: Parameters<typeof actual.lockVariableBatch>) => {
+      await actual.lockVariableBatch(...args);
+      if (!hook.watchInstance) return;
+      const [row] = rowsOf<{ pid: number }>(await args[0].execute(sql`SELECT pg_backend_pid()::int AS pid`));
+      if (row?.pid === hook.approverPid) {
+        const ledger = transactionLockLedger(args[0]);
+        hook.lockedIds.push(...args[2].filter(({ id }) => ledger.held(id) === 'update').map(({ id }) => id));
+      }
     },
   };
 });
@@ -151,10 +174,10 @@ async function reenabledUnreferenced(w: S4World) {
   const v1 = await w.publish(await create(w, [single('n1', w.near.userId)]));
   const z = await autoAt(w, v1.id, 'n1');
   const saved = await draftOk(w, await newVersion(w, v1), [viaManager('n1')]);
-  const v2 = await w.json<typeof v1>(await publishWith(w, saved));
   const { total } = await references(w, 'variables', z.id);
   const off = await variableCommand(w, await varRow(w, z.id), 'disable', { acknowledgedReferenceCount: total });
   expect(off.status, await off.clone().text()).toBe(200);
+  const v2 = await w.json<typeof v1>(await publishWith(w, saved));
   const on = await variableCommand(w, await varRow(w, z.id), 'enable');
   expect(on.status, await on.clone().text()).toBe(200);
   expect((await varRow(w, z.id)).status).toBe('enabled');
@@ -165,17 +188,15 @@ async function reenabledUnreferenced(w: S4World) {
  * Z 同上（v1 的 n1 生成，v2 不再引用，管理员停用后重新启用）；v2 是 [c0 指定 near → c1 会签：指定 head + 本部门 HRBP（空，转异常管理员；首节点不能有空席，故会签放第二个）]，
  * 个人信息变更实例 I2 绑定 v2：head 已同意自己的席位，剩异常管理员 U 的待办。交接给 head 时 U 的席位并入 head 已同意的席位，I2 办结。
  */
-async function reenabledWithCountersign(w: S4World) {
+async function reenabledWithCountersign(w: S4World, olderInstance = false) {
   const v1 = await w.publish(await create(w, [single('n1', w.near.userId)], { approvalType: 'personnel_change' }));
   const z = await autoAt(w, v1.id, 'n1');
   const joint = counter([specified(w.head.userId), HRBP.approver!], { key: 'c1', name: '联合会签' });
   const saved = await draftOk(w, await newVersion(w, v1), [single('c0', w.near.userId), joint]);
-  const v2 = await w.json<typeof v1>(await publishWith(w, saved));
   const { total } = await references(w, 'variables', z.id);
   const off = await variableCommand(w, await varRow(w, z.id), 'disable', { acknowledgedReferenceCount: total });
   expect(off.status, await off.clone().text()).toBe(200);
-  const on = await variableCommand(w, await varRow(w, z.id), 'enable');
-  expect(on.status, await on.clone().text()).toBe(200);
+  const v2 = await w.json<typeof v1>(await publishWith(w, saved));
   const { instance: first } = await (await personnelChange(w)).submit();
   const instance = await w.json<InstanceView>(
     await w.taskAction(w.near.userId, w.pending(first)[0]!.id, 'approve', first.revision, {}),
@@ -185,8 +206,17 @@ async function reenabledWithCountersign(w: S4World) {
     await w.taskAction(w.head.userId, seat.id, 'approve', instance.revision, {}),
   );
   expect(w.pending(passed).map((task) => task.assigneeUserId)).toEqual([w.exceptionAdmin]);
+  const x = await autoAt(w, v2.id, 'c1');
+  let process = v2;
+  if (olderInstance) {
+    // X 留在 v2 和另一流程草稿，确保重发的保存收尾候选不含 X，等待只能来自 I2 的生命周期登记。
+    await create(w, [{ key: 'only', approver: publicVar(x.id) }]);
+    process = await w.publish(await draftOk(w, await newVersion(w, v2), [viaManager('replacement')]));
+  }
+  const on = await variableCommand(w, await varRow(w, z.id), 'enable');
+  expect(on.status, await on.clone().text()).toBe(200);
   expect((await varRow(w, z.id)).status).toBe('enabled');
-  return { process: v2, z, instance: passed };
+  return { process, z, x, instance: passed };
 }
 
 const lastAudit = async (w: { db: Db; tenant: { id: string } }, id: string) => (await audits(w, id)).at(-1)!;
@@ -212,6 +242,8 @@ describe.runIf(realPostgres)('AC-APV-F326-59 ② 交接 × 审批的员工预锁
     const successor = await w.member('合成接任人');
     hook.republished = [];
 
+    hook.lockedIds = [];
+    hook.watchInstance = passed.id;
     arm('persist', passed.id);
     await withRelease(
       () => hook.release(),
@@ -243,6 +275,8 @@ describe.runIf(realPostgres)('AC-APV-F326-59 ② 交接 × 审批的员工预锁
       },
     );
 
+    hook.watchInstance = '';
+    expect(hook.lockedIds, '乙提交前应无等待地取得 X 的 UPDATE 锁').toContain(x.id);
     expect(hook.republished).toEqual([a.id]);
     const after = await readProcess(w, a.id);
     expect(after.currentVersion!.versionNo).toBe(2);
@@ -302,6 +336,77 @@ describe('AC-APV-F326-59 ③ 交接推迟的保存收尾', () => {
     expect(last.action).toBe('approval.public_variable.auto_disable');
     expect(last.actor).toBe(w.hr.id);
     expect(last.after).toMatchObject({ reason: '不再被引用' });
+  });
+
+  it.runIf(realPostgres)('⑤ 已有 X 锁不阻止交接重发抵达屏障，逐单结束后才在提交前等 X', async () => {
+    const w = await s4World(database().db, 's7e2-59-handover-flush');
+    const { z, x, instance } = await reenabledWithCountersign(w, true);
+    let blocker = 0;
+    let reached!: () => void;
+    let release!: () => void;
+    const atBoundary = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await withHeldLock(
+      {
+        run: (fn) => withTenant(w.db, w.tenant.id, fn),
+        take: async (tx) => {
+          const [row] = rowsOf<{ pid: number }>(await tx.execute(sql`SELECT pg_backend_pid()::int AS pid`));
+          blocker = row!.pid;
+          await tx.execute(sql`SELECT id FROM approval_variables WHERE tenant_id=${w.tenant.id}
+            AND id=${x.id}::uuid FOR UPDATE`);
+        },
+      },
+      async (holder) => {
+        hook.observe = async (point) => {
+          if (point === 'republish-returned') {
+            reached();
+            await gate;
+          }
+        };
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await withRelease(
+            async () => {
+              release();
+              await holder.release();
+            },
+            async ({ track }) => {
+              const handing = track(handoverRequest(w, w.exceptionAdmin, w.head.userId));
+              await Promise.race([
+                atBoundary,
+                handing.then(() => {
+                  throw new Error('交接提前结束，未到重发屏障');
+                }),
+                new Promise<never>((_, reject) => {
+                  timer = setTimeout(() => reject(new Error('两秒内未到达重发屏障')), 2000);
+                }),
+              ]);
+              expect(await lockWaiters(w.db)).toBe(0);
+              release();
+              expect(await settledOrBlocked(w.db, handing, 1), '交接逐单结束后应在提交前等待 X').toBe('blocked');
+              const waiter = await waitingSession(w.db);
+              expect(waiter.query).toMatch(/approval_variables.*for update/is);
+              expect(waiter.blockers).toContain(blocker);
+              await holder.release();
+              const response = await handing;
+              expect(response.status, await response.clone().text()).toBe(200);
+            },
+          );
+        } finally {
+          clearTimeout(timer);
+          hook.observe = async () => undefined;
+        }
+      },
+    );
+    expect((await w.detail(instance.id)).status).toBe('approved');
+    expect((await varRow(w, x.id)).status).toBe('enabled');
+    expect((await varRow(w, z.id)).status).toBe('disabled');
+    expect((await lastAudit(w, z.id)).after).toMatchObject({ reason: '不再被引用' });
+    expect(await lockWaiters(w.db)).toBe(0);
   });
 
   it('restore 路径（空操作者）重发 → 同样成功，Z 的操作者为空、reason“不再被引用”', RESTORE_TIMEOUT, async () => {
