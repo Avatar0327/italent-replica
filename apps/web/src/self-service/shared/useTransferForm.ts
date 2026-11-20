@@ -242,16 +242,8 @@ function useTransferCommand(
       requestInProgress.current = false;
     }
   };
-  return {
-    busy,
-    saved,
-    unknownCommand,
-    submit,
-    setSaved,
-    needsReload,
-    reloadSaved,
-    resetConflict: () => setNeedsReload(false),
-  };
+  const resetConflict = () => setNeedsReload(false);
+  return { busy, saved, unknownCommand, submit, setSaved, needsReload, reloadSaved, resetConflict };
 }
 
 /**
