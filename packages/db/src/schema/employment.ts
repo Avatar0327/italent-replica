@@ -310,6 +310,11 @@ export const employmentFieldOrigins = pgTable(
     ),
     index('employment_field_origins_business_field').on(t.tenantId, t.businessId, t.fieldCode, t.seq.desc()),
     index('employment_field_origins_source').on(t.tenantId, t.employeeId, t.sourceBusinessId),
+    // 限制每次折叠的索引扫描：最新策略、覆盖或判定可能远早于字段最近一次写入。
+    index('employment_field_origins_kind_head').on(t.tenantId, t.businessId, t.fieldCode, t.originKind, t.seq.desc()),
+    index('employment_field_origins_decision_head')
+      .on(t.tenantId, t.businessId, t.fieldCode, t.refSeq, t.seq.desc())
+      .where(sql`${t.originKind} IN ('fallback','restore')`),
     index('employment_field_origins_anchor')
       .on(t.tenantId, t.businessId, t.fieldCode, t.derivationRule, t.referenceId, t.seq.desc())
       .where(sql`${t.derivationRule} IS NOT NULL`),

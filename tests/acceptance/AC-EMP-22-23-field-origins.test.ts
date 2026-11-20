@@ -1,8 +1,10 @@
 import { sql, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { loadDerivationAnchors, loadFieldOrigins } from '../../apps/api/src/modules/employment/field-origin-store.js';
 import { SYSTEM_USER_ID } from '../../apps/api/src/system-actor.js';
 import { approvalWorld, type InstanceView } from './AC-APV-support.js';
+import { createWorld } from './AC-IN-BE-R2d4c-support.js';
 import { E, execWorld } from './AC-OA-exec-support.js';
 import { rename } from './AC-OA-items-support.js';
 import { orgPeopleWorld, resultRows } from './AC-ORG-people-support.js';
@@ -70,6 +72,8 @@ describe('AC-EMP-22 建单、修改与审批编辑的字段来源', () => {
     const read = () => history(db, w.tenant.id, draft.id);
     const [initial] = await read();
     expect(initial?.origins, '建单后台账有来源行').not.toHaveLength(0);
+    expect(initial!.origins.filter((row) => row.kind === 'inherit')).toHaveLength(22);
+    expect(initial!.origins).toHaveLength(25);
     expect(
       initial!.origins
         .filter((row) => row.kind === 'hr-input')
@@ -95,6 +99,18 @@ describe('AC-EMP-22 建单、修改与审批编辑的字段来源', () => {
       ]),
     );
 
+    await withTenant(db, w.tenant.id, async (tx) => {
+      const ctx = { tenantId: w.tenant.id };
+      const anchor = { fieldCode: 'preset:sequenceId', rule: 'post-sequence', referenceId: post.id } as const;
+      expect(await loadDerivationAnchors(tx, ctx, draft.id, [anchor, anchor])).toEqual([
+        expect.objectContaining({ originKind: 'derive', value: sequence.id }),
+      ]);
+      const all = await loadFieldOrigins(tx, ctx, draft.id);
+      const selected = await loadFieldOrigins(tx, ctx, draft.id, ['preset:sequenceId']);
+      expect([...selected.keys()]).toEqual(['preset:sequenceId']);
+      expect(selected.get('preset:sequenceId')).toEqual(all.get('preset:sequenceId'));
+    });
+
     const patch = (revision: number, fields: Record<string, unknown>, commandId = uniqueSuffix()) =>
       w.request('PATCH', `/businesses/${draft.id}`, { ifMatch: revision, idempotencyKey: commandId, body: { fields } });
     const revision = async (response: Response) => {
@@ -106,9 +122,13 @@ describe('AC-EMP-22 建单、修改与审批编辑的字段来源', () => {
     const key = uniqueSuffix();
     const fourth = await revision(await patch(third, { place: '乙地' }, key));
     expect(await revision(await patch(third, { place: '乙地' }, key))).toBe(fourth);
+    expect((await patch(third, { place: '甲地' })).status).toBe(409);
+    expect((await read()).map(({ version }) => version)).toEqual([1, 2, 3, 4]);
+    const refreshed = await revision(await w.request('GET', `/businesses/${draft.id}`));
+    await revision(await patch(refreshed, { place: '甲地' }));
 
     const versions = await read();
-    expect(versions.map(({ version }) => version)).toEqual([1, 2, 3, 4]);
+    expect(versions.map(({ version }) => version)).toEqual([1, 2, 3, 4, 5]);
     expect(
       versions.slice(1).map(({ origins }) =>
         origins.map(({ field, kind, value, hasValue }) => ({
@@ -122,8 +142,89 @@ describe('AC-EMP-22 建单、修改与审批编辑的字段来源', () => {
       [recorded('preset:remarks', 'hr-input', '只改备注')],
       [recorded('preset:place', 'hr-input', null)],
       [recorded('preset:place', 'hr-input', '乙地')],
+      [recorded('preset:place', 'hr-input', '甲地')],
     ]);
     expect(versions[3]?.origins[0]).toMatchObject({ command: key, actor: w.user.id });
+  });
+
+  it('记录员工本人自助输入，新增实习生端口记录系统输入', async () => {
+    const { db } = database();
+    const w = await approvalWorld(db, 'f036-self');
+    const department = await w.org('自助调动部门');
+    const head = await w.person('审批人', department);
+    await w.setOrgRoles(department, { head: head.employeeId });
+    const person = await w.person('本人', department);
+    await w.publishedProcess({
+      nodes: [{ key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } }],
+    });
+    const draft = await w.json<{ id: string }>(
+      await w.request(person.userId, 'POST', '/api/tenant/self-service/transfer', {
+        ifMatch: (
+          await w.json<{ revision: number }>(
+            await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${person.employeeId}`),
+          )
+        ).revision,
+        body: { effectiveDate: date, fields: { departmentId: department, remarks: '本人填写' } },
+      }),
+      201,
+    );
+    const [created] = await history(db, w.tenant.id, draft.id);
+    expect(created?.origins).toContainEqual(
+      expect.objectContaining({
+        field: 'preset:remarks',
+        kind: 'employee-input',
+        value: '本人填写',
+        actor: person.userId,
+      }),
+    );
+
+    const intern = await createWorld(db, 'f036-system-intern');
+    const hired = await intern.createOk(
+      intern.hireBody({
+        contract: { typeId: intern.typeId, companyId: intern.companyId, termType: 'fixed', endDate: '2027-09-30' },
+      }),
+    );
+    const [system] = await history(db, intern.w.session.tenant.id, hired.businessId);
+    expect(system?.origins).toContainEqual(
+      expect.objectContaining({
+        field: 'preset:departmentId',
+        kind: 'system-input',
+        value: intern.w.org.id,
+      }),
+    );
+  });
+
+  it('备注保存沿用实际传播的地点，即使表单带回该值也不记覆盖行', async () => {
+    const { db } = database();
+    const w = await orgPeopleWorld(db, 'f036-propagated');
+    const department = await w.org('任职部门');
+    const employee = await w.hire('员工', { departmentId: department.id, place: '原地' });
+    const draft = await w.business(
+      employee.id,
+      { kind: 'transfer', mode: 'application', effectiveDate: date, fields: { place: '原地' } },
+      employee.revision,
+    );
+    const edit = await w.request('PATCH', `/records/${employee.recordId}`, {
+      ifMatch: 1,
+      body: { fields: { place: '传播地点' } },
+    });
+    expect(edit.status, await edit.clone().text()).toBe(200);
+    const show = await w.request('GET', `/businesses/${draft.id}`);
+    expect(show.status).toBe(200);
+    const propagated = (await show.json()) as { revision: number; fields: { place: string } };
+    expect(propagated.fields.place).toBe('传播地点');
+
+    const response = await w.request('PATCH', `/businesses/${draft.id}`, {
+      ifMatch: propagated.revision,
+      body: { fields: { place: '传播地点', remarks: '保存备注' } },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await response.json()).toMatchObject({ fields: { place: '传播地点', remarks: '保存备注' } });
+    const versions = await history(db, w.tenant.id, draft.id);
+    expect(versions.map(({ version }) => version)).toEqual([1, 2, 3]);
+    expect(versions[2]?.origins).toEqual([
+      expect.objectContaining({ field: 'preset:remarks', kind: 'hr-input', value: '保存备注' }),
+    ]);
   });
 
   it.each([

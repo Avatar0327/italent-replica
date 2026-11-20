@@ -30,6 +30,8 @@ ALTER TABLE "employment_field_origins" ADD CONSTRAINT "employment_field_origins_
 ALTER TABLE "employment_field_origins" ADD CONSTRAINT "employment_field_origins_payload_fk" FOREIGN KEY ("tenant_id","employee_id","business_id","payload_version_id") REFERENCES "public"."employment_payload_versions"("tenant_id","employee_id","business_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "employment_field_origins_business_field" ON "employment_field_origins" USING btree ("tenant_id","business_id","field_code","seq" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "employment_field_origins_source" ON "employment_field_origins" USING btree ("tenant_id","employee_id","source_business_id");--> statement-breakpoint
+CREATE INDEX "employment_field_origins_kind_head" ON "employment_field_origins" USING btree ("tenant_id","business_id","field_code","origin_kind","seq" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "employment_field_origins_decision_head" ON "employment_field_origins" USING btree ("tenant_id","business_id","field_code","ref_seq","seq" DESC NULLS LAST) WHERE "employment_field_origins"."origin_kind" IN ('fallback','restore');--> statement-breakpoint
 CREATE INDEX "employment_field_origins_anchor" ON "employment_field_origins" USING btree ("tenant_id","business_id","field_code","derivation_rule","reference_id","seq" DESC NULLS LAST) WHERE "employment_field_origins"."derivation_rule" IS NOT NULL;
 --> statement-breakpoint
 SELECT enable_tenant_isolation('employment_field_origins');

@@ -9,6 +9,7 @@ import { findPredecessor } from './read-model.js';
 import { bumpEmploymentEmployee, insertEmploymentRow, lockEmploymentEmployee } from './record-store.js';
 import { employmentTimelineNeighbors, insertEmploymentTimeline } from './timeline.js';
 import { appendEmploymentPayload, appendEmploymentState } from './write-service.js';
+import { copyFieldOrigins } from './field-origin-write.js';
 import type { ChangeType, EmploymentContext, EmploymentRecord } from './types.js';
 
 const adjustmentInput = (effectiveDate: string) => ({
@@ -51,8 +52,12 @@ export async function appendOrgAdjustment(
   });
   const input = adjustmentInput(effectiveDate);
   const prepared = adjustmentSnapshot(previous, effectiveDate);
-  const { staffId } = previous;
-  const payload = await appendEmploymentPayload(tx, ctx, employeeId, id, 1, input, prepared, null, staffId, changeType);
+  const payload = await appendEmploymentPayload(tx, ctx, employeeId, id, input, prepared, {
+    selectedStaffId: previous.staffId,
+    changeType,
+    recordId: id,
+    origins: copyFieldOrigins(previous),
+  });
   await insertEmploymentRow(tx, 'employment_records', {
     ...previous.fields,
     id,
