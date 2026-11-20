@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { requestError, TransferApiError } from './api.js';
+import { needsEstablishmentConfirm } from './establishment-confirm.js';
 import { beginHrWrite, finishHrWrite, hrSessionChanged, readHrSession } from './hr-session.js';
 import { text } from './messages.js';
 import type { TransferBusiness } from './types.js';
@@ -76,8 +77,8 @@ export function useHrWrite(scope?: string) {
   };
   const release = (current: string, cause: TransferApiError) => {
     finishHrWrite(current);
-    // 版本冲突由内核提示并引导重读，不再重复一条“重新读取表单”。
-    if (cause.code !== 'REVISION_CONFLICT') setError(requestError(cause));
+    // 版本冲突由内核提示并引导重读，不再重复一条“重新读取表单”；超编确认由确认框处理（F-026），取消不留错误提示。
+    if (cause.code !== 'REVISION_CONFLICT' && !needsEstablishmentConfirm(cause)) setError(requestError(cause));
   };
   return { processing, error, result, run };
 }

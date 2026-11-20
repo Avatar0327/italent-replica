@@ -2,10 +2,11 @@ import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { approvalWorld, grantFieldAccess, permissionAdmin, type Person } from './AC-APV-support.js';
 import { memberWithAdminRole } from './AC-PRM-users-support.js';
 import { auditApi } from './AC-AUD-support.js';
+import { revocable, snapshot } from './support/revocable-rights.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -59,6 +60,38 @@ beforeAll(async () => {
 });
 
 describe('AC-TRF-46 / DEC-216 员工调动审计接入', () => {
+  it('F-026 本人确认命令的提交回执丢失，额外字段授权被撤回后禁止回查', async () => {
+    const person = await w.person('合成本人确认', inside);
+    const { rights, authorize } = revocable();
+    const self = tenantApi(w.db, { authorize, clock: w.clock });
+    const profile = await w.json<{ employee: { revision: number } }>(
+      await self.request('GET', '/api/tenant/self-service/profile', w.as(person.userId)),
+    );
+    const transaction = w.db.transaction.bind(w.db);
+    let committed: Awaited<ReturnType<typeof snapshot>>;
+    const spy = vi.spyOn(w.db, 'transaction').mockImplementation(async (callback, config) => {
+      const result = await transaction(callback, config);
+      if (!committed && result && typeof result === 'object' && 'status' in result && result.status === 201) {
+        committed = await snapshot(w.db, w.tenant.id);
+        rights.deny = (request) => request.action === 'object.create' && (request.fields ?? []).includes('place');
+        throw new Error('合成本人调动提交回执丢失');
+      }
+      return result;
+    });
+    try {
+      const response = await self.request('POST', '/api/tenant/self-service/transfer', {
+        ...w.as(person.userId),
+        ifMatch: profile.employee.revision,
+        body: { effectiveDate: '2026-10-19', fields: { departmentId: inside, place: '合成工作地' }, confirmed: true },
+      });
+      expect(committed, await response.clone().text()).toBeDefined();
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect(await snapshot(w.db, w.tenant.id)).toEqual(committed);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('写入口记录任职与调动审计，命令重放不重复；有权可见', async () => {
     const rows = await withTenant(database().db, w.tenant.id, async (tx) => {
       const result = await tx.execute(sql`SELECT action FROM audit_events

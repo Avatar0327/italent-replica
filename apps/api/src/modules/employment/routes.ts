@@ -1,4 +1,7 @@
 import { CUSTOM_FIELD_OBJECT_TYPES } from '@italent/domain';
+import { withEstablishmentConfirmation } from './activation-checks.js';
+import { deleteConfirmed, splitConfirmed } from './establishment-confirmation.js';
+import { checksEmploymentCapacity } from '../establishment/employment-check.js';
 import { customFieldWriteGuard } from './custom-field-guard.js';
 import { listVisibleCustomFields } from '../personnel/custom-field-directory.js';
 import { composeBusiness, disclosedBy, selectEmploymentRead, type EmploymentRead } from './approval-content.js';
@@ -38,6 +41,7 @@ import {
   queryDate,
   runWrite,
   uuidParam,
+  requireEmployeeInScope,
   requireEmploymentScope,
   requireEmploymentWrite,
   requireScopedEmploymentObject,
@@ -262,7 +266,8 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
   router.post('/employees/:id/businesses', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
-    const { rawInput: body, probationResult } = splitProbationResult(await jsonBody(c));
+    const { rawInput: unconfirmed, confirmed } = splitConfirmed(await jsonBody(c));
+    const { rawInput: body, probationResult } = splitProbationResult(unconfirmed);
     // 转正经 regularization.ts 的单一入口（试用结果必填、F-205 默认转正日期），与 /regularizations 同一套
     if (isRegularizationEntryKind((body as { kind?: unknown } | null)?.kind))
       return createRegularizationViaBusinesses(c, deps, ctx, id, body, probationResult);
@@ -295,11 +300,14 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
       lastWorkDate: input.lastWorkDate!,
       exit,
     };
+    const guard = isExitKind(input.kind)
+      ? exitCommandGuard(deps, ctx, 'create', gate, { departmentId: input.fields.departmentId })
+      : genericCapacityCreateGuard(deps, ctx, id, input, rawInput as object);
     return runWrite(
       c,
       deps,
       ctx,
-      { ...input, loginEmail: email, entry, exit },
+      { ...input, loginEmail: email, entry, exit, ...(confirmed === undefined ? {} : { confirmed }) },
       async (tx, context) => {
         if (isExitKind(input.kind)) {
           // 通用入口创建离职 / 退休与专用入口同一服务、同一门禁（§4A / §4B，R2-T04 §3.2）；发起方式固定为 HR
@@ -323,14 +331,43 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
           await requireTransferSource(tx, context, id, 'hr');
           if (input.mode === 'direct') await requireDirectTransfer(tx, context);
         }
-        const business = await createEmploymentBusiness(tx, context, id, input, entry ? { entry } : {});
+        // F-026：非严格控编超编先提示确认（整单回滚），带 confirmed 重提放行；严格控编仍拒绝
+        const confirmable = withEstablishmentConfirmation(context, confirmed);
+        const business = await createEmploymentBusiness(tx, confirmable, id, input, entry ? { entry } : {});
         if (NEW_CYCLE_KINDS.includes(input.kind)) await ensureHiredAccount(tx, context, id, email);
         return { status: 201, body: business };
       },
-      isExitKind(input.kind)
-        ? { guard: exitCommandGuard(deps, ctx, 'create', gate, { departmentId: input.fields.departmentId }) }
-        : {},
+      { guard },
     );
+  });
+}
+
+/** 通用新建的编制确认共用事务内授权；普通调动另校验发起来源和直接调动开关。 */
+function genericCapacityCreateGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: ReturnType<typeof normalizeEmploymentInput>,
+  rawInput: object,
+) {
+  if (!checksEmploymentCapacity(input.kind)) return undefined;
+  return sameOrderScopeGuard(deps, ctx, {
+    authorize: async (tx, scoped) => {
+      await requirePermission(scoped.authorize!, {
+        ...scoped,
+        action: 'object.create',
+        resource: EMPLOYMENT_OBJECT,
+        fields: [],
+      });
+      await requireEmploymentWrite(scoped, 'create', rawInput, 'Employment.Create');
+      const creator = await requireEmployeeInScope(tx, scoped, employeeId);
+      if (input.kind === 'transfer') {
+        await requireTransferSource(tx, scoped, employeeId, 'hr');
+        if (input.mode === 'direct') await requireDirectTransfer(tx, scoped);
+      }
+      if (input.fields.departmentId !== undefined)
+        requireEmploymentScope(scoped, employeeId, input.fields.departmentId, creator);
+    },
   });
 }
 
@@ -491,7 +528,8 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
             status: 200,
             body: await updateRegularizationApplication(tx, checked, id, patch.onlyResult ? null : input, result),
           };
-        return { status: 200, body: await updateEmploymentBusiness(tx, checked, id, input) };
+        const confirmable = withEstablishmentConfirmation(checked, input.confirmed);
+        return { status: 200, body: await updateEmploymentBusiness(tx, confirmable, id, input) };
       },
       {
         guard: isExitKind(current.kind)
@@ -538,7 +576,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
         ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
           transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
         );
-        const ack = action === 'submit' ? await submitBody(c) : undefined;
+        const { ack, confirmed } = await transitionControls(c, action);
         await requireEmploymentTransitionWrite(ctx, action);
         const current = await authorizeBusinessWrite(deps, ctx, id);
         if (ack !== undefined && !isExitKind(current.kind))
@@ -577,7 +615,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
           c,
           deps,
           ctx,
-          { id, action, ...(ack ? { ack } : {}) },
+          { id, action, ...(ack ? { ack } : {}), ...(confirmed === undefined ? {} : { confirmed }) },
           async (tx, context) => {
             const checked = await transferBusinessContext(
               tx,
@@ -589,7 +627,8 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
             );
             const denied = action === 'withdraw' && (await employmentWithdrawalFailure(tx, checked, id));
             if (denied) throw denied;
-            const business = await transitionEmployment(tx, checked, { id, action, ...(ack ? { ack } : {}) });
+            const confirmable = transitionConfirmation(action, checked, confirmed);
+            const business = await transitionEmployment(tx, confirmable, { id, action, ...(ack ? { ack } : {}) });
             // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 撤销 / 删除同步结束在途实例，均与状态迁移同事务。
             if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
             else if (action === 'withdraw') await employmentApprovalHooks.withdrawn(tx, context, id);
@@ -710,13 +749,26 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 }
 
-/** 提交只接受离职的在途调动确认令牌（§8）；其余参数一律 400。 */
-async function submitBody(c: Context<TenantEnv>): Promise<string | undefined> {
-  if (!c.req.header('content-type')) return undefined;
-  return parse(z.strictObject({ pendingTransferAck: z.string().max(200).optional() }), await jsonBody(c))
-    .pendingTransferAck;
+/** F-026：提交 / 删除恢复是交互保存入口，非严格控编超编先提示确认；撤回 / 撤销不判编制。 */
+function transitionConfirmation(action: string, ctx: EmploymentContext, confirmed: boolean | undefined) {
+  return action === 'submit' || action === 'delete' ? withEstablishmentConfirmation(ctx, confirmed) : ctx;
 }
 
+/** 提交的可选控制键：离职提交的在途调动确认令牌（§8）与非严格控编超编确认（F-026）；其余参数一律 400。 */
+const submitControlSchema = z.strictObject({
+  pendingTransferAck: z.string().max(200).optional(),
+  confirmed: z.boolean().optional(),
+});
+async function transitionControls(
+  c: Context<TenantEnv>,
+  action: string,
+): Promise<{ ack: string | undefined; confirmed: boolean | undefined }> {
+  const none = { ack: undefined, confirmed: undefined };
+  if (action === 'delete') return { ack: undefined, confirmed: await deleteConfirmed(c) };
+  if (action !== 'submit' || !c.req.header('content-type')) return none;
+  const body = parse(submitControlSchema, await jsonBody(c));
+  return { ack: body.pendingTransferAck, confirmed: body.confirmed };
+}
 /** 提交不接受客户端参数：流程编码由审批中心按业务派生（PR #35 第二轮清单 14），带任何字段一律 400。 */
 async function emptySubmitBody(c: Context<TenantEnv>): Promise<void> {
   if (c.req.header('content-type')) parse(z.strictObject({}), await jsonBody(c));
@@ -980,7 +1032,11 @@ function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       deps,
       ctx,
       input,
-      async (tx, context) => ({ status: 200, body: await editEmploymentRecord(tx, context, id, input) }),
+      // F-026：单条编辑是交互保存入口；批量编辑与导入不带确认标记，维持“只提示”口径（DEC-015）
+      async (tx, context) => ({
+        status: 200,
+        body: await editEmploymentRecord(tx, withEstablishmentConfirmation(context, input.confirmed), id, input),
+      }),
       // F-195 / F-202：重放、失败回查也在命令内按当前授权重过编辑权限与范围；离职 / 退休记录另过 Dimission* 权限链
       { guard: recordEditGuard(deps, ctx, [{ id, employeeId: current.employeeId, kind: current.kind, patch: input }]) },
     );

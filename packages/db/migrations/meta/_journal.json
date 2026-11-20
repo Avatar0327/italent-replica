@@ -1562,6 +1562,13 @@
       "when": 1794981330972,
       "tag": "0222_f361_subset_attachment_purpose",
       "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "when": 1795008070311,
+      "tag": "0223_f505_esign_offer_entry",
+      "breakpoints": true
     }
   ]
 }

@@ -18,9 +18,10 @@ import { appendForwardPayload } from './forward-store.js';
 import { forwardUpdateEmployment } from './forward-update.js';
 import { sequenceForNewPost } from './inheritance.js';
 import { loadEmploymentRecord } from './read-model.js';
-import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
+import { bumpEmploymentBusiness, lockEmploymentBusiness, type LockedEmploymentBusiness } from './record-store.js';
 import { assertEmploymentDepartmentAvailable, validateEmploymentReferences } from './references.js';
 import { isPendingEntryRecord } from './employee-status.js';
+import { entrySourceEvents } from './entry-source-events.js';
 import { validateSelectedEmploymentType } from './employment-types.js';
 import { validateSelectedEmploymentForm } from './employment-forms.js';
 import { recordWindow } from './reporting-cycle.js';
@@ -138,7 +139,7 @@ export async function editEmploymentRecord(
     await queueTransferLinkage(tx, ctx, id, record.kind, after.fields, record.effectiveDate);
   await personnelHooks.sync(tx, ctx, business.employeeId, id, record.kind, record.effectiveDate);
   await reconcileCompletion(tx, ctx, business.employeeId);
-  await bumpEmploymentBusiness(tx, ctx, business);
+  await bumpAndNotifyEntry(tx, ctx, business, record);
   return requireSavedBusiness(tx, ctx, id);
 }
 
@@ -158,4 +159,21 @@ export async function editedRecordReporting(
 
 function customAudit(fields: CustomFields): Record<string, CustomFields[string]> {
   return Object.fromEntries(Object.entries(fields).map(([key, value]) => [`custom:${key}`, value]));
+}
+
+/** 业务头 revision +1；F-505：待入职记录原地编辑（同 ID、revision 变）= 来源在可签状态下改了内容，同事务发 changed 事件。 */
+export async function bumpAndNotifyEntry(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  record: EmploymentRecord,
+) {
+  await bumpEmploymentBusiness(tx, ctx, business);
+  if (!isPendingEntryRecord(record)) return;
+  await entrySourceEvents.emit(tx, ctx, {
+    source: 'entry',
+    sourceId: business.id,
+    change: 'changed',
+    revision: business.revision,
+  });
 }
