@@ -955,26 +955,32 @@ test('AC-FE-R1c-12 AC-FE-F110-12 创建未知关闭刷新后仍只读，按原�
   expect(writes).toBe(1);
 });
 
-test('AC-FE-F110-18 HR 超编确认重提断线：刷新后仍按第二条命令查询，读回调动单才解锁', async ({ page }) => {
+async function establishmentWrites(page: Page, firstResponse?: Promise<void>) {
   await transferFixtures(page, true);
   const writes: string[] = [];
-  const queries: string[] = [];
-  let resultReady = false;
-  let businessReady = false;
-  await page.route(`**/transfers/employees/${employee}`, (route) => {
+  await page.route(`**/transfers/employees/${employee}`, async (route) => {
     writes.push(route.request().headers()['idempotency-key']!);
     if (route.request().postDataJSON().confirmed === true) return route.abort('connectionreset');
+    await firstResponse;
     return route.fulfill({
       status: 409,
       json: { error: { code: 'CONFLICT', message: '已超出设定编制', details: { reason: 'CONFIRMATION_REQUIRED' } } },
     });
   });
-  const resultPath = (id: string) => `/api/tenant/commands/${id}/result`;
+  return writes;
+}
+
+const resultPath = (id: string) => `/api/tenant/commands/${id}/result`;
+const transferRecoveryKey = 'italent.commands.pending:transfer';
+
+async function establishmentResults(page: Page, writes: string[]) {
+  const queries: string[] = [];
+  const ready = { result: false, business: false };
   await page.route('**/api/tenant/commands/*/result', (route) => {
     const path = new URL(route.request().url()).pathname;
     queries.push(path);
     if (queries.length === 1) return route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND' } } });
-    if (path === resultPath(writes[0]!) || !resultReady) {
+    if (path === resultPath(writes[0]!) || !ready.result) {
       // B 的查询也收到一份迟到的 A 失败摘要，必须按命令 ID 拒绝这份回执。
       return route.fulfill({
         json: {
@@ -1001,23 +1007,29 @@ test('AC-FE-F110-18 HR 超编确认重提断线：刷新后仍按第二条命令
     });
   });
   await page.route(`**/employment/businesses/${draftId}`, (route) =>
-    businessReady
+    ready.business
       ? route.fulfill({ json: { ...draftBusiness, mode: 'direct', status: 'effective' } })
       : route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND' } } }),
   );
-  const pendingIds = () =>
-    page.evaluate(() => {
-      const records = JSON.parse(localStorage.getItem('italent.commands.pending:transfer') ?? '[]') as {
-        commandId: string;
-      }[];
-      return records.map(({ commandId }) => commandId);
-    });
+  return { queries, ready };
+}
+
+const pendingTransferIds = (page: Page) =>
+  page.evaluate((key) => {
+    const records = JSON.parse(localStorage.getItem(key) ?? '[]') as { commandId: string }[];
+    return records.map(({ commandId }) => commandId);
+  }, transferRecoveryKey);
+
+const establishmentDialog = (page: Page) => page.getByRole('dialog').filter({ hasText: '已超出设定编制' });
+
+test('AC-FE-F110-18 HR 超编确认重提断线：刷新后仍按第二条命令查询，读回调动单才解锁', async ({ page }) => {
+  const writes = await establishmentWrites(page);
+  const { queries, ready } = await establishmentResults(page, writes);
   const query = page.getByRole('button', { name: '查询结果', exact: true });
-  const openDirect = () => page.getByRole('button', { name: button('调动') }).click();
 
   await openEntry(page, '调动');
   await page.getByRole('button', { name: '保存', exact: true }).click();
-  const confirm = page.getByRole('dialog').filter({ hasText: '已超出设定编制' });
+  const confirm = establishmentDialog(page);
   await expect(confirm).toBeVisible();
   expect(writes).toHaveLength(1);
   await confirm.getByRole('button', { name: button('继续保存') }).click();
@@ -1025,7 +1037,7 @@ test('AC-FE-F110-18 HR 超编确认重提断线：刷新后仍按第二条命令
   expect(writes).toHaveLength(2);
   const [first, retry] = writes as [string, string];
   expect(retry).not.toBe(first);
-  expect.soft(await pendingIds(), '响应丢失时只登记确认重提的命令 B').toEqual([retry]);
+  expect.soft(await pendingTransferIds(page), '响应丢失时只登记确认重提的命令 B').toEqual([retry]);
   await query.click();
   await expect.poll(() => queries).toHaveLength(1);
   expect.soft(queries, '刷新前按 B 查询').toEqual([resultPath(retry)]);
@@ -1033,30 +1045,78 @@ test('AC-FE-F110-18 HR 超编确认重提断线：刷新后仍按第二条命令
 
   await closeHr(page);
   await page.reload();
-  await openDirect();
+  await page.getByRole('button', { name: button('调动') }).click();
   await expect(query).toBeVisible();
-  expect.soft(await pendingIds(), '整页刷新后仍只登记 B').toEqual([retry]);
+  expect.soft(await pendingTransferIds(page), '整页刷新后仍只登记 B').toEqual([retry]);
   await query.click();
   await expect.poll(() => queries).toEqual([resultPath(retry), resultPath(retry)]);
   await expect(query).toBeEnabled();
   await expectReadonly(page);
-  expect(await pendingIds()).toEqual([retry]);
+  expect(await pendingTransferIds(page)).toEqual([retry]);
 
-  resultReady = true;
+  ready.result = true;
   await query.click();
   await expect.poll(() => queries).toHaveLength(3);
   await expect(query).toBeEnabled();
   await expectReadonly(page);
-  expect(await pendingIds()).toEqual([retry]);
+  expect(await pendingTransferIds(page)).toEqual([retry]);
 
-  businessReady = true;
+  ready.business = true;
   const readBack = page.waitForResponse((response) => response.url().endsWith(`/employment/businesses/${draftId}`));
   await query.click();
   expect((await readBack).status()).toBe(200);
-  await expect.poll(pendingIds).toEqual([]);
+  await expect.poll(() => pendingTransferIds(page)).toEqual([]);
   await expect(query).toHaveCount(0);
   expect(queries).toEqual(Array<string>(4).fill(resultPath(retry)));
   expect(writes).toHaveLength(2);
+});
+
+test('AC-FE-F110-20 HR 确认重提：他页持锁时 B 排队，A 已落定的记录不会挡住 B', async ({ page, context }) => {
+  let respond = () => {};
+  const firstResponse = new Promise<void>((resolve) => (respond = resolve));
+  const writes = await establishmentWrites(page, firstResponse);
+  await openEntry(page, '调动');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect.poll(() => writes).toHaveLength(1);
+
+  const other = await context.newPage();
+  try {
+    await other.route('**/lock-holder', (route) => route.fulfill({ body: '', contentType: 'text/html' }));
+    await other.goto('/lock-holder');
+    await other.evaluate(
+      (key) =>
+        new Promise<void>((held) => {
+          void navigator.locks.request(key, { mode: 'exclusive' }, () => {
+            held();
+            // 保持独占，关闭这个页面时浏览器释放。
+            return new Promise<void>(() => {});
+          });
+        }),
+      transferRecoveryKey,
+    );
+    respond();
+    await establishmentDialog(page)
+      .getByRole('button', { name: button('继续保存') })
+      .click();
+    await expect
+      .poll(
+        () =>
+          page.evaluate(async (key) => {
+            const { pending } = await navigator.locks.query();
+            return pending?.filter((lock) => lock.name === key && lock.mode === 'exclusive').length;
+          }, transferRecoveryKey),
+        { message: 'A 的删除与 B 的登记都在等待他页释放互斥锁' },
+      )
+      .toBe(2);
+    expect(writes).toHaveLength(1);
+  } finally {
+    respond();
+    await other.close();
+  }
+  await expect(page.getByRole('button', { name: '查询结果', exact: true })).toBeVisible();
+  expect(writes).toHaveLength(2);
+  expect(writes[1]).not.toBe(writes[0]);
+  expect(await pendingTransferIds(page)).toEqual([writes[1]]);
 });
 
 for (const status of [400, 422]) {
