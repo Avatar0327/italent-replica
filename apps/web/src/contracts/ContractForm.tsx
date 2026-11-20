@@ -2,6 +2,7 @@
 import { Button, Form, Input, InputNumber, Select, message } from 'antd';
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useNavigationGuard, type NavigationGuard } from '../foundation/navigation.js';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PersonSelect, TenantDatePicker, type Choice } from '../foundation/selectors.js';
@@ -60,6 +61,7 @@ export function ContractButtons({
   onDone(): void;
 }) {
   const permission = usePermissions(object);
+  const navigation = useNavigationGuard();
   const [open, setOpen] = useState<Context>();
   const held = lockedContext<Context>(useContractCommand(slotOf(idOf(source))).state);
   // 没有可核对的 revision 时不提供变更类入口，避免带着无效 If-Match 提交。
@@ -77,7 +79,15 @@ export function ContractButtons({
           </Button>
         )),
       )}
-      {open && <ContractForm {...open} source={source} onClose={() => setOpen(undefined)} onDone={onDone} />}
+      {open && (
+        <ContractForm
+          {...open}
+          source={source}
+          navigation={navigation}
+          onClose={() => setOpen(undefined)}
+          onDone={onDone}
+        />
+      )}
     </>
   );
 }
@@ -90,6 +100,7 @@ type Props = {
   source?: Row;
   employee?: Choice;
   employment?: Row;
+  navigation: NavigationGuard;
   onClose(): void;
   onDone(): void;
 };
@@ -229,12 +240,14 @@ function originalFields(op: Operation, source: Row, access: (field: string) => {
 }
 /** 提交经 F-123 内核；回执按实际形态分流（合同 / 申请），不按 mode 推断。 */
 function useSubmit(props: Props, submission: CommandForm, fields: string[]) {
-  const { op, mode, source, employee, employment, onDone } = props;
+  const { op, mode, source, employee, employment, onDone, navigation } = props;
   const api = useApiClient();
   const navigate = useNavigate();
   const receipt = useRef<ContractReceipt>(undefined);
   const sourceId = typeof source?.id === 'string' ? source.id : undefined;
   return async (values: Row) => {
+    // F-406：提交开始领票；命令照常确认，导航只在页面仍在且期间未导航时执行。
+    const located = navigation((path: string) => navigate(path));
     const chosen =
       (values.employee as Choice | undefined)?.value ?? (sourceId ? String(source?.employeeId) : employee?.value);
     const result = await submission.submit({
@@ -264,7 +277,7 @@ function useSubmit(props: Props, submission: CommandForm, fields: string[]) {
     const done = receipt.current!;
     if (done.kind === 'contract') {
       void message.success(m.saved);
-      if (op !== 'terminate') navigate(`/contracts/records/${encodeURIComponent(done.id)}`);
+      if (op !== 'terminate') located(`/contracts/records/${encodeURIComponent(done.id)}`);
     } else void message.info(done.status === 'approved' ? m.requestApproved : m.requestSubmitted);
     onDone();
   };
