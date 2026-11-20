@@ -139,7 +139,8 @@ test('AC-FE-F110-11 本人提交未知：关闭重开、整页刷新后仍锁定
       json: {
         commandId: command,
         status: 'succeeded',
-        commandType: 'POST /api/tenant/employment/self-service/transfer',
+        // 真实投影（AC-TRF-F120 ①）：本人调动的命令类型。
+        commandType: 'POST /api/tenant/self-service/transfer',
         businessType: 'transfer',
         businessId: business,
         revision: 1,

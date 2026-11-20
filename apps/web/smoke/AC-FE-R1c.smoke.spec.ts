@@ -527,14 +527,15 @@ test('AC-FE-F110-13 审批同意未知：整页刷新后仍锁定，查询结果
   );
   await page.route('**/api/tenant/commands/*/result', (route) => {
     confirmed = true;
+    // F-120 审批命令的真实投影：台账响应体是 { instanceId }，摘要三项为 null（AC-FE-F110-14 实测）。
     return route.fulfill({
       json: {
         commandId: command,
         status: 'succeeded',
-        commandType: 'POST /api/tenant/approval/tasks/:taskId/approve',
-        businessType: 'approval_instance',
-        businessId: instance,
-        revision: 5,
+        commandType: 'POST /api/tenant/approval/tasks/:id/approve',
+        businessType: null,
+        businessId: null,
+        revision: null,
         httpStatus: 200,
         completedAt: '2026-10-12T04:00:00.000Z',
       },
@@ -858,11 +859,12 @@ test('AC-FE-R1c-12 AC-FE-F110-12 创建未知关闭刷新后仍只读，按原�
       json: {
         commandId: command,
         status: 'succeeded',
-        commandType: 'POST /api/tenant/employment/transfers/employees/:employeeId',
+        // 真实投影（AC-TRF-F120 ②）：commandType 用路由模板 :id，新建调动单 201。
+        commandType: 'POST /api/tenant/employment/transfers/employees/:id',
         businessType: 'transfer',
         businessId: draftId,
         revision: 1,
-        httpStatus: 200,
+        httpStatus: 201,
         completedAt: '2026-10-12T02:00:00.000Z',
       },
     });
