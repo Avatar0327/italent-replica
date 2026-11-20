@@ -18,7 +18,14 @@ import {
 import { approvalError, canonicalId, rowsOf, type ApprovalContext } from './context.js';
 import type { ProcessView, VersionView } from './definitions.js';
 import { findSourceUsages, referencingProcessCounts } from './source-usages.js';
-import { auditVariable, loadVariable, variableSelection as selection, type VariableRow } from './variables.js';
+import {
+  auditVariable,
+  loadVariable,
+  lockVariableBatch,
+  recordCreatedVariable,
+  variableSelection as selection,
+  type VariableRow,
+} from './variables.js';
 
 export type Slot = 'approver' | 'empty_approver';
 const AUTO_DESCRIPTION = '通过指定人员自动生成的公共变量';
@@ -185,6 +192,7 @@ async function createAuto(
       .onConflictDoNothing({ target: [table.tenantId, table.code] })
       .returning(selection);
     if (!row) continue;
+    recordCreatedVariable(tx, row.id);
     await auditVariable(tx, ctx, 'auto_create', null, row);
     return row;
   }
@@ -344,7 +352,7 @@ export function assertNoMergedDuplicate(node: ApprovalNode) {
 
 // ───────── 保存收尾：不再被引用的自动变量停用 ─────────
 
-const variableIdsOf = (nodes: Iterable<ApprovalNode>): string[] => {
+export const variableIdsOf = (nodes: Iterable<ApprovalNode>): string[] => {
   const ids = new Set<string>();
   for (const node of nodes) {
     for (const slot of ['approver', 'empty_approver'] as const)
@@ -359,7 +367,7 @@ const variableIdsOf = (nodes: Iterable<ApprovalNode>): string[] => {
  * 不按变量当前状态筛：状态会被并发的停用 / 重新启用翻转，按它筛出的集合就不是上界，
  * 保存开始时看到“已停用”的变量，到收尾时可能已被重新启用（审查 rf326s7a_2 P2-1）；是否真停用由收尾在锁内重读状态决定。
  */
-async function retireCandidates(tx: Tx, ctx: ApprovalContext, scope: MaterializeScope): Promise<string[]> {
+export async function retireCandidates(tx: Tx, ctx: ApprovalContext, scope: MaterializeScope): Promise<string[]> {
   const referenced = variableIdsOf(scope.previous?.values() ?? []);
   const rows = await tx
     .select({ id: table.id })
@@ -405,13 +413,11 @@ export async function lockSaveBatch(
           modes.set(source.value, 'share');
   const update = await retireCandidates(tx, ctx, scope);
   for (const id of update) modes.set(id, 'update');
-  for (const [id, mode] of [...modes].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
-    await tx.execute(
-      mode === 'update'
-        ? sql`SELECT id FROM approval_variables WHERE tenant_id=${ctx.tenantId}::uuid AND id=${id}::uuid FOR UPDATE`
-        : sql`SELECT id FROM approval_variables WHERE tenant_id=${ctx.tenantId}::uuid AND id=${id}::uuid FOR SHARE`,
-    );
-  }
+  await lockVariableBatch(
+    tx,
+    ctx,
+    [...modes].map(([id, mode]) => ({ id, mode })),
+  );
   return { update };
 }
 
@@ -486,6 +492,34 @@ function pendingNeedsChoice(
 }
 
 /**
+ * 发布中段的变量取锁（F-326-L §3.1 / §3.3 / §5.4）：被替换版本引用的全部自动变量 ∪ 草稿待生效变量，
+ * 按 id 升序一批 FOR UPDATE（事务中段至多这一批）；集合为空则不取。
+ * 只锁待生效项时，旧版独有的变量（新版不再引用）发布期间没有与保存收尾 / 管理员停用互斥；之后逐个读取都是重入。
+ */
+async function lockPublishBatch(
+  tx: Tx,
+  ctx: ApprovalContext,
+  replaced: VersionView | null,
+  entries: readonly PendingEntry[],
+): Promise<void> {
+  const referenced = replaced ? variableIdsOf(replaced.nodes) : [];
+  const autoIds = referenced.length
+    ? (
+        await tx
+          .select({ id: table.id })
+          .from(table)
+          .where(and(eq(table.tenantId, ctx.tenantId), eq(table.origin, 'auto'), inArray(table.id, referenced)))
+      ).map((row) => row.id)
+    : [];
+  const ids = new Set([...autoIds, ...entries.map((entry) => entry.source.value)]);
+  await lockVariableBatch(
+    tx,
+    ctx,
+    [...ids].map((id) => ({ id, mode: 'update' as const })),
+  );
+}
+
+/**
  * 发布草稿时把节点上的待生效人员写进继承变量（同一事务，操作人为发布人）；没有待生效值返回 null，否则返回清理后的节点：
  * 变量在草稿期间被管理员改过（版本号与记录时不同）→ 409，由发布人逐个选择“采用设计器值 / 保留变量页值”后重提。
  */
@@ -495,9 +529,11 @@ export async function applyPendingAutoVariables(
   scope: MaterializeScope,
   draft: VersionView,
   resolutions: readonly PendingResolution[],
+  previous: VersionView | null,
 ): Promise<ApprovalNode[] | null> {
   const entries = pendingEntries(draft);
   assertResolutions(entries, resolutions);
+  await lockPublishBatch(tx, ctx, previous, entries);
   if (!entries.length) return null;
   const replaced = new Map<string, string>();
   const conflicts: Record<string, unknown>[] = [];
