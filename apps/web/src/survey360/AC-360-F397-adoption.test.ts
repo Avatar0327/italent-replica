@@ -84,20 +84,22 @@ const combos = [undefined, ...slotStatuses].flatMap((status) =>
     [false, true].flatMap((edited) =>
       [false, true].flatMap((differ) =>
         [false, true].flatMap((held) =>
-          views.map(([sheet, activity]) => ({ status, operation, edited, differ, held, sheet, activity })),
+          [false, true].flatMap((inherited) =>
+            views.map(([sheet, activity]) => ({ status, operation, edited, differ, held, inherited, sheet, activity })),
+          ),
         ),
       ),
     ),
   ),
 );
-it('AC-360-F397 规则②③：全组合枚举——dirty 按编辑事件或值不同，离开守卫 = dirty 或未确认命令，自动保存只在可写时', () => {
+it('AC-360-F397 规则②③：全组合枚举——dirty 按编辑事件或值不同，离开守卫 = dirty 或未确认命令，继承的在途命令只读', () => {
   const same = sheetValues(pageOf({}).sheet);
-  expect(combos).toHaveLength(7 * 2 * 2 * 2 * 2 * 3);
-  for (const { status, operation, edited, differ, held, sheet, activity } of combos) {
+  expect(combos).toHaveLength(7 * 2 * 2 * 2 * 2 * 2 * 3);
+  for (const { status, operation, edited, differ, held, inherited, sheet, activity } of combos) {
     const state = status && slot(status, operation);
-    const marks = { edits: new Set(edited ? ['suggestion'] : []), held };
+    const marks = { edits: new Set(edited ? ['suggestion'] : []), held, inherited };
     const result = answerState(state, pageOf({ status: sheet }, activity), differ ? live : same, marks);
-    const label = JSON.stringify({ status, operation, edited, differ, held, sheet, activity });
+    const label = JSON.stringify({ status, operation, edited, differ, held, inherited, sheet, activity });
     expect(result.dirty, label).toBe(edited || differ);
     expect(result.locked, label).toBe(isLocked(state));
     expect(leaveGuarded(result), label).toBe(result.dirty || result.locked);
@@ -106,7 +108,8 @@ it('AC-360-F397 规则②③：全组合枚举——dirty 按编辑事件或值�
     // 被拒的同一份草稿（槽里的命令值 = 页面值）不自动重发。
     const refused = status === 'rejected' && operation === 'save' && differ;
     expect(result.savable, label).toBe(result.dirty && !held && writable && settled && !refused);
-    const saving = status === 'submitting' && operation === 'save';
+    // DEC-948：只有本次挂载发出的保存在途时可继续作答；重开继承的在途命令确认前只读。
+    const saving = status === 'submitting' && operation === 'save' && !inherited;
     expect(result.readonly, label).toBe(!writable || (!settled && !saving));
   }
 });

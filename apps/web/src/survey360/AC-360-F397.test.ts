@@ -251,3 +251,104 @@ it('AC-360-F397 返回列表的保存在途时继续作答再登出，回执到�
   expect(host.querySelector('input[name="password"]')).not.toBeNull();
   expect(calls.slice(loggedOut).filter((call) => call.url.startsWith(task))).toEqual([]);
 });
+
+// 审查 F-397 第 5 轮 P2-1（DEC-948）：重开时继承的未确认保存命令（上一会话发出、本次挂载未发出），结果确认前只读；
+// 本次挂载自己发出的保存在途时仍可作答。
+function heldSaveFixture() {
+  const key = 'survey360.portal.10000000-0000-4000-8000-000000000001';
+  const session = randomBytes(32).toString('base64url');
+  sessionStorage.setItem(key, JSON.stringify({ session, expiresAt: new Date(Date.now() + 60_000).toISOString() }));
+  const task = '/api/survey360/portal/tasks/relation/questionnaires/questionnaire';
+  const sheet = { status: 'pending', revision: 0, answers: [], suggestion: null };
+  const item = { id: 'item', text: '合成题目', options: [{ id: 'option', label: '合成选项', remarkRequired: false }] };
+  const fixture = { release: () => undefined as void, puts: 0 };
+  const gate = new Promise<void>((resolve) => (fixture.release = resolve));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init: RequestInit) => {
+      const method = init.method ?? 'GET';
+      const headers = new Headers(init.headers);
+      if (url.endsWith('/logout')) return new Response(null, { status: 204 });
+      if (url.endsWith('/login'))
+        return Response.json({
+          session: randomBytes(32).toString('base64url'),
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        });
+      if (url === task && method === 'GET')
+        return Response.json({
+          activity: { name: '合成活动', status: 'enabled' },
+          object: { name: '合成对象' },
+          questionnaire: { id: 'questionnaire', name: '合成套卷', type: 'key_behavior', guide: null, items: [item] },
+          sheet,
+        });
+      if (url === task) {
+        fixture.puts += 1;
+        await gate;
+        const revision = Number(headers.get('if-match')) + 1;
+        return Response.json({ ...sheet, ...JSON.parse(String(init.body)), status: 'draft', revision });
+      }
+      return Response.json({
+        kind: 'answer',
+        activity: { id: 'activity', name: '合成活动', welcome: null, status: 'enabled' },
+        tasks: [
+          {
+            relationId: 'relation',
+            object: { name: '合成对象' },
+            questionnaires: [{ id: 'questionnaire', name: '合成套卷', status: 'pending' }],
+          },
+        ],
+      });
+    }),
+  );
+  return fixture;
+}
+const settle = async () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+async function pressButton(label: string) {
+  const button = [...host.querySelectorAll('button')].find((node) => node.textContent?.replace(/\s/g, '') === label);
+  expect(button, label).toBeDefined();
+  await act(async () => button!.click());
+  await settle();
+}
+const radio = () => host.querySelector<HTMLInputElement>('input[type="radio"]')!;
+
+it('AC-360-F397 保存在途时退出并重登、重开同一答卷：继承的保存未确认前只读，原回执到达后恢复可写', async () => {
+  const fixture = heldSaveFixture();
+  await act(async () => root.render(h(App)));
+  await settle();
+  await pressButton('开始评价');
+  await act(async () => radio().click());
+  await settle();
+  await pressButton('立即保存');
+  expect(fixture.puts).toBe(1);
+  await pressButton('退出登录');
+  await enterCredentials();
+  await pressButton('开始评价');
+  // GET 已完成，原保存仍未返回：恢复原命令的答案，但不可再作答。
+  expect(radio().checked).toBe(true);
+  expect(radio().disabled).toBe(true);
+  await act(async () => fixture.release());
+  await settle();
+  await settle();
+  expect(radio().checked).toBe(true);
+  expect(radio().disabled).toBe(false);
+  expect(fixture.puts).toBe(1);
+});
+
+it('AC-360-F397 对照：本次挂载发出的保存在途时仍可继续作答', async () => {
+  const fixture = heldSaveFixture();
+  await act(async () => root.render(h(App)));
+  await settle();
+  await pressButton('开始评价');
+  await act(async () => radio().click());
+  await settle();
+  await pressButton('立即保存');
+  expect(fixture.puts).toBe(1);
+  expect(radio().checked).toBe(true);
+  expect(radio().disabled).toBe(false);
+  await act(async () => fixture.release());
+  await settle();
+  expect(radio().disabled).toBe(false);
+});
