@@ -4,7 +4,11 @@ import { loadPreview, savedNotice } from '../self-service/shared/transfer-loadin
 import { text } from './messages.js';
 import { missingTransferRequiredFields } from '@italent/domain';
 import { saveTransfer } from './api.js';
-import { sendWithEstablishmentConfirm, useEstablishmentConfirm } from './establishment-confirm.js';
+import {
+  needsEstablishmentConfirm,
+  sendWithEstablishmentConfirm,
+  useEstablishmentConfirm,
+} from './establishment-confirm.js';
 import { draftValues, editableKeys, previewRecord, withReread } from './hr-conflict.js';
 import { terminatesOriginalContract } from './hr-form-model.js';
 import { transferCommands, transferEntry, transferResult, transferSlot } from './commands.js';
@@ -30,10 +34,12 @@ export function useHrTransferCommand(
   const confirmTerminate = useTerminateConfirm();
   const confirmEstablishment = useEstablishmentConfirm();
   const [chosen, setAction] = useState<TransferAction>('draft');
+  const [awaitingEstablishment, setAwaitingEstablishment] = useState(false);
+  const submitting = useRef(false);
   const command = usePinnedCommand([transferSlot], transferEntry(model.employeeId), transferCommands);
   // 刷新后恢复的命令按它当初的动作给提示（动作存在命令上下文里，不进请求体）。
   const action = (command.state?.context?.action as TransferAction | undefined) ?? chosen;
-  const processing = command.status === 'submitting' || command.status === 'unknown';
+  const processing = awaitingEstablishment || command.status === 'submitting' || command.status === 'unknown';
   const reread = useRef<{ employeeId: string; loaded: Reread }>(undefined);
   let commandNotice = '';
   if (write.result) {
@@ -52,6 +58,7 @@ export function useHrTransferCommand(
   };
   const conflict: CommandForm = {
     ...command,
+    state: command.status === 'rejected' && needsEstablishmentConfirm(command.state?.error) ? undefined : command.state,
     // 处理中整页只读，原单回查没有可对的表单；只给按原命令 ID 查询结果（F-120）。
     reload: processing ? undefined : () => command.reread(read),
     queryResult: async () => {
@@ -69,42 +76,73 @@ export function useHrTransferCommand(
     processing,
     commandError: write.error,
     commandNotice,
-    busy: command.locked,
+    busy: awaitingEstablishment || command.locked,
     conflict,
     needsReload: false,
     unknownCommand: '',
     reloadSaved: async () => {},
     submit: async (action: TransferAction) => {
       const { preview } = model;
+      if (submitting.current) return;
       if (write.result || command.locked || loadingPreview || !preview || preview.requiredFieldsUnavailable) return;
       if (model.typeConfirmation) return;
       if (missingTransferRequiredFields(preview.form, { ...preview.fields, ...model.fields }).length) return;
-      // F-504：暂存不生效、不终止原合同，不问；提交 / 保存每次都先确认，取消即不发请求、表单不动。
-      if (action !== 'draft' && terminatesOriginalContract(model) && !(await confirmTerminate())) return;
-      setAction(action);
-      restart();
-      const record = previewRecord(model.employeeId, preview);
-      const outcome = await command.submit({
-        values: draftValues(model, record),
-        baseline: record.values,
-        editableFields: editableKeys(preview),
-        revision: record.revision,
-        businessId: model.employeeId,
-        context: { action },
-        send: async (sent) => {
-          // 回执按实际发出的 If-Match 核对（#350 第 2 轮 P2-2）。
-          const revision = sent.revision ?? record.revision;
-          // F-026：超编先确认，确认后带 confirmed 以新命令 ID 重提，取消不再发请求；首次请求的幂等键是内核命令 ID（F-110）。
-          const save = (confirmed: boolean) => () =>
-            saveTransfer(tenantId, model, action, confirmed ? crypto.randomUUID() : sent.id, revision, confirmed);
-          const outcome = { employeeId: model.employeeId, revision };
-          await sendWithEstablishmentConfirm((confirmed) => write.run(save(confirmed), outcome), confirmEstablishment);
-          // 内核按员工记录核对回执；业务单回执已由 useHrWrite 校验并保存。
-          return { id: model.employeeId };
-        },
-      });
-      // 只留冲突给用户重读核对；成功与被拒（提示由 useHrWrite 给出）不留状态，下次按当时预览的版本提交。
-      if (outcome.status === 'done' || outcome.status === 'rejected') command.clear();
+      submitting.current = true;
+      try {
+        // F-504：暂存不生效、不终止原合同，不问；提交 / 保存每次都先确认，取消即不发请求、表单不动。
+        if (action !== 'draft' && terminatesOriginalContract(model) && !(await confirmTerminate())) return;
+        setAction(action);
+        restart();
+        await submitHrTransfer(command, write.run, { tenantId, model, preview, action }, () => {
+          setAwaitingEstablishment(true);
+          return confirmEstablishment();
+        });
+      } catch (error) {
+        // 确认取消时收到原 409：保留输入，提示由确认框处理。
+        if (!needsEstablishmentConfirm(error)) throw error;
+        command.clear();
+      } finally {
+        submitting.current = false;
+        setAwaitingEstablishment(false);
+      }
     },
   };
+}
+
+function submitHrTransfer(
+  command: CommandForm,
+  run: ReturnType<typeof useHrWrite>['run'],
+  input: {
+    tenantId: string;
+    model: TransferFormModel;
+    preview: NonNullable<TransferFormModel['preview']>;
+    action: TransferAction;
+  },
+  ask: () => Promise<boolean>,
+) {
+  const { tenantId, model, preview, action } = input;
+  const { employeeId } = model;
+  const record = previewRecord(employeeId, preview);
+  // F-026 / F-110：首次和确认后的请求分别走内核登记，各自的幂等键就是各自的恢复命令 ID。
+  return sendWithEstablishmentConfirm(async (confirmed) => {
+    const outcome = await command.submit({
+      values: draftValues(model, record),
+      baseline: record.values,
+      editableFields: editableKeys(preview),
+      revision: record.revision,
+      businessId: employeeId,
+      context: { action },
+      send: async (sent) => {
+        // 回执按实际发出的 If-Match 核对（#350 第 2 轮 P2-2）。
+        const revision = sent.revision ?? record.revision;
+        await run(() => saveTransfer(tenantId, model, action, sent.id, revision, confirmed), { employeeId, revision });
+        // 内核按员工记录核对回执；业务单回执已由 useHrWrite 校验并保存。
+        return { id: employeeId };
+      },
+    });
+    // A 已落定。确认重提之前保留这条状态，避免持久记录排队删除时被同步重新当作未知命令。
+    if (outcome.status === 'rejected' && needsEstablishmentConfirm(outcome.error)) throw outcome.error;
+    // 普通拒绝由 useHrWrite 给出提示，下次提交按当时的预览起算。
+    if (outcome.status === 'done' || outcome.status === 'rejected') command.clear();
+  }, ask);
 }
