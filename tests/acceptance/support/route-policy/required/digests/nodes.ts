@@ -448,6 +448,22 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/analytics/hr-structure.ts#orgTree': ['50c3221fb0c2', '50da72ff6e54'],
   'apps/api/src/modules/analytics/hr-structure.ts#structurePeople': ['11fe4ee731ec', '243a2b647817'],
   'apps/api/src/modules/analytics/hr-structure.ts#structurePeopleWhere': ['f5ab1a48e40d', '284ca33aef3d'],
+  'apps/api/src/modules/analytics/organization-candidates.ts#ANALYSIS_CANDIDATE_OBJECTS': [
+    '5765a77c4c34',
+    '1f397b8d369b',
+  ],
+  'apps/api/src/modules/analytics/organization-candidates.ts#ORGANIZATION_CANDIDATES_PATH': [
+    '17ea3a304f6c',
+    'e3b0c44298fc',
+  ],
+  'apps/api/src/modules/analytics/organization-candidates.ts#organizationCandidateObject': [
+    '7bc638215b5f',
+    '20045976b1f6',
+  ],
+  'apps/api/src/modules/analytics/organization-candidates.ts#readOrganizationCandidates': [
+    '7bbadc2d3e66',
+    '79dc640d2eb7',
+  ],
   'apps/api/src/modules/analytics/stat-report-export.ts#EXPORT_NOTE': ['9048b7341407', 'e3b0c44298fc'],
   'apps/api/src/modules/analytics/stat-report-export.ts#XLSX_CONTENT_TYPE': ['5a8604b9f4ec', 'e3b0c44298fc'],
   'apps/api/src/modules/analytics/stat-report-export.ts#exportMode': ['40cf490b5e8d', '583ee92c250c'],

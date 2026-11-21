@@ -36,6 +36,25 @@
       }
     ]
   },
+  "GET /api/tenant/analytics/organization-candidates": {
+    "fixedKeys": [
+      {
+        "keys": [
+          "items"
+        ]
+      }
+    ],
+    "outcome": [
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "VALIDATION_FAILED",
+        "status": 400
+      }
+    ]
+  },
   "GET /api/tenant/esign/scenes/entry": {
     "fixedKeys": [
       {

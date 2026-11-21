@@ -82,6 +82,16 @@
       "end",
       "extend"
     ],
+    "hrAnalysis.organizationCandidateObject": [
+      "ContractBoard",
+      "HrDashboard",
+      "HrMovement",
+      "HrMovementReport",
+      "HrProcessDashboard",
+      "HrRoster",
+      "HrStructure",
+      "HrStructureReport"
+    ],
     "import.rowOperation": [
       "create",
       "update"
@@ -3738,6 +3748,31 @@
           "requestScope",
           "scope.all",
           "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/analytics/organization-candidates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-analysis",
+      "primitives": {
+        "domain": [
+          "hrAnalysis.organizationCandidateObject"
+        ],
+        "object": [
+          "objectContext"
         ]
       }
     },

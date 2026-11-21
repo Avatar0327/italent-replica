@@ -126,7 +126,7 @@ describe('F-541 人事分析组织候选 HTTP', () => {
 
   it.each(OBJECTS)('AC-HA-F541-01：只授 %s 查看权也能读取全租户行政树，逐节点仅四个字段', async (object) => {
     const response = await get(object, object);
-    await expectTree(response);
+    await expectTree(response.clone());
     recorder.recordFact(ENDPOINT, 'fixedKeys', await observe(response));
   });
 
