@@ -20,7 +20,7 @@ import { sequenceForNewPost } from './inheritance.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness, type LockedEmploymentBusiness } from './record-store.js';
 import { assertEmploymentDepartmentAvailable, validateEmploymentReferences } from './references.js';
-import { isPendingEntryRecord } from './employee-status.js';
+import { ENTRY_KINDS, isPendingEntryRecord } from './employee-status.js';
 import { entrySourceEvents } from './entry-source-events.js';
 import { validateSelectedEmploymentType } from './employment-types.js';
 import { validateSelectedEmploymentForm } from './employment-forms.js';
@@ -161,7 +161,7 @@ function customAudit(fields: CustomFields): Record<string, CustomFields[string]>
   return Object.fromEntries(Object.entries(fields).map(([key, value]) => [`custom:${key}`, value]));
 }
 
-/** 业务头 revision +1；F-505：待入职记录原地编辑（同 ID、revision 变）= 来源在可签状态下改了内容，同事务发 changed 事件。 */
+/** F-505 §6.2：实际内容编辑才到这里。办理后仍保留原记录的入职状态，已有任务要随原来源变更撤销。 */
 export async function bumpAndNotifyEntry(
   tx: Tx,
   ctx: EmploymentContext,
@@ -169,7 +169,7 @@ export async function bumpAndNotifyEntry(
   record: EmploymentRecord,
 ) {
   await bumpEmploymentBusiness(tx, ctx, business);
-  if (!isPendingEntryRecord(record)) return;
+  if (!ENTRY_KINDS.includes(record.kind) || record.entryStatus === null) return;
   await entrySourceEvents.emit(tx, ctx, {
     source: 'entry',
     sourceId: business.id,

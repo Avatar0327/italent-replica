@@ -6435,7 +6435,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/types.ts#PRESET_FIELD_NAMES',
   ],
   'apps/api/src/modules/employment/record-edit.ts#bumpAndNotifyEntry': [
-    'apps/api/src/modules/employment/employee-status.ts#isPendingEntryRecord',
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
     'apps/api/src/modules/employment/entry-source-events.ts#entrySourceEvents',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
   ],

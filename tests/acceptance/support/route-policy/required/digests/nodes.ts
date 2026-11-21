@@ -3346,7 +3346,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/read-model.ts#rowsOf': ['4e94c1c1f433', 'd8399dcaac04'],
   'apps/api/src/modules/employment/read-model.ts#snapshotFields': ['9d224228abca', '6c43b681e622'],
   'apps/api/src/modules/employment/read-model.ts#statusCode': ['6f26d255dd43', '8233742cbb68'],
-  'apps/api/src/modules/employment/record-edit.ts#bumpAndNotifyEntry': ['3951e0a5a6c0', '5c68dafc8a2b'],
+  'apps/api/src/modules/employment/record-edit.ts#bumpAndNotifyEntry': ['6aaf7dccd859', 'b0d53e539ab4'],
   'apps/api/src/modules/employment/record-edit.ts#customAudit': ['d170a8bb15f5', 'bb1117e3491d'],
   'apps/api/src/modules/employment/record-edit.ts#editEmploymentRecord': ['b2e7fc0876de', '5d524346dd53'],
   'apps/api/src/modules/employment/record-edit.ts#editedRecordReporting': ['d451caabddb4', '4e8680caa463'],
