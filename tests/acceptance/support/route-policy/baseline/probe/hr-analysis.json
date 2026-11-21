@@ -1,4 +1,17 @@
 {
+  "GET /api/tenant/analytics/organization-candidates": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "dc11e8dc2048",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "GET /api/tenant/hr-analysis/reports": {
     "all": {
       "status": 200

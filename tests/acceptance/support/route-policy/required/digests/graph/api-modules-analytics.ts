@@ -764,6 +764,25 @@ export const GRAPH: Graph = {
     '#categoryName',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
+  'apps/api/src/modules/analytics/organization-candidates.ts#ANALYSIS_CANDIDATE_OBJECTS': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'apps/api/src/modules/analytics/organization-candidates.ts#organizationCandidateObject': [
+    '#ANALYSIS_CANDIDATE_OBJECTS',
+  ],
+  'apps/api/src/modules/analytics/organization-candidates.ts#readOrganizationCandidates': [
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'apps/api/src/modules/org/tree.ts#nearestVisibleParents',
+  ],
+  'apps/api/src/modules/analytics/organization-candidates.ts#route:GET /api/tenant/analytics/organization-candidates': [
+    'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dateQuery',
+    '#ANALYSIS_CANDIDATE_OBJECTS',
+    '#ORGANIZATION_CANDIDATES_PATH',
+    '#organizationCandidateObject',
+    '#readOrganizationCandidates',
+    'apps/api/src/modules/permission/module-route-access.ts#objectContext',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/analytics/stat-report-export.ts#exportStatReport': [
     'apps/api/src/audit/record.ts#recordOperationLog',
     '#EXPORT_NOTE',
