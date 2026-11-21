@@ -145,7 +145,11 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS': ['#EXIT_BLACKLIST_DETAIL_FIELDS', '#EXIT_REQUEST_FIELDS'],
   'packages/domain/src/employment/exit.ts#buttonsOf': ['#EXIT_BUTTONS', '#RETIREMENT_BUTTONS'],
   'packages/domain/src/employment/field-origins.ts#changedInputFields': ['#equalInputValue', '#inputEntries'],
+  'packages/domain/src/employment/field-origins.ts#effectiveOrigin': ['#valueRows'],
   'packages/domain/src/employment/field-origins.ts#equalInputValue': ['#UUID_FIELDS'],
+  'packages/domain/src/employment/field-origins.ts#foldFieldOrigins': ['#effectiveOrigin', '#isPolicy'],
+  'packages/domain/src/employment/field-origins.ts#isPolicy': ['#policyKinds'],
+  'packages/domain/src/employment/field-origins.ts#policyKinds': ['#FIELD_ORIGIN_POLICIES'],
   'packages/domain/src/employment/field-origins.ts#requestInputFields': ['#inputEntries'],
   'packages/domain/src/employment/late-execution.ts#resolveLateLeave': [
     'packages/domain/src/contracts/rules.ts#addDays',

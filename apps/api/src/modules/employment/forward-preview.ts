@@ -79,7 +79,7 @@ export async function previewEmploymentEditForwardUpdate(
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const record = await loadEmploymentRecord(tx, ctx.tenantId, id, today, ctx.scope);
   if (!record) throw new AppError('CONFLICT', '只能预览有效任职记录的编辑');
-  const after = await editedValues(tx, ctx, record, input);
+  const { values: after } = await editedValues(tx, ctx, record, input);
   const reporting = await editedRecordReporting(tx, ctx, record, input);
   await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate, reporting);
   if (!isForwardEditSupported({ ...record, entry: 'import', today }))

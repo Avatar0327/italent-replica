@@ -4422,7 +4422,11 @@
         }
       },
       "module": "command-result",
-      "primitives": {}
+      "primitives": {
+        "guard": [
+          "command.result.registered"
+        ]
+      }
     },
     "GET /api/tenant/contracts": {
       "edge": {
