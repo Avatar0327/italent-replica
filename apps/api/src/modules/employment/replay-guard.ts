@@ -247,12 +247,14 @@ export function exitEditGuard(
   ctx: EmploymentContext,
   target: ExitGateTarget,
   businessId: string,
+  checkLinkedFields?: (tx: Tx, scoped: EmploymentContext) => Promise<void>,
 ): ScopedCommandGuard {
   return scopedGuard({
     before: async (tx) => {
       const scoped = await commandContext(tx, deps, ctx);
       await requireExitScope(tx, scoped, target, { businessId });
       await requireExitEditRights(tx, scoped, target, businessId);
+      await checkLinkedFields?.(tx, scoped);
     },
   });
 }

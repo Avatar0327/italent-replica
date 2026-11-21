@@ -13,18 +13,35 @@ import { refPaths } from '../part-time/references.js';
 import { useRetireCommand } from './commands.js';
 import { m } from './messages.js';
 import { acceptRetirement, cellValue, retirements, retireSlot, type Row } from './model.js';
+import { completeDutyPlan, DutyTransferEdit } from './DutyTransferEdit.js';
 import { RehirePlanRead } from './RehirePlan.js';
 
 const timing = 'dutyTransferTiming';
 const date = 'dutyTransferDate';
-const editFields = ['handoverEmployeeId', timing, date] as const;
+const duty = 'dutyTransfer';
+const editFields = ['handoverEmployeeId', timing, date, duty] as const;
+const planEditable = (detail?: Row) =>
+  detail &&
+  Object.hasOwn(detail, 'dutyTransferPlan') &&
+  !detail.dutyTransferPlanLocked &&
+  ['draft', 'in_review', 'approved', 'rejected'].includes(String(detail.status));
 const readonlyFields = ['lastWorkDate', 'effectiveDate', 'reEmployed'];
 
-const labels = { ...m.fields, [timing]: m.edit.timing, [date]: m.edit.date };
-export function retirementEditFields(permission?: ObjectPermission) {
+const labels = { ...m.fields, [timing]: m.edit.timing, [date]: m.edit.date, [duty]: m.duty.title };
+const dutyRules = [
+  {
+    validator: (_: unknown, plan: Parameters<typeof completeDutyPlan>[0]) =>
+      completeDutyPlan(plan) ? Promise.resolve() : Promise.reject(new Error(m.duty.incomplete)),
+  },
+];
+
+export function retirementEditFields(permission?: ObjectPermission, detail?: Row) {
   if (!permission?.dataOperations.update || !canButton(permission, RETIREMENT_BUTTONS.edit, 'detail')) return [];
   return editFields.filter(
-    (field) => fieldAccess(permission, field).editable && (field !== date || fieldAccess(permission, timing).visible),
+    (field) =>
+      fieldAccess(permission, field).editable &&
+      (field !== date || fieldAccess(permission, timing).visible) &&
+      (field !== duty || planEditable(detail)),
   );
 }
 
@@ -35,11 +52,17 @@ export function retirementPatch(values: Values, before: Values, writable: readon
       before,
       editFields.filter((field) => writable.includes(field)),
     ).flatMap((field) =>
-      isBlank(values[field]) || (field === date && (values[timing] ?? before[timing]) !== 'specified_date')
-        ? []
-        : [[field, values[field]]],
+      field === duty
+        ? [[field, values[field] ?? null]]
+        : isBlank(values[field]) || (field === date && (values[timing] ?? before[timing]) !== 'specified_date')
+          ? []
+          : [[field, values[field]]],
     ),
   );
+}
+
+export function retirementEditBaseline(detail: Values) {
+  return projectFields({ ...detail, [duty]: detail.dutyTransferPlan }, editFields);
 }
 
 type Props = {
@@ -49,16 +72,16 @@ type Props = {
   onDone(): void;
   refresh(): Promise<unknown>;
 };
-function useRetirementEdit({ detail, editable, onDone, refresh }: Props) {
+function useRetirementEdit({ detail, editable: allowed, onDone, refresh }: Props) {
   const api = useApiClient();
   const [form] = Form.useForm();
   const id = detail.id!;
   const employeeId = detail.employeeId!;
   const path = slotKey(retirements, id);
-  const baseline = projectFields(detail, editFields);
+  const baseline = retirementEditBaseline(detail);
   const read = async () => {
     const row = acceptRetirement(await api.request<Values>(path), { id, employeeId, sent: -1 });
-    return { id: employeeId, revision: Number(row.revision), values: { ...row, ...projectFields(row, editFields) } };
+    return { id: employeeId, revision: Number(row.revision), values: { ...row, ...retirementEditBaseline(row) } };
   };
   const cmd = useRetireCommand(
     retireSlot,
@@ -67,6 +90,7 @@ function useRetirementEdit({ detail, editable, onDone, refresh }: Props) {
     refresh,
   );
   const snapshot = (cmd.form.state?.latest?.values ?? detail) as Row;
+  const editable = allowed.filter((field) => field !== duty || planEditable(snapshot));
   const watched = Form.useWatch([], { form, preserve: true }) as Values | undefined;
   useDraftRefill(cmd.form, editable, form);
   const values = { ...cmd.full, ...watched };
@@ -92,12 +116,12 @@ function useRetirementEdit({ detail, editable, onDone, refresh }: Props) {
     }
   };
 
-  return { form, cmd, baseline, snapshot, values, patch, locked, submit };
+  return { form, cmd, baseline, snapshot, values, patch, locked, submit, editable };
 }
 
 export function RetirementEdit(props: Props) {
-  const { editable, onClose } = props;
-  const { form, cmd, baseline, snapshot, values, patch, locked, submit } = useRetirementEdit(props);
+  const { onClose } = props;
+  const { form, cmd, baseline, snapshot, values, patch, locked, submit, editable } = useRetirementEdit(props);
   const handover = m.fields.handoverEmployeeId!;
   const required = (label: string) => [{ required: true, message: m.required(label) }];
   return (
@@ -162,6 +186,11 @@ export function RetirementEdit(props: Props) {
           {editable.includes(date) && values[timing] === 'specified_date' && (
             <Form.Item name={date} label={m.edit.date} rules={required(m.edit.date)}>
               <TenantDatePicker />
+            </Form.Item>
+          )}
+          {Object.hasOwn(snapshot, 'dutyTransferPlan') && (
+            <Form.Item name={duty} rules={dutyRules}>
+              <DutyTransferEdit disabled={locked || !editable.includes(duty)} />
             </Form.Item>
           )}
         </Form>
