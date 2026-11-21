@@ -25,7 +25,8 @@ import {
   uuid,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
-import { employmentEmployees } from './employment.js';
+import { employmentBusinessObjects, employmentEmployees, employmentRecords } from './employment.js';
+import { jobLevelObjects, jobPositionObjects, jobPostObjects } from './job.js';
 import { orgObjects, orgVersions } from './org.js';
 import { tenantMemberships, tenants } from './tenancy.js';
 
@@ -404,5 +405,97 @@ export const orgAdjustmentEmploymentFailures = pgTable(
     }),
     // 详情读取：按单取、按明细顺序列出；(tenant, adjustment) 原索引被它覆盖，一并替换。
     index('org_adjustment_employment_failures_detail').on(t.tenantId, t.adjustmentId, t.itemId, t.employeeId),
+  ],
+);
+
+/** 调动明细（R2-T08 §2.3）；同日就地改的结果列随 11c2。 */
+export const orgAdjustmentTransferItems = pgTable(
+  'org_adjustment_transfer_items',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    adjustmentId: uuid('adjustment_id').notNull(),
+    seq: integer('seq').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    baseRecordId: uuid('base_record_id').notNull(),
+    baseEmployeeRevision: integer('base_employee_revision').notNull(),
+    departmentId: uuid('department_id'),
+    departmentItemId: uuid('department_item_id'),
+    positionId: uuid('position_id'),
+    positionItemId: uuid('position_item_id'),
+    postId: uuid('post_id'),
+    levelId: uuid('level_id'),
+    directManagerId: uuid('direct_manager_id'),
+    dottedManagerId: uuid('dotted_manager_id'),
+    transferTypeCode: text('transfer_type_code').notNull(),
+    formId: text('form_id').notNull(),
+    reasonCode: text('reason_code'),
+    withEstablishment: boolean('with_establishment').notNull().default(false),
+    linkage: jsonb('linkage'),
+    generatedByItemId: uuid('generated_by_item_id'),
+    generatedReason: text('generated_reason'),
+    createdBusinessId: uuid('created_business_id'),
+    execPhase: smallint('exec_phase').notNull().default(0),
+    executionResult: smallint('execution_result'),
+    executionReason: text('execution_reason'),
+    executionMessage: text('execution_message'),
+  },
+  (t) => [
+    unique('org_adjustment_transfer_seq').on(t.tenantId, t.adjustmentId, t.seq),
+    unique('org_adjustment_transfer_business').on(t.tenantId, t.createdBusinessId),
+    index('org_adjustment_transfer_employee').on(t.tenantId, t.employeeId),
+    foreignKey({
+      name: 'org_adjustment_transfer_adjustment_fk',
+      columns: [t.tenantId, t.adjustmentId],
+      foreignColumns: [orgAdjustments.tenantId, orgAdjustments.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'org_adjustment_transfer_base_fk',
+      columns: [t.tenantId, t.employeeId, t.baseRecordId],
+      foreignColumns: [employmentRecords.tenantId, employmentRecords.employeeId, employmentRecords.id],
+    }),
+    foreignKey({
+      name: 'org_adjustment_transfer_business_fk',
+      columns: [t.tenantId, t.employeeId, t.createdBusinessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
+    ...(
+      [
+        ['department', t.departmentId, orgObjects],
+        ['position', t.positionId, jobPositionObjects],
+        ['post', t.postId, jobPostObjects],
+        ['level', t.levelId, jobLevelObjects],
+        ['direct_manager', t.directManagerId, employmentEmployees],
+        ['dotted_manager', t.dottedManagerId, employmentEmployees],
+      ] as const
+    ).map(([key, column, target]) =>
+      foreignKey({
+        name: `org_adjustment_transfer_${key}_fk`,
+        columns: [t.tenantId, column],
+        foreignColumns: [target.tenantId, target.id],
+      }),
+    ),
+    ...(
+      [
+        ['department_item', t.departmentItemId],
+        ['generated_by', t.generatedByItemId],
+      ] as const
+    ).map(([key, column]) =>
+      foreignKey({
+        name: `org_adjustment_transfer_${key}_fk`,
+        columns: [t.tenantId, t.adjustmentId, column],
+        foreignColumns: [orgAdjustmentOrgItems.tenantId, orgAdjustmentOrgItems.adjustmentId, orgAdjustmentOrgItems.id],
+      }),
+    ),
+    check('org_adjustment_transfer_department_ref', sql`num_nonnulls(${t.departmentId}, ${t.departmentItemId}) = 1`),
+    check('org_adjustment_transfer_position_ref', sql`num_nonnulls(${t.positionId}, ${t.positionItemId}) <= 1`),
+    check('org_adjustment_transfer_generation', sql`(${t.generatedByItemId} IS NULL) = (${t.generatedReason} IS NULL)`),
+    check('org_adjustment_transfer_baseline', sql`${t.baseEmployeeRevision} > 0 AND ${t.seq} > 0`),
+    check('org_adjustment_transfer_phase', sql`${t.execPhase} IN (0, 2)`),
+    check('org_adjustment_transfer_result', sql`${t.executionResult} IN (1, 2)`),
   ],
 );
