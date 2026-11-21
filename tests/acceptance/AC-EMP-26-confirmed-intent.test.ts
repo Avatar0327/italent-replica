@@ -121,3 +121,26 @@ it('AC-EMP-26 DEC-974：混合 PATCH 同值确认工作地、实际改职位，�
   });
   expect(after.position).toMatchObject({ originKind: 'hr-record', value: position.id });
 });
+
+it('AC-EMP-26 DEC-975：前驱改值后 #11 仍沿用已物化工作地', async () => {
+  const x = await fixture(database().db, 'f036s3-confirmed-place-inheritance');
+  await x.confirm({ place: '原地点' });
+  const predecessor = await x.world.business(x.hire.id);
+  const edited = await x.world.session.request('POST', '/records/batch-edit', {
+    body: {
+      items: [{ id: predecessor.id, revision: predecessor.revision }],
+      patch: { fields: { place: '前驱新地点' } },
+    },
+  });
+  expect(edited.status, await edited.clone().text()).toBe(200);
+  expect(await edited.json()).toMatchObject({ succeeded: 1, failed: 0 });
+  expect((await x.world.session.record(x.hire.id, '2026-10-06')).fields.place).toBe('前驱新地点');
+  expect((await x.read()).versions).toHaveLength(1);
+  const record = await x.reschedule();
+  const after = await x.read();
+  expect(record.previousRecordId).toBe(x.hire.id);
+  expect(after.versions).toHaveLength(2);
+  expect(after.versions[1]).toMatchObject({ explicit: ['preset:departmentId'], originCount: 0 });
+  expect(after.place).toMatchObject({ originKind: 'hr-record', value: '原地点', actorUserId: x.user.id });
+  expect(record.fields.place).toBe('原地点');
+});
