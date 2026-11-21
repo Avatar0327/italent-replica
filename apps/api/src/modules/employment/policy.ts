@@ -1791,7 +1791,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Edit', 'detail'),
-    scope: guardScope('employment.businessWrite', NF_ENTRY_SIGN_SOURCE),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_ENTRY_SIGN_SOURCE),
     fields: fixed(['sourceId', 'revision', 'canInitiate', 'reason', 'items'], 'F-505 §8 入职选项固定形状'),
     ...byId,
   }),
@@ -1799,7 +1799,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Edit', 'detail'),
-    scope: guardScope('employment.businessWrite', NF_ENTRY_SIGN_SOURCE),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_ENTRY_SIGN_SOURCE),
     fields: fixed(['sourceId', 'taskId'], 'F-505 §5 固定来源和任务回执'),
     guards: ['esign.sourceVariables'],
     write: {

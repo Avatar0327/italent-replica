@@ -1,8 +1,9 @@
-import { buttonResource } from '@italent/domain';
+import { APPROVAL_TYPES, buttonResource } from '@italent/domain';
 import { testDbMode, useTestDb } from '@italent/testkit';
 import { beforeAll, expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
-import { handledScene } from './AC-F476-p4-support.js';
+import { approvalWorld } from './AC-APV-support.js';
+import { loginEmailOf } from './AC-EMP-support.js';
 import { controlledApi } from './AC-LNK-support.js';
 import { json } from './AC-TRF-F481-s3a-support.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -149,16 +150,53 @@ it('AC-21 来源历史在分页前应用双范围，文件和状态逐字段裁�
 });
 
 it('AC-21 审批人只能读已办理的冻结份，不能用于签署发起或读来源历史', async () => {
-  const scene = await handledScene(database().db, 'ZZ_F505_冻结', 'hire');
-  const { businessId, approver } = scene;
-  const call = controlledApi(
-    scene.w.db,
-    scene.w.tenant.id,
-    approver.userId,
-    {
-      scopes: { [EMPLOYMENT_OBJECT]: EMPTY_SCOPE },
+  const approval = await approvalWorld(database().db, 'ZZ_F505_冻结');
+  const dept = await approval.org('ZZ_F505_冻结部门');
+  const approver = await approval.person('ZZ_F505_冻结审批人', dept);
+  const employee = await approval.employee('ZZ_F505_冻结员工');
+  await approval.publishedProcess({
+    approvalType: 'hire',
+    name: 'ZZ_F505_入职审批',
+    conditions: {
+      items: [{ no: 1, field: 'processCode', operator: 'eq', value: APPROVAL_TYPES.hire.defaultProcessCode }],
     },
-    scene.w.clock().toISOString(),
+    nodes: [
+      {
+        key: 'review',
+        approver: { type: 'specified', value: approver.userId },
+        formFields: ['effectiveDate', 'departmentId', 'place'],
+      },
+    ],
+  });
+  const entry = await json<{ id: string; revision: number }>(
+    await approval.request(approval.hr.id, 'POST', `/api/tenant/employment/employees/${employee.id}/businesses`, {
+      ifMatch: employee.revision,
+      body: {
+        kind: 'hire',
+        mode: 'application',
+        effectiveDate: '2026-10-05',
+        fields: { departmentId: dept, place: 'ZZ_F505_办理时' },
+        loginEmail: loginEmailOf(employee.id),
+      },
+    }),
+    201,
+  );
+  const instance = await approval.submit(entry);
+  const task = approval.pending(instance)[0]!;
+  await json(await approval.taskAction(approver.userId, task.id, 'reject', instance.revision, { comment: '合成意见' }));
+  const selected = await json<{ id: string }>(
+    await approval.request(approval.hr.id, 'POST', '/api/tenant/esign/templates', {
+      body: { code: uniqueSuffix(), name: 'ZZ_F505_冻结场景模板', body: 'ZZ_F505_正文' },
+    }),
+    201,
+  );
+  const businessId = entry.id;
+  const call = controlledApi(
+    approval.db,
+    approval.tenant.id,
+    approver.userId,
+    { scopes: { [EMPLOYMENT_OBJECT]: EMPTY_SCOPE } },
+    approval.clock().toISOString(),
   );
   const old = await json<{ revision: number; contentView?: { mode: string } }>(
     await call('GET', `/api/tenant/employment/businesses/${businessId}`),
@@ -168,7 +206,7 @@ it('AC-21 审批人只能读已办理的冻结份，不能用于签署发起或�
   await w.error(
     await call('POST', source(businessId, 'tasks'), {
       ifMatch: old.revision,
-      body: { templateIds: [templateId] },
+      body: { templateIds: [selected.id] },
     }),
     404,
     'NOT_FOUND',

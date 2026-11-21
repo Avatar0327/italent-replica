@@ -4,8 +4,8 @@ import { userOfPerson } from '../../apps/api/src/modules/approval/resolver.js';
 import { provisionEmployeeUser } from '../../apps/api/src/modules/permission/user-provisioning.js';
 import { EMPLOYEE_OBJECT, EMPLOYMENT_OBJECT } from '../../apps/api/src/modules/employment/context.js';
 import { RECORD_OBJECT } from '../../apps/api/src/modules/esign/record-access.js';
-import { loginEmailOf } from './AC-EMP-support.js';
-import { entryWorld, hireBody, portContext } from './AC-EN-BE2a-support.js';
+import { employmentSession, loginEmailOf } from './AC-EMP-support.js';
+import { hireBody, portContext } from './AC-EN-BE2a-support.js';
 import { controlledApi, type ControlledGrants } from './AC-LNK-support.js';
 import { json } from './AC-TRF-F481-s3a-support.js';
 import { tenantApi, type RequestOptions } from './support/tenant-api.js';
@@ -21,9 +21,11 @@ export type Receipt = { sourceId: string; taskId: string };
 export type Entry = { id: string; revision: number };
 
 export async function s5World(db: Db) {
-  const w = await entryWorld(db, 'ZZ_F505_S5');
-  const { tenant, user } = w.session;
-  w.session.setNow(NOW);
+  const session = await employmentSession(db, 'ZZ_F505_S5');
+  session.setNow(NOW);
+  const org = await session.org('ZZ_F505_S5_入职部门', { establishedOn: '2026-01-01' });
+  const w = { db, session, org };
+  const { tenant, user } = session;
   const api = tenantApi(db, { clock: () => new Date(NOW) });
   const as = { tenant: tenant.id, user: user.id };
   const call = (method: string, path: string, options: RequestOptions = {}) =>

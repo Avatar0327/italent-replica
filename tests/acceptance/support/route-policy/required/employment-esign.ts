@@ -8,7 +8,7 @@ const ENTRY = '/pending-entries/:id/esign-';
 const ENDPOINT = '/api/tenant/employment' + ENTRY;
 const RECORD = 'TenantBase.EmploymentRecord';
 const SIGN_RECORD = 'TenantBase.ESignRecord';
-const WRITE_SCOPE = 'employment.businessWrite';
+const WRITE_SCOPE = 'employment.business';
 
 const evidence = (unit: string, anchor: string, role: Evidence['role'] = 'impl'): Evidence => ({ unit, anchor, role });
 const route = (method: string, suffix: string, anchor: string) =>
@@ -30,15 +30,16 @@ const sourceBoundary = evidence(
   `${EMP}/entry-esign-source.ts#authorizeEntrySignSource`,
   'await requireEntrySignSource(tx, deps, ctx, id)',
 );
-const writeAccess = (entry: Evidence, ...extra: Evidence[]): Obligation[] => [
+const writeAccess = (entry: Evidence, facts: readonly string[], extra: Evidence): Obligation[] => [
   {
     perm: `obj:${RECORD}:update`,
-    need: guardScope(WRITE_SCOPE),
-    facts: ['object:object.* 动作'],
-    at: [entry, ...extra, sourceBoundary, source, resolved, scope],
+    need: point(WRITE_SCOPE),
+    facts,
+    at: [entry, extra, sourceBoundary, source, resolved, scope],
   },
   {
     perm: `btn:${RECORD}#Employment.Edit@detail`,
+    facts: ['button:requireEmploymentWrite(按钮)'],
     at: [
       entry,
       source,
@@ -48,7 +49,6 @@ const writeAccess = (entry: Evidence, ...extra: Evidence[]): Obligation[] => [
       ),
     ],
   },
-  { perm: `guard:${WRITE_SCOPE}`, facts: [`guard:${WRITE_SCOPE}`], at: [entry, sourceBoundary, resolved, scope] },
 ];
 
 const history = `${EMP}/entry-esign-history.ts#entrySignHistory`;
@@ -66,11 +66,13 @@ const checkVariables = evidence(
 export const EMPLOYMENT_ESIGN: RequiredTable = {
   [`GET ${ENDPOINT}context`]: writeAccess(
     route('GET', 'context', 'entrySignContext(tx, deps, ctx, id)'),
+    [],
     evidence(`${EMP}/entry-esign-source.ts#entrySignContext`, 'await authorizeEntrySignSource(tx, deps, ctx, id)'),
   ),
   [`POST ${ENDPOINT}tasks`]: [
     ...writeAccess(
       route('POST', 'tasks', 'authorizeSource: (tx) => authorizeEntrySignSource(tx, deps, ctx, id)'),
+      ['object:object.* 动作'],
       evidence(`${ESIGN}/source-initiation.ts#runSourceSignCommand`, 'await input.authorizeSource(tx)'),
     ),
     {
@@ -80,6 +82,7 @@ export const EMPLOYMENT_ESIGN: RequiredTable = {
     {
       perm: 'obj:TenantBase.Employee:view',
       purpose: `when:${variables}`,
+      facts: ['objectOp:TenantBase.Employee:view'],
       need: guardScope(variables),
       note: '仅所选模板实际使用人员变量时复核；重放按已落库字段复核。',
       at: [
@@ -97,7 +100,7 @@ export const EMPLOYMENT_ESIGN: RequiredTable = {
     {
       perm: `obj:${RECORD}:view`,
       need: point('employment.record'),
-      facts: ['object:object.* 动作'],
+      facts: ['object:object.* 动作', 'objectOp:TenantBase.EmploymentRecord:view'],
       at: [
         route('GET', 'records', 'entrySignHistory(tx, deps, ctx, id, page)'),
         evidence(
