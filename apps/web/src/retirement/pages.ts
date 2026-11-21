@@ -1,7 +1,16 @@
 import { lazyPage, type ModulePages } from '../foundation/page-registry.js';
 import { m } from './messages.js';
+import { s } from './settings/messages.js';
 export const pages: ModulePages = {
   entries: [
+    {
+      id: 'retirement-settings',
+      app: 'transfer',
+      group: 'people',
+      label: s.title,
+      objectCode: 'TenantBase.EmploymentRecord',
+      page: lazyPage('RetirementSettingsPage', () => import('./settings/RetirementSettingsPage.js')),
+    },
     {
       id: 'retirements',
       app: 'transfer',

@@ -111,6 +111,7 @@ describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
             'part-time',
             'probation-settings',
             'probations',
+            'retirement-settings',
             'retirements',
           ]
         : []),

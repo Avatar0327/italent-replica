@@ -89,17 +89,26 @@ function changed(before: Row | null, after: Row | null): string[] {
 export async function auditApproval(
   tx: Tx,
   ctx: ApprovalContext,
-  entry: { action: string; objectType: string; objectId: string; before: Row | null; after: Row | null },
+  entry: {
+    action: string;
+    objectType: string;
+    objectId: string;
+    before: Row | null;
+    after: Row | null;
+    afterOnly?: readonly string[];
+  },
 ): Promise<void> {
   const keys = changed(entry.before, entry.after);
-  const pick = (value: Row | null) => (value ? Object.fromEntries(keys.map((key) => [key, value[key] ?? null])) : null);
+  const { afterOnly } = entry;
+  const pick = (value: Row | null, fields: readonly string[] = keys) =>
+    value ? Object.fromEntries(fields.map((key) => [key, value[key] ?? null])) : null;
   await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: actorOf(ctx),
     action: entry.action,
     objectType: entry.objectType,
     objectId: entry.objectId,
-    before: pick(entry.before),
+    before: pick(entry.before, afterOnly ? keys.filter((key) => !afterOnly.includes(key)) : keys),
     after: pick(entry.after),
     commandId: ctx.commandId,
     occurredAt: ctx.now,
