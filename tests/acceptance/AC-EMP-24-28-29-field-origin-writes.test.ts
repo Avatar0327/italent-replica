@@ -5,6 +5,7 @@ import { addPending, entryAction, entryWorld } from './AC-EN-BE2a-support.js';
 import { forwardFixture, forwardJobApi } from './AC-FWD-support.js';
 import { scenario, worker } from './AC-JOB-sequence-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
+import { httpWorld } from './AC-PT-http-support.js';
 import { activationWorld } from './AC-TRF-activation-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -293,6 +294,96 @@ async function editFixture(label: string, mode: 'application' | 'direct' = 'appl
   const read = (id: string, action?: string) => evidence(db, session.tenant.id, id, action);
   return { session, current, later, read };
 }
+
+async function manualPostFixture(label: string) {
+  const { db } = database();
+  const { session, employee, hired } = await forwardFixture(db, label);
+  const jobs = forwardJobApi(db, session);
+  const defaultSequence = await jobs.create('sequences');
+  const manualSequence = await jobs.create('sequences');
+  const post = await jobs.create('posts', { sequenceId: defaultSequence.id });
+  const fields = { postId: post.id, sequenceId: manualSequence.id };
+  const current = await session.business(
+    employee.id,
+    { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-20', fields },
+    hired.employeeRevision,
+  );
+  const future = await session.business(
+    employee.id,
+    { kind: 'transfer', mode: 'direct', effectiveDate: '2026-11-01' },
+    current.employeeRevision,
+  );
+  expect(await session.record(current.id)).toMatchObject({ fields });
+  expect(await session.record(future.id)).toMatchObject({ fields });
+  const read = (id: string, action?: string) => evidence(db, session.tenant.id, id, action);
+  return { session, current, future, post, fields, read };
+}
+
+it('AC-EMP-28 同值职务保留人工序列，只确认职务且未来任职零写入', async () => {
+  const { session, current, future, post, fields, read } = await manualPostFixture('f036-s2-r1-same-post');
+  const futureBefore = await read(future.id);
+  const currentBefore = await read(current.id, intent);
+  const body = { fields: { postId: post.id } };
+  const preview = await session.request('POST', `/records/${current.id}/forward-update-preview`, { body });
+  await ok(preview);
+  expect.soft(await preview.json(), '同值职务的预览没有传播目标').toMatchObject({ changes: [] });
+
+  const response = await session.request('PATCH', `/records/${current.id}`, { ifMatch: current.revision, body });
+  await ok(response);
+  expect.soft(await response.json(), '当前序列和 revision 保持原值').toMatchObject({ fields, revision: 1 });
+  expect.soft(await session.record(current.id), '实际保存的当前序列和 revision 保持原值').toMatchObject({
+    fields,
+    revision: 1,
+  });
+  const currentAfter = await read(current.id, intent);
+  expect.soft(currentAfter.versions, '当前记录无新载荷版本').toHaveLength(1);
+  expect.soft(currentAfter.versions, '已有人工职务不重复追加来源行').toEqual(currentBefore.versions);
+  expect.soft(currentAfter.audits, '只记一次确认审计').toEqual([{ objectType: 'employment-record' }]);
+  expect
+    .soft(currentAfter.events, '确认审计只携带职务字段编码')
+    .toEqual([{ version: 1, payload: { before: null, after: null, meta: { fields: ['preset:postId'] } } }]);
+
+  const futureAfter = await read(future.id);
+  const originCount = ({ versions }: typeof futureBefore) =>
+    versions.reduce((count, version) => count + version.origins.length, 0);
+  expect.soft(futureAfter.versions, '未来记录无新载荷版本').toHaveLength(futureBefore.versions.length);
+  expect.soft(originCount(futureAfter), '未来记录无新来源行').toBe(originCount(futureBefore));
+  expect.soft(futureAfter.audits, '未来记录无向后更新审计').toHaveLength(futureBefore.audits.length);
+  expect.soft(futureAfter.events, '未来记录无向后更新 outbox').toEqual(futureBefore.events);
+  expect.soft(await session.record(future.id)).toMatchObject({ fields, revision: future.revision });
+});
+
+it('AC-EMP-28 同值职务与变值备注同提交时，只追加备注来源', async () => {
+  const { session, current, future, post, fields, read } = await manualPostFixture('f036-s2-r1-mixed-post');
+  const futureBefore = await read(future.id);
+  const response = await session.request('PATCH', `/records/${current.id}`, {
+    ifMatch: current.revision,
+    body: { fields: { postId: post.id, remarks: '只改备注' } },
+  });
+  await ok(response);
+  expect.soft(await response.json()).toMatchObject({ fields: { ...fields, remarks: '只改备注' }, revision: 2 });
+  const currentAfter = await read(current.id, intent);
+  expect.soft(currentAfter.versions.at(-1)?.origins).toEqual([row('preset:remarks', 'hr-record', '只改备注')]);
+  expect.soft(currentAfter.audits).toHaveLength(0);
+  expect.soft(await read(future.id)).toEqual(futureBefore);
+});
+
+it('AC-EMP-24 兼职同值职务保留人工序列及原版本', async () => {
+  const { db } = database();
+  const w = await httpWorld(db, 'f036-s2-r1-part-time-post');
+  const jobs = forwardJobApi(db, w);
+  const defaultSequence = await jobs.create('sequences');
+  const manualSequence = await jobs.create('sequences');
+  const post = await jobs.create('posts', { sequenceId: defaultSequence.id });
+  const fields = { postId: post.id, sequenceId: manualSequence.id };
+  const record = await w.make({ fields });
+  expect(record.fields).toMatchObject(fields);
+  const read = () => evidence(db, w.tenantId, record.id, 'employment.part_time.edit');
+  const before = await read();
+  const response = await w.edit(record.id, { fields: { postId: post.id.toUpperCase() } }, record.revision);
+  expect.soft(await w.ok(response), '兼职同值职务保持人工序列及 revision').toMatchObject({ fields, revision: 1 });
+  expect.soft(await read(), '兼职同值职务无新版本、来源或编辑审计').toEqual(before);
+});
 
 describe('AC-EMP-28 同一个继承工作地夹具的三种 PATCH', () => {
   it('甲：点名同值固定人工意图；重放、换键重复及 409 后回读', async () => {
