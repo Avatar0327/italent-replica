@@ -45,6 +45,7 @@ import {
   prepareInheritance,
   prepareEmploymentPatch,
   resolveEffectiveInheritance,
+  type PreparedFormInheritance,
   type PreparedInheritance,
 } from './inheritance.js';
 import { findPredecessor, loadEmploymentBusiness } from './read-model.js';
@@ -80,6 +81,8 @@ import {
   type PresetFields,
 } from './types.js';
 import { queueExitAccount } from './exit-account-store.js';
+import { fieldOriginEditor, formFieldOrigins, originActorKind } from './field-origin-write.js';
+import { appendFieldOrigins, type FieldOriginDraft } from './field-origin-store.js';
 
 export const NEW_CYCLE_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 
@@ -96,6 +99,8 @@ interface SelectedEmploymentCycle {
 }
 
 export interface CreateEmploymentOptions {
+  /** §4.4.3：只有服务端联动端口可把构造的字段标成系统输入。 */
+  readonly systemInput?: true;
   /** F-140 替代复制已校验快照；恢复段与整体 ΔO / ΔP 在改期编排中重验。 */
   readonly rescheduledExit?: true;
   readonly withEstablishment?: boolean;
@@ -188,19 +193,15 @@ export async function createEmploymentBusiness(
   // F-188：待入职阶段的“是否有试用期”随记录落库（改期 / 编辑换日期替换记录时由 entry-actions 带到这里）
   // F-194：同时生成待入职合同（起始日 = 计划入职日期、终止日为空）；Offer 同步生成待入职（BE-14）走同一通道
   const pendingAudit = await saveEntryExtras(tx, ctx, employee.id, id, normalized, options);
-  const payload = await appendEmploymentPayload(
-    tx,
-    ctx,
-    employee.id,
-    id,
-    1,
-    normalized,
-    prepared,
-    null,
-    selected?.cycle.id,
-    options.changeType ?? defaultChangeType(normalized.kind),
-    entryStatusFor(normalized.kind, options.entry),
-  );
+  const actor = originActorKind(ctx, { employeeId, selfServiceEmployeeId: ctx.selfServiceEmployeeId }, options);
+  const origins = formFieldOrigins(prepared, normalized, { businessId: id, actor });
+  const payload = await appendEmploymentPayload(tx, ctx, employee.id, id, normalized, prepared, {
+    selectedStaffId: selected?.cycle.id,
+    changeType: options.changeType ?? defaultChangeType(normalized.kind),
+    status: entryStatusFor(normalized.kind, options.entry),
+    recordId: normalized.mode === 'direct' && !gatedDirect ? id : undefined,
+    origins,
+  });
   const business = initialBusiness(employee, payload, gatedDirect);
   if (normalized.mode === 'direct' && !gatedDirect)
     await materializeEmploymentRecord(tx, ctx, business, withImportedUntil(options));
@@ -288,7 +289,7 @@ function defaultChangeType(kind: BusinessKind): ChangeType | undefined {
 }
 
 /** F-006：职位变更同步直线经理时，在表单快照里记下派生规则。 */
-function withPositionManagerDerivation(prepared: PreparedInheritance): PreparedInheritance {
+function withPositionManagerDerivation(prepared: PreparedFormInheritance): PreparedFormInheritance {
   return {
     ...prepared,
     formSnapshot: {
@@ -432,20 +433,16 @@ export async function updateEmploymentBusiness(
     positionId: effective.fields.positionId,
   });
   await bumpEmploymentBusiness(tx, ctx, business);
-  business.payload = await appendEmploymentPayload(
-    tx,
-    ctx,
-    business.employeeId,
-    id,
-    before.versionNo + 1,
-    normalized,
-    prepared,
-    before.id,
-    selected?.cycle.id,
-    before.changeType ?? undefined,
+  const actor = await fieldOriginEditor(tx, ctx, before, options);
+  const origins = formFieldOrigins(prepared, normalized, { request: patch, businessId: id, before, actor });
+  business.payload = await appendEmploymentPayload(tx, ctx, business.employeeId, id, normalized, prepared, {
+    previous: before,
+    selectedStaffId: selected?.cycle.id,
+    changeType: before.changeType ?? undefined,
     // 改期后按新生效日的前一条重新确定继承的人员状态（PR #93 首审 P2-1），不沿用原日期下的值
-    inheritedStatus(normalized.kind, selected?.predecessor ?? null),
-  );
+    status: inheritedStatus(normalized.kind, selected?.predecessor ?? null),
+    origins,
+  });
   await bindRehireRetirement(tx, ctx, business);
   // 申请修改是人工意图：事件绑定新载荷版本，迟到重建据此把它当作新的初始输入（R6-P2-01）。
   await auditEmployment(
@@ -653,41 +650,58 @@ export async function selectEmploymentCycle(
   return { cycle, predecessor: previous };
 }
 
+interface PayloadAppendOptions {
+  readonly previous?: EmploymentPayloadRow;
+  readonly selectedStaffId?: string;
+  readonly changeType?: ChangeType;
+  readonly status?: VersionStatus;
+  readonly recordId?: string;
+  readonly origins: readonly FieldOriginDraft[];
+}
+
 export async function appendEmploymentPayload(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
   businessId: string,
-  versionNo: number,
   input: NormalizedEmploymentInput,
-  prepared: PreparedInheritance,
-  previousVersionId: string | null,
-  selectedStaffId?: string,
-  changeType?: ChangeType,
-  status?: VersionStatus,
+  prepared: PreparedInheritance & { originPolicies?: PreparedFormInheritance['originPolicies'] },
+  options: PayloadAppendOptions,
 ): Promise<EmploymentPayloadRow> {
+  const { originPolicies: _policies, ...values } = prepared;
   const payload: EmploymentPayloadRow = {
-    ...prepared,
+    ...values,
     id: randomUUID(),
     tenantId: ctx.tenantId,
     employeeId,
     businessId,
-    versionNo,
-    previousVersionId,
+    versionNo: (options.previous?.versionNo ?? 0) + 1,
+    previousVersionId: options.previous?.id ?? null,
     kind: input.kind,
-    changeType: changeType ?? null,
+    changeType: options.changeType ?? null,
     mode: input.mode,
     effectiveDate: input.effectiveDate,
     lastWorkDate: input.lastWorkDate,
     formId: input.formId,
-    selectedStaffId: selectedStaffId ?? null,
+    selectedStaffId: options.selectedStaffId ?? null,
   };
   const { fields, ...metadata } = payload;
   await insertEmploymentRow(
     tx,
     'employment_payload_versions',
     { ...fields, ...metadata, createdAt: ctx.now.toISOString() },
-    status,
+    options.status,
+  );
+  await appendFieldOrigins(
+    tx,
+    ctx,
+    options.origins.map((row) => ({
+      ...row,
+      employeeId,
+      businessId,
+      payloadVersionId: payload.id,
+      recordId: options.recordId,
+    })),
   );
   // 未显式给出时由插入触发器继承（迁移 0062），以库中的值为准
   return { ...payload, ...(await storedStatus(tx, ctx, payload.id)) };

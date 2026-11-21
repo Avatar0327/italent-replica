@@ -170,13 +170,19 @@ async function createSyncTarget(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, 
         reason: 'OFFER_INTERN_OFFER_CONVERSION',
       });
     // 弱控确认归 b1：同步不弹确认（confirmed），严格控编超编仍由落地时整单拒绝（ESTABLISHMENT_EXCEEDED）
-    const business = await regularizeIntern(tx, employment, employeeId, {
-      effectiveDate: offer.plannedEntryDate!,
-      departmentId: offer.departmentId!,
-      ...references,
-      ...regularizationProbation(offer),
-      confirmed: true,
-    });
+    const business = await regularizeIntern(
+      tx,
+      employment,
+      employeeId,
+      {
+        effectiveDate: offer.plannedEntryDate!,
+        departmentId: offer.departmentId!,
+        ...references,
+        ...regularizationProbation(offer),
+        confirmed: true,
+      },
+      { systemInput: true },
+    );
     return { id: business.id, target: 'intern_regularization' as const };
   }
   const business = await createEmploymentBusiness(
@@ -197,6 +203,7 @@ async function createSyncTarget(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, 
       }),
     },
     {
+      systemInput: true,
       entry: {
         pendingEntry: true,
         ...(offer.hasProbation === null ? {} : { probation: offer.hasProbation }),

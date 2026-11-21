@@ -133,7 +133,7 @@ async function appendDataAdjustment(
     { ...ctx, expectedRevision: employee.revision },
     subordinateId,
     { kind: 'org_adjustment', mode: 'direct', effectiveDate, fields },
-    { changeType: 'data_adjustment' },
+    { changeType: 'data_adjustment', systemInput: true },
   );
 }
 

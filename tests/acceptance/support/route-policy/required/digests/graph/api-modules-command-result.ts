@@ -11,8 +11,10 @@ export const GRAPH: Graph = {
     'apps/api/src/tenant-context.ts#tenantOf',
   ],
   'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': [
+    'apps/api/src/advisory-lock.ts#tryAdvisoryLock',
     'apps/api/src/command-type.ts#commandTypeOf',
     '#latestFailureGroup',
+    '#ledgerStatus',
     '#summaryOf',
   ],
   'apps/api/src/modules/command-result/service.ts#summaryOf': ['#UUID'],

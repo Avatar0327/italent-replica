@@ -131,7 +131,7 @@ export async function createRegularizationBusiness(
       ...(request.fields ? { fields: request.fields } : {}),
       ...(request.customFields ? { customFields: request.customFields } : {}),
     },
-    request.generatedByAssessment ? { generatedByAssessment: true } : {},
+    request.generatedByAssessment ? { generatedByAssessment: true, systemInput: true } : {},
   );
   await appendRegularizationResult(tx, ctx, employeeId, created.id, result);
   await auditEmployment(tx, ctx, 'employment.regularization.result', 'employment-business', created.id, null, {
