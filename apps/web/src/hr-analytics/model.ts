@@ -51,13 +51,13 @@ export function indicatorGroups(indicators: readonly DashboardMetric[]) {
   }));
 }
 
+const indicatorIdLabels: Partial<Record<HrDashboardCode, string>> = {
+  pendingEntries: m.id.record,
+  contractApproving: m.id.business,
+};
+
 export function detailTable(data: DashboardDetail): DisplayTable {
-  const label =
-    data.code === 'pendingEntries'
-      ? m.id.record
-      : data.code === 'contractApproving'
-        ? m.id.business
-        : m.id[data.subject];
+  const label = indicatorIdLabels[data.code] ?? m.id[data.subject];
   return {
     key: data.code,
     columns: [{ key: 'id', label }, ...(label === m.id.employee ? [] : [{ key: 'employeeId', label: m.id.employee }])],

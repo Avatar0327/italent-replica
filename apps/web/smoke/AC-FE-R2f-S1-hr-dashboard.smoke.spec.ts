@@ -270,8 +270,9 @@ test('AC-FE-R2f-11 旧查询与旧租户的迟到回执无法重现指标或明�
     const day = dateOf(route);
     const requestTenant = route.request().headers()['x-tenant-id'];
     if (day === appliedDay) await lateOverview.promise;
+    const oldTenantCount = day === appliedDay ? 91 : 24;
     return route.fulfill({
-      json: overview(day, true, requestTenant === otherTenant ? 7 : day === appliedDay ? 91 : 24),
+      json: overview(day, true, requestTenant === otherTenant ? 7 : oldTenantCount),
     });
   });
   await page.route(detailPath, async (route) => {
