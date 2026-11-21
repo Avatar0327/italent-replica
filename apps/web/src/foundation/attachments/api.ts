@@ -10,6 +10,7 @@ import {
   type AttachmentPurposeConfig,
 } from '@italent/domain';
 import { ApiError, newCommand, type ApiClient, type Command } from '../client.js';
+import { readCommandResult } from '../forms/command-result.js';
 import { attachmentText as text } from './messages.js';
 
 const BASE = '/api/tenant/attachments';
@@ -49,14 +50,6 @@ interface RegisterBody {
   byteSize: number;
   sha256: string;
 }
-interface CommandResult {
-  commandId: string;
-  status: 'succeeded' | 'failed';
-  businessType: string | null;
-  businessId: string | null;
-  revision: number | null;
-  httpStatus: number | null;
-}
 
 export const purposeConfig = (purpose: AttachmentPurpose): AttachmentPurposeConfig => ATTACHMENT_PURPOSES[purpose];
 
@@ -85,8 +78,8 @@ export function attachmentApi(client: ApiClient) {
     read: (id: string, signal?: AbortSignal) => client.request<unknown>(path(id), { signal }).then(receiptOf),
     remove: (id: string, command: Command<undefined>) =>
       client.request<unknown>(path(id), { method: 'DELETE', command }).then(receiptOf),
-    commandResult: (commandId: string, signal?: AbortSignal) =>
-      client.request<CommandResult>(`/api/tenant/commands/${encodeURIComponent(commandId)}/result`, { signal }),
+    // F-110：结果查询与调动、审批共用一个入口（同一形状校验、命令 ID 核对）。
+    commandResult: (commandId: string, signal?: AbortSignal) => readCommandResult(client, commandId, signal),
   };
 }
 export type AttachmentApi = ReturnType<typeof attachmentApi>;
@@ -237,8 +230,8 @@ type RegisterVerdict =
 
 async function recheckRegister(api: AttachmentApi, commandId: string, signal: AbortSignal): Promise<RegisterVerdict> {
   try {
+    // 命令 ID 不符、形状不对由 readCommandResult 抛错，按下面的 uncertain 处理
     const result = await api.commandResult(commandId, signal);
-    if (result.commandId !== commandId) return { kind: 'uncertain' };
     // 结果摘要不带错误码；登记不带 If-Match，业务 409 只有临时文件上限一种（attachments/service.ts）
     if (result.status === 'failed')
       return { kind: 'failed', message: failureText(result.httpStatus ?? 0, registerCode(result.httpStatus)) };

@@ -423,6 +423,14 @@ export const MODULE_OBJECTS = {
       // R2 BE-15b2 自动发起试用期考核规则（B58）也挂在这里：考核类型、入职后天数（考核名称 = name，其余沿用上面的）
       'assessmentType',
       'daysAfterEntry',
+      // F-536：退休规则整份保存校验用途、规则类型、固定年龄与内置函数（R2-T04 设计 §9.1 / §9.1A）。
+      'purpose',
+      'ruleType',
+      'retirementAgeYears',
+      'retirementAgeMonths',
+      'expectedFunction',
+      'earliestFunction',
+      'latestFunction',
       // R2 BE-8b1 离职交接事项（B64，DEC-266③）也挂在这里：事项类别、序号、待办类别、待办事项、办理表单、备注（没有适用人群与负责人）
       'category',
       'sequenceNo',

@@ -32,7 +32,7 @@ it('AC-FE-R1c-21 VALIDATION_FAILED 422 无 details 时 HR 页面显示服务端�
   const root = createRoot(host);
   let state!: ReturnType<typeof useHrWrite>;
   function Probe() {
-    state = useHrWrite('synthetic-hr-scope');
+    state = useHrWrite();
     return h('p', { role: 'alert' }, state.error);
   }
   try {
@@ -44,7 +44,7 @@ it('AC-FE-R1c-21 VALIDATION_FAILED 422 无 details 时 HR 页面显示服务端�
     await act(() => state.run(send, outcome).catch((cause: unknown) => (failure = cause)));
     expect(failure).toMatchObject({ code: 'VALIDATION_FAILED', status: 422 });
     expect(host.querySelector('[role="alert"]')?.textContent).toBe(reason);
-    expect(state.processing).toBe(false);
+    // F-110：处理中 / 结果未知的锁定改由内核（transfer/commands.ts）持有，本 hook 只管回执核对与提示。
   } finally {
     await act(() => root.unmount());
   }

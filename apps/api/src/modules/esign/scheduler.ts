@@ -1,6 +1,6 @@
 /** F-481 §5.4：按任务快照过期 / 提醒；租户目录分页，单任务事务，失败下轮重试。 */
-import { and, eq, esignTaskFiles, esignTasks, sql, withPlatform, withTenant, type Db, type Tx } from '@italent/db';
-import { esignFileLabel, ESIGN_NOTICE_BUSINESS_TYPE, ESIGN_REMIND_TEMPLATE, ESIGN_SCENE_LABEL } from '@italent/domain';
+import { and, eq, esignTasks, sql, withPlatform, withTenant, type Db, type Tx } from '@italent/db';
+import { ESIGN_NOTICE_BUSINESS_TYPE, ESIGN_REMIND_TEMPLATE } from '@italent/domain';
 import { classifyCommandFailure } from '../../audit/failures.js';
 import { runCommand } from '../../commands.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
@@ -11,6 +11,8 @@ import type { EmploymentContext } from '../employment/types.js';
 import { expireSignTask } from './expiry.js';
 import { simulatedProvider } from './provider.js';
 import type { SignTask } from './sign-events.js';
+import { reminderPayload } from './notice-payload.js';
+import { signTaskSourceAudit } from './task-source.js';
 
 const PAGE_SIZE = 100;
 const DAY_MS = 24 * 60 * 60_000;
@@ -30,7 +32,8 @@ function report(error: unknown, onError: Options['onError'], scope: object) {
 
 /** 沿用现有调度器：平台事务只枚举启用租户，业务读写及命令台账始终处于租户 RLS 下。 */
 export async function runESignJobs(db: Db, options: Options = {}) {
-  const now = (options.clock ?? (() => new Date()))();
+  const clock = options.clock ?? (() => new Date());
+  const now = clock();
   let tenantCursor: string | null = null;
   const counts = { expired: 0, reminded: 0, skipped: 0, failed: 0 };
   for (;;) {
@@ -49,7 +52,7 @@ export async function runESignJobs(db: Db, options: Options = {}) {
             const candidates = await dueCandidates(db, tenant.id, kind, now, cursor);
             for (const candidate of candidates) {
               try {
-                const result = await runCandidate(db, tenant, candidate, kind, now);
+                const result = await runCandidate(db, tenant, candidate, kind, now, clock);
                 counts[result] += 1;
               } catch (error) {
                 // runCommand 已回查台账并记录分类失败审计；这里只报调度日志，不重复记失败。
@@ -88,7 +91,7 @@ async function dueCandidates(db: Db, tenantId: string, kind: Kind, now: Date, cu
   );
 }
 
-async function runCandidate(db: Db, tenant: Tenant, candidate: Candidate, kind: Kind, now: Date) {
+async function runCandidate(db: Db, tenant: Tenant, candidate: Candidate, kind: Kind, now: Date, clock: () => Date) {
   // DEC-052：提醒按任务 + 动作 + 接收人去重；任务固定过期时刻，过期动作一生只执行一次。
   const commandId =
     kind === 'expired'
@@ -113,18 +116,20 @@ async function runCandidate(db: Db, tenant: Tenant, candidate: Candidate, kind: 
         .for('update');
       let outcome: 'expired' | 'reminded' | 'skipped' = 'skipped';
       if (task?.status === 'signing') {
+        // 扫描时间只用于选候选，等待行锁期间可能已跨过提醒截止时间。
+        const execution = { ...ctx, now: clock() };
         if (kind === 'expired') {
-          const after = await expireSignTask(tx, ctx, task.id);
+          const after = await expireSignTask(tx, execution, task.id);
           if (after.status === 'expired') outcome = 'expired';
         } else if (
           task.remindBeforeExpiry &&
           task.currentNode === 'employee' &&
           !task.expiryRemindedAt &&
           task.employeeSignerUserId &&
-          now.getTime() < task.expiresAt.getTime() &&
-          now.getTime() >= task.expiresAt.getTime() - DAY_MS
+          execution.now.getTime() < task.expiresAt.getTime() &&
+          execution.now.getTime() >= task.expiresAt.getTime() - DAY_MS
         ) {
-          await remind(tx, ctx, task);
+          await remind(tx, execution, task);
           outcome = 'reminded';
         }
       }
@@ -136,11 +141,6 @@ async function runCandidate(db: Db, tenant: Tenant, candidate: Candidate, kind: 
 
 async function remind(tx: Tx, ctx: EmploymentContext, task: SignTask) {
   const recipientUserId = task.employeeSignerUserId!;
-  const files = await tx
-    .select({ name: esignTaskFiles.templateName })
-    .from(esignTaskFiles)
-    .where(and(eq(esignTaskFiles.tenantId, ctx.tenantId), eq(esignTaskFiles.taskId, task.id)))
-    .orderBy(esignTaskFiles.seq);
   await tx
     .update(esignTasks)
     .set({
@@ -156,7 +156,7 @@ async function remind(tx: Tx, ctx: EmploymentContext, task: SignTask) {
     'esign-task',
     task.id,
     { expiryRemindedAt: null },
-    { expiryRemindedAt: ctx.now.toISOString(), recipientUserId, method: 'expiry_remind' },
+    { ...signTaskSourceAudit(task), expiryRemindedAt: ctx.now.toISOString(), recipientUserId, method: 'expiry_remind' },
     undefined,
     undefined,
     { employeeId: task.employeeId, orgId: task.ownerDepartmentId },
@@ -174,11 +174,7 @@ async function remind(tx: Tx, ctx: EmploymentContext, task: SignTask) {
     {
       recipientUserId,
       templateCode: ESIGN_REMIND_TEMPLATE,
-      payload: {
-        场景: ESIGN_SCENE_LABEL,
-        文件名称: esignFileLabel(files.map((f) => f.name)),
-        截止时间: deadlineLabel(task.expiresAt, ctx.timezone),
-      },
+      payload: await reminderPayload(tx, ctx.tenantId, task, () => deadlineLabel(task.expiresAt, ctx.timezone)),
     },
   );
 }

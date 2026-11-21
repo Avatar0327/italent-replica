@@ -1,6 +1,7 @@
 /** F-481 §5.2 / §8.3 / §10：签署人拥有整份快照的查看权，不继承 HR 任职/签署记录字段权限。 */
 import { and, eq, inArray, desc, esignTasks, esignTaskFiles, type Tx } from '@italent/db';
 import { or, isNotNull } from 'drizzle-orm';
+import { isEsignFailureReason } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { EmploymentContext } from '../employment/types.js';
 import { withActorNames } from '../approval/store.js';
@@ -69,6 +70,9 @@ async function mineViews(tx: Tx, ctx: EmploymentContext, tasks: SignTask[], deta
     files: files.filter((f) => f.taskId === task.id).map(({ taskId: _taskId, ...file }) => file),
     ...(detail
       ? {
+          ...(task.status === 'failed' && isEsignFailureReason(task.failureReason)
+            ? { failureReason: task.failureReason }
+            : {}),
           nodes: [
             {
               node: 'employee',
