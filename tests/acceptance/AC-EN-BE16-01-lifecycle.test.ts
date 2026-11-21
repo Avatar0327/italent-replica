@@ -65,9 +65,11 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
     expect(app.routes.filter(({ path }) => path.startsWith('/api/tenant/onboarding'))).toEqual([]);
     const created = await run((tx) => port.create(tx, context(), entry));
     expect(await run((tx) => port.create(tx, context(), entry))).toEqual(created);
-    const replaced = await run((tx) =>
-      port.apply(tx, context(), { ...entry, kind: 'replace', replacementBusinessId: replacements[0], pendingDate }),
+    const replacement = { ...entry, kind: 'replace' as const, replacementBusinessId: replacements[0], pendingDate };
+    await expect(run((tx) => port.apply(tx, context(), { ...replacement, intent: 'restore' }))).rejects.toMatchObject(
+      NOT_CURRENT,
     );
+    const replaced = await run((tx) => port.apply(tx, context(), { ...replacement, intent: 'preserve' }));
     expect(replaced).toMatchObject({
       id: created.id,
       rootBusinessId: entry.businessId,
@@ -87,6 +89,7 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
       port.apply(tx, context(), {
         ...current,
         kind: 'replace',
+        intent: 'restore',
         replacementBusinessId: replacements[1],
         pendingDate: '2026-11-02',
       }),
@@ -297,6 +300,7 @@ describe('AC-EN-BE16-01 阶段表约束', () => {
       await port.apply(tx, context(), {
         ...entry,
         kind: 'replace',
+        intent: 'preserve',
         replacementBusinessId: replacements[0],
         pendingDate,
       });

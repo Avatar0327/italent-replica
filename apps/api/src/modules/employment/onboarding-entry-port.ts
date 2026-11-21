@@ -15,7 +15,12 @@ interface EntryIdentity {
 
 export type EntryLifecycleChange = EntryIdentity &
   (
-    | { readonly kind: 'replace'; readonly replacementBusinessId: string; readonly pendingDate: string }
+    | {
+        readonly kind: 'replace';
+        readonly intent: 'preserve' | 'restore';
+        readonly replacementBusinessId: string;
+        readonly pendingDate: string;
+      }
     | { readonly kind: 'cancel' }
     | { readonly kind: 'delete' }
     | { readonly kind: 'hire'; readonly hiredRecordId: string; readonly hiredOn: string }
@@ -30,6 +35,7 @@ export interface EntryCaseWriteRef extends EntryIdentity {
 /**
  * R2-T01 §2、§6.2。受信端口，调用方同一租户事务内先验业务事实、权限并持 Offer（若有关联）、
  * 员工和业务头锁，再操作阶段。替换只发一次 replace，内部删旧建新不发独立事件。
+ * 编辑及普通改期用 preserve。只有已取消记录经改期恢复时才用 restore。
  * hire 只由已到业务日期且确认生效的任职路径产生。
  */
 export interface EntryLifecyclePort {

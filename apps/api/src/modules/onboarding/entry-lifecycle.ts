@@ -75,9 +75,16 @@ function lifecyclePatch(
   if (current.state === 'hired' || current.state === 'deleted') return unavailable();
   switch (change.kind) {
     case 'replace':
-      if ([current.rootBusinessId, current.currentBusinessId].includes(change.replacementBusinessId))
+      if (
+        [current.rootBusinessId, current.currentBusinessId].includes(change.replacementBusinessId) ||
+        (change.intent === 'restore' && current.state !== 'cancelled')
+      )
         return unavailable();
-      return { state: 'pending', currentBusinessId: change.replacementBusinessId, pendingDate: change.pendingDate };
+      return {
+        state: change.intent === 'restore' ? 'pending' : current.state,
+        currentBusinessId: change.replacementBusinessId,
+        pendingDate: change.pendingDate,
+      };
     case 'cancel':
       return { state: 'cancelled' };
     case 'delete':
