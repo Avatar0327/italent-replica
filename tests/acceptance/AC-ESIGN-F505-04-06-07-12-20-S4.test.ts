@@ -1,9 +1,10 @@
-import { esignTaskFiles, esignTasks, eq, sql } from '@italent/db';
+import { randomUUID } from 'node:crypto';
+import { esignTaskFiles, esignTasks, eq, offers, sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { userOfPerson } from '../../apps/api/src/modules/approval/resolver.js';
-import { ESIGN } from './AC-ESIGN-F505-s2-support.js';
+import { DAY, ESIGN, START } from './AC-ESIGN-F505-s2-support.js';
 import { json, reason } from './AC-TRF-F481-s3a-support.js';
 import { seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -51,6 +52,7 @@ it('AC-04 只有已接受和已入职可发起，无关联不创建账号、任�
   const hired = await w.hire('ZZ_F505_同步人员');
   for (const source of [
     await w.offer({ linkedEmployeeId: hired.employeeId }),
+    await w.offer({ linkedEmployeeId: null, pendingEntryBusinessId: hired.hire.id }),
     await w.offer({ status: 'onboarded', linkedEmployeeId: hired.employeeId, pendingEntryBusinessId: hired.hire.id }),
   ]) {
     const receipt = await json<Receipt>(await w.post(source, [template.id]), 201);
@@ -123,7 +125,7 @@ it('AC-06 模板选项按租户和变量过滤，提交重新校验启停、变�
       { id: common.id, name: common.name },
     ],
   });
-  for (const ids of [[], [text.id, text.id.toUpperCase()], Array.from({ length: 21 }, uniqueSuffix)]) {
+  for (const ids of [[], [text.id, text.id.toUpperCase()], Array.from({ length: 21 }, () => randomUUID())]) {
     await reason(await w.post(source, ids), 'VALIDATION_FAILED', 400);
   }
   for (const id of [disabled.id, foreign.id]) {
@@ -161,10 +163,11 @@ it('AC-07 人员变量分别检查 name、code 与范围，正文按提交时快
   const files = await w.inTenant((tx) =>
     tx.select().from(esignTaskFiles).where(eq(esignTaskFiles.taskId, receipt.taskId)),
   );
-  expect(files.find((file) => file.templateId === name.id)?.content).toMatch(
-    /^ZZ_F505_EMP_S4_VARIABLES \d{4}-\d{2}-\d{2} /,
+  const person = await w.session.getEmployee(w.employeeId);
+  expect(files.find((file) => file.templateId === name.id)?.content).toBe(
+    `${person.name} 2026-10-10 ${w.session.tenant.name}`,
   );
-  expect(files.find((file) => file.templateId === code.id)?.content).not.toContain('{工号}');
+  expect(files.find((file) => file.templateId === code.id)?.content).toBe(person.code);
   expect((await w.taskRow(receipt.taskId)).variableReadFields.sort()).toEqual(['code', 'name']);
 });
 
@@ -181,7 +184,8 @@ it('AC-12 同源两新键只产生一个在途任务，同键重放在完成后�
   const key = keys[winner]!;
   expect(await json(await w.post(source, [template.id], key), 201)).toEqual(receipt);
   await reason(await w.post(source, [template.id], key, 2), 'IDEMPOTENCY_CONFLICT', 409);
-  await reason(await w.post(source, [template.id], undefined, 2), 'REVISION_CONFLICT', 409);
+  await w.inTenant((tx) => tx.update(offers).set({ revision: 2 }).where(eq(offers.id, source)));
+  await reason(await w.post(source, [template.id]), 'REVISION_CONFLICT', 409);
   const employeeUser = await w.inTenant((tx) => userOfPerson(tx, w.tenantId, w.employeeId));
   const task = await w.taskRow(receipt.taskId);
   expect((await w.sign(employeeUser!, task)).status).toBe(200);
@@ -189,7 +193,16 @@ it('AC-12 同源两新键只产生一个在途任务，同键重放在完成后�
   expect(await json(await w.post(source, [template.id], key), 201)).toEqual(receipt);
   expect(await json(await call('GET', resultPath(key)))).toEqual(receipt);
   expect(await w.inTenant((tx) => tx.select().from(esignTasks))).toHaveLength(1);
-  expect((await w.post(source, [template.id])).status).toBe(201);
+  const reissued = await json<Receipt>(await w.post(source, [template.id], undefined, 2), 201);
+  w.setNow(new Date(START.getTime() + 3 * DAY));
+  const next = await json<Receipt>(
+    await w.call('POST', taskPath(source), { body: { templateIds: [template.id] }, ifMatch: 2 }),
+    201,
+  );
+  expect(next.taskId).not.toBe(reissued.taskId);
+  const expired = await w.taskRow(reissued.taskId);
+  expect(expired.status).toBe('expired');
+  expect((await w.sign(employeeUser!, expired)).status).toBe(409);
   await reason(
     await call('POST', taskPath(source), { body: { templateIds: [template.id] } }),
     'REVISION_REQUIRED',

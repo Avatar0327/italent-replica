@@ -71,6 +71,7 @@ export async function offerActionAccess(deps: TenantRouteDeps, ctx: OfferContext
     resend: update,
     invalidate: update,
     editSync: update,
+    sign: update,
     delete: remove,
     copy: create,
   };

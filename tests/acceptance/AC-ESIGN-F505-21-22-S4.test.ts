@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { commandLedger, eq, esignOfferSources, esignTasks, offers, tenantMemberships, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
+import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
-import { ESIGN, NOTICE, START } from './AC-ESIGN-F505-s2-support.js';
+import { ESIGN, NOTICE } from './AC-ESIGN-F505-s2-support.js';
 import { offerApprovalWorld } from './AC-OF-BE14a3-support.js';
 import { handledSingle } from './AC-F476-p6-support.js';
 import { json, reason } from './AC-TRF-F481-s3a-support.js';
-import { seedTenantWithMember } from './support/tenant-api.js';
+import { seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 import {
   contextPath,
@@ -45,13 +46,16 @@ it('AC-21 撤销编辑权、来源范围、变量字段或人员范围，原键�
     }
   }
   const differentOffer = await w.offer();
-  await w.inTenant((tx) =>
-    tx
-      .update(commandLedger)
-      .set({ responseBody: { ...receipt, sourceId: differentOffer } })
-      .where(eq(commandLedger.commandId, key)),
-  );
-  await reason(await w.access()('GET', resultPath(key)), 'NOT_FOUND', 404);
+  const wrongKey = uniqueSuffix();
+  await w.inTenant(async (tx) => {
+    const [original] = await tx.select().from(commandLedger).where(eq(commandLedger.commandId, key));
+    await tx.insert(commandLedger).values({
+      ...original!,
+      commandId: wrongKey,
+      responseBody: { ...receipt, sourceId: differentOffer },
+    });
+  });
+  await reason(await w.access()('GET', resultPath(wrongKey)), 'NOT_FOUND', 404);
 });
 
 it('AC-21/22 来源与人员双范围先于分页，字段裁剪与下载错误均隐藏文件信息', async () => {
@@ -74,7 +78,11 @@ it('AC-21/22 来源与人员双范围先于分页，字段裁剪与下载错误�
   });
   const call = w.access({
     scopes: {
-      [RECORD]: { ...EMPTY_SCOPE, personIds: [visible.employeeId, unrelated.employeeId], hasDataPermission: true },
+      [RECORD]: {
+        ...EMPTY_SCOPE,
+        terms: [{ dimension: 'management', orgIds: [], personIds: [visible.employeeId, unrelated.employeeId] }],
+        hasDataPermission: true,
+      },
     },
     fields: { [RECORD]: ['scene'] },
   });
@@ -98,6 +106,27 @@ it('AC-21/22 来源与人员双范围先于分页，字段裁剪与下载错误�
   const files = await call('GET', `${ESIGN}/records/files?ids=${older.id}`);
   await reason(files.clone(), 'FIELD_FORBIDDEN', 403);
   expect(await files.text()).not.toContain(template.name);
+});
+
+it('AC-21 签署历史遵守 Offer 详情页范围，编辑入口使用当前写范围', async () => {
+  const w = await offerSigningWorld(db().db, 'S4_DETAIL_SCOPE');
+  const source = await w.offer();
+  const template = await w.template();
+  await json(await w.post(source, [template.id]), 201);
+  const authorize = () => true;
+  registerScopeProvider(authorize, {
+    authorize: async () => true,
+    scope: async (query) =>
+      query.pageCode === `${OFFER_OBJECT}.detail`
+        ? EMPTY_SCOPE
+        : { ...EMPTY_SCOPE, all: true, hasDataPermission: true },
+    fields: async () => new Set(['scene']),
+  });
+  const api = tenantApi(w.db, { authorize });
+  const read = (path: string) => api.request('GET', path, w.as);
+  await reason(await read(`${OFFERS}/${source}`), 'NOT_FOUND', 404);
+  expect((await read(contextPath(source))).status).toBe(200);
+  await reason(await read(recordsPath(source)), 'NOT_FOUND', 404);
 });
 
 it('AC-21 已办审批份不能打开现值签署上下文、发起或读取来源历史', async () => {
@@ -125,7 +154,7 @@ it.each(['从未有姓名读权', '人员范围外', '通知写入后撤姓名�
   'AC-07/10/21 真实 Offer 编辑撤销的通知只含场景与任务号（%s）',
   async (mode) => {
     const w = await offerSigningWorld(db().db, 'S4_NOTICE');
-    const source = await w.offer();
+    const source = await w.offer({ entry: 'intern', offerType: 'intern', plannedEntryDate: '2026-11-15' });
     const template = await w.template();
     const canReadName = mode === '通知写入后撤姓名读权';
     const restricted = w.access({
@@ -179,7 +208,7 @@ it('AC-22 不存在、跨租户和超出 Offer 范围的错误信封一致', asy
       personalEmail: 'f505-foreign@example.com',
       createdBy: foreign.user.id,
       status: 'accepted',
-      acceptTime: START,
+      acceptTime: '2026-10-10',
     }),
   );
   await json(await w.access()('GET', contextPath(source)));
