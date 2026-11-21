@@ -14,6 +14,7 @@ import {
   audits,
   autoAt,
   create,
+  dispatch,
   draftOk,
   manager,
   newVersion,
@@ -62,6 +63,8 @@ describe.runIf(realPostgres)('AC-APV-F326-54 发布中段锁集合含被替换�
     const w = await s4World(database().db, 's7e1-54-publish-old-only');
     const a = await w.publish(await create(w, [single('n1', w.near.userId)]));
     const x = await autoAt(w, a.id, 'n1');
+    // 旧版保留一单在途，新版本不引用 X 时仍应保持启用。
+    await dispatch(w);
     // 新版不再引用 X（改走直属上级），草稿里没有任何待生效项
     const saved = await draftOk(w, await newVersion(w, a), [viaManager('n1')]);
 

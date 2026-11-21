@@ -17,7 +17,7 @@ import {
 } from '@italent/domain';
 import { approvalError, canonicalId, rowsOf, type ApprovalContext } from './context.js';
 import type { ProcessView, VersionView } from './definitions.js';
-import { findSourceUsages, referencingProcessCounts } from './source-usages.js';
+import { referencingProcessCounts } from './source-usages.js';
 import {
   auditVariable,
   loadVariable,
@@ -206,14 +206,27 @@ async function changeAuto(
   change: { defaultValue: unknown } | { status: 'disabled' },
   action: 'auto_update' | 'auto_disable',
   extra: Record<string, unknown>,
-): Promise<VariableRow> {
+  systemRetirement = false,
+): Promise<void> {
   const [after] = await tx
     .update(table)
-    .set({ ...change, revision: before.revision + 1, updatedBy: ctx.userId, updatedAt: ctx.now })
-    .where(and(eq(table.tenantId, ctx.tenantId), eq(table.id, before.id)))
+    // S1 的 updated_by 非空，系统停用保留原值，操作者以同事务审计为准（F-326-L §2.4）。
+    .set({
+      ...change,
+      revision: before.revision + 1,
+      updatedBy: systemRetirement ? before.updatedBy : ctx.userId,
+      updatedAt: ctx.now,
+    })
+    .where(
+      and(
+        eq(table.tenantId, ctx.tenantId),
+        eq(table.id, before.id),
+        // 生命周期与保存收尾只传 enabled；保留设计器为改类型而替换未停用占位变量的既有行为。
+        action === 'auto_disable' ? eq(table.status, before.status) : undefined,
+      ),
+    )
     .returning(selection);
-  await auditVariable(tx, ctx, action, before, after!, extra);
-  return after!;
+  if (after) await auditVariable(tx, ctx, action, before, after, extra, systemRetirement);
 }
 
 // ───────── 保存：指定人员 → 公共变量 ─────────
@@ -421,17 +434,33 @@ export async function lockSaveBatch(
   return { update };
 }
 
-/**
- * 全部在用版本（草稿 / 当前 / 仍有可恢复实例的旧版本）都不再引用才停用（DEC-859）。
- * 只处理 lockSaveBatch 已锁住的候选，且只读不加锁地重读状态：不重新筛候选（状态可能在取锁等待期间翻转），
- * 也不再 FOR UPDATE（对只持 SHARE 的行就是升级）。本次保存新建的自动变量必被自己的节点引用，不在候选里。
- */
-export async function retireUnreferencedAutoVariables(tx: Tx, ctx: ApprovalContext, locks: SaveLocks): Promise<void> {
+interface RetirementOptions {
+  usage: 'lifecycle';
+  after: (id: string) => Record<string, unknown>;
+  context: (id: string) => ApprovalContext;
+}
+
+/** 只处理已持 UPDATE 的候选，锁后按对应口径扫描。状态守卫与审计共用（F-326-L §2.4、§8）。 */
+export async function retireUnreferencedAutoVariables(
+  tx: Tx,
+  ctx: ApprovalContext,
+  locks: SaveLocks,
+  options?: RetirementOptions,
+): Promise<void> {
+  const used = await referencingProcessCounts(tx, ctx.tenantId, locks.update, options?.usage);
   for (const id of locks.update) {
+    if (used.has(id)) continue;
     const current = await loadVariable(tx, ctx.tenantId, id);
     if (current.status !== 'enabled') continue;
-    if ((await findSourceUsages(tx, ctx.tenantId, { kind: 'variable', id })).length) continue;
-    await changeAuto(tx, ctx, current, { status: 'disabled' }, 'auto_disable', { reason: RETIRE_REASON });
+    await changeAuto(
+      tx,
+      options?.context(id) ?? ctx,
+      current,
+      { status: 'disabled' },
+      'auto_disable',
+      options?.after(id) ?? { reason: RETIRE_REASON },
+      options?.usage === 'lifecycle',
+    );
   }
 }
 

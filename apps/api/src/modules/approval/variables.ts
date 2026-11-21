@@ -243,6 +243,7 @@ export async function auditVariable(
   before: VariableRow | null,
   after: VariableRow,
   extra: Record<string, unknown> = {},
+  afterOnly = false,
 ) {
   const kind = after.scope === 'public' ? 'public' : 'application';
   const objectType = `approval-${kind}-variable`;
@@ -253,6 +254,7 @@ export async function auditVariable(
     objectId: after.id,
     before: before ? snapshot(before) : null,
     after: { ...snapshot(after), ...extra },
+    ...(afterOnly ? { afterOnly: Object.keys(extra) } : {}),
   });
   await emitOutbox(tx, ctx, { objectType, objectId: after.id, eventType, revision: after.revision });
 }
