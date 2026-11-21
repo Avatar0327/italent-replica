@@ -1,5 +1,5 @@
 import { CapacityAuditFields, capacityAuditChanges, visibleCapacityParts } from './establishment-capacity.js';
-import { approvalContentFields } from './controlled-fields.js';
+import { approvalContentFields, approvalPublicVariableFields } from './controlled-fields.js';
 import { NestedAuditFields, type NestedChildren, visibleNested, visibleNestedChanges } from './nested-fields.js';
 /**
  * DEC-197 / DEC-203（PR #75 第二、三轮）：审计查询按查看人**当前**的数据范围与字段权限裁剪，不设全量读取特权。
@@ -897,7 +897,7 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   'approval-process': { code: 'TenantBase.ApprovalProcess' },
   // F-326：变量与矩阵的审计键（dataType / defaultValue、动态的 row:<id> / column:<id>、删除快照）不在审批流程字段目录
   // 里，由审批流程权限推出精确键与受控动态路径（controlled-fields.ts），没有权限时 fail-closed
-  'approval-public-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
+  'approval-public-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalPublicVariableFields },
   'approval-application-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
   'approval-matrix': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
   'approval-matrix-row': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },

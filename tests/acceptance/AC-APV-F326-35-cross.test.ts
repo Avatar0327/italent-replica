@@ -118,14 +118,15 @@ describe('AC-APV-F326-35 跨流程复用（DEC-860）', () => {
       }),
     );
     const wRow = await autoAt(w, a.id, 'n2');
-    const aDraft = await newVersion(w, a);
-    const aSaved = await draftOk(w, aDraft, [single('n1', w.near.userId), viaManager('n2')]);
-    expect((await publishWith(w, aSaved)).status).toBe(200);
-
+    // C 在 A 发布 v2 前引用 W，系统停用会保留它，直到 C 删除最后的草稿引用。
     const c = await w.json<Awaited<ReturnType<typeof readProcess>>>(
       await saveNodes(w, [counter([publicVar(wRow.id)], { key: 'c1' })]),
       201,
     );
+    const aDraft = await newVersion(w, a);
+    const aSaved = await draftOk(w, aDraft, [single('n1', w.near.userId), viaManager('n2')]);
+    expect((await publishWith(w, aSaved)).status).toBe(200);
+
     const cSaved = await draftOk(w, c, [counter([manager], { key: 'c1' })]);
     expect(cSaved.latestVersion.nodes).toHaveLength(1);
     const row = (await autoRows(w, a.id)).find((item) => item.id === wRow.id)!;
