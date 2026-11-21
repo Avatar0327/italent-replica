@@ -29,15 +29,27 @@ export async function s5World(db: Db) {
   const call = (method: string, path: string, options: RequestOptions = {}) =>
     api.request(method, path, { ...as, ...options });
   const restricted = (grants: ControlledGrants) => controlledApi(db, tenant.id, user.id, grants, NOW);
-  const pending = async () => {
+  const pending = async (kind: 'hire' | 'rehire' | 'retire_rehire' = 'hire') => {
     const employee = await w.session.employee('ZZ_F505_待入职姓名', `ZZ_F505_${uniqueSuffix()}`);
+    let revision = employee.revision;
+    if (kind !== 'hire') {
+      const hired = await w.session.business(employee.id, hireBody(w.org.id, '2026-01-05'), revision);
+      const ended = await w.session.business(
+        employee.id,
+        { kind: kind === 'rehire' ? 'leave' : 'retirement', mode: 'direct', lastWorkDate: '2026-03-31', fields: {} },
+        hired.employeeRevision,
+      );
+      revision = ended.employeeRevision;
+    }
     const entry = await w.session.business(
       employee.id,
-      hireBody(w.org.id, '2026-12-01', { pendingEntry: true }),
-      employee.revision,
+      hireBody(w.org.id, '2026-12-01', { kind, pendingEntry: true, formId: 'campus-hire' }),
+      revision,
     );
     // 待入职本人使用已有绑定，签署入口本身不建账号。
     const employeeUser = await withTenant(db, tenant.id, async (tx) => {
+      const existing = await userOfPerson(tx, tenant.id, employee.id);
+      if (existing || kind !== 'hire') return existing;
       await provisionEmployeeUser(tx, portContext(w, 0), {
         employeeId: employee.id,
         loginEmail: loginEmailOf(employee.id),

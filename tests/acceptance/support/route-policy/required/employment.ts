@@ -6,6 +6,7 @@
  * requireTransferSource / transferBusinessContext → requireManagerBusinessSource；直接调动 requireDirectTransfer；业务写范围
  * authorizeBusinessWrite；直接操作范围 requireScopedEmploymentObject（DEC-193）；联动 requireLinkedEmploymentRecord（DEC-178）。
  */
+import { EMPLOYMENT_ESIGN } from './employment-esign.js';
 import { bound, guardScope, list, NONE, SCOPE_AT, withNeeds } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
@@ -3388,6 +3389,7 @@ export const EMPLOYMENT: RequiredTable = {
     customFieldWrite('PUT', '/custom-fields/:id/options', 'update'),
   ],
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（办理入职 / 取消 / 改期 / 删除）-------------------------------
+  ...EMPLOYMENT_ESIGN,
   'POST /api/tenant/employment/pending-entries/:id/complete': [
     ...entryUpdate(
       '/pending-entries/:id/complete',

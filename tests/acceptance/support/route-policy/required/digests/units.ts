@@ -398,6 +398,18 @@ export const DIGESTS: Digests = {
     'route:GET /entry-email-rules': 'd23f7d1da5e5',
     'route:PUT /entry-email-rules': '56e9fa15809c',
   },
+  'apps/api/src/modules/employment/entry-esign-history.ts': {
+    entrySignHistory: '794e5fba6f40',
+  },
+  'apps/api/src/modules/employment/entry-esign-routes.ts': {
+    'route:GET /pending-entries/:id/esign-context': 'ab4e38050923',
+    'route:GET /pending-entries/:id/esign-records': '3258a3ac9807',
+    'route:POST /pending-entries/:id/esign-tasks': '6807f8a96738',
+  },
+  'apps/api/src/modules/employment/entry-esign-source.ts': {
+    authorizeEntrySignSource: '2ec9f27c2bfb',
+    entrySignContext: 'f79fd89b9720',
+  },
   'apps/api/src/modules/employment/entry-routes.ts': {
     completeEntryGuard: '52ba5daf53e7',
     prepareEntryAction: 'fb5f4fb560b1',
@@ -749,6 +761,9 @@ export const DIGESTS: Digests = {
     projectSourceSignReceipt: '4d9af9dcff3e',
     requireEntrySignSource: '9eb4bd509957',
     requireOfferSignSource: '6185d53270db',
+  },
+  'apps/api/src/modules/esign/source-initiation.ts': {
+    runSourceSignCommand: 'e7e70f000d50',
   },
   'apps/api/src/modules/esign/source-result-access.ts': {
     authorizeSignVariables: '2c62c60ebef4',
@@ -2390,6 +2405,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess': '48894fa4f933',
   'apps/api/src/modules/employment/entry-email-routes.ts#route:GET /entry-email-rules': '8c5fedf5902b',
   'apps/api/src/modules/employment/entry-email-routes.ts#route:PUT /entry-email-rules': 'de8a18655aa2',
+  'apps/api/src/modules/employment/entry-esign-history.ts#entrySignHistory': '6ac1c5fd8d0a',
+  'apps/api/src/modules/employment/entry-esign-routes.ts#route:GET /pending-entries/:id/esign-context': 'b5c26b3b5199',
+  'apps/api/src/modules/employment/entry-esign-routes.ts#route:GET /pending-entries/:id/esign-records': '986512e2628a',
+  'apps/api/src/modules/employment/entry-esign-routes.ts#route:POST /pending-entries/:id/esign-tasks': '1c1e64af5214',
+  'apps/api/src/modules/employment/entry-esign-source.ts#authorizeEntrySignSource': '76a19cea8b4b',
+  'apps/api/src/modules/employment/entry-esign-source.ts#entrySignContext': '7c58dbb01cc3',
   'apps/api/src/modules/employment/entry-routes.ts#completeEntryGuard': '4963ad52b4dd',
   'apps/api/src/modules/employment/entry-routes.ts#prepareEntryAction': '16db1c882eb2',
   'apps/api/src/modules/employment/entry-routes.ts#route:DELETE /pending-entries/:id': 'fa5351301bd4',
@@ -2646,6 +2667,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/esign/source-command-result.ts#projectSourceSignReceipt': '022ae139b436',
   'apps/api/src/modules/esign/source-command-result.ts#requireEntrySignSource': '229569db8888',
   'apps/api/src/modules/esign/source-command-result.ts#requireOfferSignSource': '44417d78e31e',
+  'apps/api/src/modules/esign/source-initiation.ts#runSourceSignCommand': 'f1eef213577c',
   'apps/api/src/modules/esign/source-result-access.ts#authorizeSignVariables': '243b520950f5',
   'apps/api/src/modules/esign/source-result-access.ts#authorizeSourceSignTask': '299acb5c9f4f',
   'apps/api/src/modules/esign/task-routes.ts#route:GET /api/tenant/esign/mine': '723249545961',

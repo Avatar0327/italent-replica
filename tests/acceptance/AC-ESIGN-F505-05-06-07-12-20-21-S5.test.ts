@@ -2,6 +2,8 @@ import { buttonResource } from '@italent/domain';
 import { testDbMode, useTestDb } from '@italent/testkit';
 import { beforeAll, expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
+import { handledScene } from './AC-F476-p4-support.js';
+import { controlledApi } from './AC-LNK-support.js';
 import { json } from './AC-TRF-F481-s3a-support.js';
 import { uniqueSuffix } from './support/unique.js';
 import {
@@ -88,6 +90,17 @@ it('AC-20 沿用详情编辑按钮且发起不要求 ESignSettings', async () =>
   await w.error(await w.restricted(denyButton)('GET', source(entry.id, 'context')), 403);
   await w.error(await w.submit(entry, [templateId], uniqueSuffix(), denyButton), 403);
   const denySettings = { deny: ({ resource }: { resource?: string }) => resource === 'TenantBase.ESignSettings' };
+  const offerOnly = w.restricted({
+    deny: ({ resource, action }) => action !== 'object.update' || resource !== 'TenantBase.Offer',
+  });
+  await w.error(await offerOnly('GET', source(entry.id, 'context')), 403);
+  await w.error(
+    await offerOnly('POST', source(entry.id, 'tasks'), {
+      ifMatch: entry.revision,
+      body: { templateIds: [templateId] },
+    }),
+    403,
+  );
   await json(await w.restricted(denySettings)('GET', source(entry.id, 'context')));
   await json(await w.submit(entry, [templateId], uniqueSuffix(), denySettings), 201);
 });
@@ -98,8 +111,21 @@ it('AC-21 原命令按 F-553 回查，当前来源权和人员变量权同时约
   const key = uniqueSuffix();
   const receipt = await json(await w.submit(entry, [variable.id], key), 201);
   expect(await json(await w.call('GET', resultPath(key)))).toEqual(receipt);
+  await json(
+    await w.call('PATCH', `/api/tenant/esign/templates/${variable.id}`, {
+      ifMatch: variable.revision,
+      body: { body: 'ZZ_F505_模板改为静态正文' },
+    }),
+  );
   const revocations = [
     { status: 403, grants: { deny: ({ resource }: { resource?: string }) => resource === EMPLOYMENT_OBJECT } },
+    {
+      status: 403,
+      grants: {
+        deny: ({ resource }: { resource?: string }) =>
+          resource === buttonResource(EMPLOYMENT_OBJECT, 'Employment.Edit', 'detail'),
+      },
+    },
     { status: 404, grants: { scopes: { [EMPLOYMENT_OBJECT]: EMPTY_SCOPE } } },
     { status: 403, grants: { fields: { [EMPLOYEE_OBJECT]: ['name'] } } },
   ];
@@ -118,5 +144,34 @@ it('AC-21 来源历史在分页前应用双范围，文件和状态逐字段裁�
   const limited = await w.restricted({ scopes: { [RECORD_OBJECT]: EMPTY_SCOPE } })('GET', records);
   expect(await json(limited)).toEqual({ items: [], total: 0, page: 1, pageSize: 20 });
   await w.error(await w.restricted({ scopes: { [EMPLOYMENT_OBJECT]: EMPTY_SCOPE } })('GET', records), 404);
-  await w.error(await w.restricted({ deny: ({ resource }) => resource === RECORD_OBJECT })('GET', records), 403);
+  const denied = await w.restricted({ deny: ({ resource }) => resource === RECORD_OBJECT })('GET', records);
+  expect(await w.error(denied, 403)).toEqual({ error: { code: 'FORBIDDEN', message: expect.any(String) } });
+});
+
+it('AC-21 审批人只能读已办理的冻结份，不能用于签署发起或读来源历史', async () => {
+  const scene = await handledScene(database().db, 'ZZ_F505_冻结', 'hire');
+  const { businessId, approver } = scene;
+  const call = controlledApi(
+    scene.w.db,
+    scene.w.tenant.id,
+    approver.userId,
+    {
+      scopes: { [EMPLOYMENT_OBJECT]: EMPTY_SCOPE },
+    },
+    scene.w.clock().toISOString(),
+  );
+  const old = await json<{ revision: number; contentView?: { mode: string } }>(
+    await call('GET', `/api/tenant/employment/businesses/${businessId}`),
+  );
+  expect(old.contentView?.mode).toBe('frozen');
+  await w.error(await call('GET', source(businessId, 'context')), 404, 'NOT_FOUND');
+  await w.error(
+    await call('POST', source(businessId, 'tasks'), {
+      ifMatch: old.revision,
+      body: { templateIds: [templateId] },
+    }),
+    404,
+    'NOT_FOUND',
+  );
+  await w.error(await call('GET', source(businessId, 'records')), 404, 'NOT_FOUND');
 });

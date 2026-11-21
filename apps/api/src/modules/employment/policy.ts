@@ -119,6 +119,7 @@ const ASSESSMENT = MODULE_OBJECTS.probationAssessment.code;
 const NF_EMPLOYEE = denied(404, 'NOT_FOUND', '员工不存在');
 const NF_DATA = denied(404, 'NOT_FOUND', '任职数据不存在');
 const NF_BUSINESS = denied(404, 'NOT_FOUND', '任职业务不存在');
+const NF_ENTRY_SIGN_SOURCE = denied(404, 'NOT_FOUND', '入职记录不存在');
 const NF_RECORD = denied(404, 'NOT_FOUND', '任职记录不存在');
 const NF_TRANSFER = denied(404, 'NOT_FOUND', '调动不存在');
 const NF_PART_TIME = denied(404, 'NOT_FOUND', '兼职记录不存在');
@@ -1785,6 +1786,57 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     auditedConfigWrite('employment_custom_field'),
     { ...byId, guards: ['employment.customFieldWrite'] },
   ),
+
+  'GET /pending-entries/:id/esign-context': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    scope: guardScope('employment.businessWrite', NF_ENTRY_SIGN_SOURCE),
+    fields: fixed(['sourceId', 'revision', 'canInitiate', 'reason', 'items'], 'F-505 §8 入职选项固定形状'),
+    ...byId,
+  }),
+  'POST /pending-entries/:id/esign-tasks': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    scope: guardScope('employment.businessWrite', NF_ENTRY_SIGN_SOURCE),
+    fields: fixed(['sourceId', 'taskId'], 'F-505 §5 固定来源和任务回执'),
+    guards: ['esign.sourceVariables'],
+    write: {
+      ...commandWrite(
+        'esign.task.audited',
+        { generic: { targets: 'sourceId', locator: 'employment.business' } },
+        {
+          controls: ['templateIds'],
+          preconditions: ['esign.entryEligibility', 'esign.revision', 'esign.templates', 'esign.noSigning'],
+        },
+      ),
+      // 模板 ID 是命令参数；剔除后正好是服务端送授权器的空业务字段集合。
+      fields: 'body',
+    },
+    ...byId,
+  }),
+  'GET /pending-entries/:id/esign-records': all(
+    [
+      object({
+        object: EMPLOYMENT,
+        operation: 'view',
+        button: noButton('只读当前入职来源'),
+        scope: pointScope({ param: 'id' }, 'employment.record', NF_ENTRY_SIGN_SOURCE, `${EMPLOYMENT}.detail`),
+        fields: noFields('只定位来源，不返回任职字段'),
+      }),
+      object({
+        object: MODULE_OBJECTS.eSignRecord.code,
+        operation: 'view',
+        button: noButton('签署历史复用记录查看权'),
+        scope: listScope('esign.recordOwner', `${MODULE_OBJECTS.eSignRecord.code}.list`),
+        fields: shape('esign.record'),
+      }),
+    ],
+    shape('esign.record'),
+    byId,
+  ),
+
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（34 EN-R8 / R9 / R10 / R14）---------------------------------
   // 办理入职：If-Match = 业务 revision；body 严格 { probation, contract? }（400；contract = 合同字段白名单，BE-2b，同事务调
   // generateContractForBusiness，合同权限 / 范围按合同对象重验，失败整笔回滚；
