@@ -4,11 +4,12 @@
  * - 同键同内容 → 返回首次结果，不再执行；同键异内容 → 409 IDEMPOTENCY_CONFLICT；
  * - 执行失败时先回查台账（结果未知先回查，DEC-067）：并发的同键同内容请求中，败者可能因行锁后 revision 已变
  *   得到 409，或在主键上冲突，只要先提交者已记录同一命令，就重放其响应而不是报错。
- * 失败的命令整体回滚、不入台账，客户端可按原键重提；失败本身按“业务失败 / 存储不可写 / 结果未知”三类另记审计
+ * 失败的命令整体回滚；DEC-956 可证实的本人 5xx 回滚须作废原键，其余失败不入台账、可按原键重提。
+ * 失败本身按“业务失败 / 存储不可写 / 结果未知”三类另记审计
  * （R1-T16，audit/failures.ts），结果未知时返回 503 RESULT_UNKNOWN，提示按原命令 ID 回查。
  */
 import { createHash } from 'node:crypto';
-import { commandLedger, type Db, eq, IdempotencyConflictError, type Tx, withTenant } from '@italent/db';
+import { commandLedger, type Db, eq, IdempotencyConflictError, sql, type Tx, withTenant } from '@italent/db';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { classifyCommandFailure, type CommandPhase, failureResponse, recordCommandFailure } from './audit/failures.js';
 import { currentAuditRequest } from './audit/request-context.js';
@@ -16,6 +17,7 @@ import { commandTypeOf } from './command-type.js';
 import { AppError } from './errors.js';
 import { auditActor } from './system-actor.js';
 import type { TenantContext } from './tenant-context.js';
+import { advisoryLock, asUuid, lockKey } from './advisory-lock.js';
 
 export interface CommandResult {
   readonly status: ContentfulStatusCode;
@@ -47,6 +49,23 @@ export interface Command {
 
 const COMMAND_ID = /^[A-Za-z0-9:_-]{1,100}$/;
 
+/** F-537：按租户和发起人隔离，避免结果查询受他人同键写入影响。 */
+export const commandExecutionKey = (tenantId: string, userId: string, commandId: string) =>
+  ['command-execution:', asUuid(tenantId), ':', userId.toLowerCase(), ':', commandId] as const;
+
+const ledgerWriteKey = (tenantId: string, commandId: string) =>
+  ['command-ledger-write:', asUuid(tenantId), ':', commandId] as const;
+
+/** DEC-956：专用台账回执只存旧键拒绝码和初次 5xx 的 HTTP 状态。 */
+export function voidedCommandHttpStatus(entry: Pick<CommandResultRow, 'responseStatus' | 'responseBody'>) {
+  if (entry.responseStatus !== 409) return undefined;
+  const body = entry.responseBody as { code?: unknown; rollbackHttpStatus?: unknown } | null;
+  return body?.code === 'COMMAND_VOIDED' && typeof body.rollbackHttpStatus === 'number'
+    ? body.rollbackHttpStatus
+    : undefined;
+}
+type CommandResultRow = typeof commandLedger.$inferSelect;
+
 export async function runCommand(db: Db, ctx: TenantContext, command: Command): Promise<CommandResult> {
   const commandId = command.id;
   if (commandId === undefined) throw new AppError('IDEMPOTENCY_KEY_REQUIRED', '写请求必须携带 Idempotency-Key');
@@ -55,9 +74,18 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
 
   const key = { commandId, requestHash };
   const request = currentAuditRequest();
+  if (request?.commandId && request.commandId !== commandId) request.state.usedDerivedCommand = true;
+  const actorUserId = auditActor(ctx.userId);
+  const commandType = commandTypeOf(request?.method, request?.path);
   let phase: CommandPhase = 'execute';
   try {
     return await withTenant(db, ctx.tenantId, async (tx) => {
+      // 台账键保护同租户同键的写入与作废；发起人键保留 F-120 失败回查的隔离。
+      const writeKey = lockKey(...ledgerWriteKey(ctx.tenantId, commandId));
+      const actorKey = lockKey(...commandExecutionKey(ctx.tenantId, ctx.userId, commandId));
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock_shared(${writeKey}), pg_advisory_xact_lock_shared(${actorKey})`,
+      );
       const replay = await ledgerExit(tx, key, command.guard);
       if (replay) return replay;
       const result = await command.execute(tx, commandId);
@@ -67,9 +95,8 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
         requestHash,
         responseStatus: result.status,
         responseBody: result.body,
-        // F-120：记下发起人与命令类型，供发起人按命令 ID 只读回查；只加列，不改写入顺序与事务边界
-        actorUserId: auditActor(ctx.userId),
-        commandType: commandTypeOf(request?.method, request?.path),
+        actorUserId,
+        commandType,
       });
       // 回调返回后由驱动提交：此后的错误可能发生在提交请求已发出之后
       phase = 'commit';
@@ -87,9 +114,52 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
       if (!recheckFailed) final = thrown;
     }
     const failure = classifyCommandFailure(final, phase, recheckFailed);
-    await recordCommandFailure(db, ctx, commandId, failure);
-    throw failureResponse(final, failure, commandId);
+    // 仅执行阶段事务整体失败，且台账回查得到原错误时，才能为 5xx 记下回滚证据。
+    const confirmedRollback =
+      phase === 'execute' &&
+      !recheckFailed &&
+      final === error &&
+      failure.outcome !== 'unknown' &&
+      (failure.httpStatus ?? 500) >= 500;
+    const rollbackHttpStatus = failure.outcome === 'storage_unwritable' ? 503 : (failure.httpStatus ?? 500);
+    // 未分类的业务异常由 HTTP 错误边界映射为 500；无作废回执时也不能把它当作可解锁的普通拒绝。
+    const auditFailure =
+      failure.outcome === 'business_failed' && failure.httpStatus == null
+        ? { ...failure, httpStatus: rollbackHttpStatus }
+        : failure;
+    const voided = await recordCommandFailure(
+      db,
+      ctx,
+      commandId,
+      auditFailure,
+      // 总回执事务的回滚不能证明同请求的派生子事务也回滚。
+      confirmedRollback && request?.commandId === commandId && !request.state.usedDerivedCommand && actorUserId
+        ? (tx, createdAt) =>
+            voidCommand(tx, {
+              tenantId: ctx.tenantId,
+              commandId,
+              requestHash,
+              actorUserId,
+              commandType,
+              createdAt,
+              responseStatus: 409,
+              responseBody: { code: 'COMMAND_VOIDED', rollbackHttpStatus },
+            })
+        : undefined,
+    );
+    throw failureResponse(final, failure, commandId, voided);
   }
+}
+
+async function voidCommand(tx: Tx, entry: typeof commandLedger.$inferInsert): Promise<boolean> {
+  await advisoryLock(tx, ...ledgerWriteKey(entry.tenantId, entry.commandId));
+  // 持锁前可能已有并发写入完成。台账已有结论时，原结论优先且不记录可解锁证据。
+  const inserted = await tx
+    .insert(commandLedger)
+    .values(entry)
+    .onConflictDoNothing()
+    .returning({ commandId: commandLedger.commandId });
+  return inserted.length > 0;
 }
 
 interface LedgerKey {
@@ -133,6 +203,9 @@ async function findReplay(tx: Tx, commandId: string, requestHash: string): Promi
   if (!entry) return undefined;
   if (entry.requestHash !== requestHash) {
     throw new AppError('IDEMPOTENCY_CONFLICT', '同一命令 ID 已用于不同内容的请求');
+  }
+  if (voidedCommandHttpStatus(entry) !== undefined) {
+    throw new AppError('COMMAND_VOIDED', '原命令已作废，请核对后重新提交');
   }
   return { status: entry.responseStatus as ContentfulStatusCode, body: entry.responseBody };
 }

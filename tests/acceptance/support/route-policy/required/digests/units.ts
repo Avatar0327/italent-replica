@@ -185,11 +185,11 @@ export const DIGESTS: Digests = {
     whereOwner: 'f9f20cb64429',
   },
   'apps/api/src/modules/command-result/routes.ts': {
-    'route:GET /api/tenant/commands/:commandId/result': '4747db7abe44',
+    'route:GET /api/tenant/commands/:commandId/result': '9086df72d44b',
   },
   'apps/api/src/modules/command-result/service.ts': {
-    latestFailureGroup: '3a1806588594',
-    readOwnCommandResult: '08b04e8eaed5',
+    latestFailureGroup: 'c0081166b9c5',
+    readOwnCommandResult: '13bab8215a93',
   },
   'apps/api/src/modules/contracts/context.ts': {
     checkFields: 'a4706994f2b8',
@@ -2219,8 +2219,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/avatar/service.ts#uploadAvatar': '7b148f1cfed9',
   'apps/api/src/modules/avatar/service.ts#whereOwner': '6ae738c83349',
   'apps/api/src/modules/command-result/routes.ts#route:GET /api/tenant/commands/:commandId/result': '45e18aa050cf',
-  'apps/api/src/modules/command-result/service.ts#latestFailureGroup': '4bca3a38775a',
-  'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': 'c5d3d2b133e8',
+  'apps/api/src/modules/command-result/service.ts#latestFailureGroup': 'f174a8f63f77',
+  'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': '357a9deaf839',
   'apps/api/src/modules/contracts/context.ts#checkFields': '670343aebdbc',
   'apps/api/src/modules/contracts/context.ts#checkScope': '38843b4c716f',
   'apps/api/src/modules/contracts/imports.ts#checkImportScope': '0564049c27e2',
