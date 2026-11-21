@@ -19,6 +19,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from 'node:path';
 import { seedTenantWithMember, tenantApi } from '../tenant-api.js';
 import type { AppDeps } from '@italent/api';
+import { RESULT_ROUTE } from '../../AC-CMD-F553-support.js';
+import { probeCommandResultBranches } from './command-result-probe.js';
 import { canonicalJson } from './baseline.js';
 import type { Finding } from './compare.js';
 import { type AuthorizerDouble, createAuthorizerDouble } from './double.js';
@@ -70,6 +72,8 @@ export interface EndpointDiscovery {
   readonly gap?: { readonly reason: UnreachedReason };
   /** PR-B4b 预留：守卫内部 HR 路径不能独立成功的入口，非参与人 HR 的拒绝码转换（DEC-362 第 2 条）。 */
   readonly denialShift?: string;
+  /** F-553：已登记命令的台账数据态分支，独立于占位请求。 */
+  readonly registeredCommands?: Awaited<ReturnType<typeof probeCommandResultBranches>>;
 }
 
 export interface DiscoveryRig {
@@ -77,6 +81,7 @@ export interface DiscoveryRig {
   /** 已发出的请求数（PR 描述附请求数与耗时）。 */
   readonly sent: number;
   send(method: string, path: string, body?: unknown): Promise<Response>;
+  readonly probeRegisteredCommands?: () => ReturnType<typeof probeCommandResultBranches>;
 }
 
 /** 测试夹具可追加的路由与登记表（真实应用之外的对照端点）。 */
@@ -93,6 +98,7 @@ export async function createRig(
   let sent = 0;
   const rig: DiscoveryRig = {
     double,
+    probeRegisteredCommands: () => probeCommandResultBranches(db),
     get sent() {
       return sent;
     },
@@ -224,7 +230,9 @@ export async function discoverRoute(
   const fieldQueries = double.fieldKeys();
   const invalidPath = invalidIdPath(route.path);
   const invalidId = invalidPath ? (await send(rig, route, invalidPath)).outcome : undefined;
-  const obligations = table[`${route.method} ${route.path}`] ?? [];
+  const key = `${route.method} ${route.path}`;
+  const obligations = table[key] ?? [];
+  const registeredCommands = key === RESULT_ROUTE ? await rig.probeRegisteredCommands?.() : undefined;
   // 任意用途的授权器类义务（准入 / 披露 / 守卫内部 / 条件准入）：它们的验证都要先触达授权点
   const needsAuthorizer = obligations.some((o) => AUTHORIZER_DIMENSIONS.some((prefix) => o.perm.startsWith(prefix)));
   return {
@@ -233,6 +241,7 @@ export async function discoverRoute(
     scopeQueries,
     fieldQueries,
     ...(invalidId ? { invalidId } : {}),
+    ...(registeredCommands ? { registeredCommands } : {}),
     ...(unmapped.length ? { unmapped } : {}),
     ...(needsAuthorizer && trace.length === 0 ? { gap: { reason: unreachedReason(outcome.status) } } : {}),
   };
