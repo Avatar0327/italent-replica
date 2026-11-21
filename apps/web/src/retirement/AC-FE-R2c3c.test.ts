@@ -1,5 +1,8 @@
+import { executableButtons, MODULE_OBJECTS, ObjectCatalog, resolveObjectPermission } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
 import { retireBody } from './model.js';
+import { planFields } from './RehirePlan.js';
+import { retirementObjectGrant } from './retirement-permission.test-support.js';
 import { acceptRehire, rehireApplicationAccess, rehireBlockers } from './rehire-model.js';
 import { retirementEditFields, retirementPatch } from './RetirementEdit.js';
 
@@ -9,6 +12,9 @@ describe('AC-FE-R2c3c 退休同时返聘', () => {
     reEmployed: true,
     rehireEmployType: 'internal',
     rehireRemarks: '合成返聘计划',
+    rehireProbation: true,
+    rehireProbationMonths: 3,
+    rehireProbationEndDate: '2027-01-26',
   };
 
   it('退休专用创建请求携带返聘计划，服务端决定返聘日', () => {
@@ -16,7 +22,10 @@ describe('AC-FE-R2c3c 退休同时返聘', () => {
       mode: 'direct',
       lastWorkDate: '2026-10-25',
       reEmployed: true,
-      rehire: { fields: { employType: 'internal', remarks: '合成返聘计划' } },
+      rehire: {
+        fields: { employType: 'internal', remarks: '合成返聘计划' },
+        entry: { probation: true, probationMonths: 3, probationEndDate: '2027-01-26' },
+      },
     });
   });
 
@@ -25,6 +34,53 @@ describe('AC-FE-R2c3c 退休同时返聘', () => {
       mode: 'application',
       lastWorkDate: '2026-10-25',
     });
+  });
+});
+
+describe('AC-FE-R2c3c r2 真实目录下的返聘计划权限', () => {
+  const definition = MODULE_OBJECTS.employmentRecord;
+  const catalog = new ObjectCatalog([definition]);
+  const grant = retirementObjectGrant(definition);
+
+  function permission(input: typeof grant) {
+    const objectCode = definition.code;
+    const resolved = resolveObjectPermission(
+      objectCode,
+      [{ objectCode, profileApps: [definition.application], ...input }],
+      catalog,
+    )!;
+    const { dataOperations, viewableFields, editableFields } = resolved.effective;
+    return {
+      objectCode,
+      dataOperations,
+      viewableFields: [...viewableFields],
+      editableFields: [...editableFields],
+      buttons: executableButtons(resolved.definition, resolved.effective),
+    };
+  }
+
+  it('允许创建时，试用期控制项可用且普通任职字段仍按字段编辑权', () => {
+    const input = permission({
+      ...grant,
+      fields: grant.fields.map((field) => (field.fieldCode === 'remarks' ? { ...field, edit: false } : field)),
+    });
+    const systemFields = ['probation', 'probationMonths', 'probationEndDate'];
+    expect(systemFields.filter((field) => input.editableFields.includes(field))).toEqual([]);
+    expect(planFields(input).filter((field) => field.startsWith('rehireProbation'))).toEqual([
+      'rehireProbation',
+      'rehireProbationMonths',
+      'rehireProbationEndDate',
+    ]);
+    expect(planFields(input)).not.toContain('rehireRemarks');
+  });
+
+  it('缺少对象新增、Employment.Create 或返聘标识查看权时，计划输入保持关闭', () => {
+    for (const input of [
+      { ...grant, dataOperations: { ...grant.dataOperations, create: false } },
+      { ...grant, buttons: grant.buttons.filter((button) => button.buttonCode !== 'Employment.Create') },
+      { ...grant, fields: grant.fields.filter((field) => field.fieldCode !== 'reEmployed') },
+    ])
+      expect(planFields(permission(input))).toEqual([]);
   });
 });
 

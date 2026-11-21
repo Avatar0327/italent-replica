@@ -1,7 +1,36 @@
+import { bootstrapTenantAdmin } from '@italent/api';
+import { MODULE_OBJECTS, PERSONNEL_OBJECT, PERSONNEL_OBJECTS } from '@italent/domain';
 import { createServer } from 'node:http';
 import { createTestDb } from '../../../packages/testkit/src/test-db.js';
 import { retirementCancelWorld } from '../../../tests/acceptance/AC-RT-cancel-support.js';
-import { pinExitGate } from '../../../tests/acceptance/support/tenant-api.js';
+import { createProfile, grant, makeGrantable, setObjectPermission } from '../../../tests/acceptance/AC-PRM-support.js';
+import { cmd, pinExitGate } from '../../../tests/acceptance/support/tenant-api.js';
+import { retirementObjectGrant } from '../src/retirement/retirement-permission.test-support.js';
+
+async function grantRetirementPermissions(world: Awaited<ReturnType<typeof retirementCancelWorld>>) {
+  const {
+    db,
+    api,
+    session: { tenant, user },
+  } = world;
+  const asAdmin = { tenant: tenant.id, user: user.id };
+  const adminRecord = await bootstrapTenantAdmin(db, { tenantId: tenant.id, userId: user.id }, cmd());
+  const permissions = { db, api, tenant, admin: user, adminRecord, asAdmin };
+  const profile = await createProfile(permissions, 'retirement-browser');
+  const personnel = PERSONNEL_OBJECTS.find(({ code }) => code === PERSONNEL_OBJECT)!;
+  for (const definition of [MODULE_OBJECTS.employmentRecord, personnel]) {
+    const response = await setObjectPermission(
+      permissions,
+      profile,
+      retirementObjectGrant(definition),
+      definition.code,
+    );
+    if (!response.ok) throw new Error(`合成授权配置失败 ${await response.text()}`);
+  }
+  await makeGrantable(permissions, [profile.id]);
+  const assigned = await grant(permissions, user.id, profile.id);
+  if (!assigned.ok) throw new Error(`合成授权授予失败 ${await assigned.text()}`);
+}
 
 export async function startRetirementBackend() {
   pinExitGate('enforce');
@@ -9,8 +38,11 @@ export async function startRetirementBackend() {
   try {
     const world = await retirementCancelWorld(db.db, 'fe-r2c3c', '2026-10-06', { capacity: false });
     const { tenant, user } = world.session;
+    await grantRetirementPermissions(world);
     const simultaneous = await world.newcomer('合成同时返聘员工');
     await world.setExpectedRetirement('2026-10-26', simultaneous.id);
+    const plain = await world.newcomer('合成取消同时返聘员工');
+    await world.setExpectedRetirement('2026-10-26', plain.id);
     const applying = await world.newcomer('合成提前返聘员工');
     await world.submittedRetire('2026-10-15', applying.id);
     const editable = await world.newcomer('合成编辑退休员工');
@@ -54,6 +86,7 @@ export async function startRetirementBackend() {
         tenantId: tenant.id,
         userId: user.id,
         simultaneous: simultaneous.id,
+        plain: plain.id,
         applying: applying.id,
         handover: handover.id,
         closing: closing.id,

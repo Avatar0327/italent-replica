@@ -1,9 +1,8 @@
 import { fork } from 'node:child_process';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { choose, item, named, pickDate, save } from './contracts-fixtures.js';
-import { seedDemoUser, snapshotFixture, tenant, user } from './fixtures.js';
 import type { startRetirementBackend } from './retirement-live-backend.js';
-import { allButtons, switchView } from './retirement-fixtures.js';
+import { switchView } from './retirement-fixtures.js';
 
 type Manifest = Awaited<ReturnType<typeof startRetirementBackend>>['manifest'];
 type Call = { path: string; method: string; body: unknown; status: number; json: Record<string, unknown> };
@@ -36,53 +35,25 @@ test.afterAll(async () => {
 async function setupLive(page: Page) {
   const calls: Call[] = [];
   const context = page.context();
-  await seedDemoUser(page);
+  const url = test.info().project.use.baseURL!;
+  await context.addCookies([
+    { name: 'italent_demo_tenant', value: manifest.tenantId, url },
+    { name: 'italent_demo_user', value: manifest.userId, url },
+  ]);
   await context.route('**/__demo/personas', (route) =>
     route.fulfill({
       json: {
-        tenantId: tenant,
-        current: user,
-        personas: [{ userId: user, name: '合成演示用户', role: '演示身份', entry: '/staff' }],
+        tenantId: manifest.tenantId,
+        current: manifest.userId,
+        personas: [{ userId: manifest.userId, name: '合成演示用户', role: '演示身份', entry: '/staff' }],
       },
     }),
   );
   await context.route('**/api/tenant/**', (route) =>
     route.fulfill({ json: { items: [], total: 0, hasDataPermission: true } }),
   );
-  await context.route('**/permission/me/snapshot', (route) =>
-    route.fulfill({
-      json: {
-        ...snapshotFixture,
-        session: {
-          ...snapshotFixture.session,
-          tenantId: manifest.tenantId,
-          userId: manifest.userId,
-          today: '2026-10-06',
-        },
-      },
-    }),
-  );
-  await context.route('**/permission/me/objects/*', (route) => {
-    const fields = `name code departmentId positionId lastWorkDate effectiveDate expectedRetirementDate
-      status kind mode retireType reEmployed handoverEmployeeId employType remarks probation probationMonths
-      probationEndDate dutyTransferTiming dutyTransferDate`.split(/\s+/);
-    return route.fulfill({
-      json: {
-        objectCode: decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!),
-        dataOperations: { read: true, create: true, update: true },
-        viewableFields: fields,
-        editableFields: fields,
-        buttons: [
-          ...allButtons,
-          'Employment.RetireEdit',
-          'Employment.Create',
-          'Employment.Edit',
-          'Employment.Preview',
-        ].map((buttonCode) => ({ buttonCode, level: 'detail' })),
-      },
-    });
-  });
-  await context.route(/\/api\/tenant\/(employment|org|personnel)\//, async (route) => {
+  // 权限快照与对象权限也由后端按合成身份的真实授权解析。
+  await context.route(/\/api\/tenant\/(employment|org|personnel|permission\/me)\//, async (route) => {
     const request = route.request();
     const { pathname, search } = new URL(request.url());
     const all = request.headers();
@@ -119,6 +90,17 @@ async function openPerson(page: Page, name: string, view: 'upcoming' | 'all' | '
 }
 const preview = (form: Locator) => form.getByRole('button', named('预览')).click();
 
+const trial = { probation: true, probationMonths: 3, probationEndDate: '2027-01-26' };
+async function fillTrial(form: Locator) {
+  const checkbox = form.getByRole('checkbox', { name: '是否试用' });
+  await expect(checkbox).toBeVisible({ timeout: 5000 });
+  await checkbox.check();
+  const months = item(form, '试用期（月）').getByRole('spinbutton');
+  await months.fill(String(trial.probationMonths));
+  await months.press('Tab');
+  await pickDate(form, '试用到期日', trial.probationEndDate);
+}
+
 test('AC-FE-R2c3c-01 同时返聘预览和创建走退休专用入口，详情读回返聘计划', async ({ page }) => {
   const calls = await setupLive(page);
   await openPerson(page, '合成同时返聘员工', 'upcoming');
@@ -128,6 +110,7 @@ test('AC-FE-R2c3c-01 同时返聘预览和创建走退休专用入口，详情�
   await expect(form.getByRole('checkbox', { name: '是否同时返聘' })).toBeVisible({ timeout: 5000 });
   await form.getByRole('checkbox', { name: '是否同时返聘' }).check();
   await choose(form, '雇佣关系', '内部员工');
+  await fillTrial(form);
   const remarks = form.getByLabel('备注', { exact: true });
   await remarks.fill('合成返聘计划');
   await choose(form, '部门', '合成将停用返聘部门');
@@ -152,6 +135,7 @@ test('AC-FE-R2c3c-01 同时返聘预览和创建走退休专用入口，详情�
     lastWorkDate: '2026-10-25',
     reEmployed: true,
     rehire: {
+      entry: trial,
       fields: {
         employType: 'internal',
         remarks: '合成返聘计划',
@@ -172,6 +156,8 @@ test('AC-FE-R2c3c-01 同时返聘预览和创建走退休专用入口，详情�
   const plan = dialog(page).getByRole('region', { name: '返聘计划' });
   await expect(plan).toContainText('合成返聘计划');
   await expect(plan).toContainText('合成返聘部门');
+  await expect(plan).toContainText(trial.probationEndDate);
+  await expect(plan.getByRole('checkbox')).toHaveCount(0);
   await expect(dialog(page).getByText('无编制部门', { exact: true })).toBeVisible();
 });
 
@@ -260,5 +246,28 @@ test('AC-FE-R2c3c-04 仅服务器返回 restore 的详情提供恢复，展示�
         },
       },
     }),
+  ]);
+});
+
+test('AC-FE-R2c3c-05 取消同时返聘后，预览和创建均省略原试用期计划', async ({ page }) => {
+  const calls = await setupLive(page);
+  await openPerson(page, '合成取消同时返聘员工', 'upcoming');
+  await page.getByRole('button', named('退休办理')).click();
+  const form = dialog(page);
+  const lastWorkDate = '2026-10-25';
+  await pickDate(form, '最后工作日', lastWorkDate);
+  const enabled = form.getByRole('checkbox', { name: '是否同时返聘' });
+  await enabled.check();
+  await fillTrial(form);
+  await enabled.uncheck();
+  await expect(form.getByRole('checkbox', { name: '是否试用' })).toHaveCount(0);
+  await preview(form);
+  await expect(form.getByRole('region', { name: '提交前预览' })).toBeVisible();
+  await form.getByRole('button', named('提交')).click();
+  await expect(page.getByText('退休办理成功', { exact: true })).toBeVisible();
+  const path = `${root}/retirements/employees/${manifest.plain}`;
+  expect(calls).toEqual([
+    expect.objectContaining({ path: `${path}/preview`, body: { lastWorkDate }, status: 200 }),
+    expect.objectContaining({ path, body: { mode: 'direct', lastWorkDate }, status: 201 }),
   ]);
 });
