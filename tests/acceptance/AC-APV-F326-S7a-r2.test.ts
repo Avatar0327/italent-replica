@@ -56,12 +56,12 @@ describe('AC-APV-F326-S7a-r2 P2-2 保存收尾含“手工重新启用过”的�
     const w = await s4World(database().db, 's7a-r2-reenable');
     const v1 = await w.publish(await create(w, [single('n1', w.near.userId)]));
     const x = await autoAt(w, v1.id, 'n1');
-    const v2 = await w.json<Awaited<ReturnType<typeof create>>>(
-      await publishWith(w, await draftOk(w, await newVersion(w, v1), [viaManager('n1')])),
-    );
+    const saved = await draftOk(w, await newVersion(w, v1), [viaManager('n1')]);
     const { total } = await references(w, 'variables', x.id);
     const off = await variableCommand(w, await varRow(w, x.id), 'disable', { acknowledgedReferenceCount: total });
     expect(off.status, await off.clone().text()).toBe(200);
+    // v1 仍在用时手工停用，随后发布 v2，再重新启用来验证保存收尾。
+    const v2 = await w.json<typeof v1>(await publishWith(w, saved));
     const on = await variableCommand(w, await varRow(w, x.id), 'enable');
     expect(on.status, await on.clone().text()).toBe(200);
     expect((await varRow(w, x.id)).status).toBe('enabled');

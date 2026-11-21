@@ -183,7 +183,7 @@ async function createSyncTarget(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, 
       },
       { systemInput: true },
     );
-    return { id: business.id, target: 'intern_regularization' as const };
+    return { id: business.id, employeeId, target: 'intern_regularization' as const };
   }
   const business = await createEmploymentBusiness(
     tx,
@@ -217,7 +217,7 @@ async function createSyncTarget(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, 
       },
     },
   );
-  return { id: business.id, target: 'pending_entry' as const };
+  return { id: business.id, employeeId, target: 'pending_entry' as const };
 }
 
 export async function saveSync(
@@ -226,6 +226,7 @@ export async function saveSync(
   before: OfferRow,
   patch: Partial<OfferRow>,
   action: string,
+  bindingChanged = false,
 ) {
   const [after] = await tx
     .update(offers)
@@ -239,7 +240,7 @@ export async function saveSync(
     .where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, before.id)))
     .returning();
   await audit(tx, ctx, action, before.id, before, after!);
-  await publishOfferChange(tx, ctx, before, after!, offerFieldsChanged(before, patch));
+  await publishOfferChange(tx, ctx, before, after!, bindingChanged || offerFieldsChanged(before, patch));
   return after!;
 }
 
@@ -252,22 +253,9 @@ export async function syncOffer(tx: Tx, ctx: OfferSyncContext, offer: OfferRow):
   // 取锁单一入口（sync-lock.ts）：Offer → 员工 → 业务头 → 组织 / 编制；关联已有人员时先于任何编制判定取齐
   await lockOfferSyncScope(tx, ctx, offer);
   const linked = offer.linkedEmployeeId ? await linkedPerson(tx, ctx.tenantId, offer.linkedEmployeeId) : null;
+  let created: Awaited<ReturnType<typeof createSyncTarget>>;
   try {
-    const created = await tx.transaction((savepoint) => createSyncTarget(savepoint, ctx, offer, linked));
-    return await saveSync(
-      tx,
-      ctx,
-      offer,
-      {
-        pendingEntryBusinessId: created.id,
-        syncTarget: created.target,
-        syncStatus: 'success',
-        syncReason: null,
-        syncMessage: null,
-        syncedAt: ctx.now,
-      },
-      'sync',
-    );
+    created = await tx.transaction((savepoint) => createSyncTarget(savepoint, ctx, offer, linked));
   } catch (error) {
     const failure = ruleRejection(error);
     if (!failure) throw error;
@@ -280,6 +268,23 @@ export async function syncOffer(tx: Tx, ctx: OfferSyncContext, offer: OfferRow):
       'sync_failed',
     );
   }
+  // 发布来源事件失败必须回滚整个命令，不能当作创建同步产物时的业务拒绝。
+  return await saveSync(
+    tx,
+    ctx,
+    offer,
+    {
+      pendingEntryBusinessId: created.id,
+      syncTarget: created.target,
+      syncStatus: 'success',
+      syncReason: null,
+      syncMessage: null,
+      syncedAt: ctx.now,
+    },
+    'sync',
+    // §6.2：已有实习生绑定却未被同步复用时，新产物指向另一个人。首次建立关联或同人同步不改变旧签署来源。
+    offer.linkedEmployeeId !== null && offer.linkedEmployeeId !== created.employeeId,
+  );
 }
 
 /** 在职实习生的正式 Offer 且开关关闭：不同步，改走实习转正（OF-R8）。 */

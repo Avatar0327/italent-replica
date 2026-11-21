@@ -5,8 +5,11 @@
 import { sql, type Tx } from '@italent/db';
 import { approvalError, rowsOf } from './context.js';
 
-/** 与 store.ts resumableInstanceOf 同口径：在办、被驳回、已撤回（撤回后可重提）都还会继续走原版本。 */
-export const RESUMABLE_INSTANCE_STATUSES = ['running', 'returned', 'withdrawn'] as const;
+/** F-326-L §1：撤回算已结束，不能阻止系统停用。 */
+export const LIFECYCLE_INSTANCE_STATUSES = ['running', 'returned'] as const;
+/** §6.1 与 resumableInstanceOf 同口径，撤回后仍可重提。 */
+export const RESUMABLE_INSTANCE_STATUSES = [...LIFECYCLE_INSTANCE_STATUSES, 'withdrawn'] as const;
+export type Usage = 'reference' | 'lifecycle';
 /** 引用清单分页上限（设计 §6）；total 始终是全量。 */
 export const USAGE_PAGE_LIMIT = 200;
 
@@ -27,19 +30,35 @@ export interface SourceUsage {
   instanceCount: number | null;
 }
 
-/** 单人节点的审批人是对象，会签节点与空人候选是数组，统一展开成“槽位”。 */
-const slots = (tenantId: string) => sql`
-  SELECT n.version_id, n.node_key, n.name AS node_name, n.seq, 'approver' AS pos, n.approver_expression AS src
-    FROM approval_process_nodes n
-    WHERE n.tenant_id=${tenantId}::uuid AND n.node_type='single' AND n.approver_expression IS NOT NULL
-  UNION ALL
-  SELECT n.version_id, n.node_key, n.name, n.seq, 'approver', e.value
-    FROM approval_process_nodes n CROSS JOIN LATERAL jsonb_array_elements(n.approver_expressions) e
-    WHERE n.tenant_id=${tenantId}::uuid AND n.node_type='countersign'
-  UNION ALL
-  SELECT n.version_id, n.node_key, n.name, n.seq, 'empty_approver', e.value
-    FROM approval_process_nodes n CROSS JOIN LATERAL jsonb_array_elements(n.empty_approver_sources) e
-    WHERE n.tenant_id=${tenantId}::uuid`;
+const statusesOf = (usage: Usage) =>
+  usage === 'lifecycle' ? LIFECYCLE_INSTANCE_STATUSES : RESUMABLE_INSTANCE_STATUSES;
+const onActiveHead = sql`p.status='active' AND (v.status='draft' OR p.current_version_id=v.id)`;
+const boundInstances = (usage: Usage) => sql`FROM approval_instances i
+  WHERE i.tenant_id=v.tenant_id AND i.version_id=v.id AND i.status IN
+    (${sql.join(
+      statusesOf(usage).map((status) => sql`${status}`),
+      sql`, `,
+    )})`;
+const versionIdsOf = (ids: readonly string[]) => sql`SELECT value::uuid FROM jsonb_array_elements_text(
+  ${JSON.stringify(ids)}::jsonb)`;
+
+/** 单人、会签与空人候选三列统一展开成槽位，允许按登记的版本收窄。 */
+const slots = (tenantId: string, versionIds?: readonly string[]) => {
+  const versions = versionIds ? sql`AND n.version_id IN (${versionIdsOf(versionIds)})` : sql``;
+  const scope = sql`n.tenant_id=${tenantId}::uuid ${versions}`;
+  return sql`
+    SELECT n.version_id, n.node_key, n.name AS node_name, n.seq, 'approver' AS pos, n.approver_expression AS src
+      FROM approval_process_nodes n
+      WHERE ${scope} AND n.node_type='single' AND n.approver_expression IS NOT NULL
+    UNION ALL
+    SELECT n.version_id, n.node_key, n.name, n.seq, 'approver', e.value
+      FROM approval_process_nodes n CROSS JOIN LATERAL jsonb_array_elements(n.approver_expressions) e
+      WHERE ${scope} AND n.node_type='countersign'
+    UNION ALL
+    SELECT n.version_id, n.node_key, n.name, n.seq, 'empty_approver', e.value
+      FROM approval_process_nodes n CROSS JOIN LATERAL jsonb_array_elements(n.empty_approver_sources) e
+      WHERE ${scope}`;
+};
 
 const matches = (target: UsageTarget) =>
   target.kind === 'variable'
@@ -69,6 +88,7 @@ export async function findSourceUsages(
   tenantId: string,
   target: UsageTarget,
   columnIds?: readonly string[],
+  usage: Usage = 'reference',
 ): Promise<SourceUsage[]> {
   const columnFilter =
     columnIds && target.kind === 'matrix'
@@ -77,10 +97,6 @@ export async function findSourceUsages(
           sql`, `,
         )})`
       : sql``;
-  const resumable = sql.join(
-    RESUMABLE_INSTANCE_STATUSES.map((status) => sql`${status}`),
-    sql`, `,
-  );
   const rows = rowsOf<UsageRow>(
     await tx.execute(sql`
     WITH slot AS (${slots(tenantId)}),
@@ -90,9 +106,8 @@ export async function findSourceUsages(
           WHEN p.current_version_id=v.id AND p.status='active' THEN 'current' ELSE 'in_flight' END AS kind,
         v.version_no, s.node_key, s.node_name, s.seq, s.pos,
         CASE WHEN s.src->>'type'='matrix' THEN split_part(s.src->>'value', ':', 2) END AS column_id,
-        (SELECT count(*)::int FROM approval_instances i WHERE i.tenant_id=v.tenant_id AND i.version_id=v.id
-          AND i.status IN (${resumable})) AS resumable_count,
-        (p.status='active') AS process_active
+        (SELECT count(*)::int ${boundInstances(usage)}) AS resumable_count,
+        (${onActiveHead}) AS active_head
       FROM slot s
       JOIN approval_process_versions v ON v.tenant_id=${tenantId}::uuid AND v.id=s.version_id
       JOIN approval_processes p ON p.tenant_id=v.tenant_id AND p.id=v.process_id
@@ -101,7 +116,7 @@ export async function findSourceUsages(
     SELECT process_id, process_code, process_name, approval_type, kind, version_no, node_key, node_name,
       pos, column_id, CASE WHEN kind='in_flight' THEN resumable_count END AS instance_count
     FROM usage
-    WHERE kind='current' OR (kind='draft' AND process_active) OR (kind='in_flight' AND resumable_count>0)
+    WHERE active_head OR (kind='in_flight' AND resumable_count>0)
     ORDER BY process_code, version_no, seq, node_key, pos, column_id`),
   );
   return rows.map((row) => ({
@@ -158,17 +173,14 @@ export async function assertRoleColumnsUnused(
   });
 }
 
-/** §5.5④：同 §6.1 的三类在用版本；按流程去重，不返回其他流程标识、名称。 */
-export async function referencingProcessCounts(tx: Tx, tenantId: string, variableIds: readonly string[]) {
+/** 按流程去重。配置视图和保存收尾缺省用 §6.1，系统停用用 F-326-L §1。 */
+export async function referencingProcessCounts(
+  tx: Tx,
+  tenantId: string,
+  variableIds: readonly string[],
+  usage: Usage = 'reference',
+) {
   if (!variableIds.length) return new Map<string, number>();
-  const resumable = sql.join(
-    RESUMABLE_INSTANCE_STATUSES.map((status) => sql`${status}`),
-    sql`, `,
-  );
-  const ids = sql.join(
-    variableIds.map((id) => sql`${id}`),
-    sql`, `,
-  );
   const rows = rowsOf<{ id: string; n: number }>(
     await tx.execute(sql`
     WITH slot AS (${slots(tenantId)})
@@ -176,12 +188,34 @@ export async function referencingProcessCounts(tx: Tx, tenantId: string, variabl
     FROM slot s
     JOIN approval_process_versions v ON v.tenant_id=${tenantId}::uuid AND v.id=s.version_id
     JOIN approval_processes p ON p.tenant_id=v.tenant_id AND p.id=v.process_id
-    WHERE s.src->>'type'='public_variable' AND s.src->>'value' IN (${ids})
-      AND ((p.status='active' AND (v.status='draft' OR p.current_version_id=v.id))
-        OR (v.status<>'draft' AND EXISTS (
-          SELECT 1 FROM approval_instances i WHERE i.tenant_id=v.tenant_id AND i.version_id=v.id
-            AND i.status IN (${resumable}))))
+    WHERE s.src->>'type'='public_variable'
+      AND s.src->>'value' IN (SELECT value FROM jsonb_array_elements_text(${JSON.stringify(variableIds)}::jsonb))
+      AND ((${onActiveHead}) OR (v.status<>'draft' AND EXISTS (SELECT 1 ${boundInstances(usage)})))
     GROUP BY s.src->>'value'`),
   );
   return new Map(rows.map((row) => [row.id, Number(row.n)]));
+}
+
+/** §2.4：锁的上界由版本内容决定，自动变量状态可能变化，不能作为筛选条件。 */
+export async function versionAutoVariableReferences(tx: Tx, tenantId: string, versionIds: readonly string[]) {
+  if (!versionIds.length) return [];
+  return rowsOf<{ version_id: string; variable_id: string }>(
+    await tx.execute(sql`
+      WITH slot AS (${slots(tenantId, versionIds)})
+      SELECT DISTINCT s.version_id, a.id AS variable_id
+      FROM slot s JOIN approval_variables a ON a.tenant_id=${tenantId}::uuid AND a.id::text=s.src->>'value'
+      WHERE s.src->>'type'='public_variable' AND a.origin='auto'`),
+  );
+}
+
+/** §2.4：取得变量锁后发新语句重新判定。流程头与版本行都只读（§3.5）。 */
+export async function drainedVersions(tx: Tx, tenantId: string, versionIds: readonly string[]) {
+  return rowsOf<{ id: string; process_id: string; version_no: number; discarded: boolean }>(
+    await tx.execute(sql`
+      SELECT v.id, v.process_id, v.version_no, p.status='discarded' AS discarded
+      FROM approval_process_versions v JOIN approval_processes p ON p.tenant_id=v.tenant_id AND p.id=v.process_id
+      WHERE v.tenant_id=${tenantId}::uuid AND v.id IN (${versionIdsOf(versionIds)})
+        AND NOT (${onActiveHead}) AND NOT EXISTS (SELECT 1 ${boundInstances('lifecycle')})
+      ORDER BY v.version_no, v.id`),
+  );
 }
