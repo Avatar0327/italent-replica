@@ -18,7 +18,8 @@ import {
   runWrite,
   uuidParam,
 } from './context.js';
-import { createExitApplication, parseExitPatch, updateExitFields, type ExitPatch } from './exit-application.js';
+import { createExitApplication, parseExitPatch, updateRetirementFields, type ExitPatch } from './exit-application.js';
+import { authorizeRetirementDutyPlan } from './exit-duty-transfer.js';
 import { submitExit } from './exit-batch.js';
 import { rejectRestore } from './exit-cancel.js';
 import {
@@ -44,9 +45,9 @@ import { transitionEmployment } from './transitions.js';
 const KIND = 'retirement' as const;
 
 /** PATCH retirements/:id 与审批编辑共用的解析：返聘键创建后不可改，离职专用字段拒绝，日期键交给门禁比较（c1）。 */
-export function parseRetirementPatch(raw: unknown): ExitPatch {
+export function parseRetirementPatch(raw: unknown, allowDutyTransfer = false): ExitPatch {
   assertRetirementImmutableKeys(raw);
-  const patch = parseExitPatch(raw);
+  const patch = parseExitPatch(raw, allowDutyTransfer);
   assertRetirementFields(patch.fields);
   return patch;
 }
@@ -127,17 +128,25 @@ function registerRetirementChanges(
   router.patch('/retirements/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.update', revision(c));
-    const patch = parseRetirementPatch(await jsonBody(c));
+    const patch = parseRetirementPatch(await jsonBody(c), true);
     const current = await authorizeBusinessWrite(deps, ctx, id);
     await requireExitBusiness(deps, ctx, id, KIND);
     const gate = { employeeId: current.employeeId, kind: KIND, patch: patch.dates, payload: patch.fields };
+    const duty = patch.dutyTransfer;
+    const guard = exitEditGuard(
+      deps,
+      ctx,
+      gate,
+      id,
+      duty ? (tx, scoped) => authorizeRetirementDutyPlan(tx, scoped, current.employeeId, duty) : undefined,
+    );
     return runWrite(
       c,
       deps,
       ctx,
       patch,
-      async (tx, context) => ({ status: 200, body: await updateExitFields(tx, context, id, patch, { kind: KIND }) }),
-      { guard: exitEditGuard(deps, ctx, gate, id) },
+      async (tx, context) => ({ status: 200, body: await updateRetirementFields(tx, context, id, patch) }),
+      { guard },
     );
   });
   // 提交（含撤回 / 驳回后重提，只允许原发起人）与撤回：只要 RetireApproval（hr 发起）

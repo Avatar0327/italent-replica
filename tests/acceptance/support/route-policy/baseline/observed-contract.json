@@ -82,6 +82,16 @@
       "end",
       "extend"
     ],
+    "hrAnalysis.organizationCandidateObject": [
+      "ContractBoard",
+      "HrDashboard",
+      "HrMovement",
+      "HrMovementReport",
+      "HrProcessDashboard",
+      "HrRoster",
+      "HrStructure",
+      "HrStructureReport"
+    ],
     "import.rowOperation": [
       "create",
       "update"
@@ -3738,6 +3748,31 @@
           "requestScope",
           "scope.all",
           "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/analytics/organization-candidates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-analysis",
+      "primitives": {
+        "domain": [
+          "hrAnalysis.organizationCandidateObject"
+        ],
+        "object": [
+          "objectContext"
         ]
       }
     },
@@ -15171,7 +15206,10 @@
           "transfer.initiator"
         ],
         "fieldsIn": [
-          "requireEmploymentWrite"
+          "checkFields",
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite"
         ],
         "fieldsOut": [
           "disclose*",
@@ -15183,16 +15221,16 @@
         ],
         "object": [
           "object.* 动作",
-          "readContext(object.*)"
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
+          "checkScope",
           "employment scope",
-          "employment visibility",
-          "scope.all",
-          "scopeSql"
+          "employment visibility"
         ],
         "scopePoint": [
           "employment point"
