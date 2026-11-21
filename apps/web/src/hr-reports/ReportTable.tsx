@@ -6,15 +6,18 @@ export function ReportTable({
   data,
   page,
   changePage,
+  paginationDisabled,
 }: {
   code: string;
   data: ReportData;
+  paginationDisabled?: boolean;
   page: number;
   changePage(page: number): void;
 }) {
   // 空范围由后端明确告知，不从零值统计行反推权限或人数。
   if (data.hasDataPermission === false) return <Empty description={m.empty} />;
   const tables = tablesOf(code, data);
+  const roster = code === 'roster' && 'items' in data ? data : undefined;
   return (
     <>
       {tables.map((table) => (
@@ -22,8 +25,10 @@ export function ReportTable({
           key={table.key}
           table={table}
           rows={statistical(code) ? table.rows.slice((page - 1) * pageSize, page * pageSize) : table.rows}
-          page={page}
-          pageSize={pageSize}
+          page={roster?.page ?? page}
+          pageSize={roster?.pageSize ?? pageSize}
+          rowId={roster ? 'employeeId' : undefined}
+          paginationDisabled={paginationDisabled}
           changePage={changePage}
         />
       ))}
@@ -38,6 +43,8 @@ export function ReadOnlyReportTable({
   pageSize,
   changePage,
   emptyText = m.empty,
+  rowId,
+  paginationDisabled,
 }: {
   table: DisplayTable;
   rows?: Row[];
@@ -45,6 +52,8 @@ export function ReadOnlyReportTable({
   pageSize: number;
   changePage(page: number): void;
   emptyText?: string;
+  rowId?: string;
+  paginationDisabled?: boolean;
 }) {
   const summary = table.summary;
   return (
@@ -59,13 +68,14 @@ export function ReadOnlyReportTable({
           render: (value: unknown) => cellText(column.key, value),
         }))}
         dataSource={rows.map((row, index) => ({ ...row, _rowKey: String(index) }))}
-        rowKey="_rowKey"
+        rowKey={(row) => String((rowId && row[rowId]) || row._rowKey)}
         scroll={{ x: 'max-content' }}
         locale={{ emptyText: <Empty description={emptyText} /> }}
         pagination={{
           current: page,
           pageSize,
           total: table.total,
+          disabled: paginationDisabled,
           showSizeChanger: false,
           showTotal: m.total,
           onChange: changePage,

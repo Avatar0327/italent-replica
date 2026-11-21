@@ -11,8 +11,14 @@ export const pages: ModulePages = {
       id: 'hr-analytics',
       app: 'staff',
       group: 'people',
-      label: m.directory,
+      label: m.analytics,
       children: [
+        {
+          id: 'hr-analytics-roster',
+          label: m.roster,
+          objectCode: 'TenantBase.HrRoster',
+          page: lazyPage('HrAnalyticsRosterPage', () => import('./HrAnalyticsRosterPage.js')),
+        },
         {
           id: 'hr-dashboard',
           label: m.dashboard,

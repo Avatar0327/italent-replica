@@ -1,5 +1,7 @@
 export const m = {
-  directory: '数据分析',
+  analytics: '数据分析',
+  roster: '员工名册',
+  rosterTitle: '时点员工花名册',
   dashboard: '人事看板',
   management: '人事管理看板',
   viewDetails: '查看详情',

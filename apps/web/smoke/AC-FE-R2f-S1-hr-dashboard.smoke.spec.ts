@@ -66,6 +66,7 @@ test('AC-FE-R2f-01 单授 B48 从数据分析进入，根页只打开已交付�
   const directory = sidebar.getByText('数据分析', { exact: true });
   await expect(directory).toBeVisible({ timeout: 5000 });
   await directory.click();
+  await expect(sidebar.getByText('员工名册', { exact: true })).toHaveCount(0);
   await sidebar.getByText('人事看板', { exact: true }).click();
   await expect(page).toHaveURL(/\/hr-dashboard\/management$/);
   await expect(page.getByRole('heading', { name: '人事管理看板' })).toBeVisible();
@@ -139,7 +140,10 @@ test('AC-FE-R2f-01 人事管理员仅能进入报表，直链看板无权且菜�
   await page.route('**/hr-analysis/reports', (route) => route.fulfill({ json: { items: [] } }));
   await page.goto('/hr-reports');
   await expect(page.getByRole('heading', { name: '报表', exact: true })).toBeVisible();
-  await expect(page.locator('.shell-sidebar').getByText('数据分析', { exact: true })).toHaveCount(0);
+  const dataMenu = page.locator('.shell-sidebar').getByText('数据分析', { exact: true });
+  await expect(dataMenu).toBeVisible();
+  await dataMenu.click();
+  await expect(page.locator('.shell-sidebar').getByText('员工名册', { exact: true })).toBeVisible();
   await expect(page.locator('.shell-sidebar').getByText('人事看板', { exact: true })).toHaveCount(0);
   await page.goto('/hr-dashboard/management');
   await expect(page.getByText('暂无访问权限', { exact: true })).toBeVisible();
@@ -147,6 +151,7 @@ test('AC-FE-R2f-01 人事管理员仅能进入报表，直链看板无权且菜�
   await snapshot(page, []);
   await page.reload();
   await expect(page.getByText('暂无访问权限', { exact: true })).toBeVisible();
+  await expect(dataMenu).toHaveCount(0);
   await page.getByRole('button', { name: '应用导航' }).click();
   const panel = page.getByRole('dialog', { name: '全部菜单' });
   await panel.getByRole('searchbox', { name: '搜索菜单' }).fill('人事看板');

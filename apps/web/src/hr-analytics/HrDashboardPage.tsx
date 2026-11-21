@@ -7,12 +7,13 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { useSession } from '../foundation/Session.js';
 import { tenantDate } from '../foundation/dates.js';
 import { ui } from '../foundation/messages.js';
+import { useReportRetryWait } from '../hr-reports/ReportReadState.js';
 import { QueryFilters } from '../hr-reports/ReportFilters.js';
 import { m as report } from '../hr-reports/messages.js';
 import { cellText } from '../hr-reports/model.js';
 import { useReportRead } from '../hr-reports/useReportRead.js';
 import { BoardDetailDrawer } from './BoardDetailDrawer.js';
-import { ReadState, useReadCooldown } from './ReadState.js';
+import { ReadState } from './ReadState.js';
 import { m } from './messages.js';
 import {
   asOfBounds,
@@ -104,7 +105,11 @@ function ManagementBoard({ today, refresh }: { today: string; refresh(): void })
   useEffect(() => {
     if (currentInvalidation) setInvalidated(currentInvalidation);
   }, [currentInvalidation]);
-  const waiting = useReadCooldown(detail.error ?? read.error);
+  const retryAt = Math.max(detail.failure?.retryAt ?? 0, read.failure?.retryAt ?? 0);
+  const [lastRetryAt, setLastRetryAt] = useState(0);
+  // 关闭抽屉会清掉明细失败，但不能提前解除 Retry-After。
+  if (retryAt > lastRetryAt) setLastRetryAt(retryAt);
+  const waiting = useReportRetryWait(Math.max(retryAt, lastRetryAt));
   const data = blocked ? undefined : read.data;
   const forbidden = blocked === 'forbidden' || readStatus(read.error) === 403;
   const noScope = blocked === 'scope' || data?.hasDataPermission === false;

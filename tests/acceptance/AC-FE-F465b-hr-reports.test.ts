@@ -226,6 +226,24 @@ describe('AC-FE-F465b / DEC-763/802/803 组织员工报表', () => {
     expect(urls.some((u) => u.includes('/hr-analysis/roster?'))).toBe(true);
     expect(urls.some((u) => u.includes('/reports/roster'))).toBe(false);
   });
+  it('AC-FE-F465b 统计报表按同一回执本地翻页，不重读原查询', async () => {
+    const report = qualityPage();
+    data = {
+      ...report,
+      rows: Array.from({ length: 21 }, (_, index) => ({
+        ...report.rows[0]!,
+        organizationId: `ZZ_FER2F_${index + 1}`,
+        organizationName: `ZZ_FER2F_机构_${index + 1}`,
+      })),
+    };
+    await render('quality');
+    const before = urls.length;
+    const next = host.querySelector('.ant-pagination-next button') as HTMLButtonElement;
+    await act(async () => next.click());
+    await settle();
+    expect(text()).toContain('ZZ_FER2F_机构_21');
+    expect(urls).toHaveLength(before);
+  });
   it('导出使用已经查询的日期和筛选，移除分页；查询草稿不改变导出', async () => {
     vi.stubGlobal('URL', URL);
     URL.createObjectURL = vi.fn(() => 'blob:synthetic');
