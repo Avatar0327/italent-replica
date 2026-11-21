@@ -1,6 +1,6 @@
 /** F-481 §4.3/6.3：逐条回执，只捕获明确业务拒绝；存储/通知失败整条事务回滚。 */
 import { and, desc, eq, esignTasks, sql, type Tx } from '@italent/db';
-import { ESIGN_SCENE_LABEL, esignFileLabel, ESIGN_REMIND_TEMPLATE, ESIGN_NOTICE_BUSINESS_TYPE } from '@italent/domain';
+import { ESIGN_REMIND_TEMPLATE, ESIGN_NOTICE_BUSINESS_TYPE } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import type { ModuleScope } from '../permission/module-access.js';
@@ -8,7 +8,9 @@ import { auditEmployment } from '../employment/context.js';
 import { notifyMessage } from '../approval/notifications.js';
 import { applySignEvent, type SignTask } from './sign-events.js';
 import { simulatedProvider } from './provider.js';
-import { presentRecord, recordScope, taskFiles, loadVisibleSignTask } from './record-access.js';
+import { reminderPayload } from './notice-payload.js';
+import { signTaskSourceAudit } from './task-source.js';
+import { presentRecord, recordScope, loadVisibleSignTask } from './record-access.js';
 
 export interface RecordQuery {
   tab: 'all' | 'signing' | 'completed';
@@ -57,7 +59,6 @@ export async function remindTask(tx: Tx, ctx: ScopeBusinessContext, task: SignTa
   const recipient = node === 'employee' ? task.employeeSignerUserId : task.initiatorUserId;
   if (!recipient) throw new AppError('CONFLICT', '签署任务不允许此操作', { reason: 'ESIGN_TASK_CLOSED' });
   await simulatedProvider.remind({ tenantId: ctx.tenantId, taskId: task.id, providerRef: task.providerRef, node });
-  const files = await taskFiles(tx, ctx.tenantId, task.id);
   await notifyMessage(
     tx,
     ctx,
@@ -65,10 +66,8 @@ export async function remindTask(tx: Tx, ctx: ScopeBusinessContext, task: SignTa
     {
       recipientUserId: recipient,
       templateCode: ESIGN_REMIND_TEMPLATE,
-      payload: {
-        场景: ESIGN_SCENE_LABEL,
-        文件名称: esignFileLabel(files.map((f) => f.templateName)),
-        截止时间: new Intl.DateTimeFormat('zh-CN', {
+      payload: await reminderPayload(tx, ctx.tenantId, task, () =>
+        new Intl.DateTimeFormat('zh-CN', {
           timeZone: ctx.timezone,
           year: 'numeric',
           month: '2-digit',
@@ -77,7 +76,7 @@ export async function remindTask(tx: Tx, ctx: ScopeBusinessContext, task: SignTa
           minute: '2-digit',
           hour12: false,
         }).format(task.expiresAt),
-      },
+      ),
     },
   );
   await auditEmployment(
@@ -87,7 +86,7 @@ export async function remindTask(tx: Tx, ctx: ScopeBusinessContext, task: SignTa
     'esign-task',
     task.id,
     null,
-    { recipientUserId: recipient, method: 'manual' },
+    { ...signTaskSourceAudit(task), recipientUserId: recipient, method: 'manual' },
     undefined,
     undefined,
     { employeeId: task.employeeId, orgId: task.ownerDepartmentId },

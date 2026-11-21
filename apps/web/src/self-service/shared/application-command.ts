@@ -9,6 +9,11 @@ export interface ApplicationCommand {
   /** 仅保留本次表单可见值，不用缓存替代后续草稿读取。 */
   summary: Readonly<Record<string, unknown>>;
 }
+/**
+ * F-110：抽屉入口已按内核状态处理本次命令（未确认锁定、存储不可用等），内部表单不再另行锁定或报错：
+ * 抽屉隐藏并禁用表单直到结果确认，确定失败后表单输入原样可改。
+ */
+export class ApplicationCommandHandled extends Error {}
 export type ApplicationCommandRunner = (
   command: ApplicationCommand,
   execute: () => Promise<TransferBusiness>,

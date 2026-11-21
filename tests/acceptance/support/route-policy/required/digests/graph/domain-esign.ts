@@ -7,6 +7,7 @@ import type { Graph } from '../../../evidence-graph.js';
 export const GRAPH: Graph = {
   'packages/domain/src/esign/events.ts#isTerminal': ['#TERMINAL_STATUSES'],
   'packages/domain/src/esign/events.ts#nextSignState': ['#isTerminal'],
+  'packages/domain/src/esign/failure.ts#isEsignFailureReason': ['#ESIGN_FAILURE_REASONS'],
   'packages/domain/src/esign/notice-templates.ts#ESIGN_NOTICE_TEMPLATES': [
     '#ESIGN_COMPLETED_EMPLOYEE_TEMPLATE',
     '#ESIGN_COMPLETED_INITIATOR_TEMPLATE',
@@ -14,7 +15,20 @@ export const GRAPH: Graph = {
     '#ESIGN_REVOKED_EMPLOYEE_TEMPLATE',
     '#ESIGN_REVOKED_INITIATOR_TEMPLATE',
   ],
-  'packages/domain/src/esign/notice-templates.ts#renderEsignNotice': ['#ESIGN_NOTICE_TEMPLATES', '#fill'],
+  'packages/domain/src/esign/notice-templates.ts#SOURCE_NOTICE_BODIES': [
+    '#ESIGN_COMPLETED_EMPLOYEE_TEMPLATE',
+    '#ESIGN_COMPLETED_INITIATOR_TEMPLATE',
+    '#ESIGN_REMIND_TEMPLATE',
+    '#ESIGN_REVOKED_EMPLOYEE_TEMPLATE',
+    '#ESIGN_REVOKED_INITIATOR_TEMPLATE',
+  ],
+  'packages/domain/src/esign/notice-templates.ts#renderEsignNotice': [
+    '#ESIGN_NOTICE_TEMPLATES',
+    '#SOURCE_NOTICE_BODIES',
+    '#SOURCE_SCENE_LABELS',
+    '#TASK_NUMBER',
+    '#fill',
+  ],
   'packages/domain/src/esign/source-events.ts#classifyOfferChange': ['#isOfferSignable'],
   'packages/domain/src/esign/source-events.ts#isOfferSignable': ['#SIGNABLE_OFFER_STATUSES'],
   'packages/domain/src/esign/variables.ts#renderTemplateBody': [

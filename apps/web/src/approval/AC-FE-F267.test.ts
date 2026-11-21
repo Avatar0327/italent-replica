@@ -6,6 +6,10 @@ import { SessionProvider } from '../foundation/Session.js';
 import { ApprovalDetail } from './ApprovalDetail.js';
 import { approvalRequest } from './api.js';
 import type { ApprovalDetail as Detail } from './types.js';
+import { installWebLocks } from '../../../../tests/acceptance/support/web-locks.js';
+
+// F-110 第 3 轮：调动 / 审批命令登记恢复记录须拿跨标签页锁，测试环境装一份 Web Locks。
+installWebLocks();
 
 let root: ReturnType<typeof createRoot>;
 let host: HTMLDivElement;

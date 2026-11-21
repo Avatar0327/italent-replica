@@ -20,7 +20,7 @@ export function CommandStatus({
   /** 冲突差异按字段显示引用名等内容；未配置的字段沿用默认显示。 */
   renderers?: FieldRenderers;
 }) {
-  const { state, reload, confirm } = submission;
+  const { state, confirm } = submission;
   if (submission.blocked && !state) return <Alert type="warning" showIcon message={m.blocked} />;
   if (!state || ['idle', 'done'].includes(state.status)) return null;
   let message = m[state.status as 'submitting' | 'unknown' | 'conflict'];
@@ -31,15 +31,10 @@ export function CommandStatus({
         type={state.status === 'rejected' ? 'error' : 'warning'}
         showIcon
         message={message}
-        action={
-          reload &&
-          ['conflict', 'unknown'].includes(state.status) && (
-            <Button loading={state.reading} onClick={() => void reload()}>
-              {state.status === 'conflict' ? m.reload : m.original}
-            </Button>
-          )
-        }
+        action={<StatusActions submission={submission} />}
       />
+      {state.status === 'unknown' && state.restored && <Alert type="info" showIcon message={m.restored} />}
+      {state.status === 'unknown' && state.resultPending && <Alert type="info" showIcon message={m.resultPending} />}
       {!!state.readError && <Alert type="error" message={m.failedRead} />}
       {state.status === 'conflict' && state.latest && (
         <>
@@ -86,6 +81,25 @@ export function CommandStatus({
             />
           }
         />
+      )}
+    </Space>
+  );
+}
+/** F-110：结果未知给“查询结果”（按原命令 ID）；从恢复记录载入的命令（刷新前、别的标签页）没有可对的表单，不给回查原单。 */
+function StatusActions({ submission }: { submission: CommandForm }) {
+  const { state, reload, queryResult } = submission;
+  if (!state) return null;
+  return (
+    <Space>
+      {queryResult && state.status === 'unknown' && (
+        <Button type="primary" loading={state.reading} onClick={() => void queryResult()}>
+          {m.query}
+        </Button>
+      )}
+      {reload && ['conflict', 'unknown'].includes(state.status) && !state.restored && (
+        <Button loading={state.reading} onClick={() => void reload()}>
+          {state.status === 'conflict' ? m.reload : m.original}
+        </Button>
       )}
     </Space>
   );

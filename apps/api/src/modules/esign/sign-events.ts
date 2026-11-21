@@ -20,6 +20,8 @@ import type { EmploymentContext } from '../employment/types.js';
 import { rowsOf } from '../employment/record-store.js';
 import { notifyMessage } from '../approval/notifications.js';
 import { simulatedProvider } from './provider.js';
+import { minimalSignNotice } from './notice-payload.js';
+import { signTaskSourceAudit } from './task-source.js';
 
 export type SignTask = typeof esignTasks.$inferSelect;
 
@@ -68,7 +70,7 @@ export async function applySignEvent(
       undefined,
       { employeeId: task.employeeId, orgId: task.ownerDepartmentId },
     );
-  const after = { status: next.status, currentNode: next.currentNode, businessId: task.businessId };
+  const after = { status: next.status, currentNode: next.currentNode, ...signTaskSourceAudit(task) };
   if (event.type === 'node_signed') {
     await audit('esign.task.node_signed', { ...after, node: event.node, actorUserId: event.actorUserId });
     if (next.status === 'completed') await audit('esign.task.completed', after);
@@ -82,21 +84,7 @@ export async function applySignEvent(
 }
 
 async function terminalNotices(tx: Tx, ctx: EmploymentContext, task: SignTask) {
-  const files = await tx
-    .select()
-    .from(esignTaskFiles)
-    .where(and(eq(esignTaskFiles.tenantId, ctx.tenantId), eq(esignTaskFiles.taskId, task.id)))
-    .orderBy(esignTaskFiles.seq);
-  const [employee] = rowsOf<{ name: string }>(
-    await tx.execute(sql`SELECT ${personnelHooks.currentName(ctx.tenantId, sql`e.id`, sql`e.name`)} AS name
-    FROM employment_employees e
-    WHERE e.tenant_id=${ctx.tenantId} AND e.id=${task.employeeId}::uuid`),
-  );
-  const payload = {
-    场景: ESIGN_SCENE_LABEL,
-    文件名称: esignFileLabel(files.map((f) => f.templateName)),
-    员工姓名: employee?.name ?? '--',
-  };
+  const payload = minimalSignNotice(task) ?? (await transferTerminalPayload(tx, ctx, task));
   const completed = task.status === 'completed';
   const target = { businessType: ESIGN_NOTICE_BUSINESS_TYPE, businessId: task.id };
   if (task.employeeSignerUserId)
@@ -110,4 +98,22 @@ async function terminalNotices(tx: Tx, ctx: EmploymentContext, task: SignTask) {
     templateCode: completed ? ESIGN_COMPLETED_INITIATOR_TEMPLATE : ESIGN_REVOKED_INITIATOR_TEMPLATE,
     payload,
   });
+}
+
+async function transferTerminalPayload(tx: Tx, ctx: EmploymentContext, task: SignTask) {
+  const files = await tx
+    .select()
+    .from(esignTaskFiles)
+    .where(and(eq(esignTaskFiles.tenantId, ctx.tenantId), eq(esignTaskFiles.taskId, task.id)))
+    .orderBy(esignTaskFiles.seq);
+  const [employee] = rowsOf<{ name: string }>(
+    await tx.execute(sql`SELECT ${personnelHooks.currentName(ctx.tenantId, sql`e.id`, sql`e.name`)} AS name
+    FROM employment_employees e
+    WHERE e.tenant_id=${ctx.tenantId} AND e.id=${task.employeeId}::uuid`),
+  );
+  return {
+    场景: ESIGN_SCENE_LABEL,
+    文件名称: esignFileLabel(files.map((f) => f.templateName)),
+    员工姓名: employee?.name ?? '--',
+  };
 }
