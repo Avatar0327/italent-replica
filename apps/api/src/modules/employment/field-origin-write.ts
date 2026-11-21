@@ -2,7 +2,7 @@ import { sql, type Tx } from '@italent/db';
 import { changedInputFields, requestInputFields, type FieldOriginInput } from '@italent/domain';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { derivationFields } from './field-derivations.js';
-import type { FieldOriginDraft } from './field-origin-store.js';
+import { appendFieldOrigins, type FieldOriginDraft } from './field-origin-store.js';
 import type { PreparedFormInheritance } from './inheritance.js';
 import { rowsOf, type EmploymentPayloadRow } from './record-store.js';
 import type { EmploymentContext, EmploymentRecord, NormalizedEmploymentInput } from './types.js';
@@ -107,4 +107,19 @@ export function copyFieldOrigins(previous: EmploymentRecord): FieldOriginDraft[]
     sourceRecordId: previous.id,
     sourceBusinessId: previous.id,
   }));
+}
+
+export function appendPayloadFieldOrigins(
+  tx: Tx,
+  ctx: EmploymentContext,
+  payload: Pick<EmploymentPayloadRow, 'id' | 'employeeId' | 'businessId'>,
+  recordId: string | undefined,
+  origins: readonly FieldOriginDraft[],
+) {
+  const { id: payloadVersionId, employeeId, businessId } = payload;
+  return appendFieldOrigins(
+    tx,
+    ctx,
+    origins.map((row) => ({ ...row, payloadVersionId, employeeId, businessId, recordId })),
+  );
 }

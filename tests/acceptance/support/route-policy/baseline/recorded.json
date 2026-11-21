@@ -36,6 +36,43 @@
       }
     ]
   },
+  "GET /api/tenant/commands/:commandId/result": {
+    "fixedKeys": [
+      {
+        "keys": [
+          "sourceId",
+          "taskId"
+        ]
+      }
+    ],
+    "ledger": [
+      {
+        "ledgerAdded": [],
+        "status": 200
+      },
+      {
+        "ledgerAdded": [],
+        "status": 403
+      }
+    ],
+    "outcome": [
+      {
+        "code": "FIELD_FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "NOT_FOUND",
+        "status": 404
+      },
+      {
+        "status": 200
+      }
+    ]
+  },
   "GET /api/tenant/esign/scenes/entry": {
     "fixedKeys": [
       {
