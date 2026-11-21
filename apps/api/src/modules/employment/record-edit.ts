@@ -7,14 +7,16 @@ import { queueTransferLinkage, validateTransferSubordinates } from './transfer-l
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { requestInputFields, tenantLocalDate, type FieldOriginKind } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { getCustomFieldsForInheritance } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
 import { isExitKind, requireExitPermission } from './exit-gate.js';
 import { normalizeBusinessPatch, validateCustomValue } from './fields.js';
 import { isForwardEditSupported, type ForwardEditEntry, type ForwardFieldChange } from './forward-rules.js';
-import { appendForwardPayload } from './forward-store.js';
+import { appendForwardPayload, forwardFieldCode, systemForwardOrigins } from './forward-store.js';
+import { loadFieldOrigins, type FieldOriginDraft } from './field-origin-store.js';
+import { appendPayloadFieldOrigins, originActorKind } from './field-origin-write.js';
 import { forwardUpdateEmployment } from './forward-update.js';
 import { sequenceForNewPost } from './inheritance.js';
 import { loadEmploymentRecord } from './read-model.js';
@@ -100,10 +102,31 @@ export async function editEmploymentRecord(
   const afterAudit = { ...after.fields, ...customAudit(after.customFields) };
   const changes: ForwardFieldChange[] = Object.entries(afterAudit)
     .filter(
-      ([field, value]) => JSON.stringify(beforeAudit[field as keyof typeof beforeAudit]) !== JSON.stringify(value),
+      ([field, value]) =>
+        JSON.stringify(beforeAudit[field as keyof typeof beforeAudit] ?? null) !== JSON.stringify(value),
     )
     .map(([field, value]) => ({ field, before: beforeAudit[field as keyof typeof beforeAudit] ?? null, after: value }));
-  if (!changes.length) return requireSavedBusiness(tx, ctx, id);
+  const named = requestInputFields(patch);
+  const linkage = options.linkageDate !== undefined;
+  const systemEdit = linkage || originActorKind(ctx, business, {}) === 'system-input';
+  const confirmed = systemEdit ? [] : await confirmedRecordOrigins(tx, ctx, record, named, changes);
+  if (!changes.length) {
+    if (named.size && !systemEdit) {
+      await appendPayloadFieldOrigins(tx, ctx, business.payload, id, confirmed);
+      await auditEmployment(
+        tx,
+        ctx,
+        'employment.record.intent_confirmed',
+        'employment-record',
+        id,
+        null,
+        null,
+        business.payload.id,
+        { fields: [...named] },
+      );
+    }
+    return requireSavedBusiness(tx, ctx, id);
+  }
   // REQ-EMP-003 / 07 A7：历史、兼职、批量编辑只改本记录不传播；控编投影按同一判断，不模拟不会发生的传播（S1-P2-04）。
   const propagates = options.forwardUpdate !== false && isForwardEditSupported({ ...record, entry, today });
   if (await affectsEstablishmentOccupancy(tx, ctx, record.fields, after.fields, record.effectiveDate))
@@ -122,7 +145,10 @@ export async function editEmploymentRecord(
       },
       entry === 'import' ? (options.establishmentWarnings ?? []) : undefined,
     );
-  business.payload = await appendForwardPayload(tx, ctx, business.payload, after, id, true, changes);
+  const origins = systemEdit
+    ? systemForwardOrigins(changes, linkage ? 'employment.linkage' : 'employment.record.edit', linkage ? undefined : id)
+    : [...editedRecordOrigins(changes, named, after.fields, id), ...confirmed];
+  business.payload = await appendForwardPayload(tx, ctx, business.payload, after, id, true, changes, origins);
   await auditEmployment(tx, ctx, 'employment.record.edit', 'employment-record', id, beforeAudit, afterAudit);
   if (propagates) {
     await forwardUpdateEmployment(tx, ctx, {
@@ -141,6 +167,64 @@ export async function editEmploymentRecord(
   await reconcileCompletion(tx, ctx, business.employeeId);
   await bumpAndNotifyEntry(tx, ctx, business, record);
   return requireSavedBusiness(tx, ctx, id);
+}
+
+function editedRecordOrigins(
+  changes: readonly ForwardFieldChange[],
+  named: ReadonlySet<string>,
+  fields: EmploymentRecord['fields'],
+  businessId: string,
+): FieldOriginDraft[] {
+  const origins: FieldOriginDraft[] = [];
+  for (const { field, after } of changes) {
+    const fieldCode = forwardFieldCode(field);
+    if (named.has(fieldCode)) {
+      origins.push({ fieldCode, originKind: 'hr-record', value: after });
+    } else if (field === 'sequenceId' && fields.postId) {
+      // 未点名序列时，editedValues 中唯一能改写序列的是 DEC-107 职务派生。
+      origins.push({
+        fieldCode,
+        originKind: 'derive-edit',
+        value: after,
+        derivationRule: 'post-sequence',
+        referenceId: fields.postId,
+        sourceBusinessId: businessId,
+      });
+    }
+  }
+  return origins;
+}
+
+const MANUAL_ORIGINS: ReadonlySet<FieldOriginKind> = new Set([
+  'hr-record',
+  'hr-input',
+  'approval-edit',
+  'employee-input',
+  'retain',
+]);
+
+async function confirmedRecordOrigins(
+  tx: Tx,
+  ctx: EmploymentContext,
+  record: EmploymentRecord,
+  named: ReadonlySet<string>,
+  changes: readonly ForwardFieldChange[],
+) {
+  // DEC-252③：只把稀疏请求里点名的同值字段固定为人工覆盖。
+  const changed = new Set(changes.map(({ field }) => forwardFieldCode(field)));
+  const same = [...named].filter((fieldCode) => !changed.has(fieldCode));
+  const states = await loadFieldOrigins(tx, ctx, record.id, same);
+  const rows: FieldOriginDraft[] = [];
+  for (const fieldCode of same) {
+    const value = fieldCode.startsWith('custom:')
+      ? (record.customFields[fieldCode.slice('custom:'.length)] ?? null)
+      : record.fields[fieldCode.slice('preset:'.length) as keyof EmploymentRecord['fields']];
+    const writer = states.get(fieldCode)?.lastWriter;
+    if (writer && MANUAL_ORIGINS.has(writer.originKind) && JSON.stringify(writer.value) === JSON.stringify(value))
+      continue;
+    rows.push({ fieldCode, originKind: 'hr-record', value });
+  }
+  return rows;
 }
 
 /**

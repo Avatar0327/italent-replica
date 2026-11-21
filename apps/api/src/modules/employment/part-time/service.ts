@@ -24,7 +24,7 @@ import { validateSelectedEmploymentType } from '../employment-types.js';
 import { validateSelectedEmploymentForm } from '../employment-forms.js';
 import { sequenceForNewPost } from '../field-derivations.js';
 import type { ForwardFieldChange } from '../forward-rules.js';
-import { appendForwardPayload } from '../forward-store.js';
+import { appendForwardPayload, systemForwardOrigins } from '../forward-store.js';
 import {
   lockEmploymentBusiness,
   lockEmploymentEmployee,
@@ -355,6 +355,7 @@ async function writePartTimeEdit(
       row.id,
       true,
       changes,
+      systemForwardOrigins(changes, 'employment.part_time.edit', row.id),
     );
     if (!plan.endChanged) revision = await bumpPartTimeRevision(tx, ctx, row);
     await auditEmployment(

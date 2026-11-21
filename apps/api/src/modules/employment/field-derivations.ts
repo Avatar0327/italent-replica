@@ -17,6 +17,16 @@ const rules = {
 } as const;
 export const derivationFields = (origin: FieldDerivation) => rules[origin.rule];
 
+export function changedDerivationKeys(before: PresetFields, after: PresetFields) {
+  return (Object.keys(rules) as DerivationRule[]).flatMap((rule) => {
+    const { field, reference } = rules[rule];
+    const referenceId = after[reference];
+    return referenceId && referenceId !== before[reference] && after[field] !== before[field]
+      ? [{ rule, referenceId, fieldCode: `preset:${field}` }]
+      : [];
+  });
+}
+
 /**
  * DEC-107：显式序列包含 null 均优先。
  * TODO(需取证 #42)：职务未配置序列时是否清空尚未实测，沿用不带出、保留原值。
