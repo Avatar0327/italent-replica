@@ -3,6 +3,7 @@
     "approval.businessType": [
       "contract",
       "employment",
+      "entry_info_collection",
       "exit_handover",
       "idp",
       "offer",

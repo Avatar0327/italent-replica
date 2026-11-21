@@ -1,9 +1,10 @@
+import { ENTRY_INFO_COLLECTION_PROCESS } from '../onboarding/permission.js';
 import { ROUTE_END } from './routes.js';
 import { approverSource } from './sources.js';
 import { CONTRACT_FIELDS } from '../contracts/rules.js';
 /**
  * 出厂预置流程（DEC-018 / DEC-094 / DEC-116）：全部审批类型都有草稿预置，租户开通时配置异常管理员后发布（R1-T17）；
- * 例外：组织调整预置取人口径是推断（DEC-644 A-2），只装草稿、不随开通发布（publishOnProvision）。
+ * 组织调整（DEC-644 A-2）与入职前信息采集（R2-T01 §4.1）只装草稿，由租户确认节点取人后发布。
  * 有标准流程编码的类型都带“流程编码 = 标准编码”发起条件（`14` §11.1）。调动按本租户已取证的节点结构（`14` §2、§8.2、
  * §8.3，开关按 §11.10 更正）与 TransferDetailView 已交付字段（§11.2，DEC-118）预置；离职按 §8.5 取证的
  * “直接上级 → HR 访谈”结构，直接上级取最新生效主职任职的直线经理（DEC-230）；
@@ -580,6 +581,24 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       priority: 0,
       ...standardCondition('emp_info_change'),
       nodes: [node('hrbp', 'HRBP审核', 'latest_record_department_hrbp', { formFields: [] })],
+    }),
+  },
+  {
+    presetKey: 'standard_entry_info_collection',
+    code: ENTRY_INFO_COLLECTION_PROCESS,
+    approvalType: 'entry_info_collection',
+    publishOnProvision: false,
+    definition: draft({
+      name: '标准入职前信息采集流程',
+      description: '出厂草稿，租户确认审批人和可见字段后发布',
+      priority: 0,
+      ...standardCondition('entry_info_collection'),
+      nodes: [
+        node('hr_review', 'HR审核', 'approval_subject_org_hrbp', {
+          formFields: APPROVAL_TYPES.entry_info_collection.formFields,
+          noAssignee: 'none',
+        }),
+      ],
     }),
   },
   // IDP-R1：预置三条子流程审批流程（制定计划 / 中期回顾 / 期末回顾），节点照原站 W-114 节点链：
