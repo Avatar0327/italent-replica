@@ -42,9 +42,10 @@ it('AC-EMP-26 DEC-973：编制投影对已摘下的记录快照应保留原工�
   });
   expect(edited.status, await edited.clone().text()).toBe(200);
   const hire = (await x.session.records(employee.id, '2026-10-06')).find(({ kind }) => kind === 'hire')!;
+  const { revision: hireRevision } = await x.business(hire.id);
   const batch = await x.session.request('POST', '/records/batch-edit', {
     body: {
-      items: [{ id: hire.id, revision: hire.revision }],
+      items: [{ id: hire.id, revision: hireRevision }],
       patch: { fields: { place: '退休前新地点' } },
     },
   });
