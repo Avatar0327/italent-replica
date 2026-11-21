@@ -1,3 +1,4 @@
+import { LIFECYCLE_INSTANCE_STATUSES } from './source-usages.js';
 import { resolveSource, previousApproved, limitApprovers } from './source-resolver.js';
 /**
  * 审批流转引擎：发起 / 重提 / 节点推进 / 结束。节点逐个激活：先按表达式解析审批人，再按 decideNode 处理
@@ -54,7 +55,12 @@ import {
 } from './activations.js';
 import { viewableWithForeign } from './foreign-fields.js';
 import { approvalError, auditApproval, emitOutbox, type ApprovalContext, type Row } from './context.js';
-import { assertResumable, lockBoundProcess, registerResumeCheck } from './auto-variable-lifecycle.js';
+import {
+  assertResumable,
+  lockBoundProcess,
+  registerResumeCheck,
+  registerRetirement,
+} from './auto-variable-lifecycle.js';
 import { variableIdsOf } from './auto-variables.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import { candidates, conditionContext, evaluate, noProcessMessage, replicaMatch } from './matching.js';
@@ -165,6 +171,16 @@ export async function persistRun(tx: Tx, run: Run, action: string, created = fal
   else if (run.instance.businessVersion !== run.before.businessVersion)
     run.instance = { ...run.instance, dashboardDate: run.snapshot.dashboardDate ?? null };
   const saved = await updateInstance(tx, run.ctx, run.before, run.instance);
+  if (
+    LIFECYCLE_INSTANCE_STATUSES.some((status) => status === run.before.status) &&
+    !LIFECYCLE_INSTANCE_STATUSES.some((status) => status === saved.status)
+  ) {
+    registerRetirement(tx, run.ctx, [saved.versionId], {
+      kind: 'instance',
+      instanceId: saved.id,
+      status: saved.status,
+    });
+  }
   await auditApproval(tx, run.ctx, {
     action,
     objectType: 'approval-instance',

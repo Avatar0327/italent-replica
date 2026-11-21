@@ -194,69 +194,68 @@ async function replacePendingEntry(
     (previousContract && input.syncContract
       ? { ...previousContract, startDate: input.effectiveDate }
       : previousContract);
-  await transitionEmployment(tx, ctx, { id: record.id, action: 'delete' });
-  await clearPendingContract(tx, ctx, record.id);
-  const employee = await lockEmploymentEmployee(tx, ctx, record.employeeId);
-  const created = await createEmploymentBusiness(
-    tx,
-    { ...ctx, expectedRevision: employee.revision },
-    record.employeeId,
-    {
-      // 保留原业务类型（hire / rehire / retire_rehire）与表单标识：重聘、返聘改期后仍是重聘、返聘
-      kind: record.kind,
-      mode: 'direct',
-      formId: business.payload.formId,
-      effectiveDate: input.effectiveDate,
-      fields:
-        (input.offer ?? input.employType)
-          ? { ...(input.offer?.fields ?? record.fields), ...(input.employType ? { employType: input.employType } : {}) }
-          : record.fields,
-      customFields: record.customFields,
-    },
-    {
-      retainedEmploymentForm: record.fields.employmentForm,
-      entry: {
-        pendingEntry: true,
-        entryStatus: input.entryStatus,
-        ...(probation === null ? {} : { probation }),
-        ...(probationMonths === undefined ? {} : { probationMonths }),
-        pendingContract: contract,
+  const fields = input.offer?.fields ?? record.fields;
+  return transitionEmployment(tx, ctx, { id: record.id, action: 'delete' }, async () => {
+    await clearPendingContract(tx, ctx, record.id);
+    const employee = await lockEmploymentEmployee(tx, ctx, record.employeeId);
+    const created = await createEmploymentBusiness(
+      tx,
+      { ...ctx, expectedRevision: employee.revision },
+      record.employeeId,
+      {
+        // 保留原业务类型（hire / rehire / retire_rehire）与表单标识：重聘、返聘改期后仍是重聘、返聘
+        kind: record.kind,
+        mode: 'direct',
+        formId: business.payload.formId,
+        effectiveDate: input.effectiveDate,
+        fields: input.employType ? { ...fields, employType: input.employType } : fields,
+        customFields: record.customFields,
       },
-    },
-  );
-  await logEntryAction(tx, ctx, {
-    employeeId: record.employeeId,
-    businessId: created.id,
-    previousBusinessId: record.id,
-    action: input.action,
-    remark: input.remark,
-    fromDate: record.effectiveDate,
-    toDate: input.effectiveDate,
-  });
-  await auditEmployment(
-    tx,
-    ctx,
-    `employment.entry.${input.action}`,
-    'employment-business',
-    created.id,
-    {
-      businessId: record.id,
-      effectiveDate: record.effectiveDate,
-      entryStatus: record.entryStatus,
-      probation: previousProbation,
-      ...pendingContractAudit(previousContract),
-      ...(input.employType ? { employType: record.fields.employType } : {}),
-    },
-    {
+      {
+        retainedEmploymentForm: record.fields.employmentForm,
+        entry: {
+          pendingEntry: true,
+          entryStatus: input.entryStatus,
+          ...(probation === null ? {} : { probation }),
+          ...(probationMonths === undefined ? {} : { probationMonths }),
+          pendingContract: contract,
+        },
+      },
+    );
+    await logEntryAction(tx, ctx, {
+      employeeId: record.employeeId,
       businessId: created.id,
-      effectiveDate: input.effectiveDate,
-      entryStatus: input.entryStatus,
-      probation,
-      ...pendingContractAudit(contract),
-      ...(input.employType ? { employType: input.employType } : {}),
-    },
-  );
-  return { business: created, contract };
+      previousBusinessId: record.id,
+      action: input.action,
+      remark: input.remark,
+      fromDate: record.effectiveDate,
+      toDate: input.effectiveDate,
+    });
+    await auditEmployment(
+      tx,
+      ctx,
+      `employment.entry.${input.action}`,
+      'employment-business',
+      created.id,
+      {
+        businessId: record.id,
+        effectiveDate: record.effectiveDate,
+        entryStatus: record.entryStatus,
+        probation: previousProbation,
+        ...pendingContractAudit(previousContract),
+        ...(input.employType ? { employType: record.fields.employType } : {}),
+      },
+      {
+        businessId: created.id,
+        effectiveDate: input.effectiveDate,
+        entryStatus: input.entryStatus,
+        probation,
+        ...pendingContractAudit(contract),
+        ...(input.employType ? { employType: input.employType } : {}),
+      },
+    );
+    return { business: created, contract };
+  });
 }
 
 /**

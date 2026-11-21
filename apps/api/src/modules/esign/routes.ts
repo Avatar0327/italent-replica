@@ -1,5 +1,6 @@
 import { registerESignTaskRoutes } from './task-routes.js';
 import { registerESignDeletion } from './deletion.js';
+import { registerESignSourceLifecycle } from './source-lifecycle.js';
 import { registerESignRecordRoutes } from './record-routes.js';
 /**
  * 调动电子签署配置路由（F-481 设计 §3.2、§5.4、§10；S1 契约片）。对象 TenantBase.ESignSettings（配置对象，无数据范围）。
@@ -94,6 +95,7 @@ async function write(
 
 export function registerESignRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerESignDeletion();
+  registerESignSourceLifecycle();
   registerESignRecordRoutes(router, deps);
   registerESignTaskRoutes(router, deps);
   router.get(`${ESIGN_BASE}/templates`, async (c) => {
