@@ -6,9 +6,16 @@
  * asOf 是业务有效日：状态、载荷、时间轴都取查询时的当前数据，只有“已提交 / 已存在”与人事版本按 asOf 当日结束（租户时区）折算。
  */
 import { sql, type Tx } from '@italent/db';
-import { EMPLOYEE_STATUS, type RetirementBillView, type RetirementPersonView } from '@italent/domain';
+import { CONTRACT_OBJECT, EMPLOYEE_STATUS, type RetirementBillView, type RetirementPersonView } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
+import type { TenantRouteDeps } from '../../routes.js';
+import {
+  authorizeInTransaction,
+  getModuleViewableFieldsInTransaction,
+  resolveModuleScopeInTransaction,
+} from '../permission/module-access.js';
 import { employmentCreator } from './context.js';
+import { entryContractSchema } from './entry-contract-schema.js';
 // 顶层表读的依赖表取自叶子模块，不取 exit-queries（导入环上，加载顺序见 exit-dependencies.ts 文件头）
 import { EXIT_RESPONSE_DEPENDENCIES, EXIT_SORT_DEPENDENCIES, on, type Dependency } from './exit-dependencies.js';
 import { exitListOrder } from './exit-list-order.js';
@@ -28,8 +35,11 @@ import {
   viewPredicate,
 } from './exit-queries.js';
 import { personnelHooks } from './personnel-hooks.js';
-import type { EmploymentScope, PageQuery } from './types.js';
-import { employmentVisibilitySql } from './visibility.js';
+import { retirementRestoreActions } from './retirement-actions.js';
+import { loadRetirementRequest } from './retirement-application.js';
+import type { RehirePlan } from './retirement-rehire.js';
+import { PRESET_FIELD_NAMES, type EmploymentContext, type EmploymentScope, type PageQuery } from './types.js';
+import { employmentVisibilitySql, isEmploymentRecordVisible } from './visibility.js';
 
 export interface RetirementAsOf {
   /** 业务有效日 YYYY-MM-DD。 */
@@ -119,10 +129,12 @@ function withoutLeaveOnly<T extends object>(value: T): Record<string, unknown> {
   return kept;
 }
 
-function toRetirementItem(row: RetirementRow) {
+async function toRetirementItem(tx: Tx, row: RetirementRow, restore: EmploymentContext | undefined) {
   const { retireType, reEmployed, expectedRetirementDate, submittedAt: _submittedAt, ...exit } = row;
+  const item = toItem(exit);
   return withoutLeaveOnly({
-    ...toItem(exit),
+    ...item,
+    ...(await retirementRestoreActions(tx, restore, item)),
     retireType,
     reEmployed: reEmployed ?? false,
     expectedRetirementDate,
@@ -152,6 +164,7 @@ export async function listRetirementBills(
     readonly filter?: RetirementViewFilter;
   },
   scope: EmploymentScope | undefined,
+  restore?: EmploymentContext,
 ) {
   const rule = BILL_SORT[input.view];
   const order = rule.anyOf.some(input.show.employment) ? rule.order : exitListOrder('businessId').order;
@@ -166,8 +179,13 @@ export async function listRetirementBills(
     ),
     input.page,
   );
-  const trim = (row: RetirementRow) => trimWith(RETIREMENT_RESPONSE_DEPENDENCIES, toRetirementItem(row), input.show);
-  return { total, items: rows.filter((row) => row.id).map(trim) };
+  const items = [];
+  for (const row of rows) {
+    if (!row.id) continue;
+    const item = await toRetirementItem(tx, row, restore);
+    items.push(trimWith(RETIREMENT_RESPONSE_DEPENDENCIES, item, input.show));
+  }
+  return { total, items };
 }
 
 /** 详情：范围外 / 不存在 / 非退休单一律 null（调用方 404）；离职专用列不输出。 */
@@ -185,8 +203,52 @@ export async function loadRetirementDetail(
   return { ...detail, retireType, reEmployed: reEmployed ?? false, expectedRetirementDate };
 }
 
-export function trimRetirementDetail(
+const contractField = (field: string): Dependency => ({ field, object: 'contract' });
+const REHIRE_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = {
+  rehire: on('reEmployed'),
+  'rehire.fields': on('reEmployed'),
+  'rehire.customFields': on('reEmployed'),
+  'rehire.entry': on('reEmployed'),
+  'rehire.formId': on('formId'),
+  ...Object.fromEntries(PRESET_FIELD_NAMES.map((field) => [`rehire.fields.${field}`, on(field)])),
+  'rehire.fields.addedSubordinateIds[]': on('addedSubordinateIds'),
+  'rehire.entry.probation': on('probation'),
+  'rehire.entry.probationMonths': on('probationMonths'),
+  'rehire.entry.probationEndDate': on('probationEndDate'),
+  'rehire.contract': on('reEmployed'),
+  'rehire.contract.customFields': on('reEmployed'),
+  ...Object.fromEntries(
+    Object.keys(entryContractSchema.shape)
+      .filter((field) => field !== 'customFields')
+      .map((field) => [`rehire.contract.${field}`, contractField(field)]),
+  ),
+};
+
+/** 只给已通过当前退休单读范围的详情调用；计划中的合同还要按合同对象当前查看权限及员工范围裁剪。 */
+export async function retirementRehireDetail(
+  tx: Tx,
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
   detail: NonNullable<Awaited<ReturnType<typeof loadRetirementDetail>>>,
+  show: ExitViewable,
+): Promise<{ rehire?: RehirePlan | null; contract?: ExitViewable['contract'] }> {
+  if (!show.employment('reEmployed')) return {};
+  const request = detail.reEmployed ? await loadRetirementRequest(tx, ctx.tenantId, detail.id) : undefined;
+  if (!request?.reEmployed || !request.rehirePlan) return { rehire: null };
+  const { contract, ...plan } = request.rehirePlan;
+  if (!contract) return { rehire: plan };
+
+  const authorize = authorizeInTransaction(deps.authorize, tx);
+  if (!(await authorize({ ...ctx, action: 'object.view', resource: CONTRACT_OBJECT }))) return { rehire: plan };
+  const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`);
+  const owner = { employeeId: detail.employeeId, departmentId: null, creatorId: null };
+  if (!(await isEmploymentRecordVisible(tx, ctx.tenantId, scope, owner))) return { rehire: plan };
+  const fields = await getModuleViewableFieldsInTransaction(deps, ctx, CONTRACT_OBJECT, tx);
+  return { rehire: { ...plan, contract }, contract: (field) => fields === undefined || fields.has(field) };
+}
+
+export function trimRetirementDetail(
+  detail: NonNullable<Awaited<ReturnType<typeof loadRetirementDetail>>> & { readonly rehire?: RehirePlan | null },
   show: ExitViewable,
 ) {
   const { submittedAt: _submittedAt, ...payload } = exitDetailPayload(detail) as ReturnType<
@@ -194,7 +256,21 @@ export function trimRetirementDetail(
   > & {
     submittedAt?: unknown;
   };
-  return trimWith(RETIREMENT_RESPONSE_DEPENDENCIES, withoutLeaveOnly(payload), show);
+  const rehire = detail.rehire;
+  const rules = {
+    ...RETIREMENT_RESPONSE_DEPENDENCIES,
+    ...REHIRE_RESPONSE_DEPENDENCIES,
+    ...Object.fromEntries(
+      Object.keys(rehire?.customFields ?? {}).map((id) => [`rehire.customFields.${id}`, on(`custom:${id}`)]),
+    ),
+    ...Object.fromEntries(
+      Object.keys(rehire?.contract?.customFields ?? {}).map((id) => [
+        `rehire.contract.customFields.${id}`,
+        contractField(`custom:${id}`),
+      ]),
+    ),
+  };
+  return trimWith(rules, withoutLeaveOnly(payload), show);
 }
 
 // ---- 员工行（即将退休 / 过期未退休）-----------------------------------------------------------------------------------
