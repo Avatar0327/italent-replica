@@ -63,6 +63,7 @@ export async function regularizeIntern(
   ctx: EmploymentContext,
   employeeId: string,
   input: InternRegularizationInput,
+  options: { readonly systemInput?: true } = {},
 ): Promise<EmploymentBusiness> {
   const { probation, probationMonths, probationEndDate } = input;
   // 资格检查（intern-eligibility.ts）与员工锁、业务顺序校验都在 createEmploymentBusiness 内，与通用新增接口同一入口（F-215）
@@ -78,7 +79,7 @@ export async function regularizeIntern(
     },
     // 试用期信息由 createEmploymentBusiness 经 #391 的唯一写入口 saveEntryProbation 写入版本表（DEC-585），来源 = 实习转正；
     // 开始日 = 转正日，预计结束日不传时按月数推算，手填不得早于开始日（PROBATION_END_BEFORE_START）
-    { entry: { probation, probationMonths, probationEndDate } },
+    { ...options, entry: { probation, probationMonths, probationEndDate } },
   );
   await confirmEstablishment(tx, ctx, business, input.confirmed === true);
   return business;

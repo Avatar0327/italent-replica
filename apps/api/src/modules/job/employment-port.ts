@@ -84,6 +84,7 @@ export function employmentJobPersonnel(access?: EmploymentWriteAccess): JobPerso
       await createEmploymentBusiness(tx, employmentCtx, change.employeeId, input, {
         changeType: change.changeType,
         positionManagerDerivation: true,
+        systemInput: true,
       });
     },
   };

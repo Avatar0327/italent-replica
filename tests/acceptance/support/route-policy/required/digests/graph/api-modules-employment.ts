@@ -4239,6 +4239,19 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost': [
     'apps/api/src/modules/job/read-model.ts#loadJobObject',
   ],
+  'apps/api/src/modules/employment/field-origin-store.ts#appendFieldOrigins': ['#jsonValue'],
+  'apps/api/src/modules/employment/field-origin-write.ts#fieldOriginEditor': [
+    '#originActorKind',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/field-origin-write.ts#formFieldOrigins': [
+    'apps/api/src/modules/employment/field-derivations.ts#derivationFields',
+    'packages/domain/src/employment/field-origins.ts#changedInputFields',
+    'packages/domain/src/employment/field-origins.ts#requestInputFields',
+  ],
+  'apps/api/src/modules/employment/field-origin-write.ts#originActorKind': [
+    'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
+  ],
   'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS': ['#PRESET_FIELDS'],
   'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS': [
     'apps/api/src/modules/employment/types.ts#PRESET_FIELD_NAMES',
@@ -4447,11 +4460,17 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/inheritance.ts#applyCustomInheritance': [
     'apps/api/src/modules/employment/fields.ts#validateCustomValue',
+    '#inheritanceOrigin',
     '#owns',
   ],
   'apps/api/src/modules/employment/inheritance.ts#applyExplicitPresetFields': [
     'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields',
     '#owns',
+    '#setField',
+  ],
+  'apps/api/src/modules/employment/inheritance.ts#applyPresetInheritance': [
+    'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+    '#inheritanceOrigin',
     '#setField',
   ],
   'apps/api/src/modules/employment/inheritance.ts#employeeCode': [
@@ -4466,18 +4485,17 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/inheritance.ts#prepareInheritance': [
     'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
     'apps/api/src/modules/employment/field-derivations.ts#derivationFields',
-    'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
     'apps/api/src/modules/employment/fields.ts#businessDate',
     'apps/api/src/modules/employment/fields.ts#emptyFields',
     'apps/api/src/modules/employment/fields.ts#presetFieldsSchema',
     '#NEW_CYCLES',
     '#applyCustomInheritance',
     '#applyExplicitPresetFields',
+    '#applyPresetInheritance',
     '#employeeCode',
     '#frozenFormModes',
     '#resolveForm',
     '#selfServiceForm',
-    '#setField',
     '#snapshotForm',
     '#validateInheritedDictionaries',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
@@ -4490,6 +4508,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/inheritance.ts#restoreFrozenDefaults': [
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+    '#inheritanceOrigin',
     '#owns',
     '#setField',
   ],
@@ -4848,6 +4867,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/org-adjustment.ts#appendOrgAdjustment': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/context.ts#requireLinkedEmploymentRecord',
+    'apps/api/src/modules/employment/field-origin-write.ts#copyFieldOrigins',
     '#adjustmentInput',
     '#adjustmentSnapshot',
     '#auditAdjustmentInterval',
@@ -8464,6 +8484,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/transitions.ts#transitionPermitted',
   ],
   'apps/api/src/modules/employment/write-service.ts#appendEmploymentPayload': [
+    'apps/api/src/modules/employment/field-origin-store.ts#appendFieldOrigins',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     '#storedStatus',
   ],
@@ -8515,6 +8536,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employee-status.ts#entryStatusFor',
     'apps/api/src/modules/employment/exit-gate.ts#EXIT_GATE_PASS',
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
+    'apps/api/src/modules/employment/field-origin-write.ts#formFieldOrigins',
+    'apps/api/src/modules/employment/field-origin-write.ts#originActorKind',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
@@ -8643,6 +8666,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/cycles.ts#assertNotBeforeCurrentCycle',
     'apps/api/src/modules/employment/employee-status.ts#inheritedStatus',
     'apps/api/src/modules/employment/exit-reschedule.ts#lockExitForEdit',
+    'apps/api/src/modules/employment/field-origin-write.ts#fieldOriginEditor',
+    'apps/api/src/modules/employment/field-origin-write.ts#formFieldOrigins',
     'apps/api/src/modules/employment/fields.ts#normalizeBusinessPatch',
     'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',

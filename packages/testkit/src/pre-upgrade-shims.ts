@@ -71,6 +71,34 @@ export interface PreUpgradeTableShim {
 }
 
 export const PRE_UPGRADE_TABLE_SHIMS: readonly PreUpgradeTableShim[] = [
+  // F-036：旧结构用当前 API 造任职载荷时，来源行临时进同样受租户隔离的垫片。
+  {
+    table: 'employment_field_origins',
+    migration: 'f036_field_origins',
+    columns: [
+      { name: 'tenant_id', type: 'uuid' },
+      { name: 'id', type: 'uuid' },
+      { name: 'employee_id', type: 'uuid' },
+      { name: 'business_id', type: 'uuid' },
+      { name: 'payload_version_id', type: 'uuid' },
+      { name: 'record_id', type: 'uuid' },
+      { name: 'source_business_id', type: 'uuid' },
+      { name: 'source_record_id', type: 'uuid' },
+      { name: 'reference_id', type: 'uuid' },
+      { name: 'actor_user_id', type: 'uuid' },
+      { name: 'seq', type: 'bigint' },
+      { name: 'ref_seq', type: 'bigint' },
+      { name: 'field_code', type: 'text' },
+      { name: 'origin_kind', type: 'text' },
+      { name: 'derivation_rule', type: 'text' },
+      { name: 'reason', type: 'text' },
+      { name: 'command_id', type: 'text' },
+      { name: 'value', type: 'jsonb' },
+      { name: 'match_before', type: 'jsonb' },
+      { name: 'source_version_no', type: 'integer' },
+      { name: 'created_at', type: 'timestamp with time zone' },
+    ],
+  },
   {
     table: 'employment_probation_versions',
     migration: 'be3_probation',
