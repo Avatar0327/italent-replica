@@ -25,6 +25,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { clearedTransferFields, tenantLocalDate } from '@italent/domain';
+import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
@@ -107,6 +108,8 @@ export interface CreateEmploymentOptions {
   readonly forwardUpdate?: boolean;
   /** 变动类型只由可信的系统联动传入（如职位变更同步直线经理，F-006），不开放给请求体。 */
   readonly changeType?: ChangeType;
+  /** R2-T08 §8.3：已审批的组织调整产物只豁免人工直接调动开关。 */
+  readonly fromOrgAdjustment?: true;
   /** F-006 系统派生，不能由请求体指定。 */
   readonly positionManagerDerivation?: boolean;
   readonly establishmentWarnings?: EstablishmentWarning[];
@@ -151,7 +154,7 @@ export async function createEmploymentBusiness(
   await assertBusinessSequence(tx, ctx, employee.id, normalized);
   await resolveInFlightRegularization(tx, ctx, employee, normalized);
   assertEmployTypeUsage(normalized);
-  await assertDirectTransferAllowed(tx, ctx, employee.id, normalized);
+  await assertDirectTransferAllowed(tx, ctx, employee.id, normalized, options.fromOrgAdjustment);
   await assertDirectRegularizationIdle(tx, ctx, employee.id, normalized, options);
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
     ? undefined
@@ -593,11 +596,13 @@ async function assertDirectTransferAllowed(
   ctx: EmploymentContext,
   employeeId: string,
   input: NormalizedEmploymentInput,
+  fromOrgAdjustment?: true,
 ) {
   if (input.mode !== 'direct' || input.kind !== 'transfer') return;
-  const settings = await readEmploymentSettings(tx, ctx.tenantId);
-  if (!settings.allowDirectTransfer) {
-    throw new AppError('CONFLICT', '本租户调动须走审批', { reason: 'DIRECT_TRANSFER_DISABLED' });
+  if (!fromOrgAdjustment || !ctx.orgAdjustmentId || ctx.userId !== SYSTEM_USER_ID) {
+    const settings = await readEmploymentSettings(tx, ctx.tenantId);
+    if (!settings.allowDirectTransfer)
+      throw new AppError('CONFLICT', '本租户调动须走审批', { reason: 'DIRECT_TRANSFER_DISABLED' });
   }
   // DEC-154：调用方已锁员工，提交申请 / 审批 / 直接调动均在同一员工锁下复核最新状态（F-008）。
   const [pending] = rowsOf<{ state: string; effectiveDate: string }>(

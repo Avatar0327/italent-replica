@@ -265,14 +265,14 @@ export const GRAPH: Graph = {
     '#adminParentsAt',
     '#resolveParent',
   ],
+  'apps/api/src/modules/org-adjustment/execution-groups.ts#executionGroupsOf': [
+    '#changedAncestorCounts',
+    '#targetDepths',
+  ],
   'apps/api/src/modules/org-adjustment/execution-groups.ts#groupScope': [
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     '#resolveParent',
     'apps/api/src/modules/org/employment-linkage.ts#orgSubtreeAt',
-  ],
-  'apps/api/src/modules/org-adjustment/execution-groups.ts#loadExecutionGroups': [
-    '#changedAncestorCounts',
-    '#loadExecutionItems',
-    '#targetDepths',
   ],
   'apps/api/src/modules/org-adjustment/execution-groups.ts#loadExecutionItems': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
@@ -978,8 +978,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/schedule.ts#scheduleOrgAdjustmentExecution': [
     'apps/api/src/audit/record.ts#recordAudit',
     'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/org-adjustment/execution-groups.ts#executionGroupsOf',
     'apps/api/src/modules/org-adjustment/execution-groups.ts#groupScope',
-    'apps/api/src/modules/org-adjustment/execution-groups.ts#loadExecutionGroups',
     'apps/api/src/modules/org-adjustment/execution-groups.ts#loadExecutionItems',
     '#NEXT_DAY_HOUR',
     '#NEXT_DAY_VOLUME',

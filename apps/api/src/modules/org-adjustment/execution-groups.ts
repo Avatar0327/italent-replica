@@ -2,11 +2,12 @@
  * R2-T08 §7.4 执行组、组间顺序与涉及组织集合（§7.6 范围规则）。
  * 暂存行及其连带行不组成执行组；一组 = 一条非暂存用户明细 + 它的连带行。各明细执行器随 BE-11b～11f 接入。
  */
-import { sql, type Tx } from '@italent/db';
+import { and, eq, orgAdjustmentTransferItems, sql, type Tx } from '@italent/db';
 import { rowsOf } from '../approval/context.js';
+import { findCurrentRecord } from '../employment/read-model.js';
 import { orgSubtreeAt } from '../org/employment-linkage.js';
 
-export interface ExecutionItem {
+interface OrgExecutionItem {
   readonly id: string;
   readonly seq: number;
   readonly adjustType: 1 | 2 | 3;
@@ -19,6 +20,19 @@ export interface ExecutionItem {
   readonly addEmployment: boolean | null;
   readonly execPhase: number;
   readonly executionResult: number | null;
+}
+
+type TransferRow = typeof orgAdjustmentTransferItems.$inferSelect;
+type TransferExecutionItem = Pick<
+  TransferRow,
+  'id' | 'seq' | 'employeeId' | 'departmentId' | 'departmentItemId' | 'execPhase' | 'executionResult'
+> & { readonly adjustType: 'transfer' };
+
+export type ExecutionItem = OrgExecutionItem | TransferExecutionItem;
+
+export interface ExecutionSections {
+  /** 内部显式开启。生产排期与执行的调动分区统一随 BE-11c-b 接入。 */
+  readonly includeTransfers?: boolean;
 }
 
 export interface ExecutionGroup {
@@ -63,8 +77,13 @@ export async function loadAdjustmentHead(tx: Tx, tenantId: string, id: string): 
   return row!;
 }
 
-export async function loadExecutionItems(tx: Tx, tenantId: string, adjustmentId: string) {
-  return rowsOf<ExecutionItem>(
+export async function loadExecutionItems(
+  tx: Tx,
+  tenantId: string,
+  adjustmentId: string,
+  sections: ExecutionSections = {},
+): Promise<ExecutionItem[]> {
+  const orgs = rowsOf<OrgExecutionItem>(
     await tx.execute(sql`SELECT i.id, i.seq, i.adjust_type AS "adjustType", i.target_org_id AS "targetOrgId",
         i.parent_org_id AS "parentOrgId", i.parent_item_id AS "parentItemId",
         i.transfer_to_org_id AS "transferToOrgId", i.transfer_to_item_id AS "transferToItemId",
@@ -76,35 +95,56 @@ export async function loadExecutionItems(tx: Tx, tenantId: string, adjustmentId:
         AND NOT i.is_staged AND NOT coalesce(s.is_staged, false)
       ORDER BY i.seq`),
   );
+  if (!sections.includeTransfers) return orgs;
+  const t = orgAdjustmentTransferItems;
+  const transfers = await tx
+    .select({
+      id: t.id,
+      seq: t.seq,
+      employeeId: t.employeeId,
+      departmentId: t.departmentId,
+      departmentItemId: t.departmentItemId,
+      execPhase: t.execPhase,
+      executionResult: t.executionResult,
+    })
+    .from(t)
+    .where(and(eq(t.tenantId, tenantId), eq(t.adjustmentId, adjustmentId), sql`${t.generatedByItemId} IS NULL`));
+  // 生成行随 11c2 / 11d 的发起组接入；这里仅发现独立的用户行。
+  return [...orgs, ...transfers.map((item): TransferExecutionItem => ({ ...item, adjustType: 'transfer' }))];
 }
 
 /** §7.4 单内顺序：新增（按新建链深度）→ 变更（按生效日完整新树拓扑）→ 停用（目标自下而上）；同层按序号。 */
-export async function loadExecutionGroups(tx: Tx, tenantId: string, adjustmentId: string, date: string) {
-  const items = await loadExecutionItems(tx, tenantId, adjustmentId);
-  const leads = items.filter((item) => !item.cascadedFromItemId);
-  const byId = new Map(items.map((item) => [item.id, item]));
-  const depth = (item: ExecutionItem, next: (i: ExecutionItem) => ExecutionItem | undefined) => {
+export async function executionGroupsOf(tx: Tx, tenantId: string, items: readonly ExecutionItem[], date: string) {
+  const orgItems = items.filter((item) => item.adjustType !== 'transfer');
+  const leads = items.filter((item) => item.adjustType === 'transfer' || !item.cascadedFromItemId);
+  const byId = new Map(orgItems.map((item) => [item.id, item]));
+  const depth = (item: OrgExecutionItem, next: (i: OrgExecutionItem) => OrgExecutionItem | undefined) => {
     const seen = new Set([item.id]);
     for (let cur = next(item); cur && !seen.has(cur.id); cur = next(cur)) seen.add(cur.id);
     return seen.size - 1;
   };
-  const orgDepth = await targetDepths(tx, tenantId, leads, date);
-  const changedAbove = await changedAncestorCounts(tx, tenantId, leads, byId, date);
+  const orgLeads = leads.filter((item) => item.adjustType !== 'transfer');
+  const orgDepth = await targetDepths(tx, tenantId, orgLeads, date);
+  const changedAbove = await changedAncestorCounts(tx, tenantId, orgLeads, byId, date);
   const rank = (item: ExecutionItem): [number, number] => {
     if (item.adjustType === 1) return [1, depth(item, (i) => byId.get(i.parentItemId ?? ''))];
     if (item.adjustType === 2) return [2, changedAbove.get(item.id) ?? 0];
-    return [3, -(orgDepth.get(item.targetOrgId!) ?? 0)];
+    if (item.adjustType === 'transfer') return [3, 0];
+    return [4, -(orgDepth.get(item.targetOrgId!) ?? 0)];
   };
   const ranked = leads.map((lead) => ({ lead, rank: rank(lead) }));
   ranked.sort((a, b) => a.rank[0] - b.rank[0] || a.rank[1] - b.rank[1] || a.lead.seq - b.lead.seq);
   return ranked.map(({ lead }): ExecutionGroup => ({
     id: lead.id,
     lead,
-    items: items.filter((item) => item.id === lead.id || item.cascadedFromItemId === lead.id),
+    items:
+      lead.adjustType === 'transfer'
+        ? [lead]
+        : orgItems.filter((item) => item.id === lead.id || item.cascadedFromItemId === lead.id),
   }));
 }
 
-async function targetDepths(tx: Tx, tenantId: string, leads: readonly ExecutionItem[], date: string) {
+async function targetDepths(tx: Tx, tenantId: string, leads: readonly OrgExecutionItem[], date: string) {
   const ids = leads.filter((i) => i.adjustType === 3).map((i) => i.targetOrgId!);
   if (!ids.length) return new Map<string, number>();
   const rows = rowsOf<{ id: string; depth: number }>(
@@ -129,8 +169,8 @@ async function targetDepths(tx: Tx, tenantId: string, leads: readonly ExecutionI
 async function changedAncestorCounts(
   tx: Tx,
   tenantId: string,
-  leads: readonly ExecutionItem[],
-  byId: ReadonlyMap<string, ExecutionItem>,
+  leads: readonly OrgExecutionItem[],
+  byId: ReadonlyMap<string, OrgExecutionItem>,
   date: string,
 ) {
   const changes = leads.filter((i) => i.adjustType === 2);
@@ -173,8 +213,8 @@ async function adminParentsAt(tx: Tx, tenantId: string, ids: readonly string[], 
 
 /** 新建行引用同单新建行时，沿引用链取第一个已存在的组织（§2.6）。 */
 function resolveParent(
-  item: ExecutionItem | undefined,
-  byId: ReadonlyMap<string, ExecutionItem>,
+  item: OrgExecutionItem | undefined,
+  byId: ReadonlyMap<string, OrgExecutionItem>,
   seen = 0,
 ): string | null {
   if (!item || seen > 64) return null;
@@ -189,11 +229,17 @@ export async function groupScope(
   items: readonly ExecutionItem[],
   date: string,
 ): Promise<string[]> {
-  const byId = new Map(items.map((item) => [item.id, item]));
+  const byId = new Map(items.filter((item) => item.adjustType !== 'transfer').map((item) => [item.id, item]));
   const scope = new Set<string>();
   const subtrees: string[] = [];
   const add = (id: string | null | undefined) => id && scope.add(id);
   for (const item of group.items) {
+    if (item.adjustType === 'transfer') {
+      const source = await findCurrentRecord(tx, tenantId, item.employeeId, date);
+      add(source?.fields.departmentId);
+      add(item.departmentId ?? resolveParent(byId.get(item.departmentItemId ?? ''), byId));
+      continue;
+    }
     if (item.adjustType === 1) add(resolveParent(item, byId));
     else add(item.targetOrgId);
     if (item.adjustType === 2) add(item.parentOrgId);
@@ -203,4 +249,15 @@ export async function groupScope(
   }
   for (const id of await orgSubtreeAt(tx, tenantId, subtrees, date)) scope.add(id);
   return [...scope].sort();
+}
+
+/** 组织明细仍可分页，调动组为同分区单事务；表名只从受控的组类型取得。 */
+export function executionTable(group: ExecutionGroup) {
+  return sql.identifier(
+    group.lead.adjustType === 'transfer' ? 'org_adjustment_transfer_items' : 'org_adjustment_org_items',
+  );
+}
+
+export function executionRefs(item: ExecutionItem) {
+  return item.adjustType === 'transfer' ? [item.departmentItemId] : [item.parentItemId, item.transferToItemId];
 }

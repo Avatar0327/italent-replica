@@ -1,0 +1,1 @@
+ALTER TABLE "org_adjustment_transfer_items" ADD COLUMN "dotted_manager_specified" boolean DEFAULT false NOT NULL;

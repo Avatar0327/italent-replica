@@ -8320,6 +8320,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',
     '#employeeExists',
+    '#heldParticipants',
     '#participants',
     '#settingKey',
   ],
@@ -8328,6 +8329,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/transfer-locks.ts#employeeExists': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#heldParticipants': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#settingKey',
   ],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferBusiness': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -8509,6 +8514,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/write-service.ts#assertDirectTransferAllowed': [
     'apps/api/src/modules/employment/configuration.ts#readEmploymentSettings',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
   ],
   'apps/api/src/modules/employment/write-service.ts#assertEmployTypeUsage': ['#NEW_CYCLE_KINDS'],
   'apps/api/src/modules/employment/write-service.ts#assertNoInternCycleSuccessor': [
