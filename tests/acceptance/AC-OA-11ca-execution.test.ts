@@ -169,12 +169,14 @@ it('受信组绕过仅限人工的租户开关，写完整调动并在提交回�
                 };
               if (key !== 'execute') return Reflect.get(target, key, receiver);
               return (query: ReturnType<typeof sql>) => {
-                const rendered = query.toQuery({
-                  escapeName: (name) => name,
-                  escapeParam: (index) => '$' + (index + 1),
-                  escapeString: (value) => value,
-                });
-                statements.push(rendered.sql.replace(/\s+/g, ' '));
+                const text = query.queryChunks
+                  .flatMap((chunk) =>
+                    chunk && typeof chunk === 'object' && 'value' in chunk && Array.isArray(chunk.value)
+                      ? chunk.value
+                      : [],
+                  )
+                  .join(' ');
+                statements.push(text.replace(/\s+/g, ' '));
                 return target.execute(query);
               };
             },
