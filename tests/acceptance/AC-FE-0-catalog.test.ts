@@ -35,6 +35,11 @@ const expected = {
     M.hrRoster,
     M.hrMovementReport,
     M.hrStructureReport,
+    M.hrDashboard,
+    M.hrStructure,
+    M.hrMovement,
+    M.hrProcessDashboard,
+    M.contractBoard,
     ...PERSONNEL_OBJECTS,
   ]
     .map((object) => object.code)
