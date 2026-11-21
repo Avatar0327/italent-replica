@@ -1,4 +1,41 @@
 {
+  "DELETE /api/tenant/offers/:id": {
+    "fixedKeys": [
+      {
+        "keys": [
+          "error"
+        ]
+      }
+    ],
+    "ledger": [
+      {
+        "ledgerAdded": [],
+        "status": 503
+      }
+    ],
+    "outcome": [
+      {
+        "auditAdded": [],
+        "code": "SERVICE_UNAVAILABLE",
+        "ledgerAdded": [],
+        "reason": "STORAGE_UNWRITABLE",
+        "status": 503
+      }
+    ],
+    "precondition:offer.editable": [
+      {
+        "code": "CONFLICT",
+        "reason": "OFFER_NOT_EDITABLE",
+        "status": 409
+      }
+    ],
+    "precondition:revision": [
+      {
+        "code": "REVISION_CONFLICT",
+        "status": 409
+      }
+    ]
+  },
   "GET /api/tenant/esign/scenes/entry": {
     "fixedKeys": [
       {
@@ -52,6 +89,52 @@
       },
       {
         "status": 200
+      }
+    ]
+  },
+  "POST /api/tenant/employment/pending-entries/:id/cancel": {
+    "fixedKeys": [
+      {
+        "keys": [
+          "error"
+        ]
+      }
+    ],
+    "ledger": [
+      {
+        "ledgerAdded": [],
+        "status": 503
+      }
+    ],
+    "outcome": [
+      {
+        "auditAdded": [],
+        "code": "SERVICE_UNAVAILABLE",
+        "ledgerAdded": [],
+        "reason": "STORAGE_UNWRITABLE",
+        "status": 503
+      }
+    ],
+    "precondition:assertRevision": [
+      {
+        "code": "REVISION_CONFLICT",
+        "status": 409
+      }
+    ],
+    "precondition:lockEmploymentBusiness": [
+      {
+        "status": 200
+      }
+    ],
+    "precondition:lockTransferBusiness": [
+      {
+        "status": 200
+      }
+    ],
+    "precondition:requireScopedEmploymentObject": [
+      {
+        "code": "NOT_FOUND",
+        "status": 404
       }
     ]
   },

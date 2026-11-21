@@ -1,15 +1,20 @@
 /** F-326-L §2.3 / 主设计 §8 C2：同一套契约分别由 PGlite 与真 PG（app_owner）执行。 */
+import { randomUUID } from 'node:crypto';
 import {
   afterTransactionCommit,
   approvalVariables,
   beforeTransactionCommit,
   eq,
+  runPlatformCommand,
   sql,
+  transactionLockLedger,
   type Tx,
   withTenant,
 } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it, vi } from 'vitest';
+import { lockVariableBatch } from '../../apps/api/src/modules/approval/variables.js';
+import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import { seedTenantWithMember } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -190,4 +195,72 @@ it('AC-APV-F326-C2：独立根事务的同名 key 相互隔离，空事务保持
   expect(flush).toHaveBeenCalledTimes(2);
   expect(flush.mock.calls.map((call) => call[1]).sort()).toEqual([[1], [2]]);
   expect(await database().db.transaction(async () => '空事务')).toBe('空事务');
+});
+
+it('AC-APV-F326-C2：透明事务代理共用根事务登记和行锁台账', async () => {
+  const { tenantId, values, read } = await fixture();
+  let root!: Tx;
+  const flush = vi.fn(async (tx: Tx, ids: string[]) => {
+    expect(tx).toBe(root);
+    expect(ids).toHaveLength(1);
+    expect(transactionLockLedger(tx).held(ids[0]!)).toBe('update');
+    await tx.update(approvalVariables).set({ name: '代理登记已完成' }).where(eq(approvalVariables.id, ids[0]!));
+  });
+  await withTenant(database().db, tenantId, async (tx) => {
+    root = tx;
+    const proxy = new Proxy(tx, {});
+    const [variable] = await tx.insert(approvalVariables).values(values).returning({ id: approvalVariables.id });
+    await lockVariableBatch(proxy, { tenantId }, [{ id: variable!.id, mode: 'update' }]);
+    beforeTransactionCommit(proxy, 'proxy', variable!.id, flush);
+    expect(flush).not.toHaveBeenCalled();
+  });
+  expect(flush).toHaveBeenCalledTimes(1);
+  expect(await read()).toEqual([{ name: '代理登记已完成' }]);
+});
+
+async function platformScope(tx: Tx) {
+  return rowsOf<{ role: string; tenant: string }>(
+    await tx.execute(sql`SELECT current_user AS role, current_setting('app.tenant_id') AS tenant`),
+  )[0]!;
+}
+
+it('AC-APV-F326-C2：平台遍历两个租户后，提交前各回到自己的角色、RLS 与变量锁批次', async () => {
+  const a = await fixture();
+  const b = await fixture();
+  const seed = async (f: typeof a) =>
+    withTenant(database().db, f.tenantId, async (tx) => {
+      const [row] = await tx.insert(approvalVariables).values(f.values).returning({ id: approvalVariables.id });
+      return row!.id;
+    });
+  const first = await seed(a);
+  const second = await seed(b);
+  const flushes: string[][] = [];
+  const schedule = (tx: Tx, tenantId: string, id: string, name: string) =>
+    beforeTransactionCommit(tx, `approval-auto-retire:${tenantId}`, name, async (tx, names) => {
+      await lockVariableBatch(tx, { tenantId }, [{ id, mode: 'update' }]);
+      expect(await platformScope(tx)).toEqual({ role: 'app_user', tenant: tenantId });
+      expect(await tx.select({ id: approvalVariables.id }).from(approvalVariables)).toEqual([{ id }]);
+      await tx
+        .update(approvalVariables)
+        .set({ name: names.at(-1)! })
+        .where(eq(approvalVariables.id, id));
+      flushes.push(names);
+    });
+  await runPlatformCommand(
+    database().db,
+    { actorUserId: null, commandId: randomUUID() },
+    'f326-c2',
+    {},
+    async (ctx) => {
+      await ctx.inTenant(a.tenantId, (tx) => tx.transaction(async (sp) => schedule(sp, a.tenantId, first, '甲保存点')));
+      await ctx.inTenant(b.tenantId, async (tx) => schedule(tx, b.tenantId, second, '乙批次'));
+      await ctx.inTenant(a.tenantId, async (tx) => schedule(tx, a.tenantId, first, '甲同键合批'));
+      expect(await platformScope(ctx.tx)).toEqual({ role: 'app_platform', tenant: '' });
+      expect(flushes).toEqual([]);
+      return { saved: true };
+    },
+  );
+  expect(flushes).toEqual([['甲保存点', '甲同键合批'], ['乙批次']]);
+  expect(await a.read()).toEqual([{ name: '甲同键合批' }]);
+  expect(await b.read()).toEqual([{ name: '乙批次' }]);
 });
