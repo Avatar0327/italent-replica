@@ -7,7 +7,7 @@ import { EMPLOYEE_STATUS, tenureYears } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { readEffectiveSetting, registerSettingValidator } from '../tenant-settings/service.js';
 import { auditEmployment } from './context.js';
-import { appendForwardPayload } from './forward-store.js';
+import { appendForwardPayload, systemForwardOrigins } from './forward-store.js';
 import { forwardUpdateEmployment } from './forward-update.js';
 import type { ForwardValues } from './forward-rules.js';
 import { findPredecessor } from './read-model.js';
@@ -82,6 +82,7 @@ export async function applyRehireSeniority(
   await tx.execute(sql`INSERT INTO employment_rehire_seniority_snapshots
     (tenant_id,employee_id,business_id,snapshot_version_id,created_at)
     VALUES(${ctx.tenantId},${business.employeeId},${business.id},${business.payload.id},${ctx.now.toISOString()})`);
+  const changes = [{ field: 'workYearCompanyBefore', before, after: fields.workYearCompanyBefore }];
   business.payload = await appendForwardPayload(
     tx,
     ctx,
@@ -89,7 +90,8 @@ export async function applyRehireSeniority(
     { fields, customFields: values.customFields },
     business.id,
     true,
-    [{ field: 'workYearCompanyBefore', before, after: fields.workYearCompanyBefore }],
+    changes,
+    systemForwardOrigins(changes, rule.audit, business.id),
   );
   await auditEmployment(
     tx,
@@ -119,6 +121,7 @@ export async function restoreRehireSeniority(tx: Tx, ctx: EmploymentContext, bus
   if (!snapshot) return;
   const before = business.payload.fields.workYearCompanyBefore;
   const fields = { ...business.payload.fields, workYearCompanyBefore: Number(snapshot.value) };
+  const changes = [{ field: 'workYearCompanyBefore', before, after: fields.workYearCompanyBefore }];
   business.payload = await appendForwardPayload(
     tx,
     ctx,
@@ -126,7 +129,8 @@ export async function restoreRehireSeniority(tx: Tx, ctx: EmploymentContext, bus
     { fields, customFields: business.payload.customFields },
     business.id,
     true,
-    [{ field: 'workYearCompanyBefore', before, after: fields.workYearCompanyBefore }],
+    changes,
+    systemForwardOrigins(changes, `${rule.audit}.restore`, business.id),
   );
   await auditEmployment(
     tx,
