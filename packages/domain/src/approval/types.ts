@@ -1,3 +1,4 @@
+import { ENTRY_INFO_COLLECTION_PROCESS, ONBOARDING_FORM_FIELDS } from '../onboarding/permission.js';
 import type { ExitRoute } from './routes.js';
 import type { ApproverSource } from './sources.js';
 import { approverSourcesOf, expressionValue } from './sources.js';
@@ -473,6 +474,7 @@ export type ApprovalAdapterKind =
   | 'employment'
   | 'personnel_change'
   | 'employee_info'
+  | 'entry_info_collection'
   | 'contract'
   | 'idp'
   | 'talent_review'
@@ -752,6 +754,20 @@ export const APPROVAL_TYPES = {
   offer_batch: OFFER_BATCH_TYPE,
   probation_assessment: assessmentType('probation_assessment', '试用中考核'),
   regularization_assessment: assessmentType('regularization_assessment', '转正考核'),
+  entry_info_collection: {
+    code: 'entry_info_collection',
+    name: '入职前信息采集',
+    objectCode: MODULE_OBJECTS.onboardingCollection.code,
+    adapter: 'entry_info_collection',
+    defaultProcessCode: ENTRY_INFO_COLLECTION_PROCESS,
+    conditionFields: [
+      { path: 'processCode', label: '流程编码', kind: 'text' },
+      { path: 'record.departmentId', label: '待入职部门', kind: 'org' },
+    ],
+    formFields: ONBOARDING_FORM_FIELDS.collectionApproval,
+    readonlyFields: ONBOARDING_FORM_FIELDS.collectionApproval,
+    approvalEdit: false,
+  },
   personnel_change: {
     code: 'personnel_change',
     name: '员工子集变更',

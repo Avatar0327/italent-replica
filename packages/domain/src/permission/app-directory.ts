@@ -68,6 +68,11 @@ export const APP_OBJECT_DIRECTORY: Readonly<Record<AppId, readonly string[]>> = 
   transfer: withPrimary('TenantBase.EmploymentRecord', [
     MODULE_OBJECTS.employmentRecord,
     MODULE_OBJECTS.probationAssessment,
+    MODULE_OBJECTS.onboardingCollection,
+    MODULE_OBJECTS.onboardingQrCode,
+    MODULE_OBJECTS.onboardingPreparation,
+    MODULE_OBJECTS.onboardingMaterial,
+    MODULE_OBJECTS.onboardingIntegration,
   ]),
   approval: codes(APPROVAL_OBJECTS),
   self: [PERSONNEL_REQUEST_OBJECT],
