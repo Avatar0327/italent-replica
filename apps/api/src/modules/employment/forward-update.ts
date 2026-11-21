@@ -18,7 +18,7 @@ import {
   type ForwardFieldChange,
 } from './forward-rules.js';
 import { availableForwardChanges, referenceCheckDate } from './forward-references.js';
-import { appendForwardPayload, auditForwardTarget } from './forward-store.js';
+import { appendForwardPayload, auditForwardTarget, forwardTargetOrigins, loadForwardSource } from './forward-store.js';
 import { finalExecutionDateSql, QUEUE_SHIFTED_KINDS } from './activation-store.js';
 import { operationKey, plannedEffectiveDate } from './timeline.js';
 import type { EmploymentContext, EmploymentState } from './types.js';
@@ -154,6 +154,7 @@ export async function forwardUpdateEmployment(
     .map((field) => field.id);
   const targets = await candidates(tx, ctx, source);
   const cache = new Map<string, boolean>();
+  let sourceVersion: Awaited<ReturnType<typeof loadForwardSource>> | undefined;
   for (const target of targets) {
     if (skipsWholeRecord(source.before, source.after, target.values)) {
       await remindWholeRecordSkip(tx, ctx, source, target, custom, cache, plan);
@@ -196,7 +197,9 @@ export async function forwardUpdateEmployment(
       fields: available.accepted,
     });
     if (!dryRun) {
-      await writeForwardTarget(tx, ctx, source, target, nextValues, available.accepted);
+      if (!source.businessId) throw new TypeError('向后更新必须关联触发业务');
+      sourceVersion ??= await loadForwardSource(tx, ctx, source.businessId, source.before.fields, source.after.fields);
+      await writeForwardTarget(tx, ctx, sourceVersion, source, target, nextValues, available.accepted);
     }
   }
   return plan;
@@ -230,12 +233,12 @@ async function remindWholeRecordSkip(
 async function writeForwardTarget(
   tx: Tx,
   ctx: EmploymentContext,
+  sourceVersion: Awaited<ReturnType<typeof loadForwardSource>>,
   source: ForwardSource,
   target: ForwardTarget,
   nextValues: ForwardValues,
   accepted: readonly ForwardFieldChange[],
 ) {
-  if (!source.businessId) throw new TypeError('向后更新必须关联触发业务');
   if (
     await affectsEstablishmentOccupancy(tx, ctx, target.values.fields, nextValues.fields, target.payload.effectiveDate)
   )
@@ -258,9 +261,10 @@ async function writeForwardTarget(
     ctx,
     target.payload,
     nextValues,
-    source.businessId,
+    sourceVersion.businessId,
     target.status === 'effective',
     accepted,
+    forwardTargetOrigins(sourceVersion, accepted),
   );
-  await auditForwardTarget(tx, ctx, next, accepted);
+  await auditForwardTarget(tx, ctx, next, accepted, sourceVersion.versionNo);
 }

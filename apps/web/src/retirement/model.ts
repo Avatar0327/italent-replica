@@ -9,6 +9,7 @@ import {
 import { isBlank, type Values } from '../foundation/forms/values.js';
 import { canButton, fieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
 import { m } from './messages.js';
+import { rehireOptions } from './rehire-model.js';
 
 export const object = 'TenantBase.EmploymentRecord';
 export const apiRoot = '/api/tenant/employment';
@@ -164,7 +165,12 @@ export function retireBody(values: Values, mode: 'direct' | 'application', depar
     ...(duty ? { dutyTransfer: duty } : {}),
     ...(extra.ack ? { pendingTransferAck: extra.ack } : {}),
   };
-  return { mode, lastWorkDate: values.lastWorkDate, ...(Object.keys(exit).length ? { exit } : {}) };
+  return {
+    mode,
+    lastWorkDate: values.lastWorkDate,
+    ...(Object.keys(exit).length ? { exit } : {}),
+    ...rehireOptions(values),
+  };
 }
 
 export type Confirmation = { message: string; extra: Extra };

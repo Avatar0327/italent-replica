@@ -7,7 +7,14 @@ import {
   HR_STRUCTURE_REPORT_EMPLOY_TYPES,
 } from '@italent/domain';
 import { m } from './messages.js';
-import { movement, type Column, type Filters } from './model.js';
+import {
+  movement,
+  rosterFilterColumns,
+  rosterFilters,
+  validRosterFilters,
+  type Column,
+  type Filters,
+} from './model.js';
 interface Field {
   key: string;
   label: string;
@@ -40,14 +47,14 @@ function fieldsOf(code: string, columns: Column[]): Field[] {
         label: value === 'all' ? m.all : reportCellLabel('employType', value)!,
       })),
     });
-  if (seen('employeeName')) fields.push({ key: 'name', label: m.name });
+  if (seen(rosterFilterColumns.name)) fields.push({ key: 'name', label: m.name });
   if (code === '1.06' && seen('number')) fields.push({ key: 'number', label: m.number });
-  if (seen('workDate'))
+  if (seen(rosterFilterColumns.workDateFrom))
     fields.push(
       { key: 'workDateFrom', label: m.workDateFrom, type: 'date' },
       { key: 'workDateTo', label: m.workDateTo, type: 'date' },
     );
-  if (seen('employeeStatus'))
+  if (seen(rosterFilterColumns.employeeStatus))
     fields.push({
       key: 'employeeStatus',
       label: m.employeeStatus,
@@ -64,31 +71,85 @@ function inputBounds(field: Field, draft: Filters) {
   if (field.key === 'month') return { min: 1, max: 12 };
   return {};
 }
+function FilterControl({
+  field,
+  draft,
+  busy,
+  roster,
+  change,
+}: {
+  field: Field;
+  draft: Filters;
+  busy: boolean;
+  roster: boolean;
+  change(value: string): void;
+}) {
+  const value = draft[field.key] ?? '';
+  if (field.options)
+    return (
+      <Select
+        aria-label={field.label}
+        value={value}
+        disabled={busy}
+        options={
+          field.key === 'employType'
+            ? field.options
+            : [{ value: '', label: roster ? m.rosterStatuses : m.all }, ...field.options]
+        }
+        onChange={change}
+      />
+    );
+  return (
+    <Input
+      aria-label={field.label}
+      type={field.type ?? 'text'}
+      value={value}
+      disabled={busy}
+      maxLength={200}
+      {...inputBounds(field, draft)}
+      required={['asOf', 'from', 'to', 'year', 'month'].includes(field.key)}
+      onChange={(event) => change(event.target.value)}
+    />
+  );
+}
+
 export function ReportFilters({
   code,
   initial,
   columns,
   busy,
+  blocked,
+  applied,
   apply,
 }: {
   code: string;
   initial: Filters;
   columns: Column[];
   busy: boolean;
+  blocked?: boolean;
+  applied?: Filters;
   apply(filters: Filters): void;
 }) {
   const [draft, setDraft] = useState(initial);
   const [invalid, setInvalid] = useState(false);
+  const [lastColumns, setLastColumns] = useState(columns);
+  if (code === 'roster' && lastColumns !== columns) {
+    setLastColumns(columns);
+    setDraft(rosterFilters(draft, columns));
+  }
   const fields = fieldsOf(code, columns);
   return (
     <form
       className="page-filters"
       onSubmit={(event) => {
         event.preventDefault();
+        if (busy || blocked) return;
         const values = Object.fromEntries(fields.map((f) => [f.key, draft[f.key] ?? '']));
         const bad =
-          (values.from && values.to && values.from > values.to) ||
-          (values.workDateFrom && values.workDateTo && values.workDateFrom > values.workDateTo);
+          code === 'roster'
+            ? !validRosterFilters(values)
+            : (values.from && values.to && values.from > values.to) ||
+              (values.workDateFrom && values.workDateTo && values.workDateFrom > values.workDateTo);
         setInvalid(Boolean(bad));
         if (!bad) apply(values);
       }}
@@ -97,33 +158,32 @@ export function ReportFilters({
         {fields.map((field) => (
           <label key={field.key} className="hr-report-filter">
             <span>{field.label}</span>
-            {field.options ? (
-              <Select
-                aria-label={field.label}
-                value={draft[field.key] || ''}
-                disabled={busy}
-                options={[...(field.key === 'employType' ? [] : [{ value: '', label: m.all }]), ...field.options]}
-                onChange={(value) => setDraft({ ...draft, [field.key]: value })}
-              />
-            ) : (
-              <Input
-                aria-label={field.label}
-                type={field.type ?? 'text'}
-                value={draft[field.key] ?? ''}
-                disabled={busy}
-                maxLength={200}
-                {...inputBounds(field, draft)}
-                required={['asOf', 'from', 'to', 'year', 'month'].includes(field.key)}
-                onChange={(e) => setDraft({ ...draft, [field.key]: e.target.value })}
-              />
-            )}
+            <FilterControl
+              field={field}
+              draft={draft}
+              busy={busy}
+              roster={code === 'roster'}
+              change={(value) => setDraft({ ...draft, [field.key]: value })}
+            />
           </label>
         ))}
-        <Button htmlType="submit" type="primary" disabled={busy}>
+        <Button htmlType="submit" type="primary" disabled={busy || blocked}>
           {m.query}
         </Button>
       </Space>
       {invalid && <p role="alert">{m.invalid}</p>}
+      {applied && (
+        <p>
+          {m.applied}{' '}
+          {fields
+            .filter(({ key }) => applied[key])
+            .map(
+              ({ key, label, options }) =>
+                `${label} ${options?.find((option) => option.value === applied[key])?.label ?? applied[key]}`,
+            )
+            .join('，')}
+        </p>
+      )}
     </form>
   );
 }
