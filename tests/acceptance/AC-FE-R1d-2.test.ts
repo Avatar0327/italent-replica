@@ -6,6 +6,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ApplicationCommand } from '../../apps/web/src/self-service/shared/application-command.js';
 import type { TransferBusiness } from '../../apps/web/src/transfer/types.js';
 import type { useApplicationCommand as Hook } from '../../apps/web/src/self-service/pages/useApplicationCommand.js';
+import { installWebLocks } from './support/web-locks.js';
+
+// F-110 第 3 轮：调动 / 审批命令登记恢复记录须拿跨标签页锁，测试环境装一份 Web Locks。
+installWebLocks();
 
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h, act } = requireWeb('react');

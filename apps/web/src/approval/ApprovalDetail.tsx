@@ -3,6 +3,7 @@ import { Alert, Button, Drawer, Empty, Input, Space, Steps, Tabs, Tag, Timeline,
 import { useEffect, useState } from 'react';
 import { DecisionNote, FormOverlay, PageState, useApiClient, useSession } from '../foundation/index.js';
 import { attachmentViews, CarrierAttachments } from '../foundation/attachments/index.js';
+import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { EXIT_ATTACHMENT } from '../exit/exit-model.js';
 import { presetLabels } from '../transfer/messages.js';
 import { completedDetail } from '../demo-stubs/approval.js';
@@ -198,6 +199,7 @@ function DetailBody(props: DetailProps & { state: DetailState; action: ActionSta
       {action.pending && (
         <Alert type="warning" showIcon message={d.locked(decisionLabel(detail, action.pending, action.pendingExit))} />
       )}
+      {action.command.status === 'unknown' && !action.action && <CommandStatus submission={action.command} />}
       {detail?.status === 'approved' && <Alert type="info" message={m.approvedNotice} showIcon />}
       {detail && <DetailColumns detail={detail} todo={props.todo} applications={props.applications} />}
     </div>

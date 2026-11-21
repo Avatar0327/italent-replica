@@ -1,13 +1,13 @@
 import { Alert, Button, Descriptions } from 'antd';
+import { messages as kernel } from '../../foundation/forms/messages.js';
 import { EmployeeTransfer } from '../../employee-self-service/EmployeeTransfer.js';
 import type { Profile } from '../../employee-self-service/types.js';
 import { TransferApplication } from '../shared/TransferApplication.js';
-import type { ApplicationCommand } from '../shared/application-command.js';
 import { text as t } from '../../transfer/messages.js';
 import { useSession } from '../../foundation/Session.js';
 import { FormDrawer } from './parts.js';
 import { messages as m } from './messages.js';
-import { useApplicationCommand } from './useApplicationCommand.js';
+import { useApplicationCommand, type ApplicationState } from './useApplicationCommand.js';
 import { SavedApplication } from './SavedApplication.js';
 
 /** 抽屉只展示页面会话状态；关闭或切换路由都不能解锁未确认命令。 */
@@ -36,7 +36,7 @@ export function ApplicationDrawer(props: {
       <div hidden={!!state.pending} inert={!!state.pending}>
         {content}
       </div>
-      {state.pending && <PendingApplication command={state.pending} />}
+      {state.pending && <PendingApplication state={state} tenantId={tenantId} />}
       {!state.pending && state.saved && state.saved.status !== 'draft' && (
         <Button onClick={state.clearConfirmed}>{t.newApplication}</Button>
       )}
@@ -44,10 +44,13 @@ export function ApplicationDrawer(props: {
     </FormDrawer>
   );
 }
-function PendingApplication({ command }: { command: ApplicationCommand }) {
+function PendingApplication({ state, tenantId }: { state: ApplicationState; tenantId: string }) {
+  const command = state.pending!;
   return (
     <section>
       <p role="status">{m.processing}</p>
+      {state.resultPending && <Alert type="info" showIcon message={kernel.resultPending} />}
+      {state.queryFailed && <Alert type="error" showIcon message={m.queryFailed} />}
       <Descriptions
         column={1}
         items={[
@@ -55,11 +58,18 @@ function PendingApplication({ command }: { command: ApplicationCommand }) {
           { key: 'employee', label: t.employee, children: command.employeeId },
           { key: 'business', label: m.businessId, children: command.businessId ?? m.unread },
           { key: 'date', label: t.date, children: command.effectiveDate ?? m.unread },
-          { key: 'summary', label: m.submissionSummary, children: JSON.stringify(command.summary) },
+          {
+            key: 'summary',
+            label: m.submissionSummary,
+            children: state.restored ? m.restoredSummary : JSON.stringify(command.summary),
+          },
         ]}
       />
       <p>{m.unknownHint}</p>
       <p>{m.refreshAfterConfirm}</p>
+      <Button type="primary" loading={state.reading} onClick={() => void state.query(tenantId)}>
+        {kernel.query}
+      </Button>
     </section>
   );
 }
