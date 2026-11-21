@@ -28,6 +28,7 @@ import type {
 } from './types.js';
 
 import { derivePresetFields, derivationFields, type FieldDerivation } from './field-derivations.js';
+import type { FieldOriginDraft } from './field-origin-store.js';
 export { sequenceForNewPost } from './field-derivations.js';
 
 type CustomMode = 'editable' | 'readonly' | 'hidden' | 'absent';
@@ -54,6 +55,20 @@ export interface PreparedInheritance {
   readonly sourceRecordId: string | null;
   readonly sourceStaffId: string | null;
 }
+export type PreparedFormInheritance = PreparedInheritance & {
+  readonly originPolicies: readonly FieldOriginDraft[];
+};
+
+function inheritanceOrigin(
+  fieldCode: string,
+  policy: 'deferred' | 'inherit' | 'none',
+  sourceRecordId: string | null,
+  value: unknown,
+): FieldOriginDraft {
+  if (policy === 'inherit' && sourceRecordId) return { fieldCode, originKind: policy, value, sourceRecordId };
+  return { fieldCode, originKind: policy === 'deferred' ? 'deferred' : 'none' };
+}
+
 export interface InheritanceInput {
   readonly employeeId: string;
   readonly effectiveDate: string;
@@ -149,6 +164,7 @@ function applyCustomInheritance(
   customFields: Record<string, CustomValue>,
   explicitFieldCodes: string[],
   deferredFieldCodes: string[],
+  originPolicies: FieldOriginDraft[],
   previousCustomFields?: CustomFields,
 ): void {
   const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
@@ -161,6 +177,15 @@ function applyCustomInheritance(
       throw new AppError('VALIDATION_FAILED', '当前表单不允许编辑此自定义字段');
   }
   for (const field of definitions) {
+    const code = `custom:${field.id}`;
+    const mode = fieldMode(code);
+    const inherits = !metadata.startsNewCycle && (field.inherit || mode === 'readonly' || mode === 'hidden');
+    const deferred =
+      inherits && (metadata.group === null || mode === 'absent' || (!metadata.autoPopulate && mode === 'editable'));
+    const inherited = eligible?.customFields[field.id] ?? null;
+    originPolicies.push(
+      inheritanceOrigin(code, deferred ? 'deferred' : inherits ? 'inherit' : 'none', eligible?.id ?? null, inherited),
+    );
     if (owns(explicitCustom, field.id)) {
       const value = explicitCustom[field.id];
       // 设计 §4：select 停用项只可沿用；修改已保存申请时本单旧值与前驱版本的值都算沿用。
@@ -169,14 +194,8 @@ function applyCustomInheritance(
       );
       customFields[field.id] = validateCustomValue(value, field.valueType, field.options, retained ? value : undefined);
       explicitFieldCodes.push(`custom:${field.id}`);
-    } else if (!metadata.startsNewCycle) {
-      const mode = fieldMode(`custom:${field.id}`);
-      const inherits = field.inherit || mode === 'readonly' || mode === 'hidden';
-      if (!inherits) continue;
-      if (metadata.group === null || mode === 'absent' || (!metadata.autoPopulate && mode === 'editable'))
-        deferredFieldCodes.push(`custom:${field.id}`);
-      else customFields[field.id] = eligible?.customFields[field.id] ?? null;
-    }
+    } else if (deferred) deferredFieldCodes.push(code);
+    else if (inherits) customFields[field.id] = inherited;
   }
 }
 
@@ -249,13 +268,45 @@ async function employeeCode(tx: Tx, tenantId: string, employeeId: string) {
   return employee;
 }
 
+function applyPresetInheritance(
+  metadata: TrustedFormSnapshot,
+  eligible: EmploymentRecord | null,
+  fields: PresetFields,
+  deferredFieldCodes: string[],
+): FieldOriginDraft[] {
+  const originPolicies: FieldOriginDraft[] = [];
+  const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
+  const excluded = new Set(metadata.excludedAutofillFields);
+  for (const field of INHERITED_FIELDS) {
+    const code = `preset:${field}`;
+    const mode = fieldMode(code);
+    // DEC-163：场景留空始终存空，关闭自动带出也不能让它进入生效时继承队列。
+    const inherits = !metadata.startsNewCycle && !(excluded.has(field) && mode === 'editable');
+    const eager =
+      metadata.group !== null &&
+      mode !== 'absent' &&
+      (metadata.autoPopulate || mode === 'readonly' || mode === 'hidden');
+    if (inherits && eager) setField(fields, field, eligible?.fields[field] ?? null);
+    if (inherits && !eager) deferredFieldCodes.push(code);
+    originPolicies.push(
+      inheritanceOrigin(
+        code,
+        inherits ? (eager ? 'inherit' : 'deferred') : 'none',
+        eligible?.id ?? null,
+        fields[field],
+      ),
+    );
+  }
+  return originPolicies;
+}
+
 export async function prepareInheritance(
   tx: Tx,
   ctx: EmploymentContext,
   input: InheritanceInput,
   frozenForm?: TrustedFormSnapshot,
   previousCustomFields?: CustomFields,
-): Promise<PreparedInheritance> {
+): Promise<PreparedFormInheritance> {
   businessDate(input.effectiveDate);
   let configured =
     input.kind === 'transfer'
@@ -281,17 +332,7 @@ export async function prepareInheritance(
     : await findPredecessor(tx, ctx.tenantId, input.employeeId, input.effectiveDate);
   const eligible = previous && (!input.staffId || previous.staffId === input.staffId) ? previous : null;
   const metadata = snapshotForm(input, form, startsNewCycle, definitions);
-  const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
-  const excluded = new Set(metadata.excludedAutofillFields);
-  for (const field of INHERITED_FIELDS) {
-    if (startsNewCycle) continue;
-    const mode = fieldMode(`preset:${field}`);
-    // DEC-163：场景留空始终存空，关闭自动带出也不能让它进入生效时继承队列。
-    if (excluded.has(field) && mode === 'editable') continue;
-    if (form.grouped && mode !== 'absent' && (metadata.autoPopulate || mode === 'readonly' || mode === 'hidden'))
-      setField(fields, field, eligible?.fields[field] ?? null);
-    else deferredFieldCodes.push(`preset:${field}`);
-  }
+  const originPolicies = applyPresetInheritance(metadata, eligible, fields, deferredFieldCodes);
   await applyExplicitPresetFields(
     tx,
     ctx,
@@ -312,6 +353,7 @@ export async function prepareInheritance(
     customFields,
     explicitFieldCodes,
     deferredFieldCodes,
+    originPolicies,
     previousCustomFields,
   );
   const explicit = new Set(explicitFieldCodes);
@@ -323,6 +365,7 @@ export async function prepareInheritance(
     formSnapshot: { ...metadata, fieldDerivations: derivedOrigins },
     deferredFieldCodes: deferredFieldCodes.filter((field) => !explicit.has(field)),
     explicitFieldCodes,
+    originPolicies,
     sourceRecordId: eligible?.id ?? null,
     sourceStaffId: eligible?.staffId ?? null,
   };
@@ -334,7 +377,7 @@ export async function prepareEmploymentPatch(
   ctx: EmploymentContext,
   input: InheritanceInput,
   previous: PreparedInheritance,
-): Promise<PreparedInheritance> {
+): Promise<PreparedFormInheritance> {
   // 已保存申请的字段策略随申请冻结；修改表单配置不能把原单只读字段变成可伪造写入。
   const prepared = await prepareInheritance(tx, ctx, input, previous.formSnapshot, previous.customFields);
   const merged =
@@ -360,13 +403,14 @@ export async function prepareEmploymentPatch(
 function restoreFrozenDefaults(
   input: InheritanceInput,
   previous: PreparedInheritance,
-  prepared: PreparedInheritance,
-): PreparedInheritance {
+  prepared: PreparedFormInheritance,
+): PreparedFormInheritance {
   const explicit = new Set(prepared.explicitFieldCodes);
   const oldDeferred = new Set(previous.deferredFieldCodes);
   const oldExplicit = new Set(previous.explicitFieldCodes);
   const fields = { ...prepared.fields };
   const customFields = { ...prepared.customFields };
+  const frozen = new Map<string, unknown>();
   for (const field of INHERITED_FIELDS) {
     const code = `preset:${field}`;
     // 只恢复创建时冻结的默认值；上一版显式填写、本次被放弃的值（DEC-107 改选职务时的序列）改取当前默认值。
@@ -375,17 +419,27 @@ function restoreFrozenDefaults(
         owns(input.fields ?? {}, 'departmentId') &&
         input.fields?.departmentId !== previous.fields.departmentId) ||
       (field === 'sequenceId' && owns(input.fields ?? {}, 'postId') && input.fields?.postId !== previous.fields.postId);
-    if (!rederived && !explicit.has(code) && !oldDeferred.has(code) && !oldExplicit.has(code))
+    if (!rederived && !explicit.has(code) && !oldDeferred.has(code) && !oldExplicit.has(code)) {
       setField(fields, field, previous.fields[field]);
+      frozen.set(code, fields[field]);
+    }
   }
   for (const id of Object.keys(customFields)) {
     const code = `custom:${id}`;
-    if (!explicit.has(code) && !oldDeferred.has(code)) customFields[id] = previous.customFields[id] ?? null;
+    if (!explicit.has(code) && !oldDeferred.has(code)) {
+      customFields[id] = previous.customFields[id] ?? null;
+      frozen.set(code, customFields[id]);
+    }
   }
   return {
     ...prepared,
     fields,
     customFields,
+    originPolicies: prepared.originPolicies.map((row) =>
+      frozen.has(row.fieldCode) && row.originKind === 'inherit'
+        ? inheritanceOrigin(row.fieldCode, 'inherit', previous.sourceRecordId, frozen.get(row.fieldCode))
+        : row,
+    ),
     formSnapshot: { ...previous.formSnapshot, fieldDerivations: prepared.formSnapshot.fieldDerivations },
     sourceRecordId: previous.sourceRecordId,
     sourceStaffId: previous.sourceStaffId,

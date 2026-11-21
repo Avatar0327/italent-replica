@@ -44,6 +44,23 @@ const byId = { invalidId: BAD_REQUEST };
 const configWrite = (action: string, preconditions: readonly string[]) =>
   write('body', `config.audited:${action}`, none('配置对象无范围，返回后只按配置对象字段权 trim'), { preconditions });
 
+const sceneRead = object({
+  object: SETTINGS,
+  operation: 'view',
+  button: NO_BUTTON,
+  scope: NO_SCOPE,
+  fields: shape('esign.scene'),
+});
+// If-Match: 0 建第一版；咨询锁 → revision 比对 → upsert → 配置审计。
+const sceneWrite = object({
+  object: SETTINGS,
+  operation: 'update',
+  button: NO_BUTTON,
+  scope: NO_SCOPE,
+  fields: shape('esign.scene'),
+  write: configWrite('esign.scene.update', ['esign.lock', 'esign.revision']),
+});
+
 export const ESIGN_POLICIES = defineTable('esign', {
   [`GET ${ESIGN_BASE}/records`]: object({
     object: RECORD,
@@ -96,22 +113,12 @@ export const ESIGN_POLICIES = defineTable('esign', {
     write: configWrite('esign.template.update', ['esign.lock', 'esign.revision', 'esign.unique']),
     ...byId,
   }),
-  [`GET ${ESIGN_BASE}/scenes/transfer`]: object({
-    object: SETTINGS,
-    operation: 'view',
-    button: NO_BUTTON,
-    scope: NO_SCOPE,
-    fields: shape('esign.scene'),
-  }),
-  // If-Match: 0 建第一版；咨询锁 → revision 比对 → upsert → 审计 esign.scene.update
-  [`PUT ${ESIGN_BASE}/scenes/transfer`]: object({
-    object: SETTINGS,
-    operation: 'update',
-    button: NO_BUTTON,
-    scope: NO_SCOPE,
-    fields: shape('esign.scene'),
-    write: configWrite('esign.scene.update', ['esign.lock', 'esign.revision']),
-  }),
+  [`GET ${ESIGN_BASE}/scenes/transfer`]: sceneRead,
+  [`PUT ${ESIGN_BASE}/scenes/transfer`]: sceneWrite,
+  [`GET ${ESIGN_BASE}/scenes/offer`]: sceneRead,
+  [`PUT ${ESIGN_BASE}/scenes/offer`]: sceneWrite,
+  [`GET ${ESIGN_BASE}/scenes/entry`]: sceneRead,
+  [`PUT ${ESIGN_BASE}/scenes/entry`]: sceneWrite,
   // 与 POST /transfers/employees/:id 的 HR 入口同一授权；固定键 id / name，只含启用模板
   [`GET ${ESIGN_BASE}/template-options/transfer-form`]: object({
     object: EMPLOYMENT_OBJECT,

@@ -87,6 +87,7 @@ export async function reissueTransfers(tx: Tx, ctx: EmploymentContext, input: Re
             eq(esignTasks.tenantId, ctx.tenantId),
             eq(esignTasks.businessId, businessId),
             eq(esignTasks.status, 'signing'),
+            eq(esignTasks.scene, 'transfer'),
           ),
         )
         .limit(1);

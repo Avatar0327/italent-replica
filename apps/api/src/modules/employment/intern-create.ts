@@ -225,7 +225,7 @@ export async function createInternEntry(
     { ...context, expectedRevision: revision },
     employeeId,
     { ...business, kind },
-    entry ? { entry } : {},
+    { entry, systemInput: true },
   );
   const profile = await writeInternProfile(tx, deps, context, plan.profile, employeeId);
   // 入职必须有登录账号（DEC-140）：与 POST /employees/:id/businesses 同一端口，缺邮箱整体回滚

@@ -300,7 +300,8 @@ describe('AC-TRF-F481-10 / 11 / 21 调度隔离与恢复边界', () => {
     try {
       await started;
       await vi.advanceTimersByTimeAsync(5000);
-      expect(clock).toHaveBeenCalledTimes(1);
+      // 本轮只在选候选和取得该任务锁后各取一次时钟。
+      expect(clock).toHaveBeenCalledTimes(2);
       let stopped = false;
       const stopping = running.stop().then(() => {
         stopped = true;
@@ -311,7 +312,7 @@ describe('AC-TRF-F481-10 / 11 / 21 调度隔离与恢复边界', () => {
       await stopping;
       expect(await w.notices()).toHaveLength(1);
       await vi.advanceTimersByTimeAsync(5000);
-      expect(clock).toHaveBeenCalledTimes(1);
+      expect(clock).toHaveBeenCalledTimes(2);
     } finally {
       release();
       await running.stop();

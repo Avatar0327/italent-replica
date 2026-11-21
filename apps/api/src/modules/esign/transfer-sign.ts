@@ -1,15 +1,13 @@
 /** F-481 §6.2：调用方先持员工 / 业务锁；业务失败落 failed，数据库错误仍随调动回滚。 */
-import { randomUUID } from 'node:crypto';
-import { eq, and, esignTasks, esignTaskFiles, sql, type Tx } from '@italent/db';
-import { esignExpiresAt, renderTemplateBody, tenantLocalDate, type EsignFailureReason } from '@italent/domain';
+import { eq, and, esignTasks, sql, type Tx } from '@italent/db';
+import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { personnelHooks } from '../employment/personnel-hooks.js';
-import { userOfPerson, isActiveAccount } from '../approval/resolver.js';
-import { auditEmployment, employmentCreator } from '../employment/context.js';
+import { employmentCreator } from '../employment/context.js';
 import { loadEmploymentRecord } from '../employment/read-model.js';
 import { rowsOf } from '../employment/record-store.js';
 import type { EmploymentContext } from '../employment/types.js';
-import { simulatedProvider } from './provider.js';
+import { initiateSignTask } from './initiation.js';
 import { selectedTemplates } from './transfer-input.js';
 
 export async function transferSignInitiator(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<string> {
@@ -30,7 +28,6 @@ export interface InitiateTransferSignInput {
   readonly initiatorUserId: string;
   readonly origin: 'activation' | 'manual';
 }
-type SignFiles = (typeof esignTaskFiles.$inferSelect)[];
 
 export async function initiateTransferSign(tx: Tx, ctx: EmploymentContext, input: InitiateTransferSignInput) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
@@ -43,124 +40,26 @@ export async function initiateTransferSign(tx: Tx, ctx: EmploymentContext, input
       and(
         eq(esignTasks.tenantId, ctx.tenantId),
         eq(esignTasks.businessId, input.businessId),
+        eq(esignTasks.scene, 'transfer'),
         eq(esignTasks.status, 'signing'),
       ),
     )
     .limit(1);
   if (inProgress) throw new AppError('CONFLICT', '已有签署中的任务', { reason: 'ESIGN_TASK_IN_PROGRESS' });
   const templates = await selectedTemplates(tx, ctx.tenantId, input.templateIds);
-  const unavailable = input.templateIds.filter((id) => !templates.some((t) => t.id === id && t.status === 'enabled'));
-  const employeeSignerUserId = await userOfPerson(tx, ctx.tenantId, record.employeeId);
-  let failureReason: EsignFailureReason | null = unavailable.length ? 'TEMPLATE_UNAVAILABLE' : null;
-  if (!failureReason && !employeeSignerUserId) failureReason = 'EMPLOYEE_NO_ACCOUNT';
-  if (!failureReason && !(await isActiveAccount(tx, ctx.tenantId, input.initiatorUserId)))
-    failureReason = 'INITIATOR_NO_ACCOUNT';
-  const [settings] = rowsOf<{ validityDays: number; remind: boolean }>(
-    await tx.execute(sql`
-    SELECT validity_days AS "validityDays", remind_before_expiry AS remind FROM esign_scene_settings
-    WHERE tenant_id=${ctx.tenantId} AND scene='transfer'`),
-  );
-  const validityDays = settings?.validityDays ?? 2;
-  const id = randomUUID();
-  const rendered = failureReason
-    ? { files: [], failureReason: null }
-    : await renderTransferFiles(tx, ctx, record, today, id, input.templateIds, templates);
-  failureReason ??= rendered.failureReason;
-  const [task] = await tx
-    .insert(esignTasks)
-    .values({
-      id,
-      tenantId: ctx.tenantId,
-      scene: 'transfer',
-      businessId: input.businessId,
-      employeeId: record.employeeId,
-      ownerDepartmentId: record.fields.departmentId,
-      initiatorUserId: input.initiatorUserId,
-      origin: input.origin,
-      status: failureReason ? 'failed' : 'signing',
-      currentNode: failureReason ? null : 'employee',
-      employeeSignerUserId,
-      validityDays,
-      expiresAt: esignExpiresAt(ctx.now, validityDays),
-      remindBeforeExpiry: settings?.remind ?? false,
-      initiatedAt: ctx.now,
-      failureReason,
-      failureDetail: unavailable.length ? JSON.stringify({ templateIds: unavailable }) : null,
-      provider: simulatedProvider.name,
-      createdAt: ctx.now,
-      updatedAt: ctx.now,
-    })
-    .returning();
-  await finishInitiation(tx, ctx, input, task!, rendered.files);
-  return task!;
-}
-
-async function renderTransferFiles(
-  tx: Tx,
-  ctx: EmploymentContext,
-  record: NonNullable<Awaited<ReturnType<typeof loadEmploymentRecord>>>,
-  today: string,
-  taskId: string,
-  ids: readonly string[],
-  templates: Awaited<ReturnType<typeof selectedTemplates>>,
-): Promise<{ files: SignFiles; failureReason: EsignFailureReason | null }> {
-  // 数据库错误不可转为业务失败；只有纯替换失败才记 RENDER_FAILED。
-  const values = await transferVariables(tx, ctx, record, today);
-  try {
-    const files = ids.map((templateId, i) => {
-      const template = templates.find((t) => t.id === templateId)!;
-      return {
-        tenantId: ctx.tenantId,
-        taskId,
-        seq: i + 1,
-        templateId,
-        templateName: template.name,
-        content: renderTemplateBody(template.body, values),
-      };
-    });
-    return { files, failureReason: null };
-  } catch {
-    return { files: [], failureReason: 'RENDER_FAILED' };
-  }
-}
-
-async function finishInitiation(
-  tx: Tx,
-  ctx: EmploymentContext,
-  input: InitiateTransferSignInput,
-  task: typeof esignTasks.$inferSelect,
-  files: SignFiles,
-) {
-  if (!task.failureReason) {
-    await tx.insert(esignTaskFiles).values(files);
-    await simulatedProvider.createEnvelope({
-      tenantId: ctx.tenantId,
-      taskId: task.id,
-      files: files.map((f) => ({ seq: f.seq, name: f.templateName, content: f.content })),
-      signers: [
-        { node: 'employee', userId: task.employeeSignerUserId! },
-        { node: 'enterprise', userId: input.initiatorUserId },
-      ],
-      expiresAt: task.expiresAt,
-    });
-  }
-  await auditEmployment(
-    tx,
-    ctx,
-    task.failureReason ? 'esign.task.failed' : 'esign.task.initiated',
-    'esign-task',
-    task.id,
-    null,
-    {
-      businessId: input.businessId,
-      templateIds: input.templateIds,
-      origin: input.origin,
-      failure_reason: task.failureReason,
-    },
-    undefined,
-    undefined,
-    { employeeId: task.employeeId, orgId: task.ownerDepartmentId },
-  );
+  const enabled = new Map(templates.filter((t) => t.status === 'enabled').map((t) => [t.id, t]));
+  const unavailableTemplateIds = input.templateIds.filter((id) => !enabled.has(id));
+  return initiateSignTask(tx, ctx, {
+    source: { scene: 'transfer', businessId: input.businessId },
+    origin: input.origin,
+    initiatorUserId: input.initiatorUserId,
+    employeeId: record.employeeId,
+    ownerDepartmentId: record.fields.departmentId,
+    templates: input.templateIds.flatMap((id) => (enabled.has(id) ? [enabled.get(id)!] : [])),
+    templateIds: input.templateIds,
+    unavailableTemplateIds,
+    loadVariables: () => transferVariables(tx, ctx, record, today),
+  });
 }
 
 async function transferVariables(

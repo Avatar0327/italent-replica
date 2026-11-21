@@ -14,6 +14,7 @@ const hooks: EmployeeStatusHooks = {
           eq(esignTasks.tenantId, ctx.tenantId),
           eq(esignTasks.businessId, event.recordId),
           eq(esignTasks.status, 'signing'),
+          eq(esignTasks.scene, 'transfer'),
         ),
       )
       .orderBy(esignTasks.id)
