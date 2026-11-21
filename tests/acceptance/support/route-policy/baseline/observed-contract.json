@@ -8930,6 +8930,64 @@
         ]
       }
     },
+    "GET /api/tenant/offers/:id/esign-context": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.Offer:update"
+        ],
+        "scope": [
+          "creator scope"
+        ]
+      }
+    },
+    "GET /api/tenant/offers/:id/esign-records": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ESignRecord:view",
+          "TenantBase.Offer:view"
+        ],
+        "scope": [
+          "creator scope",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/offers/:id/mail": {
       "edge": {
         "anonymous": {
@@ -25051,6 +25109,40 @@
         ],
         "scopePoint": [
           "visibleJob"
+        ]
+      }
+    },
+    "POST /api/tenant/offers/:id/esign-tasks": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "object": [
+          "object.* 动作",
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.Offer:update"
+        ],
+        "scope": [
+          "creator scope"
         ]
       }
     },
