@@ -50,7 +50,7 @@ export function planFields(permission?: ObjectPermission) {
 }
 
 export function useRehireContract(enabled: boolean) {
-  const permission = usePermissions(CONTRACT_OBJECT).snapshot.objects[CONTRACT_OBJECT];
+  const permission = usePermissions(enabled ? CONTRACT_OBJECT : undefined).snapshot.objects[CONTRACT_OBJECT];
   const available =
     enabled &&
     permission?.dataOperations.create &&

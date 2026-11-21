@@ -102,12 +102,13 @@ function retireSend(row: Row, mode: FormProps['mode'], draft: Draft | undefined,
 }
 
 /** 可提交字段：最后工作日 / 交接人按字段权；办理 / 申请还要 kind、mode 有编辑权（F-356）；职责转交区是控制项（exit-gate.ts EXIT_CONTROL_KEYS），随“新增”可写。 */
-function useEditable(mode: FormProps['mode']) {
+function useEditable(mode: FormProps['mode'], continuingDraft: boolean) {
   const permission = usePermissions(object).snapshot.objects[object];
   const create = !!permission?.dataOperations.create;
   const may = (field: string) => create && !!permission?.editableFields.includes(field);
   const plan = planFields(permission);
-  const contract = useRehireContract(plan.length > 0);
+  // 接续草稿只读已保存的计划，无需检查合同创建权限。
+  const contract = useRehireContract(!continuingDraft && plan.length > 0);
   const editable = [
     ...plan,
     ...contract,
@@ -191,7 +192,8 @@ function useRetire(props: EditorProps, editable: string[], writable: boolean) {
 
 function RetireEditor(props: EditorProps) {
   const { row, mode, onClose } = props;
-  const { permission, editable, writable } = useEditable(mode);
+  const continuingDraft = mode === 'application' && !!props.drafts.draft;
+  const { permission, editable, writable } = useEditable(mode, continuingDraft);
   const { form, baseline, cmd, error, locked, ready, submit, draft, previewing, runPreview, preview, notices } =
     useRetire(props, editable, writable);
   const visible = (field: string) => !!permission?.viewableFields.includes(field);
