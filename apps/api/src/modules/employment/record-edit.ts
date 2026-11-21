@@ -13,7 +13,12 @@ import { getCustomFieldsForInheritance } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
 import { isExitKind, requireExitPermission } from './exit-gate.js';
 import { normalizeBusinessPatch, validateCustomValue } from './fields.js';
-import { isForwardEditSupported, type ForwardEditEntry, type ForwardFieldChange } from './forward-rules.js';
+import {
+  isForwardEditSupported,
+  type ForwardEditEntry,
+  type ForwardFieldChange,
+  type ForwardValues,
+} from './forward-rules.js';
 import { appendForwardPayload, forwardFieldCode, systemForwardOrigins } from './forward-store.js';
 import { loadFieldOrigins, type FieldOriginDraft } from './field-origin-store.js';
 import { appendPayloadFieldOrigins, originActorKind } from './field-origin-write.js';
@@ -67,6 +72,7 @@ export async function editEmploymentRecord(
   entry: ForwardEditEntry = 'api',
   options: { forwardUpdate?: boolean; linkageDate?: string; establishmentWarnings?: EstablishmentWarning[] } = {},
 ) {
+  const { linkageDate } = options;
   const patch = normalizeBusinessPatch(input);
   await lockTransferBusiness(tx, ctx, id);
   const business = await lockEmploymentBusiness(tx, ctx, id);
@@ -93,40 +99,14 @@ export async function editEmploymentRecord(
     throw new AppError('VALIDATION_FAILED', '任职工号必须等于员工主档工号');
   }
   const reporting = await editedRecordReporting(tx, ctx, record, patch);
-  if (reporting?.window && options.linkageDate) reporting.window = { ...reporting.window, from: options.linkageDate };
+  if (reporting?.window && linkageDate) reporting.window = { ...reporting.window, from: linkageDate };
   // DEC-138 / 139：编辑待入职与添加、办理入职共用入职日期 × 部门校验
   if (isPendingEntryRecord(record))
     await assertEmploymentDepartmentAvailable(tx, ctx, after.fields.departmentId, record.effectiveDate, true);
-  await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate, reporting, options.linkageDate);
-  const beforeAudit = { ...record.fields, ...customAudit(record.customFields) };
-  const afterAudit = { ...after.fields, ...customAudit(after.customFields) };
-  const changes: ForwardFieldChange[] = Object.entries(afterAudit)
-    .filter(
-      ([field, value]) =>
-        JSON.stringify(beforeAudit[field as keyof typeof beforeAudit] ?? null) !== JSON.stringify(value),
-    )
-    .map(([field, value]) => ({ field, before: beforeAudit[field as keyof typeof beforeAudit] ?? null, after: value }));
-  const named = requestInputFields(patch);
-  const linkage = options.linkageDate !== undefined;
-  const systemEdit = linkage || originActorKind(ctx, business, {}) === 'system-input';
-  const confirmed = systemEdit ? [] : await confirmedRecordOrigins(tx, ctx, record, named, changes);
-  if (!changes.length) {
-    if (named.size && !systemEdit) {
-      await appendPayloadFieldOrigins(tx, ctx, business.payload, id, confirmed);
-      await auditEmployment(
-        tx,
-        ctx,
-        'employment.record.intent_confirmed',
-        'employment-record',
-        id,
-        null,
-        null,
-        business.payload.id,
-        { fields: [...named] },
-      );
-    }
-    return requireSavedBusiness(tx, ctx, id);
-  }
+  await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate, reporting, linkageDate);
+  const { beforeAudit, afterAudit, changes } = recordEditDiff(record, after);
+  const origins = await editOrigins(tx, ctx, { id, business, record }, patch, after.fields, changes, linkageDate);
+  if (!changes.length) return requireSavedBusiness(tx, ctx, id);
   // REQ-EMP-003 / 07 A7：历史、兼职、批量编辑只改本记录不传播；控编投影按同一判断，不模拟不会发生的传播（S1-P2-04）。
   const propagates = options.forwardUpdate !== false && isForwardEditSupported({ ...record, entry, today });
   if (await affectsEstablishmentOccupancy(tx, ctx, record.fields, after.fields, record.effectiveDate))
@@ -145,9 +125,6 @@ export async function editEmploymentRecord(
       },
       entry === 'import' ? (options.establishmentWarnings ?? []) : undefined,
     );
-  const origins = systemEdit
-    ? systemForwardOrigins(changes, linkage ? 'employment.linkage' : 'employment.record.edit', linkage ? undefined : id)
-    : [...editedRecordOrigins(changes, named, after.fields, id), ...confirmed];
   business.payload = await appendForwardPayload(tx, ctx, business.payload, after, id, true, changes, origins);
   await auditEmployment(tx, ctx, 'employment.record.edit', 'employment-record', id, beforeAudit, afterAudit);
   if (propagates) {
@@ -167,6 +144,56 @@ export async function editEmploymentRecord(
   await reconcileCompletion(tx, ctx, business.employeeId);
   await bumpAndNotifyEntry(tx, ctx, business, record);
   return requireSavedBusiness(tx, ctx, id);
+}
+
+function recordEditDiff(record: ForwardValues, after: ForwardValues) {
+  const beforeAudit = { ...record.fields, ...customAudit(record.customFields) };
+  const afterAudit = { ...after.fields, ...customAudit(after.customFields) };
+  const changes: ForwardFieldChange[] = Object.entries(afterAudit)
+    .filter(
+      ([field, value]) =>
+        JSON.stringify(beforeAudit[field as keyof typeof beforeAudit] ?? null) !== JSON.stringify(value),
+    )
+    .map(([field, value]) => ({ field, before: beforeAudit[field as keyof typeof beforeAudit] ?? null, after: value }));
+  return { beforeAudit, afterAudit, changes };
+}
+
+async function editOrigins(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: { id: string; business: LockedEmploymentBusiness; record: EmploymentRecord },
+  patch: EmploymentBusinessPatch,
+  fields: EmploymentRecord['fields'],
+  changes: readonly ForwardFieldChange[],
+  linkageDate?: string,
+): Promise<FieldOriginDraft[]> {
+  const { id, business, record } = target;
+  const linkage = linkageDate !== undefined;
+  if (linkage || originActorKind(ctx, business, {}) === 'system-input') {
+    return systemForwardOrigins(
+      changes,
+      linkage ? 'employment.linkage' : 'employment.record.edit',
+      linkage ? undefined : id,
+    );
+  }
+  const named = requestInputFields(patch);
+  const confirmed = await confirmedRecordOrigins(tx, ctx, record, named, changes);
+  if (changes.length) return [...editedRecordOrigins(changes, named, fields, id), ...confirmed];
+  if (named.size) {
+    await appendPayloadFieldOrigins(tx, ctx, business.payload, id, confirmed);
+    await auditEmployment(
+      tx,
+      ctx,
+      'employment.record.intent_confirmed',
+      'employment-record',
+      id,
+      null,
+      null,
+      business.payload.id,
+      { fields: [...named] },
+    );
+  }
+  return confirmed;
 }
 
 function editedRecordOrigins(
