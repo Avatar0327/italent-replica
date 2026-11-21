@@ -14,7 +14,7 @@ export type RetireDraft = ApplicationDraft;
  * 草稿的核对字段：退休详情（GET /retirements/:id）里当前可见的业务字段。第二步只发空体，不写这些字段，
  * 但冲突重读要拿它们和打开时比较、回填只读表单（第 3 轮 P2-R2-1）。被字段权裁剪的缺键按 null。
  */
-export const draftFields = ['lastWorkDate', 'handoverEmployeeId'] as const;
+export const draftFields = ['lastWorkDate', 'handoverEmployeeId', 'reEmployed', 'rehire'] as const;
 /** 仍可作为草稿接续的单据状态（entriesFor：草稿 / 驳回可提交）；状态被裁剪时无从判断，按仍可接续处理。 */
 const resumable = (status: unknown) => status === undefined || status === 'draft' || status === 'rejected';
 /** 已写后回读确认的单据动作：申请第二步与详情提交都是 submit。 */
