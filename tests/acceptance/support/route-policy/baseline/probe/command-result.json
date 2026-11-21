@@ -6,10 +6,142 @@
       "status": 404
     },
     "fieldQueries": [],
+    "gap": {
+      "reason": "not-found"
+    },
     "invalidId": {
       "code": "NOT_FOUND",
       "error": "9b6946fe6881",
       "status": 404
+    },
+    "registeredCommands": {
+      "entry": {
+        "accepted": {
+          "fieldQueries": [
+            "fields:TenantBase.Employee"
+          ],
+          "inTransaction": true,
+          "scopeQueries": [
+            "scope:TenantBase/TenantBase.Employee/TenantBase.Employee.detail",
+            "scope:TenantBase/TenantBase.EmploymentRecord/-",
+            "scope:data.scope.all:"
+          ],
+          "status": 200,
+          "trace": [
+            "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+            "obj:TenantBase.Employee:view",
+            "obj:TenantBase.EmploymentRecord:update"
+          ]
+        },
+        "deniedButton": {
+          "code": "FORBIDDEN",
+          "fieldQueries": [],
+          "inTransaction": true,
+          "scopeQueries": [],
+          "status": 403,
+          "trace": [
+            "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+            "obj:TenantBase.EmploymentRecord:update"
+          ]
+        },
+        "deniedEdit": {
+          "code": "FORBIDDEN",
+          "fieldQueries": [],
+          "inTransaction": true,
+          "scopeQueries": [],
+          "status": 403,
+          "trace": [
+            "obj:TenantBase.EmploymentRecord:update"
+          ]
+        },
+        "deniedScope": {
+          "code": "NOT_FOUND",
+          "fieldQueries": [],
+          "inTransaction": true,
+          "scopeQueries": [
+            "scope:TenantBase/TenantBase.EmploymentRecord/-",
+            "scope:data.scope.all:"
+          ],
+          "status": 404,
+          "trace": [
+            "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+            "obj:TenantBase.EmploymentRecord:update"
+          ]
+        },
+        "deniedVariable": {
+          "code": "FIELD_FORBIDDEN",
+          "fieldQueries": [
+            "fields:TenantBase.Employee"
+          ],
+          "inTransaction": true,
+          "scopeQueries": [
+            "scope:TenantBase/TenantBase.Employee/TenantBase.Employee.detail",
+            "scope:TenantBase/TenantBase.EmploymentRecord/-",
+            "scope:data.scope.all:"
+          ],
+          "status": 403,
+          "trace": [
+            "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+            "obj:TenantBase.Employee:view",
+            "obj:TenantBase.EmploymentRecord:update"
+          ]
+        }
+      },
+      "offer": {
+        "accepted": {
+          "fieldQueries": [
+            "fields:TenantBase.Employee"
+          ],
+          "inTransaction": true,
+          "scopeQueries": [
+            "scope:TenantBase/TenantBase.Employee/TenantBase.Employee.detail",
+            "scope:TenantBase/TenantBase.Offer/-"
+          ],
+          "status": 200,
+          "trace": [
+            "obj:TenantBase.Employee:view",
+            "obj:TenantBase.Offer:update"
+          ]
+        },
+        "deniedEdit": {
+          "code": "FORBIDDEN",
+          "fieldQueries": [],
+          "inTransaction": true,
+          "scopeQueries": [],
+          "status": 403,
+          "trace": [
+            "obj:TenantBase.Offer:update"
+          ]
+        },
+        "deniedScope": {
+          "code": "NOT_FOUND",
+          "fieldQueries": [],
+          "inTransaction": true,
+          "scopeQueries": [
+            "scope:TenantBase/TenantBase.Offer/-"
+          ],
+          "status": 404,
+          "trace": [
+            "obj:TenantBase.Offer:update"
+          ]
+        },
+        "deniedVariable": {
+          "code": "FIELD_FORBIDDEN",
+          "fieldQueries": [
+            "fields:TenantBase.Employee"
+          ],
+          "inTransaction": true,
+          "scopeQueries": [
+            "scope:TenantBase/TenantBase.Employee/TenantBase.Employee.detail",
+            "scope:TenantBase/TenantBase.Offer/-"
+          ],
+          "status": 403,
+          "trace": [
+            "obj:TenantBase.Employee:view",
+            "obj:TenantBase.Offer:update"
+          ]
+        }
+      }
     },
     "scopeQueries": [],
     "trace": []

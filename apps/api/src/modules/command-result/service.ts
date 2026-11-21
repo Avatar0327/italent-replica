@@ -1,6 +1,12 @@
 import { auditCommandFailures, and, commandLedger, eq, sql, type Tx } from '@italent/db';
 import { commandTypeOf } from '../../command-type.js';
-import { ERROR_STATUS, type ErrorCode } from '../../errors.js';
+import { AppError, ERROR_STATUS, type ErrorCode } from '../../errors.js';
+import type { TenantContext } from '../../tenant-context.js';
+import { ESIGN_COMMAND_RESULTS } from '../esign/source-command-result.js';
+import { createCommandResultRegistry, type CommandResultDeps, type CommandResultRegistration } from './registry.js';
+
+const commandResultRegistry = createCommandResultRegistry(ESIGN_COMMAND_RESULTS);
+type RegisteredResult = ReturnType<CommandResultRegistration['project']>;
 
 export interface OwnCommandResult {
   readonly commandId: string;
@@ -23,19 +29,25 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * 2. 台账没有，才看本人的失败命令审计（latestFailureGroup）：对**最新时间的整组**记录判类别，组内含非确定业务失败
  *    （存储不可写 / 结果未知）即视为结果未知；同一时刻有多条时，只要含未知类就按未知处理（时间戳无法区分先后，取保守）；
  * 3. 本人台账成功结果始终优先于失败审计（同一命令 ID 先失败后原键重提成功）。
- * 摘要只取台账响应里的 id / revision / kind，不返回响应正文；整个查询只读。
+ * 未登记类型的摘要只取台账响应里的 id / revision / kind。登记类型则以同一事务授权后得到的投影为准。
  */
 export async function readOwnCommandResult(
   tx: Tx,
-  ctx: { readonly tenantId: string; readonly userId: string },
+  ctx: TenantContext,
   commandId: string,
-): Promise<OwnCommandResult | undefined> {
+  deps?: CommandResultDeps,
+): Promise<OwnCommandResult | RegisteredResult | undefined> {
   const [entry] = await tx
     .select()
     .from(commandLedger)
     .where(and(eq(commandLedger.tenantId, ctx.tenantId), eq(commandLedger.commandId, commandId)));
   if (entry) {
     if (entry.actorUserId !== ctx.userId) return undefined;
+    const registration = entry.commandType ? commandResultRegistry.get(entry.commandType) : undefined;
+    if (registration) {
+      if (!deps || entry.responseStatus < 200 || entry.responseStatus >= 300) return undefined;
+      return readRegisteredCommandResult(tx, deps, ctx, registration, entry.responseBody);
+    }
     return {
       commandId,
       status: entry.responseStatus < 400 ? 'succeeded' : 'failed',
@@ -47,16 +59,36 @@ export async function readOwnCommandResult(
   }
   const latest = await latestFailureGroup(tx, ctx, commandId);
   if (!latest?.occurredAt || latest.hasNonBusiness) return undefined;
+  const commandType = commandTypeOf(latest.method, latest.path);
+  // 没有成功回执就无法核对登记类型的来源与任务绑定。
+  if (commandType && commandResultRegistry.has(commandType)) return undefined;
   return {
     commandId,
     status: 'failed',
-    commandType: commandTypeOf(latest.method, latest.path),
+    commandType,
     businessType: null,
     businessId: null,
     revision: null,
     httpStatus: latest.httpStatus ?? ERROR_STATUS[latest.errorCode as ErrorCode] ?? null,
     completedAt: latest.occurredAt.toISOString(),
   };
+}
+
+async function readRegisteredCommandResult(
+  tx: Tx,
+  deps: CommandResultDeps,
+  ctx: TenantContext,
+  registration: CommandResultRegistration,
+  body: unknown,
+): Promise<RegisteredResult | undefined> {
+  try {
+    await registration.authorize(tx, deps, ctx, body);
+    return registration.project(body);
+  } catch (error) {
+    // 来源缺失、越界与任务错绑走路由统一的 404 信封。
+    if (error instanceof AppError && error.code === 'NOT_FOUND') return undefined;
+    throw error;
+  }
 }
 
 /**

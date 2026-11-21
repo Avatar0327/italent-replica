@@ -1,23 +1,17 @@
 /** F-505 §5：来源路由接入同一命令出口；来源授权与业务锁由各适配方提供。 */
 import { and, eq, esignTasks, sql, type Db, type Tx } from '@italent/db';
 import { tenantLocalDate, type ESignSourceKind } from '@italent/domain';
-import { requirePermission } from '../../authorization.js';
 import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
-import {
-  authorizeInTransaction,
-  getModuleViewableFieldsInTransaction,
-  resolveModuleScopeInTransaction,
-} from '../permission/module-access.js';
-import { EMPLOYEE_OBJECT, requireEmployeeInScope } from '../employment/context.js';
 import { isActiveAccount } from '../approval/resolver.js';
 import { personnelHooks } from '../employment/personnel-hooks.js';
 import { rowsOf } from '../employment/record-store.js';
 import { expireSignTask } from './expiry.js';
 import { initiateSignTask, type PersonVariableField } from './initiation.js';
+import { authorizeSignVariables, authorizeSourceSignTask } from './source-result-access.js';
 import { lockSourceTemplates, normalizeSourceTemplateIds } from './source-templates.js';
 
 type SourceSignContext = ScopeBusinessContext & Pick<TenantContext, 'tenantName'>;
@@ -63,13 +57,7 @@ export function runSourceSignCommand(db: Db, deps: SourceSignDeps, ctx: SourceSi
       },
       replayed: async (tx, result) => {
         const { taskId } = result.body as { taskId: string };
-        const [task] = await tx
-          .select()
-          .from(esignTasks)
-          .where(and(matchesSource, eq(esignTasks.id, taskId), eq(esignTasks.initiatorUserId, ctx.userId)));
-        if (!task) throw new AppError('NOT_FOUND', '签署任务不存在');
-        const fields = task.variableReadFields.filter((field) => field === 'name' || field === 'code');
-        await authorizeSignVariables(tx, deps, ctx, task.employeeId, fields);
+        await authorizeSourceSignTask(tx, deps, ctx, scene, sourceId, taskId);
       },
     },
     execute: async (tx, commandId) => {
@@ -100,32 +88,6 @@ export function runSourceSignCommand(db: Db, deps: SourceSignDeps, ctx: SourceSi
       return { status: 201, body: { sourceId, taskId: task.id } };
     },
   });
-}
-
-/** §3.3：仅当实际变量需要人员字段时，独立校验员工对象、现行范围和字段。 */
-async function authorizeSignVariables(
-  tx: Tx,
-  deps: SourceSignDeps,
-  ctx: SourceSignContext,
-  employeeId: string,
-  fields: readonly PersonVariableField[],
-) {
-  if (!fields.length) return;
-  const forbidden = () => new AppError('FIELD_FORBIDDEN', '没有签署模板所需的人员字段读取权限');
-  try {
-    await requirePermission(authorizeInTransaction(deps.authorize, tx), {
-      ...ctx,
-      action: 'object.view',
-      resource: EMPLOYEE_OBJECT,
-    });
-    const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, EMPLOYEE_OBJECT, `${EMPLOYEE_OBJECT}.detail`);
-    await requireEmployeeInScope(tx, { ...ctx, scope }, employeeId);
-  } catch (error) {
-    if (error instanceof AppError && (error.code === 'FORBIDDEN' || error.code === 'NOT_FOUND')) throw forbidden();
-    throw error;
-  }
-  const viewable = await getModuleViewableFieldsInTransaction(deps, ctx, EMPLOYEE_OBJECT, tx);
-  if (viewable && fields.some((field) => !viewable.has(field))) throw forbidden();
 }
 
 async function sourceVariables(
