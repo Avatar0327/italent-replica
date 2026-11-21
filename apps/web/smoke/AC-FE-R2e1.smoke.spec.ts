@@ -474,3 +474,54 @@ test('AC-FE-R2e1 P2-1 撤销查看权后重读，弹窗与重开详情均不披�
     await setContentAccess(page, true);
   }
 });
+
+test('AC-FE-R2e1 P2-2 冲突后放弃主题修改，无改动保存后重开仅 PATCH 新内容', async ({ page, baseURL }) => {
+  await signIn(page, baseURL!, 'writer');
+  const original = 'ZZ_FER2E1_原主题';
+  const latest = 'ZZ_FER2E1_最新主题';
+  const abandoned = 'ZZ_FER2E1_放弃主题';
+  const newContent = 'ZZ_FER2E1_新调整内容';
+  const record = await seedConflictDraft(page, original, CONTENT);
+  const api = `${API}/${record.id}`;
+  await page.goto(detailUrl(record.id));
+  const drawer = detail(page);
+  const edit = drawer.getByRole('button', { name: '修改申请' });
+  const form = page.getByRole('dialog', { name: intake, exact: true });
+  const subject = form.getByRole('textbox', { name: '调整主题' });
+  const save = form.getByRole('button', { name: /^保\s*存$/ });
+  await edit.click();
+  await subject.fill(abandoned);
+
+  const concurrent = await page.request.patch(`${manifest.url}${api}`, {
+    headers: writerHeaders(record.revision),
+    data: { subject: latest },
+  });
+  expect(concurrent.status()).toBe(200);
+  const { revision } = (await concurrent.json()) as { revision: number };
+  const conflict = responseFor(page, api, 'PATCH');
+  await save.click();
+  expect((await conflict).status()).toBe(409);
+  await form.getByRole('button', { name: '重读最新版本' }).click();
+  await form.getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  await expect(subject).toHaveValue(abandoned);
+
+  const patches: unknown[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === api && request.method() === 'PATCH') patches.push(request.postDataJSON());
+  });
+  await subject.fill(latest);
+  await save.click();
+  await expect(form).toBeHidden();
+  await expect.soft(drawer).toHaveAccessibleName(latest, { timeout: 1500 });
+  expect(patches).toEqual([]);
+
+  await edit.click();
+  await expect.soft(subject).toHaveValue(latest, { timeout: 1500 });
+  await form.getByRole('textbox', { name: '调整内容' }).fill(newContent);
+  const saved = responseFor(page, api, 'PATCH');
+  await save.click();
+  const response = await saved;
+  expect(response.status()).toBe(200);
+  expect(response.request().headers()['if-match']).toBe(String(revision));
+  expect(patches).toEqual([{ content: newContent }]);
+});
