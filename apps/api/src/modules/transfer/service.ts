@@ -27,7 +27,7 @@ import {
 import { readTransferCatalog, readTransferSettings, resolveTransferForm } from './configuration.js';
 import { requireEmployeeTransferFields } from './employee-policy.js';
 import { dutySubordinateIds, normalizeLinkage, type LinkageOptions } from './linkage/input.js';
-import { saveNewTransferLinkage } from './linkage/service.js';
+import { saveNewTransferLinkage, type LinkageTarget } from './linkage/service.js';
 import type { LinkageAccess } from './linkage/access.js';
 import { hasLinkage } from './linkage/store.js';
 import { holdTransferDraft, occupiesDraftSlot, releaseTransferDraft } from './draft-slot.js';
@@ -174,10 +174,12 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
     tx,
     ctx,
     employeeId,
-    { ...input, linkageAccess, withEstablishment: input.writable.withEstablishment === true },
+    { ...input, withEstablishment: input.writable.withEstablishment === true },
     {
       processCode: form.processCode,
       holdDraft: slot && !input.submit,
+      // F-039 从人工入口追踪联动授权；联动参数在入口绑定，核心在同一事务内调用。
+      saveLinkage: (target) => saveNewTransferLinkage(tx, ctx, target, linkage, linkageAccess),
     },
   );
   if (input.employment.mode === 'application' && input.submit) {
@@ -190,10 +192,9 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
   return { ...created, ...metadata };
 }
 
-type TransferCoreInput = Pick<
-  TransferInput,
-  'initiator' | 'transferTypeCode' | 'reasonCode' | 'employment' | 'linkage' | 'linkageAccess'
-> & { readonly withEstablishment: boolean };
+type TransferCoreInput = Pick<TransferInput, 'initiator' | 'transferTypeCode' | 'reasonCode' | 'employment'> & {
+  readonly withEstablishment: boolean;
+};
 
 /** 受信持久化入口（R2-T08 §8.3）。调用方先锁员工闭包，再完成各自的入口授权与规范化。 */
 export async function createTransferCore(
@@ -201,9 +202,14 @@ export async function createTransferCore(
   ctx: EmploymentContext,
   employeeId: string,
   input: TransferCoreInput,
-  options: { readonly processCode: string; readonly holdDraft?: boolean; readonly orgAdjustment?: true },
+  options: {
+    readonly processCode: string;
+    readonly holdDraft?: boolean;
+    readonly orgAdjustment?: true;
+    readonly saveLinkage: (target: LinkageTarget) => Promise<void>;
+  },
 ) {
-  const { processCode, holdDraft, orgAdjustment } = options;
+  const { processCode, holdDraft, orgAdjustment, saveLinkage } = options;
   if (
     orgAdjustment &&
     (!ctx.orgAdjustmentId ||
@@ -241,13 +247,12 @@ export async function createTransferCore(
     orgAdjustment ? { ...metadata, trigger: `org-adjustment:${ctx.orgAdjustmentId}` } : metadata,
   );
   if (holdDraft) await holdTransferDraft(tx, ctx, employeeId, created.id);
-  await saveNewTransferLinkage(
-    tx,
-    ctx,
-    { businessId: created.id, employeeId, effectiveDate: created.effectiveDate, mode: input.employment.mode },
-    input.linkage,
-    input.linkageAccess,
-  );
+  await saveLinkage({
+    businessId: created.id,
+    employeeId,
+    effectiveDate: created.effectiveDate,
+    mode: input.employment.mode,
+  });
   return { business: created, metadata };
 }
 

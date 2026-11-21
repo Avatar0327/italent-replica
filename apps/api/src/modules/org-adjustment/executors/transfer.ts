@@ -9,6 +9,7 @@ import type { EmploymentContext, EmploymentRecord } from '../../employment/types
 import { lockOrganizationSettings } from '../../org/locks.js';
 import { resolveTransferForm } from '../../transfer/configuration.js';
 import { dutySubordinateIds, type LinkageOptions } from '../../transfer/linkage/input.js';
+import { saveNewTransferLinkage } from '../../transfer/linkage/service.js';
 import { createTransferCore, normalizeTransferInput } from '../../transfer/service.js';
 import type { GroupExecutor, GroupInput } from '../execution-groups.js';
 import { applicantScopes, type ApplicantScopeOf } from './applicant-scope.js';
@@ -141,8 +142,12 @@ async function applyTransfer(
     tx,
     ctx,
     row.employeeId,
-    { ...normalized, linkage: row.linkage, withEstablishment: row.withEstablishment },
-    { processCode: form.processCode, orgAdjustment: true },
+    { ...normalized, withEstablishment: row.withEstablishment },
+    {
+      processCode: form.processCode,
+      orgAdjustment: true,
+      saveLinkage: (target) => saveNewTransferLinkage(tx, ctx, target, row.linkage),
+    },
   );
   // §5.8：本片不传组收集器；编制即时校验失败由运行器回滚本组。
   await tx
