@@ -209,7 +209,52 @@ const availability = ([branch, object]: readonly [string, string]): Obligation =
   ],
 });
 
+// DEC-961：查询参数选中一个分析对象，只判该对象的查看权。
+const CANDIDATES = 'GET /api/tenant/analytics/organization-candidates';
+const CANDIDATE_SOURCE = `${M}/analytics/organization-candidates.ts`;
+const CANDIDATE_ROUTE = `${CANDIDATE_SOURCE}#route:${CANDIDATES}`;
+const candidateObjects = [
+  'ContractBoard',
+  'HrDashboard',
+  'HrMovement',
+  'HrMovementReport',
+  'HrProcessDashboard',
+  'HrRoster',
+  'HrStructure',
+  'HrStructureReport',
+];
+const candidateView: Obligation = {
+  perm: `obj:{${candidateObjects.map((object) => `TenantBase.${object}`).join(',')}}:view`,
+  need: NONE,
+  facts: ['object:objectContext'],
+  at: [
+    {
+      role: 'call',
+      unit: CANDIDATE_ROUTE,
+      anchor: "const ctx = await objectContext(c, deps, ANALYSIS_CANDIDATE_OBJECTS[object], 'view')",
+    },
+    {
+      role: 'impl',
+      unit: `${CANDIDATE_SOURCE}#organizationCandidateObject`,
+      anchor: 'if (!object || !Object.hasOwn(ANALYSIS_CANDIDATE_OBJECTS, object))',
+    },
+    {
+      role: 'impl',
+      unit: `${M}/permission/module-route-access.ts#objectContext`,
+      anchor:
+        'await requirePermission(deps.authorize, { ...ctx, action: `object.${operation}`, ' +
+        'resource: objectCode, fields: [] })',
+    },
+    {
+      role: 'const',
+      unit: `${CANDIDATE_SOURCE}#ANALYSIS_CANDIDATE_OBJECTS`,
+      anchor: 'HrStructure: MODULE_OBJECTS.hrStructure.code',
+    },
+  ],
+};
+
 export const HR_ANALYSIS: RequiredTable = {
+  [CANDIDATES]: [candidateView],
   'GET /api/tenant/hr-analysis/roster': entry(GET, false),
   'GET /api/tenant/hr-analysis/roster/export': entry(EXPORT, true),
   // F-465a：目录只返回元数据与按各对象查看权算出的可用性（披露，非准入）
