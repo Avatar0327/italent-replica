@@ -410,7 +410,7 @@ export async function editPartTime(
   const [row] = await lockPartTimeRecords(tx, ctx, business.employeeId, { ids: [recordId] });
   if (!row) throw partTimeNotFound();
   await requirePartTimeRecordScope(tx, ctx, row, row.departmentId);
-  const derived = await sequenceForNewPost(tx, ctx.tenantId, input as Partial<PresetFields>, row.startDate);
+  const derived = await sequenceForNewPost(tx, ctx.tenantId, input, row.startDate, business.payload.fields.postId);
   const plan = planPartTimeEdit(row, business.payload.fields, derived ? { ...input, sequenceId: derived } : input);
   // 兼职部门必填：新增时必给，规划阶段拒绝清空，所以编辑后一定有值
   const departmentId = plan.fields.departmentId!;

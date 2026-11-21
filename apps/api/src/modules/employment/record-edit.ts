@@ -7,7 +7,7 @@ import { queueTransferLinkage, validateTransferSubordinates } from './transfer-l
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { type Tx } from '@italent/db';
-import { requestInputFields, tenantLocalDate, type FieldOriginKind } from '@italent/domain';
+import { changedInputFields, requestInputFields, tenantLocalDate, type FieldOriginKind } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { getCustomFieldsForInheritance } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
@@ -54,13 +54,20 @@ export async function editedValues(
     if (!definition) throw new AppError('VALIDATION_FAILED', '自定义字段不属于本租户任职对象');
     customFields[id] = validateCustomValue(value, definition.valueType, definition.options, record.customFields[id]);
   }
-  const sequenceId = await sequenceForNewPost(tx, ctx.tenantId, patch.fields ?? {}, record.effectiveDate);
+  const hasNamedChanges = changedInputFields(record, patch).size > 0;
+  const sequenceId = await sequenceForNewPost(
+    tx,
+    ctx.tenantId,
+    patch.fields ?? {},
+    record.effectiveDate,
+    record.fields.postId,
+  );
   const fields = { ...record.fields, ...patch.fields, ...(sequenceId ? { sequenceId } : {}) };
   await requireScopedEmploymentObject(tx, ctx, record.employeeId, record.fields.departmentId, record.id);
   await requireScopedEmploymentObject(tx, ctx, record.employeeId, fields.departmentId, record.id);
   await validateSelectedEmploymentType(tx, ctx.tenantId, fields.employmentType, record.fields.employmentType);
   await validateSelectedEmploymentForm(tx, ctx.tenantId, fields.employmentForm, record.fields.employmentForm);
-  return { fields, customFields };
+  return { values: { fields, customFields }, hasNamedChanges };
 }
 
 /** 内部编辑端口；页面、人员、交接的入口接入时保留真实 entry，不模拟审批权限。 */
@@ -82,7 +89,7 @@ export async function editEmploymentRecord(
   // R2-T03 §4A：编辑离职 / 退休记录需 DimissionEdit（页面、批量、导入编辑行同一端口）；日期键仍由 editedValues 以 RECORD_DATE_IMMUTABLE 拒绝
   if (isExitKind(record.kind))
     await requireExitPermission(ctx, 'update', { employeeId: record.employeeId, kind: record.kind, patch });
-  const after = await editedValues(tx, ctx, record, patch);
+  const { values: after, hasNamedChanges } = await editedValues(tx, ctx, record, patch);
   // R2-T08 §7.6：员工主部门、原部门或新部门正在执行组织调整时 409（页面、批量、导入编辑同一端口；离职 / 退休不判）。
   if (!isExitKind(record.kind)) {
     const departmentIds = [record.fields.departmentId, after.fields.departmentId];
@@ -104,7 +111,7 @@ export async function editEmploymentRecord(
   if (isPendingEntryRecord(record))
     await assertEmploymentDepartmentAvailable(tx, ctx, after.fields.departmentId, record.effectiveDate, true);
   await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate, reporting, linkageDate);
-  const { beforeAudit, afterAudit, changes } = recordEditDiff(record, after);
+  const { beforeAudit, afterAudit, changes } = recordEditDiff(record, after, hasNamedChanges);
   const origins = await editOrigins(tx, ctx, { id, business, record }, patch, after.fields, changes, linkageDate);
   if (!changes.length) return requireSavedBusiness(tx, ctx, id);
   // REQ-EMP-003 / 07 A7：历史、兼职、批量编辑只改本记录不传播；控编投影按同一判断，不模拟不会发生的传播（S1-P2-04）。
@@ -146,8 +153,10 @@ export async function editEmploymentRecord(
   return requireSavedBusiness(tx, ctx, id);
 }
 
-function recordEditDiff(record: ForwardValues, after: ForwardValues) {
+function recordEditDiff(record: ForwardValues, after: ForwardValues, hasNamedChanges: boolean) {
   const beforeAudit = { ...record.fields, ...customAudit(record.customFields) };
+  // §4.4.4：先按请求点名的字段判定确认意图，之后才计算真正编辑时的派生差异。
+  if (!hasNamedChanges) return { beforeAudit, afterAudit: beforeAudit, changes: [] };
   const afterAudit = { ...after.fields, ...customAudit(after.customFields) };
   const changes: ForwardFieldChange[] = Object.entries(afterAudit)
     .filter(

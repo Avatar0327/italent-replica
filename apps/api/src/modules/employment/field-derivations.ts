@@ -28,7 +28,7 @@ export function changedDerivationKeys(before: PresetFields, after: PresetFields)
 }
 
 /**
- * DEC-107：显式序列包含 null 均优先。
+ * DEC-107：显式序列包含 null 均优先。编辑时只有职务实际更换才重新带出（DEC-252③）。
  * TODO(需取证 #42)：职务未配置序列时是否清空尚未实测，沿用不带出、保留原值。
  */
 export async function sequenceForNewPost(
@@ -36,8 +36,9 @@ export async function sequenceForNewPost(
   tenantId: string,
   fields: Partial<PresetFields>,
   effectiveDate: string,
+  currentPostId?: string | null,
 ): Promise<string | null> {
-  if (!fields.postId || Object.hasOwn(fields, 'sequenceId')) return null;
+  if (!fields.postId || fields.postId === currentPostId || Object.hasOwn(fields, 'sequenceId')) return null;
   const post = await loadJobObject(tx, tenantId, 'posts', fields.postId, effectiveDate);
   return typeof post?.sequenceId === 'string' ? post.sequenceId : null;
 }
