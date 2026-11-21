@@ -4,14 +4,16 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { findCurrentRecord } from '../../apps/api/src/modules/employment/read-model.js';
 import { loadAdjustmentHead, loadExecutionItems } from '../../apps/api/src/modules/org-adjustment/execution-groups.js';
+import type { ApplicantScopeOf } from '../../apps/api/src/modules/org-adjustment/executors/applicant-scope.js';
 import * as execution from '../../apps/api/src/modules/org-adjustment/executors/index.js';
 import { runOrgAdjustmentTenant } from '../../apps/api/src/modules/org-adjustment/execution-runner.js';
 import { RUNNER_LEASE_MS } from '../../apps/api/src/modules/org-adjustment/runner-lease.js';
 import { transferExecutor } from '../../apps/api/src/modules/org-adjustment/executors/transfer.js';
 import { scheduleOrgAdjustmentExecution } from '../../apps/api/src/modules/org-adjustment/schedule.js';
 import { normalizeLinkage } from '../../apps/api/src/modules/transfer/linkage/input.js';
+import { expandScopeOrgSet } from '../../apps/api/src/modules/permission/scope-hierarchy.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
-import { ALL, BASE, expectError } from './AC-OA-head-support.js';
+import { ALL, BASE, expectError, only, ORG } from './AC-OA-head-support.js';
 import { itemsWorld } from './AC-OA-items-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
 import { adjustmentState, seedAdjustment, seedItem, tableRows } from './support/org-adjustment-execution.js';
@@ -20,10 +22,10 @@ const testDb = useTestDb();
 const date = '2026-11-01';
 const formId = 'TenantBase.CrossDepartmentTransferMultiFormView';
 
-async function fixture() {
+async function fixture(now = '2026-11-03T12:00:00Z') {
   const db = testDb().db;
   const w = await itemsWorld(db, 'ZZ_BE11C_EXEC');
-  w.setNow('2026-11-03T12:00:00Z');
+  w.setNow(now);
   const { tenant, hr } = w;
   const inTenant = <T>(fn: Parameters<typeof withTenant<T>>[2]) => withTenant(db, tenant.id, fn);
   const { id } = await seedAdjustment(db, tenant.id, {
@@ -461,4 +463,78 @@ it.each(['single', 'swap'] as const)('AC-OA-52 内部执行证据 %s：即时校
   }
   expect(await snapshot()).toEqual(before);
   expect((await f.results()).every((row) => row.created_business_id === null)).toBe(true);
+});
+
+it.each(['清空', '换人', '省略'] as const)('P2-1 虚线经理：%s 保留明细意图', async (action) => {
+  const f = await fixture();
+  const manager = await f.w.person('ZZ_BE11C_原虚线经理', f.w.a);
+  const nextManager = await f.w.person('ZZ_BE11C_新虚线经理', f.w.b);
+  const { employeeId } = await f.w.person('ZZ_BE11C_下属', f.w.a, { dottedManagerId: manager.employeeId });
+  const read = () => f.inTenant((tx) => findCurrentRecord(tx, f.tenant.id, employeeId, date));
+  expect((await read())?.fields.dottedManagerId).toBe(manager.employeeId);
+  await f.row({
+    employeeId,
+    transferTypeCode: 'job_level',
+    formId: 'TenantBase.JobLevelTransferMultiFormView',
+    ...(action !== '省略' ? { dottedManagerId: action === '清空' ? null : nextManager.employeeId } : {}),
+  });
+  expect((await f.schedule()).dataVolume).toBe(1);
+
+  await f.run();
+
+  const [row] = await f.results();
+  expect(row).toMatchObject({ execution_result: 1 });
+  const record = await read();
+  expect(record?.id).toBe(row!.created_business_id);
+  if (action === '清空') expect(record?.fields.dottedManagerId, '明确清空必须覆盖旧虚线经理').toBeNull();
+  else expect(record?.fields.dottedManagerId).toBe(action === '换人' ? nextManager.employeeId : manager.employeeId);
+});
+
+it.each(['保留范围', '组间撤权'] as const)('P2-2 未来同单新增调入组织：%s', async (mode) => {
+  const f = await fixture('2026-10-30T12:00:00Z');
+  const orgItem = await seedItem(f.db, f.tenant.id, f.id, {
+    adjust_type: 1,
+    parent_org_id: f.w.b,
+    name: 'ZZ_BE11C_未来目标组织',
+    level: 3,
+    seq: 1,
+  });
+  await f.row({ departmentId: null, departmentItemId: orgItem });
+  expect((await f.schedule()).dataVolume).toBe(2);
+
+  let roots = [f.w.a, f.w.b];
+  const scopeOf: ApplicantScopeOf = async (tx, query) => {
+    if (query.objectCode !== ORG) return ALL;
+    const selected = roots.map((orgId) => ({ orgId, includeDescendants: true, dimension: 'admin' }));
+    return only(...(await expandScopeOrgSet(tx, query.tenantId, query.asOf, selected)));
+  };
+  await f.run({
+    executors: execution.transferExecutors(scopeOf),
+    hooks: {
+      afterGroup: ({ id }) => {
+        if (id === orgItem && mode === '组间撤权') roots = [f.w.a];
+      },
+    },
+  });
+
+  const [org] = await tableRows<{ created_org_id: string; execution_result: number }>(
+    f.db,
+    f.tenant.id,
+    'org_adjustment_org_items',
+    f.id,
+  );
+  expect(org).toMatchObject({ execution_result: 1 });
+  const read = (asOf: string) => f.inTenant((tx) => findCurrentRecord(tx, f.tenant.id, f.employee, asOf));
+  expect((await read('2026-10-30'))?.fields.departmentId).toBe(f.w.a);
+  if (mode === '保留范围') {
+    expect(await f.results(), '当前父组织范围仍有效，未来同单目标可调入').toMatchObject([
+      { execution_result: 1, execution_reason: null },
+    ]);
+    expect((await read(date))?.fields.departmentId).toBe(org!.created_org_id);
+  } else {
+    expect(await f.results()).toMatchObject([
+      { execution_result: 2, execution_reason: 'APPLICANT_OUT_OF_SCOPE', created_business_id: null },
+    ]);
+    expect((await read(date))?.fields.departmentId).toBe(f.w.a);
+  }
 });
