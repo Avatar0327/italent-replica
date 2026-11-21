@@ -5,10 +5,91 @@
  * approval_passed → confirmed 阶段（审批通过 / 直接离职保存，生效日 = 当天；确认阶段已过去的由落地阶段兜底）。
  * 同一离职至多执行一次（联动执行行幂等）。
  */
-import { exitEffects, type Tx } from '@italent/db';
+import { exitEffects, sql, type Tx } from '@italent/db';
+import { MODULE_OBJECTS } from '@italent/domain';
+import { AppError } from '../../errors.js';
+import { linkedObjectScope, scopeSql } from '../permission/module-access.js';
+import { authorizeLinkageWrite } from '../transfer/linkage/access.js';
+import type { LinkageOptions } from '../transfer/linkage/input.js';
+import { appendLinkageVersion, latestLinkage } from '../transfer/linkage/store.js';
+import { validateLinkage } from '../transfer/linkage/validation.js';
+import { dutyTransferExecuted } from './exit-duty-timing.js';
 import { applyDutyTransfer } from '../transfer/linkage/execute.js';
-import { auditEmployment } from './context.js';
+import { auditEmployment, employmentCreator, requireEmploymentWrite } from './context.js';
+import { rowsOf } from './record-store.js';
+import { employmentVisibilitySql } from './visibility.js';
 import type { EmploymentContext } from './types.js';
+
+type PlanOwner = { readonly id: string; readonly employeeId: string };
+
+export async function authorizeRetirementDutyPlan(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  options: LinkageOptions,
+) {
+  // 清空同样需要计划字段编辑权；非空时还须校验目标字段和组织范围。
+  if (!options.dutyTransfer) await requireEmploymentWrite(ctx, 'update', { dutyTransfer: null });
+  await authorizeLinkageWrite(tx, ctx, {}, { employeeId, operation: 'update', options });
+}
+
+/** R2-T04 §3.2：编辑只替换尚未执行的本单计划。调用方已锁定参与员工与单据。 */
+export async function requirePendingRetirementDutyPlan(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  if (await dutyTransferExecuted(tx, ctx, businessId))
+    throw new AppError('CONFLICT', '职责已转交，不能再修改转交计划', { reason: 'EXIT_DUTY_TRANSFER_LOCKED' });
+}
+
+export async function writeDutyTransferPlan(tx: Tx, ctx: EmploymentContext, owner: PlanOwner, options: LinkageOptions) {
+  await validateLinkage(tx, ctx, owner.employeeId, options);
+  // 空计划同样追加版本，覆盖上一个待执行计划，并由联动存储记录审计前后值。
+  await appendLinkageVersion(tx, ctx, { businessId: owner.id, employeeId: owner.employeeId }, options);
+}
+
+export async function readExitDutyTransferPlan(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  const plan = (await latestLinkage(tx, ctx.tenantId, businessId))?.options.dutyTransfer ?? null;
+  // 计划可整体替换；有引用不可见时省略整个块，不能用裁剪后的半份计划覆盖原计划。
+  if (plan && !(await canReadPlanReferences(tx, ctx, plan))) return {};
+  return {
+    dutyTransferPlan: plan,
+    dutyTransferPlanLocked: await dutyTransferExecuted(tx, ctx, businessId),
+  };
+}
+
+async function canReadPlanReferences(
+  tx: Tx,
+  ctx: EmploymentContext,
+  plan: NonNullable<LinkageOptions['dutyTransfer']>,
+) {
+  const employeeIds = new Set([
+    ...plan.subordinates.flatMap(({ employeeId, receiverId }) => [employeeId, receiverId]),
+    ...plan.orgRoles.map(({ receiverId }) => receiverId),
+  ]);
+  const person = sql`e.id`;
+  const personScope = employmentVisibilitySql(ctx.scope, {
+    employee: person,
+    department: sql`NULL::uuid`,
+    creator: employmentCreator(ctx.tenantId, person),
+  });
+  const [people] = rowsOf<{ count: number }>(
+    await tx.execute(sql`
+    SELECT count(*)::int AS count FROM employment_employees e
+    WHERE e.tenant_id=${ctx.tenantId} AND e.id=ANY(${`{${[...employeeIds].join(',')}}`}::uuid[]) AND ${personScope}
+  `),
+  );
+  if (people?.count !== employeeIds.size) return false;
+
+  const orgIds = new Set(plan.orgRoles.map(({ orgId }) => orgId));
+  if (!orgIds.size) return true;
+  const scope = await linkedObjectScope(tx, ctx, MODULE_OBJECTS.organization.code);
+  const orgScope = scope ? scopeSql(scope, { org: sql`o.id` }) : sql`TRUE`;
+  const [orgs] = rowsOf<{ count: number }>(
+    await tx.execute(sql`
+    SELECT count(*)::int AS count FROM org_objects o
+    WHERE o.tenant_id=${ctx.tenantId} AND o.id=ANY(${`{${[...orgIds].join(',')}}`}::uuid[]) AND ${orgScope}
+  `),
+  );
+  return orgs?.count === orgIds.size;
+}
 
 export interface ExitTimingRow {
   readonly businessId: string;
