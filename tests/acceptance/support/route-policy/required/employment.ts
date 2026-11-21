@@ -1218,6 +1218,8 @@ function exitBusinessCommand(
   file = EXIT,
 ): Obligation[] {
   const call = (text: string) => (unit === 'route' ? at(file, 'PATCH', path, text) : fn(file, unit, text));
+  const editGuardAnchor =
+    file === RETIRE ? 'const guard = exitEditGuard(' : 'guard: exitEditGuard(deps, ctx, gate, id)';
   const guard =
     unit === 'route'
       ? fn(REPLAY, 'requireExitEditRights', "await requireExitPermission(ctx, 'update', target)")
@@ -1225,7 +1227,12 @@ function exitBusinessCommand(
   return [
     ob(
       `obj:${RECORD}:update`,
-      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        'object:readContext(object.*)',
+        'objectOp:TenantBase.EmploymentRecord:update',
+        'object:object.* 动作',
+        ...(file === RETIRE && unit === 'route' ? [OBJECT_WRITE_FACT] : []),
+      ],
       [
         call("const ctx = await readContext(c, deps, 'object.update', revision(c))"),
         READ,
@@ -1237,12 +1244,7 @@ function exitBusinessCommand(
     ob(
       `btn:${RECORD}#${anchor}@detail`,
       [],
-      [
-        call(unit === 'route' ? 'guard: exitEditGuard(deps, ctx, gate, id)' : GUARD_ANCHOR[unit]),
-        guard,
-        EXIT_PERMISSION,
-        WRITE_BUTTON,
-      ],
+      [call(unit === 'route' ? editGuardAnchor : GUARD_ANCHOR[unit]), guard, EXIT_PERMISSION, WRITE_BUTTON],
     ),
     businessWrite(call('const current = await authorizeBusinessWrite(deps, ctx, id)')),
     ...(unit !== 'route'
@@ -4076,14 +4078,14 @@ export const EMPLOYMENT: RequiredTable = {
   'PATCH /api/tenant/employment/retirements/:id': [
     ...exitBusinessCommand('/retirements/:id', 'Employment.RetireEdit', 'route', RETIRE),
     linkage(
-      at(RETIRE, 'PATCH', '/retirements/:id', 'body: await updateExitFields(tx, context, id, patch'),
-      'F-140：共用编辑服务的改期分支可进入生效联动或重定位 / 替代；退休仍拒绝日期变更',
+      at(RETIRE, 'PATCH', '/retirements/:id', 'authorizeRetirementDutyPlan(tx, scoped, current.employeeId, duty)'),
+      'F-538：编辑未执行的退休转交计划走联动字段、目标字段与组织范围复核；退休仍拒绝日期变更',
     ),
     ob(
       'btn:TenantBase.ApprovalInstance#adminIntervene@detail',
       ['button:object.button', 'button:buttonResource'],
       [
-        at(RETIRE, 'PATCH', '/retirements/:id', '{ guard: exitEditGuard(deps, ctx, gate, id) }'),
+        at(RETIRE, 'PATCH', '/retirements/:id', 'const guard = exitEditGuard('),
         fn(REPLAY, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
         fn(
           REPLAY,

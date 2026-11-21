@@ -4,7 +4,7 @@ import { retireBody } from './model.js';
 import { planFields } from './RehirePlan.js';
 import { retirementObjectGrant } from './retirement-permission.test-support.js';
 import { acceptRehire, rehireApplicationAccess, rehireBlockers } from './rehire-model.js';
-import { retirementEditFields, retirementPatch } from './RetirementEdit.js';
+import { retirementEditBaseline, retirementEditFields, retirementPatch } from './RetirementEdit.js';
 
 describe('AC-FE-R2c3c 退休同时返聘', () => {
   const input = {
@@ -127,7 +127,7 @@ it('AC-FE-R2c3c 退休编辑只投影修改过且可写的现有 PATCH 字段', 
     effectiveDate: '2026-10-27',
     reEmployed: true,
     rehire: { fields: { remarks: '不要发送' } },
-    dutyTransfer: { subordinates: [] },
+    dutyTransferPlan: { subordinates: [] },
     dutyTransferTiming: 'business_effective',
   };
   const before = { dutyTransferTiming: 'business_effective' };
@@ -145,7 +145,11 @@ it('AC-EN-F538-FE-01 退休编辑仅在职责计划有编辑权且变动时提�
     subordinates: first.subordinates.map((item) => ({ ...item, receiverId: 'ZZ_F538_新接收人' })),
   };
   const writable = ['dutyTransfer'];
-  const baseline = { dutyTransfer: first };
+  const baseline = retirementEditBaseline({
+    dutyTransfer: { transferred: 2 },
+    dutyTransferPlan: first,
+  });
+  expect(baseline.dutyTransfer).toEqual(first);
   expect(retirementPatch({ dutyTransfer: next }, baseline, writable)).toEqual({ dutyTransfer: next });
   expect(retirementPatch({ dutyTransfer: null }, baseline, writable)).toEqual({ dutyTransfer: null });
   expect(retirementPatch(baseline, baseline, writable)).toEqual({});

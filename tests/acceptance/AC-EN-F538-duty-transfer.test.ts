@@ -1,6 +1,9 @@
 import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import { sql } from '@italent/db';
+import type { Authorizer } from '@italent/api';
+import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
+import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { dutyExitWorld } from './AC-DT-exit-support.js';
@@ -130,8 +133,10 @@ describe('AC-EN-F538 退休编辑职责转交计划', () => {
     const before = await x.stateOf(x.employee.id);
     for (const authorize of [
       denyButtons('Employment.RetireEdit'),
-      (request: Parameters<ReturnType<typeof denyButtons>>[0]) =>
+      (request: Parameters<Authorizer>[0]) =>
         !(request.action === 'object.update' && request.fields?.includes('directManagerId')),
+      (request: Parameters<Authorizer>[0]) =>
+        !(request.action === 'object.update' && request.fields?.includes('dutyTransfer')),
     ]) {
       const response = await x.restricted(authorize)('PATCH', `/retirements/${draft.id}`, {
         body,
@@ -140,5 +145,97 @@ describe('AC-EN-F538 退休编辑职责转交计划', () => {
       expect.soft(response.status, await response.clone().text()).toBe(403);
       expect(await x.stateOf(x.employee.id)).toEqual(before);
     }
+  });
+  it('AC-EN-F538-05 已生效及已作废的退休拒绝修改计划；离职 PATCH 仍拒绝该字段', async () => {
+    const x = await world('closed');
+    const active = await x.createdDirect('retirement', '2026-10-02');
+    const applied = await x.activate(active.id, '2026-10-03');
+    expect(applied).toMatchObject({ outcome: 'effective' });
+    const other = await x.peer('ZZ_F538_撤销退休员工');
+    const voided = await x.directRetire(last, undefined, other.id);
+    const cancelled = await x.session.request('POST', `/retirements/${voided.id}/cancel`, {
+      ifMatch: voided.revision,
+      body: {},
+    });
+    expect(cancelled.status, await cancelled.clone().text()).toBe(200);
+    for (const [id, state] of [
+      [active.id, 'effective'],
+      [voided.id, 'voided'],
+    ] as const) {
+      expect(await x.stateOfBusiness(id)).toBe(state);
+      const { revision, employeeId } = await x.business(id);
+      const before = await x.stateOf(employeeId);
+      expect(await x.problem(await x.patchExit(id, revision, { dutyTransfer: null }, 'retirement'))).toMatchObject({
+        status: 409,
+        reason: 'EXIT_NOT_EDITABLE',
+      });
+      expect(await x.stateOf(employeeId)).toEqual(before);
+    }
+    const leaver = await x.peer('ZZ_F538_离职员工');
+    const leave = await x.createdLeave(leaver.id, x.bodyOf('leave', last, 'application'));
+    const before = await x.stateOf(leaver.id);
+    expect((await x.patchExit(leave.id, leave.revision, { dutyTransfer: null })).status).toBe(400);
+    expect(await x.stateOf(leaver.id)).toEqual(before);
+    expect((await x.patchExit(leave.id, leave.revision, { handoverEmployeeId: x.employee.id })).status).toBe(200);
+  });
+
+  it('AC-EN-F538-06 审批通过时已执行的计划保留原版，拒绝覆盖或清空', async () => {
+    const x = await world('executed');
+    const subordinate = await x.subordinateOf(x.employee.id, 'ZZ_F538_已转交下属');
+    const receiver = await x.peer('ZZ_F538_已转交接收人');
+    const dutyTransfer = x.plan({ subordinates: [{ employeeId: subordinate.id, receiverId: receiver.id }] });
+    await x.useTiming('approval_passed');
+    const retire = await x.createdDirect('retirement', last, { dutyTransfer });
+    const before = await x.stateOf(x.employee.id);
+    expect(await detail(x, retire.id)).toMatchObject({ dutyTransferPlan: dutyTransfer, dutyTransferPlanLocked: true });
+    expect(
+      await x.problem(await x.patchExit(retire.id, retire.revision, { dutyTransfer: null }, 'retirement')),
+    ).toMatchObject({ status: 409, reason: 'EXIT_DUTY_TRANSFER_LOCKED' });
+    expect(await x.managerOf(subordinate.id)).toBe(receiver.id);
+    expect(await x.stateOf(x.employee.id)).toEqual(before);
+  });
+
+  it('AC-EN-F538-07 详情按字段与计划引用范围披露；同键重放重新核对职责权限', async () => {
+    const x = await world('replay');
+    const subordinate = await x.subordinateOf(x.employee.id, 'ZZ_F538_重放下属');
+    const receiver = await x.peer('ZZ_F538_重放接收人');
+    const draft = await x.directRetire(last, {
+      dutyTransfer: x.plan({ subordinates: [{ employeeId: subordinate.id, receiverId: receiver.id }] }),
+    });
+    expect(await detail(x, draft.id, x.restricted(denyButtons()))).not.toHaveProperty('dutyTransferPlan');
+    const ownerScope: Authorizer = () => true;
+    registerScopeProvider(ownerScope, {
+      scope: async () => ({
+        ...EMPTY_SCOPE,
+        hasDataPermission: true,
+        terms: [{ dimension: 'reporting', orgIds: [], personIds: [x.employee.id, subordinate.id] }],
+      }),
+      authorize: async (request) => ownerScope(request),
+      fields: async () => new Set(['id', 'employeeId', 'revision', 'dutyTransfer']),
+    });
+    const limited = await detail(x, draft.id, x.asUser(x.session.user.id, ownerScope));
+    expect(limited).not.toHaveProperty('dutyTransferPlan');
+    expect(limited).not.toHaveProperty('dutyTransferPlanLocked');
+
+    const next = await x.peer('ZZ_F538_更换接收人');
+    const path = `/retirements/${draft.id}`;
+    const command = {
+      ifMatch: draft.revision,
+      idempotencyKey: randomUUID(),
+      body: { dutyTransfer: x.plan({ subordinates: [{ employeeId: subordinate.id, receiverId: next.id }] }) },
+    };
+    const saved = await x.session.request('PATCH', path, command);
+    expect(saved.status, await saved.clone().text()).toBe(200);
+    const reply = await saved.json();
+    const before = await x.stateOf(x.employee.id);
+    const replay = await x.session.request('PATCH', path, command);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(reply);
+    const denyDutyField: Authorizer = (request) =>
+      !(request.action === 'object.update' && request.fields?.includes('dutyTransfer'));
+    expect((await x.restricted(denyDutyField)('PATCH', path, command)).status).toBe(403);
+    expect(await x.stateOf(x.employee.id)).toEqual(before);
+    expect(await x.activate(draft.id, effective)).toMatchObject({ outcome: 'effective' });
+    expect(await x.managerOf(subordinate.id, effective)).toBe(next.id);
   });
 });

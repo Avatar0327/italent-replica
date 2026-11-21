@@ -15109,7 +15109,10 @@
           "transfer.initiator"
         ],
         "fieldsIn": [
-          "requireEmploymentWrite"
+          "checkFields",
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite"
         ],
         "fieldsOut": [
           "disclose*",
@@ -15121,16 +15124,16 @@
         ],
         "object": [
           "object.* 动作",
-          "readContext(object.*)"
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
+          "checkScope",
           "employment scope",
-          "employment visibility",
-          "scope.all",
-          "scopeSql"
+          "employment visibility"
         ],
         "scopePoint": [
           "employment point"
