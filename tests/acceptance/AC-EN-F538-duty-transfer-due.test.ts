@@ -13,6 +13,7 @@ import {
   withTenant,
   type Db,
 } from '@italent/db';
+import { EMPLOYEE_STATUS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { runDueExitDutyTransfers } from '../../apps/api/src/modules/employment/exit-duty-due.js';
@@ -68,6 +69,7 @@ async function seedClearedPrefix(db: Db, tenantId: string, userId: string, subor
         effectiveDate,
         plannedEffectiveDate: effectiveDate,
         lastWorkDate,
+        employeeStatus: EMPLOYEE_STATUS.retired,
         formId: 'standard',
         employType: 'internal',
       })),
