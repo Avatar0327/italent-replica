@@ -80,7 +80,7 @@ async function assertCreatedOrgScope(
       );
     if (!item) break;
     const [org] = await loadOrgSnapshot(tx, at.tenantId, adjustment.effectiveDate, undefined, { id });
-    if (!org || org.establishedOn <= today) break;
+    if (!org?.establishedOn || org.establishedOn <= today) break;
     id = org.parents.admin?.parentId ?? null;
   }
   throw outOfScope();
