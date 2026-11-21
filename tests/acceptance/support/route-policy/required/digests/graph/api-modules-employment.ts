@@ -6551,6 +6551,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/fields.ts#validateCustomValue',
+    'packages/domain/src/employment/field-origins.ts#changedInputFields',
   ],
   'apps/api/src/modules/employment/record-edit.ts#recordEditDiff': ['#customAudit'],
   'apps/api/src/modules/employment/record-events.ts#eventColumns': ['#TIMELINE_ALIAS'],
