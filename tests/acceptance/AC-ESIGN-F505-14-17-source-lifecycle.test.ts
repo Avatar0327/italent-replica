@@ -223,3 +223,36 @@ it('AC-17 办理入职与 Offer 变已入职都保留在途任务，原本人仍
   await ok(await w.sign(entryTask, entryTask.employeeSignerUserId!));
   expect(await w.read(entryTask.id)).toMatchObject({ status: 'signing', currentNode: 'enterprise' });
 });
+
+it('AC-17 办理入职后同 ID 编辑无变化保留任务，实际改工作地点撤销任务并拒绝再签', async () => {
+  const w = await lifecycleWorld(testDb().db, 'hired-edit');
+  const { entry, entryTask, offerTask } = await w.pair({ contractEndDate: null });
+  await ok(
+    await w.employment('POST', `/pending-entries/${entry.id}/complete`, {
+      ifMatch: await w.businessRevision(entry.id),
+      body: { probation: false },
+    }),
+  );
+  expect(await w.read(entryTask.id)).toEqual(entryTask);
+  const initial = await w.record(entry.id);
+  const revision = await w.businessRevision(entry.id);
+  const edit = (place: unknown) =>
+    w.employment('PATCH', `/records/${entry.id}`, { ifMatch: revision, body: { fields: { place } } });
+
+  await ok(await edit(initial.fields.place));
+  expect(await w.businessRevision(entry.id)).toBe(revision);
+  expect(await w.read(entryTask.id)).toEqual(entryTask);
+  expect(await w.notices(entryTask.id)).toEqual([]);
+
+  const place = 'ZZ_F505_新工作地点';
+  await ok(await edit(place));
+  expect((await w.record(entry.id)).fields.place).toBe(place);
+  expect(await w.businessRevision(entry.id)).toBe(revision + 1);
+  const updated = await w.read(entryTask.id);
+  expect(updated.status, '办理入职后改原记录工作地点应撤销原 entry 任务').toBe('revoked');
+  await w.revoked(entryTask, 'source_changed');
+  const sign = await w.sign(updated, entryTask.employeeSignerUserId!);
+  expect(await ok(sign, 409)).toMatchObject({ error: { details: { reason: 'ESIGN_TASK_CLOSED' } } });
+  expect(await w.read(entryTask.id)).toEqual(updated);
+  expect(await w.read(offerTask.id)).toEqual(offerTask);
+});

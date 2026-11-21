@@ -208,3 +208,51 @@ it.skipIf(testDbMode() !== 'pg').each(['cancel', 'complete'] as const)(
     expect((await w.entries('cancelled')).map(({ id }) => id)).toContain(entry.id);
   },
 );
+
+it('AC-18 办理入职后改原记录，第二条撤销通知写失败回滚编辑、任务和审计', async () => {
+  const { db } = testDb();
+  const w = await lifecycleWorld(db, 'hired-edit-rollback');
+  const { entry, entryTask } = await w.pair({ contractEndDate: null });
+  await ok(
+    await w.employment('POST', `/pending-entries/${entry.id}/complete`, {
+      ifMatch: await w.businessRevision(entry.id),
+      body: { probation: false },
+    }),
+  );
+
+  const revision = await w.businessRevision(entry.id);
+  const key = uniqueSuffix();
+  const place = 'ZZ_F505_回滚验证工作地点';
+  const edit = () =>
+    w.seeder.request('PATCH', `/api/tenant/employment/records/${entry.id}`, {
+      tenant: w.tenant.id,
+      user: w.user.id,
+      ifMatch: revision,
+      idempotencyKey: key,
+      body: { fields: { place } },
+    });
+  const snapshot = async () => ({
+    record: await w.record(entry.id),
+    revision: await w.businessRevision(entry.id),
+    task: await w.read(entryTask.id),
+    notices: await w.notices(entryTask.id),
+    audit: await w.query(sql`SELECT action FROM audit_events WHERE command_id=${key} ORDER BY action`),
+    outbox: await w.query(sql`SELECT event_type FROM employment_outbox WHERE command_id=${key} ORDER BY event_type`),
+    ledger: await w.query(sql`SELECT response_status FROM command_ledger WHERE command_id=${key}`),
+  });
+  const before = await snapshot();
+  const failed = await failSecondNotice(db, edit);
+  expect(failed.status, '办理后编辑的第二条撤销通知失败应返回存储不可写').toBe(503);
+  expect(await failed.json()).toMatchObject({ error: { details: { reason: 'STORAGE_UNWRITABLE' } } });
+  expect(await snapshot()).toEqual(before);
+
+  await ok(await edit());
+  const after = await snapshot();
+  expect(after.record.fields.place).toBe(place);
+  expect(after.revision).toBe(revision + 1);
+  expect(after.audit).toContainEqual({ action: 'employment.record.edit' });
+  expect(after.audit).toContainEqual({ action: 'esign.task.revoked' });
+  expect(after.outbox).toContainEqual({ event_type: 'esign.task.revoked' });
+  expect(after.ledger).toEqual([{ response_status: 200 }]);
+  await w.revoked(entryTask, 'source_changed');
+});
