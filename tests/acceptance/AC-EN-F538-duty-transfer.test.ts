@@ -56,6 +56,9 @@ describe('AC-EN-F538 退休编辑职责转交计划', () => {
       dutyTransferPlan: plan(next.id),
       handoverEmployeeId: next.id,
     });
+    const inFlight = await x.session.request('GET', `/retirements/employees/${x.employee.id}/in-flight`);
+    expect(inFlight.status, await inFlight.clone().text()).toBe(200);
+    expect(await inFlight.json()).toMatchObject({ item: { id: draft.id, dutyTransferPlan: plan(next.id) } });
     const state = await x.stateOf(x.employee.id);
     expect(state.audits).toContainEqual(
       expect.objectContaining({

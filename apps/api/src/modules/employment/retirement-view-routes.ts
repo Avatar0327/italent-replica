@@ -95,9 +95,7 @@ async function projectRetirementDetail(
     const { rehire, contract } = read.frozen ? {} : await retirementRehireDetail(tx, deps, ctx, detail, show);
     const payload = rehire === undefined ? shown : { ...shown, rehire };
     const dutyTransfer =
-      detailRequest && !read.frozen && show.employment('dutyTransfer')
-        ? await readExitDutyTransferPlan(tx, ctx, detail.id)
-        : {};
+      !read.frozen && show.employment('dutyTransfer') ? await readExitDutyTransferPlan(tx, ctx, detail.id) : {};
     return trimRetirementDetail({ ...payload, ...actions, ...dutyTransfer }, { ...show, contract });
   });
   return { ...projected, contentView };

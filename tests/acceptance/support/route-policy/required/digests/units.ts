@@ -651,7 +651,7 @@ export const DIGESTS: Digests = {
     'route:PUT /retirement-rules/:id/enabled': '81bf2633b316',
   },
   'apps/api/src/modules/employment/retirement-view-routes.ts': {
-    projectRetirementDetail: 'b8e09bf33ae6',
+    projectRetirementDetail: '86ce9ce348ee',
     'route:GET /retirements': 'e30a273c900a',
     'route:GET /retirements/:id': '9a2c924e8137',
     'route:GET /retirements/employees/:id/in-flight': '038f286aec09',

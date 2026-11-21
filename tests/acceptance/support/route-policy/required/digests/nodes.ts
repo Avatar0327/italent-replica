@@ -3752,7 +3752,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/retirement-scheduler.ts#RETIREMENT_BATCH_LIMITS': ['387df8169a4b', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/retirement-view-routes.ts#FALLBACK_UPCOMING_DAYS': ['16893b4cce8a', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/retirement-view-routes.ts#IN_FLIGHT_STATES': ['a48d9a3d23e4', 'e3b0c44298fc'],
-  'apps/api/src/modules/employment/retirement-view-routes.ts#projectRetirementDetail': ['b8e09bf33ae6', 'b7d76b395192'],
+  'apps/api/src/modules/employment/retirement-view-routes.ts#projectRetirementDetail': ['86ce9ce348ee', 'b7d76b395192'],
   'apps/api/src/modules/employment/retirement-view-routes.ts#shownRetirement': ['6e325c1d36cd', '1cb3ca784cf0'],
   'apps/api/src/modules/employment/retirement-view-routes.ts#upcomingDaysOf': ['4eafe8e236f3', 'e2b0d975f3d9'],
   'apps/api/src/modules/employment/retirement-view-routes.ts#viewQuery': ['f1aadb1df3bf', '6f0a86a15e82'],
