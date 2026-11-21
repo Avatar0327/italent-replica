@@ -18,6 +18,10 @@ import { publishRouted, type RouteScene } from './AC-APV-F478-support.js';
 import { detailOf, type DetailWithExits } from './AC-APV-F478-s2-support.js';
 import type { NodeInput } from './AC-APV-support.js';
 import { revokeBySystem } from '../../apps/api/src/modules/approval/actions.js';
+import { installWebLocks } from './support/web-locks.js';
+
+// F-110 第 3 轮：调动 / 审批命令登记恢复记录须拿跨标签页锁，测试环境装一份 Web Locks。
+installWebLocks();
 
 // API / PGlite 保留 Node 的 URL、Request、Response、fetch；antd 渲染所需的其余 DOM 全局取自 happy-dom，只补 Node 没有的。
 const domWindow = new Window({ url: 'http://localhost' });
@@ -32,6 +36,9 @@ for (const key of Object.getOwnPropertyNames(domWindow)) {
 }
 // Node 自带 Event / EventTarget，页面事件须用 happy-dom 的实现。
 Object.assign(globalThis, { window: domWindow, document: domWindow.document, Event: domWindow.Event });
+// Node 24+ 的 Web Storage 未配置时为 undefined（跳过了上面的补齐）；审批命令登记恢复记录写 localStorage（F-110），改用 happy-dom 的。
+for (const key of ['localStorage', 'sessionStorage'] as const)
+  Object.defineProperty(globalThis, key, { configurable: true, writable: true, value: domWindow[key] });
 
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h, act } = requireWeb('react');

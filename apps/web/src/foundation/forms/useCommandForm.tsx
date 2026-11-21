@@ -1,6 +1,14 @@
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useSession } from '../Session.js';
-import { createFormStore, isLocked, type FormStore, type Latest, type SubmitInput, type Values } from './store.js';
+import {
+  createFormStore,
+  isLocked,
+  type FormStore,
+  type Latest,
+  type SubmitInput,
+  type Submission,
+  type Values,
+} from './store.js';
 import { slotKey } from './slot.js';
 import { refillDraft } from './values.js';
 
@@ -44,12 +52,21 @@ export function usePinnedCommand(slots: readonly string[], entry: string, store?
   const own = scope(entry);
   const key = useSyncExternalStore(owner.subscribe, () => owner.holder(scoped) ?? own);
   const state = useSyncExternalStore(owner.subscribe, () => owner.get(key));
+  const recovered = async (run: (holder: string) => Promise<Submission | undefined>) => {
+    const holder = owner.holder(scoped) ?? own;
+    const result = await run(holder);
+    if (result && owner.get(holder) === result && ['done', 'rejected'].includes(result.status))
+      owner.unpin(scoped, holder);
+    return result;
+  };
   return {
     state,
     status: state?.status ?? 'idle',
     locked: isLocked(state),
     busy: state?.status === 'submitting',
     async submit(input: SubmitInput) {
+      // 先对齐别的标签页的未确认命令（F-110 第 2 轮 P2-2）：槽被别页占着时锁在那条命令上，不另起命令。
+      owner.sync();
       const holder = owner.holder(scoped);
       const held = holder === undefined || holder === own ? undefined : owner.get(holder);
       if (isLocked(held)) return held!;
@@ -65,13 +82,11 @@ export function usePinnedCommand(slots: readonly string[], entry: string, store?
       if (result && result.status !== 'unknown') owner.unpin(scoped, holder);
       return result;
     },
-    async recoverDeletion(read: Parameters<FormStore['recoverDeletion']>[1]) {
-      const holder = owner.holder(scoped) ?? own;
-      const result = await owner.recoverDeletion(holder, read);
-      if (result && owner.get(holder) === result && ['done', 'rejected'].includes(result.status))
-        owner.unpin(scoped, holder);
-      return result;
-    },
+    recoverDeletion: (read: Parameters<FormStore['recoverDeletion']>[1]) =>
+      recovered((holder) => owner.recoverDeletion(holder, read)),
+    /** F-110：按原命令 ID 查询结果；成功或确定失败后放开恢复槽，查不到 / 查询失败仍钉住。 */
+    recoverResult: (read: Parameters<FormStore['recoverResult']>[1]) =>
+      recovered((holder) => owner.recoverResult(holder, read)),
     /** 存储里的当前状态（不是渲染时的快照）：异步流程中途据此核对恢复槽上有没有新的未确认命令。 */
     peek: () => owner.get(owner.holder(scoped) ?? own),
     reread: (read: (id?: string) => Promise<Latest>) => owner.reread(key, read),
@@ -82,6 +97,8 @@ export function usePinnedCommand(slots: readonly string[], entry: string, store?
 }
 export type CommandForm = ReturnType<typeof useCommandForm> & {
   reload?: () => Promise<void>;
+  /** F-110：结果未知时按原命令 ID 查询结果（GET /api/tenant/commands/:commandId/result）。 */
+  queryResult?: () => Promise<void>;
   /** 本对象有别的动作未确认（forAction）：本入口不能提交，弹窗给出提示。 */
   blocked?: boolean;
 };

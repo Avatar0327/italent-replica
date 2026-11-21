@@ -429,24 +429,25 @@ function RecordForm({
       }}
       onSubmit={async (submitted) => {
         if (!changedFields(submitted, writer.full, editable).length) return;
-        await writer.run({
-          values: submitted,
-          editableFields: editable,
-          send: async ({ command }) => {
-            // F-026：改到已超编的部门先确认，确认后带 confirmed 以新命令重提（服务端已整单回滚，旧命令无台账）；取消保留输入
-            const patch = (confirmed: boolean) =>
-              api.request(path, {
-                method: 'PATCH',
-                command: {
-                  ...command,
-                  ...(confirmed ? { id: crypto.randomUUID() } : {}),
-                  body: { ...recordBody(command.body), ...(confirmed ? { confirmed: true } : {}) },
-                },
-              });
-            const raw = await sendWithEstablishmentConfirm(patch, confirmEstablishment);
-            return recordReceipt(raw, { id: record.id, revision: revisionOf(command) });
-          },
-        });
+        // F-026 / F-110：超编确认重提使用新的内核命令，结果未知时原槽锁定实际发出的 ID。
+        await sendWithEstablishmentConfirm(
+          (confirmed) =>
+            writer.run({
+              values: submitted,
+              editableFields: editable,
+              send: async ({ command }) => {
+                const raw = await api.request(path, {
+                  method: 'PATCH',
+                  command: {
+                    ...command,
+                    body: { ...recordBody(command.body), ...(confirmed ? { confirmed: true } : {}) },
+                  },
+                });
+                return recordReceipt(raw, { id: record.id, revision: revisionOf(command) });
+              },
+            }),
+          confirmEstablishment,
+        );
         saved();
       }}
     />
