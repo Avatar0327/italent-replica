@@ -5,6 +5,7 @@ import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { employmentApprovalHooks } from '../employment/approval-hooks.js';
 import { withEstablishmentConfirmation } from '../employment/activation-checks.js';
 import { auditEmployment, requireEmploymentWrite } from '../employment/context.js';
@@ -169,15 +170,60 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
   const slot = occupiesDraftSlot({ initiator: input.initiator, mode: input.employment.mode });
   if (slot && (await releaseTransferDraft(tx, ctx, employeeId)))
     ctx = { ...ctx, expectedRevision: (await lockEmploymentEmployee(tx, ctx, employeeId)).revision };
+  const { business: created, metadata } = await createTransferCore(
+    tx,
+    ctx,
+    employeeId,
+    { ...input, linkageAccess, withEstablishment: input.writable.withEstablishment === true },
+    {
+      processCode: form.processCode,
+      holdDraft: slot && !input.submit,
+    },
+  );
+  if (input.employment.mode === 'application' && input.submit) {
+    const context = { ...ctx, expectedRevision: created.revision };
+    await transitionEmployment(tx, context, { id: created.id, action: 'submit' });
+    await employmentApprovalHooks.submitted(tx, context, created.id);
+    const saved = await requireSavedBusiness(tx, context, created.id);
+    return { ...saved, ...metadata };
+  }
+  return { ...created, ...metadata };
+}
+
+type TransferCoreInput = Pick<
+  TransferInput,
+  'initiator' | 'transferTypeCode' | 'reasonCode' | 'employment' | 'linkage' | 'linkageAccess'
+> & { readonly withEstablishment: boolean };
+
+/** 受信持久化入口（R2-T08 §8.3）。调用方先锁员工闭包，再完成各自的入口授权与规范化。 */
+export async function createTransferCore(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: TransferCoreInput,
+  options: { readonly processCode: string; readonly holdDraft?: boolean; readonly orgAdjustment?: true },
+) {
+  const { processCode, holdDraft, orgAdjustment } = options;
+  if (
+    orgAdjustment &&
+    (!ctx.orgAdjustmentId ||
+      ctx.userId !== SYSTEM_USER_ID ||
+      input.initiator !== 'hr' ||
+      input.employment.kind !== 'transfer' ||
+      input.employment.mode !== 'direct')
+  )
+    throw new AppError('FORBIDDEN', '组织调整调动须经系统执行器创建');
+  const { withEstablishment } = input;
   const created = await createEmploymentBusiness(tx, ctx, employeeId, input.employment, {
-    withEstablishment: input.writable.withEstablishment === true,
+    withEstablishment,
+    ...(orgAdjustment ? ({ changeType: 'org_adjustment', fromOrgAdjustment: true } as const) : {}),
   });
   const metadata = {
     initiator: input.initiator,
     transferTypeCode: input.transferTypeCode,
     reasonCode: input.reasonCode ?? null,
-    processCode: form.processCode,
-    withEstablishment: input.writable.withEstablishment === true,
+    processCode,
+    withEstablishment,
   };
   await tx.execute(sql`
     INSERT INTO transfer_requests(
@@ -185,22 +231,24 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
     VALUES (${ctx.tenantId},${created.id}::uuid,${employeeId}::uuid,${metadata.initiator},
       ${metadata.transferTypeCode},${metadata.reasonCode},${metadata.processCode},${metadata.withEstablishment})
   `);
-  await auditEmployment(tx, ctx, 'transfer.request.create', 'transfer-request', created.id, null, metadata);
-  if (slot && !input.submit) await holdTransferDraft(tx, ctx, employeeId, created.id);
+  await auditEmployment(
+    tx,
+    ctx,
+    'transfer.request.create',
+    'transfer-request',
+    created.id,
+    null,
+    orgAdjustment ? { ...metadata, trigger: `org-adjustment:${ctx.orgAdjustmentId}` } : metadata,
+  );
+  if (holdDraft) await holdTransferDraft(tx, ctx, employeeId, created.id);
   await saveNewTransferLinkage(
     tx,
     ctx,
     { businessId: created.id, employeeId, effectiveDate: created.effectiveDate, mode: input.employment.mode },
-    linkage,
-    linkageAccess,
+    input.linkage,
+    input.linkageAccess,
   );
-  if (input.employment.mode === 'application' && input.submit) {
-    const context = { ...ctx, expectedRevision: created.revision };
-    await transitionEmployment(tx, context, { id: created.id, action: 'submit' });
-    await employmentApprovalHooks.submitted(tx, context, created.id);
-    return { ...(await requireSavedBusiness(tx, context, created.id)), ...metadata };
-  }
-  return { ...created, ...metadata };
+  return { business: created, metadata };
 }
 
 export async function requireDirectTransfer(tx: Tx, ctx: EmploymentContext) {

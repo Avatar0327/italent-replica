@@ -58,6 +58,13 @@ async function participants(
   }
 }
 
+async function heldParticipants(tx: Tx, tenantId: string): Promise<string[]> {
+  const [setting] = rowsOf<{ value: string | null }>(
+    await tx.execute(sql`SELECT current_setting(${settingKey(tenantId)}, true) AS value`),
+  );
+  return setting?.value ? (JSON.parse(setting.value) as string[]) : [];
+}
+
 /** 取锁结果：busy = 有参与者行被他人持锁（SKIP LOCKED 跳过）；missing = 员工主档本身不存在（F-238，两者不能混为一谈）。 */
 export type SweepLockOutcome = 'acquired' | 'busy' | 'missing';
 
@@ -68,15 +75,13 @@ async function acquire(
   extra: readonly string[],
   skipLocked: boolean,
   rescheduledExitId?: string,
+  lockBusinessHeads = false,
 ): Promise<SweepLockOutcome> {
   if (![employeeId, ...extra].every(isUuid)) throw new AppError('VALIDATION_FAILED', '员工标识必须是 UUID');
   employeeId = employeeId.toLowerCase();
   extra = [...new Set(extra.map((id) => id.toLowerCase()))];
   const planned = await participants(tx, ctx, employeeId, extra, rescheduledExitId);
-  const [setting] = rowsOf<{ value: string | null }>(
-    await tx.execute(sql`SELECT current_setting(${settingKey(ctx.tenantId)}, true) AS value`),
-  );
-  const held: string[] = setting?.value ? (JSON.parse(setting.value) as string[]) : [];
+  const held = await heldParticipants(tx, ctx.tenantId);
   const needed = planned.filter((id) => !held.includes(id));
   if (!needed.length) return 'acquired';
   if (held.length && needed[0]! < held.at(-1)!)
@@ -109,7 +114,7 @@ async function acquire(
   }
   await tx.execute(sql`SELECT set_config(${settingKey(ctx.tenantId)},${JSON.stringify(all)},true)`);
   // 各参与者的业务头在审批实例之前取锁；员工锁保证业务集合不会再被其他事务改写。
-  if (planned.length > 1)
+  if (lockBusinessHeads || planned.length > 1)
     await tx.execute(sql`
     SELECT id FROM employment_business_objects WHERE tenant_id=${ctx.tenantId} AND employee_id=ANY(${array(planned)})
     ORDER BY employee_id,id FOR UPDATE
@@ -139,9 +144,30 @@ export const lockTransferParticipants = (
   ctx: EmploymentContext,
   employeeId: string,
   extra: readonly string[] = [],
-  options: { skipLocked?: boolean; rescheduledExitId?: string } = {},
+  options: { skipLocked?: boolean; rescheduledExitId?: string; lockBusinessHeads?: boolean } = {},
 ): Promise<SweepLockOutcome> =>
-  acquire(tx, ctx, employeeId, extra, options.skipLocked === true, options.rescheduledExitId);
+  acquire(
+    tx,
+    ctx,
+    employeeId,
+    extra,
+    options.skipLocked === true,
+    options.rescheduledExitId,
+    options.lockBusinessHeads,
+  );
+
+/** §9.1：取组织锁后只复核闭包，禁止在较晚的锁级补取员工或业务头。 */
+export async function assertTransferPlanHeld(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  extra: readonly string[],
+) {
+  const actual = await participants(tx, ctx, employeeId, extra);
+  const held = new Set(await heldParticipants(tx, ctx.tenantId));
+  if (actual.some((id) => !held.has(id)))
+    throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'ORG_EMPLOYMENT_PLAN_CHANGED' });
+}
 
 /**
  * 断言这些员工的锁已在本事务的预锁集合内（落地 / 执行只能重入、复核，不得再新取员工锁：新取会在持组织锁之后逆序，与先锁下属再取

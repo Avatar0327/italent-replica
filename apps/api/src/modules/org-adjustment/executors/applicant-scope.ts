@@ -3,11 +3,15 @@
  * 主体层（申请单对象范围含审批主体组织、账号仍有效）、组织层（目标与新上级在组织对象范围）、任职层（逐员工）。
  * 范围为空一律拒绝（硬规则 1）；拒绝统一记 APPLICANT_OUT_OF_SCOPE，不披露范围外组织。
  */
-import { type Tx } from '@italent/db';
-import { MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE, tenantLocalDate } from '@italent/domain';
+import { sql, type Tx } from '@italent/db';
+import { CONTRACT_OBJECT, MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../../errors.js';
 import { isActiveAccount } from '../../approval/resolver.js';
-import { EMPLOYMENT_OBJECT } from '../../employment/context.js';
+import { checkScope as checkContractScope } from '../../contracts/context.js';
+import { rowsOf } from '../../approval/context.js';
+import { employmentCreator, EMPLOYMENT_OBJECT } from '../../employment/context.js';
+import { isEmploymentRecordVisible } from '../../employment/visibility.js';
+import type { EmploymentRecord } from '../../employment/types.js';
 import type { CascadeAuthorizer } from '../../org/deactivation.js';
 import { scopeAllows, scopeAppOf } from '../../permission/module-access.js';
 import { authorizeOrgResult } from '../../permission/org-result-scope.js';
@@ -47,14 +51,23 @@ export function applicantSubjectCheck(scopeOf: ApplicantScopeOf) {
 /** 组织层与任职层：同一组事务内按需取范围并缓存。 */
 export function applicantScopes(tx: Tx, scopeOf: ApplicantScopeOf, at: ScopeAt, adjustment: AdjustmentHead) {
   let orgScope: Promise<ModuleScope> | undefined;
-  const ctx = { tenantId: at.tenantId, userId: adjustment.createdBy, timezone: at.timezone, now: at.now };
+  let employeeScope: Promise<ModuleScope> | undefined;
+  let contractScope: Promise<ModuleScope> | undefined;
+  const ctx = {
+    tenantId: at.tenantId,
+    userId: adjustment.createdBy,
+    timezone: at.timezone,
+    now: at.now,
+    expectedRevision: 0,
+    commandId: '',
+  };
   const orgs = async (ids: readonly (string | null | undefined)[]) => {
     orgScope ??= scopeOf(tx, query(at, adjustment, MODULE_OBJECTS.organization.code));
     const scope = await orgScope;
     for (const id of ids) {
       if (!id) continue;
       try {
-        await authorizeOrgResult(tx, { ...ctx, expectedRevision: 0, commandId: '' }, scope, id, false);
+        await authorizeOrgResult(tx, ctx, scope, id, false);
       } catch (error) {
         if (error instanceof AppError && error.code === 'NOT_FOUND') throw outOfScope();
         throw error;
@@ -62,6 +75,39 @@ export function applicantScopes(tx: Tx, scopeOf: ApplicantScopeOf, at: ScopeAt, 
     }
   };
   const cascade: CascadeAuthorizer = (_cascadeTx, ids) => orgs(ids);
-  const employment = () => scopeOf(tx, query(at, adjustment, EMPLOYMENT_OBJECT));
-  return { orgs, cascade, employment };
+  const employment = () => (employeeScope ??= scopeOf(tx, query(at, adjustment, EMPLOYMENT_OBJECT)));
+  const employee = async (id: string, record: EmploymentRecord | null) => {
+    const scope = await employment();
+    const creator =
+      record && scope.terms?.some((term) => term.dimension === 'using_user')
+        ? rowsOf<{ id: string | null }>(
+            await tx.execute(sql`SELECT ${employmentCreator(at.tenantId, sql`${record.id}::uuid`, true)} AS id`),
+          )[0]?.id
+        : undefined;
+    if (
+      !(await isEmploymentRecordVisible(tx, at.tenantId, scope, {
+        employeeId: id,
+        departmentId: record?.fields.departmentId ?? null,
+        creatorId: creator,
+      }))
+    )
+      throw outOfScope();
+  };
+  const contract = async (employeeId: string, targetId: string) => {
+    const [target] = rowsOf<{ created_by: string | null }>(
+      await tx.execute(sql`
+      SELECT created_by FROM contract_records WHERE tenant_id=${at.tenantId}
+        AND id=${targetId}::uuid AND employee_id=${employeeId}::uuid AND NOT deleted
+    `),
+    );
+    if (!target) throw outOfScope();
+    contractScope ??= scopeOf(tx, query(at, adjustment, CONTRACT_OBJECT));
+    try {
+      await checkContractScope(tx, { ...ctx, scope: await contractScope }, employeeId, target.created_by ?? undefined);
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'NOT_FOUND') throw outOfScope();
+      throw error;
+    }
+  };
+  return { orgs, cascade, employment, employee, contract };
 }

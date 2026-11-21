@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { orgAdjustmentTransferItems, sql, withTenant, type Db } from '@italent/db';
+import { orgAdjustmentTransferItems, orgSettings, sql, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { findCurrentRecord } from '../../apps/api/src/modules/employment/read-model.js';
+import { loadAdjustmentHead, loadExecutionItems } from '../../apps/api/src/modules/org-adjustment/execution-groups.js';
 import * as execution from '../../apps/api/src/modules/org-adjustment/executors/index.js';
 import { runOrgAdjustmentTenant } from '../../apps/api/src/modules/org-adjustment/execution-runner.js';
 import { RUNNER_LEASE_MS } from '../../apps/api/src/modules/org-adjustment/runner-lease.js';
+import { transferExecutor } from '../../apps/api/src/modules/org-adjustment/executors/transfer.js';
 import { scheduleOrgAdjustmentExecution } from '../../apps/api/src/modules/org-adjustment/schedule.js';
+import { normalizeLinkage } from '../../apps/api/src/modules/transfer/linkage/input.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { ALL, BASE, expectError } from './AC-OA-head-support.js';
 import { itemsWorld } from './AC-OA-items-support.js';
@@ -105,13 +108,34 @@ it('默认排期与默认执行入口维持关闭，即使表已有内部夹具�
 
 it('受信组绕过仅限人工的租户开关，写完整调动并在提交回执丢失后按落库终态完成', async () => {
   const f = await fixture();
-  await f.row();
+  await f.row({ linkage: normalizeLinkage({ adjustSalary: true }) });
   expect((await f.schedule()).dataVolume).toBe(1);
   const change = await f.w.call('PUT', '/api/tenant/employment/settings', {
     ifMatch: 0,
     body: { allowDirectTransfer: false },
   });
   expect(change.status, await change.text()).toBe(200);
+  const revision = await f.inTenant(
+    async (tx) =>
+      resultRows<{ revision: number }>(
+        await tx.execute(sql`SELECT revision FROM employment_employees WHERE id=${f.employee}`),
+      )[0]!.revision,
+  );
+  await expectError(
+    await f.w.call('POST', `/api/tenant/employment/transfers/employees/${f.employee}`, {
+      ifMatch: revision,
+      body: {
+        initiator: 'hr',
+        mode: 'direct',
+        transferTypeCode: 'cross_department',
+        effectiveDate: date,
+        fields: { departmentId: f.w.b },
+      },
+    }),
+    409,
+    'CONFLICT',
+    'DIRECT_TRANSFER_DISABLED',
+  );
   let lose = false;
   let lost = 0;
   const flaky = new Proxy(f.db, {
@@ -129,13 +153,33 @@ it('受信组绕过仅限人工的租户开关，写完整调动并在提交回�
       };
     },
   });
+  const statements: string[] = [];
   const executors = execution.transferExecutors(async () => ALL);
   const result = await f.run(
     {
       executors: {
         ...executors,
         transfer: async (tx, input) => {
-          const outcome = await executors.transfer!(tx, input);
+          const traced = new Proxy(tx, {
+            get(target, key, receiver) {
+              if (key === 'insert')
+                return (table: Parameters<typeof tx.insert>[0]) => {
+                  if (table === orgSettings) statements.push('组织设置锁');
+                  return target.insert(table);
+                };
+              if (key !== 'execute') return Reflect.get(target, key, receiver);
+              return (query: ReturnType<typeof sql>) => {
+                const rendered = query.toQuery({
+                  escapeName: (name) => name,
+                  escapeParam: (index) => '$' + (index + 1),
+                  escapeString: (value) => value,
+                });
+                statements.push(rendered.sql.replace(/\s+/g, ' '));
+                return target.execute(query);
+              };
+            },
+          });
+          const outcome = await executors.transfer!(traced, input);
           lose = true;
           return outcome;
         },
@@ -143,6 +187,14 @@ it('受信组绕过仅限人工的租户开关，写完整调动并在提交回�
     },
     flaky,
   );
+  const lockSteps = [
+    /employment_employees .*ORDER BY id FOR NO KEY UPDATE/,
+    /employment_business_objects .*ORDER BY employee_id,id FOR UPDATE/,
+    /SELECT id FROM org_adjustments .*FOR UPDATE/,
+    /组织设置锁/,
+  ];
+  const locks = lockSteps.map((step) => statements.findIndex((query) => step.test(query)));
+  expect(locks).toEqual(locks.filter((index) => index >= 0).sort((a, b) => a - b));
   expect(lost).toBe(1);
   expect(result.completed).toEqual([f.id]);
   const [row] = await f.results();
@@ -163,6 +215,14 @@ it('受信组绕过仅限人工的租户开关，写完整调动并在提交回�
     initiator: 'hr',
     transfer_type_code: 'cross_department',
   });
+  const [linkage] = await f.inTenant(async (tx) =>
+    resultRows(
+      await tx.execute(sql`SELECT r.salary_reminder_status FROM transfer_linkage_versions v
+      JOIN transfer_linkage_runs r ON r.tenant_id=v.tenant_id AND r.version_id=v.id
+      WHERE v.business_id=${row!.created_business_id}`),
+    ),
+  );
+  expect(linkage).toMatchObject({ salary_reminder_status: 'pending' });
   expect(await tableRows(f.db, f.tenant.id, 'org_adjustment_group_attempts', f.id)).toEqual([]);
   expect(await adjustmentState(f.db, f.tenant.id, f.id)).toMatchObject({ success_count: 1, failure_count: 0 });
 });
@@ -274,4 +334,129 @@ it('公开写入口维持未注册，负责人两项联动继续拒绝', async (
       'ORG_ADJUSTMENT_HEAD_LINKAGE_NOT_AVAILABLE',
     );
   }
+});
+
+it('执行锁内校验员工 revision；基线失效不再追加调动', async () => {
+  const f = await fixture();
+  await f.row();
+  expect((await f.schedule()).dataVolume).toBe(1);
+  await f.inTenant((tx) =>
+    tx.execute(sql`UPDATE employment_employees SET revision=revision+1
+    WHERE tenant_id=${f.tenant.id} AND id=${f.employee}`),
+  );
+  await f.run();
+  expect(await f.results()).toMatchObject([
+    { execution_result: 2, execution_reason: 'BASELINE_CHANGED', exec_phase: 2, created_business_id: null },
+  ]);
+});
+
+async function created(f: Awaited<ReturnType<typeof fixture>>, path: string, body: object) {
+  const res = await f.w.call('POST', `/api/tenant/${path}`, { ifMatch: 0, body });
+  expect(res.status, await res.clone().text()).toBe(201);
+  return (await res.json()) as { id: string };
+}
+
+it('申请人合同范围撤销，调动组终结并保留原合同', async () => {
+  const f = await fixture();
+  const type = await created(f, 'contracts/master-data/types', { code: randomUUID(), name: 'ZZ_BE11C_合同类型' });
+  const company = await created(f, 'contracts/master-data/companies', {
+    code: randomUUID(),
+    name: 'ZZ_BE11C_合同公司',
+  });
+  const contract = await created(f, 'contracts/commands', {
+    operation: 'create',
+    mode: 'direct',
+    employeeId: f.employee,
+    fields: {
+      typeId: type.id,
+      companyId: company.id,
+      effectiveDate: '2026-01-01',
+      endDate: '2027-12-31',
+      termType: 'fixed',
+      termMonths: 24,
+    },
+  });
+  await f.row({
+    linkage: normalizeLinkage({ contract: { targetId: contract.id, fields: { endDate: '2028-12-31' } } }),
+  });
+  expect((await f.schedule()).dataVolume).toBe(1);
+  await f.run({
+    executors: execution.transferExecutors(async (_tx, query) =>
+      query.objectCode.includes('Contract') ? EMPTY_SCOPE : ALL,
+    ),
+  });
+  expect(await f.results()).toMatchObject([
+    { execution_result: 2, execution_reason: 'APPLICANT_OUT_OF_SCOPE', created_business_id: null },
+  ]);
+  const [row] = await f.inTenant(async (tx) =>
+    resultRows(
+      await tx.execute(sql`SELECT count(*)::int AS count
+      FROM contract_records WHERE tenant_id=${f.tenant.id} AND employee_id=${f.employee} AND NOT deleted`),
+    ),
+  );
+  expect(row).toEqual({ count: 1 });
+});
+
+it.each(['single', 'swap'] as const)('AC-OA-52 内部执行证据 %s：即时校验拒绝并回滚整组', async (mode) => {
+  const f = await fixture();
+  const parentId = await f.w.org('ZZ_BE11C_编制上级', f.tenant.id);
+  const targetId = await f.w.org('ZZ_BE11C_编制目标', parentId);
+  const scheme = await created(f, 'establishment/schemes', {
+    name: 'ZZ_BE11C_编制方案',
+    periodType: 'annual',
+    maintenanceMode: 'both',
+    startDate: '2026-01-01',
+  });
+  for (const [orgId, localCapacity, inclusiveCapacity] of [
+    [f.w.a, 1, 2],
+    [parentId, 2, 12],
+    [targetId, 0, 10],
+  ] as const) {
+    await created(f, 'establishment/capacities', {
+      orgId,
+      schemeId: scheme.id,
+      periodStart: '2026-01-01',
+      effectiveDate: '2026-01-01',
+      localCapacity,
+      inclusiveCapacity,
+      strictControl: false,
+    });
+  }
+  await f.row({ departmentId: targetId, withEstablishment: true });
+  if (mode === 'swap') {
+    const other = await f.w.person('ZZ_BE11C_互调员工', targetId);
+    await f.row({ employeeId: other.employeeId, seq: 2, departmentId: f.w.a, withEstablishment: true });
+  }
+  const snapshot = () =>
+    f.inTenant(async (tx) => {
+      const query = await tx.execute(sql`SELECT
+      (SELECT jsonb_agg(v ORDER BY v.id) FROM establishment_versions v WHERE tenant_id=${f.tenant.id}) AS versions,
+      (SELECT count(*)::int FROM transfer_establishment_allocations WHERE tenant_id=${f.tenant.id}) AS allocations,
+      (SELECT count(*)::int FROM transfer_requests WHERE tenant_id=${f.tenant.id}) AS transfers`);
+      return resultRows(query)[0];
+    });
+  const before = await snapshot();
+  if (mode === 'single') {
+    expect((await f.schedule()).dataVolume).toBe(1);
+    await f.run();
+    expect(await f.results()).toMatchObject([
+      { execution_result: 2, execution_reason: 'VALIDATION_FAILED', created_business_id: null },
+    ]);
+  } else {
+    // §7.4：11c 没有多条生成调动行的公开组，这里用同一事务和生产端口验证过渡期拒绝。
+    await expect(
+      f.inTenant(async (tx) => {
+        const adjustment = await loadAdjustmentHead(tx, f.tenant.id, f.id);
+        const items = await loadExecutionItems(tx, f.tenant.id, f.id, { includeTransfers: true });
+        const [lead] = items;
+        return transferExecutor(async () => ALL)(tx, {
+          ...f.ctx,
+          adjustment,
+          group: { id: lead!.id, lead: lead!, items },
+        });
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', message: expect.stringContaining('兄弟部门含下级编制') });
+  }
+  expect(await snapshot()).toEqual(before);
+  expect((await f.results()).every((row) => row.created_business_id === null)).toBe(true);
 });
