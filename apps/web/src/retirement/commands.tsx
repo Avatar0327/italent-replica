@@ -1,7 +1,7 @@
 import { Button, Modal, Popconfirm, Space } from 'antd';
 import { useRef } from 'react';
 import type { Command } from '../foundation/client.js';
-import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
+import { useConflictCommand, validObject } from '../foundation/forms/ConflictCommands.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import type { Latest } from '../foundation/forms/store.js';
 import type { CommandForm } from '../foundation/forms/useCommandForm.js';
@@ -52,13 +52,24 @@ export interface Send {
  */
 export function useRetireCommand(
   resource: string,
-  target: { id: string; revision: number | undefined; baseline: Values; read: () => Promise<Latest> },
+  target: {
+    id: string;
+    revision: number | undefined;
+    baseline: Values;
+    read: () => Promise<Latest>;
+    collection?: boolean;
+  },
   action: string,
   refresh: () => Promise<unknown>,
 ) {
   const direct = useDirectApi();
   const api = useApiClient();
-  const snapshot = { id: target.id, revision: target.revision ?? -1, values: target.baseline };
+  const snapshot = {
+    id: target.id,
+    revision: target.revision ?? -1,
+    values: target.baseline,
+    ...(target.collection ? { objects: [] } : {}),
+  };
   const cmd = useConflictCommand(resource, snapshot, target.read, { action });
   // 同一提交点只跑一个提交循环：连点或确认框打开期间再点不会把锁定中的原命令当作失败显示
   const running = useRef(false);
@@ -74,7 +85,7 @@ export function useRetireCommand(
   return {
     ...cmd,
     /** 处理中 / 结果未知 / 冲突、对象标识无效，或本员工别的入口有未确认命令（forAction blocked）：不能提交。 */
-    disabled: cmd.form.locked || cmd.invalid || !!(cmd.form as CommandForm).blocked,
+    disabled: cmd.form.locked || cmd.invalid || !validObject(snapshot) || !!(cmd.form as CommandForm).blocked,
     async submit(values: Values, editableFields: readonly string[], send: Send, start: Extra = {}) {
       // 返回是否真正写入完成：并发的第二次点击直接返回 false，调用方不得据此提示成功
       if (running.current) return false;

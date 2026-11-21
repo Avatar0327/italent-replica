@@ -1,3 +1,4 @@
+import { appendPayloadFieldOrigins } from '../employment/field-origin-write.js';
 import {
   classifyCommandFailure,
   recordCommandFailure,
@@ -270,6 +271,21 @@ async function appendSequenceVersion(tx: Tx, ctx: EmploymentContext, target: Seq
     explicitFieldCodes: [...new Set([...business.payload.explicitFieldCodes, 'preset:sequenceId'])],
     createdAt: ctx.now.toISOString(),
   });
+  await appendPayloadFieldOrigins(
+    tx,
+    { ...ctx, userId: SYSTEM_USER_ID },
+    { ...business.payload, id },
+    target.effective ? business.id : undefined,
+    [
+      {
+        fieldCode: 'preset:sequenceId',
+        originKind: 'sequence-sync',
+        value: target.source.sequenceId,
+        derivationRule: target.source.kind === 'posts' ? 'post-sequence' : 'position-sequence',
+        referenceId: target.source.id,
+      },
+    ],
+  );
   // F-505 设计 §6.2：序列同步直接追加待入职记录的业务内容，同事务通知来源变化（已落地才有记录可判断是否待入职）
   const entry = target.effective
     ? await loadEmploymentRecord(tx, ctx.tenantId, business.id, tenantLocalDate(ctx.now, ctx.timezone))
