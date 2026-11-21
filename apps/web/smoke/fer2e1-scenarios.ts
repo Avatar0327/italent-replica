@@ -1,0 +1,11 @@
+export const EFFECTIVE = '2026-11-01';
+export const ROOT = 'ZZ_FER2E1_范围?';
+export const STOP = 'ZZ_FER2E1_下级停用';
+export const NEW = 'ZZ_FER2E1_新增下级';
+export const CHANGE = 'ZZ_FER2E1_下级变更';
+export const FULL = 'ZZ_FER2E1_三类明细';
+export const EMPTY = 'ZZ_FER2E1_空明细';
+export const PARTIAL = 'ZZ_FER2E1_部分执行失败';
+export const NOTE = '成功执行2个调整，失败1个调整';
+export const CONTENT = 'ZZ_FER2E1_内容';
+export const candidate = (index: number) => `ZZ_FER2E1_候选_${String(index).padStart(2, '0')}`;
