@@ -3,14 +3,17 @@ import {
   createUser,
   grantMembership,
   permissionGrants,
+  permissionIdentityScopes,
   permissionProfileApps,
   permissionProfileObjects,
   permissionProfiles,
   withTenant,
   type Db,
 } from '@italent/db';
+import { FIRST_ADMIN_PROFILE, MODULE_OBJECTS, STANDARD_PROFILES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { installProfileRows } from '../../apps/api/src/modules/permission/standard-profiles.js';
 import { structureWorld, TODAY } from './AC-HA-13a-support.js';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import {
@@ -21,7 +24,7 @@ import {
   readFrozenRecorded,
   writeFrozenRecorded,
 } from './support/route-policy/recorded.js';
-import { cmd, errorCode, tenantApi } from './support/tenant-api.js';
+import { cmd, errorCode, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
@@ -187,6 +190,69 @@ describe('F-541 人事分析组织候选 HTTP', () => {
       expect(response.status, await response.clone().text()).toBe(200);
       const body = (await response.json()) as { tables: { key: string; summary: { cells: { total: number } } }[] };
       expect(body.tables.find((table) => table.key === 'inflow')?.summary.cells.total, org.name).toBe(total);
+    }
+  });
+
+  it('AC-HA-F541-07：父组织失效前后行政树闭合，停用子节点在无可见祖先时成为根', async () => {
+    const db = testDb().db;
+    const { tenant, user } = await seedTenantWithMember(db, 'f541-expired-parent');
+    const admin = { tenant: tenant.id, user: user.id };
+    const profile = STANDARD_PROFILES.find(({ code }) => code === FIRST_ADMIN_PROFILE)!;
+    await withTenant(db, tenant.id, async (tx) => {
+      const { id: profileId } = await installProfileRows(
+        tx,
+        { tenantId: tenant.id, now: new Date(`${TODAY}T01:00:00Z`), ...cmd() },
+        profile,
+      );
+      await tx.insert(permissionGrants).values({ tenantId: tenant.id, userId: user.id, profileId });
+      await tx.insert(permissionIdentityScopes).values({
+        tenantId: tenant.id,
+        appCode: 'TenantBase',
+        profileId,
+        targetKind: 'entity',
+        targetCode: MODULE_OBJECTS.organization.code,
+        seeAll: true,
+      });
+    });
+    const viewer = x.users.get('HrStructure')!;
+    await grantMembership(db, { tenantId: tenant.id, userId: viewer, expectedRevision: 0 }, cmd());
+    await grantView(db, tenant.id, viewer, 'HrStructure');
+
+    const organizations = '/api/tenant/org/organizations';
+    async function createOrg(name: string, parentId: string) {
+      const response = await x.api.request('POST', organizations, {
+        ...admin,
+        ifMatch: 0,
+        body: { name, establishedOn: '2026-09-01', parents: { admin: { parentId } } },
+      });
+      expect(response.status, await response.clone().text()).toBe(201);
+      return (await response.json()) as { id: string; revision: number };
+    }
+    const parent = await createOrg('ZZ_F541_EXPIRED_PARENT', tenant.id);
+    const child = await createOrg('ZZ_F541_EXPIRED_PARENT_CHILD', parent.id);
+    const expiry = await x.api.request('PATCH', `${organizations}/${parent.id}`, {
+      ...admin,
+      ifMatch: parent.revision,
+      body: { effectiveDate: '2026-09-29', stopDate: '2026-09-30' },
+    });
+    expect(expiry.status, await expiry.clone().text()).toBe(200);
+
+    for (const asOf of ['2026-09-29', '2026-09-30', '2026-10-01']) {
+      const response = await get('HrStructure', 'HrStructure', tenant.id, asOf);
+      const { items } = (await readNodes(response)) as ReturnType<typeof expected>;
+      const ids = new Set(items.map(({ id }) => id));
+      const dangling = items.filter(({ parentId }) => parentId !== null && !ids.has(parentId));
+      expect(dangling, `${asOf} 含悬空 parentId 的节点`).toEqual([]);
+
+      const parentIsEffective = asOf <= '2026-09-30';
+      expect(ids.has(parent.id), asOf).toBe(parentIsEffective);
+      expect(
+        items.find(({ id }) => id === child.id),
+        asOf,
+      ).toMatchObject({
+        parentId: parentIsEffective ? parent.id : null,
+        enabled: parentIsEffective,
+      });
     }
   });
 });
