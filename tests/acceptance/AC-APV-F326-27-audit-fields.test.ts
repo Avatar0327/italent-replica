@@ -354,6 +354,29 @@ describe('F-326 S1 审计可见字段（真实详情接口）', () => {
     expect(JSON.stringify(await detail(member.as, 'matrix.structure.edit'))).not.toContain(ROW_ONE);
   });
 
+  it('AC-APV-F326-58 ③ 系统停用原因和触发信息随节点字段权限披露', async () => {
+    const after = {
+      status: 'disabled',
+      reason: '旧版本在途单清零自动停用',
+      processId: randomUUID(),
+      versionId: randomUUID(),
+      versionNo: 1,
+      trigger: { kind: 'instance', instanceId: randomUUID(), status: 'withdrawn' },
+    };
+    await write(
+      'auto.disable',
+      'approval-public-variable',
+      'approval.public_variable.auto_disable',
+      randomUUID(),
+      { status: 'enabled' },
+      after,
+    );
+    const { member, profile } = await viewer(world, 'apv-aud-system-disable', FULL);
+    expect((await detail(member.as, 'auto.disable')).after).toEqual(after);
+    await narrow(world, profile, BASIC);
+    expect((await detail(member.as, 'auto.disable')).after).toEqual({ status: 'disabled' });
+  });
+
   it('⑤ 动态键只认标准 UUID：伪造的 row:<非 UUID> 键即使有节点权限也不放行', async () => {
     const forged = randomUUID();
     await write('forged', 'approval-matrix', 'approval.matrix.structure', forged, null, {

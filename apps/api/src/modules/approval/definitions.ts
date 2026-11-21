@@ -1,4 +1,4 @@
-import { registerSaveClose } from './auto-variable-lifecycle.js';
+import { registerRetirement, registerSaveClose } from './auto-variable-lifecycle.js';
 import { assertSourceReferences } from './source-reference.js';
 import {
   applyPendingAutoVariables,
@@ -674,6 +674,8 @@ export async function publishProcess(
       published_at=${ctx.now.toISOString()}
     WHERE tenant_id=${ctx.tenantId} AND id=${draft.id}::uuid`);
   await bump(tx, ctx, id, sql`,current_version_id=${draft.id}::uuid`);
+  if (before.currentVersion)
+    registerRetirement(tx, ctx, [before.currentVersion.id], { kind: 'publish', newVersionId: draft.id });
   return audited(tx, ctx, 'publish', before, id);
 }
 
@@ -741,6 +743,16 @@ export async function assertExceptionAdminMember(tx: Tx, tenantId: string, userI
 export async function discardProcess(tx: Tx, ctx: ApprovalContext, id: string) {
   const { before } = await lockedForChange(tx, ctx, id);
   await bump(tx, ctx, id, sql`,status='discarded'`);
+  const versions = rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT id FROM approval_process_versions
+      WHERE tenant_id=${ctx.tenantId} AND process_id=${id}::uuid`),
+  );
+  registerRetirement(
+    tx,
+    ctx,
+    versions.map((version) => version.id),
+    { kind: 'discard' },
+  );
   return audited(tx, ctx, 'discard', before, id);
 }
 
