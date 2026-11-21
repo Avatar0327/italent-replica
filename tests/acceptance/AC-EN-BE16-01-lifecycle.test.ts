@@ -106,6 +106,67 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
     );
   });
 
+  it.each([
+    { intent: 'preserve', expectedState: 'cancelled', action: '编辑' },
+    { intent: 'restore', expectedState: 'pending', action: '改期恢复' },
+  ] as const)('取消后的替换（$action）保留阶段和根业务，并记录实际状态流转', async ({ intent, expectedState }) => {
+    const { db, entry, run, context, replacements } = await fixture(`ZZ_BE16_REPLACE_${intent}`);
+    const { port } = install(db);
+    const created = await run((tx) => port.create(tx, context(), entry));
+    const cancelled = await run((tx) => port.apply(tx, context(), { ...entry, kind: 'cancel' }));
+    const nextDate = '2026-11-02';
+    const change = {
+      ...entry,
+      kind: 'replace' as const,
+      intent,
+      replacementBusinessId: replacements[0],
+      pendingDate: nextDate,
+    };
+    const replaceContext = context();
+    const replaced = await run((tx) => port.apply(tx, replaceContext, change));
+    expect(replaced.state).toBe(expectedState);
+    expect(replaced).toMatchObject({
+      id: created.id,
+      rootBusinessId: entry.businessId,
+      currentBusinessId: replacements[0],
+      pendingDate: nextDate,
+      revision: cancelled.revision + 1,
+    });
+    expect(await run((tx) => tx.select().from(cases))).toEqual([replaced]);
+
+    const ref = { ...entry, caseId: created.id, caseRevision: replaced.revision, businessRevision: 1 };
+    await expect(run((tx) => port.lockForWrite(tx, context(), ref, [expectedState]))).rejects.toMatchObject(
+      NOT_CURRENT,
+    );
+    const audits = await run((tx) =>
+      tx
+        .select()
+        .from(auditEvents)
+        .where(and(eq(auditEvents.objectId, created.id), eq(auditEvents.commandId, replaceContext.commandId))),
+    );
+    expect(audits).toEqual([
+      expect.objectContaining({
+        action: 'onboarding.entry_case.replace',
+        before: expect.objectContaining({
+          id: created.id,
+          rootBusinessId: entry.businessId,
+          currentBusinessId: entry.businessId,
+          pendingDate,
+          state: 'cancelled',
+          revision: cancelled.revision,
+        }),
+        after: expect.objectContaining({
+          id: created.id,
+          rootBusinessId: entry.businessId,
+          currentBusinessId: replacements[0],
+          pendingDate: nextDate,
+          state: expectedState,
+          revision: replaced.revision,
+        }),
+      }),
+    ]);
+  });
+
   it('业务头锁和阶段 revision 均复核；业务事务失败不留下阶段或审计', async () => {
     const { db, entry, run, context } = await fixture('ZZ_BE16_ROLLBACK');
     const { port } = install(db);
