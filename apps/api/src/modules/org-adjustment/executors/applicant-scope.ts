@@ -49,6 +49,43 @@ export function applicantSubjectCheck(scopeOf: ApplicantScopeOf) {
   };
 }
 
+/** 调入未来的同单新增组织时，只沿已执行的行政链追溯当前权限。 */
+async function assertCreatedOrgScope(
+  tx: Tx,
+  at: ScopeAt,
+  adjustment: AdjustmentHead,
+  orgAllowed: (id: string) => Promise<boolean>,
+  { orgId, itemId }: { orgId: string; itemId: string },
+) {
+  const today = tenantLocalDate(at.now, at.timezone);
+  const visited = new Set<string>();
+  const items = orgAdjustmentOrgItems;
+  let id: string | null = orgId;
+  while (id && !visited.has(id)) {
+    if (await orgAllowed(id)) return;
+    visited.add(id);
+    // 尚未生效的同单新增才沿生效日的行政链追溯；已存在的组织必须按申请人当前范围直接通过。
+    const [item] = await tx
+      .select({ id: items.id })
+      .from(items)
+      .where(
+        and(
+          eq(items.tenantId, at.tenantId),
+          eq(items.adjustmentId, adjustment.id),
+          eq(items.createdOrgId, id),
+          eq(items.adjustType, 1),
+          eq(items.executionResult, 1),
+          id === orgId ? eq(items.id, itemId) : undefined,
+        ),
+      );
+    if (!item) break;
+    const [org] = await loadOrgSnapshot(tx, at.tenantId, adjustment.effectiveDate, undefined, { id });
+    if (!org || org.establishedOn <= today) break;
+    id = org.parents.admin?.parentId ?? null;
+  }
+  throw outOfScope();
+}
+
 /** 组织层与任职层：同一组事务内按需取范围并缓存。 */
 export function applicantScopes(tx: Tx, scopeOf: ApplicantScopeOf, at: ScopeAt, adjustment: AdjustmentHead) {
   let orgScope: Promise<ModuleScope> | undefined;
@@ -77,35 +114,8 @@ export function applicantScopes(tx: Tx, scopeOf: ApplicantScopeOf, at: ScopeAt, 
       if (id && !(await orgAllowed(id))) throw outOfScope();
     }
   };
-  const createdOrg = async (orgId: string, itemId: string) => {
-    const today = tenantLocalDate(at.now, at.timezone);
-    const visited = new Set<string>();
-    const items = orgAdjustmentOrgItems;
-    let id: string | null = orgId;
-    while (id && !visited.has(id)) {
-      if (await orgAllowed(id)) return;
-      visited.add(id);
-      // 尚未生效的同单新增才沿生效日的行政链追溯；已存在的组织必须按申请人当前范围直接通过。
-      const [item] = await tx
-        .select({ id: items.id })
-        .from(items)
-        .where(
-          and(
-            eq(items.tenantId, at.tenantId),
-            eq(items.adjustmentId, adjustment.id),
-            eq(items.createdOrgId, id),
-            eq(items.adjustType, 1),
-            eq(items.executionResult, 1),
-            id === orgId ? eq(items.id, itemId) : undefined,
-          ),
-        );
-      if (!item) break;
-      const [org] = await loadOrgSnapshot(tx, at.tenantId, adjustment.effectiveDate, undefined, { id });
-      if (!org || org.establishedOn <= today) break;
-      id = org.parents.admin?.parentId ?? null;
-    }
-    throw outOfScope();
-  };
+  const createdOrg = (orgId: string, itemId: string) =>
+    assertCreatedOrgScope(tx, at, adjustment, orgAllowed, { orgId, itemId });
   const cascade: CascadeAuthorizer = (_cascadeTx, ids) => orgs(ids);
   const employment = () => (employeeScope ??= scopeOf(tx, query(at, adjustment, EMPLOYMENT_OBJECT)));
   const employee = async (id: string, record: EmploymentRecord | null) => {
