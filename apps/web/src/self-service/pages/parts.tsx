@@ -68,11 +68,13 @@ export function DemoSection({ section }: { section: (typeof selfServiceDemo.sect
 }
 export function FormDrawer({
   open,
+  keepMounted,
   onClose,
   title,
   children,
 }: {
   open: boolean;
+  keepMounted?: boolean;
   onClose(): void;
   title: string;
   children: ReactNode;
@@ -80,6 +82,7 @@ export function FormDrawer({
   return (
     <DetailPage
       open={open}
+      keepMounted={keepMounted}
       onClose={onClose}
       title={title}
       sections={[{ key: 'form', title: m.applicationInfo, children: <div className="service-form">{children}</div> }]}

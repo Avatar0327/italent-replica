@@ -24,7 +24,7 @@ const recover = async () => {
   const state = await store.submit('entry', {
     ...input,
     send: async () => {
-      throw new ApiError(500, 'INTERNAL_ERROR', 'synthetic', '合成写入异常');
+      throw new ApiError(500, 'INTERNAL_ERROR', 'unknown', '合成写入异常');
     },
   });
   expect(state.status).toBe('unknown');
@@ -69,7 +69,7 @@ it('AC-FE-F537-02 刷新后的恢复槽遇到 404、断网、错号及矛盾回�
   const send = vi.fn();
   for (const read of [
     () => {
-      throw new ApiError(404, 'NOT_FOUND', 'synthetic', '合成未知结果');
+      throw new ApiError(404, 'NOT_FOUND', 'not-found', '合成未知结果');
     },
     () => {
       throw new TypeError('合成断网');

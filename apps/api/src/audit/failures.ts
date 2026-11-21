@@ -74,6 +74,7 @@ export async function recordCommandFailure(
   ctx: { readonly tenantId: string; readonly userId: string; readonly now?: Date },
   commandId: string,
   failure: CommandFailure,
+  confirmedRollback?: true,
 ): Promise<void> {
   const request = currentAuditRequest();
   if (request) request.state.failureRecorded = true;
@@ -83,6 +84,7 @@ export async function recordCommandFailure(
     actorUserId: auditActor(ctx.userId),
     commandId,
     ...failure,
+    confirmedRollback,
     method: request?.method ?? null,
     path: request?.path ?? null,
     occurredAt: request?.clock() ?? ctx.now ?? new Date(),

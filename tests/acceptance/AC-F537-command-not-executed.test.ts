@@ -1,11 +1,19 @@
-import { commandLedger, employmentPayloadVersions, eq, withTenant } from '@italent/db';
+import { commandLedger, employmentPayloadVersions, eq, grantMembership, withTenant } from '@italent/db';
 import { testDbMode, useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { failWith500, resultPath, selfTransferWorld, transferPath, withLedgerFault } from './support/f537-rollback.js';
-import { errorCode, seedTenantWithMember } from './support/tenant-api.js';
+import { cmd, errorCode, seedTenantWithMember } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
+
+function latch() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 describe('AC-F537 本人命令回滚后按原 ID 回查', () => {
   let fixture: Awaited<ReturnType<typeof selfTransferWorld>>;
@@ -71,11 +79,21 @@ describe('AC-F537 本人命令回滚后按原 ID 回查', () => {
     const id = uniqueSuffix();
     await rollback(id);
     const foreign = await seedTenantWithMember(database().db, 'f537-other');
-    for (const actor of [fixture.world.as(fixture.world.hr.id), { user: foreign.user.id, tenant: foreign.tenant.id }]) {
+    await grantMembership(
+      database().db,
+      { tenantId: foreign.tenant.id, userId: fixture.actor.user, expectedRevision: 0 },
+      cmd(),
+    );
+    for (const actor of [
+      fixture.world.as(fixture.world.hr.id),
+      { user: foreign.user.id, tenant: foreign.tenant.id },
+      { user: fixture.actor.user, tenant: foreign.tenant.id },
+    ]) {
       const response = await query(id, actor);
       const missing = await query(uniqueSuffix(), actor);
       expect(response.status).toBe(404);
       expect(missing.status).toBe(404);
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
       expect(await response.json()).toEqual(await missing.json());
     }
   });
@@ -93,8 +111,8 @@ describe('AC-F537 本人命令回滚后按原 ID 回查', () => {
   it.skipIf(testDbMode() !== 'pg')('同键写入在途仍未知，写入落库后保持成功回执', async () => {
     const id = uniqueSuffix();
     await rollback(id);
-    const paused = Promise.withResolvers<void>();
-    const resume = Promise.withResolvers<void>();
+    const paused = latch();
+    const resume = latch();
     const fault = withLedgerFault(database().db, async () => {
       paused.resolve();
       await resume.promise;

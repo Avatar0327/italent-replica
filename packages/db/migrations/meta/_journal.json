@@ -1569,6 +1569,13 @@
       "when": 1795008070311,
       "tag": "0223_f505_esign_offer_entry",
       "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1795220709069,
+      "tag": "0224_f537_confirmed_rollback",
+      "breakpoints": true
     }
   ]
 }

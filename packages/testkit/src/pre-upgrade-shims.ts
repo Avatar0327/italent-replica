@@ -28,6 +28,12 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
   { table: 'command_ledger', column: 'command_type', type: 'text', migration: 'command_ledger_actor' },
   { table: 'audit_command_failures', column: 'http_status', type: 'integer', migration: 'command_failure_http_status' },
   {
+    table: 'audit_command_failures',
+    column: 'confirmed_rollback',
+    type: 'boolean',
+    migration: 'f537_confirmed_rollback',
+  },
+  {
     table: 'approval_process_nodes',
     column: 'empty_approver_policy',
     type: 'text',

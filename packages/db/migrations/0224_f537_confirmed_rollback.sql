@@ -1,0 +1,1 @@
+ALTER TABLE "audit_command_failures" ADD COLUMN "confirmed_rollback" boolean;

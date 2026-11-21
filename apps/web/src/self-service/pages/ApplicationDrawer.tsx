@@ -30,9 +30,9 @@ export function ApplicationDrawer(props: {
     content = <EmployeeTransfer tenantId={tenantId} profile={profile} onSaved={() => {}} runCommand={state.run} />;
   else content = <TransferApplication tenantId={tenantId} initiator="manager" runCommand={state.run} />;
   return (
-    <FormDrawer open={props.open} onClose={props.onClose} title={title}>
+    <FormDrawer open={props.open} keepMounted={!!state.pending} onClose={props.onClose} title={title}>
       {state.error && <Alert type="error" message={state.error} />}
-      {/* DEC-473：提交期间保留原表单实例，明确拒绝后恢复输入；未知结果仍不可操作。 */}
+      {/* DEC-473 / F-537：同页关闭重开仍留住待确认表单，结果确定失败或未执行后恢复输入。 */}
       <div hidden={!!state.pending} inert={!!state.pending}>
         {content}
       </div>

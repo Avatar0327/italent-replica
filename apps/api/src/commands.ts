@@ -8,7 +8,7 @@
  * （R1-T16，audit/failures.ts），结果未知时返回 503 RESULT_UNKNOWN，提示按原命令 ID 回查。
  */
 import { createHash } from 'node:crypto';
-import { commandLedger, type Db, eq, IdempotencyConflictError, type Tx, withTenant } from '@italent/db';
+import { commandLedger, type Db, eq, IdempotencyConflictError, sql, type Tx, withTenant } from '@italent/db';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { classifyCommandFailure, type CommandPhase, failureResponse, recordCommandFailure } from './audit/failures.js';
 import { currentAuditRequest } from './audit/request-context.js';
@@ -16,6 +16,7 @@ import { commandTypeOf } from './command-type.js';
 import { AppError } from './errors.js';
 import { auditActor } from './system-actor.js';
 import type { TenantContext } from './tenant-context.js';
+import { asUuid, lockKey } from './advisory-lock.js';
 
 export interface CommandResult {
   readonly status: ContentfulStatusCode;
@@ -47,6 +48,10 @@ export interface Command {
 
 const COMMAND_ID = /^[A-Za-z0-9:_-]{1,100}$/;
 
+/** F-537：按租户和发起人隔离，避免结果查询受他人同键写入影响。 */
+export const commandExecutionKey = (tenantId: string, userId: string, commandId: string) =>
+  ['command-execution:', asUuid(tenantId), ':', userId.toLowerCase(), ':', commandId] as const;
+
 export async function runCommand(db: Db, ctx: TenantContext, command: Command): Promise<CommandResult> {
   const commandId = command.id;
   if (commandId === undefined) throw new AppError('IDEMPOTENCY_KEY_REQUIRED', '写请求必须携带 Idempotency-Key');
@@ -58,6 +63,9 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
   let phase: CommandPhase = 'execute';
   try {
     return await withTenant(db, ctx.tenantId, async (tx) => {
+      // 共享锁允许同键写入继续按原幂等规则并发；回查只有取得独占锁才可采信失败审计。
+      const executionKey = lockKey(...commandExecutionKey(ctx.tenantId, ctx.userId, commandId));
+      await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(${executionKey})`);
       const replay = await ledgerExit(tx, key, command.guard);
       if (replay) return replay;
       const result = await command.execute(tx, commandId);
@@ -87,7 +95,14 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
       if (!recheckFailed) final = thrown;
     }
     const failure = classifyCommandFailure(final, phase, recheckFailed);
-    await recordCommandFailure(db, ctx, commandId, failure);
+    // 仅执行阶段事务整体失败，且台账回查得到原错误时，才能为 5xx 记下回滚证据。
+    const confirmedRollback =
+      phase === 'execute' &&
+      !recheckFailed &&
+      final === error &&
+      failure.outcome !== 'unknown' &&
+      (failure.httpStatus ?? 500) >= 500;
+    await recordCommandFailure(db, ctx, commandId, failure, confirmedRollback ? true : undefined);
     throw failureResponse(final, failure, commandId);
   }
 }
