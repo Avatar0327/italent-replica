@@ -7,7 +7,7 @@ import { ineligibleOrgPeople } from './org-people.js';
 import { editEmploymentRecord } from './record-edit.js';
 import { findCurrentRecord, loadEmploymentRecord } from './read-model.js';
 import { lockEmploymentBusiness, rowsOf } from './record-store.js';
-import { appendForwardPayload, auditForwardTarget } from './forward-store.js';
+import { appendForwardPayload, auditForwardTarget, systemForwardOrigins } from './forward-store.js';
 import type { BusinessKind, EmploymentContext, EmploymentRecord, PresetFields } from './types.js';
 import { applyTransferCrossLinkage } from '../transfer/linkage/execute.js';
 import { hasPendingCrossLinkage } from '../transfer/linkage/store.js';
@@ -116,6 +116,7 @@ async function propagateDepartmentHead(tx: Tx, ctx: EmploymentContext, source: E
       source.id,
       true,
       changes,
+      systemForwardOrigins(changes, 'employment.transfer.linked', source.id),
     );
     await auditForwardTarget(tx, ctx, next, changes);
   }

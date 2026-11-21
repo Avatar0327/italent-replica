@@ -64,6 +64,12 @@ export const APP_OBJECT_DIRECTORY: Readonly<Record<AppId, readonly string[]>> = 
     MODULE_OBJECTS.hrRoster,
     MODULE_OBJECTS.hrMovementReport,
     MODULE_OBJECTS.hrStructureReport,
+    // FE-R2f §2 S0：看板沿用现有对象授权，归 staff 供权限快照投影。
+    MODULE_OBJECTS.hrDashboard,
+    MODULE_OBJECTS.hrStructure,
+    MODULE_OBJECTS.hrMovement,
+    MODULE_OBJECTS.hrProcessDashboard,
+    MODULE_OBJECTS.contractBoard,
   ]),
   transfer: withPrimary('TenantBase.EmploymentRecord', [
     MODULE_OBJECTS.employmentRecord,

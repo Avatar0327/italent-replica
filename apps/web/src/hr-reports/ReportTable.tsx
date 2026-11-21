@@ -6,15 +6,18 @@ export function ReportTable({
   data,
   page,
   changePage,
+  paginationDisabled,
 }: {
   code: string;
   data: ReportData;
   page: number;
   changePage(page: number): void;
+  paginationDisabled?: boolean;
 }) {
   // 空范围由后端明确告知，不从零值统计行反推权限或人数。
   if (data.hasDataPermission === false) return <Empty description={m.empty} />;
   const tables = tablesOf(code, data);
+  const roster = code === 'roster' && 'items' in data ? data : undefined;
   return (
     <>
       {tables.map((table) => {
@@ -32,13 +35,14 @@ export function ReportTable({
                 render: (value: unknown) => cellText(column.key, value),
               }))}
               dataSource={rows.map((row, index) => ({ ...row, _rowKey: String(index) }))}
-              rowKey="_rowKey"
+              rowKey={(row) => String((roster && row.employeeId) || row._rowKey)}
               scroll={{ x: 'max-content' }}
               locale={{ emptyText: <Empty description={m.empty} /> }}
               pagination={{
-                current: page,
-                pageSize,
+                current: roster?.page ?? page,
+                pageSize: roster?.pageSize ?? pageSize,
                 total: table.total,
+                disabled: paginationDisabled,
                 showSizeChanger: false,
                 showTotal: m.total,
                 onChange: changePage,

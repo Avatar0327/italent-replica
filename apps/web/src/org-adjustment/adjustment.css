@@ -1,0 +1,36 @@
+.oa-detail > section {
+  background: var(--ui-surface, white);
+  border: 1px solid #edf0f4;
+  padding: 16px;
+  margin: 0 0 16px;
+  border-radius: 8px;
+}
+.oa-detail h2 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+.oa-detail h3 {
+  font-size: 14px;
+  margin: 14px 0 8px;
+}
+.oa-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.oa-preview-controls {
+  margin: 0 0 12px;
+}
+.oa-preview-controls:not(:first-child) {
+  margin: 12px 0;
+}
+.oa-chart {
+  overflow: auto;
+  max-height: 560px;
+}
+.oa-chart img {
+  display: block;
+  max-width: none;
+}
