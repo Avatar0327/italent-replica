@@ -461,8 +461,8 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
     '20045976b1f6',
   ],
   'apps/api/src/modules/analytics/organization-candidates.ts#readOrganizationCandidates': [
-    '7bbadc2d3e66',
-    '79dc640d2eb7',
+    'cbe1e4547798',
+    '16a6bc0f4b44',
   ],
   'apps/api/src/modules/analytics/stat-report-export.ts#EXPORT_NOTE': ['9048b7341407', 'e3b0c44298fc'],
   'apps/api/src/modules/analytics/stat-report-export.ts#XLSX_CONTENT_TYPE': ['5a8604b9f4ec', 'e3b0c44298fc'],

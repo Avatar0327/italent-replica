@@ -5,6 +5,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { rowsOf } from '../employment/read-model.js';
+import { nearestVisibleParents } from '../org/tree.js';
 import { objectContext } from '../permission/module-route-access.js';
 import { dateQuery } from './hr-dashboard-routes.js';
 
@@ -31,7 +32,7 @@ interface OrganizationCandidate {
 
 /** DEC-961：筛选树按租户时点列出行政节点，包含停用版本。只从数据库读取候选所需字段。 */
 async function readOrganizationCandidates(tx: Tx, tenantId: string, asOf: string) {
-  return rowsOf<OrganizationCandidate>(
+  const nodes = rowsOf<OrganizationCandidate>(
     await tx.execute(sql`
       SELECT v.org_id AS id, v.name, l.parent_org_id AS "parentId", v.enabled
       FROM (
@@ -46,6 +47,16 @@ async function readOrganizationCandidates(tx: Tx, tenantId: string, asOf: string
       ORDER BY v.org_id
     `),
   );
+  const ids = nodes.map(({ id }) => id);
+  const parentOf = new Map<string, string>();
+  for (const { id, parentId } of nodes) {
+    if (parentId !== null) parentOf.set(id, parentId);
+  }
+  // 与组织树同口径：只沿时点有效的边找可见祖先，找不到就作为根节点。
+  return nearestVisibleParents(ids, { parentOf }).map((parent, position) => ({
+    ...nodes[position]!,
+    parentId: parent === null ? null : ids[parent]!,
+  }));
 }
 
 function organizationCandidateObject(c: Context): AnalysisObject {

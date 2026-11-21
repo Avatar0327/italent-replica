@@ -772,6 +772,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/analytics/organization-candidates.ts#readOrganizationCandidates': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'apps/api/src/modules/org/tree.ts#nearestVisibleParents',
   ],
   'apps/api/src/modules/analytics/organization-candidates.ts#route:GET /api/tenant/analytics/organization-candidates': [
     'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dateQuery',
