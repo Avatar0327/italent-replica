@@ -146,7 +146,7 @@ test('AC-FE-R2c3c-01 同时返聘预览和创建走退休专用入口，详情�
   expect(calls).toEqual([
     expect.objectContaining({
       path: `${path}/preview`,
-      body: { ...body, rehire: { fields: { ...body.rehire.fields, departmentId: manifest.closing } } },
+      body: { ...body, rehire: { ...body.rehire, fields: { ...body.rehire.fields, departmentId: manifest.closing } } },
       status: 200,
     }),
     expect.objectContaining({ path: `${path}/preview`, body, status: 200 }),

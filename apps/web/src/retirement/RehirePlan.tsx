@@ -39,10 +39,11 @@ export function planFields(permission?: ObjectPermission) {
     !fieldAccess(permission, 'reEmployed').visible
   )
     return [];
-  const fields = { ...rehireFields, ...probationFields };
+  // 退休设计 §8.2：试用期是创建请求 entry 的控制项，任职系统字段的编辑权只约束记录字段。
   return [
     'reEmployed',
-    ...Object.entries(fields)
+    ...Object.keys(probationFields),
+    ...Object.entries(rehireFields)
       .filter(([, key]) => fieldAccess(permission, key).editable)
       .map(([key]) => key),
   ];
