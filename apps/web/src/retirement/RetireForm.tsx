@@ -1,7 +1,7 @@
 import { Alert, Button, Checkbox, Descriptions, Form, Modal, Space, message } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { NameOf, RefSelect } from '../contracts/references.js';
-import { newCommand, rejectionMessage } from '../foundation/client.js';
+import { rejectionMessage } from '../foundation/client.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
 import { slotKey } from '../foundation/forms/slot.js';
@@ -12,11 +12,13 @@ import { TenantDatePicker } from '../foundation/selectors.js';
 import type { Latest } from '../foundation/forms/store.js';
 import { WithOpening } from '../intern/RegularizeForm.js';
 import { employeePath, useEmployeeRead } from '../intern/commands.js';
-import { useDirectApi } from '../part-time/direct-api.js';
 import { refPaths } from '../part-time/references.js';
 import { useRetireCommand } from './commands.js';
 import { draftFields, type RetireDraft, type RetireDrafts, useRetireDraft } from './draft.js';
 import { m } from './messages.js';
+import { useRetirementPreview } from './preview.js';
+import { planFields, RehirePlanFields, RehirePlanRead, useRehireContract } from './RehirePlan.js';
+import { rehireBlockers, rehireOptions } from './rehire-model.js';
 import {
   acceptRetirement,
   apiRoot,
@@ -45,6 +47,7 @@ const businesses = `${apiRoot}/businesses`;
 const dutyFields = ['dutyReceiverId', 'dutySubordinateIds', 'transferDepartmentHead'];
 const opening = (): Values => ({
   lastWorkDate: null,
+  reEmployed: false,
   handoverEmployeeId: null,
   dutyReceiverId: null,
   dutySubordinateIds: [],
@@ -67,32 +70,7 @@ export function RetireForm(props: FormProps) {
   );
 }
 
-interface Preview {
-  lastWorkDate: string;
-  data: Values;
-}
-function usePreview(employeeId: string) {
-  const direct = useDirectApi();
-  const [preview, setPreview] = useState<Preview>();
-  const [error, setError] = useState<unknown>();
-  const [loading, setLoading] = useState(false);
-  const run = async (lastWorkDate: unknown) => {
-    if (typeof lastWorkDate !== 'string' || !lastWorkDate)
-      return setError(new Error(m.required(m.fields.lastWorkDate!)));
-    setLoading(true);
-    setError(undefined);
-    try {
-      const path = `${slotKey(retireSlot, employeeId)}/preview`;
-      setPreview({ lastWorkDate, data: await direct(path, 'POST', newCommand({ lastWorkDate })) });
-    } catch (cause) {
-      setPreview(undefined);
-      setError(cause);
-    } finally {
-      setLoading(false);
-    }
-  };
-  return { preview, error, loading, run };
-}
+const previewBody = (values: Values): Values => ({ lastWorkDate: values.lastWorkDate, ...rehireOptions(values) });
 
 type EditorProps = FormProps & { opening: Latest; read(): Promise<Latest>; drafts: RetireDrafts };
 type Draft = RetireDraft;
@@ -128,7 +106,11 @@ function useEditable(mode: FormProps['mode']) {
   const permission = usePermissions(object).snapshot.objects[object];
   const create = !!permission?.dataOperations.create;
   const may = (field: string) => create && !!permission?.editableFields.includes(field);
+  const plan = planFields(permission);
+  const contract = useRehireContract(plan.length > 0);
   const editable = [
+    ...plan,
+    ...contract,
     ...['lastWorkDate', 'handoverEmployeeId'].filter(may),
     ...(mode === 'direct' && create ? dutyFields : []),
   ];
@@ -150,13 +132,22 @@ function useRetire(props: EditorProps, editable: string[], writable: boolean) {
   const cmd = useRetireCommand(retireSlot, target, mode, refresh);
   // 第二步不写字段：写入字段集为空，冲突重读后表单整份回填为最新只读值（核对字段另传给内核）
   useDraftRefill(cmd.form, draft ? [] : editable, form);
-  const previewing = usePreview(employeeId);
-  const lastWorkDate = Form.useWatch('lastWorkDate', form) as string | null | undefined;
-  const preview = previewing.preview?.lastWorkDate === lastWorkDate ? previewing.preview : undefined;
-  const notices = preview ? previewNotices(preview.data) : undefined;
+  const values = Form.useWatch([], { form, preserve: true }) as Values | undefined;
+  const previewing = useRetirementPreview(
+    `${slotKey(retireSlot, employeeId)}/preview`,
+    previewBody(projectFields(values, editable)),
+  );
+  const preview = previewing.data;
+  const notices = preview ? previewNotices(preview) : undefined;
+  const planBlockers = rehireBlockers(preview?.rehire);
   const [error, setError] = useState<unknown>();
   const locked = cmd.disabled || !writable;
-  const ready = !!draft || (!!notices && notices.blockers.length === 0);
+  const havePlanPreview = values?.reEmployed !== true || !editable.includes('reEmployed') || !!preview?.rehire;
+  const ready = !!draft || (!!notices && havePlanPreview && notices.blockers.length === 0 && planBlockers.length === 0);
+  const runPreview = async () => {
+    const valid = await form.validateFields().catch(() => undefined);
+    if (valid) await previewing.run(previewBody(projectFields(valid, editable)));
+  };
   const submit = async () => {
     if (locked || !ready) return;
     setError(undefined);
@@ -165,10 +156,16 @@ function useRetire(props: EditorProps, editable: string[], writable: boolean) {
       const values = draft
         ? projectFields(form.getFieldsValue(true) as Values, draftFields)
         : projectFields(await form.validateFields(), editable);
+      if (!draft && !previewing.matches(previewBody(values))) return;
       let created: Draft | undefined;
-      const send = retireSend(row, mode, draft, (next) => (created = { ...next, values }));
+      const send = retireSend(
+        row,
+        mode,
+        draft,
+        (next) => (created = { ...next, values: { ...values, ...rehireOptions(values) } }),
+      );
       // 预览令牌作为初始确认项随单提交（两种办理方式新建时都核令牌，exit-gate.ts createConditions）
-      const ack = (preview?.data.ack as { ackToken?: string } | null | undefined)?.ackToken;
+      const ack = (preview?.ack as { ackToken?: string } | null | undefined)?.ackToken;
       if (!(await cmd.submit(values, draft ? draftFields : editable, send, draft ? {} : { ack }))) return;
       if (created) {
         autoSubmit.current = true;
@@ -189,17 +186,14 @@ function useRetire(props: EditorProps, editable: string[], writable: boolean) {
       void submit();
     }
   });
-  return { form, baseline, cmd, error, locked, ready, submit, draft, previewing, preview, notices };
+  return { form, baseline, cmd, error, locked, ready, submit, draft, previewing, runPreview, preview, notices };
 }
 
 function RetireEditor(props: EditorProps) {
   const { row, mode, onClose } = props;
   const { permission, editable, writable } = useEditable(mode);
-  const { form, baseline, cmd, error, locked, ready, submit, draft, previewing, preview, notices } = useRetire(
-    props,
-    editable,
-    writable,
-  );
+  const { form, baseline, cmd, error, locked, ready, submit, draft, previewing, runPreview, preview, notices } =
+    useRetire(props, editable, writable);
   const visible = (field: string) => !!permission?.viewableFields.includes(field);
   return (
     <Modal
@@ -214,11 +208,7 @@ function RetireEditor(props: EditorProps) {
           <Button onClick={onClose} disabled={cmd.form.busy}>
             {m.cancel}
           </Button>
-          <Button
-            disabled={locked || !!draft}
-            loading={previewing.loading}
-            onClick={() => void previewing.run(form.getFieldValue('lastWorkDate'))}
-          >
+          <Button disabled={locked || !!draft} loading={previewing.loading} onClick={() => void runPreview()}>
             {m.preview}
           </Button>
           <Button type="primary" loading={cmd.form.busy} disabled={locked || !ready} onClick={() => void submit()}>
@@ -252,12 +242,19 @@ function RetireEditor(props: EditorProps) {
               </LockedField>
             </Form.Item>
           )}
+          {draft ? (
+            visible('reEmployed') && <RehirePlanRead plan={baseline.rehire} />
+          ) : (
+            <RehirePlanFields editable={editable} />
+          )}
           {mode === 'direct' && <DutySection editable={editable} departmentId={row.departmentId} />}
         </Form>
       </FormLock>
       {previewing.error ? <Alert type="error" showIcon message={rejectionMessage(previewing.error)} /> : null}
-      {!draft && !preview && <Alert type="info" message={previewing.preview ? m.previewStale : m.previewNeeded} />}
-      {preview && notices && <PreviewPanel data={preview.data} notices={notices} />}
+      {!draft && !preview && (
+        <Alert type="info" message={previewing.attempted && !previewing.error ? m.previewStale : m.previewNeeded} />
+      )}
+      {preview && notices && <PreviewPanel data={preview} notices={notices} />}
     </Modal>
   );
 }
@@ -291,6 +288,8 @@ function DutySection({ editable, departmentId }: { editable: readonly string[]; 
 
 const previewFields = ['effectiveDate', 'expectedRetirementDate', 'retireType'];
 function PreviewPanel({ data, notices }: { data: Row; notices: ReturnType<typeof previewNotices> }) {
+  const plan = data.rehire as Values | undefined;
+  const blockers = rehireBlockers(plan);
   const lists = [
     ['blockers', 'error'],
     ['warnings', 'warning'],
@@ -308,6 +307,16 @@ function PreviewPanel({ data, notices }: { data: Row; notices: ReturnType<typeof
           <Alert key={kind} type={type} message={m[kind]} description={<NoticeList notices={notices[kind]} />} />
         ) : null,
       )}
+      {plan && (
+        <Descriptions
+          size="small"
+          column={2}
+          items={[{ key: 'startDate', label: m.rehire.date, children: cellValue(plan, 'startDate') }]}
+        />
+      )}
+      {blockers.map((message, index) => (
+        <Alert key={`${index}/${message}`} type="error" showIcon message={message} />
+      ))}
       {!!data.ack && <Alert type="warning" message={m.ackNote} />}
     </section>
   );

@@ -1,7 +1,7 @@
 import { fork } from 'node:child_process';
-import type { Locator, Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { choose, item, named, pickDate, save } from './contracts-fixtures.js';
-import { expect, seedDemoUser, snapshotFixture, test } from './fixtures.js';
+import { seedDemoUser, snapshotFixture, tenant, user } from './fixtures.js';
 import type { startRetirementBackend } from './retirement-live-backend.js';
 import { allButtons, switchView } from './retirement-fixtures.js';
 
@@ -22,7 +22,7 @@ test.beforeAll(async () => {
 });
 
 test.afterEach(async ({ context, page }) => {
-  await page.unrouteAll({ behavior: 'wait' });
+  await page.goto('about:blank');
   await context.unrouteAll({ behavior: 'wait' });
 });
 
@@ -35,8 +35,21 @@ test.afterAll(async () => {
 
 async function setupLive(page: Page) {
   const calls: Call[] = [];
+  const context = page.context();
   await seedDemoUser(page);
-  await page.route('**/permission/me/snapshot', (route) =>
+  await context.route('**/__demo/personas', (route) =>
+    route.fulfill({
+      json: {
+        tenantId: tenant,
+        current: user,
+        personas: [{ userId: user, name: '合成演示用户', role: '演示身份', entry: '/staff' }],
+      },
+    }),
+  );
+  await context.route('**/api/tenant/**', (route) =>
+    route.fulfill({ json: { items: [], total: 0, hasDataPermission: true } }),
+  );
+  await context.route('**/permission/me/snapshot', (route) =>
     route.fulfill({
       json: {
         ...snapshotFixture,
@@ -49,7 +62,7 @@ async function setupLive(page: Page) {
       },
     }),
   );
-  await page.route('**/permission/me/objects/*', (route) => {
+  await context.route('**/permission/me/objects/*', (route) => {
     const fields = `name code departmentId positionId lastWorkDate effectiveDate expectedRetirementDate
       status kind mode retireType reEmployed handoverEmployeeId employType remarks probation probationMonths
       probationEndDate dutyTransferTiming dutyTransferDate`.split(/\s+/);
@@ -69,7 +82,7 @@ async function setupLive(page: Page) {
       },
     });
   });
-  await page.route(/\/api\/tenant\/(employment|org|personnel)\//, async (route) => {
+  await context.route(/\/api\/tenant\/(employment|org|personnel)\//, async (route) => {
     const request = route.request();
     const { pathname, search } = new URL(request.url());
     const all = request.headers();
@@ -77,7 +90,7 @@ async function setupLive(page: Page) {
     const headers = Object.fromEntries(
       ['content-type', 'if-match', 'idempotency-key'].flatMap((key) => (all[key] ? [[key, all[key]]] : [])),
     );
-    const response = await page.request.fetch(`${manifest.url}${pathname}${search}`, {
+    const response = await context.request.fetch(`${manifest.url}${pathname}${search}`, {
       method: request.method(),
       headers,
       data: request.postDataBuffer() ?? undefined,
@@ -90,7 +103,10 @@ async function setupLive(page: Page) {
         status: response.status(),
         json: await response.json(),
       });
-    await route.fulfill({ response });
+    // 切换视图时浏览器可能取消旧的引用读取；写响应及其它路由错误仍进入测试结果。
+    await route.fulfill({ response }).catch((error: unknown) => {
+      if (request.method() !== 'GET' || !String(error).includes('Route is already handled')) throw error;
+    });
   });
   await page.goto('/retirements');
   return calls;
@@ -112,7 +128,21 @@ test('AC-FE-R2c3c-01 同时返聘预览和创建走退休专用入口，详情�
   await expect(form.getByRole('checkbox', { name: '是否同时返聘' })).toBeVisible({ timeout: 5000 });
   await form.getByRole('checkbox', { name: '是否同时返聘' }).check();
   await choose(form, '雇佣关系', '内部员工');
-  await form.getByLabel('备注', { exact: true }).fill('合成返聘计划');
+  const remarks = form.getByLabel('备注', { exact: true });
+  await remarks.fill('合成返聘计划');
+  await choose(form, '部门', '合成将停用返聘部门');
+  await preview(form);
+  await expect
+    .poll(() => calls[0]?.json.rehire)
+    .toMatchObject({
+      blockers: [{ reason: 'RETIREMENT_REHIRE_INVALID', message: expect.any(String) }],
+    });
+  const blocked = (calls[0]!.json.rehire as { blockers: { message: string }[] }).blockers[0]!;
+  await expect(form.getByText(blocked.message, { exact: true })).toBeVisible();
+  await expect(remarks).toHaveValue('合成返聘计划');
+  await expect(form.getByRole('button', named('提交'))).toBeDisabled();
+  await choose(form, '部门', '合成返聘部门');
+  await expect(form.getByRole('button', named('提交'))).toBeDisabled();
   await preview(form);
   await expect(form.getByText('2026-10-27', { exact: true })).toBeVisible();
   await form.getByRole('button', named('提交')).click();
@@ -125,15 +155,24 @@ test('AC-FE-R2c3c-01 同时返聘预览和创建走退休专用入口，详情�
       fields: {
         employType: 'internal',
         remarks: '合成返聘计划',
+        departmentId: manifest.target,
       },
     },
   };
   expect(calls).toEqual([
+    expect.objectContaining({
+      path: `${path}/preview`,
+      body: { ...body, rehire: { fields: { ...body.rehire.fields, departmentId: manifest.closing } } },
+      status: 200,
+    }),
     expect.objectContaining({ path: `${path}/preview`, body, status: 200 }),
     expect.objectContaining({ path, body: { mode: 'direct', ...body }, status: 201 }),
   ]);
   await openPerson(page, '合成同时返聘员工');
-  await expect(dialog(page).getByRole('region', { name: '返聘计划' })).toContainText('合成返聘计划');
+  const plan = dialog(page).getByRole('region', { name: '返聘计划' });
+  await expect(plan).toContainText('合成返聘计划');
+  await expect(plan).toContainText('合成返聘部门');
+  await expect(dialog(page).getByText('无编制部门', { exact: true })).toBeVisible();
 });
 
 test('AC-FE-R2c3c-02 在途退休的返聘申请预览、真实拒绝保留日期、新增并改期', async ({ page }) => {
@@ -171,6 +210,12 @@ test('AC-FE-R2c3c-02 在途退休的返聘申请预览、真实拒绝保留日�
     body: { effectiveDate: '2026-10-19' },
     status: 200,
   });
+  await form.getByRole('button', named('取消')).click();
+  await dialog(page).getByRole('button', named('查看返聘申请')).click();
+  await expect(item(dialog(page), '返聘生效日期').locator('input')).toHaveValue('2026-10-19');
+  await page.reload();
+  await expect(item(dialog(page), '返聘生效日期').locator('input')).toHaveValue('2026-10-19');
+  expect(calls.filter((call) => call.path === `${path}/businesses`)).toHaveLength(1);
 });
 
 test('AC-FE-R2c3c-03 编辑退休只提交交接人，退休日期与返聘字段只读', async ({ page }) => {
@@ -198,7 +243,7 @@ test('AC-FE-R2c3c-04 仅服务器返回 restore 的详情提供恢复，展示�
   await openPerson(page, '合成编辑退休员工');
   await expect(dialog(page).getByText('退休信息', { exact: true })).toBeVisible();
   await expect(dialog(page).getByRole('button', named('恢复'))).toHaveCount(0);
-  await dialog(page).getByRole('button', { name: 'Close' }).click();
+  await dialog(page).locator('.ant-drawer-close').click();
   await openPerson(page, '合成已撤销退休员工');
   await expect(dialog(page).getByRole('button', named('恢复'))).toBeVisible({ timeout: 5000 });
   await dialog(page).getByRole('button', named('恢复')).click();

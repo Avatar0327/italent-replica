@@ -19,6 +19,10 @@ export async function startRetirementBackend() {
     const retired = await world.directRetire('2026-10-25', undefined, cancelled.id);
     await world.retireCancelled(retired.id);
     const handover = await world.session.employee('合成交接员工');
+    const closing = await world.session.org('合成将停用返聘部门', { establishedOn: '2026-01-01' });
+    const disabled = await world.disable(closing, '2026-10-24');
+    if (disabled.status !== 200) throw new Error(`合成停用部门失败 ${await disabled.text()}`);
+    const target = await world.session.org('合成返聘部门', { establishedOn: '2026-01-01' });
 
     const server = createServer((req, res) => {
       void (async () => {
@@ -26,11 +30,10 @@ export async function startRetirementBackend() {
         for await (const chunk of req) body.push(chunk as Buffer);
         const requestBody = Buffer.concat(body).toString();
         const path = req.url!;
-        const { origin, 'if-match': revision, 'idempotency-key': key } = req.headers;
+        const { 'if-match': revision, 'idempotency-key': key } = req.headers;
         const options = {
           ...(requestBody ? { body: JSON.parse(requestBody) as unknown } : {}),
           ...(revision ? { ifMatch: revision.replaceAll('"', '') } : {}),
-          headers: origin ? { origin } : {},
           idempotencyKey: typeof key === 'string' ? key : null,
         };
         const root = '/api/tenant/employment';
@@ -53,6 +56,8 @@ export async function startRetirementBackend() {
         simultaneous: simultaneous.id,
         applying: applying.id,
         handover: handover.id,
+        closing: closing.id,
+        target: target.id,
       },
       async close() {
         await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
