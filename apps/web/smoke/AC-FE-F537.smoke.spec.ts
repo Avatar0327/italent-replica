@@ -45,7 +45,12 @@ test.afterAll(async () => {
   await exited;
 });
 
-async function live(context: BrowserContext, baseURL: string, firstWrite: 'rollback' | 'disconnect') {
+async function live(
+  context: BrowserContext,
+  baseURL: string,
+  firstWrite: 'rollback' | 'disconnect',
+  beforeQueryDelivery?: Promise<void>,
+) {
   await context.addCookies([
     { name: 'italent_demo_tenant', value: fixture.actor.tenant, url: baseURL },
     { name: 'italent_demo_user', value: fixture.actor.user, url: baseURL },
@@ -68,6 +73,7 @@ async function live(context: BrowserContext, baseURL: string, firstWrite: 'rollb
     if (write) writes.at(-1)!.status = response.status();
     if (url.pathname.startsWith('/api/tenant/commands/')) {
       queries.push({ path: url.pathname, status: response.status(), body: await response.json() });
+      await beforeQueryDelivery;
     }
     await route.fulfill({ response });
     await response.dispose();
@@ -107,12 +113,14 @@ test('AC-FE-F537 真未知：断网后刷新、重开与查询始终锁定，只
   expect(queries).toMatchObject([{ path: `/api/tenant/commands/${id}/result`, status: 404 }]);
 });
 
-test('AC-FE-F537 本人调动 500 回滚：关后重开确认未执行，保留原输入并以新命令改正重提', async ({
+test('AC-FE-F537 P2-2 查询回执到达时抽屉已关闭，确认未执行后重开保留原值并可改正重提', async ({
   page,
   context,
   baseURL,
 }) => {
-  const { writes, queries } = await live(context, baseURL!, 'rollback');
+  let deliver!: () => void;
+  const held = new Promise<void>((resolve) => (deliver = resolve));
+  const { writes, queries } = await live(context, baseURL!, 'rollback', held);
   await page.goto('/self/applications');
   let drawer = await open(page);
   await department(page).selectOption(fixture.first);
@@ -124,10 +132,18 @@ test('AC-FE-F537 本人调动 500 回滚：关后重开确认未执行，保留�
   await close(page);
   drawer = await open(page);
   await expect(drawer).toContainText(processing);
-  await drawer.getByRole('button', { name: '查询结果', exact: true }).click();
+  try {
+    await drawer.getByRole('button', { name: '查询结果', exact: true }).click();
+    await expect.poll(() => queries.length).toBe(1);
+    expect(await pendingRecord(page)).toContain(id);
+    await close(page);
+  } finally {
+    deliver();
+  }
+  await expect.poll(() => pendingRecord(page)).toBeNull();
+  drawer = await open(page);
   await expect(department(page)).toBeEnabled();
   await expect(department(page)).toHaveValue(fixture.first);
-  await expect.poll(() => pendingRecord(page)).toBeNull();
   expect(queries).toMatchObject([
     { path: `/api/tenant/commands/${id}/result`, status: 200, body: { status: 'not_executed' } },
   ]);

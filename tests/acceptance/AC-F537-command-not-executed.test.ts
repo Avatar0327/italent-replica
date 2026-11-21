@@ -19,12 +19,12 @@ describe('AC-F537 本人命令回滚后按原 ID 回查', () => {
   let fixture: Awaited<ReturnType<typeof selfTransferWorld>>;
   let revision: number;
   const query = (id: string, actor = fixture.actor) => fixture.api().request('GET', resultPath(id), actor);
-  function submit(id: string, api = fixture.api()) {
+  function submit(id: string, api = fixture.api(), departmentId = fixture.first) {
     return api.request('POST', transferPath, {
       ...fixture.actor,
       ifMatch: revision,
       idempotencyKey: id,
-      body: { effectiveDate: '2026-10-19', fields: { departmentId: fixture.first } },
+      body: { effectiveDate: '2026-10-19', fields: { departmentId } },
     });
   }
   async function rollback(id: string) {
@@ -98,10 +98,10 @@ describe('AC-F537 本人命令回滚后按原 ID 回查', () => {
     }
   });
 
-  it('无记录和提交回执丢失保持未知，旧回滚证据不能盖过最新不确定结果', async () => {
+  it('无记录和提交回执丢失保持未知，旧业务失败不能盖过最新不确定结果', async () => {
     expect((await query(uniqueSuffix())).status).toBe(404);
     const id = uniqueSuffix();
-    await rollback(id);
+    expect((await submit(id, fixture.api(), 'invalid-department')).status).toBe(400);
     const retry = await submit(id, fixture.api(withLedgerFault(database().db, () => {}, true)));
     expect(retry.status, await retry.clone().text()).toBe(503);
     expect(await errorCode(retry)).toBe('SERVICE_UNAVAILABLE');
@@ -110,7 +110,7 @@ describe('AC-F537 本人命令回滚后按原 ID 回查', () => {
 
   it.skipIf(testDbMode() !== 'pg')('同键写入在途仍未知，写入落库后保持成功回执', async () => {
     const id = uniqueSuffix();
-    await rollback(id);
+    expect((await submit(id, fixture.api(), 'invalid-department')).status).toBe(400);
     const paused = latch();
     const resume = latch();
     const fault = withLedgerFault(database().db, async () => {
