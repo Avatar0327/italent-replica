@@ -280,7 +280,8 @@ async function progressMark(tx: Tx, run: Run, group: ExecutionGroup) {
   const [row] = rowsOf<{ mark: string }>(
     await tx.execute(sql`SELECT coalesce(md5(string_agg(i::text, '|' ORDER BY i.id)), '') AS mark
       FROM ${executionTable(group)} i
-      WHERE i.tenant_id=${run.lease.tenantId} AND i.adjustment_id=${run.adjustment.id}::uuid AND i.id=ANY(${idsOf(group)}::uuid[])`),
+      WHERE i.tenant_id=${run.lease.tenantId} AND i.adjustment_id=${run.adjustment.id}::uuid
+        AND i.id=ANY(${idsOf(group)}::uuid[])`),
   );
   return row!.mark;
 }
@@ -346,7 +347,8 @@ async function reloadGroup(tx: Tx, run: Run, group: ExecutionGroup): Promise<Exe
 async function settledResult(tx: Tx, run: Run, group: ExecutionGroup) {
   const rows = rowsOf<{ id: string; exec_phase: number; execution_result: number | null }>(
     await tx.execute(sql`SELECT id, exec_phase, execution_result FROM ${executionTable(group)}
-      WHERE tenant_id=${run.lease.tenantId} AND adjustment_id=${run.adjustment.id}::uuid AND id=ANY(${idsOf(group)}::uuid[])`),
+      WHERE tenant_id=${run.lease.tenantId} AND adjustment_id=${run.adjustment.id}::uuid
+        AND id=ANY(${idsOf(group)}::uuid[])`),
   );
   if (!rows.length || rows.some((row) => row.exec_phase !== 2)) return null;
   return rows.find((row) => row.id === group.id)?.execution_result ?? null;
@@ -355,14 +357,16 @@ async function settledResult(tx: Tx, run: Run, group: ExecutionGroup) {
 async function succeedGroup(tx: Tx, run: Run, group: ExecutionGroup) {
   // 执行器可先写逐行结果（如 EMPLOYMENT_PARTIAL，§7.5）；未写的行记成功。
   await tx.execute(sql`UPDATE ${executionTable(group)} SET execution_result=coalesce(execution_result, 1), exec_phase=2
-    WHERE tenant_id=${run.lease.tenantId} AND adjustment_id=${run.adjustment.id}::uuid AND id=ANY(${idsOf(group)}::uuid[])`);
+    WHERE tenant_id=${run.lease.tenantId} AND adjustment_id=${run.adjustment.id}::uuid
+      AND id=ANY(${idsOf(group)}::uuid[])`);
   await audit(tx, run, 'group.succeeded', { groupItemId: group.id });
 }
 
 async function failGroup(tx: Tx, run: Run, group: ExecutionGroup, failure: Failure) {
   await tx.execute(sql`UPDATE ${executionTable(group)} SET execution_result=2, exec_phase=2,
       execution_reason=${failure.reason}, execution_message=${failure.message}
-    WHERE tenant_id=${run.lease.tenantId} AND adjustment_id=${run.adjustment.id}::uuid AND id=ANY(${idsOf(group)}::uuid[])`);
+    WHERE tenant_id=${run.lease.tenantId} AND adjustment_id=${run.adjustment.id}::uuid
+      AND id=ANY(${idsOf(group)}::uuid[])`);
   await audit(tx, run, 'group.failed', { groupItemId: group.id, ...failure });
 }
 
