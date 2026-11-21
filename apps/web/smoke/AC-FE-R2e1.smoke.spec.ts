@@ -20,6 +20,7 @@ interface Manifest {
   url: string;
   tenant: string;
   writer: string;
+  writerProfile: string;
   reader: string;
   outside: string;
   approver: string;
@@ -390,4 +391,86 @@ test('AC-FE-R2e1 新建回执丢失后重开仍锁定，查询原命令确认草
   expect((await read).status()).toBe(200);
   await expect(detail(page)).toContainText(name);
   await expect(detail(page).getByRole('region', { name: intake })).toContainText('已暂存');
+});
+
+function writerHeaders(revision?: number) {
+  return {
+    'x-tenant-id': manifest.tenant,
+    'x-fer2e1-user': manifest.writer,
+    ...(revision === undefined ? {} : { 'if-match': String(revision), 'idempotency-key': crypto.randomUUID() }),
+  };
+}
+
+async function seedConflictDraft(page: Page, subject: string, content: string) {
+  const response = await page.request.post(`${manifest.url}${API}`, {
+    headers: writerHeaders(0),
+    data: {
+      subject,
+      content,
+      effectiveDate: EFFECTIVE,
+      approvalSubjectOrgId: manifest.root,
+      adjustmentRange: [manifest.root],
+    },
+  });
+  expect(response.status()).toBe(201);
+  return (await response.json()) as { id: string; revision: number };
+}
+
+async function setContentAccess(page: Page, allowed: boolean) {
+  const object = 'TenantBase.OrganizationApproval';
+  const path = `/api/tenant/permission/profiles/${manifest.writerProfile}/objects/${object}/fields`;
+  const current = await page.request.get(`${manifest.url}${path}?code=content`, { headers: writerHeaders() });
+  expect(current.status()).toBe(200);
+  const { revision } = (await current.json()) as { revision: number };
+  const changed = await page.request.put(`${manifest.url}${path}`, {
+    headers: writerHeaders(revision),
+    data: { fields: [{ fieldCode: 'content', view: allowed, edit: allowed }] },
+  });
+  expect(changed.status()).toBe(200);
+}
+
+test('AC-FE-R2e1 P2-1 撤销查看权后重读，弹窗与重开详情均不披露冲突旧值和草稿', async ({ page, baseURL }) => {
+  await signIn(page, baseURL!, 'writer');
+  const subject = 'ZZ_FER2E1_调整内容权限';
+  const original = 'ZZ_FER2E1_old-secret';
+  const draft = 'ZZ_FER2E1_new-secret';
+  const record = await seedConflictDraft(page, subject, original);
+  const api = `${API}/${record.id}`;
+  await page.goto(detailUrl(record.id));
+  const drawer = detail(page);
+  await drawer.getByRole('button', { name: '修改申请' }).click();
+  const form = page.getByRole('dialog', { name: intake, exact: true });
+  await form.getByRole('textbox', { name: '调整内容' }).fill(draft);
+
+  const concurrent = await page.request.patch(`${manifest.url}${api}`, {
+    headers: writerHeaders(record.revision),
+    data: { content: 'ZZ_FER2E1_并发保密内容' },
+  });
+  expect(concurrent.status()).toBe(200);
+  const conflict = responseFor(page, api, 'PATCH');
+  await form.getByRole('button', { name: /^保\s*存$/ }).click();
+  expect((await conflict).status()).toBe(409);
+
+  await setContentAccess(page, false);
+  try {
+    const reread = responseFor(page, api);
+    await form.getByRole('button', { name: '重读最新版本' }).click();
+    const read = await reread;
+    expect(read.status()).toBe(200);
+    expect(await read.json()).not.toHaveProperty('content');
+    await expect(form.getByRole('button', { name: '已核对差异，继续编辑' })).toBeVisible();
+    await expect.soft(form.getByText(original)).toHaveCount(0, { timeout: 1500 });
+    await expect.soft(form.getByText(draft)).toHaveCount(0, { timeout: 1500 });
+    await expect.soft(form.getByRole('textbox', { name: '调整内容' })).toHaveCount(0, { timeout: 1500 });
+
+    await form.getByRole('button', { name: /^取\s*消$/ }).click();
+    await drawer.locator('.ant-drawer-close').click();
+    await page.getByRole('button', { name: subject, exact: true }).click();
+    await expect(drawer.getByRole('button', { name: '已核对差异，继续编辑' })).toBeVisible();
+    await expect(drawer.getByRole('region', { name: intake })).toContainText('调整内容');
+    await expect.soft(page.getByText(original)).toHaveCount(0, { timeout: 1500 });
+    await expect.soft(page.getByText(draft)).toHaveCount(0, { timeout: 1500 });
+  } finally {
+    await setContentAccess(page, true);
+  }
 });
