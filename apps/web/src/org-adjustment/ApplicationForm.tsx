@@ -4,7 +4,7 @@ import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import { display, rangeLabel, type Detail, type RangeOrg } from './model.js';
 import { FormOrgChoice } from './OrgChoice.js';
-import { useAdjustmentAccess, type useAdjustmentCommand } from './commands.js';
+import type { useAdjustmentCommand } from './commands.js';
 
 export function EditorPlaceholder({ disabled }: { disabled: boolean }) {
   return (
@@ -23,17 +23,20 @@ export function ApplicationForm({
   command: ReturnType<typeof useAdjustmentCommand>;
   onClose(): void;
 }) {
-  const access = useAdjustmentAccess();
+  const { access } = command;
   const latest = command.form.state?.latest?.values;
   const editable = row ? access.edit : access.add;
   const effectiveDate = latest ? (latest.effectiveDate as string | undefined) : row?.effectiveDate;
-  const field = (name: keyof typeof labels, control: FormField['control'], fixed?: string): FormField => ({
-    name,
-    label: labels[name],
-    control,
-    display: fixed,
-    access: { ...access.field(name), editable: editable && access.field(name).editable },
-  });
+  const field = (name: keyof typeof labels, control: FormField['control'], fixed?: string): FormField => {
+    const permission = access.field(name);
+    return {
+      name,
+      label: labels[name],
+      control,
+      display: fixed,
+      access: { ...permission, editable: editable && permission.editable },
+    };
+  };
   const range = (latest ? latest.rangeDisplay : row?.adjustmentRange) as RangeOrg[] | undefined;
   const orgId = (latest ? latest.approvalSubjectOrgId : row?.approvalSubjectOrgId) as string | undefined;
   const orgName = (latest ? latest.approvalSubjectOrgName : row?.approvalSubjectOrgName) as string | undefined;

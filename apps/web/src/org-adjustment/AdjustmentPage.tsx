@@ -27,11 +27,15 @@ export function AdjustmentPage() {
   const visible = (code: string) => permissions.field(code).visible;
   const list = useRemote<PageResult<Head>>(listPath(page, conditions, visible));
   const select = (id?: string, action?: string) => setParams(id ? { id, ...(action ? { action } : {}) } : {});
-  const created = useAdjustmentCommand(undefined, (id) => {
-    setCreating(false);
-    list.refresh();
-    select(id);
-  });
+  const created = useAdjustmentCommand(
+    undefined,
+    (id) => {
+      setCreating(false);
+      list.refresh();
+      select(id);
+    },
+    permissions,
+  );
   const set = (name: Filter, value?: string) => {
     setConditions((previous) => ({ ...previous, [name]: value }));
     setPage((previous) => ({ ...previous, page: 1 }));

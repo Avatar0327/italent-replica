@@ -5,7 +5,7 @@ import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import { queryCommandResult } from '../foundation/forms/command-result.js';
 import { messages } from '../foundation/forms/messages.js';
 import { sharedRecovery } from '../foundation/forms/recovery.js';
-import { createFormStore } from '../foundation/forms/store.js';
+import { createFormStore, isLocked } from '../foundation/forms/store.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { changedFields, type Values } from '../foundation/forms/values.js';
 import { collection, detailPath, type Detail } from './model.js';
@@ -31,8 +31,21 @@ export function useAdjustmentAccess() {
 function formValues(row?: Detail): Values {
   return {
     ...row,
-    rangeDisplay: row?.adjustmentRange,
-    adjustmentRange: row?.adjustmentRange?.map(({ orgId }) => orgId) ?? [],
+    ...(row?.adjustmentRange && {
+      rangeDisplay: row.adjustmentRange,
+      adjustmentRange: row.adjustmentRange.map(({ orgId }) => orgId),
+    }),
+  };
+}
+
+type AdjustmentAccess = ReturnType<typeof useAdjustmentAccess>;
+
+function recoveryField(access: AdjustmentAccess, row?: Detail, latest?: Values): AdjustmentAccess['field'] {
+  return (name) => {
+    // 权限快照可能比服务端读回旧。恢复区只能使用原单与最近重读都披露的字段。
+    if (row && (!Object.hasOwn(row, name) || (latest && !Object.hasOwn(latest, name))))
+      return { visible: false, editable: false };
+    return access.field(name);
   };
 }
 
@@ -51,7 +64,7 @@ export function acceptReceipt(receipt: unknown, id: string | undefined, sent: nu
   return { id: result.id };
 }
 
-export function useAdjustmentCommand(row: Detail | undefined, updated: (id: string) => void) {
+export function useAdjustmentCommand(row: Detail | undefined, updated: (id: string) => void, access: AdjustmentAccess) {
   const api = useApiClient();
   const id = row?.id;
   const command = useCommandForm(slotKey(collection, id), store);
@@ -89,8 +102,14 @@ export function useAdjustmentCommand(row: Detail | undefined, updated: (id: stri
   }
 
   async function send(action: Action, values: Values = {}, editableFields: readonly string[] = []) {
-    const latest = command.state?.latest?.values ?? baseline;
-    if (action === 'edit' && !changedFields(values, latest, editableFields).length) return;
+    const state = command.peek();
+    const latest = state?.latest?.values ?? baseline;
+    if (action === 'edit' && row && !changedFields(values, latest, editableFields).length) {
+      if (isLocked(state)) throw state?.error ?? new Error(messages.unknown);
+      command.clear();
+      updated(row.id);
+      return;
+    }
     const writing = action === 'create' ? collection : detailPath(id!);
     const url = action === 'submit' || action === 'void' ? `${writing}/${action}` : writing;
     const result = await command.submit({
@@ -114,5 +133,10 @@ export function useAdjustmentCommand(row: Detail | undefined, updated: (id: stri
     command.clear();
   }
 
-  return { form: { ...command, reload, queryResult }, baseline, send };
+  return {
+    form: { ...command, reload, queryResult },
+    access: { ...access, field: recoveryField(access, row, command.state?.latest?.values) },
+    baseline,
+    send,
+  };
 }

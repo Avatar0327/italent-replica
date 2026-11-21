@@ -58,7 +58,7 @@ export function AdjustmentDetail(props: Props) {
 function DetailBody({ row, voiding, refresh }: Props & { row: Detail; refresh(): void }) {
   const { userId } = useSession();
   const access = useAdjustmentAccess();
-  const command = useAdjustmentCommand(row, refresh);
+  const command = useAdjustmentCommand(row, refresh, access);
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(!!voiding);
   const mayEdit = row.contentView.mode === 'live' && editableOrder(row, userId);
@@ -71,7 +71,12 @@ function DetailBody({ row, voiding, refresh }: Props & { row: Detail; refresh():
   };
   return (
     <div className="oa-detail">
-      {!editing && <CommandStatus submission={command.form} labels={labels} />}
+      {!editing && (
+        <CommandStatus
+          submission={command.form}
+          labels={Object.fromEntries(Object.entries(labels).filter(([name]) => command.access.field(name).visible))}
+        />
+      )}
       <section aria-label={text.application}>
         <div className="oa-section-heading">
           <h2>{text.application}</h2>
