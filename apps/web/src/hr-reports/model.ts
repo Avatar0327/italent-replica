@@ -40,6 +40,60 @@ export interface CatalogItem extends Pick<PersonnelReport, 'code' | 'name' | 'gr
   reason?: string;
 }
 export type Filters = Record<string, string>;
+export const rosterFilterColumns = {
+  name: 'employeeName',
+  workDateFrom: 'workDate',
+  workDateTo: 'workDate',
+  employeeStatus: 'employeeStatus',
+} as const;
+
+/** §4.5：列回执决定可用筛选。个人邮箱列不能授权主邮箱筛选。 */
+export function rosterFilters(filters: Filters, columns: readonly Column[]): Filters {
+  const result: Filters = {};
+  if (filters.asOf) result.asOf = filters.asOf;
+  for (const [field, column] of Object.entries(rosterFilterColumns)) {
+    const value = filters[field];
+    if (value && columns.some(({ key }) => key === column)) result[field] = value;
+  }
+  return result;
+}
+
+/** 回执时点固定本次结果。撤列且仍带该条件时，须重新查询才能分页或导出。 */
+export function rosterResultFilters(
+  filters: Filters,
+  result: Pick<RosterPage, 'asOf' | 'columns'>,
+): Filters | undefined {
+  const allowed = rosterFilters(filters, result.columns);
+  if (Object.entries(filters).some(([key, value]) => value && !allowed[key])) return undefined;
+  return { ...allowed, asOf: result.asOf ?? filters.asOf ?? '' };
+}
+
+export function validRosterFilters(filters: Filters): boolean {
+  const validDate = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000-')) return false;
+    const date = new Date(`${value}T00:00:00Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  };
+  const { asOf, workDateFrom: from, workDateTo: to, employeeStatus } = filters;
+  return Boolean(
+    asOf &&
+    validDate(asOf) &&
+    (!from || validDate(from)) &&
+    (!to || validDate(to)) &&
+    (!from || !to || from <= to) &&
+    (!employeeStatus || employeeStatus === '2' || employeeStatus === '3'),
+  );
+}
+
+export interface ReportFailure {
+  error: unknown;
+  retryAt: number;
+}
+export function reportFailure(error: unknown): ReportFailure {
+  const seconds = error instanceof ApiError && error.status === 429 ? error.retryAfter : undefined;
+  return { error, retryAt: seconds ? Date.now() + seconds * 1000 : 0 };
+}
+
 /** 统计报表下载方式：formula = 含公式、隐藏行 / 列，data = 仅数据。 */
 export type ExportMode = 'data' | 'formula';
 export const pageSize = 20;
@@ -75,6 +129,9 @@ export function errorText(error: unknown, exporting = false): string {
     if (error.status === 404) return m.missing;
     if (error.status === 429) return m.rateLimit;
     if (error.status === 400) return m.invalid;
+    if (error.status === 413 && error.code === 'PAYLOAD_TOO_LARGE') return m.tooLarge;
+    if (exporting && error.status === 422 && error.code === 'VALIDATION_FAILED' && error.reason === 'EXPORT_ROW_LIMIT')
+      return m.exportLimit;
   }
   return exporting ? m.exportFailed : m.failed;
 }
