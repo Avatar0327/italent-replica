@@ -21,7 +21,14 @@ type TransferApplicationProps = {
 export function TransferApplication(props: TransferApplicationProps) {
   const { tenantId, initiator, runCommand, hrScope, hrForm } = props;
   const state = useTransferForm(tenantId, initiator, undefined, runCommand, hrScope, hrForm?.mode === 'apply');
-  if (hrScope && state.processing) return <p role="status">{text.processing}</p>;
+  // F-110：处理中整页只读；结果未知时给“查询结果”（按原命令 ID），不给重新提交。
+  if (hrScope && state.processing)
+    return (
+      <>
+        <p role="status">{text.processing}</p>
+        {state.conflict && <CommandStatus submission={state.conflict} />}
+      </>
+    );
   if (hrScope && state.saved) return <p role="status">{state.commandNotice}</p>;
   const restoring = state.draft.status === 'loading';
   const locked = state.busy || restoring || !!state.saved || !!state.unknownCommand;

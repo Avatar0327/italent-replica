@@ -1,1 +1,172 @@
-{}
+{
+  "GET /api/tenant/esign/scenes/entry": {
+    "fixedKeys": [
+      {
+        "keys": [
+          "remindBeforeExpiry",
+          "revision",
+          "scene",
+          "validityDays"
+        ]
+      },
+      {
+        "keys": [
+          "revision",
+          "scene",
+          "validityDays"
+        ]
+      }
+    ],
+    "outcome": [
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "status": 200
+      }
+    ]
+  },
+  "GET /api/tenant/esign/scenes/offer": {
+    "fixedKeys": [
+      {
+        "keys": [
+          "remindBeforeExpiry",
+          "revision",
+          "scene",
+          "validityDays"
+        ]
+      },
+      {
+        "keys": [
+          "revision",
+          "scene",
+          "validityDays"
+        ]
+      }
+    ],
+    "outcome": [
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "status": 200
+      }
+    ]
+  },
+  "PUT /api/tenant/esign/scenes/entry": {
+    "fixedKeys": [
+      {
+        "keys": [
+          "remindBeforeExpiry",
+          "revision",
+          "scene",
+          "validityDays"
+        ]
+      }
+    ],
+    "ledger": [
+      {
+        "ledgerAdded": [
+          200
+        ],
+        "status": 200
+      },
+      {
+        "ledgerAdded": [],
+        "status": 409
+      }
+    ],
+    "outcome": [
+      {
+        "auditAdded": [
+          "esign.scene.update"
+        ],
+        "ledgerAdded": [
+          200
+        ],
+        "status": 200
+      },
+      {
+        "auditAdded": [],
+        "code": "REVISION_CONFLICT",
+        "ledgerAdded": [],
+        "status": 409
+      },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      }
+    ],
+    "precondition:esign.lock": [
+      {
+        "code": "REVISION_CONFLICT",
+        "status": 409
+      }
+    ],
+    "precondition:esign.revision": [
+      {
+        "code": "REVISION_CONFLICT",
+        "status": 409
+      }
+    ]
+  },
+  "PUT /api/tenant/esign/scenes/offer": {
+    "fixedKeys": [
+      {
+        "keys": [
+          "remindBeforeExpiry",
+          "revision",
+          "scene",
+          "validityDays"
+        ]
+      }
+    ],
+    "ledger": [
+      {
+        "ledgerAdded": [
+          200
+        ],
+        "status": 200
+      },
+      {
+        "ledgerAdded": [],
+        "status": 409
+      }
+    ],
+    "outcome": [
+      {
+        "auditAdded": [
+          "esign.scene.update"
+        ],
+        "ledgerAdded": [
+          200
+        ],
+        "status": 200
+      },
+      {
+        "auditAdded": [],
+        "code": "REVISION_CONFLICT",
+        "ledgerAdded": [],
+        "status": 409
+      },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      }
+    ],
+    "precondition:esign.lock": [
+      {
+        "code": "REVISION_CONFLICT",
+        "status": 409
+      }
+    ],
+    "precondition:esign.revision": [
+      {
+        "code": "REVISION_CONFLICT",
+        "status": 409
+      }
+    ]
+  }
+}

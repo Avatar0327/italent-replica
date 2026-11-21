@@ -16,6 +16,16 @@ export const ESIGN_NOTICE_BUSINESS_TYPE = 'esign_task';
 /** `{场景}` 固定值（设计 §7）。 */
 export const ESIGN_SCENE_LABEL = '调动电子签署';
 
+const SOURCE_SCENE_LABELS = { offer: 'Offer电子签署', entry: '入职电子签署' } as const;
+const TASK_NUMBER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SOURCE_NOTICE_BODIES = {
+  [ESIGN_REMIND_TEMPLATE]: '您有一项{场景}任务（{任务号}）待处理，请到“我的签署”查看。',
+  [ESIGN_REVOKED_INITIATOR_TEMPLATE]: '{场景}任务（{任务号}）已撤销。',
+  [ESIGN_REVOKED_EMPLOYEE_TEMPLATE]: '{场景}任务（{任务号}）已撤销。',
+  [ESIGN_COMPLETED_EMPLOYEE_TEMPLATE]: '{场景}任务（{任务号}）已完成，请到“我的签署”查看。',
+  [ESIGN_COMPLETED_INITIATOR_TEMPLATE]: '{场景}任务（{任务号}）已完成，请到“我的签署”查看。',
+} satisfies Record<string, string>;
+
 interface NoticeTemplate {
   readonly title: string;
   readonly body: string;
@@ -87,5 +97,20 @@ export function renderEsignNotice(
 ): RenderedEsignNotice | null {
   const template = templateCode ? ESIGN_NOTICE_TEMPLATES[templateCode] : undefined;
   if (!template) return null;
+  // F-505 §7：新协议的异常数据也只能显示固定标题，不能回退到调动的人员字段。
+  if (payload && 'scene' in payload) {
+    const { scene, taskNumber } = payload;
+    const body =
+      (scene === 'offer' || scene === 'entry') &&
+      typeof taskNumber === 'string' &&
+      TASK_NUMBER.test(taskNumber) &&
+      Object.hasOwn(SOURCE_NOTICE_BODIES, templateCode!)
+        ? fill(SOURCE_NOTICE_BODIES[templateCode as keyof typeof SOURCE_NOTICE_BODIES], {
+            场景: SOURCE_SCENE_LABELS[scene],
+            任务号: taskNumber,
+          })
+        : null;
+    return { title: template.title, body };
+  }
   return { title: template.title, body: fill(template.body, payload) };
 }

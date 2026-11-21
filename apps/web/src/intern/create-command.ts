@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import { useApiClient } from '../foundation/Session.js';
+import { ApiError } from '../foundation/client.js';
+import { readCommandResult } from '../foundation/forms/command-result.js';
 import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import type { Values } from '../foundation/forms/values.js';
 import { useDirectApi } from '../part-time/direct-api.js';
@@ -93,15 +95,10 @@ function useResultQuery(form: ReturnType<typeof useCommandForm>) {
       if (!id || query.busy) return;
       setQuery({ busy: true });
       try {
-        const result = await api.request<{
-          commandId: string;
-          status: string;
-          businessId?: string;
-          businessType?: string;
-          revision?: number;
-        }>(`/api/tenant/commands/${encodeURIComponent(id)}/result`);
-        if (result.commandId !== id || !['succeeded', 'failed'].includes(result.status))
-          throw new Error(c.invalidReceipt);
+        // F-110：与调动、审批、附件共用结果查询入口；命令 ID / 状态不符时换成本模块文案。
+        const result = await readCommandResult(api, id).catch((cause: unknown) => {
+          throw cause instanceof ApiError ? cause : new Error(c.invalidReceipt, { cause });
+        });
         if (result.status === 'succeeded') {
           if (
             !result.businessId ||

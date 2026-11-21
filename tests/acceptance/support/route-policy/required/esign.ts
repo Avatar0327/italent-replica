@@ -71,6 +71,29 @@ function write(method: string, path: string, operation: 'create' | 'update'): Ob
   };
 }
 
+function sceneObligation(method: 'GET' | 'PUT', scene: string): Obligation {
+  const op = method === 'GET' ? 'view' : 'update';
+  const handler = method === 'GET' ? 'readScene' : 'writeScene';
+  const unit = `${ROUTES}#${handler}`;
+  return {
+    perm: `obj:${OBJ}:${op}`,
+    facts: ['object:objectContext', `objectOp:${OBJ}:${op}`],
+    at: [
+      call(method, `/scenes/${scene}`, `${handler}(c, deps, '${scene}')`),
+      { role: 'impl', unit, anchor: `await objectContext(c, deps, OBJECT, '${op}')` },
+      CONTEXT,
+      ...(method === 'PUT'
+        ? [
+            { role: 'impl' as const, unit, anchor: "await writeFields(deps, ctx, OBJECT, 'update', input)" },
+            WRITE_FIELDS,
+            { role: 'impl' as const, unit: `${ROUTES}#write`, anchor: 'authorizeInTransaction(deps.authorize, tx)' },
+          ]
+        : []),
+      ...OBJECT_CONST,
+    ],
+  };
+}
+
 const OPTIONS = '/template-options/transfer-form';
 const optionsCall = (anchor: string) => call('GET', OPTIONS, anchor);
 
@@ -281,8 +304,12 @@ export const ESIGN: RequiredTable = {
   [`GET ${BASE}/templates`]: [view('/templates')],
   [`POST ${BASE}/templates`]: [write('POST', '/templates', 'create')],
   [`PATCH ${BASE}/templates/:id`]: [write('PATCH', '/templates/:id', 'update')],
-  [`GET ${BASE}/scenes/transfer`]: [view('/scenes/transfer')],
-  [`PUT ${BASE}/scenes/transfer`]: [write('PUT', '/scenes/transfer', 'update')],
+  [`GET ${BASE}/scenes/transfer`]: [sceneObligation('GET', 'transfer')],
+  [`PUT ${BASE}/scenes/transfer`]: [sceneObligation('PUT', 'transfer')],
+  [`GET ${BASE}/scenes/offer`]: [sceneObligation('GET', 'offer')],
+  [`PUT ${BASE}/scenes/offer`]: [sceneObligation('PUT', 'offer')],
+  [`GET ${BASE}/scenes/entry`]: [sceneObligation('GET', 'entry')],
+  [`PUT ${BASE}/scenes/entry`]: [sceneObligation('PUT', 'entry')],
   [`GET ${BASE}${OPTIONS}`]: [
     {
       perm: `obj:${RECORD}:create`,
