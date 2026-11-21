@@ -3,6 +3,7 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { offerApprovalWorld, type OfferView } from './AC-OF-BE14a3-support.js';
 import { overrideSetting } from './AC-OF-BE14b1-support.js';
+import { loginEmailOf } from './AC-EMP-support.js';
 import { ESIGN, lifecycleWorld, ok, REJECT, taskFixture } from './AC-ESIGN-F505-s3-support.js';
 
 const testDb = useTestDb();
@@ -69,7 +70,7 @@ it.each([true, false])('AC-14/16 改必审字段触发真实重新审批，开�
       body: { target: 'accepted', acceptTime: '2026-10-17' },
     }),
   );
-  const fixture = await taskFixture(db, w.tenant.id, user);
+  const fixture = taskFixture(db, w.tenant.id, user);
   const task = await fixture.seed({ offerId: accepted.id }, w.manager.employeeId, accepted.revision);
   const changed = await edit(accepted.revision, 12000);
   expect(changed).toMatchObject({ status: 'pending', approvalStatus: 'approving' });
@@ -183,4 +184,42 @@ it('AC-17 Offer 编辑并同步仅改待入职合同，旧记录撤销及换 ID�
   expect(await w.entryOf(await w.readOffer(source.id))).toMatchObject({ contractEndDate: '2029-06-30' });
   await w.revoked(entryTask, 'business_deleted');
   await w.revoked(offerTask, 'source_changed');
+});
+
+it('AC-14 关联同一人后立即同步只写元数据，旧任务保留', async () => {
+  const w = await lifecycleWorld(testDb().db, 'same-person');
+  await w.timing({ enabled: false });
+  const intern = await w.internEmployee('ZZ_F505_在职实习生');
+  const draft = await w.social({ name: 'ZZ_F505_实习转正候选人', personalEmail: loginEmailOf(intern.id) });
+  await ok(
+    await w.request('POST', `/${draft.id}/link-employee`, {
+      ifMatch: draft.revision,
+      body: { employeeId: intern.id },
+    }),
+  );
+  const accepted = await w.accepted(await w.get(draft.id));
+  const task = await w.seed({ offerId: accepted.id }, intern.id, accepted.revision);
+  const synced = await w.synced(accepted);
+  expect(synced).toMatchObject({ syncStatus: 'success', syncTarget: 'intern_regularization' });
+  expect(await w.record(synced.pendingEntryBusinessId!)).toMatchObject({ employeeId: intern.id });
+  expect(await w.read(task.id)).toEqual(task);
+  expect(await w.notices(task.id)).toEqual([]);
+  const unchanged = await w.synced(synced);
+  expect(unchanged.revision).toBe(synced.revision);
+});
+
+it('AC-17 办理入职与 Offer 变已入职都保留在途任务，原本人仍可签署', async () => {
+  const w = await lifecycleWorld(testDb().db, 'complete');
+  const { source, entry, offerTask, entryTask } = await w.pair({ contractEndDate: null });
+  await ok(
+    await w.employment('POST', `/pending-entries/${entry.id}/complete`, {
+      ifMatch: await w.businessRevision(entry.id),
+      body: { probation: false },
+    }),
+  );
+  expect(await w.readOffer(source.id)).toMatchObject({ status: 'onboarded', pendingEntryBusinessId: entry.id });
+  expect(await w.read(offerTask.id)).toEqual(offerTask);
+  expect(await w.read(entryTask.id)).toEqual(entryTask);
+  await ok(await w.sign(entryTask, entryTask.employeeSignerUserId!));
+  expect(await w.read(entryTask.id)).toMatchObject({ status: 'signing', currentNode: 'enterprise' });
 });

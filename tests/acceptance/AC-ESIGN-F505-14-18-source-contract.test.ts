@@ -12,7 +12,7 @@ import { settledOrBlocked, withHeldLock } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 
-it('改期的来源事件应在组织设置锁之后发出（真实 HTTP）', async (context) => {
+it('AC-16/18 改期的来源事件应在组织设置锁之后发出（真实 HTTP）', async (context) => {
   if (testDbMode() !== 'pg') context.skip();
   const { db } = testDb();
   const w = await entryWorld(db, 'ZZ_F505_lock_order');
@@ -55,7 +55,7 @@ it('改期的来源事件应在组织设置锁之后发出（真实 HTTP）', as
   expect(taskLockAvailable, '组织设置锁尚未取得时，签署任务行须仍可取锁').toBe(true);
 });
 
-it('已接受 Offer 的立即同步切换人员绑定时应发 changed（真实 HTTP）', async () => {
+it('AC-14 已接受 Offer 的立即同步切换人员绑定时应发 changed（真实 HTTP）', async () => {
   const { db } = testDb();
   const w = await syncWorld(db, 'ZZ_F505_binding');
   await w.timing({ enabled: false });
@@ -68,7 +68,7 @@ it('已接受 Offer 的立即同步切换人员绑定时应发 changed（真实 
   expect(linked.status, await linked.clone().text()).toBe(200);
   const accepted = await w.accepted({ id: offer.id, revision: offer.revision + 1 });
   expect(accepted).toMatchObject({ status: 'accepted', linkedEmployeeId: intern.id, pendingEntryBusinessId: null });
-  const tasks = await taskFixture(db, w.tenant.id, w.user.id);
+  const tasks = taskFixture(db, w.tenant.id, w.user.id);
   const tasked = await tasks.seed({ offerId: offer.id }, intern.id, accepted.revision);
   const internResponse = await w.employment('GET', `/employees/${intern.id}`);
   expect(internResponse.status, await internResponse.clone().text()).toBe(200);

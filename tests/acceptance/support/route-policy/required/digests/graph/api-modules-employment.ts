@@ -8396,13 +8396,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/transitions.ts#detachedSnapshot': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/transitions.ts#emitEntryDeleted': [
-    'apps/api/src/modules/employment/entry-source-events.ts#entrySourceEvents',
-  ],
   'apps/api/src/modules/employment/transitions.ts#exitGateFor': [
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitGate',
     'apps/api/src/modules/employment/exit-gate.ts#saveAck',
+  ],
+  'apps/api/src/modules/employment/transitions.ts#finishEmploymentTransition': [
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
+    'apps/api/src/modules/employment/entry-source-events.ts#entrySourceEvents',
+    'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
   ],
   'apps/api/src/modules/employment/transitions.ts#sealOnSubmit': [
     'apps/api/src/modules/attachments/binding.ts#sealAttachments',
@@ -8412,14 +8414,12 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/transitions.ts#transitionEmployment': [
     'apps/api/src/modules/employment/activation-checks.ts#assertEstablishmentCapacity',
-    'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/late-transfer.ts#postponeLateTransfer',
     'apps/api/src/modules/employment/linkage-dependency.ts#assertPredecessorsSettled',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
-    'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
     'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailable',
     'apps/api/src/modules/employment/regularization-drafts.ts#clearSubmittedRegularizationDraft',
@@ -8432,8 +8432,8 @@ export const GRAPH: Graph = {
     '#assertSubmitPreconditions',
     '#assertTransition',
     '#deleteEmploymentBusiness',
-    '#emitEntryDeleted',
     '#exitGateFor',
+    '#finishEmploymentTransition',
     '#sealOnSubmit',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
     'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord',

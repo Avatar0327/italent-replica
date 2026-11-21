@@ -17,7 +17,7 @@ export async function ok<T = unknown>(res: Response, status = 200): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function taskFixture(db: Db, tenantId: string, userId: string) {
+export function taskFixture(db: Db, tenantId: string, userId: string) {
   const api = tenantApi(db, { clock: () => OF_NOW });
   const query = async <T>(statement: ReturnType<typeof sql>) =>
     rowsOf<T>(await withTenant(db, tenantId, (tx) => tx.execute(statement)));
@@ -106,7 +106,7 @@ export async function taskFixture(db: Db, tenantId: string, userId: string) {
 
 export async function lifecycleWorld(db: Db, label: string) {
   const w = await syncWorld(db, `ZZ_F505_${label}`);
-  const tasks = await taskFixture(db, w.tenant.id, w.user.id);
+  const tasks = taskFixture(db, w.tenant.id, w.user.id);
   const offer = async (fields: Record<string, unknown> = {}) =>
     w.accepted(await fullSocial(w, { name: 'ZZ_F505_候选人', ...fields }));
   const pair = async (fields: Record<string, unknown> = {}) => {
