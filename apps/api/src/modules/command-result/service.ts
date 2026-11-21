@@ -1,7 +1,7 @@
 import { auditCommandFailures, and, commandLedger, eq, sql, type Tx } from '@italent/db';
 import { tryAdvisoryLock } from '../../advisory-lock.js';
 import { commandTypeOf } from '../../command-type.js';
-import { commandExecutionKey } from '../../commands.js';
+import { commandExecutionKey, voidedCommandHttpStatus } from '../../commands.js';
 import { ERROR_STATUS, type ErrorCode } from '../../errors.js';
 
 export interface OwnCommandResult {
@@ -22,9 +22,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * 当前用户自己发起的命令结果摘要（F-120）；不是本人的、不存在的、结果未知的一律返回 undefined（路由层映射 404）。
  * 1. 先按（租户，命令 ID）查台账，不带发起人条件：台账里有这个命令 ID 就已有权威归属，不是本人（含发起人为空的
  *    历史 / 系统行）直接 undefined，不得再回退到失败审计——否则别人用同一命令 ID 碰撞留下的失败审计会被当成“本人失败”；
- * 2. 台账没有且本人同键写入不在途，才看本人最新时间整组失败审计；其中任一条不确定则维持未知。
- *    F-537：执行器在独立事务留下回滚证据时可确认未执行；缺少证据的存储故障维持未知；
- * 3. 本人台账成功结果始终优先于失败审计（同一命令 ID 先失败后原键重提成功）。
+ * 2. DEC-956：只有已作废的本人台账行可给出未执行结论；审计证明回滚本身不能阻止旧键后续写入。
+ * 3. 台账没有且本人同键写入不在途，才看本人最新时间整组失败审计；其中任一条不确定则维持未知。
  * 摘要只取台账响应里的 id / revision / kind，不返回响应正文；整个查询只读。
  */
 export async function readOwnCommandResult(
@@ -40,12 +39,13 @@ export async function readOwnCommandResult(
     .where(and(eq(commandLedger.tenantId, ctx.tenantId), eq(commandLedger.commandId, commandId)));
   if (entry) {
     if (entry.actorUserId !== ctx.userId) return undefined;
+    const rollbackHttpStatus = voidedCommandHttpStatus(entry);
     return {
       commandId,
-      status: entry.responseStatus < 400 ? 'succeeded' : 'failed',
+      status: rollbackHttpStatus === undefined ? ledgerStatus(entry.responseStatus) : 'not_executed',
       commandType: entry.commandType,
       ...summaryOf(entry.responseBody),
-      httpStatus: entry.responseStatus,
+      httpStatus: rollbackHttpStatus ?? entry.responseStatus,
       completedAt: entry.createdAt.toISOString(),
     };
   }
@@ -54,18 +54,18 @@ export async function readOwnCommandResult(
   if (!latest?.occurredAt || latest.hasUncertain) return undefined;
   return {
     commandId,
-    status: latest.hasRollback ? 'not_executed' : 'failed',
+    status: 'failed',
     commandType: commandTypeOf(latest.method, latest.path),
     businessType: null,
     businessId: null,
     revision: null,
-    httpStatus: latest.httpStatus ?? failureStatus(latest),
+    httpStatus: latest.httpStatus ?? ERROR_STATUS[latest.errorCode as ErrorCode] ?? null,
     completedAt: latest.occurredAt.toISOString(),
   };
 }
 
 /**
- * 本人该命令 ID 的失败审计读取的唯一入口：一次聚合判定最新时间整组。若有回滚证据，优先取该条作摘要。
+ * 本人该命令 ID 的失败审计读取的唯一入口：一次聚合判定最新时间整组。
  * 第二次检查台账防止读取审计前他人成为权威归属；同一 SQL 快照中有台账就始终遮蔽审计。
  * 没有任何记录时 occurredAt 为 null。
  */
@@ -80,19 +80,17 @@ async function latestFailureGroup(
     .select({ commandId: commandLedger.commandId })
     .from(commandLedger)
     .where(and(eq(commandLedger.tenantId, ctx.tenantId), eq(commandLedger.commandId, commandId)));
-  const order = sql`${f.confirmedRollback} IS TRUE DESC, ${f.id}`;
   const [group] = await tx
     .select({
       occurredAt: sql<Date | null>`max(${f.occurredAt})`.mapWith(f.occurredAt),
       hasUncertain: sql<boolean | null>`bool_or(
-        ${f.outcome} = 'unknown' OR (${f.outcome} = 'storage_unwritable' AND ${f.confirmedRollback} IS NOT TRUE)
+        ${f.outcome} <> 'business_failed' OR ${f.confirmedRollback} IS TRUE
+        OR coalesce(${f.httpStatus}, 0) >= 500 OR ${f.errorCode} = 'INTERNAL_ERROR'
       )`,
-      hasRollback: sql<boolean | null>`bool_or(${f.confirmedRollback} IS TRUE)`,
-      method: sql<string | null>`(array_agg(${f.method} ORDER BY ${order}))[1]`,
-      path: sql<string | null>`(array_agg(${f.path} ORDER BY ${order}))[1]`,
-      errorCode: sql<string>`(array_agg(${f.errorCode} ORDER BY ${order}))[1]`,
-      httpStatus: sql<number | null>`(array_agg(${f.httpStatus} ORDER BY ${order}))[1]`,
-      outcome: sql<string | null>`(array_agg(${f.outcome} ORDER BY ${order}))[1]`,
+      method: sql<string | null>`(array_agg(${f.method} ORDER BY ${f.id}))[1]`,
+      path: sql<string | null>`(array_agg(${f.path} ORDER BY ${f.id}))[1]`,
+      errorCode: sql<string>`(array_agg(${f.errorCode} ORDER BY ${f.id}))[1]`,
+      httpStatus: sql<number | null>`(array_agg(${f.httpStatus} ORDER BY ${f.id}))[1]`,
     })
     .from(f)
     .where(
@@ -105,10 +103,7 @@ async function latestFailureGroup(
   return group;
 }
 
-function failureStatus(failure: { hasRollback: boolean | null; outcome: string | null; errorCode: string }) {
-  if (failure.hasRollback) return failure.outcome === 'storage_unwritable' ? 503 : 500;
-  return ERROR_STATUS[failure.errorCode as ErrorCode] ?? null;
-}
+const ledgerStatus = (httpStatus: number) => (httpStatus < 400 ? 'succeeded' : 'failed');
 
 /** 台账响应的最小摘要：业务 ID（id，须为 UUID）、版本（revision）、业务类型（kind）；缺什么返回 null。 */
 function summaryOf(body: unknown): Pick<OwnCommandResult, 'businessType' | 'businessId' | 'revision'> {

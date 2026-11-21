@@ -117,7 +117,6 @@ export interface DetailSection {
 }
 export function DetailPage({
   open,
-  keepMounted,
   onClose,
   title,
   summary,
@@ -127,7 +126,6 @@ export function DetailPage({
   sections = [],
 }: {
   open: boolean;
-  keepMounted?: boolean;
   onClose(): void;
   title: string;
   summary?: ReactNode;
@@ -137,9 +135,9 @@ export function DetailPage({
   defaultTab?: string;
   sections?: DetailSection[];
 }) {
-  return open || keepMounted ? (
+  return open ? (
     <Drawer
-      open={open}
+      open
       placement="right"
       closable={{ placement: 'end' }}
       width={960}

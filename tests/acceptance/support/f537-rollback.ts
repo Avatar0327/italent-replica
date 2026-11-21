@@ -22,16 +22,19 @@ export async function selfTransferWorld(db: Db) {
 /** 只在命令台账 INSERT 执行后注入错误，已发生的业务、审计与台账写由真实数据库一起回滚。 */
 export function withLedgerFault(db: Db, afterInsert: () => void | Promise<void>, loseCommit = false): Db {
   const wrapped = Object.create(db) as Db;
+  let firstWrite = true;
   wrapped.transaction = (async (fn: Parameters<Db['transaction']>[0]) =>
     db.transaction(async (tx) => {
       let inserted = false;
       const insert = tx.insert.bind(tx) as typeof tx.insert;
       tx.insert = ((table: Parameters<typeof insert>[0]) => {
         const query = insert(table);
-        if (table !== commandLedger) return query;
+        if (table !== commandLedger || !firstWrite) return query;
         return {
           async values(values: Parameters<typeof query.values>[0]) {
             const result = await query.values(values);
+            // 故障发生在业务写里，独立的失败审计事务可以正常提交作废台账。
+            firstWrite = false;
             inserted = true;
             await afterInsert();
             return result;

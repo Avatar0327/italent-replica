@@ -5,7 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { type AuditFallbackRecord, setAuditFallbackSink } from '@italent/api';
-import { sql, withTenant } from '@italent/db';
+import { commandLedger, eq, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { employmentSession, EMP_TODAY, withLoginEmail } from './AC-EMP-support.js';
@@ -70,7 +70,7 @@ describe('失败命令三类审计', () => {
     expect(ok.status).toBe(201);
   });
 
-  it('存储不可写：磁盘满等存储错误返回 503，记一条「存储不可写」，业务、台账与数据变更日志全部回滚', async () => {
+  it('DEC-956 存储不可写：原业务与数据变更日志全部回滚，失败审计同事务留下作废台账', async () => {
     const { db } = testDb();
     const session = await employmentSession(db, 'aud-fail-storage');
     const employee = await session.employee();
@@ -95,12 +95,18 @@ describe('失败命令三类审计', () => {
       expect.objectContaining({ outcome: 'storage_unwritable', outcomeLabel: '存储不可写', errorCode: '53100' }),
     ]);
     await withTenant(db, session.tenant.id, async (tx) => {
-      for (const table of ['audit_events', 'command_ledger', 'employment_outbox']) {
+      for (const table of ['audit_events', 'employment_outbox']) {
         const rows = resultRows(
           await tx.execute(sql`SELECT 1 FROM ${sql.identifier(table)} WHERE command_id=${commandId} LIMIT 1`),
         );
         expect(rows, table).toEqual([]);
       }
+      expect(await tx.select().from(commandLedger).where(eq(commandLedger.commandId, commandId))).toEqual([
+        expect.objectContaining({
+          responseStatus: 409,
+          responseBody: { code: 'COMMAND_VOIDED', rollbackHttpStatus: 503 },
+        }),
+      ]);
     });
   });
 
@@ -136,5 +142,15 @@ describe('失败命令三类审计', () => {
     ]);
     const as = { user: session.user.id, tenant: session.tenant.id };
     expect((await auditApi(db, NOW).commandFailures(as, { commandId })).items).toEqual([]);
+    await withTenant(db, session.tenant.id, async (tx) => {
+      expect(await tx.select().from(commandLedger).where(eq(commandLedger.commandId, commandId))).toEqual([]);
+    });
+    // DEC-956：失败审计不能落库时，同事务的作废台账也回滚，原键在故障解除后仍可重试。
+    const retried = await session.request('POST', `/employees/${employee.id}/businesses`, {
+      ifMatch: employee.revision,
+      idempotencyKey: commandId,
+      body: withLoginEmail(employee.id, { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01' }),
+    });
+    expect(retried.status).toBe(201);
   });
 });

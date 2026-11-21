@@ -15,6 +15,7 @@ import {
   type Db,
   insertCommandFailure,
   pgErrorCode,
+  type Tx,
   withTenant,
 } from '@italent/db';
 import { randomUUID } from 'node:crypto';
@@ -29,15 +30,22 @@ export class CommandFailureError extends AppError {
   constructor(
     readonly failure: CommandFailure,
     commandId: string,
+    voided = false,
   ) {
     const unknown = failure.outcome === 'unknown';
     super(
       'SERVICE_UNAVAILABLE',
-      unknown ? '提交结果未知，请按原命令 ID 回查后再决定是否重提' : '存储暂时不可写，请稍后按原命令 ID 重提',
+      storageFailureMessage(unknown, voided),
       unknown ? { reason: 'RESULT_UNKNOWN', commandId } : { reason: 'STORAGE_UNWRITABLE' },
     );
     this.name = 'CommandFailureError';
   }
+}
+
+function storageFailureMessage(unknown: boolean, voided: boolean) {
+  if (unknown) return '提交结果未知，请按原命令 ID 回查后再决定是否重提';
+  if (voided) return '存储暂时不可写，请按原命令 ID 回查后重新提交';
+  return '存储暂时不可写，请稍后按原命令 ID 重提';
 }
 
 /** 确定的业务失败（可据此记“失败”）；存储不可写、结果未知与非应用错误都不是。 */
@@ -46,8 +54,8 @@ export function isDefiniteFailure(error: unknown): error is AppError {
 }
 
 /** 返回给客户端的错误：业务失败保持原错误；另两类统一 503，带机器可读的原因（AGENTS.md §10「错误」）。 */
-export function failureResponse(error: unknown, failure: CommandFailure, commandId: string): unknown {
-  return failure.outcome === 'business_failed' ? error : new CommandFailureError(failure, commandId);
+export function failureResponse(error: unknown, failure: CommandFailure, commandId: string, voided = false): unknown {
+  return failure.outcome === 'business_failed' ? error : new CommandFailureError(failure, commandId, voided);
 }
 
 export type AuditFallbackRecord = CommandFailureInput & {
@@ -74,8 +82,8 @@ export async function recordCommandFailure(
   ctx: { readonly tenantId: string; readonly userId: string; readonly now?: Date },
   commandId: string,
   failure: CommandFailure,
-  confirmedRollback?: true,
-): Promise<void> {
+  voidOldCommand?: (tx: Tx, occurredAt: Date) => Promise<boolean>,
+): Promise<boolean> {
   const request = currentAuditRequest();
   if (request) request.state.failureRecorded = true;
   const entry = {
@@ -84,15 +92,21 @@ export async function recordCommandFailure(
     actorUserId: auditActor(ctx.userId),
     commandId,
     ...failure,
-    confirmedRollback,
+    confirmedRollback: undefined,
     method: request?.method ?? null,
     path: request?.path ?? null,
     occurredAt: request?.clock() ?? ctx.now ?? new Date(),
     ...(request ? { source: request.source } : {}),
   };
   try {
-    await withTenant(db, ctx.tenantId, (tx) => insertCommandFailure(tx, entry));
+    return await withTenant(db, ctx.tenantId, async (tx) => {
+      // DEC-956：事务一起提交作废台账与回滚证据。写任一项失败时，查询无法读到半份结论。
+      const voided = await voidOldCommand?.(tx, entry.occurredAt);
+      await insertCommandFailure(tx, { ...entry, confirmedRollback: voided ? true : undefined });
+      return voided ?? false;
+    });
   } catch (storageError) {
     fallbackSink({ ...entry, storageError: pgErrorCode(storageError) ?? connectionCode(storageError) ?? 'UNKNOWN' });
+    return false;
   }
 }

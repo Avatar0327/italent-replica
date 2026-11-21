@@ -39,11 +39,13 @@ describe('AC-F537 本人命令回滚后按原 ID 回查', () => {
     revision = ((await profile.json()) as { employee: { revision: number } }).employee.revision;
   });
 
-  it('500 回滚业务和台账，查询返回本人未执行', async () => {
+  it('500 回滚业务，台账只留作废结论，查询返回本人未执行', async () => {
     const id = uniqueSuffix();
     await rollback(id);
     await withTenant(database().db, fixture.actor.tenant, async (tx) => {
-      expect(await tx.select().from(commandLedger).where(eq(commandLedger.commandId, id))).toEqual([]);
+      expect(await tx.select().from(commandLedger).where(eq(commandLedger.commandId, id))).toEqual([
+        expect.objectContaining({ responseStatus: 409, actorUserId: fixture.actor.user }),
+      ]);
       expect(
         await tx.select().from(employmentPayloadVersions).where(eq(employmentPayloadVersions.commandId, id)),
       ).toEqual([]);
