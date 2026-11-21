@@ -65,19 +65,20 @@ export function transferExecutor(scopeOf: ApplicantScopeOf): GroupExecutor {
     const plans: { row: TransferRow; source: EmploymentRecord | null; departmentId: string }[] = [];
     for (const row of rows) {
       if (row.createdBusinessId) continue;
-      const departmentId = await targetDepartment(tx, input, row);
+      const department = await targetDepartment(tx, input, row);
       const source = await findCurrentRecord(tx, tenantId, row.employeeId, adjustment.effectiveDate);
       await scope.orgs([
         source?.fields.departmentId,
-        departmentId,
         ...(row.linkage?.dutyTransfer?.orgRoles.map((role) => role.orgId) ?? []),
       ]);
+      if (department.itemId) await scope.createdOrg(department.id, department.itemId);
+      else await scope.orgs([department.id]);
       await scope.employee(row.employeeId, source);
       for (const id of dutySubordinateIds(row.linkage)) {
         await scope.employee(id, await findCurrentRecord(tx, tenantId, id, adjustment.effectiveDate));
       }
       if (row.linkage?.contract) await scope.contract(row.employeeId, row.linkage.contract.targetId);
-      plans.push({ row, source, departmentId });
+      plans.push({ row, source, departmentId: department.id });
     }
     // 先复核全组基线，再写任一任职；上一行联动可能已推进下一行的员工 revision。
     for (const { row, source } of plans) {
@@ -101,7 +102,8 @@ export function transferExecutor(scopeOf: ApplicantScopeOf): GroupExecutor {
 
 async function targetDepartment(tx: Tx, input: GroupInput, row: TransferRow) {
   if (row.positionItemId) throw missingDependency(); // 同单职位引用由 11d 接通。
-  if (row.departmentId) return row.departmentId;
+  if (row.departmentId) return { id: row.departmentId };
+  if (!row.departmentItemId) throw missingDependency();
   const [target] = rowsOf<{ created_org_id: string | null }>(
     await tx.execute(sql`
     SELECT created_org_id FROM org_adjustment_org_items
@@ -110,7 +112,7 @@ async function targetDepartment(tx: Tx, input: GroupInput, row: TransferRow) {
   `),
   );
   if (!target?.created_org_id) throw missingDependency();
-  return target.created_org_id;
+  return { id: target.created_org_id, itemId: row.departmentItemId };
 }
 
 async function applyTransfer(
@@ -134,7 +136,7 @@ async function applyTransfer(
       postId: row.postId,
       levelId: row.levelId,
       directManagerId: row.directManagerId,
-      ...(row.dottedManagerId ? { dottedManagerId: row.dottedManagerId } : {}),
+      ...(row.dottedManagerId !== null || row.dottedManagerSpecified ? { dottedManagerId: row.dottedManagerId } : {}),
     },
   });
   const form = await resolveTransferForm(tx, ctx.tenantId, normalized.employment.formId);

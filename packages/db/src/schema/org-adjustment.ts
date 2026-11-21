@@ -427,6 +427,8 @@ export const orgAdjustmentTransferItems = pgTable(
     levelId: uuid('level_id'),
     directManagerId: uuid('direct_manager_id'),
     dottedManagerId: uuid('dotted_manager_id'),
+    // 虚线经理未提供时由调动表单继承；提供 null 时必须清空。
+    dottedManagerSpecified: boolean('dotted_manager_specified').notNull().default(false),
     transferTypeCode: text('transfer_type_code').notNull(),
     formId: text('form_id').notNull(),
     reasonCode: text('reason_code'),

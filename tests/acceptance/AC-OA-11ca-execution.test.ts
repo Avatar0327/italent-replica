@@ -61,6 +61,7 @@ async function fixture(now = '2026-11-03T12:00:00Z') {
         departmentId: w.b,
         transferTypeCode: 'cross_department',
         formId,
+        dottedManagerSpecified: Object.hasOwn(over, 'dottedManagerId'),
         ...over,
       });
     });

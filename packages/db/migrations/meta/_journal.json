@@ -1583,6 +1583,13 @@
       "when": 1795235171553,
       "tag": "0225_be11ca_transfer_items",
       "breakpoints": true
+    },
+    {
+      "idx": 226,
+      "version": "7",
+      "when": 1795244112845,
+      "tag": "0226_be11ca_dotted_manager_presence",
+      "breakpoints": true
     }
   ]
 }

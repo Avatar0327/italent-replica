@@ -3,7 +3,7 @@
  * 主体层（申请单对象范围含审批主体组织、账号仍有效）、组织层（目标与新上级在组织对象范围）、任职层（逐员工）。
  * 范围为空一律拒绝（硬规则 1）；拒绝统一记 APPLICANT_OUT_OF_SCOPE，不披露范围外组织。
  */
-import { sql, type Tx } from '@italent/db';
+import { and, eq, orgAdjustmentOrgItems, sql, type Tx } from '@italent/db';
 import { CONTRACT_OBJECT, MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../../errors.js';
 import { isActiveAccount } from '../../approval/resolver.js';
@@ -13,6 +13,7 @@ import { employmentCreator, EMPLOYMENT_OBJECT } from '../../employment/context.j
 import { isEmploymentRecordVisible } from '../../employment/visibility.js';
 import type { EmploymentRecord } from '../../employment/types.js';
 import type { CascadeAuthorizer } from '../../org/deactivation.js';
+import { loadOrgSnapshot } from '../../org/read-model.js';
 import { scopeAllows, scopeAppOf } from '../../permission/module-access.js';
 import { authorizeOrgResult } from '../../permission/org-result-scope.js';
 import { resolveDataScope } from '../../permission/scope-resolver.js';
@@ -61,18 +62,49 @@ export function applicantScopes(tx: Tx, scopeOf: ApplicantScopeOf, at: ScopeAt, 
     expectedRevision: 0,
     commandId: '',
   };
-  const orgs = async (ids: readonly (string | null | undefined)[]) => {
+  const orgAllowed = async (id: string) => {
     orgScope ??= scopeOf(tx, query(at, adjustment, MODULE_OBJECTS.organization.code));
-    const scope = await orgScope;
-    for (const id of ids) {
-      if (!id) continue;
-      try {
-        await authorizeOrgResult(tx, ctx, scope, id, false);
-      } catch (error) {
-        if (error instanceof AppError && error.code === 'NOT_FOUND') throw outOfScope();
-        throw error;
-      }
+    try {
+      await authorizeOrgResult(tx, ctx, await orgScope, id, false);
+      return true;
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'NOT_FOUND') return false;
+      throw error;
     }
+  };
+  const orgs = async (ids: readonly (string | null | undefined)[]) => {
+    for (const id of ids) {
+      if (id && !(await orgAllowed(id))) throw outOfScope();
+    }
+  };
+  const createdOrg = async (orgId: string, itemId: string) => {
+    const today = tenantLocalDate(at.now, at.timezone);
+    const visited = new Set<string>();
+    const items = orgAdjustmentOrgItems;
+    let id: string | null = orgId;
+    while (id && !visited.has(id)) {
+      if (await orgAllowed(id)) return;
+      visited.add(id);
+      // 尚未生效的同单新增才沿生效日的行政链追溯；已存在的组织必须按申请人当前范围直接通过。
+      const [item] = await tx
+        .select({ id: items.id })
+        .from(items)
+        .where(
+          and(
+            eq(items.tenantId, at.tenantId),
+            eq(items.adjustmentId, adjustment.id),
+            eq(items.createdOrgId, id),
+            eq(items.adjustType, 1),
+            eq(items.executionResult, 1),
+            id === orgId ? eq(items.id, itemId) : undefined,
+          ),
+        );
+      if (!item) break;
+      const [org] = await loadOrgSnapshot(tx, at.tenantId, adjustment.effectiveDate, undefined, { id });
+      if (!org || org.establishedOn <= today) break;
+      id = org.parents.admin?.parentId ?? null;
+    }
+    throw outOfScope();
   };
   const cascade: CascadeAuthorizer = (_cascadeTx, ids) => orgs(ids);
   const employment = () => (employeeScope ??= scopeOf(tx, query(at, adjustment, EMPLOYMENT_OBJECT)));
@@ -109,5 +141,5 @@ export function applicantScopes(tx: Tx, scopeOf: ApplicantScopeOf, at: ScopeAt, 
       throw error;
     }
   };
-  return { orgs, cascade, employment, employee, contract };
+  return { orgs, createdOrg, cascade, employment, employee, contract };
 }
