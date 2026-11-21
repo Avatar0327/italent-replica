@@ -94,16 +94,18 @@ async function profile(world: PermissionWorld, user: string, mode: 'writer' | 'r
   return p.id;
 }
 
-async function seedPermissions(w: Awaited<ReturnType<typeof approvalWorld>>, reader: string, outside: string) {
+async function seedPermissions(w: Awaited<ReturnType<typeof approvalWorld>>) {
   const api = tenantApi(w.db, { authorize: undefined, clock: w.clock });
   const identity = w.as(w.hr.id);
   const adminRecord = await bootstrapTenantAdmin(w.db, { tenantId: w.tenant.id, userId: w.hr.id }, cmd());
   const permissions = { db: w.db, tenant: w.tenant, admin: w.hr, adminRecord, api, asAdmin: identity };
+  const reader = await w.member('ZZ_FER2E1_只读');
+  const outside = await w.member('ZZ_FER2E1_无范围');
   const writerProfile = await profile(permissions, w.hr.id, 'writer');
   await profile(permissions, reader, 'reader');
   await profile(permissions, outside, 'no-scope');
 
-  return { api, identity, writerProfile };
+  return { api, identity, writerProfile, reader, outside };
 }
 
 async function seedPartialResult(db: Db, tenant: string, id: string) {
@@ -140,9 +142,7 @@ async function seed(db: Db) {
       },
     ],
   });
-  const reader = await w.member('ZZ_FER2E1_只读');
-  const outside = await w.member('ZZ_FER2E1_无范围');
-  const { api, identity, writerProfile } = await seedPermissions(w, reader, outside);
+  const { api, identity, writerProfile, reader, outside } = await seedPermissions(w);
 
   const draft = async (subject: string, org: string) =>
     (
