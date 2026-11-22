@@ -2150,7 +2150,12 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     RESPONSE,
     {
-      write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireExitGate']),
+      write: employmentWrite('body', [
+        'lockEmploymentBusiness',
+        'assertRevision',
+        'requireExitGate',
+        'requirePendingRetirementDutyPlan',
+      ]),
       ...byId,
     },
   ),
@@ -2346,6 +2351,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // F-535 详情：已撤销记录按按钮与写范围披露 restore；现值详情按当前范围和字段权读本单 rehire，已办冻结份不回填现值。
+  // F-538：现值详情的职责转交计划另按 dutyTransfer 字段及引用范围整块裁剪。
   'GET /retirements/:id': object({
     object: EMPLOYMENT,
     operation: 'view',

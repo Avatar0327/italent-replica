@@ -19,6 +19,7 @@ interface Field {
   key: string;
   label: string;
   type?: string;
+  bounds?: { min: string; max: string };
   options?: { value: string; label: string }[];
 }
 function fieldsOf(code: string, columns: Column[]): Field[] {
@@ -66,6 +67,7 @@ function fieldsOf(code: string, columns: Column[]): Field[] {
   return fields;
 }
 function inputBounds(field: Field, draft: Filters) {
+  if (field.bounds) return field.bounds;
   if (field.type === 'date') return { min: '0001-01-01', max: '9999-12-31' };
   if (field.key === 'year') return { min: 1900, max: Number(draft.asOf?.slice(0, 4)) || 9999 };
   if (field.key === 'month') return { min: 1, max: 12 };
@@ -130,26 +132,59 @@ export function ReportFilters({
   applied?: Filters;
   apply(filters: Filters): void;
 }) {
+  const roster = code === 'roster';
+  return (
+    <QueryFilters
+      fields={fieldsOf(code, columns)}
+      initial={initial}
+      busy={busy}
+      submitDisabled={blocked}
+      rosterColumns={roster ? columns : undefined}
+      applied={applied}
+      apply={apply}
+    />
+  );
+}
+
+export function QueryFilters({
+  fields,
+  initial,
+  busy,
+  submitDisabled,
+  validate,
+  rosterColumns,
+  applied,
+  apply,
+}: {
+  fields: readonly Field[];
+  initial: Filters;
+  busy: boolean;
+  submitDisabled?: boolean;
+  validate?(filters: Filters): boolean;
+  rosterColumns?: readonly Column[];
+  applied?: Filters;
+  apply(filters: Filters): void;
+}) {
   const [draft, setDraft] = useState(initial);
   const [invalid, setInvalid] = useState(false);
-  const [lastColumns, setLastColumns] = useState(columns);
-  if (code === 'roster' && lastColumns !== columns) {
-    setLastColumns(columns);
-    setDraft(rosterFilters(draft, columns));
+  const [lastColumns, setLastColumns] = useState(rosterColumns);
+  if (rosterColumns && lastColumns !== rosterColumns) {
+    setLastColumns(rosterColumns);
+    setDraft(rosterFilters(draft, rosterColumns));
   }
-  const fields = fieldsOf(code, columns);
   return (
     <form
       className="page-filters"
+      noValidate={Boolean(validate)}
       onSubmit={(event) => {
         event.preventDefault();
-        if (busy || blocked) return;
+        if (busy || submitDisabled) return;
         const values = Object.fromEntries(fields.map((f) => [f.key, draft[f.key] ?? '']));
-        const bad =
-          code === 'roster'
-            ? !validRosterFilters(values)
-            : (values.from && values.to && values.from > values.to) ||
-              (values.workDateFrom && values.workDateTo && values.workDateFrom > values.workDateTo);
+        const bad = rosterColumns
+          ? !validRosterFilters(values)
+          : (validate && !validate(values)) ||
+            (values.from && values.to && values.from > values.to) ||
+            (values.workDateFrom && values.workDateTo && values.workDateFrom > values.workDateTo);
         setInvalid(Boolean(bad));
         if (!bad) apply(values);
       }}
@@ -162,12 +197,12 @@ export function ReportFilters({
               field={field}
               draft={draft}
               busy={busy}
-              roster={code === 'roster'}
+              roster={Boolean(rosterColumns)}
               change={(value) => setDraft({ ...draft, [field.key]: value })}
             />
           </label>
         ))}
-        <Button htmlType="submit" type="primary" disabled={busy || blocked}>
+        <Button htmlType="submit" type="primary" disabled={busy || submitDisabled}>
           {m.query}
         </Button>
       </Space>

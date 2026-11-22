@@ -31,6 +31,7 @@ import {
   parseOfferDictionaryInput,
   saveOfferDictionaryEntry,
 } from './dictionaries.js';
+import { registerOfferESign } from './esign-routes.js';
 import { frozenOfferDetail } from './frozen-detail.js';
 import { withRehireHint } from './identity.js';
 import { frozenPerTransaction, offerCopyCheck, offerCreateCheck } from './checks.js';
@@ -240,6 +241,7 @@ export const registerOfferRoutes: TenantRouteModule = (router, deps) => {
     return c.json(await trimOffer(deps, ctx, body));
   });
   registerCommands(module, deps);
+  registerOfferESign(module, deps);
   registerOfferTransitions(module, deps);
   registerOfferSend(module, deps);
   registerOfferMail(module, deps);

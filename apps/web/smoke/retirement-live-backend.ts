@@ -47,6 +47,15 @@ export async function startRetirementBackend() {
     await world.submittedRetire('2026-10-15', applying.id);
     const editable = await world.newcomer('合成编辑退休员工');
     await world.directRetire('2026-10-25', undefined, editable.id);
+    const dutyOwner = await world.peer('ZZ_F538_退休编辑员工');
+    const dutySubordinate = await world.subordinateOf(dutyOwner.id, 'ZZ_F538_下属');
+    const dutyBefore = await world.peer('ZZ_F538_原接收人');
+    const dutyReceiver = await world.peer('ZZ_F538_新接收人');
+    await world.directRetire(
+      '2026-10-25',
+      world.dutyPlan([{ employeeId: dutySubordinate.id, receiverId: dutyBefore.id }]),
+      dutyOwner.id,
+    );
     const cancelled = await world.newcomer('合成已撤销退休员工');
     const retired = await world.directRetire('2026-10-25', undefined, cancelled.id);
     await world.retireCancelled(retired.id);
@@ -89,6 +98,8 @@ export async function startRetirementBackend() {
         plain: plain.id,
         applying: applying.id,
         handover: handover.id,
+        dutySubordinate: dutySubordinate.id,
+        dutyReceiver: dutyReceiver.id,
         closing: closing.id,
         target: target.id,
       },

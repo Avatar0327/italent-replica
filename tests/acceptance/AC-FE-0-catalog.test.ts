@@ -44,7 +44,16 @@ const expected = {
   ]
     .map((object) => object.code)
     .filter((code) => code !== PERSONNEL_REQUEST_OBJECT),
-  transfer: [M.employmentRecord.code, M.probationAssessment.code],
+  // BE-16 16a-0：入职域对象沿 R2-T01 设计 §9.3 / §10 登记在 transfer。
+  transfer: [
+    M.employmentRecord.code,
+    M.probationAssessment.code,
+    M.onboardingCollection.code,
+    M.onboardingQrCode.code,
+    M.onboardingPreparation.code,
+    M.onboardingMaterial.code,
+    M.onboardingIntegration.code,
+  ],
   approval: APPROVAL_OBJECTS.map((object) => object.code),
   self: [PERSONNEL_REQUEST_OBJECT],
   manager: [],
@@ -101,8 +110,8 @@ describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
     expect(result.menus.map((menu) => menu.key)).toEqual([
       app,
       ...(code === M.contract.code ? ['contracts'] : []),
-      // FE-R2f S7：数据分析仅挂当前交付的员工名册。
-      ...(code === M.hrRoster.code ? ['hr-analytics'] : []),
+      // FE-R2f S1/S7：数据分析在任一已交付子项可见时显示。
+      ...([M.hrRoster.code, M.hrDashboard.code].includes(code) ? ['hr-analytics'] : []),
       // F-465b：人事报表子菜单按三张报表任一对象显示。
       ...([M.hrRoster.code, M.hrMovementReport.code, M.hrStructureReport.code].includes(code) ? ['hr-reports'] : []),
       ...(app === 'transfer' && code === M.employmentRecord.code

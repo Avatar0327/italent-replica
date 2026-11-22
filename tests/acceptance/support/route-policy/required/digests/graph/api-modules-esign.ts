@@ -66,6 +66,16 @@ export const GRAPH: Graph = {
     'packages/domain/src/esign/notice-templates.ts#ESIGN_SCENE_LABEL',
     'packages/domain/src/esign/notice-templates.ts#esignFileLabel',
   ],
+  'apps/api/src/modules/esign/offer-source.ts#auditAnchor': [
+    'apps/api/src/audit/record.ts#recordAudit',
+    'apps/api/src/system-actor.ts#auditActor',
+  ],
+  'apps/api/src/modules/esign/offer-source.ts#ensureOfferSignSource': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#anchorKey',
+    '#auditAnchor',
+    '#offerKey',
+  ],
   'apps/api/src/modules/esign/provider.ts#simulatedProvider': [
     'apps/api/src/modules/qualification/chart-files.ts#boundedSize',
     'apps/api/src/modules/survey360/export-files.ts#renderPdf',

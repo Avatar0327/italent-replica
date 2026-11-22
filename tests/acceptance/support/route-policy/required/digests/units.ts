@@ -48,6 +48,11 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/analytics/hr-structure/reports/:report': 'b7d824e8d5d8',
     'route:GET /api/tenant/analytics/hr-structure/reports/:report/export': '3fc022206c15',
   },
+  'apps/api/src/modules/analytics/organization-candidates.ts': {
+    ANALYSIS_CANDIDATE_OBJECTS: '5765a77c4c34',
+    organizationCandidateObject: '7bc638215b5f',
+    'route:GET /api/tenant/analytics/organization-candidates': 'bbb7a80d499a',
+  },
   'apps/api/src/modules/analytics/team-dashboard-routes.ts': {
     'route:GET /api/tenant/analytics/team-dashboard': 'c4225d98f12e',
     'route:GET /api/tenant/analytics/team-dashboard/components/:code': '71af01c1b393',
@@ -75,7 +80,7 @@ export const DIGESTS: Digests = {
     openTask: '6f9c0c04e106',
   },
   'apps/api/src/modules/approval/adapters.ts': {
-    ADAPTERS: '78fab346071d',
+    ADAPTERS: '9f2e55c95c68',
     personnelAdapter: '17d568ef5ca5',
   },
   'apps/api/src/modules/approval/disclosure.ts': {
@@ -608,7 +613,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/replay-guard.ts': {
     exitBatchGuard: 'de614384aa2a',
     exitCommandGuard: '2b3865205782',
-    exitEditGuard: 'ef35dee6603d',
+    exitEditGuard: '4311b5bc5b85',
     exitImportGuard: '71efcb24f5b5',
     importWriteGuard: '8592297e10da',
     requireBusinessWriteScope: 'aa0b8a073e41',
@@ -647,8 +652,8 @@ export const DIGESTS: Digests = {
     requireRehireWrite: 'ef7fde0bbe35',
   },
   'apps/api/src/modules/employment/retirement-routes.ts': {
-    registerRetirementChanges: '317f44fc42df',
-    'route:PATCH /retirements/:id': '9f9608cf2822',
+    registerRetirementChanges: 'a74db8c60fb0',
+    'route:PATCH /retirements/:id': '43ad08a042ad',
     'route:POST /retirements/:id/cancel': 'c98a4f57dd10',
     'route:POST /retirements/:id/restore': '3732c9beb1df',
     'route:POST /retirements/employees/:id': '1581749bcfc2',
@@ -665,7 +670,7 @@ export const DIGESTS: Digests = {
     'route:PUT /retirement-rules/:id/enabled': '81bf2633b316',
   },
   'apps/api/src/modules/employment/retirement-view-routes.ts': {
-    projectRetirementDetail: '948e7f180398',
+    projectRetirementDetail: '86ce9ce348ee',
     'route:GET /retirements': 'e30a273c900a',
     'route:GET /retirements/:id': '9a2c924e8137',
     'route:GET /retirements/employees/:id/in-flight': '038f286aec09',
@@ -1079,8 +1084,15 @@ export const DIGESTS: Digests = {
     OFFER_DICTIONARY_OBJECT: '15d88648f288',
     offerReadContext: 'c5e8ea087e23',
     offerTransferCheck: 'd2cb9dcb919e',
+    requireOfferInScope: '08111b250909',
     runDictionaryWrite: '7b25cec2c260',
     runOfferWrite: '607239406ea4',
+  },
+  'apps/api/src/modules/offer/esign-routes.ts': {
+    listOfferSignRecords: '01db50c3d5eb',
+    'route:GET /:id/esign-context': '5c71959798af',
+    'route:GET /:id/esign-records': 'd52fade6fbcc',
+    'route:POST /:id/esign-tasks': 'f824b7ef9028',
   },
   'apps/api/src/modules/offer/identity.ts': {
     visibleRehireHint: 'eae042f2e171',
@@ -1107,7 +1119,7 @@ export const DIGESTS: Digests = {
     'route:POST /:id/send': '1f96a9eaa4a6',
   },
   'apps/api/src/modules/offer/transitions.ts': {
-    offerActionAccess: '72485fe1ee16',
+    offerActionAccess: '0bb558d06189',
     'route:GET /:id/send-check': 'b27b1aee9a46',
     'route:GET /:id/transfer-form': 'b27cdbe16757',
     'route:POST /:id/invalidate': '3ec1206461fa',
@@ -2146,6 +2158,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     '0268098fd8cb',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report/export':
     '90caf0136978',
+  'apps/api/src/modules/analytics/organization-candidates.ts#ANALYSIS_CANDIDATE_OBJECTS': '1f397b8d369b',
+  'apps/api/src/modules/analytics/organization-candidates.ts#organizationCandidateObject': '20045976b1f6',
+  'apps/api/src/modules/analytics/organization-candidates.ts#route:GET /api/tenant/analytics/organization-candidates':
+    '7de20c99666d',
   'apps/api/src/modules/analytics/team-dashboard-routes.ts#route:GET /api/tenant/analytics/team-dashboard':
     '7326924f2124',
   'apps/api/src/modules/analytics/team-dashboard-routes.ts#route:GET /api/tenant/analytics/team-dashboard/components/:code':
@@ -2166,7 +2182,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/actions.ts#assertTargetInScope': '1fe41485709d',
   'apps/api/src/modules/approval/actions.ts#openOwn': '1977a0826369',
   'apps/api/src/modules/approval/actions.ts#openTask': 'b572a86c10cb',
-  'apps/api/src/modules/approval/adapters.ts#ADAPTERS': 'edfc3d82549e',
+  'apps/api/src/modules/approval/adapters.ts#ADAPTERS': '098962fbf987',
   'apps/api/src/modules/approval/adapters.ts#personnelAdapter': '34083b87e52d',
   'apps/api/src/modules/approval/disclosure.ts#assertCanOpen': '457412422a98',
   'apps/api/src/modules/approval/disclosure.ts#readDetail': '244f4715cee7',
@@ -2578,8 +2594,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-intention.ts#guardedRow': '493240f1ef38',
   'apps/api/src/modules/employment/retirement-rehire.ts#rehireGuard': 'd3bae7ac34ea',
   'apps/api/src/modules/employment/retirement-rehire.ts#requireRehireWrite': '02a534555a2e',
-  'apps/api/src/modules/employment/retirement-routes.ts#registerRetirementChanges': '96a780a2c07b',
-  'apps/api/src/modules/employment/retirement-routes.ts#route:PATCH /retirements/:id': '31f38226c245',
+  'apps/api/src/modules/employment/retirement-routes.ts#registerRetirementChanges': '2b7425981684',
+  'apps/api/src/modules/employment/retirement-routes.ts#route:PATCH /retirements/:id': 'd4feb938c33a',
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/:id/cancel': '036e2608dd5f',
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/:id/restore': '40ce5237b767',
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id': '1933ba3a50a6',
@@ -2592,7 +2608,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules/run': '83a9d7934f65',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id': '1ca4601c97f1',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id/enabled': 'e1ea577758dc',
-  'apps/api/src/modules/employment/retirement-view-routes.ts#projectRetirementDetail': '952b9bdf4323',
+  'apps/api/src/modules/employment/retirement-view-routes.ts#projectRetirementDetail': 'b7d76b395192',
   'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements': 'e02b97b4fb76',
   'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements/:id': 'ea5102a5390f',
   'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements/employees/:id/in-flight':
@@ -2889,8 +2905,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/offer/context.ts#OFFER_DICTIONARY_OBJECT': 'e3b0c44298fc',
   'apps/api/src/modules/offer/context.ts#offerReadContext': '636b5336d243',
   'apps/api/src/modules/offer/context.ts#offerTransferCheck': '03ed5a7ae484',
+  'apps/api/src/modules/offer/context.ts#requireOfferInScope': 'd2196d745680',
   'apps/api/src/modules/offer/context.ts#runDictionaryWrite': 'f8f96c185984',
   'apps/api/src/modules/offer/context.ts#runOfferWrite': '4a7852e97599',
+  'apps/api/src/modules/offer/esign-routes.ts#listOfferSignRecords': '917a3741434b',
+  'apps/api/src/modules/offer/esign-routes.ts#route:GET /:id/esign-context': 'eb58e6baa972',
+  'apps/api/src/modules/offer/esign-routes.ts#route:GET /:id/esign-records': '94a7b4ac07b7',
+  'apps/api/src/modules/offer/esign-routes.ts#route:POST /:id/esign-tasks': 'ba24a5971748',
   'apps/api/src/modules/offer/identity.ts#visibleRehireHint': 'e85641d69f28',
   'apps/api/src/modules/offer/mail.ts#route:GET /:id/mail': '6084450135a6',
   'apps/api/src/modules/offer/routes.ts#listFilters': '04fc9285a9ff',
