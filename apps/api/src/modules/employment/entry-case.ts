@@ -37,6 +37,14 @@ export async function applyCurrentEntryCase(tx: Tx, ctx: EmploymentContext, chan
   if (current) await entryLifecyclePort().apply(tx, entryCaseContext(ctx), change);
 }
 
+export async function closeDeletedEntryCase(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: { employeeId: string; id: string },
+) {
+  await applyCurrentEntryCase(tx, ctx, { kind: 'delete', employeeId: business.employeeId, businessId: business.id });
+}
+
 function dueCases(tenantId: string, today: string) {
   return sql`
     SELECT c.employee_id AS "employeeId", c.current_business_id AS "businessId",

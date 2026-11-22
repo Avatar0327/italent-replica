@@ -1,4 +1,4 @@
-import { applyCurrentEntryCase } from './entry-case.js';
+import { closeDeletedEntryCase } from './entry-case.js';
 import { getTenant } from '@italent/db';
 import { restoreRehireSeniority } from './rehire-seniority.js';
 import { assertRegularizationApplication } from './regularization-eligibility.js';
@@ -249,7 +249,11 @@ export async function transitionEmployment<T>(
     ? await reverseCarriedEstablishment(tx, ctx, business.id)
     : [];
   if (input.action === 'delete') {
-    await deleteBusinessAndSync(tx, ctx, business, input, finishReplacement !== undefined);
+    const previous = await deleteEmploymentBusiness(tx, ctx, business, input, finishReplacement !== undefined);
+    const { kind, effectiveDate } = business.payload;
+    await personnelHooks.sync(tx, ctx, business.employeeId, business.id, kind, effectiveDate);
+    // 前一条的结束日随删除恢复，其同步履历也要同事务跟着变（AC-TRF-08）。
+    if (previous) await personnelHooks.sync(tx, ctx, business.employeeId, previous.id, previous.kind, previous.date);
   } else if (input.action === 'approve') {
     await approveBusiness(tx, ctx, business, gatedExit?.row);
   } else if (input.action === 'activate' && gatedExit?.row) {
@@ -410,35 +414,15 @@ function assertTransition(business: LockedEmploymentBusiness, action: Employment
     throw new AppError('CONFLICT', '当前状态不允许此动作', { state: business.state, action });
 }
 
-async function deleteBusinessAndSync(
-  tx: Tx,
-  ctx: EmploymentContext,
-  business: LockedEmploymentBusiness,
-  input: EmploymentTransitionInput,
-  replacing: boolean,
-) {
-  const closesEntryCase = !replacing && ENTRY_KINDS.includes(business.payload.kind) && business.state === 'effective';
-  const previous = await deleteEmploymentBusiness(tx, ctx, business, input.cancelling === true, input.restoreUntil);
-  if (closesEntryCase)
-    await applyCurrentEntryCase(tx, ctx, {
-      kind: 'delete',
-      employeeId: business.employeeId,
-      businessId: business.id,
-    });
-  const { kind, effectiveDate } = business.payload;
-  await personnelHooks.sync(tx, ctx, business.employeeId, business.id, kind, effectiveDate);
-  // 前一条的结束日随删除恢复，其同步履历也要同事务跟着变（AC-TRF-08）。
-  if (previous) await personnelHooks.sync(tx, ctx, business.employeeId, previous.id, previous.kind, previous.date);
-}
-
 /** 返回时间轴上的前一条（已生效记录被删时），供调用方同步其投影。 */
 async function deleteEmploymentBusiness(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
-  exitCancel = false,
-  restoreUntil?: string,
+  { cancelling, restoreUntil }: EmploymentTransitionInput,
+  replacing: boolean,
 ): Promise<{ id: string; kind: string; date: string } | null> {
+  const closesEntryCase = !replacing && ENTRY_KINDS.includes(business.payload.kind) && business.state === 'effective';
   const { fields, customFields, ...metadata } = business.payload;
   const before = {
     ...metadata,
@@ -482,7 +466,7 @@ async function deleteEmploymentBusiness(
         NEW_CYCLE_KINDS.includes(business.payload.kind) || business.payload.kind === 'intern_regularization';
       const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
       if (!isExitKind(record.kind)) await assertDeletionNotPaused(tx, ctx, record, point);
-      if (point && exitCancel)
+      if (point && cancelling)
         previous = await restoreAfterExitDeletion(tx, ctx, record, business, point, restoreUntil);
       else if (point) {
         await assertRestoredPredecessor(tx, ctx, record, { previousId: point.recordId, window: point.window });
@@ -509,6 +493,7 @@ async function deleteEmploymentBusiness(
   await releasePendingContract(tx, ctx, business.id, 'delete');
   // F-203：试用期行（F-188）同样在内核同事务清理，各入口不再各自补清
   await clearPendingProbation(tx, ctx, business.id);
+  if (closesEntryCase) await closeDeletedEntryCase(tx, ctx, business);
   return previous;
 }
 
