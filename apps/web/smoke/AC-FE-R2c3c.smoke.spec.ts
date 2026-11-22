@@ -271,3 +271,35 @@ test('AC-FE-R2c3c-05 取消同时返聘后，预览和创建均省略原试用�
     expect.objectContaining({ path, body: { mode: 'direct', lastWorkDate }, status: 201 }),
   ]);
 });
+
+test('AC-EN-F538-FE-02 退休编辑读回职责计划，更换接收人后保存并重开', async ({ page }) => {
+  const calls = await setupLive(page);
+  await openPerson(page, 'ZZ_F538_退休编辑员工');
+  await dialog(page).getByRole('button', named('编辑')).click();
+  const form = dialog(page);
+  const section = form.getByRole('region', { name: '职责转交' });
+  await expect(section.getByText('ZZ_F538_原接收人', { exact: true })).toBeVisible();
+  await choose(section, '职责接收人', 'ZZ_F538_新接收人');
+  await form.getByRole('button', save).click();
+  await expect(page.getByText('退休信息已保存', { exact: true })).toBeVisible();
+  expect(calls).toEqual([
+    expect.objectContaining({
+      method: 'PATCH',
+      status: 200,
+      body: {
+        dutyTransfer: {
+          subordinates: [
+            { employeeId: manifest.dutySubordinate, receiverId: manifest.dutyReceiver, relation: 'direct' },
+          ],
+          orgRoles: [],
+        },
+      },
+    }),
+  ]);
+  await dialog(page).locator('.ant-drawer-close').click();
+  await openPerson(page, 'ZZ_F538_退休编辑员工');
+  await dialog(page).getByRole('button', named('编辑')).click();
+  await expect(
+    dialog(page).getByRole('region', { name: '职责转交' }).getByText('ZZ_F538_新接收人', { exact: true }),
+  ).toBeVisible();
+});

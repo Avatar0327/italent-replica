@@ -11,6 +11,7 @@ import { defineTable } from '../../route-policy/index.js';
 import {
   all,
   button,
+  fixed,
   listScope,
   member,
   noButton,
@@ -19,6 +20,7 @@ import {
   object,
   projector,
 } from '../../route-policy/presets.js';
+import { ANALYSIS_CANDIDATE_OBJECTS, ORGANIZATION_CANDIDATES_PATH } from '../analytics/organization-candidates.js';
 import { ROSTER_OBJECT } from './roster-access.js';
 
 const BASE = '/api/tenant/hr-analysis/roster';
@@ -86,6 +88,13 @@ const REPORT_GUARD = 'hrAnalysis.reportObjects';
 const reportsProjection = projector('hrAnalysis.reports', 'hrAnalysis.reports');
 
 export const HR_ANALYSIS_POLICIES = defineTable('hr-analysis', {
+  [`GET ${ORGANIZATION_CANDIDATES_PATH}`]: object({
+    object: { from: 'query', path: 'object', map: ANALYSIS_CANDIDATE_OBJECTS },
+    operation: 'view',
+    button: noButton('DEC-961：按指定分析对象的查看权'),
+    scope: noScope('DEC-763④ / DEC-810②：候选为租户内完整行政树，统计范围由各分析接口判定'),
+    fields: fixed(['items'], 'DEC-961：items 每项仅有 id、name、parentId、enabled'),
+  }),
   // F-465a 报表目录：只返回报表元数据与按各自对象查看权算出的可用性，不含业务数据
   [`GET ${REPORTS}`]: member('报表目录只含元数据，可用性按调用方对象查看权标注', noFields('目录元数据，不是业务字段'), {
     optional: availability,
