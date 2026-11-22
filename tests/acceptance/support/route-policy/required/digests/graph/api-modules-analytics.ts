@@ -536,8 +536,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/analytics/hr-dashboard.ts#employmentVisible',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#IN_FLIGHT_EXPORT_COLUMNS': [
+    '#DETAIL_COLUMNS',
+    '#DETAIL_ROW_COLUMN',
+    '#INSTANCE_COLUMN',
+  ],
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#approvalVisible': [
     'apps/api/src/modules/approval/access.ts#adminScope',
+  ],
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#componentOf': [
+    'packages/domain/src/analytics/hr-process-dashboard.ts#HR_PROCESS_COMPONENTS',
   ],
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#dateParam': [
     '#DATE_MAX',
@@ -559,6 +567,12 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/rules.ts#addDays',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#processExportColumns': [
+    '#DETAIL_COLUMNS',
+    '#DETAIL_ROW_COLUMN',
+    '#INSTANCE_COLUMN',
+    '#IN_FLIGHT_EXPORT_COLUMNS',
+  ],
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard':
     [
       '#HR_PROCESS_DASHBOARD_BASE',
@@ -569,12 +583,25 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard/components/:code':
     [
       '#HR_PROCESS_DASHBOARD_BASE',
+      '#componentOf',
       '#detailFilter',
       '#processContext',
       '#window',
       'apps/api/src/modules/analytics/hr-process-dashboard.ts#hrProcessPage',
       'apps/api/src/modules/job/context.ts#pageQuery',
-      'packages/domain/src/analytics/hr-process-dashboard.ts#HR_PROCESS_COMPONENTS',
+    ],
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard/components/:code/export':
+    [
+      'apps/api/src/modules/analytics/component-export.ts#COMPONENT_EXPORT_PAGE',
+      'apps/api/src/modules/analytics/component-export.ts#exportComponent',
+      'apps/api/src/modules/analytics/component-export.ts#validateComponentExportQuery',
+      '#HR_PROCESS_DASHBOARD_BASE',
+      '#componentOf',
+      '#detailFilter',
+      '#processContext',
+      '#processExportColumns',
+      'apps/api/src/modules/analytics/hr-process-dashboard.ts#hrProcessPage',
+      'packages/domain/src/analytics/hr-process-dashboard.ts#HR_PROCESS_DASHBOARD_OBJECT',
     ],
   'apps/api/src/modules/analytics/hr-process-dashboard.ts#DURATION': ['#days'],
   'apps/api/src/modules/analytics/hr-process-dashboard.ts#batchOffers': [

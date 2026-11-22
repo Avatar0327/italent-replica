@@ -1,14 +1,31 @@
-import type { Authorizer } from '@italent/api';
+import { routeManifest, type Authorizer } from '@italent/api';
 import { sql, withTenant, type Db } from '@italent/db';
-import { APPROVAL_INSTANCE_OBJECT, buttonResource, HR_PROCESS_DASHBOARD_OBJECT, MODULE_OBJECTS } from '@italent/domain';
+import {
+  APPROVAL_INSTANCE_OBJECT,
+  buttonResource,
+  HR_PROCESS_DASHBOARD_OBJECT,
+  HR_STRUCTURE_OBJECT,
+  MODULE_OBJECTS,
+} from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
-import { beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 import { approvalWorld, type InstanceView } from './AC-APV-support.js';
 import { managementScope } from './AC-HA-13a-support.js';
 import { PROCESS_BASE, type ProcessDetail } from './AC-HA-13c-support.js';
 import { parseCsv } from './AC-HA-roster-support.js';
+import { readFrozenContract } from './support/route-policy/baseline.js';
+import {
+  checkRecorded,
+  createRecorder,
+  mergeRecorded,
+  observe,
+  readFrozenRecorded,
+  writeFrozenRecorded,
+} from './support/route-policy/recorded.js';
+import { checkRequired } from './support/route-policy/required.js';
+import { HR_PROCESS_DASHBOARD as REQUIRED } from './support/route-policy/required/hr-process-dashboard.js';
 import { tenantApi, type RequestOptions } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -17,6 +34,9 @@ const TODAY = '2026-10-20';
 const at = (date: string, hour = '01') => `${date}T${hour}:00:00.000Z`;
 const WINDOW = 'asOf=2026-10-19&from=2026-10-05&to=2026-10-13&category=transfer';
 const BASE = `${PROCESS_BASE}/components`;
+const ENDPOINT = `GET ${BASE}/:code/export`;
+const endpoints = new Set([ENDPOINT]);
+const recorder = createRecorder();
 const TITLE = '=合成,"标题"\r\n第二行';
 const NODE = '@合成,"节点"';
 const COMMON = ['审批实例 ID', '分组', '系列', '值', '是否命中'];
@@ -100,7 +120,7 @@ function reader(w: World, user = w.hr.id, authorize?: Authorizer): Get {
   const api = tenantApi(w.db, { clock: () => new Date(at(TODAY)), ...(authorize ? { authorize } : {}) });
   return (path, options) => api.request('GET', path, { ...w.as(user), ...options });
 }
-const get: Get = (path, options) => reader(f.w)(path, options);
+const get: Get = (path, options) => f.w.api.request('GET', path, { ...f.w.as(f.w.hr.id), ...options });
 
 async function details(read: Get, code: string, query = '') {
   const items: ProcessDetail['items'] = [];
@@ -169,20 +189,22 @@ it('AC-HA-F547-01/06 B51 跨页全量按 D 的顺序和值交付，成功写一�
   const items = await details(get, code, WINDOW);
   expect(items.map(({ id }) => id)).toEqual([f.onTime.id, f.late.id, f.pending.id, f.pendingOutside.id].sort());
   const before = await logs(f.w, code);
-  const response = await get(download(code, WINDOW));
+  const response = await get(download(code, WINDOW), { headers: { 'x-source-page': 'hr-process-dashboard' } });
   expect(await csv(response.clone(), code, '2026-10-19')).toEqual([
     ['明细行 ID', ...COMMON],
     ...items.map((row) => [row.id, ...commonCells(row)]),
   ]);
   const after = await logs(f.w, code);
   expect(after).toHaveLength(before.length + 1);
-  expect(after[0]).toMatchObject({
+  const { occurred_at: occurredAt, ...loggedContent } = after[0]!;
+  expect(loggedContent).toMatchObject({
     tenant_id: f.w.tenant.id,
     actor_user_id: f.w.hr.id,
     object_type: OBJECT,
     object_id: code,
     behavior: 'export',
     summary: '导出组件明细：在途流程数',
+    source_page: 'hr-process-dashboard',
     success_count: 1,
     failure_count: 0,
     total_count: 1,
@@ -192,9 +214,16 @@ it('AC-HA-F547-01/06 B51 跨页全量按 D 的顺序和值交付，成功写一�
     scope_employee_id: null,
     scope_org_id: null,
   });
-  expect(new Date(after[0]!.occurred_at).toISOString()).toBe(at(TODAY));
+  expect(new Date(occurredAt).toISOString()).toBe(at(TODAY));
   for (const secret of ['2026-10-19', '2026-10-05', '2026-10-13', 'transfer', ...items.map(({ id }) => id)])
-    expect(JSON.stringify(after)).not.toContain(secret);
+    expect(JSON.stringify(loggedContent)).not.toContain(secret);
+  recorder.recordFact(
+    ENDPOINT,
+    'outcome',
+    await observe(response, {
+      audit: { before: before.map(({ behavior }) => behavior), after: after.map(({ behavior }) => behavior) },
+    }),
+  );
 });
 
 it('AC-HA-F547-02 B51 按 D 解释组、系列和 hit=false，下载拒绝非法查询', async () => {
@@ -237,7 +266,7 @@ function scopedReader(user: string, boardScope: () => ModuleScope, businessScope
   let view = true;
   let button: 'adminTransfer' | 'adminIntervene' | undefined;
   const authorize: Authorizer = ({ action, resource }) => {
-    if (action === 'object.view') return view && resource === OBJECT;
+    if (action === 'object.view') return resource === HR_STRUCTURE_OBJECT || (view && resource === OBJECT);
     if (action !== 'object.button') return false;
     return (
       resource === buttonResource(MODULE_OBJECTS.hrRoster.code, 'export', 'list') ||
@@ -276,7 +305,9 @@ it('AC-HA-F547-03/06 B51 每次读取当前对象权及范围，两租户有同�
   );
   const before = await logs(f.w, code);
   revoked.revokeView();
-  await expectError(await revoked.read(path), 403, 'FORBIDDEN');
+  const denied = await revoked.read(path);
+  await expectError(denied, 403, 'FORBIDDEN');
+  recorder.recordFact(ENDPOINT, 'outcome', await observe(denied));
   const { read } = scopedReader(f.w.hr.id, () => scope);
   await expectError(await read(path, { tenant: undefined }), 400, 'TENANT_CONTEXT_REQUIRED');
   await expectError(await read(path, { tenant: b.w.tenant.id }), 403, 'TENANT_NOT_MEMBER');
@@ -420,12 +451,18 @@ it('AC-HA-F547-06 B51 重复成功各记一次，审计存储失败无附件和�
   }
 });
 
-it('AC-HA-F547-07 B51 未知组件和 7.2.15 占位均返回 404 且无成功日志', async () => {
+it('AC-HA-F547-02/07 B51 任务按节点导出，未知组件和 7.2.15 占位无文件无成功日志', async () => {
   const code = 'lateApprovalByApprover';
   expect((await details(get, code, WINDOW)).map(({ id }) => id)).toEqual([f.late.task]);
-  expect((await csv(await get(download('taskDurationByApprover')), 'taskDurationByApprover'))[0]).toEqual([
-    '任务 ID',
-    ...COMMON,
+  const taskCode = 'taskDurationByNode';
+  const query = `${WINDOW}&group=${encodeURIComponent(NODE)}`;
+  const tasks = await details(get, taskCode, query);
+  expect(tasks.map(({ id }) => id)).toEqual([f.onTime.task, f.late.task].sort());
+  expect(tasks.find(({ id }) => id === f.onTime.task)?.value).toBeCloseTo(4 / 24);
+  expect(tasks.find(({ id }) => id === f.late.task)?.value).toBeCloseTo(2 + 4 / 24);
+  expect(await csvFrom(get, taskCode, query)).toEqual([
+    ['任务 ID', ...COMMON],
+    ...tasks.map((task) => [task.id, task.instanceId, `'${NODE}`, '', String(task.value), '']),
   ]);
   for (const unavailable of ['unknown', code]) {
     const before = await logs(f.w, unavailable);
@@ -452,4 +489,41 @@ it('AC-HA-F547-06 B51 过限拒绝文件并且不留成功日志', async () => {
   const response = await get(download(code, 'from=2026-10-18&to=2026-10-18'));
   await expectError(response, 422, 'VALIDATION_FAILED', { reason: 'EXPORT_ROW_LIMIT', limit: 10_000, total: 10_001 });
   expect(await logs(f.w, code)).toEqual(before);
+  recorder.recordFact(ENDPOINT, 'outcome', await observe(response));
 }, 120_000);
+
+it('AC-HA-F547-08 B51 必需项守卫识别漏登记、错接范围及遗漏任一审批披露分支', () => {
+  const contract = readFrozenContract()!;
+  const routes = routeManifest(f.w.api.app).declared;
+  const route = routes.find(({ method, path }) => `${method} ${path}` === ENDPOINT)!;
+  const { policy } = route;
+  if (policy.kind !== 'object' || !('mode' in policy.scope) || policy.scope.mode !== 'list')
+    throw new Error(`${ENDPOINT} 必须按对象和列表范围声明`);
+  expect(policy.fields).toMatchObject({ mode: 'fixed', keys: ['file'] });
+  expect(checkRequired(REQUIRED, contract, [route])).toEqual([]);
+  expect(checkRequired({}, contract, [route])).toMatchObject([{ code: 'REQUIRED_ENTRY_MISSING' }]);
+  const wrong = { ...route, policy: { ...policy, scope: { ...policy.scope, predicate: 'hrMovement.visibility' } } };
+  expect(checkRequired(REQUIRED, contract, [wrong])).toMatchObject([{ code: 'REQUIRED_MISSING' }]);
+  for (const missing of ['adminTransfer', 'adminIntervene']) {
+    const optional = Object.fromEntries(Object.entries(policy.optional ?? {}).filter(([key]) => key !== missing));
+    const stripped = { ...route, policy: { ...policy, optional } };
+    expect(checkRequired(REQUIRED, contract, [stripped])).toMatchObject([{ code: 'DISCLOSURE_MISSING' }]);
+  }
+});
+
+afterAll(() => {
+  const contract = readFrozenContract()!;
+  const routes = routeManifest(tenantApi(database().db).app).declared;
+  const frozen = readFrozenRecorded();
+  const current =
+    process.env.ROUTE_POLICY_UPDATE_BASELINE === '1' ? mergeRecorded(frozen, recorder.facts, endpoints) : frozen;
+  expect(recorder.facts[ENDPOINT]?.outcome).toEqual(
+    expect.arrayContaining([
+      { status: 200, auditAdded: ['export'] },
+      { status: 403, code: 'FORBIDDEN' },
+      { status: 422, code: 'VALIDATION_FAILED', reason: 'EXPORT_ROW_LIMIT' },
+    ]),
+  );
+  expect(checkRecorded({ collected: recorder.facts, frozen: current, scope: endpoints, routes, contract })).toEqual([]);
+  if (current !== frozen) writeFrozenRecorded(current);
+});

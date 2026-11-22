@@ -54,10 +54,18 @@ export const DIGESTS: Digests = {
     loadMovement: '6dcd74d67e1f',
   },
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts': {
+    IN_FLIGHT_EXPORT_COLUMNS: 'ab4f764d17bf',
     approvalVisible: '2e0c654e1a67',
-    processContext: 'e09e4e721826',
+    processContext: '73bf620055ad',
+    processExportColumns: '0e55cddb9c10',
     'route:GET /api/tenant/analytics/hr-process-dashboard': '6b3a6cfa7302',
-    'route:GET /api/tenant/analytics/hr-process-dashboard/components/:code': '910cb6f5a545',
+    'route:GET /api/tenant/analytics/hr-process-dashboard/components/:code': '7e14ec56cea0',
+    'route:GET /api/tenant/analytics/hr-process-dashboard/components/:code/export': '4beda339c937',
+  },
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts': {
+    businesses: 'f67a2777f6d5',
+    facts: 'dd110985fc0e',
+    hrProcessPage: '00162e8dd832',
   },
   'apps/api/src/modules/analytics/hr-structure-routes.ts': {
     boardContext: '42546e84f947',
@@ -2142,12 +2150,19 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     'baf43a98850f',
   'apps/api/src/modules/analytics/hr-movement.ts#loadEstablishment': '9c213e793bfb',
   'apps/api/src/modules/analytics/hr-movement.ts#loadMovement': '32c4e047085a',
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#IN_FLIGHT_EXPORT_COLUMNS': 'a2508fa7785d',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#approvalVisible': '55c173015a83',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#processContext': '8371d99ccf32',
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#processExportColumns': 'ad2050c48af8',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard':
     '16d80c7c9dbf',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard/components/:code':
-    '88d86191c204',
+    '3f4641bdad4f',
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard/components/:code/export':
+    '8aebbf4abb26',
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#businesses': 'c966f6c4e6ef',
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#facts': '7a6c775d3b2b',
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#hrProcessPage': '6b57c5c0d168',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#boardContext': '9f65210d159b',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#projectMember': 'e3b0c44298fc',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#reportContext': '5a3beab87101',
