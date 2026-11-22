@@ -65,9 +65,12 @@ export function foreignVisibility(
   tx: Tx,
 ): ForeignVisible {
   const objects = new Map<string, ReturnType<typeof objectAccess>>();
-  const collectionVisible = collectionApprovalVisibility(tx, deps, ctx);
+  let collectionVisible: ForeignVisible | undefined;
   return async (field) => {
-    if (field.container === COLLECTION_VALUES) return collectionVisible(field);
+    if (field.container === COLLECTION_VALUES) {
+      collectionVisible ??= collectionApprovalVisibility(tx, deps, ctx);
+      return collectionVisible(field);
+    }
     // 其他来源仍按各自已登记的载体校验。
     const profile = field.objectCode === MODULE_OBJECTS.socialSecurityProfile.code;
     if (field.objectCode !== CONTRACT_OBJECT && !profile) return false;

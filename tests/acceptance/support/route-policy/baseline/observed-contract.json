@@ -27,6 +27,7 @@
       "TenantBase.Languageability",
       "TenantBase.Offer",
       "TenantBase.OfferBatchApproval",
+      "TenantBase.OnboardingCollection",
       "TenantBase.OrganizationApproval",
       "TenantBase.ProbationAssessment",
       "TenantBase.ProfessionalTechnicalPostInfo",
@@ -4229,6 +4230,9 @@
         "object": [
           "object.* 动作"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ],
         "own": [
           "listTodos / listNotifications / listInstances"
         ],
@@ -4238,6 +4242,7 @@
         "scope": [
           "checkScope",
           "creator scope",
+          "employment visibility",
           "scopeSql",
           "visible()"
         ]
@@ -5103,6 +5108,9 @@
           "object.* 动作",
           "readPageContext"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ],
         "scope": [
           "checkScope",
           "employment visibility",
@@ -5722,6 +5730,9 @@
           "object.* 动作",
           "readPageContext"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ],
         "scope": [
           "checkScope",
           "employment visibility",
@@ -5755,6 +5766,9 @@
         "object": [
           "object.* 动作",
           "readPageContext"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
         ],
         "scope": [
           "checkScope",
@@ -6161,6 +6175,9 @@
           "object.* 动作",
           "readPageContext"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ],
         "scope": [
           "checkScope",
           "readPageContext",
@@ -6372,6 +6389,9 @@
           "object.* 动作",
           "readPageContext"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ],
         "scope": [
           "checkScope",
           "employment visibility",
@@ -6463,6 +6483,9 @@
         "object": [
           "object.* 动作",
           "readPageContext"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
         ],
         "scope": [
           "checkScope",
@@ -22236,7 +22259,8 @@
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:create",
-          "TenantBase.EmploymentRecord:update"
+          "TenantBase.EmploymentRecord:update",
+          "TenantBase.EmploymentRecord:view"
         ],
         "scope": [
           "checkScope",
@@ -22285,7 +22309,8 @@
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentRecord:update"
+          "TenantBase.EmploymentRecord:update",
+          "TenantBase.EmploymentRecord:view"
         ],
         "scope": [
           "checkScope",
@@ -22333,7 +22358,8 @@
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentRecord:update"
+          "TenantBase.EmploymentRecord:update",
+          "TenantBase.EmploymentRecord:view"
         ],
         "scope": [
           "checkScope",
@@ -22381,7 +22407,8 @@
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentRecord:update"
+          "TenantBase.EmploymentRecord:update",
+          "TenantBase.EmploymentRecord:view"
         ],
         "scope": [
           "checkScope",
@@ -22964,7 +22991,8 @@
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentRecord:update"
+          "TenantBase.EmploymentRecord:update",
+          "TenantBase.EmploymentRecord:view"
         ],
         "scope": [
           "checkScope",
@@ -23009,7 +23037,8 @@
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentRecord:update"
+          "TenantBase.EmploymentRecord:update",
+          "TenantBase.EmploymentRecord:view"
         ],
         "scope": [
           "checkScope",
