@@ -114,22 +114,31 @@ async function requireMaterialOrgScope(tx: Tx, ctx: BusinessContext, scope: Modu
   if (!row?.allowed) materialConfigMissing();
 }
 
-async function requireUniquePriority(tx: Tx, ctx: BusinessContext, input: Input, id?: string) {
+async function requireUniquePriority(tx: Tx, ctx: BusinessContext, scope: ModuleScope, input: Input, id?: string) {
   const orgs = sql`SELECT unnest(ARRAY[${sql.join(
     input.orgIds.map((orgId) => sql`${orgId}::uuid`),
     sql`, `,
   )}])`;
-  const competing = sql`
-    SELECT s.org_id FROM onboarding_material_scope_orgs s JOIN onboarding_material_rules r
-      ON r.tenant_id = s.tenant_id AND r.id = s.rule_id
-    WHERE r.tenant_id = ${ctx.tenantId} AND r.enabled AND NOT r.archived
-      AND r.priority = ${input.priority} AND r.id IS DISTINCT FROM ${id ?? null}::uuid
-  `;
-  const [overlap] = rowsOf<{ org_id: string }>(
-    await tx.execute(sql`SELECT org_id FROM (${region(ctx, orgs)}) candidate
-      INTERSECT SELECT org_id FROM (${region(ctx, competing)}) existing LIMIT 1`),
+  const [result] = rowsOf<{ hidden: boolean; duplicate: boolean }>(
+    await tx.execute(sql`
+      WITH candidate AS (${region(ctx, orgs)}), overlapping AS (
+        SELECT ${rules.enabled} AS enabled, ${rules.priority} AS priority, ${materialRuleScope(ctx, scope)} AS visible
+        FROM ${rules}
+        WHERE ${rules.tenantId} = ${ctx.tenantId} AND NOT ${rules.archived}
+          AND ${rules.id} IS DISTINCT FROM ${id ?? null}::uuid
+          AND EXISTS (
+            SELECT org_id FROM candidate
+            INTERSECT SELECT org_id FROM (${region(ctx, ruleRoots(ctx.tenantId))}) existing
+          )
+      )
+      SELECT coalesce(bool_or(NOT visible), false) AS hidden,
+        coalesce(bool_or(visible AND enabled AND priority = ${input.priority}), false) AS duplicate
+      FROM overlapping
+    `),
   );
-  if (overlap)
+  // 发布时先拒绝所有不可见的重叠配置，避免回执随隐藏规则的优先级或启用状态变化。
+  if (result?.hidden) materialConfigMissing();
+  if (result?.duplicate)
     throw new AppError('CONFLICT', '材料规则同优先级范围重叠', { reason: 'MATERIAL_RULE_PRIORITY_CONFLICT' });
 }
 
@@ -304,7 +313,7 @@ async function saveMaterialRule(
   const input = before ? { ...ruleInput(before), ...change } : materialRuleBody.parse(change);
   validateMaterialRule(input);
   await requireMaterialOrgScope(tx, ctx, scope, input.orgIds);
-  if (input.enabled) await requireUniquePriority(tx, ctx, input, before?.id);
+  if (input.enabled) await requireUniquePriority(tx, ctx, scope, input, before?.id);
   const { orgIds, items, ...values } = input;
   const row = before
     ? (
