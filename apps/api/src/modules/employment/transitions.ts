@@ -1,3 +1,4 @@
+import { applyCurrentEntryCase } from './entry-case.js';
 import { getTenant } from '@italent/db';
 import { restoreRehireSeniority } from './rehire-seniority.js';
 import { assertRegularizationApplication } from './regularization-eligibility.js';
@@ -248,7 +249,15 @@ export async function transitionEmployment<T>(
     ? await reverseCarriedEstablishment(tx, ctx, business.id)
     : [];
   if (input.action === 'delete') {
+    const closesEntryCase =
+      !finishReplacement && ENTRY_KINDS.includes(business.payload.kind) && business.state === 'effective';
     const previous = await deleteEmploymentBusiness(tx, ctx, business, input.cancelling === true, input.restoreUntil);
+    if (closesEntryCase)
+      await applyCurrentEntryCase(tx, ctx, {
+        kind: 'delete',
+        employeeId: business.employeeId,
+        businessId: business.id,
+      });
     const { kind, effectiveDate } = business.payload;
     await personnelHooks.sync(tx, ctx, business.employeeId, business.id, kind, effectiveDate);
     // 前一条的结束日随删除恢复，其同步履历也要同事务跟着变（AC-TRF-08）。

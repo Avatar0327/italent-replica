@@ -1,3 +1,4 @@
+import { applyCurrentEntryCase } from './entry-case.js';
 import type { FieldOriginDraft } from './field-origin-store.js';
 import { appendPayloadFieldOrigins } from './field-origin-write.js';
 import { completeRehireSeniority } from './rehire-seniority.js';
@@ -176,6 +177,14 @@ export async function completePendingEntry(
   );
   // F-194：待入职合同到此为止；正式合同由办理入职请求里的合同信息另行生成（entry-contract.ts），不在这里沿用或复制
   await releasePendingContract(tx, ctx, recordId, 'complete');
+  if (record.effectiveDate <= tenantLocalDate(ctx.now, ctx.timezone))
+    await applyCurrentEntryCase(tx, ctx, {
+      kind: 'hire',
+      employeeId: record.employeeId,
+      businessId: recordId,
+      hiredRecordId: recordId,
+      hiredOn: record.effectiveDate,
+    });
   await entryOfferHooks.entryCompleted(tx, ctx, { employeeId: record.employeeId, businessId: recordId });
   return reloadRecord(tx, ctx, recordId);
 }

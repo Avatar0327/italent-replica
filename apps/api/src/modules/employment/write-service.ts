@@ -1,3 +1,5 @@
+import { entryCaseContext } from './entry-case.js';
+import { entryLifecyclePort } from './onboarding-entry-port.js';
 import { applyInternSeniority } from './intern-seniority.js';
 import { applyRehireSeniority } from './rehire-seniority.js';
 import { assertRegularizationApplication } from './regularization-eligibility.js';
@@ -112,6 +114,7 @@ export interface CreateEmploymentOptions {
   readonly establishmentWarnings?: EstablishmentWarning[];
   /** F-022 入职写入端口（R2-T01 接线）：添加待入职、是否有试用期；不开放给请求体。 */
   readonly entry?: EntryOptions;
+  readonly replacingPendingEntry?: true;
   /** F-363：待入职改期 / 编辑重建时的锁内旧用工形式，仅服务端传入。 */
   readonly retainedEmploymentForm?: string | null;
   /** 离职创建须经 exit-application.ts 的门禁（R2-T03 §4A）；只有它持有这个凭证。 */
@@ -206,6 +209,12 @@ export async function createEmploymentBusiness(
   if (normalized.mode === 'direct' && !gatedDirect)
     await materializeEmploymentRecord(tx, ctx, business, withImportedUntil(options));
   await appendEmploymentState(tx, ctx, business, business.state);
+  if (options.entry?.pendingEntry && !options.replacingPendingEntry && NEW_CYCLE_KINDS.includes(normalized.kind))
+    await entryLifecyclePort().create(tx, entryCaseContext(ctx), {
+      employeeId,
+      businessId: id,
+      pendingDate: normalized.effectiveDate,
+    });
   await bindRehireRetirement(tx, ctx, business);
   await bumpEmploymentEmployee(tx, ctx, employee);
   // 待入职试用期、待入职合同是字段级变更（DEC-019），随创建进同一条审计（F-188 / F-194）

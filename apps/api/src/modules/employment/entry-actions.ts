@@ -1,3 +1,4 @@
+import { applyCurrentEntryCase } from './entry-case.js';
 /**
  * 待入职的状态动作（R2 BE-2a；docs/02_业务建模/34 EN-R8 / R9 / R14，DEC-484② / DEC-540 保守口径）：
  * 取消入职、改期入职、编辑待入职（F-188）、删除待入职。只做 F-129 已核实的状态变化，不联动信息采集；
@@ -85,6 +86,7 @@ async function cancelEntryCore(
   if (!mode.rejectUnchanged && before.entryStatus === ENTRY_STATUS.cancelled) return { record: before, changed: false };
   const reason = input.reason ?? DEFAULT_CANCEL_REASON;
   const record = await changePendingEntryStatus(tx, ctx, recordId, 'cancelled', mode);
+  await applyCurrentEntryCase(tx, ctx, { kind: 'cancel', employeeId: record.employeeId, businessId: recordId });
   // F-328 返工 P2-1：取消待重聘同时撤回对离职账号的恢复（已启用的按离职事实重新停用）
   await withdrawRehireAccount(tx, ctx, record);
   await logEntryAction(tx, ctx, {
@@ -212,6 +214,7 @@ async function replacePendingEntry(
         customFields: record.customFields,
       },
       {
+        replacingPendingEntry: true,
         retainedEmploymentForm: record.fields.employmentForm,
         entry: {
           pendingEntry: true,
@@ -222,6 +225,14 @@ async function replacePendingEntry(
         },
       },
     );
+    await applyCurrentEntryCase(tx, ctx, {
+      kind: 'replace',
+      employeeId: record.employeeId,
+      businessId: record.id,
+      replacementBusinessId: created.id,
+      pendingDate: input.effectiveDate,
+      intent: input.action === 'postpone' && record.entryStatus === ENTRY_STATUS.cancelled ? 'restore' : 'preserve',
+    });
     await logEntryAction(tx, ctx, {
       employeeId: record.employeeId,
       businessId: created.id,

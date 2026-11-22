@@ -1,7 +1,19 @@
-import { auditEvents, eq, onboardingEntryCases, type Db, withTenant } from '@italent/db';
+import { randomUUID } from 'node:crypto';
+import {
+  auditEvents,
+  commandLedger,
+  employmentOutbox,
+  eq,
+  onboardingEntryCases,
+  sql,
+  type Db,
+  withTenant,
+} from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
-import { addPending, businessRevision, entryAction, entryWorld } from './AC-EN-BE2a-support.js';
+import { runEmploymentActivations } from '../../apps/api/src/modules/employment/activation-scheduler.js';
+import { addPending, businessRevision, entryAction, entryWorld, hireBody } from './AC-EN-BE2a-support.js';
+import { withLoginEmail } from './AC-EMP-support.js';
 import { syncWorld } from './AC-OF-BE14b2-support.js';
 import { edited } from './AC-OF-BE14b3-support.js';
 
@@ -55,7 +67,7 @@ it('AC-EN-BE16-01 待入职 HTTP 生命周期保持同一阶段，拒绝旧业�
     },
   ]);
   const other = await addPending(w, '2026-09-22', 'ZZ_BE16_DELETE');
-  const removed = await w.session.request('POST', `/businesses/${other.recordId}/delete`, {
+  const removed = await w.session.request('DELETE', `/businesses/${other.recordId}`, {
     ifMatch: other.business.revision,
     body: {},
   });
@@ -101,4 +113,56 @@ it('AC-EN-BE16-01 / OF-10 Offer 同步、显式推送、拒绝和失效共用阶
     tx.select().from(auditEvents).where(eq(auditEvents.action, 'onboarding.entry_case.create')),
   );
   expect(created).toHaveLength(2);
+});
+
+it('AC-EN-BE16-01 提前办理后只在租户入职日由既有调度收口，重跑维持一个阶段', async () => {
+  const { db } = testDb();
+  const w = await entryWorld(db, 'ZZ_BE16_DUE');
+  const { recordId } = await addPending(w, '2026-10-03', 'ZZ_BE16_DUE');
+  expect((await entryAction(w, recordId, 'complete', { probation: false })).status).toBe(200);
+  const all = () => cases(db, w.session.tenant.id);
+  expect(await all()).toMatchObject([{ state: 'pending', hiredRecordId: null, revision: 1 }]);
+  const sweep = async (iso: string) =>
+    runEmploymentActivations(
+      db,
+      { actorUserId: null, commandId: randomUUID() },
+      { tenantId: w.session.tenant.id },
+      { clock: () => new Date(iso) },
+    );
+  expect((await sweep('2026-10-02T15:59:00Z')).runs[0]?.errors).toEqual([]);
+  expect(await all()).toMatchObject([{ state: 'pending' }]);
+  expect((await sweep('2026-10-02T16:00:00Z')).runs[0]?.errors).toEqual([]);
+  expect((await sweep('2026-10-03T17:00:00Z')).runs[0]?.errors).toEqual([]);
+  expect(await all()).toMatchObject([{ state: 'hired', hiredRecordId: recordId, hiredOn: '2026-10-03', revision: 2 }]);
+});
+
+it('AC-EN-BE16-02 保存后写台账失败，阶段、审计和 outbox 同事务回滚', async () => {
+  const { db } = testDb();
+  const w = await entryWorld(db, 'ZZ_BE16_SAVE_ROLLBACK');
+  const employee = await w.session.employee('ZZ_BE16_SAVE_ROLLBACK');
+  const commandId = randomUUID();
+  await db.execute(sql`
+    CREATE FUNCTION zz_be16_fail_ledger() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      RAISE EXCEPTION 'ZZ_BE16_SAVE_ROLLBACK' USING ERRCODE = '53100';
+    END;
+    $$
+  `);
+  await db.execute(sql`
+    CREATE TRIGGER zz_be16_fail_ledger BEFORE INSERT ON command_ledger FOR EACH ROW
+    WHEN (NEW.command_id = ${sql.raw(`'${commandId}'`)}) EXECUTE FUNCTION zz_be16_fail_ledger()
+  `);
+  const created = await w.session.request('POST', `/employees/${employee.id}/businesses`, {
+    ifMatch: employee.revision,
+    idempotencyKey: commandId,
+    body: withLoginEmail(employee.id, hireBody(w.org.id, '2026-10-10', { pendingEntry: true })),
+  });
+  expect(created.status, await created.clone().text()).toBe(503);
+  expect(await created.json()).toMatchObject({ error: { details: { reason: 'STORAGE_UNWRITABLE' } } });
+  expect(await cases(db, w.session.tenant.id)).toEqual([]);
+  await withTenant(db, w.session.tenant.id, async (tx) => {
+    expect(await tx.select().from(commandLedger).where(eq(commandLedger.commandId, commandId))).toEqual([]);
+    expect(await tx.select().from(auditEvents).where(eq(auditEvents.commandId, commandId))).toEqual([]);
+    expect(await tx.select().from(employmentOutbox).where(eq(employmentOutbox.employeeId, employee.id))).toEqual([]);
+  });
 });

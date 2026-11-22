@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { auditEvents, commandLedger, eq, withTenant } from '@italent/db';
+import { bootstrapTenantAdmin } from '@italent/api';
+import { auditEvents, commandLedger, eq, onboardingEntryCases, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import type { Authorizer } from '../../apps/api/src/authorization.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
-import { entryWorld } from './AC-EN-BE2a-support.js';
-import { tenantApi, type RequestOptions } from './support/tenant-api.js';
+import { matchEntryCollection } from '../../apps/api/src/modules/onboarding/collection-config-match.js';
+import { addPending, entryWorld, portContext } from './AC-EN-BE2a-support.js';
+import { cmd, seedTenantWithMember, tenantApi, type RequestOptions } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 const settings = MODULE_OBJECTS.employmentSettings.code;
@@ -28,12 +30,14 @@ async function world(label: string) {
   const user = w.session.user.id;
   const rights = { admin: true, update: true, orgIds: [w.org.id] };
   const authorize: Authorizer = (request) => {
+    if (request.action === 'admin.audit_log') return true;
     if (request.action === 'tenant.employment.configuration.write' || request.action === 'admin.other_settings')
       return rights.admin;
     if (request.resource === settings && request.action === 'object.view') return true;
     return (
       request.resource === settings &&
-      (request.action === 'object.create' || (request.action === 'object.update' && rights.update)) &&
+      (request.action === 'object.create' ||
+        (request.action === 'object.update' && (rights.update || !request.fields?.includes('collectionRules')))) &&
       !!request.fields?.every((field) => fields.includes(field))
     );
   };
@@ -47,7 +51,7 @@ async function world(label: string) {
     api.request(method, base + path, { tenant, user, ...options });
   const ledger = (id: string) =>
     withTenant(db, tenant, (tx) => tx.select().from(commandLedger).where(eq(commandLedger.commandId, id)));
-  return { ...w, tenant, rights, request, ledger };
+  return { ...w, tenant, user, api, rights, request, ledger };
 }
 
 async function response<T>(res: Response, status: number) {
@@ -106,6 +110,14 @@ it('AC-EN-BE16-02 DEC-979 租户管理员按字段更新权和当前组织范围
     'onboarding.collectionRules.archive',
     'onboarding.collectionRules.create',
   ]);
+  const archiveAudit = audits.find((row) => row.action.endsWith('.archive'))!;
+  expect(archiveAudit).toMatchObject({ objectType: 'onboarding-collection-config', commandId: idempotencyKey });
+  w.rights.orgIds = [];
+  const actor = { tenant: w.tenant, user: w.user };
+  const log = await w.api.request('GET', `/api/tenant/audit/data-changes/${archiveAudit.id}`, actor);
+  expect(log.status).toBe(404);
+  const receipt = await w.api.request('GET', `/api/tenant/commands/${idempotencyKey}/result`, actor);
+  expect(await response(receipt, 200)).toMatchObject({ httpStatus: 204, businessId: null, revision: null });
 });
 
 it('AC-EN-BE16-02 拒绝目录外字段、条件和越范围配置，列表先裁剪再分页', async () => {
@@ -141,4 +153,100 @@ it('AC-EN-BE16-02 拒绝目录外字段、条件和越范围配置，列表先�
   expect(await response(await w.request('GET', `${rules}?pageSize=1`), 200)).toMatchObject({
     items: [{ id: inside.id }],
   });
+});
+
+it('AC-EN-BE16-02 匹配当前待入职行政树与白名单事实，优先级相等拒绝，归档与停用后回退', async () => {
+  const w = await world('ZZ_BE16_MATCH');
+  const child = await w.session.org('ZZ_BE16_CHILD', {
+    establishedOn: '2026-01-01',
+    parents: { admin: { parentId: w.org.id } },
+  });
+  const entry = await addPending({ ...w, org: child }, '2026-10-08', 'ZZ_BE16_MATCH');
+  const [stage] = await withTenant(w.db, w.tenant, (tx) => tx.select().from(onboardingEntryCases));
+  const ctx = portContext(w, entry.business.revision);
+  const ref = {
+    caseId: stage!.id,
+    caseRevision: stage!.revision,
+    employeeId: entry.employee.id,
+    businessId: entry.recordId,
+    businessRevision: entry.business.revision,
+  };
+  const match = (mode: 'auto' | 'manual' = 'manual') =>
+    withTenant(w.db, w.tenant, (tx) => matchEntryCollection(tx, ctx, ref, mode));
+  const rules = '/collection-rules';
+  const templates = '/collection-templates';
+  const saved = await response<Receipt>(await w.request('POST', templates, { ifMatch: 0, body: template }), 201);
+  const highTemplate = await response<Receipt>(
+    await w.request('POST', templates, {
+      ifMatch: 0,
+      body: { ...template, name: 'ZZ_BE16_HIGH_TEMPLATE' },
+    }),
+    201,
+  );
+  const body = { name: 'ZZ_BE16_PRIORITY', enabled: true, templateId: saved.id, orgIds: [w.org.id] };
+  const addRule = async (extra: object) =>
+    response<Receipt>(await w.request('POST', rules, { ifMatch: 0, body: { ...body, ...extra } }), 201);
+  const condition = (value: string) => ({
+    items: [{ no: 1, field: 'record.employType', operator: 'eq', value }],
+    expression: '',
+  });
+  expect((await w.request('POST', rules, { ifMatch: 0, body: { ...body, priority: 20 } })).status).toBe(404);
+  w.rights.orgIds = [w.org.id, child.id];
+  await addRule({ priority: 1, conditions: condition('intern') });
+  const low = await addRule({ priority: 50 });
+  const high = await addRule({ priority: 10, templateId: highTemplate.id, conditions: condition('internal') });
+  expect(await match()).toMatchObject({ status: 'matched', rule: { id: high.id }, fields: template.fields });
+  const tie = await addRule({ priority: 10 });
+  await expect(match()).rejects.toMatchObject({ details: { reason: 'COLLECTION_RULE_AMBIGUOUS' } });
+  expect((await w.request('DELETE', `${rules}/${tie.id}`, { ifMatch: tie.revision })).status).toBe(204);
+  expect(await match()).toMatchObject({ rule: { id: high.id } });
+
+  w.rights.orgIds = [w.org.id];
+  const blocked = randomUUID();
+  expect(
+    (
+      await w.request('DELETE', `${templates}/${highTemplate.id}`, {
+        ifMatch: highTemplate.revision,
+        idempotencyKey: blocked,
+      })
+    ).status,
+  ).toBe(404);
+  expect(await w.ledger(blocked)).toEqual([]);
+  w.rights.orgIds.push(child.id);
+  expect(
+    (await w.request('DELETE', `${templates}/${highTemplate.id}`, { ifMatch: highTemplate.revision })).status,
+  ).toBe(204);
+  expect(await match()).toMatchObject({ rule: { id: low.id } });
+
+  const patched = await response<Receipt>(
+    await w.request('PATCH', `${rules}/${low.id}`, {
+      ifMatch: low.revision,
+      body: { enabled: false },
+    }),
+    200,
+  );
+  expect(patched.revision).toBe(2);
+  await expect(match()).rejects.toMatchObject({ details: { reason: 'COLLECTION_RULE_NOT_MATCHED' } });
+  expect(await match('auto')).toEqual({ status: 'skipped', reason: 'COLLECTION_RULE_NOT_MATCHED' });
+  await response(await w.request('PUT', '/collection-settings', { ifMatch: 0, body: { enabled: false } }), 200);
+  expect(await match('auto')).toEqual({ status: 'skipped', reason: 'COLLECTION_AUTO_DISABLED' });
+});
+
+it('AC-EN-BE16-02 真实租户管理员具备字段更新权，可归档租户级采集模板', async () => {
+  const { db } = testDb();
+  const { tenant, user } = await seedTenantWithMember(db, 'ZZ_BE16_REAL_ADMIN');
+  await bootstrapTenantAdmin(db, { tenantId: tenant.id, userId: user.id }, cmd());
+  const api = tenantApi(db, { authorize: undefined, clock: () => now });
+  const asAdmin = { tenant: tenant.id, user: user.id };
+  const path = base + '/collection-templates';
+  const saved = await response<Receipt>(
+    await api.request('POST', path, { ...asAdmin, ifMatch: 0, body: template }),
+    201,
+  );
+  const responseArchive = await api.request('DELETE', `${path}/${saved.id}`, {
+    ...asAdmin,
+    ifMatch: saved.revision,
+  });
+  expect(responseArchive.status, await responseArchive.clone().text()).toBe(204);
+  expect(await response(await api.request('GET', path, asAdmin), 200)).toMatchObject({ items: [] });
 });
