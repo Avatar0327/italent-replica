@@ -157,15 +157,17 @@ test('AC-FE-R2f-01/09 合同独立菜单、全年默认、已应用条件、申�
   await page.keyboard.press('Escape');
   await expect(drawer).toHaveCount(0);
   await expect(trigger, 'Escape 关闭详情后焦点应归还初签详情入口').toBeFocused();
-  await card(page, 'signByTermType')
-    .getByRole('button', { name: /查看详情：空，0/ })
-    .click();
+  const groupTrigger = card(page, 'signByTermType').getByRole('button', { name: /查看详情：空，0/ });
+  await groupTrigger.click();
   await expect(drawer.getByRole('columnheader', { name: '合同记录 ID' })).toBeVisible();
   expect(params(details.at(-1))).toEqual({ ...applied, group: SEGMENT_NONE, page: '1', pageSize: '20' });
   await choose(page, '分组', '固定期限');
   await expect(drawer.getByText(`${prefix}signByTermType_1`)).toBeVisible();
   expect(params(details.at(-1))).toEqual({ ...applied, group: 'fixed', page: '1', pageSize: '20' });
   await expect(drawer.getByText(/当前结果条件.*2026-07-01/)).toBeVisible();
+  await drawer.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(drawer).toHaveCount(0);
+  await expect(groupTrigger).toBeFocused();
 });
 
 test('AC-FE-R2f-01 B49 和人事管理员不能访问 B55，全无权时菜单搜索无结果', async ({ page }) => {

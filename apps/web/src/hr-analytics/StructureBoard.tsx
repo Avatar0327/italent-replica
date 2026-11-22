@@ -139,7 +139,7 @@ export function StructureBoard({ today, refresh }: { today: string; refresh(): v
             )
           }
           waiting={waiting}
-          close={board.closeDetail}
+          drawer={board.detailDrawer}
           changePage={(page) => board.changeDetail({ ...selected, page })}
           retry={() => board.changeDetail(selected)}
         />

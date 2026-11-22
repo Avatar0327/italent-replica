@@ -16,7 +16,7 @@ export function BoardDetailDrawer({
   controls,
   missing,
   waiting,
-  close,
+  drawer,
   changePage,
   retry,
 }: {
@@ -31,7 +31,7 @@ export function BoardDetailDrawer({
   controls?: ReactNode;
   missing?: string;
   waiting: boolean;
-  close(): void;
+  drawer: { open: boolean; onClose(): void; afterClose(): void };
   changePage(page: number): void;
   retry(): void;
 }) {
@@ -39,39 +39,40 @@ export function BoardDetailDrawer({
   const summaryFocus = useRef<HTMLParagraphElement>(null);
   return (
     <DetailPage
-      open
-      onClose={close}
+      {...drawer}
       title={title}
       summary={
-        <>
-          <p ref={summaryFocus} tabIndex={-1}>
-            {m.asOf(asOf)}
-          </p>
-          {controls}
-          <ReadState
-            loading={loading}
-            error={error}
-            detail
-            missing={missing}
-            waiting={waiting}
-            retry={canRetryRead(error) ? retry : undefined}
-          />
-          {data?.hasDataPermission === false && <Alert type="info" message={report.noScope} />}
-          {data?.hasDataPermission === true && table && (
-            <ReadOnlyReportTable
-              table={table}
-              page={data.page}
-              pageSize={data.pageSize}
-              paginationDisabled={waiting}
-              changePage={(page) => {
-                // 换页会卸载分页器。先把焦点移到抽屉内持续挂载的摘要。
-                summaryFocus.current?.focus({ preventScroll: true });
-                changePage(page);
-              }}
-              emptyText={m.empty}
+        drawer.open && (
+          <>
+            <p ref={summaryFocus} tabIndex={-1}>
+              {m.asOf(asOf)}
+            </p>
+            {controls}
+            <ReadState
+              loading={loading}
+              error={error}
+              detail
+              missing={missing}
+              waiting={waiting}
+              retry={canRetryRead(error) ? retry : undefined}
             />
-          )}
-        </>
+            {data?.hasDataPermission === false && <Alert type="info" message={report.noScope} />}
+            {data?.hasDataPermission === true && table && (
+              <ReadOnlyReportTable
+                table={table}
+                page={data.page}
+                pageSize={data.pageSize}
+                paginationDisabled={waiting}
+                changePage={(page) => {
+                  // 换页会卸载分页器。先把焦点移到抽屉内持续挂载的摘要。
+                  summaryFocus.current?.focus({ preventScroll: true });
+                  changePage(page);
+                }}
+                emptyText={m.empty}
+              />
+            )}
+          </>
+        )
       }
     />
   );
