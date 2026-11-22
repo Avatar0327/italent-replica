@@ -93,7 +93,7 @@ describe('AC-ON-BE16-01 融入任务池设置', () => {
       expect(denied.status).toBe(400);
     }
     const list = await request('GET', '');
-    expect(await list.json()).toMatchObject({ items: [] });
+    expect(await list.json()).toMatchObject({ items: [], availableActions: ['create'] });
   });
 
   it('保存两类审批考核和合法表单，校验类别、动作和名称的搭配', async () => {
@@ -106,7 +106,11 @@ describe('AC-ON-BE16-01 融入任务池设置', () => {
       expect(receipt).toEqual({ id: expect.any(String), revision: 1, status: 'enabled' });
       const detail = await request('GET', `/${receipt.id}`);
       expect(detail.status).toBe(200);
-      expect(await detail.json()).toMatchObject({ ...body, revision: 1 });
+      expect(await detail.json()).toMatchObject({
+        ...body,
+        revision: 1,
+        availableActions: ['edit', 'delete'],
+      });
     }
 
     const form = { type: 'form', fields: [{ code: 'summary', label: 'ZZ_BE16_说明', kind: 'text', required: true }] };

@@ -9207,6 +9207,9 @@
       },
       "module": "onboarding",
       "primitives": {
+        "admin": [
+          "admin.*"
+        ],
         "object": [
           "object.* 动作"
         ],
@@ -9232,6 +9235,9 @@
       },
       "module": "onboarding",
       "primitives": {
+        "admin": [
+          "admin.*"
+        ],
         "object": [
           "object.* 动作"
         ],
@@ -9257,6 +9263,9 @@
       },
       "module": "onboarding",
       "primitives": {
+        "admin": [
+          "admin.*"
+        ],
         "object": [
           "object.* 动作"
         ],

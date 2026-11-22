@@ -14,6 +14,12 @@ const DISPATCH: Evidence = {
   anchor: 'return readRegisteredCommandResult(tx, deps, ctx, registration, entry.responseBody)',
 };
 
+const POOL_RESULT_SCOPE: Evidence = {
+  role: 'scope',
+  unit: `${POOL}#INTEGRATION_POOL_COMMAND_RESULTS`,
+  anchor: 'if (httpStatus !== 204) await readIntegrationPoolTask(tx, ctx.tenantId, receipt(body).id)',
+};
+
 export const COMMAND_RESULT: RequiredTable = {
   'GET /api/tenant/commands/:commandId/result': [
     {
@@ -41,7 +47,7 @@ export const COMMAND_RESULT: RequiredTable = {
         {
           role: 'impl',
           unit: `${SERVICE}#commandResultRegistry`,
-          anchor: 'createCommandResultRegistry([...ESIGN_COMMAND_RESULTS, ...INTEGRATION_POOL_COMMAND_RESULTS])',
+          anchor: 'createCommandResultRegistry([...ESIGN_COMMAND_RESULTS, ...INTEGRATION_POOL_COMMAND_RESULTS,])',
         },
         {
           role: 'impl',
@@ -91,6 +97,7 @@ export const COMMAND_RESULT: RequiredTable = {
       need: { scope: 'guard', guard: 'command.result.registered' },
       at: [
         DISPATCH,
+        POOL_RESULT_SCOPE,
         {
           role: 'impl',
           unit: `${POOL_ACCESS}#requirePoolWrite`,
@@ -104,6 +111,7 @@ export const COMMAND_RESULT: RequiredTable = {
       need: { scope: 'guard', guard: 'command.result.registered' },
       at: [
         DISPATCH,
+        POOL_RESULT_SCOPE,
         {
           role: 'const',
           unit: `${POOL}#POOL_RESULT_TYPES`,

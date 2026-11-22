@@ -23,50 +23,53 @@ const FIELD_CONST: Evidence = {
 };
 const call = (route: string, anchor: string): Evidence => ({ role: 'call', unit: `${ROUTES}#route:${route}`, anchor });
 
-function read(route: string, anchor: string): Obligation {
-  return {
-    perm: `obj:${SETTINGS}:view`,
-    facts: ['object:object.* 动作', `objectOp:${SETTINGS}:view`],
-    at: [
-      call(route, anchor),
-      {
-        role: 'impl',
-        unit: `${ACCESS}#requirePoolView`,
-        anchor: "action: 'object.view', resource: POOL_SETTINGS, fields: POOL_FIELDS",
-      },
-      SETTINGS_CONST,
-      FIELD_CONST,
-    ],
-  };
-}
-
-function actions(route: string, operation: 'create' | 'update'): Obligation[] {
-  const endpoint = call(route, `await poolAvailableActions(authorize, tenant, '${operation}')`);
-  const impl = `${ACCESS}#poolAvailableActions`;
-  const purpose = 'disclosure:availableActions';
+function read(route: string, anchor: string): Obligation[] {
+  const endpoint = call(route, anchor);
+  const unit = `${ACCESS}#requirePoolView`;
   return [
     {
       perm: 'admin:other_settings',
-      purpose,
       need: NONE,
+      facts: ['admin:admin.*'],
       at: [
         endpoint,
-        { role: 'impl', unit: impl, anchor: 'action: POOL_WRITE_ALIAS, resource: POOL_SETTINGS' },
-        ALIAS_CONST,
+        {
+          role: 'impl',
+          unit,
+          anchor: "await requirePermission(authorize, { ...ctx, action: 'admin.other_settings' })",
+        },
       ],
     },
     {
-      perm: `obj:${SETTINGS}:${operation}`,
-      purpose,
+      perm: `obj:${SETTINGS}:view`,
       need: NONE,
+      facts: ['object:object.* 动作', `objectOp:${SETTINGS}:view`],
       at: [
         endpoint,
-        { role: 'impl', unit: impl, anchor: 'resource: POOL_SETTINGS, fields: POOL_FIELDS' },
+        { role: 'impl', unit, anchor: "action: 'object.view', resource: POOL_SETTINGS, fields: POOL_FIELDS" },
         SETTINGS_CONST,
         FIELD_CONST,
       ],
     },
   ];
+}
+
+function actions(route: string, operation: 'create' | 'update'): Obligation {
+  return {
+    perm: `obj:${SETTINGS}:${operation}`,
+    purpose: 'disclosure:availableActions',
+    need: NONE,
+    at: [
+      call(route, `await poolAvailableActions(authorize, tenant, '${operation}')`),
+      {
+        role: 'impl',
+        unit: `${ACCESS}#poolAvailableActions`,
+        anchor: 'resource: POOL_SETTINGS, fields: POOL_FIELDS',
+      },
+      SETTINGS_CONST,
+      FIELD_CONST,
+    ],
+  };
 }
 
 function write(route: string, operation: 'create' | 'update'): Obligation[] {
@@ -111,11 +114,12 @@ function write(route: string, operation: 'create' | 'update'): Obligation[] {
 }
 
 export const ONBOARDING: RequiredTable = {
-  [`GET ${BASE}/categories`]: [
-    read('GET /categories', 'await requirePoolView(authorizeInTransaction(deps.authorize, tx), tenantOf(c))'),
-  ],
-  [`GET ${BASE}`]: [read('GET /', 'await requirePoolView(authorize, tenant)'), ...actions('GET /', 'create')],
-  [`GET ${BASE}/:id`]: [read('GET /:id', 'await requirePoolView(authorize, tenant)'), ...actions('GET /:id', 'update')],
+  [`GET ${BASE}/categories`]: read(
+    'GET /categories',
+    'await requirePoolView(authorizeInTransaction(deps.authorize, tx), tenantOf(c))',
+  ),
+  [`GET ${BASE}`]: [...read('GET /', 'await requirePoolView(authorize, tenant)'), actions('GET /', 'create')],
+  [`GET ${BASE}/:id`]: [...read('GET /:id', 'await requirePoolView(authorize, tenant)'), actions('GET /:id', 'update')],
   [`POST ${BASE}`]: write('POST /', 'create'),
   [`PATCH ${BASE}/:id`]: write('PATCH /:id', 'update'),
   [`DELETE ${BASE}/:id`]: write('DELETE /:id', 'update'),

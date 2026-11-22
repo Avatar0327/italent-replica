@@ -43,6 +43,7 @@
     },
     "scopeQueries": [],
     "trace": [
+      "admin:other_settings",
       "obj:TenantBase.EmploymentSettings:view"
     ]
   },
@@ -53,6 +54,7 @@
     "fieldQueries": [],
     "scopeQueries": [],
     "trace": [
+      "admin:other_settings",
       "obj:TenantBase.EmploymentSettings:view"
     ]
   },

@@ -9,11 +9,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/onboarding/integration-pool-access.ts#POOL_SETTINGS': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
-  'apps/api/src/modules/onboarding/integration-pool-access.ts#poolAvailableActions': [
-    '#POOL_FIELDS',
-    '#POOL_SETTINGS',
-    '#POOL_WRITE_ALIAS',
-  ],
+  'apps/api/src/modules/onboarding/integration-pool-access.ts#poolAvailableActions': ['#POOL_FIELDS', '#POOL_SETTINGS'],
   'apps/api/src/modules/onboarding/integration-pool-access.ts#requirePoolView': [
     'apps/api/src/authorization.ts#requirePermission',
     '#POOL_FIELDS',

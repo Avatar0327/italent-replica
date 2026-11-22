@@ -34,9 +34,16 @@ function settingsOperation(
   return object({ object: POOL_SETTINGS, operation, button: settingsButton, scope: noOrgScope, fields, ...extra });
 }
 
-function settingsWrite(operation: 'create' | 'update', fields: ReturnType<typeof fixed>, extra: PolicyBase = {}) {
+function settingsAccess(
+  operation: 'view' | 'create' | 'update',
+  fields: ReturnType<typeof fixed>,
+  extra: PolicyBase = {},
+) {
   return all(
-    [admin('other_settings', { alias: POOL_WRITE_ALIAS, fields }), settingsOperation(operation, fields)],
+    [
+      admin('other_settings', { ...(operation === 'view' ? {} : { alias: POOL_WRITE_ALIAS }), fields }),
+      settingsOperation(operation, fields),
+    ],
     fields,
     extra,
   );
@@ -52,13 +59,13 @@ function poolWritePolicy(extra: WriteExtra = {}) {
 }
 
 export const INTEGRATION_POOL_POLICIES = defineTable('onboarding', {
-  'GET /categories': settingsOperation('view', options),
-  'GET /': settingsOperation('view', list, { optional: { availableActions: settingsWrite('create', actions) } }),
-  'GET /:id': settingsOperation('view', detail, {
+  'GET /categories': settingsAccess('view', options),
+  'GET /': settingsAccess('view', list, { optional: { availableActions: settingsOperation('create', actions) } }),
+  'GET /:id': settingsAccess('view', detail, {
     invalidId: BAD_REQUEST,
-    optional: { availableActions: settingsWrite('update', actions) },
+    optional: { availableActions: settingsOperation('update', actions) },
   }),
-  'POST /': settingsWrite('create', receipt, { write: poolWritePolicy() }),
-  'PATCH /:id': settingsWrite('update', receipt, { invalidId: BAD_REQUEST, write: poolWritePolicy() }),
-  'DELETE /:id': settingsWrite('update', deleted, { invalidId: BAD_REQUEST, write: poolWritePolicy() }),
+  'POST /': settingsAccess('create', receipt, { write: poolWritePolicy() }),
+  'PATCH /:id': settingsAccess('update', receipt, { invalidId: BAD_REQUEST, write: poolWritePolicy() }),
+  'DELETE /:id': settingsAccess('update', deleted, { invalidId: BAD_REQUEST, write: poolWritePolicy() }),
 });

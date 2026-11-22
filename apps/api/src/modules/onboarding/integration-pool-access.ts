@@ -8,8 +8,9 @@ export const POOL_SETTINGS = MODULE_OBJECTS.employmentSettings.code;
 export const POOL_FIELDS = ['integrationTaskPool'] as const;
 export const POOL_WRITE_ALIAS = 'tenant.employment.configuration.write';
 
-export function requirePoolView(authorize: Authorizer, ctx: TenantContext) {
-  return requirePermission(authorize, { ...ctx, action: 'object.view', resource: POOL_SETTINGS, fields: POOL_FIELDS });
+export async function requirePoolView(authorize: Authorizer, ctx: TenantContext) {
+  await requirePermission(authorize, { ...ctx, action: 'admin.other_settings' });
+  await requirePermission(authorize, { ...ctx, action: 'object.view', resource: POOL_SETTINGS, fields: POOL_FIELDS });
 }
 
 export async function requirePoolWrite(authorize: Authorizer, ctx: TenantContext, operation: 'create' | 'update') {
@@ -22,8 +23,6 @@ export async function requirePoolWrite(authorize: Authorizer, ctx: TenantContext
 }
 
 export async function poolAvailableActions(authorize: Authorizer, ctx: TenantContext, operation: 'create' | 'update') {
-  const configured = await authorize({ ...ctx, action: POOL_WRITE_ALIAS, resource: POOL_SETTINGS });
-  if (!configured) return [];
   const writable = await authorize({
     ...ctx,
     action: `object.${operation}`,
