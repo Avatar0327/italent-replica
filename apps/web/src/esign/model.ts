@@ -10,7 +10,8 @@ import { m } from './messages.js';
 export const ESIGN_SETTINGS_OBJECT = 'TenantBase.ESignSettings';
 export const ESIGN_BASE = '/api/tenant/esign';
 export const TEMPLATES_PATH = `${ESIGN_BASE}/templates`;
-export const SCENE_PATH = `${ESIGN_BASE}/scenes/transfer`;
+export type SignScene = 'transfer' | 'offer' | 'entry';
+export const scenePath = (scene: SignScene) => `${ESIGN_BASE}/scenes/${scene}`;
 // 模板下拉按入口分两个接口（esign/routes.ts、task-routes.ts），授权分别同发起调动与补发。
 export const TRANSFER_FORM_OPTIONS_PATH = `${ESIGN_BASE}/template-options/transfer-form`;
 export const REISSUE_OPTIONS_PATH = `${ESIGN_BASE}/template-options/reissue`;
@@ -34,7 +35,12 @@ export type TemplateRow = {
   sortOrder?: number;
   updatedAt?: string;
 };
-export type SceneRow = { revision: number; validityDays?: number; remindBeforeExpiry?: boolean };
+export type SceneRow = {
+  scene: SignScene;
+  revision: number;
+  validityDays?: number;
+  remindBeforeExpiry?: boolean;
+};
 
 const isRevision = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0;
 const isRow = (raw: unknown): raw is TemplateRow => {
@@ -46,9 +52,9 @@ export function parseTemplates(raw: unknown): TemplateRow[] {
   if (!Array.isArray(items) || !items.every(isRow)) throw new Error(m.invalidList);
   return items;
 }
-export function parseScene(raw: unknown): SceneRow {
+export function parseScene(raw: unknown, expected: SignScene): SceneRow {
   const scene = raw as Partial<SceneRow> & { scene?: unknown };
-  if (!scene || scene.scene !== 'transfer' || !isRevision(scene.revision)) throw new Error(m.invalidList);
+  if (!scene || scene.scene !== expected || !isRevision(scene.revision)) throw new Error(m.invalidList);
   return scene as SceneRow;
 }
 /** 写回执：同一对象、版本 = 实际提交的版本 + 1（新建不核对 id，版本从 1 起）。 */
@@ -57,9 +63,9 @@ export function parseTemplateReceipt(raw: unknown, expected: { id?: string; revi
     throw new Error(m.invalidReceipt);
   return { id: raw.id };
 }
-export function parseSceneReceipt(raw: unknown, revision: number) {
-  if (parseScene(raw).revision !== revision + 1) throw new Error(m.invalidReceipt);
-  return { id: 'transfer' };
+export function parseSceneReceipt(raw: unknown, scene: SignScene, revision: number | undefined) {
+  if (revision === undefined || parseScene(raw, scene).revision !== revision + 1) throw new Error(m.invalidReceipt);
+  return { id: scene };
 }
 
 /** 文本框里的整数（空串视为未填）；非整数原样返回，交给校验提示。 */
