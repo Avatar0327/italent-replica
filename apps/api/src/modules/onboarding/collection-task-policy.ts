@@ -37,7 +37,23 @@ function taskWrite(action: WriteAction) {
   return all(
     [
       ...carriers(fields),
-      object({ object: EMPLOYMENT_OBJECT, operation: 'update', scope, button: objectButton, fields }),
+      object({
+        object: EMPLOYMENT_OBJECT,
+        operation: 'update',
+        scope,
+        button: objectButton,
+        fields,
+        ...(action === 'batch'
+          ? {
+              rows: {
+                path: 'targets[*]',
+                target: { body: 'targets[*].id' },
+                fields: none('待入职标识及版本是控制项'),
+                batch: 'receipt' as const,
+              },
+            }
+          : {}),
+      }),
       object({
         object: COLLECTION,
         operation: action === 'start' || action === 'batch' ? 'create' : 'update',
@@ -52,7 +68,7 @@ function taskWrite(action: WriteAction) {
       write: write(
         { guard: 'onboarding.requireCollectionWrite' },
         'onboarding.requireCollectionTarget',
-        action === 'batch' ? none('当前每个子命令结果独立授权后汇总') : 'onboarding.requireCollectionTarget',
+        action === 'batch' ? 'onboarding.visibleBatchItems' : 'onboarding.requireCollectionTarget',
         {
           ledger: action === 'batch' ? 'perItem' : 'single',
           controls: ['businessId', 'businessRevision', 'caseRevision'],

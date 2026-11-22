@@ -142,6 +142,26 @@ function childKey(parent: string, id: string) {
   );
 }
 
+async function visibleBatchItems<T extends { id: string }>(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  items: readonly T[],
+) {
+  return withTenant(deps.db, ctx.tenantId, async (tx) => {
+    await requireCollectionWrite(tx, deps, ctx, 'batch');
+    const visible: T[] = [];
+    for (const item of items) {
+      try {
+        await requireCollectionTarget(tx, deps, ctx, item.id, 'write', false);
+        visible.push(item);
+      } catch (error) {
+        if (!(error instanceof AppError) || error.code !== 'NOT_FOUND') throw error;
+      }
+    }
+    return visible;
+  });
+}
+
 async function startBatch(c: Ctx, deps: TenantRouteDeps) {
   const { targets } = await parseBody(c, batchInput);
   const ctx = context(c, deps, revision(c));
@@ -174,7 +194,7 @@ async function startBatch(c: Ctx, deps: TenantRouteDeps) {
       if (!(error instanceof AppError) || ![403, 404].includes(error.status)) throw error;
     }
   }
-  return c.json({ items });
+  return c.json({ items: await visibleBatchItems(deps, ctx, items) });
 }
 
 export const registerCollectionTasks: TenantRouteModule = (router, deps) => {
