@@ -133,35 +133,7 @@ function projectMember(p: StructurePerson) {
   return { id: p.id, employeeId: p.id, organizationId: p.departmentId };
 }
 
-export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  router.get(HR_STRUCTURE_BASE, async (c) => {
-    const ctx = await boardContext(c, deps);
-    const { lookup, people } = await loadPeople(deps, ctx, BOARD_EMPLOY_TYPES, boardFilter(c));
-    return c.json({
-      asOf: ctx.asOf,
-      hasDataPermission: ctx.scope.hasDataPermission,
-      components: structureComponents(people, lookup),
-    });
-  });
-
-  router.get(`${HR_STRUCTURE_BASE}/components/:code`, async (c) => {
-    const ctx = await boardContext(c, deps);
-    const { component, group, filter } = componentQuery(c);
-    const page = pageQuery(c);
-    const { lookup, people } = await loadPeople(deps, ctx, BOARD_EMPLOY_TYPES, filter);
-    const members = componentMembers(component.code, people, lookup, group)!;
-    return c.json({
-      asOf: ctx.asOf,
-      ...component,
-      group: group ?? null,
-      total: members.length,
-      items: members.slice(page.offset, page.offset + page.limit).map(projectMember),
-      page: page.page,
-      pageSize: page.pageSize,
-      hasDataPermission: ctx.scope.hasDataPermission,
-    });
-  });
-
+function registerComponentExportRoute(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(`${HR_STRUCTURE_BASE}/components/:code/export`, async (c) => {
     const ctx = await boardContext(c, deps);
     validateComponentExportQuery(c, [
@@ -197,6 +169,38 @@ export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantR
       { total, items: total > COMPONENT_EXPORT_PAGE.limit ? [] : members.map(projectMember) },
     );
   });
+}
+
+export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get(HR_STRUCTURE_BASE, async (c) => {
+    const ctx = await boardContext(c, deps);
+    const { lookup, people } = await loadPeople(deps, ctx, BOARD_EMPLOY_TYPES, boardFilter(c));
+    return c.json({
+      asOf: ctx.asOf,
+      hasDataPermission: ctx.scope.hasDataPermission,
+      components: structureComponents(people, lookup),
+    });
+  });
+
+  router.get(`${HR_STRUCTURE_BASE}/components/:code`, async (c) => {
+    const ctx = await boardContext(c, deps);
+    const { component, group, filter } = componentQuery(c);
+    const page = pageQuery(c);
+    const { lookup, people } = await loadPeople(deps, ctx, BOARD_EMPLOY_TYPES, filter);
+    const members = componentMembers(component.code, people, lookup, group)!;
+    return c.json({
+      asOf: ctx.asOf,
+      ...component,
+      group: group ?? null,
+      total: members.length,
+      items: members.slice(page.offset, page.offset + page.limit).map(projectMember),
+      page: page.page,
+      pageSize: page.pageSize,
+      hasDataPermission: ctx.scope.hasDataPermission,
+    });
+  });
+
+  registerComponentExportRoute(router, deps);
 
   router.get(`${HR_STRUCTURE_BASE}/reports/:report`, async (c) => {
     const ctx = await reportContext(c, deps);

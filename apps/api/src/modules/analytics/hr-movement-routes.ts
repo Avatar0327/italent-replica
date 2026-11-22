@@ -151,6 +151,38 @@ function reportTables(
   });
 }
 
+function registerComponentExportRoute(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get(`${HR_MOVEMENT_BASE}/components/:code/export`, async (c) => {
+    const ctx = await boardContext(c, deps);
+    validateComponentExportQuery(c, ['asOf', 'departmentId', 'group']);
+    const component = componentOf(c);
+    // DEC-970：F-544 修正正式人群口径后，由后合入片开放 6.32 下载并补与 D 的正向对照。
+    if (component.code === '6.32') throw new AppError('NOT_FOUND', '组件不存在');
+    const group = groupQuery(c);
+    const departmentId = uuidQuery(c, 'departmentId');
+    const lookup = await loadBoard(deps, ctx, departmentId, component.code === '3.1.36');
+    const members = requireComponentMembers(component.code, lookup, group);
+    const total = members.length;
+    return exportComponent(
+      c,
+      deps,
+      ctx.base,
+      {
+        board: 'hr-movement',
+        object: HR_MOVEMENT_OBJECT,
+        component,
+        asOf: ctx.asOf,
+        columns: [
+          { key: 'id', label: '明细行 ID' },
+          { key: 'employeeId', label: '员工 ID' },
+          { key: 'organizationId', label: '组织 ID' },
+        ],
+      },
+      { total, items: total > COMPONENT_EXPORT_PAGE.limit ? [] : members.map(projectMember) },
+    );
+  });
+}
+
 export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(HR_MOVEMENT_BASE, async (c) => {
     const ctx = await boardContext(c, deps);
@@ -182,35 +214,7 @@ export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRo
     });
   });
 
-  router.get(`${HR_MOVEMENT_BASE}/components/:code/export`, async (c) => {
-    const ctx = await boardContext(c, deps);
-    validateComponentExportQuery(c, ['asOf', 'departmentId', 'group']);
-    const component = componentOf(c);
-    // DEC-970：F-544 修正正式人群口径后，由后合入片开放 6.32 下载并补与 D 的正向对照。
-    if (component.code === '6.32') throw new AppError('NOT_FOUND', '组件不存在');
-    const group = groupQuery(c);
-    const departmentId = uuidQuery(c, 'departmentId');
-    const lookup = await loadBoard(deps, ctx, departmentId, component.code === '3.1.36');
-    const members = requireComponentMembers(component.code, lookup, group);
-    const total = members.length;
-    return exportComponent(
-      c,
-      deps,
-      ctx.base,
-      {
-        board: 'hr-movement',
-        object: HR_MOVEMENT_OBJECT,
-        component,
-        asOf: ctx.asOf,
-        columns: [
-          { key: 'id', label: '明细行 ID' },
-          { key: 'employeeId', label: '员工 ID' },
-          { key: 'organizationId', label: '组织 ID' },
-        ],
-      },
-      { total, items: total > COMPONENT_EXPORT_PAGE.limit ? [] : members.map(projectMember) },
-    );
-  });
+  registerComponentExportRoute(router, deps);
 
   router.get(`${HR_MOVEMENT_BASE}/reports/:report`, async (c) => {
     const ctx = await reportContext(c, deps);
