@@ -39,7 +39,7 @@ it('FE-05 我的签署及记录采用与站内通知一致的场景名，陌生�
   expect(sceneText(undefined)).toBe('--');
 });
 
-it('FE-05 真实来源记录裁掉状态和文件后，详情不推断完成或展示下载', async () => {
+it.each(['服务端裁剪', '当前字段权收窄'])('AC-ESIGN-F505-FE-05 %s 后来源历史隐藏状态与文件', async (mode) => {
   const w = await offerSigningWorld(db().db, 'FE05_FIELDS');
   const sourceId = await w.offer({ name: 'ZZ_F505_字段裁剪' });
   const template = await w.template('ZZ_F505_正文', 'ZZ_F505_不可见文件');
@@ -48,7 +48,10 @@ it('FE-05 真实来源记录裁掉状态和文件后，详情不推断完成或�
   const { taskId } = await started.json();
   expect((await w.sign(w.employeeUser, await w.taskRow(taskId))).status).toBe(200);
   expect((await w.sign(w.userId, await w.taskRow(taskId))).status).toBe(200);
-  await mount(w, { grants: { fields: { [RECORD]: ['scene'] } }, allowDownload: true });
+  await mount(w, {
+    allowDownload: true,
+    ...(mode === '服务端裁剪' ? { grants: { fields: { [RECORD]: ['scene'] } } } : { recordFields: ['scene'] }),
+  });
   await click(control('已接受Offer'));
   await until(() => control('ZZ_F505_字段裁剪'), 'Offer 姓名入口加载');
   await click(control('ZZ_F505_字段裁剪'));

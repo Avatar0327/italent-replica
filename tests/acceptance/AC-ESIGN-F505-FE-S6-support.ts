@@ -41,6 +41,7 @@ type Options = {
   update?: boolean;
   records?: boolean;
   allowDownload?: boolean;
+  recordFields?: string[];
   intercept?: Intercept;
 };
 const offerObject = 'TenantBase.Offer';
@@ -68,7 +69,7 @@ afterEach(async () => {
 
 /** 只固定外壳权限快照；工作流请求与用户操作实际进入 S4/S2 路由。 */
 export async function mount(w: World, options: Options = {}, component = OfferList) {
-  const { grants, update = true, records = true, allowDownload = false, intercept } = options;
+  const { grants, update = true, records = true, allowDownload = false, recordFields, intercept } = options;
   const session = {
     tenantId: w.tenantId,
     userId: w.userId,
@@ -99,7 +100,7 @@ export async function mount(w: World, options: Options = {}, component = OfferLi
       const fields = isSettings
         ? ['validityDays', 'remindBeforeExpiry']
         : objectCode === recordsObject
-          ? ['status', 'files', 'scene', 'initiatedAt']
+          ? (recordFields ?? ['status', 'files', 'scene', 'initiatedAt'])
           : offerFields;
       return Response.json({
         objectCode,
