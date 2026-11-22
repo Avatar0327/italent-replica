@@ -1156,7 +1156,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/onboarding/material-config.ts': {
     readMaterialRules: '2b636ab2cb87',
-    saveMaterialRule: '3f17711b8fb9',
+    saveMaterialRule: '77f3e1f3f389',
   },
   'apps/api/src/modules/onboarding/material-list-routes.ts': {
     entryMaterialProjection: '12c3a7a8d23e',
@@ -1165,7 +1165,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/onboarding/material-list.ts': {
     materialStatusJoin: '91468f3d3144',
     materialStatusScope: 'd5b495ab20b9',
-    readMaterialList: '6c58315fc6d0',
+    readMaterialList: '2becaa3e5de3',
   },
   'apps/api/src/modules/org-adjustment/access.ts': {
     OBJECT: 'b007f3f6067a',
@@ -3004,7 +3004,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/onboarding/material-list-routes.ts#readEntryMaterials': '30a1cbb14384',
   'apps/api/src/modules/onboarding/material-list.ts#materialStatusJoin': '844bf05cdf18',
   'apps/api/src/modules/onboarding/material-list.ts#materialStatusScope': 'fcb90b6eaecc',
-  'apps/api/src/modules/onboarding/material-list.ts#readMaterialList': '4c58dad405f1',
+  'apps/api/src/modules/onboarding/material-list.ts#readMaterialList': '29ddc49e3010',
   'apps/api/src/modules/org-adjustment/access.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHead': '838eace8ec6b',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHeadAction': '803a4a5374ea',

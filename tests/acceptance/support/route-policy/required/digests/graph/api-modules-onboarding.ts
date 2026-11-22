@@ -266,7 +266,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/onboarding/material-config.ts#requireUniquePriority': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    '#materialConfigMissing',
+    '#materialRuleScope',
     '#region',
+    '#ruleRoots',
   ],
   'apps/api/src/modules/onboarding/material-config.ts#ruleDetail': ['#materialDefinitions', '#scopeKey'],
   'apps/api/src/modules/onboarding/material-config.ts#ruleShape': ['#definition', '#name', '#uuid'],
