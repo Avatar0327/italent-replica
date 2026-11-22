@@ -66,6 +66,16 @@ export const GRAPH: Graph = {
     'packages/domain/src/esign/notice-templates.ts#ESIGN_SCENE_LABEL',
     'packages/domain/src/esign/notice-templates.ts#esignFileLabel',
   ],
+  'apps/api/src/modules/esign/offer-source.ts#auditAnchor': [
+    'apps/api/src/audit/record.ts#recordAudit',
+    'apps/api/src/system-actor.ts#auditActor',
+  ],
+  'apps/api/src/modules/esign/offer-source.ts#ensureOfferSignSource': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#anchorKey',
+    '#auditAnchor',
+    '#offerKey',
+  ],
   'apps/api/src/modules/esign/provider.ts#simulatedProvider': [
     'apps/api/src/modules/qualification/chart-files.ts#boundedSize',
     'apps/api/src/modules/survey360/export-files.ts#renderPdf',
@@ -327,6 +337,21 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
   ],
+  'apps/api/src/modules/esign/source-initiation.ts#runSourceSignCommand': [
+    'apps/api/src/modules/approval/resolver.ts#isActiveAccount',
+    'apps/api/src/modules/esign/expiry.ts#expireSignTask',
+    'apps/api/src/modules/esign/initiation.ts#initiateSignTask',
+    '#sourceVariables',
+    'apps/api/src/modules/esign/source-result-access.ts#authorizeSignVariables',
+    'apps/api/src/modules/esign/source-result-access.ts#authorizeSourceSignTask',
+    'apps/api/src/modules/esign/source-templates.ts#lockSourceTemplates',
+    'apps/api/src/modules/esign/source-templates.ts#normalizeSourceTemplateIds',
+  ],
+  'apps/api/src/modules/esign/source-initiation.ts#sourceVariables': [
+    'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/esign/source-result-access.ts#authorizeSignVariables': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
@@ -336,6 +361,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
   ],
   'apps/api/src/modules/esign/source-result-access.ts#authorizeSourceSignTask': ['#authorizeSignVariables'],
+  'apps/api/src/modules/esign/source-templates.ts#compatible': ['#COMMON_VARIABLES', '#variablesIn'],
+  'apps/api/src/modules/esign/source-templates.ts#lockSourceTemplates': ['#COMMON_VARIABLES', '#variablesIn'],
+  'apps/api/src/modules/esign/source-templates.ts#sourceTemplateOptions': [
+    'apps/api/src/modules/esign/service.ts#ESIGN_TEMPLATE_LIMIT',
+    '#compatible',
+  ],
   'apps/api/src/modules/esign/task-routes.ts#reissueSchema': ['#uniqueIds', '#uuid'],
   'apps/api/src/modules/esign/task-routes.ts#route:GET /api/tenant/esign/mine': [
     'apps/api/src/modules/esign/mine.ts#listMine',

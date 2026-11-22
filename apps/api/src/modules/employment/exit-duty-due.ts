@@ -24,11 +24,19 @@ interface DueExit {
   readonly date: string;
 }
 
+/** 清空计划保留历史版本，须先取最新版本再判断有没有职责。 */
 const dueCondition = (tenantId: string, today: string) => sql`
   e.tenant_id=${tenantId} AND e.duty_transfer_timing='specified_date' AND e.duty_transfer_date<=${today}::date
   AND (SELECT s.state FROM employment_state_events s WHERE s.tenant_id=e.tenant_id AND s.business_id=e.business_id
     ORDER BY s.event_no DESC LIMIT 1) = 'approved'
-  AND EXISTS (SELECT 1 FROM transfer_linkage_versions v WHERE v.tenant_id=e.tenant_id AND v.business_id=e.business_id)
+  AND EXISTS (
+    SELECT 1 FROM transfer_linkage_duties d
+    WHERE d.tenant_id=e.tenant_id AND d.version_id=(
+      SELECT v.id FROM transfer_linkage_versions v
+      WHERE v.tenant_id=e.tenant_id AND v.business_id=e.business_id
+      ORDER BY v.version_no DESC LIMIT 1
+    )
+  )
   AND NOT EXISTS (SELECT 1 FROM transfer_linkage_runs r WHERE r.tenant_id=e.tenant_id AND r.business_id=e.business_id)`;
 
 export async function runDueExitDutyTransfers(

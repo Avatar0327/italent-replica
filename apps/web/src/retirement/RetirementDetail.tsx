@@ -100,7 +100,9 @@ export function RetirementDetail({ view, row, onClose, refresh, knownRehire, ope
   const [feedback, toast] = message.useMessage();
   const current = detail && !!detail.employeeId && validObject(detail);
   const editable =
-    (detail?.contentView as { mode?: string } | undefined)?.mode === 'frozen' ? [] : retirementEditFields(permission);
+    (detail?.contentView as { mode?: string } | undefined)?.mode === 'frozen'
+      ? []
+      : retirementEditFields(permission, detail);
   const restore = current && Array.isArray(detail.actions) && detail.actions.includes('restore');
   const reload = async () => {
     await refresh();
