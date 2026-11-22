@@ -7,6 +7,7 @@
 import { sql, type Tx } from '@italent/db';
 import { EMPLOYEE_STATUS, ENTRY_STATUS, type EmployeeStatusCode, type EntryStatusCode } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
+import { preparationStatusSql, type PreparationStatus } from '../onboarding/preparation-launch-read.js';
 import { employmentCreator, employmentScopePredicate } from './context.js';
 import { ENTRY_KINDS } from './employee-status.js';
 import { personnelHooks } from './personnel-hooks.js';
@@ -26,6 +27,7 @@ export interface EntryViewItem {
   readonly effectiveDate: string;
   readonly employeeStatus: EmployeeStatusCode;
   readonly entryStatus: EntryStatusCode | null;
+  readonly preparationStatus: PreparationStatus;
   readonly departmentId: string | null;
   /** 业务 revision：取消 / 改期 / 编辑 / 办理 / 删除路由的 If-Match。 */
   readonly revision: number;
@@ -82,7 +84,8 @@ export async function listEntryView(
       ${department} AS "departmentId", b.revision, pp.probation,
       pp.months AS "probationMonths", pc.contract_company_id::text AS "contractCompanyId",
       pc.start_date::text AS "contractStartDate", pc.end_date::text AS "contractEndDate",
-      cancel.remark AS "cancelRemark"
+      cancel.remark AS "cancelRemark",
+      ${preparationStatusSql(sql`r.tenant_id`, sql`r.id`)} AS "preparationStatus"
     FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
     JOIN employment_business_objects b ON b.tenant_id=r.tenant_id AND b.id=r.id

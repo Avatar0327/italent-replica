@@ -16,6 +16,8 @@ import {
   type EntryLifecyclePort,
 } from '../employment/onboarding-entry-port.js';
 
+import { rebaseEntryPreparations } from './preparation-launch-state.js';
+
 const cases = onboardingEntryCases;
 const businesses = employmentBusinessObjects;
 
@@ -135,6 +137,7 @@ const lifecycle: EntryLifecyclePort = {
       .where(and(eq(cases.tenantId, ctx.tenantId), eq(cases.id, current.id)))
       .returning();
     if (!updated) return unavailable();
+    await rebaseEntryPreparations(tx, ctx, updated);
     await auditCase(tx, ctx, change.kind, current, updated);
     return updated;
   },

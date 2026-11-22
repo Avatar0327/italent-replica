@@ -1989,6 +1989,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'apps/api/src/modules/onboarding/preparation-launch-read.ts#preparationStatusSql',
   ],
   'apps/api/src/modules/employment/errors.ts#EmploymentError': ['#EMPLOYMENT_STATUS'],
   'apps/api/src/modules/employment/establishment-confirmation.ts#deleteConfirmed': ['#splitConfirmed'],

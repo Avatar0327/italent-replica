@@ -1185,6 +1185,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 每项带 probation（F-188，待入职试用期，没填过 null）、probationMonths / contractCompanyId（BE-14b2，Offer 同步带来，
   // 其他为 null）与 contractStartDate / contractEndDate（F-194，待入职合同起止日，存量 / 已办理入职为 null；
   // 控制项显式投影，权限沿用待入职列表本身的对象与字段权限，不另要求合同对象权限）；
+  // preparationStatus（BE-16 16a-3a）由当前阶段与准备任务投影，按任职字段查看权裁剪。
   // cancelRemark（F-206，DEC-560）：最近一次取消动作的说明，无则 null，行可见即可见；
   // 记录字段按任职记录可见字段裁剪，姓名 / 工号按人员对象可见字段另行裁剪；hasDataPermission 协议键
   'GET /pending-entries': object({
