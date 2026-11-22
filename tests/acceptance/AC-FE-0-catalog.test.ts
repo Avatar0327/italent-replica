@@ -110,8 +110,8 @@ describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
     expect(result.menus.map((menu) => menu.key)).toEqual([
       app,
       ...(code === M.contract.code ? ['contracts'] : []),
-      // FE-R2f S1/S7：数据分析在任一已交付子项可见时显示。
-      ...([M.hrRoster.code, M.hrDashboard.code].includes(code) ? ['hr-analytics'] : []),
+      // FE-R2f S1/S2/S7：数据分析在任一已交付子项可见时显示。
+      ...([M.hrRoster.code, M.hrDashboard.code, M.hrStructure.code].includes(code) ? ['hr-analytics'] : []),
       // F-465b：人事报表子菜单按三张报表任一对象显示。
       ...([M.hrRoster.code, M.hrMovementReport.code, M.hrStructureReport.code].includes(code) ? ['hr-reports'] : []),
       ...(app === 'transfer' && code === M.employmentRecord.code
