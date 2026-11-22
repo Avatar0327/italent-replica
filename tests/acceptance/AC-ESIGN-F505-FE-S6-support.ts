@@ -40,6 +40,7 @@ type Options = {
   grants?: ControlledGrants;
   update?: boolean;
   records?: boolean;
+  allowDownload?: boolean;
   intercept?: Intercept;
 };
 const offerObject = 'TenantBase.Offer';
@@ -67,7 +68,7 @@ afterEach(async () => {
 
 /** 只固定外壳权限快照；工作流请求与用户操作实际进入 S4/S2 路由。 */
 export async function mount(w: World, options: Options = {}, component = OfferList) {
-  const { grants, update = true, records = true, intercept } = options;
+  const { grants, update = true, records = true, allowDownload = false, intercept } = options;
   const session = {
     tenantId: w.tenantId,
     userId: w.userId,
@@ -92,6 +93,8 @@ export async function mount(w: World, options: Options = {}, component = OfferLi
       return Response.json({ session, apps: [], scope: [], adminMenus: [] });
     if (url.pathname.includes('/permission/me/objects/')) {
       const objectCode = decodeURIComponent(url.pathname.split('/').at(-1)!);
+      if (objectCode === recordsObject && !records)
+        return Response.json({ error: { code: 'FORBIDDEN' } }, { status: 403 });
       const isSettings = objectCode === settingsObject;
       const fields = isSettings
         ? ['validityDays', 'remindBeforeExpiry']
@@ -100,10 +103,11 @@ export async function mount(w: World, options: Options = {}, component = OfferLi
           : offerFields;
       return Response.json({
         objectCode,
-        dataOperations: { read: objectCode !== recordsObject || records, update: isSettings || update },
+        dataOperations: { update: isSettings || update },
         viewableFields: fields,
         editableFields: fields,
-        buttons: [],
+        buttons:
+          objectCode === recordsObject && allowDownload ? [{ buttonCode: 'ESignRecord.Download', level: 'list' }] : [],
       });
     }
     const headers = new Headers(init?.headers);

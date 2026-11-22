@@ -62,7 +62,7 @@ it('FE-03 全选超过 20 保留完整选择并禁止提交，人员变量拒绝
   expect(text(dialog())).toContain('一次最多选择20个模板');
   await actSelect([variable.id]);
   await click(confirm());
-  await until(() => text(dialog()).includes('相应人员字段权限'), '显示字段拒绝');
+  await until(() => text(dialog()).includes('此模板需要相应人员字段权限'), '显示字段拒绝');
   expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(1);
   expect(await w.taskCount()).toBe(0);
 });
@@ -106,7 +106,7 @@ it('FE-03 有发起权限、无设置及签署记录查看权，仍可发起并�
   await openSign('ZZ_F505_可发起');
   await selectAll();
   await click(confirm());
-  await until(() => text(dialog()).includes('待员工签署'), '发起人可查看自己的任务');
+  await until(() => text(dialog()).includes('待本人签署'), '发起人可查看自己的任务');
   expect(text(dialog())).not.toContain('暂无可见签署记录');
   expect(requests.some(({ path }) => path.includes('/esign/mine/'))).toBe(true);
 });

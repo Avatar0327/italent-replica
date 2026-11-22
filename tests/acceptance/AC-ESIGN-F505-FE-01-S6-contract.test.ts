@@ -18,8 +18,18 @@ it('FE-01 正式授权器允许 Offer 编辑但隐藏 ID，核对列表动作与
   const database = db().db;
   const w = await offerSigningWorld(database, 'S6_ID_CONTRACT');
   const sourceId = await w.offer({ name: 'ZZ_F505_ID_CONTRACT' });
-  const pendingId = await w.offer({ name: 'ZZ_F505_PENDING', status: 'pending' });
-  await w.offer({ name: 'ZZ_F505_APPROVING', status: 'pending', approvalStatus: 'approving', offerType: 'intern' });
+  const pendingId = await w.offer({
+    name: 'ZZ_F505_PENDING',
+    status: 'pending',
+    offerType: 'intern',
+    plannedEntryDate: '2026-10-20',
+  });
+  const approvingId = await w.offer({
+    name: 'ZZ_F505_APPROVING',
+    status: 'pending',
+    approvalStatus: 'approving',
+    offerType: 'intern',
+  });
   const template = await w.template();
   const api = tenantApi(database, { authorize: undefined, clock: () => START });
   const adminRecord = await bootstrapTenantAdmin(database, { tenantId: w.tenantId, userId: w.userId }, cmd());
@@ -95,10 +105,13 @@ it('FE-01 正式授权器允许 Offer 编辑但隐藏 ID，核对列表动作与
   } = await list('unsubmitted');
   expect(pending.id).toBe(pendingId);
   expect(pending.rowActions.menu).toEqual(expect.arrayContaining(['edit', 'send']));
+  await json(await api.request('GET', `${OFFERS}/${pending.id}/send-check`, as), 200);
+  const pendingContext = await json(await api.request('GET', contextPath(pending.id), as), 200);
+  expect(pendingContext.canInitiate).toBe(false);
   const updated = await json(
     await api.request('PUT', `${OFFERS}/${pending.id}`, {
       ...as,
-      ifMatch: 1,
+      ifMatch: pendingContext.revision,
       body: { name: 'ZZ_F505_UPDATED' },
     }),
     200,
@@ -114,6 +127,8 @@ it('FE-01 正式授权器允许 Offer 编辑但隐藏 ID，核对列表动作与
     name: 'ZZ_F505_APPROVING',
     rowActions: { primary: [], menu: [] },
   });
+  const detail = await json(await api.request('GET', `${OFFERS}/${approvingId}`, as), 200);
+  expect(detail).not.toHaveProperty('id');
   await json(await setFields(true), 200);
   const {
     items: [withVisibleId],

@@ -19,3 +19,12 @@ it('FE-01 只启用真实列表返回的发起动作，状态和版本不参与�
   expect(control('发起电子签署')).toBeUndefined();
   await openSign('ZZ_F505_已入职', '已入职Offer');
 });
+
+it('FE-01 回归：撤 Offer 编辑权后服务端动作隐藏，保留查看入口', async () => {
+  const w = await offerSigningWorld(db().db, 'FE01_DENIED');
+  await w.offer({ name: 'ZZ_F505_只读' });
+  await mount(w, { update: false });
+  await openMenu('ZZ_F505_只读');
+  expect(control('发起电子签署')).toBeUndefined();
+  expect(control('查看Offer')).toBeTruthy();
+});

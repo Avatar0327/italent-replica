@@ -12,6 +12,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import { useState } from 'react';
+import { SourceSignDialog } from '../esign/SourceSignDialog.js';
 import { ViewHeading } from '../foundation/ViewHeading.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
@@ -40,13 +41,14 @@ import {
 
 export function OfferList() {
   const session = useSession();
-  return <OfferListReader key={`${session.tenantId}/${session.identityKey}`} />;
+  return <OfferListReader key={JSON.stringify([session.tenantId, session.userId, session.identityKey])} />;
 }
 function OfferListReader() {
   const [view, setView] = useState<View>('pending');
   const [filters, setFilters] = useState<Filters>({});
   const [page, setPage] = useState(1);
   const [detail, setDetail] = useState<string>();
+  const [sign, setSign] = useState<string>();
   const permission = usePermissions(object);
   const allowedFilters = Object.fromEntries(
     Object.entries(filters).filter(([field]) => permission.field(field).visible),
@@ -61,13 +63,17 @@ function OfferListReader() {
     setFilters({});
     setPage(1);
     setDetail(undefined);
+    setSign(undefined);
   };
   const changeFilters = (next: Filters) => {
     setFilters(next);
     setPage(1);
+    setSign(undefined);
   };
   const visible = (label: string) => visibleColumn(label, (field) => permission.field(field).visible, rows);
   const act = (row: OfferRow, key: string) => {
+    if (!row.id) return;
+    if (key === 'sign') setSign(row.id);
     if (key === 'viewMail') openMail(row.id);
     if (key === 'view') setDetail(row.id);
   };
@@ -82,7 +88,7 @@ function OfferListReader() {
         ) : (
           <>
             <Table<OfferRow>
-              rowKey="id"
+              rowKey={(row) => row.id ?? `readonly-${rows.indexOf(row)}`}
               size="small"
               pagination={false}
               dataSource={rows}
@@ -106,13 +112,17 @@ function OfferListReader() {
                   pageSize={15}
                   total={result.data?.total ?? 0}
                   showSizeChanger={false}
-                  onChange={setPage}
+                  onChange={(next) => {
+                    setSign(undefined);
+                    setPage(next);
+                  }}
                 />
               </Space>
             </div>
           </>
         )}
       </section>
+      {sign && <SourceSignDialog source={{ kind: 'offer', id: sign }} onClose={() => setSign(undefined)} />}
       {detail && <OfferDetail key={detail} id={detail} close={() => setDetail(undefined)} />}
     </>
   );
@@ -133,7 +143,8 @@ function OfferToolbar({ view }: { view: View }) {
 }
 function RowActions({ row, act }: { row: OfferRow; act(key: string): void }) {
   const { primary, menu } = readActions(row);
-  const enabled = (key: string) => ['view', 'viewMail'].includes(key);
+  if (!row.id) return null;
+  const enabled = (key: string) => ['view', 'viewMail', 'sign'].includes(key);
   return (
     <Space size={0}>
       {primary.map((key) => (
@@ -172,7 +183,7 @@ function offerColumns(
       width,
       ellipsis: true,
       render: (_, row) =>
-        label === '姓名' ? (
+        label === '姓名' && row.id ? (
           <Button type="link" onClick={() => open(row)}>
             {displayValue(row, label)}
           </Button>
