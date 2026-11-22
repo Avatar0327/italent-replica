@@ -41,7 +41,7 @@ function visibleRoots(ctx: BusinessContext, scope: ModuleScope, roots: SQL) {
 export function ruleScopeSql(ctx: BusinessContext, scope: ModuleScope, rule: SQL) {
   const roots = sql`SELECT ${scopeOrgs.orgId} FROM ${scopeOrgs}
     WHERE ${scopeOrgs.tenantId} = ${ctx.tenantId} AND ${scopeOrgs.ruleId} = ${rule}`;
-  return sql`EXISTS (${roots}) AND ${visibleRoots(ctx, scope, roots)}`;
+  return sql`(EXISTS (${roots}) AND ${visibleRoots(ctx, scope, roots)})`;
 }
 
 export async function requireCollectionOrgScope(tx: Tx, ctx: BusinessContext, scope: ModuleScope, orgIds: string[]) {
