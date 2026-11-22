@@ -54,8 +54,11 @@ async function materialRuleFor(tx: Tx, ctx: EntryLifecycleContext, orgId: string
     .orderBy(asc(rules.priority), asc(rules.id))
     .limit(2);
   const [first, second] = candidates;
-  // 组织结构变化可能令此前互斥的同级规则同时命中。
-  if (first?.priority === second?.priority) return;
+  // 组织调整可使互斥规则重叠。中止当前事务，让规则修正后可按原命令重提。
+  if (first && first.priority === second?.priority)
+    throw new AppError('CONFLICT', '材料规则存在并列命中，请调整规则后重试', {
+      reason: 'MATERIAL_RULE_AMBIGUOUS',
+    });
   return first;
 }
 
