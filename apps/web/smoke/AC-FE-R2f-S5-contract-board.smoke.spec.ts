@@ -154,7 +154,8 @@ test('AC-FE-R2f-01/09 合同独立菜单、全年默认、已应用条件、申�
   await drawer.getByTitle('2', { exact: true }).click();
   await expect(drawer.getByText(`${prefix}changeCreate_2`)).toBeVisible();
   expect(params(details.at(-1))).toEqual({ ...applied, page: '2', pageSize: '20' });
-  await drawer.getByRole('button', { name: '关闭', exact: true }).press('Enter');
+  await expect.soft(drawer.locator(':focus'), '详情翻到第 2 页后焦点应留在抽屉内').toHaveCount(1);
+  await page.keyboard.press('Escape');
   await expect(drawer).toHaveCount(0);
   await card(page, 'signByTermType')
     .getByRole('button', { name: /查看详情：空，0/ })
