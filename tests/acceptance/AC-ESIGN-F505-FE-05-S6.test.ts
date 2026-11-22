@@ -2,8 +2,22 @@ import { resolve } from 'node:path';
 import { ESIGN_REMIND_TEMPLATE, renderEsignNotice } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
-import { RECORD, offerSigningWorld } from './AC-ESIGN-F505-S4-support.js';
-import { click, control, mount, row, text, until } from './AC-ESIGN-F505-FE-S6-support.js';
+import type { ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
+import { RECORD, offerSigningWorld, recordsPath, taskPath } from './AC-ESIGN-F505-S4-support.js';
+import { insertAnchor, insertTask } from './AC-ESIGN-F505-support.js';
+import {
+  act,
+  click,
+  confirm,
+  control,
+  dialog,
+  mount,
+  openSign,
+  row,
+  selectAll,
+  text,
+  until,
+} from './AC-ESIGN-F505-FE-S6-support.js';
 
 const { ScenesPage } = await import(resolve('apps/web/src/esign/ScenesPage.tsx'));
 const { sceneText } = await import(resolve('apps/web/src/esign/sign-model.ts'));
@@ -91,4 +105,86 @@ it('AC-ESIGN-F505-FE-05 我的签署、签署记录与真实站内提醒展示�
     () => labels.every((label) => text(document.querySelector('.esign-mine')).includes(label)),
     '我的签署展示三场景',
   );
+});
+
+it('AC-ESIGN-F505-FE-05 第 2 页可见历史从 21 条降至 11 条时重读合法页', async () => {
+  const database = db().db;
+  const w = await offerSigningWorld(database, 'FE05_PAGE_SCOPE');
+  const name = 'ZZ_F505_历史页码';
+  const sourceId = await w.offer({ name });
+  const hiddenOwner = await w.hire('ZZ_F505_范围外历史所有者');
+  await w.template();
+  await insertAnchor(database, w.tenantId, sourceId);
+  const retainedIds: string[] = [];
+  for (let index = 0; index < 21; index++) {
+    const retained = index < 10;
+    const id = await insertTask(database, w.tenantId, w.userId, {
+      scene: 'offer',
+      offerId: sourceId,
+      employeeId: retained ? w.employeeId : hiddenOwner.employeeId,
+      sourceRevision: 1,
+      status: 'revoked',
+    });
+    if (retained) retainedIds.push(id);
+  }
+
+  const scopes: Record<string, ModuleScope> = {};
+  const reads: { page: number; total: number; ids: string[] }[] = [];
+  let createdTaskId: string | undefined;
+  let releaseFirstPage: () => void = () => {};
+  const holdFirstPage = new Promise<void>((resolve) => (releaseFirstPage = resolve));
+  await mount(w, {
+    grants: { scopes },
+    intercept: async ({ method, path }, forward) => {
+      const response = await forward();
+      if (method === 'POST' && path === taskPath(sourceId) && response.status === 201) {
+        const receipt = (await response.clone().json()) as { taskId: string };
+        createdTaskId = receipt.taskId;
+      }
+      if (method === 'GET' && path.split('?')[0] === recordsPath(sourceId) && response.ok) {
+        const result = (await response.clone().json()) as { page: number; total: number; items: { id: string }[] };
+        reads.push({ page: result.page, total: result.total, ids: result.items.map(({ id }) => id) });
+        if (result.page === 1 && result.total === 11) await holdFirstPage;
+      }
+      return response;
+    },
+  });
+  const history = () => dialog()?.querySelector('section[aria-label="电子签署"]') ?? null;
+  const rowIds = () =>
+    Array.from(history()?.querySelectorAll('tr[data-row-key]') ?? [], (row) => row.getAttribute('data-row-key'));
+  const pagination = () => history()?.querySelector('.ant-pagination');
+  await openSign(name);
+  await until(() => rowIds().length === 20, '第 1 页显示 20 条历史');
+  expect(reads[0]).toMatchObject({ page: 1, total: 21 });
+  await click(pagination()?.querySelector<HTMLElement>('.ant-pagination-item-2'));
+  await until(
+    () => rowIds().length === 1 && pagination()?.querySelector('.ant-pagination-item-active')?.textContent === '2',
+    '第 2 页显示 1 条历史并保持选中',
+  );
+  expect(reads[1]).toMatchObject({ page: 2, total: 21 });
+
+  scopes[RECORD] = { all: false, orgIds: [], personIds: [w.employeeId], hasDataPermission: true };
+  try {
+    await selectAll();
+    await click(confirm());
+    await until(
+      () => reads.some(({ page, total }) => page === 2 && total === 11),
+      '真实 201 后重读原第 2 页并得到收窄后的总数',
+    );
+    expect(createdTaskId).toEqual(expect.any(String));
+    expect(reads.find(({ page, total }) => page === 2 && total === 11)?.ids).toEqual([]);
+    const legalPage = () => reads.find(({ page, total }) => page === 1 && total === 11);
+    await until(() => legalPage() || text(history()).includes('暂无可见签署记录'), '越界回复已处理');
+    expect(text(history())).not.toContain('暂无可见签署记录');
+    expect(text(history())).toContain('正在读取签署记录');
+    expect(rowIds()).toEqual([]);
+    expect(legalPage()?.ids).toHaveLength(11);
+  } finally {
+    await act(async () => releaseFirstPage());
+  }
+
+  await until(() => rowIds().length === 11, '合法页显示 11 条当前可见历史');
+  expect(rowIds().sort()).toEqual([...retainedIds, createdTaskId].sort());
+  expect(pagination()).toBeNull();
+  expect(text(history())).not.toContain('暂无可见签署记录');
 });
