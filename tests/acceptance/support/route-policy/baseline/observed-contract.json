@@ -3547,6 +3547,37 @@
         ]
       }
     },
+    "GET /api/tenant/analytics/hr-movement/components/:code/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-movement",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.HrMovement:view"
+        ],
+        "scope": [
+          "creator scope",
+          "employment visibility",
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/analytics/hr-movement/reports/:report": {
       "edge": {
         "anonymous": {
@@ -3711,6 +3742,37 @@
       }
     },
     "GET /api/tenant/analytics/hr-structure/components/:code": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-structure",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.HrStructure:view"
+        ],
+        "scope": [
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/analytics/hr-structure/components/:code/export": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
