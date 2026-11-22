@@ -22,7 +22,7 @@ import {
   ruleBody,
   templateBody,
   validateRequiredSubsets,
-  validateRule,
+  validateAndNormalizeRule,
   validateTemplate,
   type RuleInput,
   type TemplateInput,
@@ -299,8 +299,7 @@ export async function writeCollectionResource(
       validateTemplate(input);
       saved = await saveTemplate(tx, ctx, input, previous);
     } else {
-      const input = ruleBody.parse(merged);
-      validateRule(input);
+      const input = validateAndNormalizeRule(ruleBody.parse(merged));
       await scope!.orgs(input.orgIds);
       await validateCompanyRefs(tx, ctx.tenantId, input);
       saved = await saveRule(tx, ctx, input, previous);

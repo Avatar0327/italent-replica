@@ -99,19 +99,24 @@ export function validateTemplate(input: TemplateInput) {
     throw new AppError('VALIDATION_FAILED', '采集模板字段重复或超出白名单');
 }
 
-export function validateRule(input: RuleInput) {
+function normalizeCompanyCondition(item: RuleInput['conditions']['items'][number], violations: string[]) {
+  if (item.field !== 'contract.companyId' || item.value === null) return item;
+  const parsed = Array.isArray(item.value) ? z.array(uuid).safeParse(item.value) : uuid.safeParse(item.value);
+  if (parsed.success) return { ...item, value: parsed.data };
+  violations.push('合同公司条件须使用 UUID');
+  return item;
+}
+
+export function validateAndNormalizeRule(input: RuleInput): RuleInput {
   const violations = conditionViolations(input.conditions, CONDITION_FIELDS);
-  for (const item of input.conditions.items) {
-    if (item.field !== 'contract.companyId' || item.value === null) continue;
-    const values = typeof item.value === 'string' ? [item.value] : item.value;
-    if (values.some((value) => !uuid.safeParse(value).success)) violations.push('合同公司条件须使用 UUID');
-  }
+  const items = input.conditions.items.map((item) => normalizeCompanyCondition(item, violations));
   if (violations.length) throw new AppError('VALIDATION_FAILED', '采集规则条件不合法', { reasons: violations });
   if (
     new Set(input.orgIds).size !== input.orgIds.length ||
     new Set(input.requiredSubsets).size !== input.requiredSubsets.length
   )
     throw new AppError('VALIDATION_FAILED', '采集规则的组织或必填子集重复');
+  return { ...input, conditions: { ...input.conditions, items } };
 }
 
 export function validateRequiredSubsets(
