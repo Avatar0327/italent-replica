@@ -1,4 +1,4 @@
-import { HR_DASHBOARD_OBJECT, HR_STRUCTURE_OBJECT } from '@italent/domain';
+import { CONTRACT_BOARD_OBJECT, HR_DASHBOARD_OBJECT, HR_STRUCTURE_OBJECT } from '@italent/domain';
 import { lazyPage, type ModulePages } from '../foundation/page-registry.js';
 import { m } from './messages.js';
 
@@ -27,6 +27,12 @@ export const pages: ModulePages = {
           label: m.dashboard,
           objectCodes: deliveredTabs.map((tab) => tab.objectCode),
           page: lazyPage('HrDashboardPage', () => import('./HrDashboardPage.js')),
+        },
+        {
+          id: 'hr-contract-board',
+          label: m.contract.title,
+          objectCode: CONTRACT_BOARD_OBJECT,
+          page: lazyPage('HrContractBoardPage', () => import('./HrContractBoardPage.js')),
         },
       ],
     },

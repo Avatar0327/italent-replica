@@ -1,4 +1,4 @@
-import { Alert, Button, Select } from 'antd';
+import { Alert, Button } from 'antd';
 import { HR_STRUCTURE_TOP_INSTITUTIONS } from '@italent/domain';
 import { PageState } from '../foundation/PageState.js';
 import { ui } from '../foundation/messages.js';
@@ -6,6 +6,7 @@ import { m as report } from '../hr-reports/messages.js';
 import { cellText, type Filters } from '../hr-reports/model.js';
 import { BoardChart, MapPlaceholder } from './BoardCharts.js';
 import { BoardDetailDrawer } from './BoardDetailDrawer.js';
+import { BoardGroupSelector } from './BoardGroupSelector.js';
 import { ReadState } from './ReadState.js';
 import { StructureFilters } from './StructureFilters.js';
 import { m } from './messages.js';
@@ -63,36 +64,6 @@ function Card({ card, open }: { card: StructureCard; open?: (group?: string) => 
       </header>
       {content}
     </article>
-  );
-}
-
-function GroupSelector({
-  target,
-  disabled,
-  change,
-}: {
-  target: StructureTarget;
-  disabled: boolean;
-  change(group?: string): void;
-}) {
-  if (!target.card.points.length) return null;
-  // 选项值用位置承载，保留服务端任意字符串键（含空键）。
-  const position = target.card.points.findIndex(({ key }) => key === target.group);
-  const options = [
-    { value: -1, label: m.allGroups },
-    ...target.card.points.map(({ label }, index) => ({ value: index, label })),
-  ];
-  return (
-    <div className="hr-structure-group">
-      <span>{m.group}</span>
-      <Select<number>
-        aria-label={m.group}
-        value={position}
-        options={options}
-        disabled={disabled}
-        onChange={(index) => change(target.card.points[index]?.key)}
-      />
-    </div>
   );
 }
 
@@ -160,7 +131,7 @@ export function StructureBoard({ today, refresh }: { today: string; refresh(): v
           missing={m.componentMissing}
           controls={
             data?.hasDataPermission && (
-              <GroupSelector
+              <BoardGroupSelector
                 target={selected.target}
                 disabled={waiting}
                 change={(group) => board.changeDetail({ ...selected, target: { ...selected.target, group }, page: 1 })}

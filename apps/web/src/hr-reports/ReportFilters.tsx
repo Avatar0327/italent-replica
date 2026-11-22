@@ -148,7 +148,7 @@ export function ReportFilters({
   );
 }
 
-function AppliedFilters({ fields, applied }: { fields: readonly QueryField[]; applied: Filters }) {
+export function AppliedFilters({ fields, applied }: { fields: readonly QueryField[]; applied: Filters }) {
   const captions = fields.flatMap(({ key, label, options, appliedText }) => {
     const value = applied[key] ?? '';
     if (!value) return [];

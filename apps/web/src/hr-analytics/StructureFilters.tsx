@@ -1,13 +1,11 @@
-import { Button, Checkbox, Select, TreeSelect } from 'antd';
-import { useState } from 'react';
+import { Checkbox, Select, TreeSelect } from 'antd';
 import { pageQuery, type ApiClient } from '../foundation/client.js';
 import { QueryFilters, type QueryField } from '../hr-reports/ReportFilters.js';
-import { useReportRetryWait } from '../hr-reports/ReportReadState.js';
 import { m as report } from '../hr-reports/messages.js';
 import type { Filters } from '../hr-reports/model.js';
-import { useReportRead } from '../hr-reports/useReportRead.js';
+import { CandidateHint, useCandidates, type CandidateState } from './BoardCandidates.js';
 import { m } from './messages.js';
-import { canRetryRead, validAsOf } from './model.js';
+import { validAsOf } from './model.js';
 import { includeChildrenDefaults, organizationFilters, structureOrgUrl } from './structure-model.js';
 import type { dictionaryFilters } from './structure-model.js';
 
@@ -39,42 +37,6 @@ async function readSequences(api: ApiClient, path: string, signal: AbortSignal):
     if (result.items.length < pageSize) return { items };
   }
   return { items: [] };
-}
-
-function useCandidates<T>(
-  path: string | null,
-  load?: (api: ApiClient, path: string, signal: AbortSignal) => Promise<List<T>>,
-) {
-  const [generation, next] = useState(0);
-  const read = useReportRead<List<T>>(path, generation, load);
-  const waiting = useReportRetryWait(read.failure?.retryAt ?? 0);
-  return {
-    items: read.data?.items ?? [],
-    loading: read.loading,
-    retry: canRetryRead(read.error) ? () => next((value) => value + 1) : undefined,
-    waiting,
-  };
-}
-type CandidateState = ReturnType<typeof useCandidates<unknown>>;
-
-function CandidateHint({ label, state }: { label: string; state: CandidateState }) {
-  if (state.loading) return null;
-  return (
-    <div className="hr-structure-candidate-hint">
-      <span>{m.candidateUnavailable}</span>
-      {state.retry && (
-        <Button
-          type="link"
-          size="small"
-          disabled={state.waiting}
-          aria-label={m.retryCandidate(label)}
-          onClick={state.retry}
-        >
-          {report.retry}
-        </Button>
-      )}
-    </div>
-  );
 }
 
 function choices(items: Candidate[], field: 'id' | 'code' | 'name'): Choice[] {
