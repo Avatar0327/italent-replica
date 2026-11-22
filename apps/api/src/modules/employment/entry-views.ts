@@ -71,15 +71,17 @@ export function entryViewPredicate(view: EntryView, today: string): SQL {
   }
 }
 
+interface EntryViewQuery {
+  readonly view: EntryView;
+  readonly today: string;
+  readonly page: PageQuery;
+  readonly collection?: EntryCollectionQuery;
+}
+
 export async function listEntryView(
   tx: Tx,
   tenantId: string,
-  input: {
-    readonly view: EntryView;
-    readonly today: string;
-    readonly page: PageQuery;
-    readonly collection?: EntryCollectionQuery;
-  },
+  input: EntryViewQuery,
   scope: EmploymentScope | undefined,
 ): Promise<EntryViewItem[]> {
   checkPage(input.page);

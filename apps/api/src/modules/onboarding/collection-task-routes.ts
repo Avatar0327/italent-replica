@@ -9,7 +9,7 @@ import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
 import type { EmploymentContext } from '../employment/types.js';
 import { pageQuery, parseBody, revision, uuidParam } from '../job/context.js';
-import { requireCollectionTarget, requireCollectionWrite, type WriteAction } from './collection-access.js';
+import { requireCollectionTarget, requireCollectionWrite } from './collection-access.js';
 import { COLLECTION_TASK_POLICIES } from './collection-task-policy.js';
 import { projectCollectionTask } from './collection-task-view.js';
 import {

@@ -48,6 +48,7 @@ interface FrozenField {
   editable: boolean;
 }
 
+const taskStatesSql = sql.raw(COLLECTION_TASK_STATES.map((value) => `'${value}'`).join(','));
 const timestampUtc = (column: string) => timestamp(column, { withTimezone: true });
 export const onboardingCollectionTasks = pgTable(
   'onboarding_collection_tasks',
@@ -105,10 +106,7 @@ export const onboardingCollectionTasks = pgTable(
       columns: [t.tenantId, t.updatedBy],
       foreignColumns: [tenantMemberships.tenantId, tenantMemberships.userId],
     }),
-    check(
-      'onboarding_collection_task_status',
-      sql`${t.status} IN ('ready','sent','draft','in_review','returned','rehire_pending','completed','closed','withdrawn')`,
-    ),
+    check('onboarding_collection_task_status', sql`${t.status} IN (${taskStatesSql})`),
     check('onboarding_collection_task_verification', sql`${t.verificationMode} IN ('independent_channel','phone_otp')`),
     check(
       'onboarding_collection_task_revisions',
