@@ -8,7 +8,8 @@ import type { Filters } from '../hr-reports/model.js';
 import { useReportRead } from '../hr-reports/useReportRead.js';
 import { m } from './messages.js';
 import { canRetryRead, validAsOf } from './model.js';
-import { dictionaryFilters, includeChildrenDefaults, organizationFilters, structureOrgUrl } from './structure-model.js';
+import { includeChildrenDefaults, organizationFilters, structureOrgUrl } from './structure-model.js';
+import type { dictionaryFilters } from './structure-model.js';
 
 interface OrgCandidate {
   id: string;
@@ -171,7 +172,6 @@ function organizationFields(state: ReturnType<typeof useCandidates<OrgCandidate>
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function StructureFilters({
-  today,
   asOf,
   applied,
   busy,
@@ -179,7 +179,6 @@ export function StructureFilters({
   waiting,
   apply,
 }: {
-  today: string;
   asOf: string;
   applied?: Filters;
   busy: boolean;
@@ -213,7 +212,7 @@ export function StructureFilters({
         validAsOf(asOf) &&
         ['institutionId', 'departmentId', 'sequenceId'].every((key) => !filters[key] || uuid.test(filters[key]))
       }
-      apply={(filters) => apply({ ...filters, asOf: applied?.asOf ?? today })}
+      apply={(filters) => apply({ ...filters, asOf })}
     />
   );
 }

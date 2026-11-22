@@ -108,7 +108,6 @@ export function StructureBoard({ today, refresh }: { today: string; refresh(): v
     <>
       <div className="list-card hr-dashboard-filters">
         <StructureFilters
-          today={today}
           asOf={data?.asOf ?? board.filters.asOf ?? today}
           applied={data && { ...board.filters, asOf: data.asOf }}
           busy={read.loading}

@@ -148,6 +148,22 @@ export function ReportFilters({
   );
 }
 
+function AppliedFilters({ fields, applied }: { fields: readonly QueryField[]; applied: Filters }) {
+  const captions = fields.flatMap(({ key, label, options, appliedText }) => {
+    const value = applied[key] ?? '';
+    if (!value) return [];
+    const text = appliedText
+      ? appliedText(value, applied)
+      : `${label} ${options?.find((option) => option.value === value)?.label ?? value}`;
+    return text ? [text] : [];
+  });
+  return (
+    <p>
+      {m.applied} {captions.join('，')}
+    </p>
+  );
+}
+
 export function QueryFilters({
   fields,
   initial,
@@ -216,21 +232,7 @@ export function QueryFilters({
         </Button>
       </Space>
       {invalid && <p role="alert">{m.invalid}</p>}
-      {applied && (
-        <p>
-          {m.applied}{' '}
-          {fields
-            .flatMap(({ key, label, options, appliedText }) => {
-              const value = applied[key] ?? '';
-              if (!value) return [];
-              const text = appliedText
-                ? appliedText(value, applied)
-                : `${label} ${options?.find((option) => option.value === value)?.label ?? value}`;
-              return text ? [text] : [];
-            })
-            .join('，')}
-        </p>
-      )}
+      {applied && <AppliedFilters fields={fields} applied={applied} />}
     </form>
   );
 }
