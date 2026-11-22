@@ -522,10 +522,13 @@ export async function resolveProjectedTransfer(
       : null;
   const resolved =
     materialized ??
-    (await resolveEffectiveInheritance(tx, ctx, payload, {
-      staffId: payload.selectedStaffId ?? predecessor?.staffId ?? '',
-      predecessor,
-    }));
+    // DEC-973：退休摘下的已落地调动仍可进入候选。其快照中的延迟标记记录来源策略，值已物化。
+    (state === 'effective' && payload.isRecordSnapshot
+      ? { fields: payload.fields, customFields: payload.customFields }
+      : await resolveEffectiveInheritance(tx, ctx, payload, {
+          staffId: payload.selectedStaffId ?? predecessor?.staffId ?? '',
+          predecessor,
+        }));
   const fields = {
     ...resolved.fields,
     employType: resolved.fields.employType ?? predecessor?.fields.employType ?? 'internal',

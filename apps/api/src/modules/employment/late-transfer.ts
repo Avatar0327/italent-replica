@@ -158,12 +158,13 @@ export async function postponeLateTransfer(tx: Tx, ctx: EmploymentContext, busin
       : {}),
   };
   const { fields, ...metadata } = next;
-  await insertEmploymentRow(tx, 'employment_payload_versions', {
-    ...metadata,
-    ...fields,
-    createdAt: ctx.now.toISOString(),
-  });
-  business.payload = next;
+  const markers = await insertEmploymentRow(
+    tx,
+    'employment_payload_versions',
+    { ...metadata, ...fields, createdAt: ctx.now.toISOString() },
+    { ctx, origins: 'carry-only' },
+  );
+  business.payload = { ...next, ...markers };
   await auditEmployment(
     tx,
     ctx,

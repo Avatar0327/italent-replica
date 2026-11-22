@@ -146,6 +146,9 @@ test('AC-FE-R2f-08 菜单打开年度流动，连续下钻与逐层返回都保�
     flow,
     monthly,
     institution,
+    '员工流入统计',
+    '员工流出统计',
+    '组织编制统计',
   ]);
   await expect(main(page).locator('tbody')).toContainText('18.2%');
   await expect(download(page)).toHaveCount(0);
@@ -434,7 +437,7 @@ test('AC-FE-R2f-11 B54 切页拒绝迟到的读取和文件，切到新租户重
   }
 });
 
-test('AC-FE-R2f-11 B54 入口按流动报表对象守卫，未交付页签和无权直链均不请求统计', async ({ page }) => {
+test('AC-FE-R2f-11 B54 入口按流动报表对象守卫，未知页签和无权直链均不请求统计', async ({ page }) => {
   let reads = 0;
   await page.route(`**${api}/**`, (route) => {
     reads++;
@@ -443,12 +446,12 @@ test('AC-FE-R2f-11 B54 入口按流动报表对象守卫，未交付页签和无
   await page.goto(`${entry}/flow`);
   await expect(main(page).locator('tbody')).toContainText('18.2%');
   expect(reads).toBe(1);
-  for (const code of ['inflow', 'outflow', 'establishment', 'unknown']) {
-    await page.goto(`${entry}/${code}`);
-    await expect(main(page).getByText('页面或记录不存在', { exact: true })).toBeVisible();
-  }
+  await page.goto(`${entry}/unknown`);
+  await expect(main(page).getByText('页面或记录不存在', { exact: true })).toBeVisible();
   await allow(page, ['TenantBase.HrStructureReport']);
-  await page.goto(`${entry}/flow`);
-  await expect(main(page).getByText('暂无访问权限', { exact: true })).toBeVisible();
+  for (const code of ['flow', 'inflow', 'outflow', 'establishment']) {
+    await page.goto(`${entry}/${code}`);
+    await expect(main(page).getByText('暂无访问权限', { exact: true })).toBeVisible();
+  }
   expect(reads).toBe(1);
 });
