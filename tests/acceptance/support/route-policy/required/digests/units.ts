@@ -1140,7 +1140,7 @@ export const DIGESTS: Digests = {
     SETTINGS: '15a32ed0ba1c',
   },
   'apps/api/src/modules/onboarding/collection-config.ts': {
-    writeCollectionResource: 'de803849c1fe',
+    writeCollectionResource: '5743015f4701',
   },
   'apps/api/src/modules/org-adjustment/access.ts': {
     OBJECT: 'b007f3f6067a',
@@ -2962,7 +2962,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/onboarding/collection-config-routes.ts#route:PUT /collection-settings': 'c560bab52016',
   'apps/api/src/modules/onboarding/collection-config-routes.ts#writeConfig': '21d8ea8d3ade',
   'apps/api/src/modules/onboarding/collection-config-scope.ts#SETTINGS': '962a8dd9a03e',
-  'apps/api/src/modules/onboarding/collection-config.ts#writeCollectionResource': '935324d50e9e',
+  'apps/api/src/modules/onboarding/collection-config.ts#writeCollectionResource': 'a4ad939c613b',
   'apps/api/src/modules/org-adjustment/access.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHead': '838eace8ec6b',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHeadAction': '803a4a5374ea',

@@ -10,6 +10,7 @@ export const GRAPH: Graph = {
     '#subsets',
     'packages/domain/src/personnel/fields.ts#SUBSETS',
   ],
+  'apps/api/src/modules/onboarding/collection-config-input.ts#normalizeCompanyCondition': ['#uuid'],
   'apps/api/src/modules/onboarding/collection-config-input.ts#ruleBody': [
     '#name',
     '#subsets',
@@ -26,13 +27,13 @@ export const GRAPH: Graph = {
     'packages/domain/src/personnel/fields.ts#subsetAttachmentFields',
   ],
   'apps/api/src/modules/onboarding/collection-config-input.ts#templatePatch': ['#templateBody'],
+  'apps/api/src/modules/onboarding/collection-config-input.ts#validateAndNormalizeRule': [
+    '#CONDITION_FIELDS',
+    '#normalizeCompanyCondition',
+    'packages/domain/src/approval/conditions.ts#conditionViolations',
+  ],
   'apps/api/src/modules/onboarding/collection-config-input.ts#validateRequiredSubsets': [
     'packages/domain/src/personnel/fields.ts#SUBSETS',
-  ],
-  'apps/api/src/modules/onboarding/collection-config-input.ts#validateRule': [
-    '#CONDITION_FIELDS',
-    '#uuid',
-    'packages/domain/src/approval/conditions.ts#conditionViolations',
   ],
   'apps/api/src/modules/onboarding/collection-config-input.ts#validateTemplate': ['#templateFieldAllowed'],
   'apps/api/src/modules/onboarding/collection-config-routes.ts#bindCollectionWriteScope': [
@@ -174,7 +175,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#assertRevision',
     'apps/api/src/modules/onboarding/collection-config-input.ts#ruleBody',
     'apps/api/src/modules/onboarding/collection-config-input.ts#templateBody',
-    'apps/api/src/modules/onboarding/collection-config-input.ts#validateRule',
+    'apps/api/src/modules/onboarding/collection-config-input.ts#validateAndNormalizeRule',
     'apps/api/src/modules/onboarding/collection-config-input.ts#validateTemplate',
     'apps/api/src/modules/onboarding/collection-config-scope.ts#configMissing',
     '#auditConfig',
