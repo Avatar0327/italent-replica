@@ -629,7 +629,7 @@ export const DIGESTS: Digests = {
     'route:GET /records': '4b23dae37df4',
   },
   'apps/api/src/modules/employment/regularization-reschedule.ts': {
-    rescheduleRegularization: '2020cec359d9',
+    rescheduleRegularization: '21305910655e',
   },
   'apps/api/src/modules/employment/regularization.ts': {
     regularizeOne: '783a0d02bf5e',
