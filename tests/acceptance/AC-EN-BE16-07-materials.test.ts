@@ -288,3 +288,50 @@ it('AC-EN-BE16-07 P2-1 组织调整造成规则冲突时原子拒绝，修正规
     items: [expect.objectContaining({ required: true, status: 'pending' })],
   });
 });
+
+it('AC-EN-BE16-07 P2-2 局部配置管理员无法探测隐藏规则优先级，全局冲突仍受约束', async () => {
+  const w = await world('ZZ_BE16_HIDDEN_MATERIAL_RULE');
+  const other = await w.session.org('ZZ_BE16_HIDDEN_ORG', { establishedOn: '2026-01-01' });
+  w.rights.settingsOrgs.push(other.id);
+  const local = {
+    name: 'ZZ_BE16_LOCAL_RULE',
+    orgIds: [w.org.id],
+    items: [definition('ZZ_BE16_LOCAL_DEFINITION', true)],
+  };
+  const hidden = await json<Receipt>(
+    await w.request('POST', w.rules, {
+      ifMatch: 0,
+      body: { ...local, name: 'ZZ_BE16_HIDDEN_RULE', orgIds: [w.org.id, other.id], priority: 10 },
+    }),
+    201,
+  );
+  w.rights.settingsOrgs = [w.org.id];
+  expect(await json(await w.request('GET', w.rules), 200)).toEqual({ items: [] });
+  const missing = await json(await w.request('GET', w.rules + '/' + hidden.id), 404);
+  const create = (priority: number) => w.request('POST', w.rules, { ifMatch: 0, body: { ...local, priority } });
+  for (const priority of [10, 20]) {
+    expect(await json(await create(priority), 404)).toEqual(missing);
+  }
+  expect(await json(await w.request('GET', w.rules), 200)).toEqual({ items: [] });
+
+  const draft = await json<Receipt>(
+    await w.request('POST', w.rules, {
+      ifMatch: 0,
+      body: { ...local, priority: 20, enabled: false },
+    }),
+    201,
+  );
+  const enable = (priority: number) =>
+    w.request('PATCH', w.rules + '/' + draft.id, {
+      ifMatch: draft.revision,
+      body: { enabled: true, priority },
+    });
+  for (const priority of [10, 20]) {
+    expect(await json(await enable(priority), 404)).toEqual(missing);
+  }
+  w.rights.settingsOrgs.push(other.id);
+  expect(await json(await enable(10), 409)).toMatchObject({
+    error: { code: 'CONFLICT', details: { reason: 'MATERIAL_RULE_PRIORITY_CONFLICT' } },
+  });
+  await json(await enable(20), 200);
+});
