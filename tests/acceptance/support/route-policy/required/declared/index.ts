@@ -43,7 +43,6 @@ export const DECLARED: Readonly<Record<string, ModuleDeclared>> = {
   attachments: ATTACHMENTS_DECLARED,
   'command-result': COMMAND_RESULT_DECLARED,
   contracts: CONTRACTS_DECLARED,
-  onboarding: ONBOARDING_DECLARED,
   employment: EMPLOYMENT_DECLARED,
   establishment: ESTABLISHMENT_DECLARED,
   evaluation: EVALUATION_DECLARED,
@@ -72,4 +71,5 @@ export const DECLARED: Readonly<Record<string, ModuleDeclared>> = {
   talent: TALENT_DECLARED,
   'talent-review': TALENT_REVIEW_DECLARED,
   'tenant-settings': TENANT_SETTINGS_DECLARED,
+  onboarding: ONBOARDING_DECLARED,
 };
