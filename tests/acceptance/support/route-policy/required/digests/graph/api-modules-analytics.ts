@@ -391,6 +391,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#objectContext',
     'packages/domain/src/analytics/hr-movement.ts#HR_MOVEMENT_OBJECT',
   ],
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#componentOf': [
+    'packages/domain/src/analytics/hr-movement.ts#HR_MOVEMENT_COMPONENTS',
+  ],
   'apps/api/src/modules/analytics/hr-movement-routes.ts#loadBoard': [
     'apps/api/src/modules/analytics/hr-movement-board.ts#filterEstablishment',
     'apps/api/src/modules/analytics/hr-movement-board.ts#filterMovement',
@@ -417,6 +420,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/analytics/hr-structure.ts#jobDictionary',
     'apps/api/src/modules/analytics/hr-structure.ts#orgTree',
   ],
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#requireComponentMembers': [
+    'apps/api/src/modules/analytics/hr-movement-board.ts#movementMembers',
+  ],
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement': [
     'apps/api/src/modules/analytics/hr-movement-board.ts#movementComponents',
     '#HR_MOVEMENT_BASE',
@@ -425,15 +431,31 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/analytics/hr-structure-routes.ts#uuidQuery',
   ],
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/components/:code': [
-    'apps/api/src/modules/analytics/hr-movement-board.ts#movementMembers',
     '#HR_MOVEMENT_BASE',
     '#boardContext',
+    '#componentOf',
     '#loadBoard',
+    '#projectMember',
+    '#requireComponentMembers',
     'apps/api/src/modules/analytics/hr-structure-routes.ts#groupQuery',
     'apps/api/src/modules/analytics/hr-structure-routes.ts#uuidQuery',
     'apps/api/src/modules/job/context.ts#pageQuery',
-    'packages/domain/src/analytics/hr-movement.ts#HR_MOVEMENT_COMPONENTS',
   ],
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/components/:code/export':
+    [
+      'apps/api/src/modules/analytics/component-export.ts#COMPONENT_EXPORT_PAGE',
+      'apps/api/src/modules/analytics/component-export.ts#exportComponent',
+      'apps/api/src/modules/analytics/component-export.ts#validateComponentExportQuery',
+      '#HR_MOVEMENT_BASE',
+      '#boardContext',
+      '#componentOf',
+      '#loadBoard',
+      '#projectMember',
+      '#requireComponentMembers',
+      'apps/api/src/modules/analytics/hr-structure-routes.ts#groupQuery',
+      'apps/api/src/modules/analytics/hr-structure-routes.ts#uuidQuery',
+      'packages/domain/src/analytics/hr-movement.ts#HR_MOVEMENT_OBJECT',
+    ],
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/reports/:report': [
     '#HR_MOVEMENT_BASE',
     '#periodOf',
@@ -715,6 +737,12 @@ export const GRAPH: Graph = {
     '#textQuery',
     '#uuidQuery',
   ],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#componentQuery': [
+    'apps/api/src/modules/analytics/hr-structure-board.ts#isGrouped',
+    '#boardFilter',
+    '#groupQuery',
+    'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_COMPONENTS',
+  ],
   'apps/api/src/modules/analytics/hr-structure-routes.ts#departmentFilter': ['#includeChildrenQuery', '#uuidQuery'],
   'apps/api/src/modules/analytics/hr-structure-routes.ts#employTypeQuery': [
     'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORT_EMPLOY_TYPES',
@@ -748,15 +776,27 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code':
     [
       'apps/api/src/modules/analytics/hr-structure-board.ts#componentMembers',
-      'apps/api/src/modules/analytics/hr-structure-board.ts#isGrouped',
       '#BOARD_EMPLOY_TYPES',
       '#HR_STRUCTURE_BASE',
       '#boardContext',
-      '#boardFilter',
-      '#groupQuery',
+      '#componentQuery',
       '#loadPeople',
+      '#projectMember',
       'apps/api/src/modules/job/context.ts#pageQuery',
-      'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_COMPONENTS',
+    ],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code/export':
+    [
+      'apps/api/src/modules/analytics/component-export.ts#COMPONENT_EXPORT_PAGE',
+      'apps/api/src/modules/analytics/component-export.ts#exportComponent',
+      'apps/api/src/modules/analytics/component-export.ts#validateComponentExportQuery',
+      'apps/api/src/modules/analytics/hr-structure-board.ts#componentMembers',
+      '#BOARD_EMPLOY_TYPES',
+      '#HR_STRUCTURE_BASE',
+      '#boardContext',
+      '#componentQuery',
+      '#loadPeople',
+      '#projectMember',
+      'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_OBJECT',
     ],
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report':
     [
