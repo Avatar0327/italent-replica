@@ -155,7 +155,9 @@ const transferWrite = (path: string, ref: { readonly code: string; readonly leve
   ] satisfies Obligation[];
 };
 
-/** 列表 / 详情的行操作披露（offerActionAccess）：五项判定只决定 rowActions / toolbarActions，不参与准入。 */
+/** 列表 / 详情的行操作披露（offerActionAccess）：五项判定只决定 rowActions / toolbarActions，不参与准入。
+ * DEC-980：任一行操作实际披露时，来源 id 为该行全部动作的协议定位键。页面无 ID 列；空动作行和其他字段仍按字段权裁剪。
+ */
 const ACCESS = `${TRANSITIONS}#offerActionAccess`;
 const BUTTONS_CONST: Evidence = {
   role: 'const',
@@ -185,7 +187,7 @@ const actionDisclosure = (path: string, anchor: string): Obligation[] => {
     purpose: `disclosure:${key}`,
     need: NONE,
     facts: ['object:object.* 动作'],
-    note: '只决定行操作是否出现，不拒绝请求',
+    note: '仅决定动作是否出现。DEC-980：有行操作时保留协议 id，页面无 ID 列，其余字段照旧裁剪',
     at: [route, { role: 'impl', unit: ACCESS, anchor: `can('object.${op}', OFFER_OBJECT)` }, OFFER_CONST],
   });
   return [
@@ -240,7 +242,125 @@ const rehireDisclosure = (): Obligation[] => [
   },
 ];
 
+const ESIGN_ROUTES = `${O}/esign-routes.ts`;
+const ESIGN_RESULT = 'apps/api/src/modules/esign/source-command-result.ts';
+const VARIABLES = 'apps/api/src/modules/esign/source-result-access.ts';
+const RECORD = 'TenantBase.ESignRecord';
+const OFFER_POINT = { scope: 'point', locator: 'offer.byId' } as const;
+function esignUpdate(method: 'GET' | 'POST', path: string): Obligation {
+  return {
+    perm: `obj:${OFFER}:update`,
+    need: OFFER_POINT,
+    facts: [
+      'object:objectContext',
+      `objectOp:${OFFER}:update`,
+      ...(method === 'POST' ? ['object:object.* 动作', 'object:requireObjectWrite（对象写操作权）'] : []),
+    ],
+    at: [
+      at(method, path, "await objectContext(c, deps, OFFER_OBJECT, 'update'", ESIGN_ROUTES),
+      at(method, path, 'await requireOfferSignSource(tx, deps, ctx, id)', ESIGN_ROUTES),
+      OBJECT_CONTEXT,
+      OFFER_CONST,
+      {
+        role: 'impl',
+        unit: `${ESIGN_RESULT}#requireOfferSignSource`,
+        anchor: "requireObjectWrite(authorize, ctx, { objectCode: OFFER_OBJECT, operation: 'update', payload: {} })",
+      },
+      {
+        role: 'scope',
+        unit: `${ESIGN_RESULT}#requireOfferSignSource`,
+        anchor: 'scopeAllows(scope, { orgId: source.departmentId, creatorId: source.createdBy })',
+      },
+    ],
+  };
+}
+
 export const OFFERS: RequiredTable = {
+  [`GET ${BASE}/:id/esign-context`]: [esignUpdate('GET', '/:id/esign-context')],
+  [`POST ${BASE}/:id/esign-tasks`]: [
+    esignUpdate('POST', '/:id/esign-tasks'),
+    {
+      perm: 'guard:esign.offer.variableRead',
+      at: [
+        at('POST', '/:id/esign-tasks', 'await runSourceSignCommand(deps.db, deps, ctx, {', ESIGN_ROUTES),
+        {
+          role: 'impl',
+          unit: 'apps/api/src/modules/esign/source-initiation.ts#runSourceSignCommand',
+          anchor: 'await authorizeSignVariables(tx, deps, ctx, owner.employeeId, fields)',
+        },
+        {
+          role: 'impl',
+          unit: `${VARIABLES}#authorizeSignVariables`,
+          anchor: 'if (viewable && fields.some((field) => !viewable.has(field))) throw forbidden()',
+        },
+      ],
+    },
+    {
+      perm: 'obj:TenantBase.Employee:view',
+      purpose: 'when:esign.offer.variableRead',
+      at: [
+        { role: 'impl', unit: `${VARIABLES}#authorizeSignVariables`, anchor: 'if (!fields.length) return' },
+        {
+          role: 'call',
+          unit: `${VARIABLES}#authorizeSignVariables`,
+          anchor: "action: 'object.view', resource: EMPLOYEE_OBJECT",
+        },
+        {
+          role: 'scope',
+          unit: `${VARIABLES}#authorizeSignVariables`,
+          anchor: 'await requireEmployeeInScope(tx, { ...ctx, scope }, employeeId)',
+        },
+      ],
+    },
+  ],
+  [`GET ${BASE}/:id/esign-records`]: [
+    {
+      ...view("await objectContext(c, deps, OFFER_OBJECT, 'view')", '/:id/esign-records', false, ESIGN_ROUTES),
+      need: OFFER_POINT,
+      at: [
+        ...view("await objectContext(c, deps, OFFER_OBJECT, 'view')", '/:id/esign-records', false, ESIGN_ROUTES).at,
+        {
+          role: 'scope',
+          unit: `${ESIGN_ROUTES}#listOfferSignRecords`,
+          anchor: 'await loadOffer(tx, await currentOfferContext(tx, deps, ctx, `${OFFER_OBJECT}.detail`), sourceId)',
+        },
+        {
+          role: 'scope',
+          unit: `${CTX}#requireOfferInScope`,
+          anchor: 'scopeAllows(ctx.scope, { orgId: offer.departmentId, creatorId: offer.createdBy })',
+        },
+      ],
+    },
+    {
+      perm: `obj:${RECORD}:view`,
+      need: { scope: 'list', predicate: 'esign.recordOwner' },
+      facts: ['object:objectContext', `objectOp:${RECORD}:view`],
+      at: [
+        at(
+          'GET',
+          '/:id/esign-records',
+          "await objectContext(c, deps, MODULE_OBJECTS.eSignRecord.code, 'view')",
+          ESIGN_ROUTES,
+        ),
+        OBJECT_CONTEXT,
+        {
+          role: 'const',
+          unit: 'apps/api/src/modules/esign/record-access.ts#RECORD_OBJECT',
+          anchor: 'MODULE_OBJECTS.eSignRecord.code',
+        },
+        {
+          role: 'scope',
+          unit: `${ESIGN_ROUTES}#listOfferSignRecords`,
+          anchor: 'eq(esignTasks.offerId, sourceId), recordScope(scope)',
+        },
+        {
+          role: 'scope',
+          unit: 'apps/api/src/modules/esign/record-access.ts#recordScope',
+          anchor: 'scopeSql(scope, { person: sql`${esignTasks.employeeId}` })',
+        },
+      ],
+    },
+  ],
   [`GET ${BASE}/views`]: [view("await objectContext(c, deps, OFFER_OBJECT, 'view')", '/views', false)],
   [`GET ${BASE}/dictionaries/:kind`]: [
     view("const ctx = await objectContext(c, deps, OFFER_OBJECT, 'view')", '/dictionaries/:kind', false),
