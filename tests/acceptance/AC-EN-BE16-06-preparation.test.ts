@@ -7,6 +7,9 @@ import {
   eq,
   grantMembership,
   onboardingEntryCases,
+  onboardingPreparationRuleAssignees,
+  onboardingPreparationRules,
+  onboardingPreparationScopeOrgs,
   onboardingPreparationTasks,
   permissionGrants,
   permissionProfiles,
@@ -195,6 +198,37 @@ it('AC-EN-BE16-06 DEC-983 规则归档重放复核组织范围，引用中的事
   w.rights.orgs = [];
   expect((await archive()).status).toBe(404);
   expect(await w.ledger(key)).toHaveLength(1);
+});
+
+it('AC-EN-BE16-06 A41 停用规则不能新引用归档事项', async () => {
+  const w = await world('ZZ_BE16_PREP_ARCHIVED_REF');
+  const saved = await response<Receipt>(await w.create(items, { ...item, enabled: false }), 201);
+  const body = {
+    itemId: saved.id,
+    name: 'ZZ_BE16_DISABLED_RULE',
+    enabled: false,
+    priority: 1,
+    orgIds: [w.org.id],
+    assignees: [{ kind: 'member', id: w.user }],
+  };
+  const rule = await response<Receipt>(await w.create(rules, body), 201);
+  expect((await w.request('DELETE', items + '/' + saved.id, { ifMatch: saved.revision })).status).toBe(204);
+  const key = randomUUID();
+  const staleSave = await w.request('POST', rules, { ifMatch: 0, idempotencyKey: key, body });
+  expect(staleSave.status).toBe(404);
+  expect(await w.ledger(key)).toEqual([]);
+  await withTenant(w.db, w.tenant, async (tx) => {
+    expect(await tx.select({ id: onboardingPreparationRules.id }).from(onboardingPreparationRules)).toEqual([
+      { id: rule.id },
+    ]);
+    expect(
+      await tx.select({ ruleId: onboardingPreparationScopeOrgs.ruleId }).from(onboardingPreparationScopeOrgs),
+    ).toEqual([{ ruleId: rule.id }]);
+    expect(
+      await tx.select({ ruleId: onboardingPreparationRuleAssignees.ruleId }).from(onboardingPreparationRuleAssignees),
+    ).toEqual([{ ruleId: rule.id }]);
+  });
+  expect(await response(await w.request('GET', rules + '/' + rule.id), 200)).toMatchObject(body);
 });
 
 it('AC-EN-BE16-06 按当前阶段按期发起，等优先级和空办理人逐事项拒绝', async () => {
