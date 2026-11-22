@@ -44,7 +44,16 @@ const expected = {
   ]
     .map((object) => object.code)
     .filter((code) => code !== PERSONNEL_REQUEST_OBJECT),
-  transfer: [M.employmentRecord.code, M.probationAssessment.code],
+  // BE-16 16a-0：入职域对象沿 R2-T01 设计 §9.3 / §10 登记在 transfer。
+  transfer: [
+    M.employmentRecord.code,
+    M.probationAssessment.code,
+    M.onboardingCollection.code,
+    M.onboardingQrCode.code,
+    M.onboardingPreparation.code,
+    M.onboardingMaterial.code,
+    M.onboardingIntegration.code,
+  ],
   approval: APPROVAL_OBJECTS.map((object) => object.code),
   self: [PERSONNEL_REQUEST_OBJECT],
   manager: [],

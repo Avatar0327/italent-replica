@@ -73,6 +73,8 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
  * 并把它的 fieldObjectCode 表达式登记到上表（否则上面的检查直接失败）。
  */
 export const NO_SNAPSHOT_YET: Readonly<Record<string, string>> = {
+  // onboarding/approval-contract.ts：BE-16 16a-2b 接入真实采集业务单前，只有审批类型与出厂草稿。
+  entry_info_collection: 'ENTRY_INFO_COLLECTION_UNAVAILABLE',
   // talent-review/approval-adapter.ts：R3-T04 PR-A 只占业务类型位置，PR-D 接入前任何回调 409
   talent_review: 'TALENT_REVIEW_APPROVAL_UNAVAILABLE',
 };
