@@ -35,7 +35,7 @@ export async function matchEntryCollection(
   ref: EntryCaseWriteRef,
   mode: 'auto' | 'manual',
 ) {
-  const { record } = await lockPendingEntry(tx, ctx, ref.businessId);
+  const { record } = await lockPendingEntry(tx, { ...ctx, expectedRevision: ref.businessRevision }, ref.businessId);
   await entryLifecyclePort().lockForWrite(tx, entryCaseContext(ctx), ref, ['pending']);
   if (record.entryStatus === ENTRY_STATUS.cancelled)
     throw new AppError('CONFLICT', '已取消的待入职不能匹配采集配置', { reason: 'ENTRY_CANCELLED' });

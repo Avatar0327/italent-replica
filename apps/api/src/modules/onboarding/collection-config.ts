@@ -13,7 +13,7 @@ import {
   sql,
   type Tx,
 } from '@italent/db';
-import { not } from 'drizzle-orm';
+import { not, type SQL } from 'drizzle-orm';
 import { recordAudit } from '../../audit/record.js';
 import { assertRevision } from '../employment/context.js';
 import { type BusinessContext } from '../job/context.js';
@@ -27,11 +27,15 @@ import {
   type RuleInput,
   type TemplateInput,
 } from './collection-config-input.js';
-import { configMissing, requireCollectionOrgScope, ruleScopeSql } from './collection-config-scope.js';
+import { configMissing, ruleScopeSql } from './collection-config-scope.js';
 
 export type CollectionConfigKind = 'collectionTemplates' | 'collectionRules' | 'collectionSettings';
 type ConfigHead = typeof templates.$inferSelect | typeof rules.$inferSelect;
 type ConfigScope = { ctx: BusinessContext; scope: ModuleScope };
+export interface CollectionWriteScope {
+  target(id: string): Promise<ConfigHead>;
+  orgs(orgIds: string[]): Promise<void>;
+}
 
 const headOf = (kind: CollectionConfigKind) => (kind === 'collectionTemplates' ? templates : rules);
 const identity = (tenantId: string, id: string, table: typeof templates | typeof rules) =>
@@ -81,23 +85,20 @@ async function detail(tx: Tx, row: ConfigHead) {
 
 export async function readCollectionConfig(
   tx: Tx,
-  { ctx, scope }: ConfigScope,
+  ctx: BusinessContext,
   kind: CollectionConfigKind,
   query: { limit: number; offset: number },
   id?: string,
+  ruleFilter?: SQL,
 ) {
   if (kind === 'collectionSettings') return loadCollectionSettings(tx, ctx.tenantId);
+  if (kind === 'collectionRules' && !ruleFilter) configMissing();
   const table = headOf(kind);
   const rows = await tx
     .select()
     .from(table)
     .where(
-      and(
-        eq(table.tenantId, ctx.tenantId),
-        eq(table.archived, false),
-        id ? eq(table.id, id) : undefined,
-        kind === 'collectionRules' ? ruleScopeSql(ctx, scope, sql`${table.id}`) : undefined,
-      ),
+      and(eq(table.tenantId, ctx.tenantId), eq(table.archived, false), id ? eq(table.id, id) : undefined, ruleFilter),
     )
     .orderBy(asc(table.id))
     .limit(id ? 1 : query.limit)
@@ -110,10 +111,9 @@ export async function readCollectionConfig(
 export async function requireCollectionTarget(
   tx: Tx,
   { ctx, scope }: ConfigScope,
-  kind: CollectionConfigKind,
+  kind: Exclude<CollectionConfigKind, 'collectionSettings'>,
   id: string,
 ) {
-  if (kind === 'collectionSettings') return;
   const table = headOf(kind);
   const [row] = await tx
     .select()
@@ -221,9 +221,8 @@ async function saveTemplate(tx: Tx, ctx: BusinessContext, input: TemplateInput, 
   return row!;
 }
 
-async function saveRule(tx: Tx, { ctx, scope }: ConfigScope, input: RuleInput, previous?: ConfigHead) {
+async function saveRule(tx: Tx, ctx: BusinessContext, input: RuleInput, previous?: ConfigHead) {
   const { orgIds, requiredSubsets, ...body } = input;
-  await requireCollectionOrgScope(tx, ctx, scope, orgIds);
   const [template] = await tx
     .select({ archived: templates.archived })
     .from(templates)
@@ -266,13 +265,14 @@ function businessFields(previous: SavedDetail | null) {
 
 export async function writeCollectionResource(
   tx: Tx,
-  access: ConfigScope,
+  ctx: BusinessContext,
   kind: Exclude<CollectionConfigKind, 'collectionSettings'>,
   patch: object | null,
   id?: string,
+  scope?: CollectionWriteScope,
 ) {
-  const { ctx } = access;
-  const previous = id ? await requireCollectionTarget(tx, access, kind, id) : undefined;
+  if ((id || kind === 'collectionRules') && !scope) configMissing();
+  const previous = id ? await scope!.target(id) : undefined;
   if (previous?.archived) configMissing();
   assertRevision(ctx.expectedRevision, previous?.revision ?? 0);
   const before = previous ? await detail(tx, previous) : null;
@@ -301,8 +301,9 @@ export async function writeCollectionResource(
     } else {
       const input = ruleBody.parse(merged);
       validateRule(input);
+      await scope!.orgs(input.orgIds);
       await validateCompanyRefs(tx, ctx.tenantId, input);
-      saved = await saveRule(tx, access, input, previous);
+      saved = await saveRule(tx, ctx, input, previous);
     }
   }
   await auditConfig(tx, ctx, kind, saved.id, action, before, {

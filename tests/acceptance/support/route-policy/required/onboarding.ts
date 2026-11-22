@@ -17,29 +17,26 @@ const inFn = (role: Evidence['role'], file: string, name: string, anchor: string
   anchor,
 });
 
+const ruleRead = inFn('scope', ROUTES, 'readRule', 'ruleScopeSql(ctx, await collectionScope(deps, tx, ctx),');
+const bindOrg = inFn('impl', ROUTES, 'bindCollectionWriteScope', 'requireCollectionOrgScope(tx, ctx, scope, orgIds)');
+const bindTarget = inFn(
+  'impl',
+  ROUTES,
+  'bindCollectionWriteScope',
+  'requireCollectionTarget(tx, { ctx, scope }, kind, id)',
+);
 const scopes = {
-  ruleList: {
-    need: { scope: 'list', predicate: 'onboarding.ruleScopeSql' },
-    at: inFn('scope', CONFIG, 'readCollectionConfig', 'ruleScopeSql(ctx, scope, sql`${table.id}`)'),
-  },
-  ruleDetail: {
-    need: { scope: 'guard', guard: 'onboarding.ruleScopeSql' },
-    at: inFn('scope', CONFIG, 'readCollectionConfig', 'ruleScopeSql(ctx, scope, sql`${table.id}`)'),
-  },
+  ruleList: { need: { scope: 'list', predicate: 'onboarding.ruleScopeSql' }, at: [ruleRead] },
+  ruleDetail: { need: { scope: 'guard', guard: 'onboarding.ruleScopeSql' }, at: [ruleRead] },
   createRule: {
     need: { scope: 'guard', guard: 'onboarding.collectionConfigScope' },
-    at: inFn('scope', CONFIG, 'saveRule', 'await requireCollectionOrgScope(tx, ctx, scope, orgIds)'),
+    at: [inFn('scope', CONFIG, 'writeCollectionResource', 'await scope!.orgs(input.orgIds)'), bindOrg],
   },
   scopedTarget: {
     need: { scope: 'guard', guard: 'onboarding.collectionConfigScope' },
-    at: inFn(
-      'scope',
-      ROUTES,
-      'writeConfig',
-      'await requireCollectionTarget(tx, { ctx, scope: await collectionScope(deps, tx, ctx) }, kind, id)',
-    ),
+    at: [inFn('scope', ROUTES, 'writeConfig', 'if (id) await scope!.target(id)'), bindTarget],
   },
-} satisfies Record<string, { need: Need; at: Evidence }>;
+} satisfies Record<string, { need: Need; at: Evidence[] }>;
 
 function obligations(
   method: string,
@@ -48,40 +45,43 @@ function obligations(
   scope?: keyof typeof scopes,
 ): Obligation[] {
   const read = operation === 'view';
-  const entry = apiCall(method, path, read ? 'readConfig(c, deps,' : 'writeConfig(c, deps,');
-  const call = read
-    ? inFn('call', ROUTES, 'readConfig', "await requireConfigPermission(tx, deps, ctx, kind, 'view')")
-    : inFn('call', ROUTES, 'writeConfig', 'await requireConfigPermission(tx, deps, ctx, kind, operation)');
-  const scoped = scope && scopes[scope];
-  return [
+  const entry = apiCall(method, path, read ? (scope ? 'readRule(c, deps' : 'readConfig(c, deps,') : 'writeConfig(');
+  const scoped = scope ? scopes[scope] : undefined;
+  const admin = inFn(
+    'impl',
+    ROUTES,
+    read ? 'requireConfigView' : 'requireConfigWrite',
+    read ? "action: 'admin.other_settings'" : "action: 'tenant.employment.configuration.write'",
+  );
+  const object = read
+    ? inFn('impl', ROUTES, 'requireConfigView', "action: 'object.view', resource: SETTINGS, fields: [kind]")
+    : inFn(
+        'impl',
+        ROUTES,
+        'requireConfigWrite',
+        'await requireObjectWrite(authorize, ctx, { objectCode: SETTINGS, operation, payload: { [kind]: true } })',
+      );
+  const entries: Obligation[] = [
     {
       perm: 'admin:other_settings',
-      facts: ['admin:tenant.employment.configuration'],
+      facts: read ? ['admin:admin.*'] : ['admin:tenant.employment.configuration'],
       need: { scope: 'none' },
-      at: [
-        entry,
-        call,
-        inFn('impl', ROUTES, 'requireConfigPermission', "action: 'tenant.employment.configuration.write'"),
-      ],
+      at: [entry, admin],
     },
     {
       perm: `obj:${OBJECT}:${operation}`,
-      facts: ['object:object.* 动作'],
-      need: scoped ? scoped.need : { scope: 'none' },
+      facts: read ? ['object:object.* 动作', `objectOp:${OBJECT}:view`] : ['object:requireObjectWrite（对象写操作权）'],
+      need: scoped?.need ?? { scope: 'none' },
       at: [
         entry,
-        call,
-        inFn(
-          'impl',
-          ROUTES,
-          'requireConfigPermission',
-          'action: `object.${operation}`, resource: SETTINGS, fields: [kind]',
-        ),
+        object,
         inFn('const', SCOPE, 'SETTINGS', 'MODULE_OBJECTS.employmentSettings.code'),
-        ...(scoped ? [scoped.at] : []),
+        ...(scoped?.at ?? []),
       ],
     },
   ];
+  if (scoped && 'guard' in scoped.need) entries.push({ perm: `guard:${scoped.need.guard}`, at: [entry, ...scoped.at] });
+  return entries;
 }
 
 export const ONBOARDING: RequiredTable = {

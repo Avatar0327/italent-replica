@@ -15,6 +15,7 @@ import {
 } from '../../route-policy/presets.js';
 import { SETTINGS } from './collection-config-scope.js';
 
+const adminRead = admin('other_settings');
 const adminConfig = admin('other_settings', { alias: 'tenant.employment.configuration.write' });
 const noOrg = noScope('租户级采集设置或模板');
 const noConfigButton = noButton('DEC-979 采集设置由租户管理员及任职设置字段操作权判定');
@@ -26,9 +27,9 @@ function read(operation: 'list' | 'detail', resource: string) {
         ? listScope('onboarding.ruleScopeSql')
         : guardScope('onboarding.ruleScopeSql', NOT_FOUND)
       : noOrg;
-  const fields = projector('onboarding.requireConfigPermission', resource);
+  const fields = projector('onboarding.requireConfigView', resource);
   return all(
-    [adminConfig, object({ object: SETTINGS, operation: 'view', scope, button: noConfigButton, fields })],
+    [adminRead, object({ object: SETTINGS, operation: 'view', scope, button: noConfigButton, fields })],
     fields,
     operation === 'detail' && resource !== 'collectionSettings' ? { invalidId: BAD_REQUEST } : {},
   );
@@ -43,7 +44,7 @@ function change(operation: 'create' | 'update', resource: string, archive = fals
   return all([adminConfig, object({ object: SETTINGS, operation, scope, button: noConfigButton, fields })], fields, {
     ...(operation === 'update' && resource !== 'collectionSettings' ? { invalidId: BAD_REQUEST } : {}),
     write: write(
-      { guard: 'onboarding.requireConfigPermission' },
+      { guard: 'onboarding.requireConfigWrite' },
       'onboarding.collectionConfigWrite',
       'onboarding.collectionConfigScope',
     ),

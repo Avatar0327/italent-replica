@@ -1,0 +1,204 @@
+{
+  "DELETE /api/tenant/onboarding/collection-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "80a13d3dec70",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentSettings/-"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
+  "DELETE /api/tenant/onboarding/collection-templates/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "80a13d3dec70",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentSettings/-"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
+  "GET /api/tenant/onboarding/collection-rules": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentSettings"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentSettings/-"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "GET /api/tenant/onboarding/collection-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "80a13d3dec70",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentSettings"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentSettings/-"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "GET /api/tenant/onboarding/collection-settings": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentSettings"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "GET /api/tenant/onboarding/collection-templates": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentSettings"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "GET /api/tenant/onboarding/collection-templates/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "80a13d3dec70",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentSettings"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "PATCH /api/tenant/onboarding/collection-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "80a13d3dec70",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentSettings/-"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
+  "PATCH /api/tenant/onboarding/collection-templates/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "80a13d3dec70",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentSettings/-"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
+  "POST /api/tenant/onboarding/collection-rules": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "443de69b1d64",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/onboarding/collection-templates": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "5ec075fd8ce9",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/tenant/onboarding/collection-settings": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "b40668f27f8d",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  }
+}

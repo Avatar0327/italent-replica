@@ -163,7 +163,7 @@ it('AC-EN-BE16-02 匹配当前待入职行政树与白名单事实，优先级�
   });
   const entry = await addPending({ ...w, org: child }, '2026-10-08', 'ZZ_BE16_MATCH');
   const [stage] = await withTenant(w.db, w.tenant, (tx) => tx.select().from(onboardingEntryCases));
-  const ctx = portContext(w, entry.business.revision);
+  const ctx = portContext(w, 0);
   const ref = {
     caseId: stage!.id,
     caseRevision: stage!.revision,
@@ -243,10 +243,18 @@ it('AC-EN-BE16-02 真实租户管理员具备字段更新权，可归档租户�
     await api.request('POST', path, { ...asAdmin, ifMatch: 0, body: template }),
     201,
   );
-  const responseArchive = await api.request('DELETE', `${path}/${saved.id}`, {
-    ...asAdmin,
-    ifMatch: saved.revision,
+  const target = `${path}/${saved.id}`;
+  const renamed = await response<Receipt>(
+    await api.request('PATCH', target, { ...asAdmin, ifMatch: saved.revision, body: { name: 'ZZ_BE16_RENAMED' } }),
+    200,
+  );
+  expect(await response(await api.request('GET', target, asAdmin), 200)).toMatchObject({
+    name: 'ZZ_BE16_RENAMED',
+    revision: renamed.revision,
+    fields: template.fields,
   });
+  expect((await api.request('DELETE', target, { ...asAdmin, ifMatch: saved.revision })).status).toBe(409);
+  const responseArchive = await api.request('DELETE', target, { ...asAdmin, ifMatch: renamed.revision });
   expect(responseArchive.status, await responseArchive.clone().text()).toBe(204);
   expect(await response(await api.request('GET', path, asAdmin), 200)).toMatchObject({ items: [] });
 });
