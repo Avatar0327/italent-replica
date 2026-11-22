@@ -41,6 +41,9 @@ export const HR_STRUCTURE_POLICIES = defineTable('hr-structure', {
   [`GET ${HR_STRUCTURE_BASE}/components/:code`]: board(
     fixed(DETAIL_KEYS, 'hr-structure-routes.ts 明细：固定键，items 只含范围内的 ID'),
   ),
+  [`GET ${HR_STRUCTURE_BASE}/components/:code/export`]: board(
+    fixed(['file'], 'hr-structure-routes.ts 下载：CSV 固定为范围内明细的 id、employeeId、organizationId'),
+  ),
   [`GET ${HR_STRUCTURE_BASE}/reports/:report`]: report(
     fixed(
       ['asOf', 'report', 'name', 'employType', 'hasDataPermission', 'columns', 'rows', 'summary'],
