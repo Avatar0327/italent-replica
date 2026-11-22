@@ -1,5 +1,6 @@
 /** BE-16 16b-0。任务池为租户级任职设置，配置字段与管理员能力在命令内再次复核。 */
 import type { Evidence, Obligation, RequiredTable } from './types.js';
+import { ONBOARDING_SCHEMES } from './onboarding-schemes.js';
 
 const BASE = '/api/tenant/onboarding/integration/task-pool';
 const ROUTES = 'apps/api/src/modules/onboarding/integration-pool-routes.ts';
@@ -114,6 +115,7 @@ function write(route: string, operation: 'create' | 'update'): Obligation[] {
 }
 
 export const ONBOARDING: RequiredTable = {
+  ...ONBOARDING_SCHEMES,
   [`GET ${BASE}/categories`]: read(
     'GET /categories',
     'await requirePoolView(authorizeInTransaction(deps.authorize, tx), tenantOf(c))',

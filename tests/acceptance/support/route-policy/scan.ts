@@ -540,6 +540,7 @@ export function moduleDirs(fullPath: string): RouteModule {
   const modules = path.join(API_SRC, 'modules');
   const table: readonly (readonly [string, string, readonly string[]])[] = [
     ['onboarding', '/api/tenant/onboarding/integration/task-pool', [path.join(modules, 'onboarding')]],
+    ['onboarding', '/api/tenant/onboarding/integration', [path.join(modules, 'onboarding')]],
     ['employment', '/api/tenant/employment', ['employment', 'transfer'].map((d) => path.join(modules, d))],
     ['approval', '/api/tenant/approval', [path.join(modules, 'approval')]],
     ['contracts', '/api/tenant/contracts', [path.join(modules, 'contracts')]],

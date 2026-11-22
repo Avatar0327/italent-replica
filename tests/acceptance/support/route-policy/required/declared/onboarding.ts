@@ -2,8 +2,15 @@ import type { ModuleDeclared } from '../../module-declared.js';
 
 const BASE = '/api/tenant/onboarding/integration/task-pool';
 
+const SCHEMES = '/api/tenant/onboarding/integration/schemes';
+
 export const ONBOARDING_DECLARED: ModuleDeclared = {
   multiCarrierAdmission: [
+    `GET ${SCHEMES}`,
+    `GET ${SCHEMES}/:id`,
+    `POST ${SCHEMES}`,
+    `PATCH ${SCHEMES}/:id`,
+    `DELETE ${SCHEMES}/:id`,
     `GET ${BASE}`,
     `GET ${BASE}/categories`,
     `GET ${BASE}/:id`,
@@ -11,5 +18,5 @@ export const ONBOARDING_DECLARED: ModuleDeclared = {
     `PATCH ${BASE}/:id`,
     `DELETE ${BASE}/:id`,
   ],
-  sameStatusInvalidId: [`PATCH ${BASE}/:id`],
+  sameStatusInvalidId: [`PATCH ${BASE}/:id`, `PATCH ${SCHEMES}/:id`],
 };
