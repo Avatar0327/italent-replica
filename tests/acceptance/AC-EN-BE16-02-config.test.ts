@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { bootstrapTenantAdmin } from '@italent/api';
-import { auditEvents, commandLedger, eq, onboardingEntryCases, withTenant } from '@italent/db';
+import { auditEvents, commandLedger, contractCompanies, eq, onboardingEntryCases, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import type { Authorizer } from '../../apps/api/src/authorization.js';
+import { savePendingContract } from '../../apps/api/src/modules/employment/entry-pending-contract.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { matchEntryCollection } from '../../apps/api/src/modules/onboarding/collection-config-match.js';
 import { addPending, entryWorld, portContext } from './AC-EN-BE2a-support.js';
@@ -230,6 +231,82 @@ it('AC-EN-BE16-02 匹配当前待入职行政树与白名单事实，优先级�
   expect(await match('auto')).toEqual({ status: 'skipped', reason: 'COLLECTION_RULE_NOT_MATCHED' });
   await response(await w.request('PUT', '/collection-settings', { ifMatch: 0, body: { enabled: false } }), 200);
   expect(await match('auto')).toEqual({ status: 'skipped', reason: 'COLLECTION_AUTO_DISABLED' });
+});
+
+it('AC-EN-BE16-02 合同公司 UUID 大小写等价，普通文本条件仍区分大小写', async () => {
+  const w = await world('ZZ_BE16_COMPANY_UUID');
+  const companyId = 'abcdefab-1234-4123-8123-abcdefabcdef';
+  const mixed = 'ABcdEFab-1234-4123-8123-abcdefABCDEF';
+  const entry = await addPending(w, '2026-10-08', 'ZZ_BE16_COMPANY_UUID');
+  const ctx = portContext(w, 0);
+  const [stage] = await withTenant(w.db, w.tenant, async (tx) => {
+    await tx.insert(contractCompanies).values({
+      id: companyId,
+      tenantId: w.tenant,
+      name: 'ZZ_BE16_COMPANY_UUID',
+      code: 'ZZ_BE16_COMPANY_UUID',
+    });
+    await savePendingContract(tx, ctx, entry.employee.id, entry.recordId, {
+      startDate: '2026-10-08',
+      endDate: null,
+      companyId,
+    });
+    return tx.select().from(onboardingEntryCases);
+  });
+  const ref = {
+    caseId: stage!.id,
+    caseRevision: stage!.revision,
+    employeeId: entry.employee.id,
+    businessId: entry.recordId,
+    businessRevision: entry.business.revision,
+  };
+  const match = async () =>
+    (await withTenant(w.db, w.tenant, (tx) => matchEntryCollection(tx, ctx, ref, 'auto'))).status;
+  const saved = await response<Receipt>(
+    await w.request('POST', '/collection-templates', { ifMatch: 0, body: template }),
+    201,
+  );
+  const condition = (operator: string, value: string | string[], field = 'contract.companyId') => ({
+    items: [{ no: 1, field, operator, value }],
+    expression: '',
+  });
+  const rules = '/collection-rules';
+  const created = await response<Receipt>(
+    await w.request('POST', rules, {
+      ifMatch: 0,
+      body: {
+        name: 'ZZ_BE16_COMPANY_RULE',
+        priority: 10,
+        templateId: saved.id,
+        orgIds: [w.org.id],
+        conditions: condition('eq', mixed),
+      },
+    }),
+    201,
+  );
+  const path = `${rules}/${created.id}`;
+  let revision = created.revision;
+  const patch = async (conditions: ReturnType<typeof condition>) => {
+    revision = (
+      await response<Receipt>(await w.request('PATCH', path, { ifMatch: revision, body: { conditions } }), 200)
+    ).revision;
+  };
+  expect.soft(await match(), 'eq').toBe('matched');
+  expect
+    .soft(await response(await w.request('GET', path), 200))
+    .toMatchObject({ conditions: condition('eq', companyId) });
+  for (const [operator, value, expected] of [
+    ['in', [mixed], 'matched'],
+    ['ne', mixed, 'skipped'],
+    ['not_in', [mixed], 'skipped'],
+  ] satisfies [string, string | string[], string][]) {
+    await patch(condition(operator, value));
+    expect.soft(await match(), operator).toBe(expected);
+  }
+  await patch(condition('eq', 'INTERNAL', 'record.employType'));
+  expect(await match(), '文本条件区分大小写').toBe('skipped');
+  await patch(condition('in', [mixed, companyId]));
+  expect(await match(), '同一引用以两种大小写提交').toBe('matched');
 });
 
 it('AC-EN-BE16-02 真实租户管理员具备字段更新权，可归档租户级采集模板', async () => {
