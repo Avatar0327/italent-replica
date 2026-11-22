@@ -64,7 +64,7 @@ async function startDownload(page: Page, mode: keyof typeof modes) {
 function result(route: Route, code: string, options: { label?: string; scope?: boolean; empty?: boolean } = {}) {
   const { asOf = today, year = asOf.slice(0, 4), parentId } = params(route);
   const month = params(route).month ?? (year === asOf.slice(0, 4) ? asOf.slice(5, 7) : '12');
-  const cells =
+  const cells: Record<string, number | null> =
     code === 'flow'
       ? { yearStart: 100, yearEnd: 120, growthRate: 0.1818 }
       : { opening: 10, hires: 2, exits: 1, closing: 11, rate: 0.0952 };

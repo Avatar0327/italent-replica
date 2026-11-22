@@ -65,6 +65,9 @@ it('AC-FE-R2f-08 年初 100 → 年底 120 按服务端比例显示 18.2%，保�
   const cells = { yearStart: 100, yearEnd: 120, growthRate: 0.1818 };
   const summary = { yearStart: 250, yearEnd: 250, growthRate: 0 };
   const [table] = tablesOf('flow', {
+    asOf,
+    year: 2026,
+    month: null,
     hasDataPermission: true,
     tables: [
       {

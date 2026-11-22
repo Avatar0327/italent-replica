@@ -1,6 +1,7 @@
 import { codeText } from '../foundation/code-text.js';
 import {
   PERSONNEL_REPORTS,
+  HR_MOVEMENT_REPORTS,
   HR_STRUCTURE_REPORTS,
   HR_STRUCTURE_REPORT_EMPLOY_TYPES,
   reportCellLabel,
@@ -19,12 +20,23 @@ const positionReport: PersonnelReport = {
   group: '人事报表',
   requires: [],
 };
+const flowReport: PersonnelReport = {
+  ...HR_MOVEMENT_REPORTS.find(({ code }) => code === 'flow')!,
+  endpoint: '/api/tenant/analytics/hr-movement/reports/flow',
+  permission: 'hrMovementReport',
+  group: '人事报表',
+  requires: [],
+};
 export const structureReports = [catalogReportOf('quality')!, positionReport];
-export const reportOf = (code: string) => catalogReportOf(code) ?? structureReports.find((r) => r.code === code);
+export const movementReports = [flowReport, catalogReportOf('monthly')!, catalogReportOf('institution')!];
+export const reportOf = (code: string) =>
+  catalogReportOf(code) ??
+  structureReports.find((r) => r.code === code) ??
+  movementReports.find((r) => r.code === code);
 export const structureReport = (code: string) => structureReports.some((report) => report.code === code);
+export const movement = (code: string) => movementReports.some((report) => report.code === code);
 export const supportsStatExport = (code: string) => ['monthly', 'institution', 'quality'].includes(code);
-export const statistical = (code: string) => structureReport(code) || supportsStatExport(code);
-export const movement = (code: string) => ['monthly', 'institution'].includes(code);
+export const statistical = (code: string) => structureReport(code) || movement(code);
 export interface Column {
   key: string;
   label: string;
@@ -47,8 +59,14 @@ export interface Statistics {
   key?: string;
   name?: string;
 }
-export type ReportData =
-  RosterPage | (Statistics & { hasDataPermission: boolean }) | { tables: Statistics[]; hasDataPermission: boolean };
+interface MovementReportData {
+  asOf: string;
+  year: number;
+  month: number | null;
+  tables: Statistics[];
+  hasDataPermission: boolean;
+}
+export type ReportData = RosterPage | (Statistics & { hasDataPermission: boolean }) | MovementReportData;
 export interface CatalogItem extends Pick<PersonnelReport, 'code' | 'name' | 'group' | 'endpoint'> {
   available: boolean;
   reason?: string;
@@ -108,6 +126,33 @@ export function validStructureFilters(filters: Filters): boolean {
   );
 }
 
+export function movementMonthLimit({ asOf, year }: Filters): number {
+  const asOfYear = asOf?.slice(0, 4);
+  return Number(year || asOfYear) === Number(asOfYear) ? Number(asOf?.slice(5, 7)) || 12 : 12;
+}
+
+export function validMovementFilters({ asOf = '', year, month }: Filters): boolean {
+  const lastYear = Number(asOf.slice(0, 4));
+  return (
+    validReportDate(asOf) &&
+    lastYear >= 1900 &&
+    (!year || (/^\d{1,4}$/.test(year) && Number(year) >= 1900 && Number(year) <= lastYear)) &&
+    (!month ||
+      (/^\d{1,2}$/.test(month) &&
+        Number(month) >= 1 &&
+        Number(month) <= movementMonthLimit({ asOf, year: year ?? '' })))
+  );
+}
+
+export function movementResultFilters(filters: Filters, data: MovementReportData): Filters {
+  return {
+    ...filters,
+    asOf: data.asOf,
+    year: String(data.year),
+    ...(data.month != null && { month: String(data.month) }),
+  };
+}
+
 export interface ReportFailure {
   error: unknown;
   retryAt: number;
@@ -140,13 +185,20 @@ export function reportUrl(
   exporting = false,
   mode?: ExportMode,
 ) {
-  // B53 与 B49 使用不同筛选契约。部门显示名只留在页面，用 ID 查询。
-  const entries = structureReport(report.code)
-    ? ['asOf', 'employType', 'departmentId', 'departmentIncludeChildren'].map((key): [string, string] => [
-        key,
-        filters[key] ?? '',
-      ])
-    : Object.entries(filters);
+  // 部门名称只供界面回显。B54 只有各机构接收月份，只有年度查询接收下钻节点（设计 §4.7）。
+  const { code } = report;
+  const keys = structureReport(code)
+    ? ['asOf', 'employType', 'departmentId', 'departmentIncludeChildren']
+    : movement(code)
+      ? [
+          'asOf',
+          'year',
+          'departmentId',
+          ...(code === 'institution' ? ['month'] : []),
+          ...(code === 'flow' && !exporting ? ['parentId'] : []),
+        ]
+      : Object.keys(filters);
+  const entries = keys.map((key): [string, string] => [key, filters[key] ?? '']);
   const params = new URLSearchParams(entries.filter(([, value]) => value !== ''));
   if (page !== undefined && !statistical(report.code)) {
     params.set('page', String(page));
@@ -171,6 +223,12 @@ export function errorText(error: unknown, exporting = false): string {
 export function cellText(key: string, value: unknown) {
   if (key === 'code') return codeText((value as string | null) ?? null);
   if (value === null || value === undefined) return '—';
+  if (key === 'growthRate' && typeof value === 'number')
+    return new Intl.NumberFormat('zh-CN', {
+      style: 'percent',
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(value);
   const isRatio = key === 'rate' || (key.startsWith('employType:') && key.endsWith(':ratio'));
   if (isRatio && typeof value === 'number')
     return new Intl.NumberFormat('zh-CN', { style: 'percent', maximumFractionDigits: 2 }).format(value);
@@ -186,7 +244,7 @@ export interface DisplayTable {
   total: number;
   summary?: Row;
 }
-export function tablesOf(code: string, data: ReportData): DisplayTable[] {
+export function tablesOf(code: string, data: ReportData, drilled = false): DisplayTable[] {
   if ('items' in data) return [{ key: code, columns: data.columns, rows: data.items, total: data.total }];
   const tables = 'tables' in data ? data.tables : [data];
   return tables.map((table, index) => ({
@@ -196,11 +254,16 @@ export function tablesOf(code: string, data: ReportData): DisplayTable[] {
       {
         key: '_label',
         label:
-          ({ monthly: m.groupMonth, institution: m.institution } as Record<string, string>)[code] ?? m.organization,
+          ({ monthly: m.groupMonth, institution: m.institution } as Record<string, string>)[code] ??
+          (code === 'flow' && drilled ? m.drillOrganization : m.organization),
       },
       ...table.columns,
     ],
-    rows: table.rows.map((row) => ({ ...row.cells, _label: row.label ?? row.organizationName })),
+    rows: table.rows.map((row) => ({
+      ...row.cells,
+      _label: row.label ?? row.organizationName,
+      ...(code === 'flow' && { _organizationId: row.key }),
+    })),
     total: table.rows.length,
     summary: { ...table.summary.cells, _label: m.summary },
   }));
