@@ -4,12 +4,12 @@
  * - 同键同内容 → 返回首次结果，不再执行；同键异内容 → 409 IDEMPOTENCY_CONFLICT；
  * - 执行失败时先回查台账（结果未知先回查，DEC-067）：并发的同键同内容请求中，败者可能因行锁后 revision 已变
  *   得到 409，或在主键上冲突，只要先提交者已记录同一命令，就重放其响应而不是报错。
- * 失败的命令整体回滚；DEC-956 可证实的本人 5xx 回滚须作废原键，其余失败不入台账、可按原键重提。
+ * 业务写入整体回滚；DEC-956 只为命令台账写入阶段可证实的本人 5xx 回滚作废原键。
  * 失败本身按“业务失败 / 存储不可写 / 结果未知”三类另记审计
  * （R1-T16，audit/failures.ts），结果未知时返回 503 RESULT_UNKNOWN，提示按原命令 ID 回查。
  */
 import { createHash } from 'node:crypto';
-import { commandLedger, type Db, eq, IdempotencyConflictError, sql, type Tx, withTenant } from '@italent/db';
+import { commandLedger, type Db, eq, IdempotencyConflictError, type Tx, withTenant } from '@italent/db';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { classifyCommandFailure, type CommandPhase, failureResponse, recordCommandFailure } from './audit/failures.js';
 import { currentAuditRequest } from './audit/request-context.js';
@@ -17,7 +17,7 @@ import { commandTypeOf } from './command-type.js';
 import { AppError } from './errors.js';
 import { auditActor } from './system-actor.js';
 import type { TenantContext } from './tenant-context.js';
-import { advisoryLock, asUuid, lockKey } from './advisory-lock.js';
+import { advisoryLock, advisoryLockSharedPair, asUuid } from './advisory-lock.js';
 
 export interface CommandResult {
   readonly status: ContentfulStatusCode;
@@ -78,17 +78,19 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
   const actorUserId = auditActor(ctx.userId);
   const commandType = commandTypeOf(request?.method, request?.path);
   let phase: CommandPhase = 'execute';
+  let startedLedgerWrite = false;
   try {
     return await withTenant(db, ctx.tenantId, async (tx) => {
       // 台账键保护同租户同键的写入与作废；发起人键保留 F-120 失败回查的隔离。
-      const writeKey = lockKey(...ledgerWriteKey(ctx.tenantId, commandId));
-      const actorKey = lockKey(...commandExecutionKey(ctx.tenantId, ctx.userId, commandId));
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock_shared(${writeKey}), pg_advisory_xact_lock_shared(${actorKey})`,
+      await advisoryLockSharedPair(
+        tx,
+        ledgerWriteKey(ctx.tenantId, commandId),
+        commandExecutionKey(ctx.tenantId, ctx.userId, commandId),
       );
       const replay = await ledgerExit(tx, key, command.guard);
       if (replay) return replay;
       const result = await command.execute(tx, commandId);
+      startedLedgerWrite = true;
       await tx.insert(commandLedger).values({
         tenantId: ctx.tenantId,
         commandId,
@@ -114,8 +116,9 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
       if (!recheckFailed) final = thrown;
     }
     const failure = classifyCommandFailure(final, phase, recheckFailed);
-    // 仅执行阶段事务整体失败，且台账回查得到原错误时，才能为 5xx 记下回滚证据。
+    // 业务执行和取锁阶段失败保留同键重试。只在写入回执的阶段记录可解锁的回滚证据。
     const confirmedRollback =
+      startedLedgerWrite &&
       phase === 'execute' &&
       !recheckFailed &&
       final === error &&
