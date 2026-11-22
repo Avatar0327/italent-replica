@@ -106,6 +106,7 @@ const availableActions = [
 ].map((ob) => ({
   ...ob,
   facts: ob.perm.startsWith('obj:') ? [] : ob.facts,
+  at: ob.perm.startsWith('btn:') ? [...ob.at, ...scoped] : ob.at,
   need: scope,
   purpose: 'disclosure:availableActions' as const,
 }));
