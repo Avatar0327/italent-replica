@@ -10,9 +10,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/command-result/service.ts#readOwnCommandResult',
     'apps/api/src/tenant-context.ts#tenantOf',
   ],
+  'apps/api/src/modules/command-result/service.ts#commandResultRegistry': [
+    'apps/api/src/modules/command-result/registry.ts#createCommandResultRegistry',
+    'apps/api/src/modules/esign/source-command-result.ts#ESIGN_COMMAND_RESULTS',
+  ],
   'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': [
     'apps/api/src/command-type.ts#commandTypeOf',
+    '#commandResultRegistry',
     '#latestFailureGroup',
+    '#readRegisteredCommandResult',
     '#summaryOf',
   ],
   'apps/api/src/modules/command-result/service.ts#summaryOf': ['#UUID'],

@@ -548,7 +548,8 @@ export type OfferActionFilter = (action: OfferRowAction) => boolean;
 
 /** 行操作（AC-OF-16 / 19 / 20）：原站矩阵只保留已接线、且当前用户有权的动作（OFFER_WIRED_ROW_ACTIONS）。 */
 function withActions(row: OfferRow, allowed: OfferActionFilter, current?: ReadonlyMap<string, string>) {
-  const usable = (action: OfferRowAction) => OFFER_WIRED_ROW_ACTIONS.includes(action) && allowed(action);
+  const usable = (action: OfferRowAction) =>
+    (action === 'sign' || OFFER_WIRED_ROW_ACTIONS.includes(action)) && allowed(action);
   const actions = offerRowActions(facts(row));
   return {
     ...offerDto(row, current?.get(row.id)),

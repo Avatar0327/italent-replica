@@ -9,7 +9,7 @@
   "scripts": {
     "lint": "eslint . --max-warnings=0 && prettier --check .",
     "format": "prettier --write .",
-    "typecheck": "pnpm -r run typecheck && tsc -p tsconfig.json",
+    "typecheck": "pnpm -r typecheck && node --max-old-space-size=6144 node_modules/typescript/bin/tsc -p tsconfig.json",
     "test": "vitest run",
     "test:pg": "bash scripts/test-pg.sh",
     "build": "pnpm -r run build",

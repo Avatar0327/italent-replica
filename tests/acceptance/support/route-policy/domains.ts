@@ -23,6 +23,7 @@ import {
 } from '@italent/domain';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { ANALYSIS_CANDIDATE_OBJECTS } from '../../../../apps/api/src/modules/analytics/organization-candidates.js';
 import { ADAPTERS } from '../../../../apps/api/src/modules/approval/adapters.js';
 import { BRANCH_INPUTS, type BranchInput } from './branch-inputs.js';
 import type { Evidence } from './required/types.js';
@@ -72,6 +73,8 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
  * 并把它的 fieldObjectCode 表达式登记到上表（否则上面的检查直接失败）。
  */
 export const NO_SNAPSHOT_YET: Readonly<Record<string, string>> = {
+  // onboarding/approval-contract.ts：BE-16 16a-2b 接入真实采集业务单前，只有审批类型与出厂草稿。
+  entry_info_collection: 'ENTRY_INFO_COLLECTION_UNAVAILABLE',
   // talent-review/approval-adapter.ts：R3-T04 PR-A 只占业务类型位置，PR-D 接入前任何回调 409
   talent_review: 'TALENT_REVIEW_APPROVAL_UNAVAILABLE',
 };
@@ -139,6 +142,7 @@ export function domainConstants(): Record<string, string[]> {
     'employment.exitMode': ['application', 'direct'],
     // 兼职申请类型（part-time/request-routes.ts：requestType = add 走新增入口，extend / end 走 createDateRequestRoute，PT-4c）
     'employment.partTimeRequestType': ['add', 'end', 'extend'],
+    'hrAnalysis.organizationCandidateObject': Object.keys(ANALYSIS_CANDIDATE_OBJECTS).sort(),
     // 人才标准六对象（forms/:object）与可选所属管理单元的五对象（candidates/owner-orgs，字典不设单元）
     'talent.object': Object.keys(TALENT_OBJECTS).sort(),
     // 人才表单的 operation 查询参数（talent/form-access.ts talentFormHandler：create / update，其余 400）
@@ -347,6 +351,19 @@ export const BRANCH_VALUES: Readonly<Record<string, readonly BranchValueEntry[]>
         evidence('const', `${MODULES}/talent/candidates.ts#OWNER_OBJECTS`, "'criterionCategory'"),
         ...TALENT_ANCHORS.filter((anchor) => !anchor.startsWith('descriptionType')).map((anchor) =>
           evidence('const', TALENT_CATALOG, anchor),
+        ),
+      ],
+    },
+  ],
+  'hrAnalysis.organizationCandidateObject': [
+    {
+      field: 'object',
+      values: ANALYSIS_CANDIDATE_OBJECTS,
+      at: [
+        evidence(
+          'const',
+          `${MODULES}/analytics/organization-candidates.ts#ANALYSIS_CANDIDATE_OBJECTS`,
+          'HrStructure: MODULE_OBJECTS.hrStructure.code',
         ),
       ],
     },

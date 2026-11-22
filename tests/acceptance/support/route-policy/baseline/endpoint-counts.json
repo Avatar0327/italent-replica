@@ -8,11 +8,11 @@
     "contract-board": 3,
     "contracts": 25,
     "duty-transfer": 5,
-    "employment": 188,
+    "employment": 191,
     "esign": 20,
     "establishment": 16,
     "evaluation": 34,
-    "hr-analysis": 5,
+    "hr-analysis": 6,
     "hr-dashboard": 3,
     "hr-movement": 4,
     "hr-process-dashboard": 2,
@@ -20,7 +20,7 @@
     "idp": 58,
     "insurance": 4,
     "job": 20,
-    "offers": 21,
+    "offers": 24,
     "org": 17,
     "org-adjustment": 16,
     "permission": 52,
@@ -41,5 +41,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 943
+  "total": 950
 }
