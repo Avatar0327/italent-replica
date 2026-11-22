@@ -1,6 +1,14 @@
-import { commandLedger, employmentPayloadVersions, eq, grantMembership, withTenant } from '@italent/db';
+import {
+  auditCommandFailures,
+  commandLedger,
+  employmentPayloadVersions,
+  eq,
+  grantMembership,
+  withTenant,
+} from '@italent/db';
 import { testDbMode, useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import * as transferService from '../../apps/api/src/modules/transfer/service.js';
 import { failWith500, resultPath, selfTransferWorld, transferPath, withLedgerFault } from './support/f537-rollback.js';
 import { cmd, errorCode, seedTenantWithMember } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -137,4 +145,46 @@ describe('AC-F537 本人命令回滚后按原 ID 回查', () => {
     expect(succeeded.status).toBe(200);
     expect(await succeeded.json()).toMatchObject({ commandId: id, status: 'succeeded', httpStatus: 201 });
   });
+});
+
+it('AC-F537 业务写入中出现相同的 500：回查未知，台账无行，原键可重试', async () => {
+  const { db } = database();
+  const { actor, api, first } = await selfTransferWorld(db);
+  const profile = await api().request('GET', '/api/tenant/self-service/profile', actor);
+  expect(profile.status).toBe(200);
+  const { employee } = (await profile.json()) as { employee: { revision: number } };
+  const id = uniqueSuffix();
+  const submit = () =>
+    api().request('POST', transferPath, {
+      ...actor,
+      ifMatch: employee.revision,
+      idempotencyKey: id,
+      body: { effectiveDate: '2026-10-19', fields: { departmentId: first } },
+    });
+
+  const { createTransfer } = transferService;
+  const fault = vi.spyOn(transferService, 'createTransfer').mockImplementationOnce(async (...args) => {
+    await createTransfer(...args);
+    failWith500();
+  });
+  let failure: Response;
+  try {
+    failure = await submit();
+  } finally {
+    fault.mockRestore();
+  }
+  expect(failure.status, await failure.clone().text()).toBe(500);
+  expect(await errorCode(failure)).toBe('INTERNAL_ERROR');
+  await withTenant(db, actor.tenant, async (tx) => {
+    const [audit] = await tx.select().from(auditCommandFailures).where(eq(auditCommandFailures.commandId, id));
+    expect(audit).toMatchObject({ errorCode: 'INTERNAL_ERROR', httpStatus: 500 });
+    expect.soft(audit?.confirmedRollback).toBeNull();
+    expect.soft(await tx.select().from(commandLedger).where(eq(commandLedger.commandId, id))).toEqual([]);
+    expect(
+      await tx.select().from(employmentPayloadVersions).where(eq(employmentPayloadVersions.commandId, id)),
+    ).toEqual([]);
+  });
+  expect.soft((await api().request('GET', resultPath(id), actor)).status).toBe(404);
+  const retry = await submit();
+  expect(retry.status, await retry.clone().text()).toBe(201);
 });
