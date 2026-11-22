@@ -315,6 +315,10 @@ export const GRAPH: Graph = {
     '#detail',
     '#tableFor',
   ],
+  'apps/api/src/modules/onboarding/preparation-config.ts#recordPreparationConfigChange': [
+    'apps/api/src/audit/record.ts#recordAudit',
+    '#detail',
+  ],
   'apps/api/src/modules/onboarding/preparation-config.ts#requirePreparationTarget': [
     'apps/api/src/modules/onboarding/preparation-config-scope.ts#preparationConfigMissing',
     'apps/api/src/modules/onboarding/preparation-config-scope.ts#preparationRuleScope',
@@ -328,7 +332,6 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/onboarding/preparation-config.ts#writePreparationConfig': [
-    'apps/api/src/audit/record.ts#recordAudit',
     'apps/api/src/modules/employment/context.ts#assertRevision',
     'apps/api/src/modules/onboarding/preparation-config-input.ts#preparationItemBody',
     'apps/api/src/modules/onboarding/preparation-config-input.ts#preparationRuleBody',
@@ -337,6 +340,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/onboarding/preparation-config-scope.ts#preparationConfigMissing',
     '#detail',
     '#identity',
+    '#recordPreparationConfigChange',
     '#requireUnusedItem',
     '#saveRuleChildren',
     '#tableFor',

@@ -1163,7 +1163,7 @@ export const DIGESTS: Digests = {
     PREPARATION_SETTINGS: 'd46e12d3dcef',
   },
   'apps/api/src/modules/onboarding/preparation-config.ts': {
-    writePreparationConfig: '4217b7ca03b8',
+    writePreparationConfig: '2b4f0568a016',
   },
   'apps/api/src/modules/org-adjustment/access.ts': {
     OBJECT: 'b007f3f6067a',
@@ -3002,7 +3002,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/onboarding/preparation-config-routes.ts#route:POST /preparation-rules': 'a7236d8a0581',
   'apps/api/src/modules/onboarding/preparation-config-routes.ts#writeConfig': '85c13bc49fcf',
   'apps/api/src/modules/onboarding/preparation-config-scope.ts#PREPARATION_SETTINGS': '962a8dd9a03e',
-  'apps/api/src/modules/onboarding/preparation-config.ts#writePreparationConfig': 'fa5f74c830a4',
+  'apps/api/src/modules/onboarding/preparation-config.ts#writePreparationConfig': '71129f0fb7a5',
   'apps/api/src/modules/org-adjustment/access.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHead': '838eace8ec6b',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHeadAction': '803a4a5374ea',

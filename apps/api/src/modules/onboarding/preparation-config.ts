@@ -267,6 +267,18 @@ export async function writePreparationConfig(
     await saveRuleChildren(tx, ctx.tenantId, saved.id, input);
   }
   const action = patch === null ? 'archive' : id ? 'update' : 'create';
+  await recordPreparationConfigChange(tx, ctx, kind, action, before, saved);
+  return { id: saved.id, revision: saved.revision, status: saved.archived ? 'archived' : 'saved' };
+}
+
+async function recordPreparationConfigChange(
+  tx: Tx,
+  ctx: BusinessContext,
+  kind: PreparationConfigKind,
+  action: 'create' | 'update' | 'archive',
+  before: Awaited<ReturnType<typeof detail>> | null,
+  saved: Head,
+) {
   await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.userId,
@@ -279,7 +291,6 @@ export async function writePreparationConfig(
     occurredAt: ctx.now,
     commandId: ctx.commandId,
   });
-  return { id: saved.id, revision: saved.revision, status: saved.archived ? 'archived' : 'saved' };
 }
 
 async function requireUnusedItem(tx: Tx, tenantId: string, itemId: string) {
