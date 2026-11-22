@@ -24,7 +24,10 @@ const profileFields = new Set(['name', 'email', 'idType', 'idNumber', 'mobilePho
 const subsets = ['education', 'certificate'] as const satisfies readonly SubsetKind[];
 const mappedSubsets = new Map<string, SubsetKind>(subsets.map((code) => [SUBSETS[code].objectCode, code]));
 
-function templateFieldAllowed({ objectCode, fieldCode }: z.infer<typeof field>) {
+export function templateFieldAllowed({
+  objectCode,
+  fieldCode,
+}: Pick<z.infer<typeof field>, 'objectCode' | 'fieldCode'>) {
   if (objectCode === PERSONNEL_OBJECT) return profileFields.has(fieldCode);
   const subset = mappedSubsets.get(objectCode);
   return (
