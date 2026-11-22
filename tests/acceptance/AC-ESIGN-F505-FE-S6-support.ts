@@ -160,7 +160,7 @@ export async function click(node: HTMLElement | undefined | null) {
 export async function openMenu(name: string, view = '已接受Offer') {
   if (!row(name)) await click(control(view));
   await until(() => row(name), `列表显示 ${name}`);
-  await click(control('行操作', row(name)!) ?? row(name)!.querySelector('button[aria-label]'));
+  await click(control('行操作', row(name)!) ?? row(name)!.querySelector<HTMLElement>('button[aria-label]'));
   await until(() => document.querySelector('[role="menuitem"]'), '行菜单已展开');
 }
 export async function openSign(name: string, view?: string) {

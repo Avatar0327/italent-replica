@@ -69,7 +69,7 @@ it('AC-ESIGN-F505-FE-03 全选超过 20 保留完整选择并禁止提交，人�
 
 async function actSelect(ids: string[]) {
   const picker = dialog()!.querySelector('select')!;
-  for (const option of picker.options) option.selected = ids.includes(option.value);
+  for (const option of Array.from(picker.options)) option.selected = ids.includes(option.value);
   const { act } = await import('./AC-ESIGN-F505-FE-S6-support.js');
   await act(async () => picker.dispatchEvent(new Event('change', { bubbles: true })));
 }

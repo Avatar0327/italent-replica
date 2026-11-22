@@ -27,9 +27,6 @@ function HistoryReader({ source }: { source: SignSource }) {
   const object = permission.snapshot.objects[RECORD_OBJECT];
   const canView = object?.objectCode === RECORD_OBJECT && !object.summary && !permission.loading && !permission.error;
   const visible = (field: string) => permission.field(field).visible;
-  const statusVisible = visible('status');
-  const filesVisible = visible('files');
-  const canDownload = statusVisible && filesVisible && permission.can(RECORD_BUTTONS.download, 'list');
   const download = useESignDownload();
   const [page, setPage] = useState(1);
   const path = `${sourceSignPath(source)}/esign-records?page=${page}&pageSize=${PAGE_SIZE}`;
@@ -45,13 +42,53 @@ function HistoryReader({ source }: { source: SignSource }) {
   }
   if (!canView || unreadable(error)) return null;
   const rows = records?.items ?? [];
-  const columns: TableColumnsType<RecordRow> = [
+  const columns = historyColumns(
+    visible,
+    timezone,
+    page === 1,
+    permission.can(RECORD_BUTTONS.download, 'list') ? download : undefined,
+  );
+  return (
+    <section aria-label={s.history}>
+      <h3>{s.history}</h3>
+      {!!error && (
+        <p role="alert">
+          {s.historyError} <Button onClick={read.refresh}>{s.retry}</Button>
+        </p>
+      )}
+      {read.loading && <p role="status">{s.historyLoading}</p>}
+      {records && !rows.length && <p>{s.emptyHistory}</p>}
+      {!!rows.length && (
+        <Table<RecordRow> rowKey="id" dataSource={rows} columns={columns} pagination={false} size="small" />
+      )}
+      {!!records && records.total > PAGE_SIZE && (
+        <Pagination
+          current={page}
+          pageSize={PAGE_SIZE}
+          total={records.total}
+          showSizeChanger={false}
+          onChange={setPage}
+        />
+      )}
+    </section>
+  );
+}
+
+function historyColumns(
+  visible: (field: string) => boolean,
+  timezone: string,
+  latestPage: boolean,
+  download?: ReturnType<typeof useESignDownload>,
+): TableColumnsType<RecordRow> {
+  const statusVisible = visible('status');
+  const filesVisible = visible('files');
+  return [
     {
       title: m.records.scene,
       render: (_, row, index) => (
         <>
           {sceneText(visible('scene') ? row.scene : undefined)}
-          {page === 1 && index === 0 && (
+          {latestPage && index === 0 && (
             <div>
               <small>{s.latest}</small>
             </div>
@@ -81,7 +118,7 @@ function HistoryReader({ source }: { source: SignSource }) {
         return (
           <>
             <span>{names.join(m.fileSeparator)}</span>
-            {row.status === 'completed' && canDownload && (
+            {row.status === 'completed' && statusVisible && download && (
               <Button type="link" onClick={() => void download(filesPath([row.id]))}>
                 {m.records.download}
               </Button>
@@ -91,28 +128,4 @@ function HistoryReader({ source }: { source: SignSource }) {
       },
     },
   ];
-  return (
-    <section aria-label={s.history}>
-      <h3>{s.history}</h3>
-      {!!error && (
-        <p role="alert">
-          {s.historyError} <Button onClick={read.refresh}>{s.retry}</Button>
-        </p>
-      )}
-      {read.loading && <p role="status">{s.historyLoading}</p>}
-      {records && !rows.length && <p>{s.emptyHistory}</p>}
-      {!!rows.length && (
-        <Table<RecordRow> rowKey="id" dataSource={rows} columns={columns} pagination={false} size="small" />
-      )}
-      {!!records && records.total > PAGE_SIZE && (
-        <Pagination
-          current={page}
-          pageSize={PAGE_SIZE}
-          total={records.total}
-          showSizeChanger={false}
-          onChange={setPage}
-        />
-      )}
-    </section>
-  );
 }

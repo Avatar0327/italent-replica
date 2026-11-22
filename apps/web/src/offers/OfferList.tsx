@@ -103,28 +103,31 @@ function OfferListReader() {
                 emptyText: <Empty description={result.data?.hasDataPermission === false ? ui.noScope : ui.empty} />,
               }}
             />
-            <div className="page-toolbar">
-              <span>{m.total(result.data?.total ?? 0)}</span>
-              <Space>
-                <span>{m.pageSize}</span>
-                <Pagination
-                  current={page}
-                  pageSize={15}
-                  total={result.data?.total ?? 0}
-                  showSizeChanger={false}
-                  onChange={(next) => {
-                    setSign(undefined);
-                    setPage(next);
-                  }}
-                />
-              </Space>
-            </div>
+            <OfferPager
+              page={page}
+              total={result.data?.total ?? 0}
+              onChange={(next) => {
+                setSign(undefined);
+                setPage(next);
+              }}
+            />
           </>
         )}
       </section>
       {sign && <SourceSignDialog source={{ kind: 'offer', id: sign }} onClose={() => setSign(undefined)} />}
       {detail && <OfferDetail key={detail} id={detail} close={() => setDetail(undefined)} />}
     </>
+  );
+}
+function OfferPager({ page, total, onChange }: { page: number; total: number; onChange(page: number): void }) {
+  return (
+    <div className="page-toolbar">
+      <span>{m.total(total)}</span>
+      <Space>
+        <span>{m.pageSize}</span>
+        <Pagination current={page} pageSize={15} total={total} showSizeChanger={false} onChange={onChange} />
+      </Space>
+    </div>
   );
 }
 function OfferToolbar({ view }: { view: View }) {
