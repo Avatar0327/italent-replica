@@ -1,5 +1,4 @@
-import { entryCaseContext } from './entry-case.js';
-import { entryLifecyclePort } from './onboarding-entry-port.js';
+import { createPendingEntryCase } from './entry-case.js';
 import { applyInternSeniority } from './intern-seniority.js';
 import { applyRehireSeniority } from './rehire-seniority.js';
 import { assertRegularizationApplication } from './regularization-eligibility.js';
@@ -210,11 +209,7 @@ export async function createEmploymentBusiness(
     await materializeEmploymentRecord(tx, ctx, business, withImportedUntil(options));
   await appendEmploymentState(tx, ctx, business, business.state);
   if (options.entry?.pendingEntry && !options.replacingPendingEntry && NEW_CYCLE_KINDS.includes(normalized.kind))
-    await entryLifecyclePort().create(tx, entryCaseContext(ctx), {
-      employeeId,
-      businessId: id,
-      pendingDate: normalized.effectiveDate,
-    });
+    await createPendingEntryCase(tx, ctx, employeeId, id, normalized.effectiveDate);
   await bindRehireRetirement(tx, ctx, business);
   await bumpEmploymentEmployee(tx, ctx, employee);
   // 待入职试用期、待入职合同是字段级变更（DEC-019），随创建进同一条审计（F-188 / F-194）

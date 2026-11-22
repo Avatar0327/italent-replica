@@ -11,6 +11,16 @@ export function entryCaseContext(ctx: EmploymentContext) {
   return { ...ctx, userId: auditActor(ctx.userId) };
 }
 
+export async function createPendingEntryCase(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  businessId: string,
+  pendingDate: string,
+) {
+  await entryLifecyclePort().create(tx, entryCaseContext(ctx), { employeeId, businessId, pendingDate });
+}
+
 /** DEC-402：没有历史阶段时不补建。调用方已锁员工及当前业务头。 */
 export async function applyCurrentEntryCase(tx: Tx, ctx: EmploymentContext, change: EntryLifecycleChange) {
   const [current] = await tx
@@ -36,7 +46,8 @@ function dueCases(tenantId: string, today: string) {
     JOIN employment_timeline t ON t.tenant_id = c.tenant_id AND t.record_id = c.current_business_id
     JOIN LATERAL employment_record_status(c.tenant_id, c.current_business_id) s ON true
     WHERE c.tenant_id = ${tenantId} AND c.state = 'pending' AND c.pending_date <= ${today}::date
-      AND t.start_date <= ${today}::date AND s.employee_status IN (${EMPLOYEE_STATUS.probation}, ${EMPLOYEE_STATUS.regular})
+      AND t.start_date <= ${today}::date
+      AND s.employee_status IN (${EMPLOYEE_STATUS.probation}, ${EMPLOYEE_STATUS.regular})
   `;
 }
 

@@ -249,19 +249,7 @@ export async function transitionEmployment<T>(
     ? await reverseCarriedEstablishment(tx, ctx, business.id)
     : [];
   if (input.action === 'delete') {
-    const closesEntryCase =
-      !finishReplacement && ENTRY_KINDS.includes(business.payload.kind) && business.state === 'effective';
-    const previous = await deleteEmploymentBusiness(tx, ctx, business, input.cancelling === true, input.restoreUntil);
-    if (closesEntryCase)
-      await applyCurrentEntryCase(tx, ctx, {
-        kind: 'delete',
-        employeeId: business.employeeId,
-        businessId: business.id,
-      });
-    const { kind, effectiveDate } = business.payload;
-    await personnelHooks.sync(tx, ctx, business.employeeId, business.id, kind, effectiveDate);
-    // 前一条的结束日随删除恢复，其同步履历也要同事务跟着变（AC-TRF-08）。
-    if (previous) await personnelHooks.sync(tx, ctx, business.employeeId, previous.id, previous.kind, previous.date);
+    await deleteBusinessAndSync(tx, ctx, business, input, finishReplacement !== undefined);
   } else if (input.action === 'approve') {
     await approveBusiness(tx, ctx, business, gatedExit?.row);
   } else if (input.action === 'activate' && gatedExit?.row) {
@@ -420,6 +408,27 @@ export function transitionPermitted(
 function assertTransition(business: LockedEmploymentBusiness, action: EmploymentTransitionInput['action']): void {
   if (!transitionPermitted(business, action))
     throw new AppError('CONFLICT', '当前状态不允许此动作', { state: business.state, action });
+}
+
+async function deleteBusinessAndSync(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  input: EmploymentTransitionInput,
+  replacing: boolean,
+) {
+  const closesEntryCase = !replacing && ENTRY_KINDS.includes(business.payload.kind) && business.state === 'effective';
+  const previous = await deleteEmploymentBusiness(tx, ctx, business, input.cancelling === true, input.restoreUntil);
+  if (closesEntryCase)
+    await applyCurrentEntryCase(tx, ctx, {
+      kind: 'delete',
+      employeeId: business.employeeId,
+      businessId: business.id,
+    });
+  const { kind, effectiveDate } = business.payload;
+  await personnelHooks.sync(tx, ctx, business.employeeId, business.id, kind, effectiveDate);
+  // 前一条的结束日随删除恢复，其同步履历也要同事务跟着变（AC-TRF-08）。
+  if (previous) await personnelHooks.sync(tx, ctx, business.employeeId, previous.id, previous.kind, previous.date);
 }
 
 /** 返回时间轴上的前一条（已生效记录被删时），供调用方同步其投影。 */

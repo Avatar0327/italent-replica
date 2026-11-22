@@ -225,23 +225,7 @@ async function replacePendingEntry(
         },
       },
     );
-    await applyCurrentEntryCase(tx, ctx, {
-      kind: 'replace',
-      employeeId: record.employeeId,
-      businessId: record.id,
-      replacementBusinessId: created.id,
-      pendingDate: input.effectiveDate,
-      intent: input.action === 'postpone' && record.entryStatus === ENTRY_STATUS.cancelled ? 'restore' : 'preserve',
-    });
-    await logEntryAction(tx, ctx, {
-      employeeId: record.employeeId,
-      businessId: created.id,
-      previousBusinessId: record.id,
-      action: input.action,
-      remark: input.remark,
-      fromDate: record.effectiveDate,
-      toDate: input.effectiveDate,
-    });
+    await recordEntryReplacement(tx, ctx, record, created.id, input);
     await auditEmployment(
       tx,
       ctx,
@@ -266,6 +250,32 @@ async function replacePendingEntry(
       },
     );
     return { business: created, contract };
+  });
+}
+
+async function recordEntryReplacement(
+  tx: Tx,
+  ctx: EmploymentContext,
+  record: EmploymentRecord,
+  businessId: string,
+  input: ReplaceInput,
+) {
+  await applyCurrentEntryCase(tx, ctx, {
+    kind: 'replace',
+    employeeId: record.employeeId,
+    businessId: record.id,
+    replacementBusinessId: businessId,
+    pendingDate: input.effectiveDate,
+    intent: input.action === 'postpone' && record.entryStatus === ENTRY_STATUS.cancelled ? 'restore' : 'preserve',
+  });
+  await logEntryAction(tx, ctx, {
+    employeeId: record.employeeId,
+    businessId,
+    previousBusinessId: record.id,
+    action: input.action,
+    remark: input.remark,
+    fromDate: record.effectiveDate,
+    toDate: input.effectiveDate,
   });
 }
 
