@@ -15,7 +15,7 @@
  * - 发起审批（BE-14a3）：单个 / 批量都走 runOfferWrite（object.update，与编辑同开关）+ 逐份 Offer 的当前范围；审批流转
  *   在同一事务内交审批中心（approval/engine startOrResume），首节点为空等拒绝时整单回滚。
  */
-import { OFFER_BUTTONS, OFFER_OBJECT } from '@italent/domain';
+import { MODULE_OBJECTS, OFFER_BUTTONS, OFFER_OBJECT } from '@italent/domain';
 import { defineTable, type PolicyBase, type RoutePolicy } from '../../route-policy/index.js';
 import {
   admin,
@@ -81,7 +81,7 @@ const ACTION_DISCLOSURE = {
     scope: noScope('只判按钮'),
     fields: noFields('只决定 toolbarActions'),
   }),
-  rowUpdate: disclose('update', '行操作 submitApproval / edit / send / resend / invalidate'),
+  rowUpdate: disclose('update', '行操作 submitApproval / edit / send / resend / invalidate / sign'),
   rowDelete: disclose('delete', '行操作 delete'),
   rowCopy: disclose('create', '行操作 copy'),
 };
@@ -180,6 +180,57 @@ export const OFFER_POLICIES = defineTable('offers', {
     fields: record,
     optional: ACTION_DISCLOSURE,
   }),
+  'GET /:id/esign-context': object({
+    ...byId,
+    object: OFFER,
+    operation: 'update',
+    button: noButton('签署发起使用 Offer 编辑开关'),
+    scope: point,
+    fields: fixed(['sourceId', 'revision', 'canInitiate', 'reason', 'items'], '发起资格与模板 id/name'),
+  }),
+  'POST /:id/esign-tasks': object({
+    ...byId,
+    object: OFFER,
+    operation: 'update',
+    button: noButton('签署发起使用 Offer 编辑开关'),
+    scope: point,
+    fields: fixed(['sourceId', 'taskId'], '签署命令回执'),
+    guards: ['esign.offer.variableRead'],
+    write: commandWrite(
+      'esign.offer.commandGuard',
+      { generic: { targets: 'sourceId', locator: 'offer.byId' } },
+      {
+        ledger: 'single',
+        preconditions: [
+          'revision',
+          'esign.offer.sourceReady',
+          'esign.offer.noSigning',
+          'esign.offer.templates',
+          'esign.offer.account',
+        ],
+      },
+    ),
+  }),
+  'GET /:id/esign-records': all(
+    [
+      object({
+        object: OFFER,
+        operation: 'view',
+        button: noButton('来源按 Offer 查看权'),
+        scope: point,
+        fields: noFields('Offer 只作为来源范围条件'),
+      }),
+      object({
+        object: MODULE_OBJECTS.eSignRecord.code,
+        operation: 'view',
+        button: noButton('签署记录按查看权'),
+        scope: listScope('esign.recordOwner'),
+        fields: shape('esign.record'),
+      }),
+    ],
+    shape('esign.record'),
+    byId,
+  ),
   'PUT /:id': object({
     ...byId,
     object: OFFER,

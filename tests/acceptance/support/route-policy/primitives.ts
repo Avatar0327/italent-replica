@@ -301,6 +301,7 @@ export const PRIMITIVES: readonly Primitive[] = [
     ].map((fn): Entry => [fn, call(fn), NEAR]),
   ]),
   ...dimension('guard', [
+    ['command.result.registered', call('readRegisteredCommandResult'), { modules: ['command-result'], near: true }],
     ['employment.businessWrite', call('authorizeBusinessWrite'), NEAR],
     // DEC-178 联动范围（LINKED_RECORD_OUT_OF_SCOPE）与直接调动开关：业务深处调用，按深闭包观测
     ['employment.linkage', call('requireLinkedEmploymentRecord')],
@@ -412,6 +413,7 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['talent.formOperation', /operation !== 'create' && operation !== 'update'/, { modules: ['talent'] }],
     ['talent.ownerUnitObject', call('ownerObject'), { modules: ['talent'] }],
     ['qualification.ownerUnitObject', call('ownerObject'), { modules: ['qualification'] }],
+    ['hrAnalysis.organizationCandidateObject', call('organizationCandidateObject'), { modules: ['hr-analysis'] }],
   ]),
 ];
 

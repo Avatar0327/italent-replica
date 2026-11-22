@@ -25,20 +25,6 @@
       "obj:TenantBase.HrMovement:view"
     ]
   },
-  "GET /api/tenant/analytics/hr-movement/components/:code/export": {
-    "all": {
-      "code": "NOT_FOUND",
-      "error": "4f8e39cb5adf",
-      "status": 404
-    },
-    "fieldQueries": [],
-    "scopeQueries": [
-      "scope:TenantBase/TenantBase.HrMovement/TenantBase.HrMovement.list"
-    ],
-    "trace": [
-      "obj:TenantBase.HrMovement:view"
-    ]
-  },
   "GET /api/tenant/analytics/hr-movement/reports/:report": {
     "all": {
       "code": "NOT_FOUND",

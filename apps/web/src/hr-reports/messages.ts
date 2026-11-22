@@ -36,6 +36,15 @@ export const m = {
   year: '年度',
   month: '月份',
   employType: '雇佣关系',
+  department: '部门',
+  includeChildren: '包含下级',
+  yes: '是',
+  no: '否',
+  candidateUnavailable: '筛选项暂不可用',
+  retryCandidates: '重试筛选项',
+  disabledDepartment: (name: string) => `${name}（已停用）`,
+  structureReports: '员工结构',
+  movementReports: '流动情况',
   all: '全部',
   rosterPopulation: '在职内部员工和实习生（试用、正式）',
   rosterStatuses: '试用、正式',
@@ -44,6 +53,8 @@ export const m = {
   summary: '合计',
   institution: '一级机构',
   organization: '一级组织',
+  drillOrganization: '组织',
+  organizationHierarchy: '组织层级',
   groupMonth: '月份',
   total: (n: number) => `共 ${n} 条`,
 } as const;
@@ -60,4 +71,9 @@ export const descriptions: Readonly<Record<string, string>> = {
   monthly: '按年度统计本年各月期初、期末、入职、离职人数。',
   institution: '一级机构、指定月份的入离职统计。',
   quality: '年龄段、司龄段、学历、性别分布。',
+};
+export const movementDescriptions: Readonly<Record<string, string>> = {
+  flow: '离职按最后工作日归年，统计截至时点日期与所选年度年底中较早的一天。',
+  monthly: '离职按最后工作日归月，时点之后的月份留空。',
+  institution: '按行政树一级机构统计所选月份，离职按最后工作日归月。',
 };

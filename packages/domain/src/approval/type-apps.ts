@@ -19,6 +19,7 @@ export const APPROVAL_TYPE_APPS: Readonly<Record<ApprovalTypeCode, AppId>> = {
   regularization: 'transfer',
   intern_regularization: 'transfer',
   hire: 'transfer',
+  entry_info_collection: 'transfer',
   retirement: 'transfer',
   add_employee: 'transfer',
   retirement_intention: 'transfer',

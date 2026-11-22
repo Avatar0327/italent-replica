@@ -85,9 +85,9 @@ describe('预置流程（§4.2，DEC-644 A-2：取人口径是推断，可改草
     }
   });
 
-  it('其他预置不带 publishOnProvision: false（照旧开通时发布）', () => {
-    const others = PRESET_PROCESSES.filter((p) => p.approvalType !== 'org_adjustment');
-    expect(others.every((p) => p.publishOnProvision !== false)).toBe(true);
+  it('仅组织调整和入职前信息采集的预置在开通时保留草稿', () => {
+    const draftOnly = PRESET_PROCESSES.filter((p) => p.publishOnProvision === false);
+    expect(draftOnly.map((p) => p.approvalType).sort()).toEqual(['entry_info_collection', 'org_adjustment']);
   });
 });
 

@@ -21,6 +21,7 @@ import {
   DISCOVERY_ROUTES,
   DISCOVERY_TABLE,
 } from './support/route-policy/discovery-fixture.js';
+import { RESULT_ROUTE } from './AC-CMD-F553-support.js';
 import { createAuthorizerDouble } from './support/route-policy/double.js';
 import {
   checkDiscovery,
@@ -41,6 +42,7 @@ import { generatedGate, textDrift } from './support/route-policy/generated-gate.
 import { expectDeclared, sameStatusInvalidIdRoutes } from './support/route-policy/module-declared.js';
 import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { permClaims } from './support/route-policy/request-perms.js';
+import { ENTRY_SIGN_PROBE_KEYS } from './support/route-policy/entry-sign-probe.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
 
@@ -114,19 +116,36 @@ describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
     expect(generatedGate('发现探测冻结文件：新鲜', drift)).toEqual([]);
   });
 
-  it('请求数 = 端点数 + 带 id 参数的端点数（非法标识各多一次）；探测可重复（两次结果相同）', async () => {
+  it('占位请求数 = 端点数 + 带 id 参数的端点数（非法标识各多一次）；探测可重复（两次结果相同）', async () => {
     const withId = Object.values(fresh).filter((d) => d.invalidId !== undefined).length;
     expect(requestsSent).toBe(manifest.declared.length + withId);
     expect(withId).toBeGreaterThan(100);
     const { rig } = await createRig(testDb().db);
     const sample = manifest.declared.filter((_r, i) => i % 40 === 0);
-    for (const r of sample) expect(await discoverRoute(rig, r), key(r)).toEqual(fresh[key(r)]);
+    for (const r of sample) {
+      const { entrySignBranches: _branches, ...placeholder } = fresh[key(r)]!;
+      expect(await discoverRoute(rig, r), key(r)).toEqual(placeholder);
+    }
   }, 120_000);
 
-  it('发现事实只含 O* / T* / 范围与字段查询 / 非法标识 / 未达原因，不含声明字段', () => {
+  it('占位及登记回查探测只冻结请求事实，不含声明字段', () => {
     const allowed = new Set(['all', 'trace', 'scopeQueries', 'fieldQueries', 'invalidId', 'unmapped', 'gap']);
+    expect(Object.keys(fresh[RESULT_ROUTE]?.registeredCommands ?? {}).sort()).toEqual(['entry', 'offer']);
+    const entrySignKeys: ReadonlySet<string> = new Set(Object.values(ENTRY_SIGN_PROBE_KEYS));
+    expect(
+      Object.keys(fresh)
+        .filter((key) => fresh[key]?.entrySignBranches)
+        .sort(),
+    ).toEqual([...entrySignKeys].sort());
     for (const [k, d] of Object.entries(fresh)) {
-      for (const field of Object.keys(d)) expect(allowed.has(field), `${k}.${field}`).toBe(true);
+      for (const field of Object.keys(d)) {
+        expect(
+          allowed.has(field) ||
+            (k === RESULT_ROUTE && field === 'registeredCommands') ||
+            (entrySignKeys.has(k) && field === 'entrySignBranches'),
+          `${k}.${field}`,
+        ).toBe(true);
+      }
       expect(JSON.stringify(d), k).not.toMatch(/"kind"/);
     }
   });

@@ -247,6 +247,23 @@ export async function retirementRehireDetail(
   return { rehire: { ...plan, contract }, contract: (field) => fields === undefined || fields.has(field) };
 }
 
+const DUTY_PLAN_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = Object.fromEntries(
+  [
+    'dutyTransferPlanLocked',
+    'dutyTransferPlan',
+    'dutyTransferPlan.subordinates',
+    'dutyTransferPlan.subordinates[]',
+    'dutyTransferPlan.subordinates[].employeeId',
+    'dutyTransferPlan.subordinates[].receiverId',
+    'dutyTransferPlan.subordinates[].relation',
+    'dutyTransferPlan.orgRoles',
+    'dutyTransferPlan.orgRoles[]',
+    'dutyTransferPlan.orgRoles[].orgId',
+    'dutyTransferPlan.orgRoles[].receiverId',
+    'dutyTransferPlan.orgRoles[].role',
+  ].map((path) => [path, on('dutyTransfer')]),
+);
+
 export function trimRetirementDetail(
   detail: NonNullable<Awaited<ReturnType<typeof loadRetirementDetail>>> & { readonly rehire?: RehirePlan | null },
   show: ExitViewable,
@@ -260,6 +277,7 @@ export function trimRetirementDetail(
   const rules = {
     ...RETIREMENT_RESPONSE_DEPENDENCIES,
     ...REHIRE_RESPONSE_DEPENDENCIES,
+    ...DUTY_PLAN_RESPONSE_DEPENDENCIES,
     ...Object.fromEntries(
       Object.keys(rehire?.customFields ?? {}).map((id) => [`rehire.customFields.${id}`, on(`custom:${id}`)]),
     ),

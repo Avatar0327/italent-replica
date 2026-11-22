@@ -61,6 +61,45 @@
       "obj:TenantBase.Offer:view"
     ]
   },
+  "GET /api/tenant/offers/:id/esign-context": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "2a146d3522c1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Offer/-"
+    ],
+    "trace": [
+      "obj:TenantBase.Offer:update"
+    ]
+  },
+  "GET /api/tenant/offers/:id/esign-records": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "2a146d3522c1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.ESignRecord:view",
+      "obj:TenantBase.Offer:view"
+    ]
+  },
   "GET /api/tenant/offers/:id/mail": {
     "all": {
       "code": "NOT_FOUND",
@@ -192,6 +231,23 @@
     ],
     "trace": [
       "obj:TenantBase.Offer:create"
+    ]
+  },
+  "POST /api/tenant/offers/:id/esign-tasks": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ed161d139f85",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.Offer:update"
     ]
   },
   "POST /api/tenant/offers/:id/invalidate": {
