@@ -1919,6 +1919,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/entry-routes.ts#editInput': [
     'packages/domain/src/employment/entry.ts#ENTRY_EDIT_EMPLOY_TYPES',
   ],
+  'apps/api/src/modules/employment/entry-routes.ts#entryCollectionQuery': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    '#parse',
+    'apps/api/src/modules/employment/entry-views.ts#ENTRY_COLLECTION_STATUSES',
+    'apps/api/src/modules/onboarding/collection-access.ts#COLLECTION',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+  ],
   'apps/api/src/modules/employment/entry-routes.ts#postponeInput': ['#remark'],
   'apps/api/src/modules/employment/entry-routes.ts#prepareEntryAction': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -1944,6 +1953,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
+    '#entryCollectionQuery',
     '#parse',
     'apps/api/src/modules/employment/entry-views.ts#ENTRY_VIEWS',
     'apps/api/src/modules/employment/entry-views.ts#listEntryView',

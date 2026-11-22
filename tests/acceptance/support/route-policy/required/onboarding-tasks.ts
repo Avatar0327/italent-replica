@@ -30,13 +30,13 @@ function objectReads(at: readonly Evidence[]): Obligation[] {
     {
       perm: `obj:${RECORD}:view`,
       need: scope,
-      facts: objectFacts,
+      facts: [...objectFacts, `objectOp:${RECORD}:view`],
       at: [...at, target('impl', "action: 'object.view', resource: EMPLOYMENT_OBJECT"), ...scoped],
     },
     {
       perm: `obj:${COLLECTION}:view`,
       need: scope,
-      facts: objectFacts,
+      facts: [...objectFacts, `objectOp:${COLLECTION}:view`],
       at: [...at, target('impl', "action: 'object.view', resource: COLLECTION"), ...scoped],
     },
     { perm: `guard:${TARGET}`, at: [...at, ...scoped] },
@@ -89,18 +89,30 @@ const actionAt = [
 const availableActions = [
   ...writeAccess(actionAt, 'create', 'CollectionStart', 'detail'),
   ...writeAccess(actionAt, 'update', 'CollectionComment', 'detail').slice(1),
+  {
+    perm: `guard:${TARGET}`,
+    at: [
+      ...actionAt,
+      evidence(
+        'scope',
+        VIEW,
+        'collectionActions',
+        "await requireCollectionTarget(tx, deps, ctx, stage.currentBusinessId, 'write', false)",
+      ),
+      ...scoped,
+    ],
+    facts: [],
+  },
 ].map((ob) => ({
   ...ob,
-  need: ob.need ?? { scope: 'none' as const },
+  facts: ob.perm.startsWith('obj:') ? [] : ob.facts,
+  need: scope,
   purpose: 'disclosure:availableActions' as const,
 }));
 
-const form = (key: 'profile' | 'education' | 'certificate', code: string): Obligation => ({
-  perm: `obj:TenantBase.${code}:view`,
-  purpose: `disclosure:${key}`,
-  need: { scope: 'guard', guard: 'onboarding.visibleForm' },
-  facts: objectFacts,
-  at: [
+function form(key: 'profile' | 'education' | 'certificate', code: string): Obligation[] {
+  const need: Need = { scope: 'guard', guard: 'onboarding.visibleForm' };
+  const at = [
     readAt[0]!,
     evidence('impl', VIEW, 'visibleForm', "action: 'object.view', resource: object"),
     evidence(
@@ -109,16 +121,22 @@ const form = (key: 'profile' | 'education' | 'certificate', code: string): Oblig
       'visibleForm',
       'await requirePerson(tx, { ...ctx, scope, objectCode: object }, stage.employeeId)',
     ),
-  ],
-});
+  ];
+  return [`obj:TenantBase.${code}:view`, 'guard:onboarding.visibleForm'].map((perm) => ({
+    perm,
+    purpose: `disclosure:${key}`,
+    need,
+    at,
+  }));
+}
 
 export const ONBOARDING_TASKS: RequiredTable = {
   [`GET ${BASE}${ENTRY}`]: [
     ...objectReads(readAt),
     ...availableActions,
-    form('profile', 'EmployeeInformation'),
-    form('education', 'Education'),
-    form('certificate', 'Certificate'),
+    ...form('profile', 'EmployeeInformation'),
+    ...form('education', 'Education'),
+    ...form('certificate', 'Certificate'),
   ],
   [`POST ${BASE}${ENTRY}/start`]: taskWrite(`${ENTRY}/start`, 'CollectionStart', 'create'),
   [`POST ${BASE}${ENTRY}/remind`]: taskWrite(`${ENTRY}/remind`, 'CollectionRemind', 'update'),
