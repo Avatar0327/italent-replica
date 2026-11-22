@@ -62,7 +62,7 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
     const f = await fixture('ZZ_BE16_LIFECYCLE');
     const { entry, run, context, replacements } = f;
     const { port, app } = install(f.db);
-    expect(app.routes.filter(({ path }) => path.startsWith('/api/tenant/onboarding'))).toEqual([]);
+    expect(app.routes.filter(({ path }) => path.startsWith('/api/tenant/onboarding/entries'))).toEqual([]);
     const created = await run((tx) => port.create(tx, context(), entry));
     expect(await run((tx) => port.create(tx, context(), entry))).toEqual(created);
     const replacement = { ...entry, kind: 'replace' as const, replacementBusinessId: replacements[0], pendingDate };

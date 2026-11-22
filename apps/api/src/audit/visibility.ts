@@ -887,6 +887,7 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   employment_type: { code: MODULE_OBJECTS.employmentType.code },
   exit_dictionary: { code: 'TenantBase.EmploymentSettings' },
   offer_dictionary: { code: 'TenantBase.EmploymentSettings' },
+  'onboarding-integration-task-pool': { code: MODULE_OBJECTS.employmentSettings.code },
   blacklist_rule: { code: 'TenantBase.EmploymentSettings' },
   exit_handover_item: { code: 'TenantBase.EmploymentSettings' },
   retirement_rule: { code: 'TenantBase.EmploymentSettings' },

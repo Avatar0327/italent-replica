@@ -1,0 +1,90 @@
+{
+  "DELETE /api/tenant/onboarding/integration/task-pool/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "f3b2bdd037d2",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
+  "GET /api/tenant/onboarding/integration/task-pool": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:create",
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "GET /api/tenant/onboarding/integration/task-pool/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "f3b2bdd037d2",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "GET /api/tenant/onboarding/integration/task-pool/categories": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "PATCH /api/tenant/onboarding/integration/task-pool/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "953c35b2231d",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
+  "POST /api/tenant/onboarding/integration/task-pool": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "3d58cb070c97",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:create"
+    ]
+  }
+}

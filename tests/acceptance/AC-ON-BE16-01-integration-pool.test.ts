@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { auditEvents, commandLedger, eq, grantMembership, sql, withTenant } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
+import { auditEvents, commandLedger, eq, grantMembership, pgErrorCode, sql, withTenant } from '@italent/db';
+import { testDbMode, useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { lockIntegrationPoolTaskForAttachment } from '../../apps/api/src/modules/onboarding/integration-pool.js';
 import { grantStandardProfile } from '../../apps/api/src/modules/permission/standard-profiles.js';
 import { provisionTenant } from '../../apps/api/src/modules/platform/provisioning.js';
 import { newUser, seedOperator } from './support/platform-api.js';
@@ -111,7 +112,7 @@ describe('AC-ON-BE16-01 融入任务池设置', () => {
     const form = { type: 'form', fields: [{ code: 'summary', label: 'ZZ_BE16_说明', kind: 'text', required: true }] };
     const saved = await request('POST', '', { ifMatch: 0, body: createBody('ZZ_BE16_FORM', form, 'administrative') });
     expect(saved.status).toBe(201);
-    const listed = await request('GET', '?category=administrative&limit=1');
+    const listed = await request('GET', '?category=administrative&pageSize=1');
     expect(await listed.json()).toMatchObject({ items: [{ code: 'ZZ_BE16_FORM', action: form }] });
     for (const invalid of [
       createBody('ZZ_BE16_FORM_AS_ASSESSMENT', form),
@@ -127,8 +128,10 @@ describe('AC-ON-BE16-01 融入任务池设置', () => {
 
   it('直接新建与局部更新拒绝绩效活动，保留原配置、revision、审计和成功台账', async () => {
     const { request, db, tenantId } = await fixture();
+    const createKey = randomUUID();
     const opened = await request('POST', '', {
       ifMatch: 0,
+      idempotencyKey: createKey,
       body: createBody('ZZ_BE16_PERF', { type: 'performance_activity' }),
     });
     expect(opened.status).toBe(400);
@@ -151,7 +154,8 @@ describe('AC-ON-BE16-01 融入任务池设置', () => {
     expect(await (await request('GET', '')).json()).toMatchObject({ items: [{ id }] });
 
     await withTenant(db, tenantId, async (tx) => {
-      expect(await tx.select().from(commandLedger).where(eq(commandLedger.commandId, idempotencyKey))).toEqual([]);
+      for (const key of [createKey, idempotencyKey])
+        expect(await tx.select().from(commandLedger).where(eq(commandLedger.commandId, key))).toEqual([]);
       const audits = await tx.select().from(auditEvents).where(eq(auditEvents.objectId, id));
       expect(audits.map(({ action }) => action)).toEqual(['onboarding.integration_pool.create']);
     });
@@ -163,10 +167,13 @@ describe('AC-ON-BE16-01 融入任务池设置', () => {
     });
     expect(edited.status).toBe(200);
     expect(await edited.json()).toEqual({ id, revision: 2, status: 'disabled' });
+    await expect(
+      withTenant(db, tenantId, (tx) => lockIntegrationPoolTaskForAttachment(tx, tenantId, id)),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: { reason: 'INTEGRATION_TASK_DISABLED' } });
   });
 
   it('同租户组合外键阻止删除被引用项，解除引用后可删除并重放 204', async () => {
-    const { request, db, tenantId } = await fixture();
+    const { request, db, tenantId, provision } = await fixture();
     const created = await request('POST', '', { ifMatch: 0, body: createBody('ZZ_BE16_REFERENCED') });
     expect(created.status).toBe(201);
     const { id } = await created.json();
@@ -176,16 +183,24 @@ describe('AC-ON-BE16-01 融入任务池设置', () => {
         tenant_id uuid NOT NULL, pool_id uuid NOT NULL,
         FOREIGN KEY (tenant_id, pool_id) REFERENCES onboarding_integration_task_pool(tenant_id, id)
           ON DELETE RESTRICT
-      );
-      ALTER TABLE zz_be16_pool_reference ENABLE ROW LEVEL SECURITY;
-      ALTER TABLE zz_be16_pool_reference FORCE ROW LEVEL SECURITY;
-      CREATE POLICY tenant_isolation ON zz_be16_pool_reference
-        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
-      GRANT SELECT, INSERT, DELETE ON zz_be16_pool_reference TO app_user
+      )
     `);
-    await withTenant(db, tenantId, (tx) =>
-      tx.execute(sql`INSERT INTO zz_be16_pool_reference VALUES (${tenantId}::uuid, ${id}::uuid)`),
-    );
+    await db.execute(sql`SELECT enable_tenant_isolation('zz_be16_pool_reference')`);
+    await db.execute(sql`GRANT SELECT, INSERT, DELETE ON zz_be16_pool_reference TO app_user`);
+    const otherTenant = (await provision()).tenant.id;
+    const reference = (owner: string) =>
+      withTenant(db, owner, (tx) =>
+        tx.execute(sql`INSERT INTO zz_be16_pool_reference VALUES (${owner}::uuid, ${id}::uuid)`),
+      );
+    await expect(reference(otherTenant).catch(pgErrorCode)).resolves.toBe('23503');
+    await withTenant(db, tenantId, async (tx) => {
+      await expect(lockIntegrationPoolTaskForAttachment(tx, tenantId, id)).resolves.toMatchObject({
+        id,
+        action: assessment('probation'),
+        revision: 1,
+      });
+      await tx.execute(sql`INSERT INTO zz_be16_pool_reference VALUES (${tenantId}::uuid, ${id}::uuid)`);
+    });
     const target = `/${id}`;
     const blocked = await request('DELETE', target, { ifMatch: 1 });
     expect(blocked.status).toBe(409);
@@ -210,6 +225,15 @@ describe('AC-ON-BE16-01 融入任务池设置', () => {
     const receipt = await created.json();
     const suffix = `/${receipt.id}`;
     expect(await (await request('POST', '', options)).json()).toEqual(receipt);
+    const result = () =>
+      api.request('GET', `/api/tenant/commands/${idempotencyKey}/result`, { user: admin.id, tenant: tenantId });
+    expect(await (await result()).json()).toEqual({
+      status: 'succeeded',
+      commandType: `POST ${path}`,
+      businessId: receipt.id,
+      revision: 1,
+      httpStatus: 201,
+    });
     expect((await request('GET', '', { user: hr.id })).status).toBe(403);
     expect((await request('GET', suffix, { user: hr.id })).status).toBe(403);
     expect((await request('POST', '', { ...options, user: hr.id })).status).toBe(403);
@@ -230,10 +254,17 @@ describe('AC-ON-BE16-01 融入任务池设置', () => {
       tx.execute(sql`UPDATE permission_admins SET status = 'revoked' WHERE user_id = ${admin.id}::uuid`),
     );
     expect((await request('POST', '', options)).status).toBe(403);
-    const result = await api.request('GET', `/api/tenant/commands/${idempotencyKey}/result`, {
-      user: admin.id,
-      tenant: tenantId,
-    });
-    expect(result.status).toBe(403);
+    expect((await result()).status).toBe(403);
+  });
+
+  it.skipIf(testDbMode() !== 'pg')('双连接创建同一租户任务编码只保存一条', async () => {
+    const { request } = await fixture();
+    const body = createBody('ZZ_BE16_CONCURRENT');
+    const results = await Promise.all([
+      request('POST', '', { ifMatch: 0, body }),
+      request('POST', '', { ifMatch: 0, body }),
+    ]);
+    expect(results.map(({ status }) => status).sort()).toEqual([201, 409]);
+    expect(await (await request('GET', '')).json()).toMatchObject({ items: [{ code: body.code, revision: 1 }] });
   });
 });

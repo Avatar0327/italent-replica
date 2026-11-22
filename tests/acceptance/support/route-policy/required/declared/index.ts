@@ -26,6 +26,7 @@ import { ORG_ADJUSTMENT_DECLARED } from './org-adjustment.js';
 import { PERMISSION_DECLARED } from './permission.js';
 import { PERSONNEL_DECLARED } from './personnel.js';
 import { QUALIFICATION_DECLARED } from './qualification.js';
+import { ONBOARDING_DECLARED } from './onboarding.js';
 import { ROOT_DECLARED } from './root.js';
 import { SELF_SERVICE_DECLARED } from './self-service.js';
 import { SUCCESSION_DECLARED } from './succession.js';
@@ -42,6 +43,7 @@ export const DECLARED: Readonly<Record<string, ModuleDeclared>> = {
   attachments: ATTACHMENTS_DECLARED,
   'command-result': COMMAND_RESULT_DECLARED,
   contracts: CONTRACTS_DECLARED,
+  onboarding: ONBOARDING_DECLARED,
   employment: EMPLOYMENT_DECLARED,
   establishment: ESTABLISHMENT_DECLARED,
   evaluation: EVALUATION_DECLARED,
