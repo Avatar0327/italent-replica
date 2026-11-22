@@ -1,6 +1,8 @@
 import { codeText } from '../foundation/code-text.js';
 import {
   PERSONNEL_REPORTS,
+  HR_STRUCTURE_REPORTS,
+  HR_STRUCTURE_REPORT_EMPLOY_TYPES,
   reportCellLabel,
   rosterCellText,
   TERM_TYPE_LABELS,
@@ -9,8 +11,19 @@ import {
 import { ApiError } from '../foundation/client.js';
 import { m } from './messages.js';
 export const base = '/api/tenant/hr-analysis/reports';
-export const reportOf = (code: string) => PERSONNEL_REPORTS.find((r) => r.code === code);
-export const statistical = (code: string) => ['monthly', 'institution', 'quality'].includes(code);
+export const catalogReportOf = (code: string) => PERSONNEL_REPORTS.find((r) => r.code === code);
+const positionReport: PersonnelReport = {
+  ...HR_STRUCTURE_REPORTS.find(({ code }) => code === 'position')!,
+  endpoint: '/api/tenant/analytics/hr-structure/reports/position',
+  permission: 'hrStructureReport',
+  group: '人事报表',
+  requires: [],
+};
+export const structureReports = [catalogReportOf('quality')!, positionReport];
+export const reportOf = (code: string) => catalogReportOf(code) ?? structureReports.find((r) => r.code === code);
+export const structureReport = (code: string) => structureReports.some((report) => report.code === code);
+export const supportsStatExport = (code: string) => ['monthly', 'institution', 'quality'].includes(code);
+export const statistical = (code: string) => structureReport(code) || supportsStatExport(code);
 export const movement = (code: string) => ['monthly', 'institution'].includes(code);
 export interface Column {
   key: string;
@@ -27,6 +40,7 @@ export interface RosterPage {
   asOf?: string;
 }
 export interface Statistics {
+  asOf?: string;
   columns: Column[];
   rows: { key?: string; label?: string; organizationId?: string; organizationName?: string; cells: Row }[];
   summary: { cells: Row };
@@ -68,20 +82,29 @@ export function rosterResultFilters(
   return { ...allowed, asOf: result.asOf ?? filters.asOf ?? '' };
 }
 
+export function validReportDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000-')) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 export function validRosterFilters(filters: Filters): boolean {
-  const validDate = (value: string) => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000-')) return false;
-    const date = new Date(`${value}T00:00:00Z`);
-    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
-  };
   const { asOf, workDateFrom: from, workDateTo: to, employeeStatus } = filters;
   return Boolean(
     asOf &&
-    validDate(asOf) &&
-    (!from || validDate(from)) &&
-    (!to || validDate(to)) &&
+    validReportDate(asOf) &&
+    (!from || validReportDate(from)) &&
+    (!to || validReportDate(to)) &&
     (!from || !to || from <= to) &&
     (!employeeStatus || employeeStatus === '2' || employeeStatus === '3'),
+  );
+}
+
+export function validStructureFilters(filters: Filters): boolean {
+  return (
+    validReportDate(filters.asOf ?? '') &&
+    HR_STRUCTURE_REPORT_EMPLOY_TYPES.some((type) => type === filters.employType) &&
+    ['true', 'false'].includes(filters.departmentIncludeChildren ?? '')
   );
 }
 
@@ -103,7 +126,10 @@ export function initialFilters(code: string, today: string): Filters {
   const filters: Filters = { asOf: today };
   if (movement(code)) filters.year = today.slice(0, 4);
   if (code === 'institution') filters.month = String(Number(today.slice(5, 7)));
-  if (code === 'quality') filters.employType = 'internal';
+  if (structureReport(code)) {
+    filters.employType = 'internal';
+    filters.departmentIncludeChildren = 'true';
+  }
   return filters;
 }
 /** 查询/导出共用已执行的筛选；不向统计接口发并不存在的分页参数。 */
@@ -114,7 +140,14 @@ export function reportUrl(
   exporting = false,
   mode?: ExportMode,
 ) {
-  const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== ''));
+  // B53 与 B49 使用不同筛选契约。部门显示名只留在页面，用 ID 查询。
+  const entries = structureReport(report.code)
+    ? ['asOf', 'employType', 'departmentId', 'departmentIncludeChildren'].map((key): [string, string] => [
+        key,
+        filters[key] ?? '',
+      ])
+    : Object.entries(filters);
+  const params = new URLSearchParams(entries.filter(([, value]) => value !== ''));
   if (page !== undefined && !statistical(report.code)) {
     params.set('page', String(page));
     params.set('pageSize', String(pageSize));
@@ -138,7 +171,8 @@ export function errorText(error: unknown, exporting = false): string {
 export function cellText(key: string, value: unknown) {
   if (key === 'code') return codeText((value as string | null) ?? null);
   if (value === null || value === undefined) return '—';
-  if (key === 'rate' && typeof value === 'number')
+  const isRatio = key === 'rate' || (key.startsWith('employType:') && key.endsWith(':ratio'));
+  if (isRatio && typeof value === 'number')
     return new Intl.NumberFormat('zh-CN', { style: 'percent', maximumFractionDigits: 2 }).format(value);
   if (key === 'termType') return TERM_TYPE_LABELS[String(value)] ?? String(value);
   return reportCellLabel(key, value) ?? rosterCellText(key, value);

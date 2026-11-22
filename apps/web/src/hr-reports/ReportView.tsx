@@ -15,6 +15,8 @@ import {
   rosterFilters,
   rosterResultFilters,
   statistical,
+  structureReport,
+  supportsStatExport,
   type Column,
   type Filters,
   type ReportData,
@@ -54,17 +56,21 @@ export function ReportView({
 function useReportPage(report: PersonnelReport) {
   const session = useSession();
   const roster = report.code === 'roster';
+  const structure = structureReport(report.code);
+  const checksAccess = roster || structure;
   const today = session.today ?? tenantDate(new Date(), session.timezone);
   const [initial] = useState(() => initialFilters(report.code, today));
   const [query, setQuery] = useState({ filters: initial, page: 1, generation: 0 });
   const [exportFailure, setExportFailure] = useState<ReportFailure>();
   const [lastColumns, setLastColumns] = useState(noColumns);
   const read = useReportRead<ReportData>(reportUrl(report, query.filters, query.page), query.generation);
-  const waiting = useReportRetryWait(Math.max(read.failure?.retryAt ?? 0, exportFailure?.retryAt ?? 0));
+  const waiting = useReportRetryWait(
+    Math.max(read.failure?.retryAt ?? 0, checksAccess ? (exportFailure?.retryAt ?? 0) : 0),
+  );
   const exportStatus = statusOf(exportFailure?.error);
   const readStatus = statusOf(read.error);
-  const loginRequired = roster && (readStatus === 401 || exportStatus === 401);
-  const exportDenied = roster && exportStatus === 403;
+  const loginRequired = checksAccess && (readStatus === 401 || exportStatus === 401);
+  const exportDenied = checksAccess && exportStatus === 403;
   const data = exportDenied || loginRequired ? undefined : read.data;
   const rosterPage = roster && data && 'items' in data ? data : undefined;
   const reported = data && 'items' in data ? data.columns : undefined;
@@ -76,7 +82,8 @@ function useReportPage(report: PersonnelReport) {
   const columns = roster ? (knownColumns ?? lastColumns) : (reported ?? noColumns);
   const resultFilters = rosterPage ? rosterResultFilters(query.filters, rosterPage) : undefined;
   const filtersChanged = Boolean(rosterPage && !resultFilters);
-  const applied = roster ? resultFilters : query.filters;
+  const resultDate = structure && data && 'asOf' in data ? data.asOf : undefined;
+  const applied = roster ? resultFilters : resultDate ? { ...query.filters, asOf: resultDate } : query.filters;
 
   function request(filters: Filters, page: number) {
     if (waiting) return;
@@ -91,6 +98,7 @@ function useReportPage(report: PersonnelReport) {
 
   return {
     roster,
+    structure,
     columns,
     initial,
     query,
@@ -106,13 +114,16 @@ function useReportPage(report: PersonnelReport) {
     setExportFailure,
     request,
     changePage,
-    canRetry: !roster || readStatus === undefined || [0, 429, 502, 503].includes(readStatus),
+    departmentsAllowed: !exportDenied && readStatus !== 403,
+    canRetry: !checksAccess || readStatus === undefined || [0, 429, 500, 502, 503].includes(readStatus),
   };
 }
 
 function ReportContent({ report, title, back }: { report: PersonnelReport; title: string; back?: () => void }) {
+  const result = useReportPage(report);
   const {
     roster,
+    structure,
     columns,
     initial,
     query,
@@ -125,37 +136,21 @@ function ReportContent({ report, title, back }: { report: PersonnelReport; title
     applied,
     resultFilters,
     exportFailure,
-    setExportFailure,
     request,
     changePage,
     canRetry,
-  } = useReportPage(report);
-  const permission = usePermissions('TenantBase.HrRoster');
+    departmentsAllowed,
+  } = result;
   if (loginRequired) return <PageState kind="login" />;
 
-  const isStat = statistical(report.code);
-  const canExport = !permission.loading && !permission.error && permission.can('export', 'list');
   return (
     <section className="list-page">
       <header className="page-heading">
         <h1>{title}</h1>
-        <Space>
-          {back && <Button onClick={back}>{m.back}</Button>}
-          {isStat && data && <StatExport key={JSON.stringify(query)} report={report} filters={query.filters} />}
-          {!isStat && data && applied && canExport && (
-            <ReportExport
-              key={read.key}
-              report={report}
-              filters={applied}
-              disabled={waiting}
-              onFailure={setExportFailure}
-            />
-          )}
-          {!exportDenied && exportFailure && <span role="alert">{errorText(exportFailure.error, true)}</span>}
-        </Space>
+        <ReportActions report={report} back={back} result={result} />
       </header>
       <div className="list-card hr-report-content">
-        <p>{descriptions[report.code]}</p>
+        {descriptions[report.code] && <p>{descriptions[report.code]}</p>}
         {movement(report.code) && <p>{m.movementHint}</p>}
         {roster && <p>{m.rosterPopulation}</p>}
         <ReportFilters
@@ -164,7 +159,8 @@ function ReportContent({ report, title, back }: { report: PersonnelReport; title
           columns={columns}
           busy={read.loading}
           blocked={waiting}
-          applied={resultFilters}
+          applied={structure && data ? applied : resultFilters}
+          departments={structure ? { allowed: departmentsAllowed, committed: query.filters } : undefined}
           apply={(filters) => request(roster ? rosterFilters(filters, columns) : filters, 1)}
         />
         <ReportReadState
@@ -189,5 +185,44 @@ function ReportContent({ report, title, back }: { report: PersonnelReport; title
         )}
       </div>
     </section>
+  );
+}
+
+function ReportActions({
+  report,
+  back,
+  result,
+}: {
+  report: PersonnelReport;
+  back?: () => void;
+  result: ReturnType<typeof useReportPage>;
+}) {
+  const { structure, read, query, data, applied, waiting, exportDenied, exportFailure, setExportFailure } = result;
+  const isStat = statistical(report.code);
+  const permission = usePermissions(isStat ? undefined : 'TenantBase.HrRoster');
+  const canExport = !permission.loading && !permission.error && permission.can('export', 'list');
+  return (
+    <Space>
+      {back && <Button onClick={back}>{m.back}</Button>}
+      {supportsStatExport(report.code) && data && applied && (
+        <StatExport
+          key={structure ? read.key : JSON.stringify(query)}
+          report={report}
+          filters={applied}
+          disabled={structure && waiting}
+          onFailure={setExportFailure}
+        />
+      )}
+      {!isStat && data && applied && canExport && (
+        <ReportExport
+          key={read.key}
+          report={report}
+          filters={applied}
+          disabled={waiting}
+          onFailure={setExportFailure}
+        />
+      )}
+      {!exportDenied && exportFailure && <span role="alert">{errorText(exportFailure.error, true)}</span>}
+    </Space>
   );
 }

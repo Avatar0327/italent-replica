@@ -31,14 +31,14 @@ describe('AC-FE-R2f-07 员工结构报表适配', () => {
 
   it('动态列按回执顺序，合计取回执，占比保留最多两位，平均年龄和司龄保留回执精度', () => {
     const columns = [
-      { key: 'source:ZZ_FER2F_推荐', label: 'ZZ_FER2F_推荐' },
+      { key: 'source:ZZ_FER2F_推荐:ratio', label: 'ZZ_FER2F_推荐:ratio' },
       { key: 'category:ZZ_FER2F_类别', label: 'ZZ_FER2F_类别' },
       { key: 'employType:intern:ratio', label: '实习生占比' },
       { key: 'avgAge', label: '平均年龄' },
       { key: 'avgTenure', label: '平均司龄' },
     ];
-    const cells = { 'source:ZZ_FER2F_推荐': 3, 'employType:intern:ratio': 0.1667, avgAge: 25, avgTenure: 1.2 };
-    const summary = { 'source:ZZ_FER2F_推荐': 8, 'employType:intern:ratio': 0.25, avgAge: 24.6, avgTenure: null };
+    const cells = { 'source:ZZ_FER2F_推荐:ratio': 3, 'employType:intern:ratio': 0.1667, avgAge: 25, avgTenure: 1.2 };
+    const summary = { 'source:ZZ_FER2F_推荐:ratio': 8, 'employType:intern:ratio': 0.25, avgAge: 24.6, avgTenure: null };
     const [table] = tablesOf('position', {
       columns,
       rows: [{ organizationName: 'ZZ_FER2F_组织', cells }],

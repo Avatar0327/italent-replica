@@ -90,7 +90,8 @@ async function allow(page: Page, entryObjects = [object], tenantId = tenant) {
 }
 
 async function pickDepartment(page: Page, name: string) {
-  await selectDepartment(page).click();
+  await expect(selectDepartment(page)).toBeEnabled();
+  await selectDepartment(page).press('ArrowDown');
   await page.locator('.ant-select-tree').getByText(name, { exact: true }).click();
 }
 
@@ -145,7 +146,7 @@ test('AC-FE-R2f-07 两入口使用已运行条件下载两种模式，任职表�
     await pickDepartment(page, prefix + '部门');
     await expect(main(page).getByRole('checkbox', { name: '包含下级' })).toBeChecked();
     await main(page).getByRole('checkbox', { name: '包含下级' }).uncheck();
-    await main(page).getByRole('combobox', { name: '雇佣关系' }).click();
+    await main(page).getByRole('combobox', { name: '雇佣关系' }).press('ArrowDown');
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="实习生"]').click();
     await query(page).click();
     await expect(main(page).getByText(/当前结果条件.*2026-04-01.*实习生.*ZZ_FER2F_部门/)).toBeVisible();
