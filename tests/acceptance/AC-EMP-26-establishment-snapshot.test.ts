@@ -1,19 +1,18 @@
 import './support/exit-gate-enforced.js';
 import { withTenant } from '@italent/db';
-import { projectOriginMarkers } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import {
   pendingTransfers,
   resolveProjectedTransfer,
 } from '../../apps/api/src/modules/establishment/employment-check.js';
-import { loadFieldOrigins } from '../../apps/api/src/modules/employment/field-origin-store.js';
 import { loadEmploymentRecord } from '../../apps/api/src/modules/employment/read-model.js';
 import {
   camelRow,
   snapshotFields,
   type EmploymentPayloadRow,
 } from '../../apps/api/src/modules/employment/record-store.js';
+import { transferDeferredExcept } from './AC-EMP-26-projection-support.js';
 import { retirementCancelWorld } from './AC-RT-cancel-support.js';
 import { retireBody } from './AC-RT-support.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -78,17 +77,14 @@ it('AC-EMP-26 DEC-973：编制投影对已摘下的记录快照应保留原工�
       isRecordSnapshot: true,
       fields: { place: '原地点' },
     });
-    const states = await loadFieldOrigins(tx, ctx, transfer.id);
-    const projected = projectOriginMarkers(states);
-    expect(projected.deferredFieldCodes).toContain('preset:place');
-    expect(projected.explicitFieldCodes).toEqual(['preset:departmentId', 'preset:remarks']);
+    expect([...payload.deferredFieldCodes].sort()).toEqual(transferDeferredExcept('preset:remarks'));
+    expect(payload.explicitFieldCodes).toEqual(['preset:departmentId', 'preset:remarks']);
     const read = (input: EmploymentPayloadRow) =>
       resolveProjectedTransfer(tx, ctx, input, row!.state, new Map(), new Map());
     const baseline = await read({ ...payload, deferredFieldCodes: [] });
     expect(baseline.predecessor).toMatchObject({ kind: 'retirement', fields: { place: '退休前新地点' } });
     expect(baseline.fields.place).toBe('原地点');
-    // 按 DEC-972 将实际来源状态产生的标记交给旧占编读点，单独验证消费者。
-    const withDec972 = await read({ ...payload, deferredFieldCodes: projected.deferredFieldCodes });
+    const withDec972 = await read(payload);
     expect(withDec972.fields.place, 'DEC-972：编制投影应沿用已物化快照的工作地').toBe('原地点');
   });
 });

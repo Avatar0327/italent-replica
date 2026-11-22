@@ -81,8 +81,14 @@ import {
   type PresetFields,
 } from './types.js';
 import { queueExitAccount } from './exit-account-store.js';
-import { fieldOriginEditor, formFieldOrigins, originActorKind } from './field-origin-write.js';
-import { appendFieldOrigins, type FieldOriginDraft } from './field-origin-store.js';
+import {
+  discardedFormFields,
+  endDiscardedFormOverrides,
+  fieldOriginEditor,
+  formFieldOrigins,
+  originActorKind,
+} from './field-origin-write.js';
+import { type FieldOriginDraft } from './field-origin-store.js';
 
 export const NEW_CYCLE_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 
@@ -434,7 +440,14 @@ export async function updateEmploymentBusiness(
   });
   await bumpEmploymentBusiness(tx, ctx, business);
   const actor = await fieldOriginEditor(tx, ctx, before, options);
-  const origins = formFieldOrigins(prepared, normalized, { request: patch, businessId: id, before, actor });
+  const origins = await endDiscardedFormOverrides(
+    tx,
+    ctx,
+    before,
+    prepared,
+    discardedFormFields(patch.fields),
+    formFieldOrigins(prepared, normalized, { request: patch, businessId: id, before, actor }),
+  );
   business.payload = await appendEmploymentPayload(tx, ctx, business.employeeId, id, normalized, prepared, {
     previous: before,
     selectedStaffId: selected?.cycle.id,
@@ -471,12 +484,7 @@ export function normalizePatchedInput(
         return [field, before.fields[field]];
       }),
   );
-  if (patch.fields && Object.hasOwn(patch.fields, 'departmentId') && !Object.hasOwn(patch.fields, 'directManagerId'))
-    delete fields.directManagerId;
-  // DEC-107：本次改选了职务而未传序列时，丢弃按旧职务带出（或旧填写）的序列，交由新职务重新带出。
-  if (patch.fields && Object.hasOwn(patch.fields, 'postId') && !Object.hasOwn(patch.fields, 'sequenceId')) {
-    delete fields.sequenceId;
-  }
+  for (const field of discardedFormFields(patch.fields)) delete fields[field];
   const customFields = Object.fromEntries(
     before.explicitFieldCodes
       .filter((code) => code.startsWith('custom:'))
@@ -686,25 +694,14 @@ export async function appendEmploymentPayload(
     selectedStaffId: options.selectedStaffId ?? null,
   };
   const { fields, ...metadata } = payload;
-  await insertEmploymentRow(
+  const markers = await insertEmploymentRow(
     tx,
     'employment_payload_versions',
     { ...fields, ...metadata, createdAt: ctx.now.toISOString() },
-    options.status,
-  );
-  await appendFieldOrigins(
-    tx,
-    ctx,
-    options.origins.map((row) => ({
-      ...row,
-      employeeId,
-      businessId,
-      payloadVersionId: payload.id,
-      recordId: options.recordId,
-    })),
+    { ctx, origins: options.origins, recordId: options.recordId, status: options.status },
   );
   // 未显式给出时由插入触发器继承（迁移 0062），以库中的值为准
-  return { ...payload, ...(await storedStatus(tx, ctx, payload.id)) };
+  return { ...payload, ...markers, ...(await storedStatus(tx, ctx, payload.id)) };
 }
 
 async function storedStatus(tx: Tx, ctx: EmploymentContext, payloadId: string) {

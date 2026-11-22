@@ -1,7 +1,8 @@
 import './support/exit-gate-enforced.js';
-import { sql } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
+import { seedTenantWithMember } from './support/tenant-api.js';
 import { downstreamWorld } from './AC-EXIT-downstream-support.js';
 
 const database = useTestDb();
@@ -58,4 +59,37 @@ it('AC-EMP-25/26 #12：真实离职顺延登记独立业务日期，两列逐版
     { version: 1, field: 'preset:lastWorkDate', kind: 'hr-input', value: '2026-10-15', reason: null },
     { version: 2, field: 'preset:lastWorkDate', kind: 'system-input', value: '2026-10-17', reason: 'late-execution' },
   ]);
+});
+
+it('AC-EMP-25 来源台账由触发器拒绝改删、由租户隔离拒绝跨租户读取', async () => {
+  const { db } = database();
+  const x = await downstreamWorld(db, 'f036s3-origin-constraints');
+  const leave = await x.directLeave('2026-10-15');
+  const tenantId = x.session.tenant.id;
+  const other = await seedTenantWithMember(db, 'f036s3-other-origin-tenant');
+  const [row] = await x.sqlRows<{ id: string; value: string }>(sql`
+    SELECT id, value FROM employment_field_origins WHERE tenant_id=${tenantId} AND business_id=${leave.id}
+      AND field_code='preset:lastWorkDate'`);
+  expect(row).toMatchObject({ value: '2026-10-15' });
+  const filter = sql`WHERE id=${row!.id}::uuid`;
+  const mutate = (statement: ReturnType<typeof sql>) =>
+    withTenant(db, tenantId, async (tx) => {
+      // app_user 没有改删权限。切回测试连接的表属主，单独检验触发器，租户上下文仍在。
+      await tx.execute(sql`RESET ROLE`);
+      await tx.execute(statement);
+    });
+  await expect(mutate(sql`UPDATE employment_field_origins SET value='null'::jsonb ${filter}`)).rejects.toMatchObject({
+    cause: expect.objectContaining({ code: '55000' }),
+  });
+  await expect(mutate(sql`DELETE FROM employment_field_origins ${filter}`)).rejects.toMatchObject({
+    cause: expect.objectContaining({ code: '55000' }),
+  });
+  const read = (tenant: string) =>
+    withTenant(db, tenant, async (tx) =>
+      x.rowsOf<{ id: string; value: string }>(
+        await tx.execute(sql`SELECT id, value FROM employment_field_origins ${filter}`),
+      ),
+    );
+  expect(await read(tenantId)).toEqual([row]);
+  expect(await read(other.tenant.id)).toEqual([]);
 });
