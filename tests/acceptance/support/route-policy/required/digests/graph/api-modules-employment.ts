@@ -8701,10 +8701,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/write-service.ts#normalizePatchedInput': [
     'apps/api/src/modules/employment/field-origin-write.ts#discardedFormFields',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
+    '#omitUnchangedInheritedFields',
   ],
   'apps/api/src/modules/employment/write-service.ts#notifyMaterialized': [
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     'apps/api/src/modules/employment/status-hooks.ts#employeeStatusHooks',
+  ],
+  'apps/api/src/modules/employment/write-service.ts#omitUnchangedInheritedFields': [
+    'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+    'packages/domain/src/employment/field-origins.ts#changedInputFields',
   ],
   'apps/api/src/modules/employment/write-service.ts#payloadAudit': ['#customAudit'],
   'apps/api/src/modules/employment/write-service.ts#propagateMaterializedStatus': [
