@@ -144,9 +144,8 @@ test('AC-FE-R2f-01/09 合同独立菜单、全年默认、已应用条件、申�
   await expect.poll(() => params(overview.at(-1))).toEqual(applied);
   await expect(card(page, 'changeCreate')).toBeVisible();
   await page.getByLabel(start).fill('2026-07-02');
-  await card(page, 'changeCreate')
-    .getByRole('button', { name: /查看详情.*24/ })
-    .click();
+  const trigger = card(page, 'changeCreate').getByRole('button', { name: /查看详情.*24/ });
+  await trigger.click();
   const drawer = page.getByRole('dialog');
   await expect(drawer.getByRole('columnheader', { name: '申请单 ID' })).toBeVisible();
   await expect(drawer.getByText(`${prefix}changeCreate_1`)).toBeVisible();
@@ -157,6 +156,7 @@ test('AC-FE-R2f-01/09 合同独立菜单、全年默认、已应用条件、申�
   await expect.soft(drawer.locator(':focus'), '详情翻到第 2 页后焦点应留在抽屉内').toHaveCount(1);
   await page.keyboard.press('Escape');
   await expect(drawer).toHaveCount(0);
+  await expect(trigger, 'Escape 关闭详情后焦点应归还初签详情入口').toBeFocused();
   await card(page, 'signByTermType')
     .getByRole('button', { name: /查看详情：空，0/ })
     .click();
