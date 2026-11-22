@@ -21,6 +21,7 @@ import { seedTenantWithMember, tenantApi } from '../tenant-api.js';
 import type { AppDeps } from '@italent/api';
 import { RESULT_ROUTE } from '../../AC-CMD-F553-support.js';
 import { probeCommandResultBranches } from './command-result-probe.js';
+import { discoverEntrySignBranches, ENTRY_SIGN_PROBE_KEYS } from './entry-sign-probe.js';
 import { canonicalJson } from './baseline.js';
 import type { Finding } from './compare.js';
 import { type AuthorizerDouble, createAuthorizerDouble } from './double.js';
@@ -72,6 +73,8 @@ export interface EndpointDiscovery {
   readonly gap?: { readonly reason: UnreachedReason };
   /** PR-B4b 预留：守卫内部 HR 路径不能独立成功的入口，非参与人 HR 的拒绝码转换（DEC-362 第 2 条）。 */
   readonly denialShift?: string;
+  /** F-505 S5：真实入职来源上的授权反例与字段裁剪。 */
+  readonly entrySignBranches?: Awaited<ReturnType<typeof discoverEntrySignBranches>>[string];
   /** F-553：已登记命令的台账数据态分支，独立于占位请求。 */
   readonly registeredCommands?: Awaited<ReturnType<typeof probeCommandResultBranches>>;
 }
@@ -81,6 +84,7 @@ export interface DiscoveryRig {
   /** 已发出的请求数（PR 描述附请求数与耗时）。 */
   readonly sent: number;
   send(method: string, path: string, body?: unknown): Promise<Response>;
+  readonly probeEntrySignBranches?: () => ReturnType<typeof discoverEntrySignBranches>;
   readonly probeRegisteredCommands?: () => ReturnType<typeof probeCommandResultBranches>;
 }
 
@@ -98,6 +102,7 @@ export async function createRig(
   let sent = 0;
   const rig: DiscoveryRig = {
     double,
+    probeEntrySignBranches: () => discoverEntrySignBranches(db),
     probeRegisteredCommands: () => probeCommandResultBranches(db),
     get sent() {
       return sent;
@@ -255,6 +260,12 @@ export async function discoverAll(
   const out: Record<string, EndpointDiscovery> = {};
   // 串行：所有请求共用一个替身，并行会让轨迹互相串线
   for (const route of routes) out[`${route.method} ${route.path}`] = await discoverRoute(rig, route, table);
+  if (Object.values(ENTRY_SIGN_PROBE_KEYS).some((key) => out[key])) {
+    const entrySignBranches = await rig.probeEntrySignBranches?.();
+    for (const [key, branches] of Object.entries(entrySignBranches ?? {})) {
+      if (out[key]) out[key] = { ...out[key], entrySignBranches: branches };
+    }
+  }
   return out;
 }
 

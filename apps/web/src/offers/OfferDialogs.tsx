@@ -1,4 +1,5 @@
 import { Button, Descriptions, Tabs } from 'antd';
+import { SourceSignHistory } from '../esign/SourceSignHistory.js';
 import { DetailPage } from '../foundation/templates.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
@@ -23,6 +24,13 @@ export function OfferDetail({ id, close }: { id: string; close(): void }) {
   const error = result.error ?? permission.error;
   const ready = !error && !result.loading && !permission.loading && row;
   let summary = <Tabs items={[{ key: 'offer', label: 'Offer' }]} />;
+  if (ready && (row.contentView as { mode?: string } | undefined)?.mode !== 'frozen')
+    summary = (
+      <>
+        {summary}
+        <SourceSignHistory source={{ kind: 'offer', id }} />
+      </>
+    );
   if (!ready) summary = <PageState kind="loading" />;
   if (error) summary = <PageState kind={errorKind(error)} retry={result.refresh} />;
   return (

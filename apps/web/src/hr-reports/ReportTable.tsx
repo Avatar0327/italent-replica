@@ -1,6 +1,15 @@
 import { Empty, Table } from 'antd';
 import { m } from './messages.js';
-import { cellText, pageSize, statistical, tablesOf, type DisplayTable, type ReportData, type Row } from './model.js';
+import {
+  cellText,
+  pageSize,
+  statistical,
+  structureReport,
+  tablesOf,
+  type DisplayTable,
+  type ReportData,
+  type Row,
+} from './model.js';
 export function ReportTable({
   code,
   data,
@@ -28,6 +37,7 @@ export function ReportTable({
           page={roster?.page ?? page}
           pageSize={roster?.pageSize ?? pageSize}
           rowId={roster ? 'employeeId' : undefined}
+          showEmptySummary={structureReport(code)}
           paginationDisabled={paginationDisabled}
           changePage={changePage}
         />
@@ -44,6 +54,7 @@ export function ReadOnlyReportTable({
   changePage,
   emptyText = m.empty,
   rowId,
+  showEmptySummary,
   paginationDisabled,
 }: {
   table: DisplayTable;
@@ -53,6 +64,7 @@ export function ReadOnlyReportTable({
   changePage(page: number): void;
   emptyText?: string;
   rowId?: string;
+  showEmptySummary?: boolean;
   paginationDisabled?: boolean;
 }) {
   const summary = table.summary;
@@ -82,7 +94,7 @@ export function ReadOnlyReportTable({
           hideOnSinglePage: false,
         }}
         summary={
-          summary && table.rows.length > 0
+          summary && (table.rows.length > 0 || showEmptySummary)
             ? () => (
                 <Table.Summary.Row>
                   {table.columns.map((column, index) => (

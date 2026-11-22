@@ -1,5 +1,13 @@
 import type { DecisionAnnotation } from '../annotations/index.js';
 export const notes: Record<string, DecisionAnnotation> = {
+  'hr-structure-reports': {
+    original: '数据分析下的员工结构含员工素质结构和员工任职结构。',
+    decision:
+      '两张报表支持时点、雇佣关系和部门筛选，按服务器返回的列及合计显示。' +
+      '部门候选按租户行政树提供，报表按数据范围取数。素质结构支持两种下载方式。',
+    decisions: ['DEC-763', 'DEC-809', 'DEC-810', 'DEC-961'],
+    level: 'L2',
+  },
   'hr-reports': {
     original: '组织员工下的预置报表：员工名册分析、人事报表、员工花名册；按各报表数据权限取数。',
     decision:

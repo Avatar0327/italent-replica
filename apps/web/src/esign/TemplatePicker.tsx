@@ -35,12 +35,14 @@ export function TemplatePicker(props: {
   options: TemplateOptions;
   value: readonly string[];
   disabled?: boolean;
+  emptyText?: string;
+  max?: number;
   onChange(ids: string[]): void;
 }) {
-  const { options, value, disabled, onChange } = props;
+  const { options, value, disabled, emptyText, max, onChange } = props;
   if (options.error) return <p role="alert">{m.picker.failed(rejectionMessage(options.error))}</p>;
   if (!options.items) return <p>{m.picker.loading}</p>;
-  if (!options.items.length) return <p role="note">{m.picker.empty}</p>;
+  if (!options.items.length) return <p role="note">{emptyText ?? m.picker.empty}</p>;
   const ids = options.items.map((item) => item.id);
   const all = ids.every((id) => value.includes(id));
   return (
@@ -77,6 +79,7 @@ export function TemplatePicker(props: {
         />
         {m.picker.all}
       </label>
+      {max !== undefined && chosenTemplates(options, value).length > max && <p role="alert">{m.picker.tooMany(max)}</p>}
     </div>
   );
 }
