@@ -68,12 +68,9 @@ async function attachBackend(page: Page, scene: Scene, currentActor: () => Actor
   await page.route('**/permission/me/objects/*', (route) => {
     const objectCode = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!);
     const fields = objectCode === RECORDS ? ['scene', 'status', 'files', 'initiatedAt'] : ['id', 'name'];
-    const buttons =
-      objectCode === EMPLOYMENT
-        ? [{ buttonCode: 'Employment.Edit', level: 'detail' }]
-        : objectCode === RECORDS
-          ? [{ buttonCode: 'ESignRecord.Download', level: 'list' }]
-          : [];
+    const buttons = [];
+    if (objectCode === EMPLOYMENT) buttons.push({ buttonCode: 'Employment.Edit', level: 'detail' });
+    if (objectCode === RECORDS) buttons.push({ buttonCode: 'ESignRecord.Download', level: 'list' });
     return route.fulfill({
       json: {
         objectCode,
