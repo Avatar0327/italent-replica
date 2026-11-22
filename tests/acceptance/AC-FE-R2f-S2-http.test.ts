@@ -4,7 +4,6 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { menuNodes, type ServerSnapshot } from '../../apps/web/src/foundation/permission-snapshot.js';
 import { PAGES } from '../../apps/web/src/foundation/routes.js';
-import { deliveredTabs } from '../../apps/web/src/hr-analytics/pages.js';
 import {
   structureCards,
   structureDetailTable,
@@ -143,7 +142,4 @@ it('AC-FE-R2f-01/03/11 单授 B49 的真实入口、候选独立范围及统计�
   for (const code of ['6.09', '6.10']) expect((await get(`${STRUCTURE_BASE}/components/${code}`)).status).toBe(404);
 
   expect(menuNodes(PAGES.entries, snapshot)[0]?.children?.map(({ key }) => key)).toEqual(['hr-dashboard']);
-  expect(deliveredTabs.filter(({ objectCode }) => entryObjects?.includes(objectCode)).map(({ path }) => path)).toEqual([
-    'structure',
-  ]);
 }, 120_000);

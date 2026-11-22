@@ -1,14 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { m } from './messages.js';
+import type { ChartPoint, GroupChartKind } from './model.js';
 import './board-charts.css';
-
-export type GroupChartKind = 'column' | 'bar' | 'pie';
-export interface ChartPoint {
-  key: string;
-  label: string;
-  value: number | null;
-  text: string;
-}
 
 const colors = ['var(--shell-primary)', '#087e8b', '#5b5caf', '#b15d26', '#327e55', '#a24e76', '#446b98', '#81702b'];
 const colorAt = (index: number) => colors[index % colors.length]!;

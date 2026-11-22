@@ -4,6 +4,14 @@ import { m as report } from '../hr-reports/messages.js';
 import { pageSize, type DisplayTable } from '../hr-reports/model.js';
 import { m } from './messages.js';
 
+export type GroupChartKind = 'column' | 'bar' | 'pie';
+export interface ChartPoint {
+  key: string;
+  label: string;
+  value: number | null;
+  text: string;
+}
+
 const base = '/api/tenant/analytics/hr-dashboard';
 export const asOfBounds = { min: '0001-01-02', max: '9999-12-01' };
 

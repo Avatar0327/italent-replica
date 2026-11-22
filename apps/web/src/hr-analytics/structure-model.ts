@@ -1,7 +1,7 @@
 import { HR_STRUCTURE_COMPONENTS, type BoardComponentKind, type HrStructureCode } from '@italent/domain';
 import { pageQuery } from '../foundation/client.js';
 import { cellText, pageSize, type DisplayTable, type Filters } from '../hr-reports/model.js';
-import type { ChartPoint, GroupChartKind } from './BoardCharts.js';
+import type { ChartPoint, GroupChartKind } from './model.js';
 import { m } from './messages.js';
 
 const base = '/api/tenant/analytics/hr-structure';
