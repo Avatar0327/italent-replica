@@ -1,3 +1,4 @@
+import { ONBOARDING_TASKS } from './onboarding-tasks.js';
 import type { Evidence, Need, Obligation, RequiredTable } from './types.js';
 
 const BASE = '/api/tenant/onboarding';
@@ -85,6 +86,7 @@ function obligations(
 }
 
 export const ONBOARDING: RequiredTable = {
+  ...ONBOARDING_TASKS,
   [`GET ${BASE}/collection-templates`]: obligations('GET', '/collection-templates', 'view'),
   [`GET ${BASE}/collection-templates/:id`]: obligations('GET', '/collection-templates/:id', 'view'),
   [`POST ${BASE}/collection-templates`]: obligations('POST', '/collection-templates', 'create'),

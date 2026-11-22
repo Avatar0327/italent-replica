@@ -1,11 +1,20 @@
 import { randomUUID } from 'node:crypto';
-import { eq, onboardingEntryCases, withTenant } from '@italent/db';
+import {
+  eq,
+  employmentOutbox,
+  onboardingCollectionJobs,
+  onboardingCollectionTasks,
+  onboardingEntryCases,
+  sql,
+  withTenant,
+} from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import type { Authorizer } from '../../apps/api/src/authorization.js';
 import { startEmploymentActivationScheduler } from '../../apps/api/src/modules/employment/activation-scheduler.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { addPending, entryAction, entryWorld } from './AC-EN-BE2a-support.js';
+import { withLoginEmail } from './AC-EMP-support.js';
 import { syncWorld } from './AC-OF-BE14b2-support.js';
 import { tenantApi, type RequestOptions } from './support/tenant-api.js';
 
@@ -20,9 +29,9 @@ async function json(res: Response, status = 200) {
   return res.json();
 }
 
-async function poll(db: ReturnType<typeof useDb>['db']) {
+async function poll(db: ReturnType<typeof useDb>['db'], now = clock) {
   const errors: unknown[] = [];
-  await startEmploymentActivationScheduler(db, { clock, onError: (error) => errors.push(error) }).stop();
+  await startEmploymentActivationScheduler(db, { clock: now, onError: (error) => errors.push(error) }).stop();
   expect(errors).toEqual([]);
 }
 
@@ -31,7 +40,7 @@ async function world(label: string) {
   const w = await entryWorld(db, label);
   const tenant = w.session.tenant.id;
   const user = w.session.user.id;
-  const rights = { scope: true, comment: true, status: true, button: true };
+  const rights = { scope: true, comment: true, status: true, button: true, profileName: true };
   const authorize: Authorizer = (req) => {
     if (req.action === 'data.scope.all') return false;
     if (req.action === 'object.button') return rights.button;
@@ -42,10 +51,11 @@ async function world(label: string) {
     authorize: async (req) => authorize(req),
     scope: async () => ({ all: rights.scope, hasDataPermission: rights.scope, orgIds: [], personIds: [] }),
     fields: async (_tenantId, _userId, objectCode) => {
+      if (objectCode === 'TenantBase.EmployeeInformation' && !rights.profileName) return new Set();
       if (objectCode === collection)
-        return new Set(['id', 'revision', 'status', ...(rights.comment ? ['comment'] : [])]);
+        return new Set(['id', 'revision', 'status', 'collectionValues', ...(rights.comment ? ['comment'] : [])]);
       if (objectCode === 'TenantBase.EmploymentRecord' && !rights.status)
-        return new Set(['departmentId', 'employType']);
+        return new Set(['id', 'departmentId', 'employType']);
       return new Set([
         'id',
         'revision',
@@ -62,8 +72,8 @@ async function world(label: string) {
   const request = (method: string, path: string, options?: RequestOptions) =>
     api.request(method, path, { ...options, tenant, user });
   const manage = (method: string, path: string, options?: RequestOptions) => request(method, base + path, options);
-  const make = async (name = label) => {
-    const entry = await addPending(w, '2026-10-08', name);
+  const make = async (name = label, date = '2026-10-08') => {
+    const entry = await addPending(w, date, name);
     const [stage] = await withTenant(db, tenant, (tx) =>
       tx.select().from(onboardingEntryCases).where(eq(onboardingEntryCases.currentBusinessId, entry.recordId)),
     );
@@ -114,6 +124,9 @@ it('AC-EN-BE16-03 手动发起仅就绪，协作重放幂等，字段撤权后�
 
   const detail = await json(await w.manage('GET', entry.url));
   expect(detail).toMatchObject({ task: { id: started.id, status: 'ready' } });
+  expect(detail.form.prefill).toEqual({ name: 'ZZ_BE16_MANUAL' });
+  w.rights.profileName = false;
+  expect((await json(await w.manage('GET', entry.url))).form).toMatchObject({ fields: [], prefill: {} });
   expect(JSON.stringify(detail)).toContain('只可本人使用、不可转发');
   expect(JSON.stringify(detail)).not.toContain('@example.com');
   const remind = await w.manage('POST', entry.url + '/remind', { ifMatch: started.revision, body: entry.ref });
@@ -135,6 +148,9 @@ it('AC-EN-BE16-03 手动发起仅就绪，协作重放幂等，字段撤权后�
   const f120 = await json(await w.request('GET', `/api/tenant/commands/${comment.idempotencyKey}/result`));
   expect(f120).toMatchObject({ businessId: null, revision: null });
   expect(JSON.stringify(f120)).not.toContain(comment.body.text);
+  w.rights.button = false;
+  expect((await w.manage('POST', entry.url + '/start', options)).status).toBe(403);
+  w.rights.button = true;
   w.rights.scope = false;
   expect((await w.manage('POST', entry.url + '/start', options)).status).toBe(404);
 });
@@ -144,7 +160,7 @@ it('AC-EN-BE16-02/04 自动开关实际控制生产消费，两轮去重，取�
   await configure(w.manage, w.org.id);
   const ready = await w.make();
   const cancelled = await w.make('ZZ_BE16_CANCELLED');
-  const hired = await addPending(w, '2026-09-29', 'ZZ_BE16_HIRED');
+  const hired = await w.make('ZZ_BE16_HIRED', '2026-09-29');
   expect((await entryAction(w, cancelled.recordId, 'cancel', {})).status).toBe(200);
   expect((await entryAction(w, hired.recordId, 'complete', { probation: false })).status).toBe(200);
 
@@ -156,7 +172,7 @@ it('AC-EN-BE16-02/04 自动开关实际控制生产消费，两轮去重，取�
   expect((await json(await w.manage('GET', cancelled.url))).task).toBeNull();
   for (const entry of [cancelled, hired]) {
     const url = `/entries/${entry.recordId}/collection/start`;
-    expect((await w.manage('POST', url, { ifMatch: 0, body: ready.ref })).status).toBe(409);
+    expect((await w.manage('POST', url, { ifMatch: 0, body: entry.ref })).status).toBe(409);
   }
 
   await json(await w.manage('PUT', '/collection-settings', { ifMatch: 0, body: { enabled: false } }));
@@ -210,8 +226,68 @@ it('AC-OF-10 Offer 同步的采集投影由实际就绪任务产生，重复生�
     return r.items.find((item: { id: string }) => item.id === entry.id);
   };
   expect(await list()).toMatchObject({ collectionStatus: 'not_started' });
-  await poll(db);
+  await poll(db, () => new Date('2026-10-19T12:00:00Z'));
   expect(await list()).toMatchObject({ collectionStatus: 'not_sent' });
-  await poll(db);
+  await poll(db, () => new Date('2026-10-19T12:00:00Z'));
   expect(await list()).toMatchObject({ collectionStatus: 'not_sent' });
 });
+
+it('AC-EN-BE16-02 业务回滚不遗留可消费的采集创建事件', async () => {
+  const w = await world('ZZ_BE16_COLLECTION_ROLLBACK');
+  await configure(w.manage, w.org.id);
+  const employee = await w.session.employee('ZZ_BE16_COLLECTION_ROLLBACK');
+  const key = randomUUID();
+  await w.db.execute(sql`
+    CREATE FUNCTION zz_be16_collect_fail() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN RAISE EXCEPTION 'ZZ_BE16_COLLECTION_ROLLBACK' USING ERRCODE = '53100'; END;
+    $$
+  `);
+  await w.db.execute(sql`
+    CREATE TRIGGER zz_be16_collect_fail BEFORE INSERT ON command_ledger FOR EACH ROW
+    WHEN (NEW.command_id = ${sql.raw(`'${key}'`)}) EXECUTE FUNCTION zz_be16_collect_fail()
+  `);
+  const created = await w.request('POST', employment + `/employees/${employee.id}/businesses`, {
+    ifMatch: employee.revision,
+    idempotencyKey: key,
+    body: withLoginEmail(employee.id, {
+      kind: 'hire',
+      mode: 'direct',
+      effectiveDate: '2026-10-08',
+      pendingEntry: true,
+      fields: { employType: 'internal', departmentId: w.org.id },
+    }),
+  });
+  expect(created.status).toBe(503);
+  await poll(w.db);
+  await withTenant(w.db, w.tenant, async (tx) => {
+    expect(await tx.select().from(onboardingEntryCases)).toEqual([]);
+    expect(await tx.select().from(onboardingCollectionJobs)).toEqual([]);
+    expect(await tx.select().from(employmentOutbox).where(eq(employmentOutbox.employeeId, employee.id))).toEqual([]);
+  });
+});
+
+it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+  'AC-EN-BE16-04 生产轮询双实例与取消并发，没有可投递的过时任务',
+  async () => {
+    const w = await world('ZZ_BE16_CANCEL_RACE');
+    await configure(w.manage, w.org.id);
+    const active = await w.make('ZZ_BE16_RACE_ACTIVE');
+    const cancelled = await w.make('ZZ_BE16_RACE_CANCELLED');
+    const results = await Promise.all([poll(w.db), poll(w.db), entryAction(w, cancelled.recordId, 'cancel', {})]);
+    expect(results[2].status).toBe(200);
+    await poll(w.db);
+    await withTenant(w.db, w.tenant, async (tx) => {
+      const stages = await tx.select().from(onboardingEntryCases);
+      const activeStage = stages.find((s) => s.currentBusinessId === active.recordId)!;
+      const cancelledStage = stages.find((s) => s.currentBusinessId === cancelled.recordId)!;
+      const tasks = await tx.select().from(onboardingCollectionTasks);
+      expect(tasks.filter((task) => task.caseId === activeStage.id)).toMatchObject([{ status: 'ready' }]);
+      expect(tasks.filter((task) => task.caseId === cancelledStage.id).every((task) => task.status === 'closed')).toBe(
+        true,
+      );
+      const jobs = await tx.select().from(onboardingCollectionJobs);
+      expect(jobs.find((job) => job.caseId === activeStage.id)).toMatchObject({ attempts: 1, status: 'done' });
+      expect(['skipped', 'done']).toContain(jobs.find((job) => job.caseId === cancelledStage.id)?.status);
+    });
+  },
+);

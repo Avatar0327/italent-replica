@@ -14,5 +14,15 @@ export const ONBOARDING_DECLARED: ModuleDeclared = {
     'DELETE /api/tenant/onboarding/collection-rules/:id',
     'GET /api/tenant/onboarding/collection-settings',
     'PUT /api/tenant/onboarding/collection-settings',
+    'GET /api/tenant/onboarding/entries/:businessId/collection',
+    'POST /api/tenant/onboarding/entries/:businessId/collection/start',
+    'POST /api/tenant/onboarding/entries/:businessId/collection/remind',
+    'POST /api/tenant/onboarding/entries/:businessId/collection/comments',
+    'POST /api/tenant/onboarding/collection/start-batch',
+  ],
+  sameStatusInvalidId: [
+    'POST /api/tenant/onboarding/entries/:businessId/collection/start',
+    'POST /api/tenant/onboarding/entries/:businessId/collection/remind',
+    'POST /api/tenant/onboarding/entries/:businessId/collection/comments',
   ],
 };

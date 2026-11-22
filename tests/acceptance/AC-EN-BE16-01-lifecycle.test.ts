@@ -7,6 +7,8 @@ import {
   employmentEmployees,
   employmentOutbox,
   eq,
+  onboardingCollectionJobs,
+  onboardingCollectionTasks,
   onboardingEntryCases,
   pgErrorCode,
   sql,
@@ -62,11 +64,21 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
     const f = await fixture('ZZ_BE16_LIFECYCLE');
     const { entry, run, context, replacements } = f;
     const { port, app } = install(f.db);
+    const onboarding = '/api/tenant/onboarding';
+    const collection = `${onboarding}/entries/:businessId/collection`;
+    const taskRoutes = new Set([
+      `GET ${collection}`,
+      `POST ${collection}/start`,
+      `POST ${collection}/remind`,
+      `POST ${collection}/comments`,
+      `POST ${onboarding}/collection/start-batch`,
+    ]);
     expect(
       app.routes.filter(
-        ({ path }) =>
-          path.startsWith('/api/tenant/onboarding') &&
-          !/^\/api\/tenant\/onboarding\/(?:collection-(?:templates|rules)(?:\/:id)?|collection-settings)$/.test(path),
+        ({ method, path }) =>
+          path.startsWith(onboarding) &&
+          !/^\/api\/tenant\/onboarding\/(?:collection-(?:templates|rules)(?:\/:id)?|collection-settings)$/.test(path) &&
+          !taskRoutes.has(`${method} ${path}`),
       ),
     ).toEqual([]);
     const created = await run((tx) => port.create(tx, context(), entry));
@@ -356,6 +368,30 @@ describe('AC-EN-BE16-01 阶段表约束', () => {
           tx.select().from(employmentBusinessObjects).where(eq(employmentBusinessObjects.id, entry.businessId)),
         ),
       ).toEqual([expect.objectContaining({ id: entry.businessId, revision: 1 })]);
+    } finally {
+      await handle.close();
+    }
+  });
+  it('AC-EN-BE16-02 升级保留已存在的阶段，未给旧阶段补建采集作业', async () => {
+    const handle = await createTestDb({ migrateBefore: '_be16_collection_tasks' });
+    try {
+      const { run, entry, context } = await fixture('ZZ_BE16_COLLECTION_UPGRADE', handle.db);
+      const [old] = await run((tx) =>
+        tx
+          .insert(cases)
+          .values({
+            tenantId: context().tenantId,
+            employeeId: entry.employeeId,
+            rootBusinessId: entry.businessId,
+            currentBusinessId: entry.businessId,
+            pendingDate: entry.pendingDate,
+          })
+          .returning(),
+      );
+      await handle.migrate();
+      expect(await run((tx) => tx.select().from(cases))).toEqual([old]);
+      expect(await run((tx) => tx.select().from(onboardingCollectionTasks))).toEqual([]);
+      expect(await run((tx) => tx.select().from(onboardingCollectionJobs))).toEqual([]);
     } finally {
       await handle.close();
     }

@@ -42,3 +42,4 @@ export * from './admin-regions.js';
 export * from './social-insurance.js';
 export * from './onboarding.js';
 export * from './onboarding-collection.js';
+export * from './onboarding-collection-tasks.js';

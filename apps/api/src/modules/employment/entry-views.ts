@@ -4,7 +4,7 @@
  * 视图按“当前待入职记录”取数：改期会替换记录（BE-2a），所以只认任职时间轴上现存的入职类记录，不看旧记录 ID。
  * 状态只读记录自己的版本快照（employment_record_status），不用员工当前状态——已调出 / 离职的人不影响他入职那条记录归属。
  */
-import { sql, type Tx } from '@italent/db';
+import { ACTIVE_COLLECTION_TASK_STATES, COLLECTION_TASK_STATES, sql, type Tx } from '@italent/db';
 import { EMPLOYEE_STATUS, ENTRY_STATUS, type EmployeeStatusCode, type EntryStatusCode } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { employmentCreator, employmentScopePredicate } from './context.js';
@@ -15,6 +15,17 @@ import type { BusinessKind, EmploymentScope, PageQuery } from './types.js';
 
 export const ENTRY_VIEWS = ['all', 'today', 'cancelled', 'hired'] as const;
 export type EntryView = (typeof ENTRY_VIEWS)[number];
+export const ENTRY_COLLECTION_STATUSES = [
+  'not_started',
+  'not_sent',
+  ...COLLECTION_TASK_STATES.filter((status) => status !== 'ready'),
+] as const;
+type CollectionStatus = (typeof ENTRY_COLLECTION_STATUSES)[number];
+export interface EntryCollectionQuery {
+  readonly scope: EmploymentScope;
+  readonly status?: CollectionStatus;
+  readonly order?: 'asc' | 'desc';
+}
 
 export interface EntryViewItem {
   /** 入职类业务 / 任职记录 ID（同一个 ID）；改期后是新记录的 ID。 */
@@ -42,6 +53,7 @@ export interface EntryViewItem {
    * 改期恢复会换新记录 ID，新记录不继承旧说明；恢复后再取消读到的是新记录上的那次。行可见即可见，不另做字段权限。
    */
   readonly cancelRemark: string | null;
+  readonly collectionStatus?: CollectionStatus | null;
 }
 
 export function entryViewPredicate(view: EntryView, today: string): SQL {
@@ -62,7 +74,12 @@ export function entryViewPredicate(view: EntryView, today: string): SQL {
 export async function listEntryView(
   tx: Tx,
   tenantId: string,
-  input: { readonly view: EntryView; readonly today: string; readonly page: PageQuery },
+  input: {
+    readonly view: EntryView;
+    readonly today: string;
+    readonly page: PageQuery;
+    readonly collection?: EntryCollectionQuery;
+  },
   scope: EmploymentScope | undefined,
 ): Promise<EntryViewItem[]> {
   checkPage(input.page);
@@ -73,6 +90,19 @@ export async function listEntryView(
     department,
     employmentCreator(tenantId, sql`r.id`, true),
   );
+  const collection = input.collection;
+  const collectionVisible =
+    collection &&
+    employmentScopePredicate(
+      collection.scope,
+      sql`r.employee_id`,
+      department,
+      employmentCreator(tenantId, sql`r.id`, true),
+    );
+  const status =
+    collectionVisible &&
+    sql`CASE WHEN ${collectionVisible} THEN
+    CASE ct.status WHEN 'ready' THEN 'not_sent' ELSE COALESCE(ct.status, 'not_started') END END`;
   return rowsOf<EntryViewItem>(
     await tx.execute(sql`
     SELECT r.id, r.employee_id AS "employeeId", e.code,
@@ -83,6 +113,7 @@ export async function listEntryView(
       pp.months AS "probationMonths", pc.contract_company_id::text AS "contractCompanyId",
       pc.start_date::text AS "contractStartDate", pc.end_date::text AS "contractEndDate",
       cancel.remark AS "cancelRemark"
+      ${status ? sql`, ${status} AS "collectionStatus"` : sql``}
     FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
     JOIN employment_business_objects b ON b.tenant_id=r.tenant_id AND b.id=r.id
@@ -97,12 +128,31 @@ export async function listEntryView(
     LEFT JOIN LATERAL (SELECT p.department_id FROM employment_payload_versions p
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1) snap ON true
+    ${
+      collection
+        ? sql`LEFT JOIN onboarding_entry_cases ec ON ec.tenant_id=r.tenant_id
+      AND ec.employee_id=r.employee_id AND ec.current_business_id=r.id
+    LEFT JOIN LATERAL (SELECT task.status FROM onboarding_collection_tasks task
+      WHERE task.tenant_id=ec.tenant_id AND task.case_id=ec.id
+      ORDER BY (task.status IN (${sql.join(
+        ACTIVE_COLLECTION_TASK_STATES.map((state) => sql`${state}`),
+        sql`,`,
+      )})) DESC,
+        task.created_at DESC, task.id DESC LIMIT 1) ct ON true`
+        : sql``
+    }
     WHERE r.tenant_id=${tenantId} AND r.kind IN (${sql.join(
       ENTRY_KINDS.map((kind) => sql`${kind}`),
       sql`, `,
     )})
       AND ${entryViewPredicate(input.view, input.today)} AND ${visible}
-    ORDER BY t.start_date, r.id LIMIT ${input.page.limit} OFFSET ${input.page.offset}
+      ${collection?.status ? sql`AND ${status} = ${collection.status}` : sql``}
+    ORDER BY ${
+      collection?.order
+        ? sql`"collectionStatus" ${collection.order === 'asc' ? sql`ASC` : sql`DESC`}
+      NULLS LAST,`
+        : sql``
+    } t.start_date, r.id LIMIT ${input.page.limit} OFFSET ${input.page.offset}
   `),
   );
 }
