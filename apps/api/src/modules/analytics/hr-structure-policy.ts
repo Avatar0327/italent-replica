@@ -63,4 +63,10 @@ export const CONTRACT_BOARD_POLICIES = defineTable('contract-board', {
   [`GET ${CONTRACT_BOARD_BASE}/components/:code`]: contract(
     fixed(DETAIL_KEYS, 'contract-board-routes.ts 明细：固定键，items 只含范围内的 ID'),
   ),
+  [`GET ${CONTRACT_BOARD_BASE}/components/:code/export`]: contract(
+    fixed(
+      ['file'],
+      'contract-board-routes.ts 下载：CSV 只取范围内明细行的 id、employeeId、organizationId，成功交付前写操作日志',
+    ),
+  ),
 });
