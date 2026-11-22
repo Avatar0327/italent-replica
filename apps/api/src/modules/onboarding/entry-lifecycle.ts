@@ -16,6 +16,8 @@ import {
   type EntryLifecyclePort,
 } from '../employment/onboarding-entry-port.js';
 
+import { generateMaterialList } from './material-list.js';
+
 const cases = onboardingEntryCases;
 const businesses = employmentBusinessObjects;
 
@@ -114,6 +116,7 @@ const lifecycle: EntryLifecyclePort = {
       .returning();
     if (created) {
       await auditCase(tx, ctx, 'create', null, created);
+      await generateMaterialList(tx, ctx, created);
       return created;
     }
     const current = await currentForUpdate(tx, ctx, entry);

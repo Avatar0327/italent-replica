@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
+import { entryMaterialProjection } from '../onboarding/material-list-routes.js';
 import { getModuleViewableFields } from '../permission/module-access.js';
 import {
   EMPLOYEE_OBJECT,
@@ -212,9 +213,15 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readPageContext(c, deps, 'list');
     const view = parse(z.enum(ENTRY_VIEWS), c.req.query('view'));
     const page = pageQuery(c);
-    const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listEntryView(tx, ctx.tenantId, { view, today: tenantLocalDate(ctx.now, ctx.timezone), page }, ctx.scope),
-    );
+    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const material = await entryMaterialProjection(c, deps, tx, ctx);
+      return listEntryView(
+        tx,
+        ctx.tenantId,
+        { view, today: tenantLocalDate(ctx.now, ctx.timezone), page, material },
+        ctx.scope,
+      );
+    });
     const identity = await getModuleViewableFields(deps, ctx, EMPLOYEE_OBJECT);
     const shown = (field: string) => identity === undefined || identity.has(field);
     const trimmed = (await trimEmploymentResponse(
@@ -230,8 +237,9 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           contractStartDate: _start,
           contractEndDate: _end,
           cancelRemark: _cancelRemark,
+          materialStatus,
           ...record
-        }) => record,
+        }) => ({ ...record, ...(materialStatus == null ? {} : { materialStatus }) }),
       ),
     )) as object[];
     return c.json({

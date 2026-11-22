@@ -1192,7 +1192,17 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     operation: 'view',
     button: noButton('列表无按钮'),
     scope: listScope('module.scopeSql'),
+    guards: ['onboarding.entryMaterialProjection'],
     fields: projector('employment.response', 'employment.entryViews'),
+    optional: {
+      materialStatus: object({
+        object: 'TenantBase.OnboardingMaterial',
+        operation: 'view',
+        button: noButton('材料状态列可选披露'),
+        scope: listScope('onboarding.materialEntryScope'),
+        fields: projector('onboarding.materialStatusScope', 'materialStatus'),
+      }),
+    },
   }),
   // ---- employment/intern-routes.ts：R2 BE-6a 实习生（B34～B38、B41、A48）-------------------------------------------------
   // 实习四视图：view / departmentId / keyword 不合法 400；按部门筛选须 departmentId 可见、按关键字须 name / code 可见（否则 403

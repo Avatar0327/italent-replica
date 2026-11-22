@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { auditEvents, eq, sql, withTenant } from '@italent/db';
+import { and, auditEvents, eq, onboardingMaterialItems, sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
@@ -40,17 +40,21 @@ async function world(label: string) {
   };
   registerScopeProvider(authorize, {
     authorize: async (request) => authorize(request),
-    scope: async ({ objectCode }) => ({
-      all: false,
-      hasDataPermission: true,
-      orgIds:
+    scope: async ({ objectCode }) => {
+      const orgIds =
         objectCode === settings
           ? rights.settingsOrgs
           : objectCode === material
             ? rights.materialOrgs
-            : rights.entryOrgs,
-      personIds: [],
-    }),
+            : rights.entryOrgs;
+      return {
+        all: false,
+        hasDataPermission: orgIds.length > 0,
+        orgIds,
+        personIds: [],
+        terms: [{ dimension: 'organization', orgIds, personIds: [] }],
+      };
+    },
     fields: async (_tenant, _user, code) =>
       code === settings ? new Set(['materialRules']) : code === material ? rights.materialFields : rights.entryFields,
   });
@@ -79,7 +83,10 @@ it('AC-EN-BE16-07 按 DEC-983 归档并在命令重放时重新检查编辑权�
   w.rights.admin = false;
   await json(await w.request('POST', w.rules, { ifMatch: 0, body }), 403);
   w.rights.admin = true;
+  await json(await w.request('POST', w.rules, { ifMatch: 0, body: { ...body, remindAfterHire: true } }), 400);
+  await json(await w.request('POST', w.rules, { ifMatch: 0, body: { ...body, orgIds: [randomUUID()] } }), 404);
   const created = await json<Receipt>(await w.request('POST', w.rules, { ifMatch: 0, body }), 201);
+  await json(await w.request('POST', w.rules, { ifMatch: 0, body }), 409);
   const path = w.rules + '/' + created.id;
   const orgIds = w.rights.settingsOrgs;
   w.rights.settingsOrgs = [];
@@ -148,8 +155,10 @@ it('AC-EN-BE16-07 同一阶段清单取优先规则、冻结定义并投影六�
   // 材料办理由 16a-4b 交付。这里经租户事务造真实投影状态。
   async function setStatus(id: string, next: 'submitted' | 'received') {
     await withTenant(w.db, w.tenant, (tx) =>
-      tx.execute(sql`UPDATE onboarding_material_items SET status = ${next}, submitted_at = ${now},
-        received_at = ${next === 'received' ? now : null} WHERE tenant_id = ${w.tenant} AND id = ${id}`),
+      tx
+        .update(onboardingMaterialItems)
+        .set({ status: next, submittedAt: now, receivedAt: next === 'received' ? now : null })
+        .where(and(eq(onboardingMaterialItems.tenantId, w.tenant), eq(onboardingMaterialItems.id, id))),
     );
   }
   await setStatus(items[0]!.id, 'submitted');
@@ -159,6 +168,11 @@ it('AC-EN-BE16-07 同一阶段清单取优先规则、冻结定义并投影六�
   await setStatus(items[0]!.id, 'received');
   await setStatus(items[1]!.id, 'received');
   expect(await status(target.recordId)).toBe('received');
+  const filtered = await json<{ items: { id: string }[] }>(
+    await w.entries('&materialStatus=received&sortBy=materialStatus&pageSize=1'),
+    200,
+  );
+  expect(filtered.items.map(({ id }) => id)).toEqual([target.recordId]);
   await json(
     await w.request('PATCH', path, {
       ifMatch: config.revision,
@@ -190,6 +204,12 @@ it('AC-EN-BE16-07 同一阶段清单取优先规则、冻结定义并投影六�
   await json(await w.list(newId), 404);
   expect(await json(await w.list(newId), 404)).toEqual(await json(await w.list(randomUUID()), 404));
   w.rights.entryOrgs = [w.org.id];
+  const outside = await world('ZZ_BE16_OTHER_TENANT');
+  await json(await outside.list(newId), 404);
+  const foreignRows = await withTenant(w.db, outside.tenant, (tx) =>
+    tx.execute(sql`SELECT id FROM onboarding_material_items WHERE id = ${items[0]!.id}`),
+  );
+  expect(Array.isArray(foreignRows) ? foreignRows : (foreignRows as { rows: unknown[] }).rows).toEqual([]);
   w.rights.material = false;
   await json(await w.list(newId), 403);
   expect(await status(newId)).toBeUndefined();

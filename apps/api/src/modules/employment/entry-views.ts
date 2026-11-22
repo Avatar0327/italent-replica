@@ -7,6 +7,7 @@
 import { sql, type Tx } from '@italent/db';
 import { EMPLOYEE_STATUS, ENTRY_STATUS, type EmployeeStatusCode, type EntryStatusCode } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
+import { materialStatusJoin, type MaterialStatus } from '../onboarding/material-list.js';
 import { employmentCreator, employmentScopePredicate } from './context.js';
 import { ENTRY_KINDS } from './employee-status.js';
 import { personnelHooks } from './personnel-hooks.js';
@@ -42,6 +43,7 @@ export interface EntryViewItem {
    * 改期恢复会换新记录 ID，新记录不继承旧说明；恢复后再取消读到的是新记录上的那次。行可见即可见，不另做字段权限。
    */
   readonly cancelRemark: string | null;
+  readonly materialStatus?: MaterialStatus | null;
 }
 
 export function entryViewPredicate(view: EntryView, today: string): SQL {
@@ -62,7 +64,12 @@ export function entryViewPredicate(view: EntryView, today: string): SQL {
 export async function listEntryView(
   tx: Tx,
   tenantId: string,
-  input: { readonly view: EntryView; readonly today: string; readonly page: PageQuery },
+  input: {
+    readonly view: EntryView;
+    readonly today: string;
+    readonly page: PageQuery;
+    readonly material?: { scope: EmploymentScope; filter?: MaterialStatus; order?: 'asc' | 'desc' };
+  },
   scope: EmploymentScope | undefined,
 ): Promise<EntryViewItem[]> {
   checkPage(input.page);
@@ -73,6 +80,11 @@ export async function listEntryView(
     department,
     employmentCreator(tenantId, sql`r.id`, true),
   );
+  const material = input.material;
+  const status = sql`material_summary.status`;
+  const order = material?.order
+    ? sql`${status} ${material.order === 'desc' ? sql`DESC` : sql`ASC`} NULLS LAST, `
+    : sql.empty();
   return rowsOf<EntryViewItem>(
     await tx.execute(sql`
     SELECT r.id, r.employee_id AS "employeeId", e.code,
@@ -83,6 +95,7 @@ export async function listEntryView(
       pp.months AS "probationMonths", pc.contract_company_id::text AS "contractCompanyId",
       pc.start_date::text AS "contractStartDate", pc.end_date::text AS "contractEndDate",
       cancel.remark AS "cancelRemark"
+      ${material ? sql`, ${status} AS "materialStatus"` : sql.empty()}
     FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
     JOIN employment_business_objects b ON b.tenant_id=r.tenant_id AND b.id=r.id
@@ -97,12 +110,14 @@ export async function listEntryView(
     LEFT JOIN LATERAL (SELECT p.department_id FROM employment_payload_versions p
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1) snap ON true
+    ${material ? materialStatusJoin(material.scope, tenantId, department) : sql.empty()}
     WHERE r.tenant_id=${tenantId} AND r.kind IN (${sql.join(
       ENTRY_KINDS.map((kind) => sql`${kind}`),
       sql`, `,
     )})
       AND ${entryViewPredicate(input.view, input.today)} AND ${visible}
-    ORDER BY t.start_date, r.id LIMIT ${input.page.limit} OFFSET ${input.page.offset}
+      ${material?.filter ? sql`AND ${status} = ${material.filter}` : sql.empty()}
+    ORDER BY ${order}t.start_date, r.id LIMIT ${input.page.limit} OFFSET ${input.page.offset}
   `),
   );
 }
