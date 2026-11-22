@@ -1,6 +1,6 @@
 import { esignFailureText } from '@italent/domain';
 import { Button, Pagination, Table, type TableColumnsType } from 'antd';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRead } from '../contracts/useRead.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useSession } from '../foundation/Session.js';
@@ -40,8 +40,15 @@ function HistoryReader({ source }: { source: SignSource }) {
   } catch (cause) {
     error = cause;
   }
+  const lastPage = records ? Math.max(1, Math.ceil(records.total / PAGE_SIZE)) : page;
+  const correctingPage = page > lastPage;
+  useEffect(() => {
+    if (correctingPage) setPage(lastPage);
+  }, [correctingPage, lastPage]);
+
   if (!canView || unreadable(error)) return null;
-  const rows = records?.items ?? [];
+  const loading = read.loading || correctingPage;
+  const rows = loading ? [] : (records?.items ?? []);
   const columns = historyColumns(
     visible,
     timezone,
@@ -56,12 +63,12 @@ function HistoryReader({ source }: { source: SignSource }) {
           {s.historyError} <Button onClick={read.refresh}>{s.retry}</Button>
         </p>
       )}
-      {read.loading && <p role="status">{s.historyLoading}</p>}
-      {records && !rows.length && <p>{s.emptyHistory}</p>}
+      {loading && <p role="status">{s.historyLoading}</p>}
+      {!loading && records && !rows.length && <p>{s.emptyHistory}</p>}
       {!!rows.length && (
         <Table<RecordRow> rowKey="id" dataSource={rows} columns={columns} pagination={false} size="small" />
       )}
-      {!!records && records.total > PAGE_SIZE && (
+      {!loading && !!records && records.total > PAGE_SIZE && (
         <Pagination
           current={page}
           pageSize={PAGE_SIZE}
