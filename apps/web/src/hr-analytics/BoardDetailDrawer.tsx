@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { Alert } from 'antd';
 import { DetailPage } from '../foundation/templates.js';
 import { ReadOnlyReportTable } from '../hr-reports/ReportTable.js';
@@ -36,6 +36,7 @@ export function BoardDetailDrawer({
   retry(): void;
 }) {
   const { data, error, loading } = read;
+  const summaryFocus = useRef<HTMLParagraphElement>(null);
   return (
     <DetailPage
       open
@@ -43,7 +44,9 @@ export function BoardDetailDrawer({
       title={title}
       summary={
         <>
-          <p>{m.asOf(asOf)}</p>
+          <p ref={summaryFocus} tabIndex={-1}>
+            {m.asOf(asOf)}
+          </p>
           {controls}
           <ReadState
             loading={loading}
@@ -60,7 +63,11 @@ export function BoardDetailDrawer({
               page={data.page}
               pageSize={data.pageSize}
               paginationDisabled={waiting}
-              changePage={changePage}
+              changePage={(page) => {
+                // 换页会卸载分页器。先把焦点移到抽屉内持续挂载的摘要。
+                summaryFocus.current?.focus({ preventScroll: true });
+                changePage(page);
+              }}
               emptyText={m.empty}
             />
           )}
