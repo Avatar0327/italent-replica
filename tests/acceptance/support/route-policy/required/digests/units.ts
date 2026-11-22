@@ -414,7 +414,7 @@ export const DIGESTS: Digests = {
     'route:POST /pending-entries/:id/postpone': '4280a51d02a0',
   },
   'apps/api/src/modules/employment/entry-views.ts': {
-    listEntryView: '9b1440a49123',
+    listEntryView: 'ad02a1a78493',
   },
   'apps/api/src/modules/employment/exit-account-routes.ts': {
     readScopedAccountTask: 'b2d95a016a31',
