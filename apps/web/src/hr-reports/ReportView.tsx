@@ -83,7 +83,8 @@ function useReportPage(report: PersonnelReport) {
   const resultFilters = rosterPage ? rosterResultFilters(query.filters, rosterPage) : undefined;
   const filtersChanged = Boolean(rosterPage && !resultFilters);
   const resultDate = structure && data && 'asOf' in data ? data.asOf : undefined;
-  const applied = roster ? resultFilters : resultDate ? { ...query.filters, asOf: resultDate } : query.filters;
+  const responseFilters = resultDate ? { ...query.filters, asOf: resultDate } : query.filters;
+  const applied = roster ? resultFilters : responseFilters;
 
   function request(filters: Filters, page: number) {
     if (waiting) return;
