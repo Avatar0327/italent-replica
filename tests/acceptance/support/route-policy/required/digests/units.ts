@@ -1163,7 +1163,7 @@ export const DIGESTS: Digests = {
     PREPARATION_SETTINGS: 'd46e12d3dcef',
   },
   'apps/api/src/modules/onboarding/preparation-config.ts': {
-    writePreparationConfig: '2b4f0568a016',
+    writePreparationConfig: '998584ca27cf',
   },
   'apps/api/src/modules/org-adjustment/access.ts': {
     OBJECT: 'b007f3f6067a',

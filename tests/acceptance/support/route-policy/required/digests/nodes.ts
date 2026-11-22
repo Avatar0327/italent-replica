@@ -5495,7 +5495,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/onboarding/preparation-config.ts#saveRuleChildren': ['39729a101bf1', '16c8adaf1a34'],
   'apps/api/src/modules/onboarding/preparation-config.ts#tableFor': ['81df434b5390', '73c5aa12c236'],
   'apps/api/src/modules/onboarding/preparation-config.ts#validateRefs': ['c60abc5dc933', 'a1b0dec0b41d'],
-  'apps/api/src/modules/onboarding/preparation-config.ts#writePreparationConfig': ['2b4f0568a016', '71129f0fb7a5'],
+  'apps/api/src/modules/onboarding/preparation-config.ts#writePreparationConfig': ['998584ca27cf', '71129f0fb7a5'],
   'apps/api/src/modules/onboarding/preparation-launch-read.ts#preparationStatusSql': ['2c9354e10757', '7a645dc8391f'],
   'apps/api/src/modules/org-adjustment/access.ts#ADJUSTMENT_NOT_FOUND': ['256f576da12d', 'e3b0c44298fc'],
   'apps/api/src/modules/org-adjustment/access.ts#HEAD_BUTTONS': ['a52b1b9ca9b8', 'e3b0c44298fc'],

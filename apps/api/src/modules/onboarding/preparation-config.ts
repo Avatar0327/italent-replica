@@ -250,7 +250,8 @@ export async function writePreparationConfig(
       .select()
       .from(items)
       .where(identity(items, ctx.tenantId, input.itemId));
-    if (!item || (input.enabled && !item.enabled)) preparationConfigMissing();
+    // 编辑规则时事项不可改绑，归档只阻止新增引用。
+    if (!item || (!id && item.archived) || (input.enabled && !item.enabled)) preparationConfigMissing();
     await validateRefs(tx, ctx, scope, input);
     const changes = { ...body, ...base };
     const [row] = id
