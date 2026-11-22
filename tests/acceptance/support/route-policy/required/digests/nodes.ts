@@ -5207,7 +5207,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/offer/context.ts#offerReadContext': ['c5e8ea087e23', '636b5336d243'],
   'apps/api/src/modules/offer/context.ts#offerTransferCheck': ['d2cb9dcb919e', '03ed5a7ae484'],
   'apps/api/src/modules/offer/context.ts#protocolKeys': ['08256c985278', '86e8e78ad7e1'],
-  'apps/api/src/modules/offer/context.ts#readableNames': ['a228553ec016', '50f8c88ac6e6'],
+  'apps/api/src/modules/offer/context.ts#readableNames': ['f1115bca0139', '50f8c88ac6e6'],
   'apps/api/src/modules/offer/context.ts#requireOfferInScope': ['08111b250909', 'd2196d745680'],
   'apps/api/src/modules/offer/context.ts#runDictionaryWrite': ['7b25cec2c260', 'f8f96c185984'],
   'apps/api/src/modules/offer/context.ts#runOfferWrite': ['607239406ea4', '4a7852e97599'],

@@ -4,7 +4,7 @@
  * （DEC-503）。写命令一律经 runCommand 的 ledgerExit + CommandGuard.before：首次、重放、失败回查都按当前权限复核（#199）。
  */
 import { pgErrorCode, type Tx } from '@italent/db';
-import { OFFER_NAME_FIELDS, OFFER_OBJECT, type ButtonLevel } from '@italent/domain';
+import { OFFER_NAME_FIELDS, OFFER_OBJECT, type ButtonLevel, type OfferRowActions } from '@italent/domain';
 import type { Context } from 'hono';
 import { requirePermission, type Authorizer } from '../../authorization.js';
 import { runCommand, type CommandGuard, type CommandResult } from '../../commands.js';
@@ -180,6 +180,9 @@ export async function trimOffer(deps: TenantRouteDeps, ctx: OfferContext, body: 
 /** 名称只随裁剪后仍可见的 ID 返回，不能通过单独授予派生字段名绕过 ID 字段权。 */
 function readableNames(source: Record<string, unknown>, trimmed: Record<string, unknown>) {
   const result = { ...trimmed, ...protocolKeys(source) };
+  // DEC-980：行操作的来源 ID 是协议定位键；空动作行、普通业务字段和写回执仍走字段裁剪。
+  const actions = source.rowActions as OfferRowActions | undefined;
+  if (actions && (actions.primary.length || actions.menu.length)) result.id = source.id;
   for (const [name, id] of Object.entries(OFFER_NAME_FIELDS)) {
     delete result[name];
     if (Object.hasOwn(trimmed, id) && Object.hasOwn(source, name)) result[name] = source[name];
