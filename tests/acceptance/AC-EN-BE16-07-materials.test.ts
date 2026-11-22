@@ -1,11 +1,22 @@
 import { randomUUID } from 'node:crypto';
-import { and, auditEvents, eq, onboardingMaterialItems, sql, withTenant } from '@italent/db';
+import {
+  and,
+  auditEvents,
+  commandLedger,
+  employmentBusinessObjects,
+  eq,
+  onboardingEntryCases,
+  onboardingMaterialItems,
+  sql,
+  withTenant,
+} from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import type { Authorizer } from '../../apps/api/src/authorization.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
-import { addPending, entryAction, entryWorld } from './AC-EN-BE2a-support.js';
+import { withLoginEmail } from './AC-EMP-support.js';
+import { addPending, entryAction, entryWorld, hireBody } from './AC-EN-BE2a-support.js';
 import { tenantApi, type RequestOptions } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -213,4 +224,67 @@ it('AC-EN-BE16-07 同一阶段清单取优先规则、冻结定义并投影六�
   w.rights.material = false;
   await json(await w.list(newId), 403);
   expect(await status(newId)).toBeUndefined();
+});
+
+it('AC-EN-BE16-07 P2-1 组织调整造成规则冲突时原子拒绝，修正规则后可用原命令重试', async () => {
+  const w = await world('ZZ_BE16_MATERIAL_AMBIGUOUS');
+  const moved = await w.session.org('ZZ_BE16_MOVED_ORG', { establishedOn: '2026-01-01' });
+  w.rights.settingsOrgs.push(moved.id);
+  w.rights.entryOrgs.push(moved.id);
+  w.rights.materialOrgs.push(moved.id);
+  const saveRule = async (orgId: string, name: string, required: boolean) =>
+    json<Receipt>(
+      await w.request('POST', w.rules, {
+        ifMatch: 0,
+        body: { name, orgIds: [orgId], priority: 10, items: [definition(name, required)] },
+      }),
+      201,
+    );
+  await saveRule(w.org.id, 'ZZ_BE16_ROOT_MATERIAL', true);
+  const movedRule = await saveRule(moved.id, 'ZZ_BE16_MOVED_MATERIAL', false);
+  const orgApi = tenantApi(w.db, { clock: () => now });
+  await json(
+    await orgApi.request('PATCH', `/api/tenant/org/organizations/${moved.id}`, {
+      tenant: w.tenant,
+      user: w.session.user.id,
+      ifMatch: moved.revision,
+      body: { effectiveDate: '2026-10-01', parents: { admin: { parentId: w.org.id } }, addEmployment: false },
+    }),
+    200,
+  );
+
+  const employee = await w.session.employee('ZZ_BE16_AMBIGUOUS_ENTRY');
+  const idempotencyKey = randomUUID();
+  const create = () =>
+    w.session.request('POST', `/employees/${employee.id}/businesses`, {
+      idempotencyKey,
+      ifMatch: employee.revision,
+      body: withLoginEmail(employee.id, hireBody(moved.id, '2026-10-10', { pendingEntry: true })),
+    });
+  const rejected = await create();
+  expect(rejected.status).toBe(409);
+  expect(await rejected.json()).toMatchObject({
+    error: { code: 'CONFLICT', details: { reason: 'MATERIAL_RULE_AMBIGUOUS' } },
+  });
+  await withTenant(w.db, w.tenant, async (tx) => {
+    expect(
+      await tx.select().from(employmentBusinessObjects).where(eq(employmentBusinessObjects.employeeId, employee.id)),
+    ).toEqual([]);
+    expect(
+      await tx.select().from(onboardingEntryCases).where(eq(onboardingEntryCases.employeeId, employee.id)),
+    ).toEqual([]);
+    expect(await tx.select().from(commandLedger).where(eq(commandLedger.commandId, idempotencyKey))).toEqual([]);
+  });
+  await json(
+    await w.request('PATCH', w.rules + '/' + movedRule.id, {
+      ifMatch: movedRule.revision,
+      body: { priority: 20 },
+    }),
+    200,
+  );
+  const created = await json<{ id: string }>(await create(), 201);
+  expect(await json(await create(), 201)).toMatchObject({ id: created.id });
+  expect(await json(await w.list(created.id), 200)).toEqual({
+    items: [expect.objectContaining({ required: true, status: 'pending' })],
+  });
 });
