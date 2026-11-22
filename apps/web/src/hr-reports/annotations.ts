@@ -1,5 +1,13 @@
 import type { DecisionAnnotation } from '../annotations/index.js';
 export const notes: Record<string, DecisionAnnotation> = {
+  'hr-movement-reports': {
+    original: '数据分析下的流动情况包含员工流动、各月入离职和各机构入离职等报表。',
+    decision:
+      '年度流动按行政组织逐层下钻。部门选择使用租户行政树，报表和下载按查看人的数据范围取数。' +
+      '各月与各机构报表共用报表目录的查询和两种下载方式。',
+    decisions: ['DEC-763', 'DEC-809', 'DEC-810', 'DEC-960', 'DEC-961'],
+    level: 'L2',
+  },
   'hr-structure-reports': {
     original: '数据分析下的员工结构含员工素质结构和员工任职结构。',
     decision:

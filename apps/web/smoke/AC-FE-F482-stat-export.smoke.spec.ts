@@ -38,8 +38,9 @@ test.beforeEach(async ({ page, baseURL }) => {
   );
   await page.route('**/hr-analysis/reports', (route) => route.fulfill({ json: reportCatalog() }));
   await page.route('**/analytics/hr-movement/reports/*?*', (route) => {
-    if (new URL(route.request().url()).pathname.endsWith('/export')) return route.fallback();
-    return route.fulfill({ json: movementPage(new URL(route.request().url()).pathname.split('/').at(-1)) });
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/export')) return route.fallback();
+    return route.fulfill({ json: movementPage(url.pathname.split('/').at(-1), url.searchParams) });
   });
   await page.route('**/analytics/hr-structure/reports/quality?*', (route) => route.fulfill({ json: qualityPage() }));
 });
