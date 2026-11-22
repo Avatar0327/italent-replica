@@ -10,9 +10,11 @@ import { m } from './messages.js';
 import { DepartmentFilter, useReportDepartment, type DepartmentContext } from './DepartmentFilter.js';
 import {
   movement,
+  movementMonthLimit,
   rosterFilterColumns,
   rosterFilters,
   structureReport,
+  validMovementFilters,
   validRosterFilters,
   validStructureFilters,
   type Column,
@@ -75,7 +77,7 @@ function inputBounds(field: QueryField, draft: Filters) {
   if (field.bounds) return field.bounds;
   if (field.type === 'date') return { min: '0001-01-01', max: '9999-12-31' };
   if (field.key === 'year') return { min: 1900, max: Number(draft.asOf?.slice(0, 4)) || 9999 };
-  if (field.key === 'month') return { min: 1, max: 12 };
+  if (field.key === 'month') return { min: 1, max: movementMonthLimit(draft) };
   return {};
 }
 function FilterControl({
@@ -114,7 +116,8 @@ function FilterControl({
       disabled={busy}
       maxLength={200}
       {...inputBounds(field, draft)}
-      required={['asOf', 'from', 'to', 'year', 'month'].includes(field.key)}
+      placeholder={field.key === 'month' ? String(movementMonthLimit(draft)) : undefined}
+      required={['asOf', 'from', 'to'].includes(field.key)}
       onChange={(event) => change(event.target.value)}
     />
   );
@@ -140,6 +143,7 @@ export function ReportFilters({
   apply(filters: Filters): void;
 }) {
   const roster = code === 'roster';
+  const validateDepartment = departments ? validStructureFilters : undefined;
   return (
     <QueryFilters
       fields={fieldsOf(code, columns)}
@@ -147,7 +151,7 @@ export function ReportFilters({
       busy={busy}
       submitDisabled={blocked}
       rosterColumns={roster ? columns : undefined}
-      validate={departments ? validStructureFilters : undefined}
+      validate={movement(code) ? validMovementFilters : validateDepartment}
       applied={applied}
       departments={departments}
       apply={apply}
@@ -267,6 +271,7 @@ export function QueryFilters({
             candidates={candidates}
             filters={departments.allowed ? departmentFilters : {}}
             busy={busy}
+            includeChildrenToggle={departments.object === 'HrStructureReport'}
             change={(changes) => setDraft((value) => ({ ...value, ...changes }))}
           />
         )}
