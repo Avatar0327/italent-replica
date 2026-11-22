@@ -155,6 +155,17 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test('AC-FE-R2f-05 审批人和发起周图表使用各自的维度表头', async ({ page }) => {
+  await start(page);
+  await expect
+    .soft(card(page, 'inFlightByApprover').getByRole('columnheader'), '7.2.04 堆叠柱应以审批人 ID 为维度')
+    .toHaveText(['审批人 ID', approver]);
+  await expect
+    .soft(card(page, 'taskDurationByApprover').getByRole('columnheader'), '7.2.09 柱线组合应以审批人 ID 为维度')
+    .toHaveText(['审批人 ID', approver]);
+  await expect(card(page, 'durationByWeek').getByRole('columnheader')).toHaveText(['统计期间', '2026-11-16']);
+});
+
 test('AC-FE-R2f-05 B51 单授权根入口，仅在途与时效两组十项，筛选、图表与分页明细', async ({ page }) => {
   const reads: URL[] = [];
   page.on('request', (r) => {
