@@ -64,7 +64,8 @@ export async function latestCollectionSubmission(tx: Tx, tenantId: string, taskI
     .where(and(eq(submissions.tenantId, tenantId), eq(submissions.taskId, taskId), eq(submissions.kind, 'submit')))
     .orderBy(desc(submissions.version))
     .limit(1);
-  if (!submitted) throw new AppError('NOT_FOUND', '采集提交不存在');
+  if (!submitted)
+    throw new AppError('CONFLICT', '尚无正式采集提交可发起审批', { reason: 'ENTRY_INFO_COLLECTION_UNAVAILABLE' });
   return submitted;
 }
 

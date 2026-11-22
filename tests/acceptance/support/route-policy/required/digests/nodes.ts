@@ -5473,7 +5473,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/onboarding/collection-submit-fields.ts#required': ['f6f4390459dc', '583ee92c250c'],
   'apps/api/src/modules/onboarding/collection-submit-store.ts#collectionBinding': ['3e894f0dac78', 'a8c5ebdb39d8'],
   'apps/api/src/modules/onboarding/collection-submit-store.ts#latestCollectionSubmission': [
-    '9bd20c204c7b',
+    '2806058fa314',
     'b4267d7ee8f3',
   ],
   'apps/api/src/modules/onboarding/collection-submit-store.ts#lockCollectionBinding': ['6b6d330efcb2', 'addf51c26ad1'],
