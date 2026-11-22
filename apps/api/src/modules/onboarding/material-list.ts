@@ -186,6 +186,7 @@ export async function readMaterialList(
       id: items.id,
       revision: items.revision,
       definitionId: items.definitionId,
+      definitionName: items.definitionName,
       status: items.status,
       required: items.required,
       allowSupplement: items.allowSupplement,
@@ -201,8 +202,12 @@ export async function readMaterialList(
     .limit(page.limit)
     .offset(page.offset);
   return {
-    items: rows.map((row) =>
-      Object.fromEntries(Object.entries(row).filter(([key]) => !access.fields || access.fields.has(key))),
-    ),
+    items: rows.map(({ definitionName, ...row }) => {
+      const visible = Object.fromEntries(
+        Object.entries(row).filter(([key]) => !access.fields || access.fields.has(key)),
+      );
+      // 冻结名称是 definitionId 的展示标签，随该引用一并授权。
+      return Object.hasOwn(visible, 'definitionId') ? { ...visible, definitionName } : visible;
+    }),
   };
 }
