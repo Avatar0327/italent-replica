@@ -15,13 +15,14 @@ interface Candidate {
 export interface DepartmentContext {
   committed: Filters;
   allowed: boolean;
+  object: 'HrStructureReport' | 'HrMovementReport';
 }
 
-function useDepartmentCandidates(asOf?: string) {
+function useDepartmentCandidates(object?: DepartmentContext['object'], asOf?: string) {
   const [generation, refresh] = useState(0);
   const path =
-    asOf && validReportDate(asOf)
-      ? `/api/tenant/analytics/organization-candidates?${new URLSearchParams({ object: 'HrStructureReport', asOf })}`
+    object && asOf && validReportDate(asOf)
+      ? `/api/tenant/analytics/organization-candidates?${new URLSearchParams({ object, asOf })}`
       : null;
   const read = useReportRead<{ items: Candidate[] }>(path, generation);
   const waiting = useReportRetryWait(read.failure?.retryAt ?? 0);
@@ -45,7 +46,7 @@ function useDepartmentCandidates(asOf?: string) {
 }
 
 export function useReportDepartment(draft: Filters, context?: DepartmentContext) {
-  const candidates = useDepartmentCandidates(context?.allowed ? draft.asOf : undefined);
+  const candidates = useDepartmentCandidates(context?.object, context?.allowed ? draft.asOf : undefined);
   // 候选不可用时沿用已应用的部门条件，避免查询被静默扩成全部组织。
   const selected = candidates.available ? draft : context?.committed;
   const departmentId = selected?.departmentId ?? '';
@@ -61,11 +62,13 @@ export function DepartmentFilter({
   candidates,
   filters,
   busy,
+  includeChildrenToggle,
   change,
 }: {
   candidates: ReturnType<typeof useDepartmentCandidates>;
   filters: Filters;
   busy: boolean;
+  includeChildrenToggle: boolean;
   change(filters: Filters): void;
 }) {
   const disabled = busy || !candidates.available;
@@ -95,13 +98,15 @@ export function DepartmentFilter({
           }}
         />
       </label>
-      <Checkbox
-        checked={departmentIncludeChildren !== 'false'}
-        disabled={disabled}
-        onChange={(event) => change({ departmentIncludeChildren: String(event.target.checked) })}
-      >
-        {m.includeChildren}
-      </Checkbox>
+      {includeChildrenToggle && (
+        <Checkbox
+          checked={departmentIncludeChildren !== 'false'}
+          disabled={disabled}
+          onChange={(event) => change({ departmentIncludeChildren: String(event.target.checked) })}
+        >
+          {m.includeChildren}
+        </Checkbox>
+      )}
       {!candidates.available && !candidates.loading && <span role="status">{m.candidateUnavailable}</span>}
       {candidates.retry && (
         <Button disabled={candidates.waiting} onClick={candidates.retry}>

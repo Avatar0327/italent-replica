@@ -5,7 +5,7 @@
     "audit": 4,
     "avatar": 5,
     "command-result": 1,
-    "contract-board": 2,
+    "contract-board": 3,
     "contracts": 25,
     "duty-transfer": 5,
     "employment": 191,
@@ -13,7 +13,7 @@
     "establishment": 16,
     "evaluation": 34,
     "hr-analysis": 6,
-    "hr-dashboard": 2,
+    "hr-dashboard": 3,
     "hr-movement": 4,
     "hr-process-dashboard": 2,
     "hr-structure": 4,
@@ -21,7 +21,6 @@
     "insurance": 4,
     "job": 20,
     "offers": 24,
-    "onboarding": 12,
     "org": 17,
     "org-adjustment": 16,
     "permission": 52,
@@ -42,5 +41,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 960
+  "total": 950
 }

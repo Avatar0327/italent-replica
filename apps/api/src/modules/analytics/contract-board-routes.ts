@@ -2,7 +2,7 @@
  * 合同情况看板（B55）的只读路由（R2 BE-13a，规格 35“补充：BE-13…”）：
  * - GET /api/tenant/analytics/contract-board?asOf=&changeFrom=&changeTo=&companyId=&typeId=&termType=：8 个组件；
  * - GET …/contract-board/components/:code?group=&page=&pageSize=：构成数字（或某个分组）的申请单 / 合同明细，分页。
- * 对象 TenantBase.ContractBoard 的查看权与数据范围；只读，不写台账 / 审计；下载归前端（DEC-708）。
+ * 对象 TenantBase.ContractBoard 的查看权与数据范围；下载沿用详情投影并在交付前写操作日志（F-547 §5）。
  */
 import { withTenant } from '@italent/db';
 import { CONTRACT_BOARD_COMPONENTS, CONTRACT_BOARD_OBJECT } from '@italent/domain';
@@ -13,6 +13,7 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery } from '../job/context.js';
 import { objectContext } from '../permission/module-route-access.js';
 import { registerPersonScopedObject } from '../permission/scope-resolver.js';
+import { COMPONENT_EXPORT_PAGE, exportComponent, validateComponentExportQuery } from './component-export.js';
 import {
   contractBoardComponents,
   contractBoardPage,
@@ -51,6 +52,15 @@ async function boardContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   return { ...ctx, at };
 }
 
+function componentQuery(c: Context) {
+  const component = CONTRACT_BOARD_COMPONENTS.find((item) => item.code === c.req.param('code'));
+  if (!component) throw new AppError('NOT_FOUND', '组件不存在');
+  const group = groupQuery(c);
+  if (group !== undefined && !isGroupedContractComponent(component.code))
+    throw new AppError('VALIDATION_FAILED', '该组件没有分组');
+  return { component, group };
+}
+
 export function registerContractBoardRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(CONTRACT_BOARD_BASE, async (c) => {
     const ctx = await boardContext(c, deps);
@@ -62,11 +72,7 @@ export function registerContractBoardRoutes(router: Hono<TenantEnv>, deps: Tenan
 
   router.get(`${CONTRACT_BOARD_BASE}/components/:code`, async (c) => {
     const ctx = await boardContext(c, deps);
-    const component = CONTRACT_BOARD_COMPONENTS.find((item) => item.code === c.req.param('code'));
-    if (!component) throw new AppError('NOT_FOUND', '组件不存在');
-    const group = groupQuery(c);
-    if (group !== undefined && !isGroupedContractComponent(component.code))
-      throw new AppError('VALIDATION_FAILED', '该组件没有分组');
+    const { component, group } = componentQuery(c);
     const page = pageQuery(c);
     const result = await withTenant(deps.db, ctx.base.tenantId, async (tx) =>
       contractBoardPage(tx, component.code, ctx.at(await dashboardRenewalTypes(tx, ctx.base.tenantId)), group, page),
@@ -81,5 +87,38 @@ export function registerContractBoardRoutes(router: Hono<TenantEnv>, deps: Tenan
       pageSize: page.pageSize,
       hasDataPermission: ctx.scope.hasDataPermission,
     });
+  });
+
+  router.get(`${CONTRACT_BOARD_BASE}/components/:code/export`, async (c) => {
+    const ctx = await boardContext(c, deps);
+    validateComponentExportQuery(c, ['asOf', 'changeFrom', 'changeTo', 'companyId', 'typeId', 'termType', 'group']);
+    const { component, group } = componentQuery(c);
+    const result = await withTenant(deps.db, ctx.base.tenantId, async (tx) =>
+      contractBoardPage(
+        tx,
+        component.code,
+        ctx.at(await dashboardRenewalTypes(tx, ctx.base.tenantId)),
+        group,
+        COMPONENT_EXPORT_PAGE,
+      ),
+    );
+    const idLabel = component.kind === 'value' && component.code !== '3.1.17' ? '申请单 ID' : '合同记录 ID';
+    return exportComponent(
+      c,
+      deps,
+      ctx.base,
+      {
+        board: 'contract-board',
+        object: CONTRACT_BOARD_OBJECT,
+        component,
+        asOf: ctx.asOf,
+        columns: [
+          { key: 'id', label: idLabel },
+          { key: 'employeeId', label: '员工 ID' },
+          { key: 'organizationId', label: '组织 ID' },
+        ],
+      },
+      result,
+    );
   });
 }

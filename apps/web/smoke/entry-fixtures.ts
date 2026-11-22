@@ -147,6 +147,8 @@ async function permissions(page: Page) {
   );
   await page.route('**/permission/me/objects/*', (route) => {
     const objectCode = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!);
+    if (objectCode === 'TenantBase.ESignRecord')
+      return route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN', message: '无权访问签署记录' } } });
     return route.fulfill({ json: objectGrant(objectCode) });
   });
 }
