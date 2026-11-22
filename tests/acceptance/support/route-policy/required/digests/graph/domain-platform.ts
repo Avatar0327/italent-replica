@@ -46,6 +46,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
   ],
+  'packages/domain/src/platform/standard-presets.ts#BE16_SEE_ALL': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+  ],
   'packages/domain/src/platform/standard-presets.ts#BLACKLIST_SEE_ALL': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
@@ -143,6 +147,7 @@ export const GRAPH: Graph = {
     '#ANALYTICS_BE13A_SEE_ALL',
     '#ANALYTICS_BE13B_SEE_ALL',
     '#ASSESSMENT_SEE_ALL',
+    '#BE16_SEE_ALL',
     '#BLACKLIST_SEE_ALL',
     '#BUSINESS_OBJECTS',
     '#CORE_HR',
@@ -164,6 +169,7 @@ export const GRAPH: Graph = {
     '#readOnly',
     '#withoutDailyWage',
     '#withoutInsuranceAdjust',
+    '#withoutOnboardingStatuses',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_APP',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_PROFILES',
     'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_APP',
@@ -186,8 +192,10 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/platform/standard-presets.ts#grant': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    '#BE16_SEE_ALL',
     '#READ_ONLY_OBJECTS',
     '#full',
+    '#partial',
     '#readOnly',
   ],
   'packages/domain/src/platform/standard-presets.ts#partial': ['#full'],
@@ -199,6 +207,10 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/platform/standard-presets.ts#withoutInsuranceAdjust': [
     'packages/domain/src/permission/module-actions.ts#INSURANCE_ADJUST_FIELDS',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'packages/domain/src/platform/standard-presets.ts#withoutOnboardingStatuses': [
+    'packages/domain/src/onboarding/permission.ts#ONBOARDING_ENTRY_STATUS_FIELDS',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
 };

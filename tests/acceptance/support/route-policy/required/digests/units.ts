@@ -80,7 +80,7 @@ export const DIGESTS: Digests = {
     openTask: '6f9c0c04e106',
   },
   'apps/api/src/modules/approval/adapters.ts': {
-    ADAPTERS: '78fab346071d',
+    ADAPTERS: '9f2e55c95c68',
     personnelAdapter: '17d568ef5ca5',
   },
   'apps/api/src/modules/approval/disclosure.ts': {
@@ -2170,7 +2170,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/actions.ts#assertTargetInScope': '1fe41485709d',
   'apps/api/src/modules/approval/actions.ts#openOwn': '1977a0826369',
   'apps/api/src/modules/approval/actions.ts#openTask': 'b572a86c10cb',
-  'apps/api/src/modules/approval/adapters.ts#ADAPTERS': 'edfc3d82549e',
+  'apps/api/src/modules/approval/adapters.ts#ADAPTERS': '098962fbf987',
   'apps/api/src/modules/approval/adapters.ts#personnelAdapter': '34083b87e52d',
   'apps/api/src/modules/approval/disclosure.ts#assertCanOpen': '457412422a98',
   'apps/api/src/modules/approval/disclosure.ts#readDetail': '244f4715cee7',
