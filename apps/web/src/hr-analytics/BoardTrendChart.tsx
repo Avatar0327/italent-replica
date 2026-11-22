@@ -24,17 +24,19 @@ type TrendRow = { key: string; label?: string; color: string; cells: (TrendPoint
 function TrendValues({
   rows,
   categories,
+  dimensionLabel = m.trendPeriod,
   open,
 }: {
   rows: readonly TrendRow[];
   categories: readonly TrendAxisItem[];
+  dimensionLabel?: string;
   open?(key: string): void;
 }) {
   return (
     <table>
       <thead>
         <tr>
-          <th scope="col">{m.trendPeriod}</th>
+          <th scope="col">{dimensionLabel}</th>
           {categories.map(({ key, label }) => (
             <th scope="col" key={key}>
               {label}
@@ -71,6 +73,7 @@ interface TrendChartProps {
   kind: 'line' | 'area' | 'stacked' | 'combo';
   categories: readonly TrendAxisItem[];
   series: readonly TrendSeries[];
+  dimensionLabel?: string;
   percent?: boolean;
   categoryWidth?: number;
   open?(key: string): void;
@@ -177,7 +180,8 @@ function stackedMaximum(rows: readonly TrendRow[], categories: readonly TrendAxi
   }, 0);
 }
 
-export function BoardTrendChart({ kind, categories, series, percent = false, categoryWidth, open }: TrendChartProps) {
+export function BoardTrendChart(props: TrendChartProps) {
+  const { kind, categories, series, percent = false, categoryWidth, dimensionLabel, open } = props;
   if (!categories.length || !series.length) return <p className="board-chart-empty">{m.empty}</p>;
 
   const rows = series.map(({ key, label, points }, index) => {
@@ -240,7 +244,7 @@ export function BoardTrendChart({ kind, categories, series, percent = false, cat
             />
           ))}
         </svg>
-        <TrendValues rows={rows} categories={categories} open={open} />
+        <TrendValues rows={rows} categories={categories} dimensionLabel={dimensionLabel} open={open} />
       </div>
     </div>
   );

@@ -20,6 +20,7 @@ export const m = {
     abnormalTotal: '异常流程',
     overThreeDays: '超过 3 天',
     overSevenDays: '超过 7 天',
+    approverId: '审批人 ID',
     taskId: '任务 ID',
     sampleDays: '耗时（天）',
     averageDays: '平均耗时（天）',

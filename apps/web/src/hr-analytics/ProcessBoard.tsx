@@ -56,21 +56,13 @@ function ProcessChart({ component, open }: { component: ProcessComponent; open?:
       const point = points.find((item) => item.key === key);
       if (point) open(point.drill, point.key);
     });
-  const kind = {
-    inFlightByApprover: 'stacked',
-    durationByWeek: 'line',
-    taskDurationByApprover: 'combo',
+  const trends = {
+    inFlightByApprover: { kind: 'stacked', categoryWidth: 172, dimensionLabel: p.approverId },
+    durationByWeek: { kind: 'line', categoryWidth: 95 },
+    taskDurationByApprover: { kind: 'combo', categoryWidth: 172, dimensionLabel: p.approverId },
   } as const;
-  const trend = kind[component.code as keyof typeof kind];
-  if (trend)
-    return (
-      <BoardTrendChart
-        kind={trend}
-        {...processTrend(component, points)}
-        categoryWidth={trend === 'line' ? 95 : 172}
-        open={openPoint}
-      />
-    );
+  const trend = trends[component.code as keyof typeof trends];
+  if (trend) return <BoardTrendChart {...trend} {...processTrend(component, points)} open={openPoint} />;
   return <BoardChart kind="bar" points={points} open={openPoint} />;
 }
 
