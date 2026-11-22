@@ -440,14 +440,8 @@ export async function updateEmploymentBusiness(
   });
   await bumpEmploymentBusiness(tx, ctx, business);
   const actor = await fieldOriginEditor(tx, ctx, before, options);
-  const origins = await endDiscardedFormOverrides(
-    tx,
-    ctx,
-    before,
-    prepared,
-    discardedFormFields(patch.fields),
-    formFieldOrigins(prepared, normalized, { request: patch, businessId: id, before, actor }),
-  );
+  const origins = formFieldOrigins(prepared, normalized, { request: patch, businessId: id, before, actor });
+  await endDiscardedFormOverrides(tx, ctx, before, prepared, discardedFormFields(patch.fields), origins);
   business.payload = await appendEmploymentPayload(tx, ctx, business.employeeId, id, normalized, prepared, {
     previous: before,
     selectedStaffId: selected?.cycle.id,

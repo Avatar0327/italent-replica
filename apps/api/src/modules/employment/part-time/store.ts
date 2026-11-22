@@ -132,6 +132,22 @@ export interface NewPartTimeRecord {
   readonly sourceId?: string;
 }
 
+async function partTimeFieldOrigins(tx: Tx, tenantId: string, input: NewPartTimeRecord): Promise<FieldOriginDraft[]> {
+  const customDefinitions = await getCustomFieldsForInheritance(tx, tenantId);
+  // F-036 §4.4.2：兼职创建没有前驱可继承，填写字段在空值策略上另记覆盖。
+  return [
+    ...INHERITED_FIELDS.map((field): FieldOriginDraft => ({ fieldCode: `preset:${field}`, originKind: 'none' })),
+    ...customDefinitions.map(({ id }): FieldOriginDraft => ({ fieldCode: `custom:${id}`, originKind: 'none' })),
+    ...input.explicitFieldCodes.map((fieldCode): FieldOriginDraft => ({
+      fieldCode,
+      originKind: 'hr-input',
+      value: fieldCode.startsWith('custom:')
+        ? input.customFields[fieldCode.slice('custom:'.length)]
+        : input.fields[fieldCode.slice('preset:'.length) as PresetField],
+    })),
+  ];
+}
+
 /**
  * 写一条兼职记录及其全部底座（§1.3）：底层业务头（direct、revision 1）+ 载荷版本 1 + 一条 effective 状态事件 +
  * 记录（kind = part_time，人员状态 / 入职状态由 0062 触发器取同周期开始日的主职前一条，仅为快照）+ 期限链第 1 期。
@@ -146,36 +162,21 @@ export async function insertPartTimeRecord(
   const payloadVersionId = randomUUID();
   const { tenantId } = ctx;
   const institutionId = await partTimeInstitution(tx, tenantId, input.fields.departmentId!, input.startDate);
-  const createdAt = ctx.now.toISOString();
+  const common = { tenantId, employeeId: input.employeeId, createdAt: ctx.now.toISOString() };
   await insertEmploymentRow(tx, 'employment_business_objects', {
+    ...common,
     id,
-    tenantId,
-    employeeId: input.employeeId,
     revision: 1,
-    createdAt,
   });
-  const customDefinitions = await getCustomFieldsForInheritance(tx, tenantId);
-  // F-036 §4.4.2：兼职创建没有前驱可继承，填写字段在空值策略上另记覆盖。
-  const origins: FieldOriginDraft[] = [
-    ...INHERITED_FIELDS.map((field): FieldOriginDraft => ({ fieldCode: `preset:${field}`, originKind: 'none' })),
-    ...customDefinitions.map(({ id }): FieldOriginDraft => ({ fieldCode: `custom:${id}`, originKind: 'none' })),
-    ...input.explicitFieldCodes.map((fieldCode): FieldOriginDraft => ({
-      fieldCode,
-      originKind: 'hr-input',
-      value: fieldCode.startsWith('custom:')
-        ? input.customFields[fieldCode.slice('custom:'.length)]
-        : input.fields[fieldCode.slice('preset:'.length) as PresetField],
-    })),
-  ];
+  const origins = await partTimeFieldOrigins(tx, tenantId, input);
   await insertEmploymentRow(
     tx,
     'employment_payload_versions',
     {
       ...input.fields,
+      ...common,
       institutionId,
       id: payloadVersionId,
-      tenantId,
-      employeeId: input.employeeId,
       businessId: id,
       versionNo: 1,
       previousVersionId: null,
@@ -189,26 +190,22 @@ export async function insertPartTimeRecord(
       deferredFieldCodes: [],
       explicitFieldCodes: input.explicitFieldCodes,
       formSnapshot: {},
-      createdAt,
     },
     { ctx, origins, recordId: id },
   );
   await insertEmploymentRow(tx, 'employment_state_events', {
-    tenantId,
-    employeeId: input.employeeId,
+    ...common,
     businessId: id,
     payloadVersionId,
     state: 'effective',
     eventNo: 1,
     commandId: ctx.commandId,
-    createdAt,
   });
   await insertEmploymentRow(tx, 'employment_records', {
     ...input.fields,
+    ...common,
     institutionId,
     id,
-    tenantId,
-    employeeId: input.employeeId,
     payloadVersionId,
     staffId: input.staffId,
     entryDate: input.entryDate,
@@ -220,7 +217,6 @@ export async function insertPartTimeRecord(
     isInserted: false,
     inheritanceSourceId: null,
     customFields: input.customFields,
-    createdAt,
   });
   await insertTerm(tx, ctx, {
     recordId: id,

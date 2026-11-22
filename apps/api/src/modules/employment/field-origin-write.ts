@@ -118,7 +118,7 @@ export async function endDiscardedFormOverrides(
   const fields = new Map(discarded.map((field) => [`preset:${field}`, field]));
   for (const { fieldCode, originKind } of origins) if (originKind === 'derive') fields.delete(fieldCode);
   for (const fieldCode of prepared.explicitFieldCodes) fields.delete(fieldCode);
-  if (!fields.size) return origins;
+  if (!fields.size) return;
   const states = await loadFieldOrigins(tx, ctx, before.businessId, [...fields.keys()]);
   const changed = changedInputFields(before, prepared);
   for (const [fieldCode, field] of fields) {
@@ -139,7 +139,6 @@ export async function endDiscardedFormOverrides(
     if (override)
       origins.push({ fieldCode, originKind: 'fallback', refSeq: override.seq, reason: FORM_DEPENDENCY_RESET });
   }
-  return origins;
 }
 
 export function exitPlanOrigins(
