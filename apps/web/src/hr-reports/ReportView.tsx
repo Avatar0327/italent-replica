@@ -64,9 +64,9 @@ function useReportPage(report: PersonnelReport) {
   const [exportFailure, setExportFailure] = useState<ReportFailure>();
   const [lastColumns, setLastColumns] = useState(noColumns);
   const read = useReportRead<ReportData>(reportUrl(report, query.filters, query.page), query.generation);
-  const waiting = useReportRetryWait(
-    Math.max(read.failure?.retryAt ?? 0, checksAccess ? (exportFailure?.retryAt ?? 0) : 0),
-  );
+  const waitsForExport = structure || !statistical(report.code);
+  const exportRetryAt = waitsForExport ? (exportFailure?.retryAt ?? 0) : 0;
+  const waiting = useReportRetryWait(Math.max(read.failure?.retryAt ?? 0, exportRetryAt));
   const exportStatus = statusOf(exportFailure?.error);
   const readStatus = statusOf(read.error);
   const loginRequired = checksAccess && (readStatus === 401 || exportStatus === 401);
