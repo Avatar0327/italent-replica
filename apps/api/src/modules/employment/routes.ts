@@ -121,6 +121,7 @@ import { registerAssessmentRoutes } from './assessment-routes.js';
 import { registerBlacklistRoutes } from './blacklist-routes.js';
 import { registerExitHandoverRoutes } from './exit-handover-routes.js';
 import { assertEntryOptionsAllowed, splitEntryOptions } from './entry-options.js';
+import { registerEntrySignRoutes } from './entry-esign-routes.js';
 import { registerEntryRoutes } from './entry-routes.js';
 import { registerEntryEmailRoutes } from './entry-email-routes.js';
 import { registerInternRoutes } from './intern-routes.js';
@@ -171,6 +172,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerBlacklistRoutes(module, deps);
   registerExitHandoverRoutes(module, deps);
   registerEntryRoutes(module, deps, authorizeBusinessWrite);
+  registerEntrySignRoutes(module, deps);
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
   registerInternRoutes(module, deps);
   registerProbationRoutes(module, deps, authorizeBusinessWrite);
