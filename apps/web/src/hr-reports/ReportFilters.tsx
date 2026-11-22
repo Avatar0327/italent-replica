@@ -7,11 +7,14 @@ import {
   HR_STRUCTURE_REPORT_EMPLOY_TYPES,
 } from '@italent/domain';
 import { m } from './messages.js';
+import { DepartmentFilter, useReportDepartment, type DepartmentContext } from './DepartmentFilter.js';
 import {
   movement,
   rosterFilterColumns,
   rosterFilters,
+  structureReport,
   validRosterFilters,
+  validStructureFilters,
   type Column,
   type Filters,
 } from './model.js';
@@ -41,7 +44,7 @@ function fieldsOf(code: string, columns: Column[]): QueryField[] {
     fields.push({ key: 'year', label: m.year, type: 'number' });
     if (code === 'institution') fields.push({ key: 'month', label: m.month, type: 'number' });
   }
-  if (code === 'quality')
+  if (structureReport(code))
     fields.push({
       key: 'employType',
       label: m.employType,
@@ -124,6 +127,7 @@ export function ReportFilters({
   busy,
   blocked,
   applied,
+  departments,
   apply,
 }: {
   code: string;
@@ -132,6 +136,7 @@ export function ReportFilters({
   busy: boolean;
   blocked?: boolean;
   applied?: Filters;
+  departments?: DepartmentContext;
   apply(filters: Filters): void;
 }) {
   const roster = code === 'roster';
@@ -142,13 +147,23 @@ export function ReportFilters({
       busy={busy}
       submitDisabled={blocked}
       rosterColumns={roster ? columns : undefined}
+      validate={departments ? validStructureFilters : undefined}
       applied={applied}
+      departments={departments}
       apply={apply}
     />
   );
 }
 
-function AppliedFilters({ fields, applied }: { fields: readonly QueryField[]; applied: Filters }) {
+function AppliedFilters({
+  fields,
+  applied,
+  showDepartment,
+}: {
+  fields: readonly QueryField[];
+  applied: Filters;
+  showDepartment: boolean;
+}) {
   const captions = fields.flatMap(({ key, label, options, appliedText }) => {
     const value = applied[key] ?? '';
     if (!value) return [];
@@ -157,10 +172,33 @@ function AppliedFilters({ fields, applied }: { fields: readonly QueryField[]; ap
       : `${label} ${options?.find((option) => option.value === value)?.label ?? value}`;
     return text ? [text] : [];
   });
+  if (showDepartment && applied.departmentId) {
+    captions.push(
+      `${m.department} ${applied.departmentLabel || applied.departmentId}`,
+      `${m.includeChildren} ${applied.departmentIncludeChildren === 'false' ? m.no : m.yes}`,
+    );
+  }
   return (
     <p>
       {m.applied} {captions.join('，')}
     </p>
+  );
+}
+
+function FilterField({ field, draft, busy, roster, change }: Parameters<typeof FilterControl>[0]) {
+  if (field.control) {
+    return (
+      <div className="hr-report-filter">
+        {field.label && <span>{field.label}</span>}
+        {field.control(draft[field.key] ?? '', busy, change)}
+      </div>
+    );
+  }
+  return (
+    <label className="hr-report-filter">
+      <span>{field.label}</span>
+      <FilterControl field={field} draft={draft} busy={busy} roster={roster} change={change} />
+    </label>
   );
 }
 
@@ -172,6 +210,7 @@ export function QueryFilters({
   validate,
   rosterColumns,
   applied,
+  departments,
   apply,
 }: {
   fields: readonly QueryField[];
@@ -181,11 +220,13 @@ export function QueryFilters({
   validate?(filters: Filters): boolean;
   rosterColumns?: readonly Column[];
   applied?: Filters;
+  departments?: DepartmentContext;
   apply(filters: Filters): void;
 }) {
   const [draft, setDraft] = useState(initial);
   const [invalid, setInvalid] = useState(false);
   const [lastColumns, setLastColumns] = useState(rosterColumns);
+  const { candidates, filters: departmentFilters } = useReportDepartment(draft, departments);
   if (rosterColumns && lastColumns !== rosterColumns) {
     setLastColumns(rosterColumns);
     setDraft(rosterFilters(draft, rosterColumns));
@@ -197,7 +238,10 @@ export function QueryFilters({
       onSubmit={(event) => {
         event.preventDefault();
         if (busy || submitDisabled) return;
-        const values = Object.fromEntries(fields.map((f) => [f.key, draft[f.key] ?? '']));
+        const values: Filters = {
+          ...Object.fromEntries(fields.map((f) => [f.key, draft[f.key] ?? ''])),
+          ...(departments ? departmentFilters : {}),
+        };
         const bad = rosterColumns
           ? !validRosterFilters(values)
           : (validate && !validate(values)) ||
@@ -208,31 +252,30 @@ export function QueryFilters({
       }}
     >
       <Space wrap align="end">
-        {fields.map((field) =>
-          field.control ? (
-            <div key={field.key} className="hr-report-filter">
-              {field.label && <span>{field.label}</span>}
-              {field.control(draft[field.key] ?? '', busy, (value) => setDraft({ ...draft, [field.key]: value }))}
-            </div>
-          ) : (
-            <label key={field.key} className="hr-report-filter">
-              <span>{field.label}</span>
-              <FilterControl
-                field={field}
-                draft={draft}
-                busy={busy}
-                roster={Boolean(rosterColumns)}
-                change={(value) => setDraft({ ...draft, [field.key]: value })}
-              />
-            </label>
-          ),
+        {fields.map((field) => (
+          <FilterField
+            key={field.key}
+            field={field}
+            draft={draft}
+            busy={busy}
+            roster={Boolean(rosterColumns)}
+            change={(value) => setDraft({ ...draft, [field.key]: value })}
+          />
+        ))}
+        {departments && (
+          <DepartmentFilter
+            candidates={candidates}
+            filters={departments.allowed ? departmentFilters : {}}
+            busy={busy}
+            change={(changes) => setDraft((value) => ({ ...value, ...changes }))}
+          />
         )}
         <Button htmlType="submit" type="primary" disabled={busy || submitDisabled}>
           {m.query}
         </Button>
       </Space>
       {invalid && <p role="alert">{m.invalid}</p>}
-      {applied && <AppliedFilters fields={fields} applied={applied} />}
+      {applied && <AppliedFilters fields={fields} applied={applied} showDepartment={Boolean(departments)} />}
     </form>
   );
 }

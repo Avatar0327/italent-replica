@@ -155,7 +155,9 @@ const transferWrite = (path: string, ref: { readonly code: string; readonly leve
   ] satisfies Obligation[];
 };
 
-/** 列表 / 详情的行操作披露（offerActionAccess）：五项判定只决定 rowActions / toolbarActions，不参与准入。 */
+/** 列表 / 详情的行操作披露（offerActionAccess）：五项判定只决定 rowActions / toolbarActions，不参与准入。
+ * DEC-980：任一行操作实际披露时，来源 id 为该行全部动作的协议定位键。页面无 ID 列；空动作行和其他字段仍按字段权裁剪。
+ */
 const ACCESS = `${TRANSITIONS}#offerActionAccess`;
 const BUTTONS_CONST: Evidence = {
   role: 'const',
@@ -185,7 +187,7 @@ const actionDisclosure = (path: string, anchor: string): Obligation[] => {
     purpose: `disclosure:${key}`,
     need: NONE,
     facts: ['object:object.* 动作'],
-    note: '只决定行操作是否出现，不拒绝请求',
+    note: '仅决定动作是否出现。DEC-980：有行操作时保留协议 id，页面无 ID 列，其余字段照旧裁剪',
     at: [route, { role: 'impl', unit: ACCESS, anchor: `can('object.${op}', OFFER_OBJECT)` }, OFFER_CONST],
   });
   return [
