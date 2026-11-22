@@ -9,6 +9,7 @@ import { ui } from '../foundation/messages.js';
 import { QueryFilters } from '../hr-reports/ReportFilters.js';
 import { m as report } from '../hr-reports/messages.js';
 import { cellText } from '../hr-reports/model.js';
+import { MovementBoard } from './MovementBoard.js';
 import { StructureBoard } from './StructureBoard.js';
 import { useBoardRead } from './useBoardRead.js';
 import { BoardDetailDrawer } from './BoardDetailDrawer.js';
@@ -136,6 +137,8 @@ function ManagementBoard({ today, refresh }: { today: string; refresh(): void })
   );
 }
 
+const boards = { management: ManagementBoard, structure: StructureBoard, movement: MovementBoard };
+
 export function HrDashboardPage() {
   const session = useSession();
   const { snapshot, refresh } = usePermissions();
@@ -146,7 +149,7 @@ export function HrDashboardPage() {
   if (suffix && !tab) return <PageState kind="not-found" />;
   if (!tab || !visible.includes(tab)) return <PageState kind="forbidden" refresh={refresh} />;
   const today = session.today ?? tenantDate(new Date(), session.timezone);
-  const Board = tab.path === 'structure' ? StructureBoard : ManagementBoard;
+  const Board = boards[tab.path];
   return (
     <section className="list-page hr-dashboard">
       <DecisionNote id="hr-dashboard" />

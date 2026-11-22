@@ -1,15 +1,12 @@
-import { Alert, Button, Select } from 'antd';
+import { Button } from 'antd';
 import { HR_STRUCTURE_TOP_INSTITUTIONS } from '@italent/domain';
 import { PageState } from '../foundation/PageState.js';
-import { ui } from '../foundation/messages.js';
-import { m as report } from '../hr-reports/messages.js';
 import { cellText, type Filters } from '../hr-reports/model.js';
 import { BoardChart, MapPlaceholder } from './BoardCharts.js';
-import { BoardDetailDrawer } from './BoardDetailDrawer.js';
-import { ReadState } from './ReadState.js';
+import { BoardDetailDrawer, BoardGroupSelector } from './BoardDetailDrawer.js';
+import { BoardReadFeedback } from './ReadState.js';
 import { StructureFilters } from './StructureFilters.js';
 import { m } from './messages.js';
-import { canRetryRead } from './model.js';
 import {
   structureCards,
   structureDetailTable,
@@ -66,43 +63,13 @@ function Card({ card, open }: { card: StructureCard; open?: (group?: string) => 
   );
 }
 
-function GroupSelector({
-  target,
-  disabled,
-  change,
-}: {
-  target: StructureTarget;
-  disabled: boolean;
-  change(group?: string): void;
-}) {
-  if (!target.card.points.length) return null;
-  // 选项值用位置承载，保留服务端任意字符串键（含空键）。
-  const position = target.card.points.findIndex(({ key }) => key === target.group);
-  const options = [
-    { value: -1, label: m.allGroups },
-    ...target.card.points.map(({ label }, index) => ({ value: index, label })),
-  ];
-  return (
-    <div className="hr-structure-group">
-      <span>{m.group}</span>
-      <Select<number>
-        aria-label={m.group}
-        value={position}
-        options={options}
-        disabled={disabled}
-        onChange={(index) => change(target.card.points[index]?.key)}
-      />
-    </div>
-  );
-}
-
 export function StructureBoard({ today, refresh }: { today: string; refresh(): void }) {
   const board = useBoardRead<Filters, StructureTarget, StructureOverview, StructureDetail>(
     { asOf: today },
     structureOverviewUrl,
     ({ target, asOf, page }, filters) => structureDetailUrl(target.card.code, { ...filters, asOf }, page, target.group),
   );
-  const { data, read, detail, selected, waiting, forbidden, noScope } = board;
+  const { data, read, detail, selected, waiting, forbidden } = board;
   if (board.login) return <PageState kind="login" />;
   return (
     <>
@@ -120,22 +87,7 @@ export function StructureBoard({ today, refresh }: { today: string; refresh(): v
       <div className="list-card hr-dashboard-scope">
         <p>{m.structureScope}</p>
       </div>
-      {forbidden ? (
-        <Alert
-          type="error"
-          role="alert"
-          message={m.boardDenied}
-          action={<Button onClick={refresh}>{ui.refreshPage}</Button>}
-        />
-      ) : (
-        <ReadState
-          loading={read.loading}
-          error={read.error}
-          waiting={waiting}
-          retry={canRetryRead(read.error) ? board.retry : undefined}
-        />
-      )}
-      {noScope && <Alert type="info" message={report.noScope} />}
+      <BoardReadFeedback board={board} refresh={refresh} />
       {data && (
         <div className="hr-structure-grid">
           {structureCards(data).map((card) => (
@@ -160,8 +112,9 @@ export function StructureBoard({ today, refresh }: { today: string; refresh(): v
           missing={m.componentMissing}
           controls={
             data?.hasDataPermission && (
-              <GroupSelector
-                target={selected.target}
+              <BoardGroupSelector
+                group={selected.target.group}
+                options={selected.target.card.points}
                 disabled={waiting}
                 change={(group) => board.changeDetail({ ...selected, target: { ...selected.target, group }, page: 1 })}
               />

@@ -138,7 +138,7 @@ export function errorText(error: unknown, exporting = false): string {
 export function cellText(key: string, value: unknown) {
   if (key === 'code') return codeText((value as string | null) ?? null);
   if (value === null || value === undefined) return '—';
-  if (key === 'rate' && typeof value === 'number')
+  if ((key === 'rate' || key === 'executionRate') && typeof value === 'number')
     return new Intl.NumberFormat('zh-CN', { style: 'percent', maximumFractionDigits: 2 }).format(value);
   if (key === 'termType') return TERM_TYPE_LABELS[String(value)] ?? String(value);
   return reportCellLabel(key, value) ?? rosterCellText(key, value);

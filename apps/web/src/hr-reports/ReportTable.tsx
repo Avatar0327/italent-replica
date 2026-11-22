@@ -1,4 +1,5 @@
 import { Empty, Table } from 'antd';
+import type { ReactNode } from 'react';
 import { m } from './messages.js';
 import { cellText, pageSize, statistical, tablesOf, type DisplayTable, type ReportData, type Row } from './model.js';
 export function ReportTable({
@@ -45,6 +46,8 @@ export function ReadOnlyReportTable({
   emptyText = m.empty,
   rowId,
   paginationDisabled,
+  scrollY,
+  renderCell,
 }: {
   table: DisplayTable;
   rows?: Row[];
@@ -54,6 +57,8 @@ export function ReadOnlyReportTable({
   emptyText?: string;
   rowId?: string;
   paginationDisabled?: boolean;
+  scrollY?: number;
+  renderCell?(key: string, value: unknown, row: Row): ReactNode;
 }) {
   const summary = table.summary;
   return (
@@ -65,11 +70,11 @@ export function ReadOnlyReportTable({
           key: column.key,
           title: column.label,
           dataIndex: column.key,
-          render: (value: unknown) => cellText(column.key, value),
+          render: (value: unknown, row) => renderCell?.(column.key, value, row) ?? cellText(column.key, value),
         }))}
         dataSource={rows.map((row, index) => ({ ...row, _rowKey: String(index) }))}
         rowKey={(row) => String((rowId && row[rowId]) || row._rowKey)}
-        scroll={{ x: 'max-content' }}
+        scroll={{ x: 'max-content', y: scrollY }}
         locale={{ emptyText: <Empty description={emptyText} /> }}
         pagination={{
           current: page,

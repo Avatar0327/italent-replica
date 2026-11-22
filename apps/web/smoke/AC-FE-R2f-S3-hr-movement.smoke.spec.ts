@@ -2,7 +2,6 @@ import type { Page, Route } from '@playwright/test';
 import { HR_MOVEMENT_COMPONENTS, HR_MOVEMENT_OBJECT, HR_STRUCTURE_OBJECT, movementMonths } from '@italent/domain';
 import { expect, seedDemoUser, snapshotFixture, test } from './fixtures.js';
 
-const base = '/api/tenant/analytics/hr-movement';
 const overview = /\/analytics\/hr-movement(?:\?|$)/;
 const details = /\/analytics\/hr-movement\/components\//;
 const candidates = '**/analytics/organization-candidates?*';
@@ -51,7 +50,7 @@ function board(asOf = today, hasDataPermission = true, count = 24) {
     '6.31': [{ key: 'under6m', label: prefix + '司龄', count }],
     '6.32': [{ key: child, label: prefix + '仅有未转正短司龄离职实习生的部门', count: 1, ratio: 1 }],
     '3.1.36': Array.from({ length: 21 }, (_, index) => ({
-      key: index === 20 ? capacity : String(index),
+      key: index === 20 ? capacity : `10000000-0000-4000-8010-${String(index).padStart(12, '0')}`,
       orgId: index === 20 ? child : root,
       label: prefix + '编制' + index,
       localCapacity: null,
@@ -66,11 +65,10 @@ function board(asOf = today, hasDataPermission = true, count = 24) {
   return {
     asOf,
     hasDataPermission,
-    components: HR_MOVEMENT_COMPONENTS.map((item) => ({
-      ...item,
-      value: item.code === '6.32' ? 1 : item.kind === 'series' || item.kind === 'table' ? null : count,
-      groups: groups[item.code],
-    })),
+    components: HR_MOVEMENT_COMPONENTS.map((item) => {
+      const total = item.kind === 'series' || item.kind === 'table' ? null : count;
+      return { ...item, value: item.code === '6.32' ? 1 : total, groups: groups[item.code] };
+    }),
   };
 }
 
@@ -81,7 +79,9 @@ const open = (page: Page, code: Parameters<typeof card>[1]) =>
   card(page, code).getByRole('button', { name: '查看详情', exact: true });
 
 async function select(page: Page, field: string, label: string) {
-  await page.getByRole('combobox', { name: field, exact: true }).click();
+  const control = page.getByRole('combobox', { name: field, exact: true });
+  await expect(control).toBeEnabled();
+  await control.press('ArrowDown');
   await page
     .locator('.ant-select-dropdown:visible:not([class*="-leave"])')
     .locator('.ant-select-tree-title, .ant-select-item-option-content')
@@ -111,7 +111,14 @@ test.beforeEach(async ({ page }) => {
   await snapshot(page, [HR_MOVEMENT_OBJECT]);
   await page.route(overview, (route) => route.fulfill({ json: board() }));
   await page.route(candidates, (route) =>
-    route.fulfill({ json: { items: [{ id: root, name: prefix + '部门', parentId: null, enabled: true }] } }),
+    route.fulfill({
+      json: {
+        items: [
+          { id: root, name: prefix + '部门', parentId: null, enabled: true },
+          { id: child, name: prefix + '未应用部门', parentId: null, enabled: true },
+        ],
+      },
+    }),
   );
 });
 
@@ -131,7 +138,7 @@ test('AC-FE-R2f-01 B50 单授权入口、无权和未知后缀', async ({ page }
     await expect(page.getByText('暂无访问权限', { exact: true })).toBeVisible();
   }
   await page.goto('/hr-dashboard/unknown');
-  await expect(page.getByText('页面不存在', { exact: true })).toBeVisible();
+  await expect(page.getByText('页面或记录不存在', { exact: true })).toBeVisible();
   expect(forbidden).toEqual([]);
 });
 
@@ -166,10 +173,12 @@ test('AC-FE-R2f-04 部门、月份、双环、独立编制和实习生占位', a
 
   const drawer = page.getByRole('dialog');
   async function close() {
-    await page.keyboard.press('Escape');
+    await drawer.getByRole('button', { name: '关闭', exact: true }).click();
     await expect(drawer).toHaveCount(0);
   }
+  await select(page, '部门', prefix + '未应用部门');
   await open(page, '6.26').click();
+  await expect(drawer.getByText(/部门 ZZ_FER2F_S3_部门（包含下级）/)).toBeVisible();
   await expect(drawer.getByRole('combobox', { name: '分组' })).toBeVisible();
   expect(calls).toEqual([]);
   await select(page, '分组', '2026-02 离职');
@@ -196,7 +205,8 @@ test('AC-FE-R2f-04 部门、月份、双环、独立编制和实习生占位', a
   await expect(table.getByText(prefix + '编制20', { exact: true })).toHaveCount(0);
   await table.getByTitle('2', { exact: true }).click();
   await expect(table.getByText(prefix + '编制20', { exact: true })).toBeVisible();
-  for (const n of ['7', '3']) await expect(table.getByRole('cell', { name: n, exact: true })).toBeVisible();
+  for (const n of ['7', '3', '2', '93.33%'])
+    await expect(table.getByRole('cell', { name: n, exact: true })).toBeVisible();
   await table.getByRole('button', { name: /查看详情.*ZZ_FER2F_S3_编制20/ }).click();
   await expect(drawer.getByText(prefix + 'row_1')).toBeVisible();
   expect(calls.map((url) => [url.pathname.split('/').at(-1), Object.fromEntries(url.searchParams)])).toEqual(
@@ -211,6 +221,7 @@ test('AC-FE-R2f-04 部门、月份、双环、独立编制和实习生占位', a
   await page.locator('.hr-dashboard-filters form').evaluate((element: HTMLFormElement) => element.requestSubmit());
   await expect(drawer).toHaveCount(0);
   await expect(table.getByText(prefix + '编制0', { exact: true })).toBeVisible();
+  expect(queries[2]?.searchParams.get('departmentId')).toBe(child);
 });
 
 test('AC-FE-R2f-11 候选拒绝及无数据权限区别于真实零值，详情拒绝清退旧看板', async ({ page }) => {
@@ -234,6 +245,11 @@ test('AC-FE-R2f-11 候选拒绝及无数据权限区别于真实零值，详情�
 });
 
 test('AC-FE-R2f-11 切至 B49 后迟到的 B50 概览不得显示', async ({ page }) => {
+  await page.addInitScript(() => {
+    const fetch = window.fetch;
+    window.fetch = (input, options) =>
+      fetch(input, String(input).includes('/hr-movement?') ? { ...options, signal: undefined } : options);
+  });
   await snapshot(page, [HR_MOVEMENT_OBJECT, HR_STRUCTURE_OBJECT]);
   let release!: () => void;
   const waiting = new Promise<void>((resolve) => {
@@ -249,11 +265,69 @@ test('AC-FE-R2f-11 切至 B49 后迟到的 B50 概览不得显示', async ({ pag
   await page.goto('/hr-dashboard/movement');
   await expect(page.getByRole('heading', { name: '人员流动分析', exact: true })).toBeVisible({ timeout: 5000 });
   const tabs = page.getByRole('navigation', { name: '人事看板' });
+  const late = page.waitForResponse(overview);
   try {
     await tabs.getByRole('link', { name: '人员结构分析' }).click();
     await expect(page.getByRole('heading', { name: '人员结构分析', exact: true })).toBeVisible();
   } finally {
     release();
   }
+  expect((await late).status()).toBe(200);
   await expect(card(page, '6.25')).toHaveCount(0);
+});
+
+test('AC-FE-R2f-11 看板 400、404、413、429、503 清退结果并按错误语义重试', async ({ page }) => {
+  const errors = [
+    [400, 'VALIDATION_FAILED', '请检查筛选条件和日期范围'],
+    [404, 'NOT_FOUND', '看板不存在'],
+    [413, 'PAYLOAD_TOO_LARGE', '请缩小筛选范围后重试'],
+    [429, 'RATE_LIMITED', '请求过于频繁，请稍后重试'],
+    [503, 'UNAVAILABLE', '看板加载失败，请重试'],
+  ] as const;
+  let fault: (typeof errors)[number] | undefined;
+  let reads = 0;
+  await page.route(overview, (route) => {
+    reads++;
+    return fault
+      ? route.fulfill({
+          status: fault[0],
+          headers: fault[0] === 429 ? { 'Retry-After': '2' } : undefined,
+          json: { error: { code: fault[1], message: prefix + 'internal' } },
+        })
+      : route.fulfill({ json: board() });
+  });
+  await page.goto('/hr-dashboard/movement');
+  await expect(card(page, '6.25')).toBeVisible();
+  for (const error of errors) {
+    fault = error;
+    await query(page).click();
+    const alert = page.getByRole('alert').filter({ hasText: error[2] });
+    await expect(alert).toBeVisible();
+    await expect(card(page, '6.25')).toHaveCount(0);
+    await expect(page.getByText(prefix + 'internal')).toHaveCount(0);
+    const retry = alert.getByRole('button', { name: /重\s*试/ });
+    fault = undefined;
+    if (error[0] === 429) {
+      await expect(retry).toBeDisabled();
+      await expect(query(page)).toBeDisabled();
+      const prior = reads;
+      await expect(retry).toBeEnabled({ timeout: 5000 });
+      expect(reads).toBe(prior);
+    }
+    if (error[0] >= 429) await retry.click();
+    else {
+      await expect(retry).toHaveCount(0);
+      await query(page).click();
+    }
+    await expect(card(page, '6.25')).toBeVisible();
+  }
+});
+
+test('AC-FE-R2f-11 明细 401 切回共享会话态并清退本次概览和抽屉', async ({ page }) => {
+  await page.route(details, (route) => route.fulfill({ status: 401, json: { error: { code: 'UNAUTHORIZED' } } }));
+  await page.goto('/hr-dashboard/movement');
+  await open(page, '6.27').click();
+  await expect(page.getByText('请选择演示身份或提供会话上下文', { exact: true })).toBeVisible();
+  await expect(card(page, '6.25')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 });
