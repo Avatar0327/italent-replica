@@ -24,7 +24,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
-import { clearedTransferFields, tenantLocalDate } from '@italent/domain';
+import { changedInputFields, clearedTransferFields, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
@@ -40,7 +40,7 @@ import { assertInternRegularizationEligible, resolveInFlightRegularization } fro
 import { forwardUpdateEmployment } from './forward-update.js';
 import type { ForwardValues } from './forward-rules.js';
 import { emptyPresetFields } from './types.js';
-import { normalizeBusinessPatch, normalizeEmploymentInput } from './fields.js';
+import { INHERITED_FIELDS, normalizeBusinessPatch, normalizeEmploymentInput } from './fields.js';
 import {
   prepareInheritance,
   prepareEmploymentPatch,
@@ -391,13 +391,15 @@ export async function updateEmploymentBusiness(
   options: RescheduleOptions = {},
 ): Promise<EmploymentBusiness> {
   const { pendingTransferAck, confirmed, ...businessPatch } = normalizeBusinessPatch(input);
-  let patch = businessPatch;
   const business = await lockExitForEdit(tx, ctx, id);
-  await requireEmployeeTransferBusiness(tx, ctx, id, patch);
-  const remaining = await replanEditableExit(tx, ctx, business, patch, { pendingTransferAck, confirmed, ...options });
+  await requireEmployeeTransferBusiness(tx, ctx, id, businessPatch);
+  const remaining = await replanEditableExit(tx, ctx, business, businessPatch, {
+    pendingTransferAck,
+    confirmed,
+    ...options,
+  });
   if (remaining === null) return requireSavedBusiness(tx, ctx, id);
-  patch = remaining;
-  await requireUnchangedExitDates(tx, ctx, business, patch, options);
+  await requireUnchangedExitDates(tx, ctx, business, remaining, options);
   // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。
   if (business.payload.mode !== 'application' || !['draft', 'in_review', 'rejected'].includes(business.state))
     throw new AppError('CONFLICT', '只有草稿、审批中或被驳回的申请可以修改', { reason: 'PAYLOAD_IMMUTABLE' });
@@ -406,7 +408,7 @@ export async function updateEmploymentBusiness(
     throw new AppError('CONFLICT', '审批中的申请只能由当前审批节点修改', { reason: 'APPROVAL_IN_PROGRESS' });
   }
   const before = business.payload;
-  const normalized = normalizePatchedInput(ctx, before, patch);
+  const { normalized, patch } = normalizePatchedInput(ctx, before, remaining);
   await assertRegularizationApplication(tx, ctx, business, normalized);
   await assertNotBeforeCurrentCycle(tx, ctx, business.employeeId, normalized);
   await assertBusinessSequence(tx, ctx, business.employeeId, normalized);
@@ -465,11 +467,33 @@ export async function updateEmploymentBusiness(
   return requireSavedBusiness(tx, ctx, id);
 }
 
+function omitUnchangedInheritedFields(
+  before: EmploymentPayloadRow,
+  patch: EmploymentBusinessPatch,
+): EmploymentBusinessPatch {
+  const { startsNewCycle, fieldModes, excludedAutofillFields, customInheritance } = before.formSnapshot;
+  if (startsNewCycle) return patch;
+  // DEC-977：同值重提不构成覆盖，改期时由 DEC-041 重新取前驱。
+  const entered = new Set([...before.explicitFieldCodes, ...changedInputFields(before, patch)]);
+  const unchangedEditable = (code: string) => fieldModes[code] === 'editable' && !entered.has(code);
+  const fields = { ...patch.fields };
+  for (const field of INHERITED_FIELDS) {
+    if (!excludedAutofillFields?.includes(field) && unchangedEditable(`preset:${field}`)) delete fields[field];
+  }
+  const customFields = { ...patch.customFields };
+  for (const id of Object.keys(customFields)) {
+    if (customInheritance[id] && Object.hasOwn(before.customFields, id) && unchangedEditable(`custom:${id}`))
+      delete customFields[id];
+  }
+  return { ...patch, fields, customFields };
+}
+
 export function normalizePatchedInput(
   ctx: EmploymentContext,
   before: EmploymentPayloadRow,
-  patch: EmploymentBusinessPatch,
-): NormalizedEmploymentInput {
+  input: EmploymentBusinessPatch,
+) {
+  const patch = omitUnchangedInheritedFields(before, input);
   const fields: Partial<Record<keyof typeof before.fields, unknown>> = Object.fromEntries(
     before.explicitFieldCodes
       .filter((code) => code.startsWith('preset:'))
@@ -487,7 +511,7 @@ export function normalizePatchedInput(
   const lastWorkDate = patch.lastWorkDate === undefined ? before.lastWorkDate : patch.lastWorkDate;
   // 修改最后工作日时重新推导 D+1；客户端另填生效日仍由统一校验拒绝矛盾值。
   const effectiveDate = patch.effectiveDate ?? (patch.lastWorkDate === undefined ? before.effectiveDate : undefined);
-  return normalizeEmploymentInput(ctx, {
+  const normalized = normalizeEmploymentInput(ctx, {
     kind: before.kind,
     mode: before.mode,
     formId: before.formId,
@@ -496,6 +520,7 @@ export function normalizePatchedInput(
     fields: { ...fields, ...patch.fields },
     customFields: { ...customFields, ...patch.customFields },
   });
+  return { normalized, patch };
 }
 
 function assertEmployTypeUsage(input: Pick<NormalizedEmploymentInput, 'kind' | 'fields'>): void {
