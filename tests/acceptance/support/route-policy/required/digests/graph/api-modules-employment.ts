@@ -6111,15 +6111,18 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/part-time/store.ts#insertPartTimeRecord': [
-    'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
-    'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
     'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution',
     '#insertTerm',
+    '#partTimeFieldOrigins',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
   ],
   'apps/api/src/modules/employment/part-time/store.ts#lockPartTimeRecords': ['#partTimeRows'],
   'apps/api/src/modules/employment/part-time/store.ts#lockPartTimeRecordsById': ['#partTimeRows'],
+  'apps/api/src/modules/employment/part-time/store.ts#partTimeFieldOrigins': [
+    'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
+    'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+  ],
   'apps/api/src/modules/employment/part-time/store.ts#partTimeRows': [
     '#currentDepartment',
     '#latestSnapshot',
