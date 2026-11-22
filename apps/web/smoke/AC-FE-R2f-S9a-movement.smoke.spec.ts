@@ -19,6 +19,7 @@ const past = '2026-04-15';
 const flow = '员工流动统计';
 const monthly = '各月入离职统计';
 const institution = '各机构入离职统计';
+const reportNames = { flow, monthly, institution };
 const file = { contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', body: 'PK' };
 const modes = { formula: '下载（含公式、隐藏行/列）', data: '仅下载数据' };
 const labels = { parent: prefix + '上级', child: prefix + '中级', leaf: prefix + '末级', outside: prefix + '范围外' };
@@ -61,14 +62,18 @@ async function startDownload(page: Page, mode: keyof typeof modes) {
   await page.getByRole('menuitem', { name: modes[mode], exact: true }).click();
 }
 
-function result(route: Route, code: string, options: { label?: string; scope?: boolean; empty?: boolean } = {}) {
-  const { asOf = today, year = asOf.slice(0, 4), parentId } = params(route);
-  const month = params(route).month ?? (year === asOf.slice(0, 4) ? asOf.slice(5, 7) : '12');
+function result(
+  route: Route,
+  code: keyof typeof reportNames,
+  options: { label?: string; scope?: boolean; empty?: boolean } = {},
+) {
+  const { asOf = today, year = asOf.slice(0, 4), parentId, month } = params(route);
+  const lastMonth = year === asOf.slice(0, 4) ? asOf.slice(5, 7) : '12';
   const cells: Record<string, number | null> =
     code === 'flow'
       ? { yearStart: 100, yearEnd: 120, growthRate: 0.1818 }
       : { opening: 10, hires: 2, exits: 1, closing: 11, rate: 0.0952 };
-  const title = code === 'flow' ? flow : code === 'monthly' ? monthly : institution;
+  const title = reportNames[code];
   const row = (key: string, label: string, values = cells) => ({ key, label, cells: values });
   let rows = [row(parent, options.label ?? labels.parent)];
   if (code === 'flow' && parentId === parent) rows = [row(parent, labels.parent), row(child, labels.child)];
@@ -99,7 +104,7 @@ function result(route: Route, code: string, options: { label?: string; scope?: b
   return {
     asOf,
     year: Number(year),
-    month: code === 'institution' ? Number(month) : null,
+    month: code === 'institution' ? Number(month ?? lastMonth) : null,
     kind: 'table',
     report: code,
     name: title,
@@ -120,7 +125,7 @@ test.beforeEach(async ({ page }) => {
   await seedDemoUser(page);
   await allow(page);
   await page.route('**/hr-analysis/reports', (route) => route.fulfill({ json: reportCatalog() }));
-  for (const code of ['flow', 'monthly', 'institution'])
+  for (const code of ['flow', 'monthly', 'institution'] as const)
     await page.route(path(code), (route) => route.fulfill({ json: result(route, code) }));
   await page.route(candidates, (route) => route.fulfill({ json: nodes }));
 });
@@ -301,15 +306,12 @@ test('AC-FE-R2f-11 B54 读取失败清退表和下载，429 到期前禁止重�
   let reads = 0;
   await page.route(path('monthly'), (route) => {
     reads++;
-    return route.fulfill(
-      failure
-        ? {
-            status: failure.status,
-            headers: failure.status === 429 ? { 'Retry-After': '2' } : {},
-            json: { error: { code: failure.code } },
-          }
-        : { json: result(route, 'monthly') },
-    );
+    if (!failure) return route.fulfill({ json: result(route, 'monthly') });
+    return route.fulfill({
+      status: failure.status,
+      headers: failure.status === 429 ? { 'Retry-After': '2' } : {},
+      json: { error: { code: failure.code } },
+    });
   });
   await page.goto(`${entry}/monthly`);
   await expect(download(page)).toBeVisible();
@@ -351,15 +353,12 @@ test('AC-FE-R2f-11 目录详情应用 B54 下载退避和撤权规则', async ({
   let requests = 0;
   await page.route(path('institution/export'), (route) => {
     requests++;
-    return route.fulfill(
-      status === 200
-        ? file
-        : {
-            status,
-            headers: status === 429 ? { 'Retry-After': '2' } : {},
-            json: { error: { code: status === 429 ? 'REQUEST_RATE_LIMITED' : 'FORBIDDEN' } },
-          },
-    );
+    if (status === 200) return route.fulfill(file);
+    return route.fulfill({
+      status,
+      headers: status === 429 ? { 'Retry-After': '2' } : {},
+      json: { error: { code: status === 429 ? 'REQUEST_RATE_LIMITED' : 'FORBIDDEN' } },
+    });
   });
   await page.goto('/hr-reports/institution');
   await startDownload(page, 'data');

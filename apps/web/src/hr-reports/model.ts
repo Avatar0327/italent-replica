@@ -187,17 +187,13 @@ export function reportUrl(
 ) {
   // 部门名称只供界面回显。B54 只有各机构接收月份，只有年度查询接收下钻节点（设计 §4.7）。
   const { code } = report;
-  const keys = structureReport(code)
-    ? ['asOf', 'employType', 'departmentId', 'departmentIncludeChildren']
-    : movement(code)
-      ? [
-          'asOf',
-          'year',
-          'departmentId',
-          ...(code === 'institution' ? ['month'] : []),
-          ...(code === 'flow' && !exporting ? ['parentId'] : []),
-        ]
-      : Object.keys(filters);
+  let keys = Object.keys(filters);
+  if (structureReport(code)) keys = ['asOf', 'employType', 'departmentId', 'departmentIncludeChildren'];
+  if (movement(code)) {
+    keys = ['asOf', 'year', 'departmentId'];
+    if (code === 'institution') keys.push('month');
+    if (code === 'flow' && !exporting) keys.push('parentId');
+  }
   const entries = keys.map((key): [string, string] => [key, filters[key] ?? '']);
   const params = new URLSearchParams(entries.filter(([, value]) => value !== ''));
   if (page !== undefined && !statistical(report.code)) {

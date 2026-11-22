@@ -88,12 +88,9 @@ function useReportPage(report: PersonnelReport) {
   const resultFilters = rosterPage ? rosterResultFilters(query.filters, rosterPage) : undefined;
   const filtersChanged = Boolean(rosterPage && !resultFilters);
   const resultDate = structure && data && 'asOf' in data ? data.asOf : undefined;
+  const fixedFilters = resultDate ? { ...query.filters, asOf: resultDate } : query.filters;
   const responseFilters =
-    isMovement && data && 'tables' in data
-      ? movementResultFilters(query.filters, data)
-      : resultDate
-        ? { ...query.filters, asOf: resultDate }
-        : query.filters;
+    isMovement && data && 'tables' in data ? movementResultFilters(query.filters, data) : fixedFilters;
   const applied = roster ? resultFilters : responseFilters;
 
   function request(filters: Filters, page: number, trail = query.trail) {
@@ -156,6 +153,7 @@ function ReportContent({ report, title, back }: { report: PersonnelReport; title
   if (loginRequired) return <PageState kind="login" />;
 
   const description = isMovement && !back ? movementDescriptions[report.code] : descriptions[report.code];
+  const departmentObject = structure ? 'HrStructureReport' : 'HrMovementReport';
   return (
     <section className="list-page">
       <header className="page-heading">
@@ -178,7 +176,7 @@ function ReportContent({ report, title, back }: { report: PersonnelReport; title
               ? {
                   allowed: departmentsAllowed,
                   committed: query.filters,
-                  object: structure ? 'HrStructureReport' : 'HrMovementReport',
+                  object: departmentObject,
                 }
               : undefined
           }

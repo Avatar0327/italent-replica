@@ -33,6 +33,7 @@ export function ReportTable({
   if (data.hasDataPermission === false) return <Empty description={m.empty} />;
   const tables = tablesOf(code, data, drilled);
   const roster = code === 'roster' && 'items' in data ? data : undefined;
+  const organizationRowId = code === 'flow' ? '_organizationId' : undefined;
   return (
     <>
       {tables.map((table) => (
@@ -42,7 +43,7 @@ export function ReportTable({
           rows={statistical(code) ? table.rows.slice((page - 1) * pageSize, page * pageSize) : table.rows}
           page={roster?.page ?? page}
           pageSize={roster?.pageSize ?? pageSize}
-          rowId={roster ? 'employeeId' : code === 'flow' ? '_organizationId' : undefined}
+          rowId={roster ? 'employeeId' : organizationRowId}
           showEmptySummary={structureReport(code) || movement(code)}
           renderLabel={renderLabel}
           paginationDisabled={paginationDisabled}

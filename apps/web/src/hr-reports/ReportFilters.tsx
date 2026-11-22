@@ -141,6 +141,7 @@ export function ReportFilters({
   apply(filters: Filters): void;
 }) {
   const roster = code === 'roster';
+  const validateDepartment = departments ? validStructureFilters : undefined;
   return (
     <QueryFilters
       fields={fieldsOf(code, columns)}
@@ -148,7 +149,7 @@ export function ReportFilters({
       busy={busy}
       submitDisabled={blocked}
       rosterColumns={roster ? columns : undefined}
-      validate={movement(code) ? validMovementFilters : departments ? validStructureFilters : undefined}
+      validate={movement(code) ? validMovementFilters : validateDepartment}
       applied={applied}
       departments={departments}
       apply={apply}
