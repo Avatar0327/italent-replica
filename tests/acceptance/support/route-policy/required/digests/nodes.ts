@@ -146,7 +146,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/audit/visibility.ts#APPROVAL_FLOW_FIELDS': ['2474c055e973', 'e3b0c44298fc'],
   'apps/api/src/audit/visibility.ts#ATTACHMENT_WITHHELD_TYPES': ['d43881f89119', '9697c3692349'],
   'apps/api/src/audit/visibility.ts#CONFIG_FIELDS_BY_ACTION': ['8d14c50aedc8', '5eb3f775445b'],
-  'apps/api/src/audit/visibility.ts#CONFIG_FIELDS_BY_TYPE': ['ad6f3a57dddb', 'cae8f03aa0bc'],
+  'apps/api/src/audit/visibility.ts#CONFIG_FIELDS_BY_TYPE': ['f1a476eada45', '43b7ea2a60d7'],
   'apps/api/src/audit/visibility.ts#EMPLOYMENT': ['4c04796ea225', '962a8dd9a03e'],
   'apps/api/src/audit/visibility.ts#ESTABLISHMENT': ['bb4dfb67cce0', '962a8dd9a03e'],
   'apps/api/src/audit/visibility.ts#EVENT': ['bbd7ff92e75e', 'e3b0c44298fc'],
