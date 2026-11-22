@@ -4,7 +4,9 @@ import {
   eq,
   inArray,
   lte,
+  sql,
   employmentBusinessObjects as businesses,
+  employmentOutbox as events,
   onboardingCollectionJobs as jobs,
   onboardingEntryCases as cases,
   withTenant,
@@ -48,7 +50,17 @@ async function creationTargets(tx: Tx, tenantId: string, now: Date) {
     .select({ id: jobs.caseId, employeeId: cases.employeeId })
     .from(jobs)
     .innerJoin(cases, and(eq(cases.tenantId, jobs.tenantId), eq(cases.id, jobs.caseId)))
-    .where(and(eq(jobs.tenantId, tenantId), unfinished, lte(jobs.nextAttemptAt, now)))
+    .where(
+      and(
+        eq(jobs.tenantId, tenantId),
+        unfinished,
+        lte(jobs.nextAttemptAt, now),
+        // 只消费既有任职事务 outbox 中的首次创建。改期内重建的事件不能另开采集任务。
+        sql`EXISTS (SELECT 1 FROM ${events} WHERE ${events.tenantId} = ${cases.tenantId}
+        AND ${events.employeeId} = ${cases.employeeId} AND ${events.businessId} = ${cases.rootBusinessId}
+        AND ${events.eventType} = 'employment.business.create')`,
+      ),
+    )
     .orderBy(asc(jobs.nextAttemptAt), asc(jobs.caseId))
     .limit(BATCH_SIZE);
 }

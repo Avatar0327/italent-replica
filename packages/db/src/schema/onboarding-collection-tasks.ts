@@ -143,7 +143,7 @@ export const onboardingCollectionComments = pgTable(
   ],
 );
 
-/** 业务事件与回执同一行。一阶段只登记一次创建事件，领取时再读当前业务。 */
+/** 任职创建事件的采集消费回执。一阶段只登记一次作业，领取时再读当前业务。 */
 export const onboardingCollectionJobs = pgTable(
   'onboarding_collection_jobs',
   {
