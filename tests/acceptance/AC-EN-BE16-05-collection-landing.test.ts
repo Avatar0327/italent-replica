@@ -142,6 +142,31 @@ it('AC-EN-BE16-05 已发起采集任务可进入审批前置锁，任意未知�
   });
 });
 
+it('AC-EN-BE16-05 管理员新建或修改模板时拒绝无法填写的必填派生字段', async () => {
+  const x = await collectionWorld();
+  const templates = '/api/tenant/onboarding/collection-templates';
+  const detail = `${templates}/${x.task.templateId}`;
+  const before = await json(await x.request('GET', detail));
+  const school = { objectCode: education, fieldCode: 'school', editable: true, required: true };
+  for (const [objectCode, fieldCode] of [
+    [education, 'isHighestEducation'],
+    [education, 'isFirstEducation'],
+    [education, 'isHighestDegree'],
+    [education, 'isMainMajor'],
+    ['TenantBase.Certificate', 'learningCertificateId'],
+  ] as const) {
+    const fields = [school, { objectCode, fieldCode, editable: true, required: true }];
+    const created = await x.request('POST', templates, {
+      ifMatch: 0,
+      body: { name: 'ZZ_BE16_DERIVED', noticeTitle: 'ZZ_BE16_TITLE', noticeBody: 'ZZ_BE16_NOTICE', fields },
+    });
+    expect(await json(created, 400)).toMatchObject({ error: { code: 'VALIDATION_FAILED' } });
+    const updated = await x.request('PATCH', detail, { ifMatch: before.revision, body: { fields } });
+    expect(await json(updated, 400)).toMatchObject({ error: { code: 'VALIDATION_FAILED' } });
+  }
+  expect(await json(await x.request('GET', detail))).toEqual(before);
+});
+
 it('AC-EN-BE16-05 草稿允许缺子集，提交须齐全，完成后人员版本与子集来源一致', async () => {
   const x = await collectionWorld();
   const previous = await x.person();
