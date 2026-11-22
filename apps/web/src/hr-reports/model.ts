@@ -20,15 +20,17 @@ const positionReport: PersonnelReport = {
   group: '人事报表',
   requires: [],
 };
-const flowReport: PersonnelReport = {
-  ...HR_MOVEMENT_REPORTS.find(({ code }) => code === 'flow')!,
-  endpoint: '/api/tenant/analytics/hr-movement/reports/flow',
-  permission: 'hrMovementReport',
-  group: '人事报表',
-  requires: [],
-};
 export const structureReports = [catalogReportOf('quality')!, positionReport];
-export const movementReports = [flowReport, catalogReportOf('monthly')!, catalogReportOf('institution')!];
+export const movementReports: PersonnelReport[] = HR_MOVEMENT_REPORTS.map(
+  (report) =>
+    catalogReportOf(report.code) ?? {
+      ...report,
+      endpoint: `/api/tenant/analytics/hr-movement/reports/${report.code}`,
+      permission: 'hrMovementReport',
+      group: '人事报表',
+      requires: [],
+    },
+);
 export const reportOf = (code: string) =>
   catalogReportOf(code) ??
   structureReports.find((r) => r.code === code) ??
@@ -225,7 +227,8 @@ export function cellText(key: string, value: unknown) {
       minimumFractionDigits: 1,
       maximumFractionDigits: 1,
     }).format(value);
-  const isRatio = key === 'rate' || (key.startsWith('employType:') && key.endsWith(':ratio'));
+  const isRatio =
+    key === 'rate' || key === 'executionRate' || (key.startsWith('employType:') && key.endsWith(':ratio'));
   if (isRatio && typeof value === 'number')
     return new Intl.NumberFormat('zh-CN', { style: 'percent', maximumFractionDigits: 2 }).format(value);
   if (key === 'termType') return TERM_TYPE_LABELS[String(value)] ?? String(value);
@@ -240,6 +243,15 @@ export interface DisplayTable {
   total: number;
   summary?: Row;
 }
+const groupLabels: Readonly<Partial<Record<string, string>>> = {
+  monthly: m.groupMonth,
+  institution: m.institution,
+  inflow: m.jobSequence,
+  reasons: m.exitTypeAndReason,
+  sequences: m.jobSequence,
+  establishment: m.drillOrganization,
+};
+
 export function tablesOf(code: string, data: ReportData, drilled = false): DisplayTable[] {
   if ('items' in data) return [{ key: code, columns: data.columns, rows: data.items, total: data.total }];
   const tables = 'tables' in data ? data.tables : [data];
@@ -250,7 +262,7 @@ export function tablesOf(code: string, data: ReportData, drilled = false): Displ
       {
         key: '_label',
         label:
-          ({ monthly: m.groupMonth, institution: m.institution } as Record<string, string>)[code] ??
+          groupLabels[code === 'outflow' ? (table.key ?? code) : code] ??
           (code === 'flow' && drilled ? m.drillOrganization : m.organization),
       },
       ...table.columns,

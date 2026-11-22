@@ -1,5 +1,5 @@
 import { Empty, Table } from 'antd';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { m } from './messages.js';
 import {
   cellText,
@@ -32,6 +32,10 @@ export function ReportTable({
   // 空范围由后端明确告知，不从零值统计行反推权限或人数。
   if (data.hasDataPermission === false) return <Empty description={m.empty} />;
   const tables = tablesOf(code, data, drilled);
+  if (code === 'outflow')
+    return tables.map((table) => (
+      <OutflowTable key={table.key} table={table} paginationDisabled={paginationDisabled} />
+    ));
   const roster = code === 'roster' && 'items' in data ? data : undefined;
   const organizationRowId = code === 'flow' ? '_organizationId' : undefined;
   return (
@@ -51,6 +55,22 @@ export function ReportTable({
         />
       ))}
     </>
+  );
+}
+
+function OutflowTable({ table, paginationDisabled }: { table: DisplayTable; paginationDisabled?: boolean }) {
+  // 设计 §4.7：流出按表键持有页码；重新查询时旧结果卸载，合计始终来自完整回执。
+  const [page, changePage] = useState(1);
+  return (
+    <ReadOnlyReportTable
+      table={table}
+      rows={table.rows.slice((page - 1) * pageSize, page * pageSize)}
+      page={page}
+      pageSize={pageSize}
+      changePage={changePage}
+      paginationDisabled={paginationDisabled}
+      showEmptySummary
+    />
   );
 }
 
