@@ -14,7 +14,7 @@ async function json(response: Response, status: number) {
   return response.json();
 }
 
-it('FE-01 正式授权器允许 Offer 编辑但隐藏 ID，核对列表动作与真实发起路由', async () => {
+it('AC-ESIGN-F505-FE-01 正式授权器允许 Offer 编辑但隐藏 ID，核对列表动作与真实发起路由', async () => {
   const database = db().db;
   const w = await offerSigningWorld(database, 'S6_ID_CONTRACT');
   const sourceId = await w.offer({ name: 'ZZ_F505_ID_CONTRACT' });

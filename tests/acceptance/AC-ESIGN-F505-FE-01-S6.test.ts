@@ -5,7 +5,7 @@ import { click, control, dialog, mount, openMenu, openSign, text, until } from '
 
 const db = useTestDb();
 
-it('FE-01 只启用真实列表返回的发起动作，状态和版本不参与前端判断', async () => {
+it('AC-ESIGN-F505-FE-01 只启用真实列表返回的发起动作，状态和版本不参与前端判断', async () => {
   const w = await offerSigningWorld(db().db, 'FE01');
   await w.offer({ name: 'ZZ_F505_已接受', linkedEmployeeId: null });
   await w.offer({ name: 'ZZ_F505_已入职', status: 'onboarded' });
@@ -20,7 +20,7 @@ it('FE-01 只启用真实列表返回的发起动作，状态和版本不参与�
   await openSign('ZZ_F505_已入职', '已入职Offer');
 });
 
-it('FE-01 回归：撤 Offer 编辑权后服务端动作隐藏，保留查看入口', async () => {
+it('AC-ESIGN-F505-FE-01 回归：撤 Offer 编辑权后服务端动作隐藏，保留查看入口', async () => {
   const w = await offerSigningWorld(db().db, 'FE01_DENIED');
   await w.offer({ name: 'ZZ_F505_只读' });
   await mount(w, { update: false });

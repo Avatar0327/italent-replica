@@ -77,7 +77,7 @@ test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: 'wait' });
 });
 
-test('FE-01/03 Offer 列表发起签署，真实回执刷新任务状态与来源历史', async ({ page }) => {
+test('AC-ESIGN-F505-FE-01/03 Offer 列表发起签署，真实回执刷新任务状态与来源历史', async ({ page }) => {
   await page.goto('/offers');
   await page.getByRole('button', { name: '已接受Offer' }).click();
   const row = page.getByRole('row').filter({ hasText: live.name });
@@ -95,7 +95,7 @@ test('FE-01/03 Offer 列表发起签署，真实回执刷新任务状态与来�
   await expect(modal.getByText(live.template.name, { exact: true }).last()).toBeVisible();
 });
 
-test('FE-05 真实场景页三行独立保存', async ({ page }) => {
+test('AC-ESIGN-F505-FE-05 真实场景页三行独立保存', async ({ page }) => {
   await page.goto('/esign-scenes');
   const row = (label: string) => page.getByRole('row').filter({ hasText: label });
   const offer = row('Offer电子签署');

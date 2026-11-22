@@ -17,7 +17,7 @@ import {
 
 const db = useTestDb();
 
-it('FE-03 模板空、断网、权限拒绝分别呈现，选项错误不会成为空列表', async () => {
+it('AC-ESIGN-F505-FE-03 模板空、断网、权限拒绝分别呈现，选项错误不会成为空列表', async () => {
   const w = await offerSigningWorld(db().db, 'FE03_OPTIONS');
   await w.offer({ name: 'ZZ_F505_空', linkedEmployeeId: w.employeeId });
   await w.offer({ name: 'ZZ_F505_断网' });
@@ -45,7 +45,7 @@ it('FE-03 模板空、断网、权限拒绝分别呈现，选项错误不会成�
   expect(dialog()?.querySelector('select')).toBeNull();
 });
 
-it('FE-03 全选超过 20 保留完整选择并禁止提交，人员变量拒绝后可改选', async () => {
+it('AC-ESIGN-F505-FE-03 全选超过 20 保留完整选择并禁止提交，人员变量拒绝后可改选', async () => {
   const w = await offerSigningWorld(db().db, 'FE03_LIMIT');
   await w.offer({ name: 'ZZ_F505_上限' });
   const variable = await w.template('{员工姓名}', 'ZZ_F505_变量');
@@ -74,7 +74,7 @@ async function actSelect(ids: string[]) {
   await act(async () => picker.dispatchEvent(new Event('change', { bubbles: true })));
 }
 
-it('FE-03 真实 201 失败任务显示发起失败及原因，来源历史按权限独立读取', async () => {
+it('AC-ESIGN-F505-FE-03 真实 201 失败任务显示发起失败及原因，来源历史按权限独立读取', async () => {
   const w = await offerSigningWorld(db().db, 'FE03_FAILED');
   await w.offer({ name: 'ZZ_F505_任务失败' });
   await w.template();
@@ -95,7 +95,7 @@ it('FE-03 真实 201 失败任务显示发起失败及原因，来源历史按�
   expect(requests.filter(({ path }) => path.includes('/esign-records')).length).toBeGreaterThan(1);
 });
 
-it('FE-03 有发起权限、无设置及签署记录查看权，仍可发起并读取自己的任务', async () => {
+it('AC-ESIGN-F505-FE-03 有发起权限、无设置及签署记录查看权，仍可发起并读取自己的任务', async () => {
   const w = await offerSigningWorld(db().db, 'FE03_NO_CONFIG');
   await w.offer({ name: 'ZZ_F505_可发起' });
   await w.template();

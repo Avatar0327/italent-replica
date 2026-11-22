@@ -17,7 +17,7 @@ import {
 
 const db = useTestDb();
 
-it('FE-04 写入成功但丢响应，按原命令回查；已提交后的详情读失败只重读任务', async () => {
+it('AC-ESIGN-F505-FE-04 写入成功但丢响应，按原命令回查；已提交后的详情读失败只重读任务', async () => {
   const w = await offerSigningWorld(db().db, 'FE04_UNKNOWN');
   await w.offer({ name: 'ZZ_F505_回查', revision: 7 });
   await w.template();
@@ -53,7 +53,7 @@ it('FE-04 写入成功但丢响应，按原命令回查；已提交后的详情�
   expect(await w.taskCount()).toBe(1);
 });
 
-it('FE-04 修订冲突保留选择，刷新后由操作者显式以新键提交', async () => {
+it('AC-ESIGN-F505-FE-04 修订冲突保留选择，刷新后由操作者显式以新键提交', async () => {
   const w = await offerSigningWorld(db().db, 'FE04_CONFLICT');
   const source = await w.offer({ name: 'ZZ_F505_版本' });
   const template = await w.template();
@@ -76,7 +76,7 @@ it('FE-04 修订冲突保留选择，刷新后由操作者显式以新键提交'
   expect(new Set(posts().map(({ key }) => key)).size).toBe(2);
 });
 
-it('FE-04 切换来源和租户隔离未知命令、旧版本及迟到上下文', async () => {
+it('AC-ESIGN-F505-FE-04 切换来源和租户隔离未知命令、旧版本及迟到上下文', async () => {
   const w = await offerSigningWorld(db().db, 'FE04_SWITCH');
   const a = await w.offer({ name: 'ZZ_F505_旧来源', revision: 7 });
   const b = await w.offer({ name: 'ZZ_F505_新来源', status: 'onboarded', revision: 2 });

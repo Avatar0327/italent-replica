@@ -25,9 +25,11 @@ function HistoryReader({ source }: { source: SignSource }) {
   const { timezone } = useSession();
   const permission = usePermissions(RECORD_OBJECT);
   const object = permission.snapshot.objects[RECORD_OBJECT];
-  const allowed = object?.objectCode === RECORD_OBJECT && !object.summary && !permission.loading && !permission.error;
-  const canView = !!allowed;
-  const canDownload = allowed && permission.can(RECORD_BUTTONS.download, 'list') && permission.field('files').visible;
+  const canView = object?.objectCode === RECORD_OBJECT && !object.summary && !permission.loading && !permission.error;
+  const visible = (field: string) => permission.field(field).visible;
+  const statusVisible = visible('status');
+  const filesVisible = visible('files');
+  const canDownload = statusVisible && filesVisible && permission.can(RECORD_BUTTONS.download, 'list');
   const download = useESignDownload();
   const [page, setPage] = useState(1);
   const path = `${sourceSignPath(source)}/esign-records?page=${page}&pageSize=${PAGE_SIZE}`;
@@ -48,7 +50,7 @@ function HistoryReader({ source }: { source: SignSource }) {
       title: m.records.scene,
       render: (_, row, index) => (
         <>
-          {sceneText(row.scene)}
+          {sceneText(visible('scene') ? row.scene : undefined)}
           {page === 1 && index === 0 && (
             <div>
               <small>{s.latest}</small>
@@ -57,10 +59,14 @@ function HistoryReader({ source }: { source: SignSource }) {
         </>
       ),
     },
-    { title: m.records.initiatedAt, render: (_, row) => dateTime(row.initiatedAt, timezone) },
+    {
+      title: m.records.initiatedAt,
+      render: (_, row) => dateTime(visible('initiatedAt') ? row.initiatedAt : undefined, timezone),
+    },
     {
       title: m.records.status,
       render: (_, row) => {
+        if (!statusVisible) return m.missing;
         const status = sourceStatus(row.status, row.currentNode);
         const reason = row.status === 'failed' ? esignFailureText(row.failureReason ?? null) : null;
         return reason ? m.reissue.failed(reason) : status;
@@ -69,6 +75,7 @@ function HistoryReader({ source }: { source: SignSource }) {
     {
       title: m.records.files,
       render: (_, row) => {
+        if (!filesVisible) return m.missing;
         const names = row.files?.flatMap((file) => (file.name ? [file.name] : [])) ?? [];
         if (!names.length) return m.missing;
         return (

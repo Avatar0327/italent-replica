@@ -9,7 +9,7 @@ const { ScenesPage } = await import(resolve('apps/web/src/esign/ScenesPage.tsx')
 const { sceneText } = await import(resolve('apps/web/src/esign/sign-model.ts'));
 const db = useTestDb();
 
-it('FE-05 场景设置从三个真实读口取得各自配置', async () => {
+it('AC-ESIGN-F505-FE-05 场景设置从三个真实读口取得各自配置', async () => {
   const w = await offerSigningWorld(db().db, 'FE05');
   const scenePath = '/api/tenant/esign/scenes';
   const save = await w.access()('PUT', `${scenePath}/offer`, {
@@ -26,7 +26,7 @@ it('FE-05 场景设置从三个真实读口取得各自配置', async () => {
   expect(document.querySelector('.ant-drawer')?.textContent).toContain('Offer电子签署');
 });
 
-it('FE-05 我的签署及记录采用与站内通知一致的场景名，陌生值使用受控文案', () => {
+it('AC-ESIGN-F505-FE-05 我的签署及记录采用与站内通知一致的场景名，陌生值使用受控文案', () => {
   expect(['transfer', 'offer', 'entry'].map(sceneText)).toEqual(['调动电子签署', 'Offer电子签署', '入职电子签署']);
   for (const scene of ['offer', 'entry']) {
     const notice = renderEsignNotice(ESIGN_REMIND_TEMPLATE, {
@@ -62,7 +62,7 @@ it.each(['服务端裁剪', '当前字段权收窄'])('AC-ESIGN-F505-FE-05 %s �
   expect(history()?.querySelector('a')).toBeNull();
 });
 
-it('FE-05 我的签署、签署记录与真实站内提醒展示相同的三场景标签', async () => {
+it('AC-ESIGN-F505-FE-05 我的签署、签署记录与真实站内提醒展示相同的三场景标签', async () => {
   const w = await offerSigningWorld(db().db, 'FE05_SCENES');
   const template = await w.template();
   const tasks = [
