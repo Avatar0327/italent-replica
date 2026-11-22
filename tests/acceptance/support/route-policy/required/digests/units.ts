@@ -19,12 +19,23 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/analytics/contract-board-routes.ts': {
     boardContext: '4a3e91c51fbe',
     'route:GET /api/tenant/analytics/contract-board': '1b0731a6ea06',
-    'route:GET /api/tenant/analytics/contract-board/components/:code': '0fdf7a01efb5',
+    'route:GET /api/tenant/analytics/contract-board/components/:code': 'bf0bed607afc',
+    'route:GET /api/tenant/analytics/contract-board/components/:code/export': '60b1e125fb6f',
+  },
+  'apps/api/src/modules/analytics/contract-board.ts': {
+    boardRows: '7a74f3fe8d6f',
   },
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts': {
+    analyticsScope: '16cb179fd9a0',
     dashboardContext: 'cc49a288a205',
     'route:GET /api/tenant/analytics/hr-dashboard': '3f0859908cca',
-    'route:GET /api/tenant/analytics/hr-dashboard/indicators/:code': '34d6b762af0b',
+    'route:GET /api/tenant/analytics/hr-dashboard/indicators/:code': '8292b11ff1f5',
+    'route:GET /api/tenant/analytics/hr-dashboard/indicators/:code/export': 'c613c4747358',
+  },
+  'apps/api/src/modules/analytics/hr-dashboard.ts': {
+    hrDashboardPage: '8bccc42f5154',
+    indicatorRows: '2a2ce234f174',
+    pageRows: '75e6a62ba7ec',
   },
   'apps/api/src/modules/analytics/hr-movement-routes.ts': {
     boardContext: 'aa4bc1989f2b',
@@ -2088,11 +2099,20 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/contract-board-routes.ts#route:GET /api/tenant/analytics/contract-board':
     'bb53ace7a311',
   'apps/api/src/modules/analytics/contract-board-routes.ts#route:GET /api/tenant/analytics/contract-board/components/:code':
-    'af5c24e28850',
+    '0788eb431aca',
+  'apps/api/src/modules/analytics/contract-board-routes.ts#route:GET /api/tenant/analytics/contract-board/components/:code/export':
+    '3d71fb7ec048',
+  'apps/api/src/modules/analytics/contract-board.ts#boardRows': '5c104cdc1cd4',
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#analyticsScope': '12c56f83e88d',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dashboardContext': '74c0d9467abe',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard': 'bbddc4840c46',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard/indicators/:code':
-    '980851c99aab',
+    'a832d6af6609',
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard/indicators/:code/export':
+    '0c861c124bea',
+  'apps/api/src/modules/analytics/hr-dashboard.ts#hrDashboardPage': '897faf88302f',
+  'apps/api/src/modules/analytics/hr-dashboard.ts#indicatorRows': 'd76277a6cea4',
+  'apps/api/src/modules/analytics/hr-dashboard.ts#pageRows': '377049583bce',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#boardContext': '75939c8efcfb',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#reportContext': '3b25725172cf',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement': 'c00629251c2e',

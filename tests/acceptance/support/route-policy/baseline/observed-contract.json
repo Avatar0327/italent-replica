@@ -3361,6 +3361,37 @@
         ]
       }
     },
+    "GET /api/tenant/analytics/contract-board/components/:code/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "contract-board",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ContractBoard:view"
+        ],
+        "scope": [
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/analytics/hr-dashboard": {
       "edge": {
         "anonymous": {
@@ -3393,6 +3424,37 @@
       }
     },
     "GET /api/tenant/analytics/hr-dashboard/indicators/:code": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-dashboard",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.HrDashboard:view"
+        ],
+        "scope": [
+          "employment visibility",
+          "requestScope",
+          "scopeSql",
+          "visible()"
+        ]
+      }
+    },
+    "GET /api/tenant/analytics/hr-dashboard/indicators/:code/export": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
