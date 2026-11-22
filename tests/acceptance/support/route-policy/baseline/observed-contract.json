@@ -31864,6 +31864,9 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "employment.linkage"
+        ],
         "object": [
           "objectContext"
         ],
