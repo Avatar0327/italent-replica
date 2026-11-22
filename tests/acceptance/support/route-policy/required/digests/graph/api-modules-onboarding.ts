@@ -95,6 +95,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/onboarding/collection-config-input.ts#rulePatch': ['#ruleBody'],
   'apps/api/src/modules/onboarding/collection-config-input.ts#templateBody': ['#field', '#name'],
   'apps/api/src/modules/onboarding/collection-config-input.ts#templateFieldAllowed': [
+    '#excludedSubsetFields',
     '#mappedSubsets',
     '#profileFields',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
@@ -282,7 +283,6 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/onboarding/collection-submit-fields.ts#allowedFields': [
     'apps/api/src/modules/onboarding/collection-config-input.ts#templateFieldAllowed',
-    '#derived',
   ],
   'apps/api/src/modules/onboarding/collection-submit-fields.ts#body': ['#fields', '#patch'],
   'apps/api/src/modules/onboarding/collection-submit-fields.ts#checkCollectionValues': [

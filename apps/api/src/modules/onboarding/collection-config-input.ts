@@ -23,6 +23,14 @@ const field = z.strictObject({
 const profileFields = new Set(['name', 'email', 'idType', 'idNumber', 'mobilePhone', 'gender', 'birthday']);
 const subsets = ['education', 'certificate'] as const satisfies readonly SubsetKind[];
 const mappedSubsets = new Map<string, SubsetKind>(subsets.map((code) => [SUBSETS[code].objectCode, code]));
+// R2-T01 §4.1、U3 只开放明确映射的普通子集字段。学历跨行标志和学习证书关联不由采集写入。
+const excludedSubsetFields = new Set([
+  'learningCertificateId',
+  'isFirstEducation',
+  'isHighestEducation',
+  'isHighestDegree',
+  'isMainMajor',
+]);
 
 export function templateFieldAllowed({
   objectCode,
@@ -32,6 +40,7 @@ export function templateFieldAllowed({
   const subset = mappedSubsets.get(objectCode);
   return (
     subset !== undefined &&
+    !excludedSubsetFields.has(fieldCode) &&
     !subsetAttachmentFields(subset).includes(fieldCode) &&
     SUBSETS[subset].fields.some((candidate) => candidate.code === fieldCode)
   );

@@ -29,13 +29,6 @@ const body = z.strictObject({
   profile: fields.default({}),
   subsets: z.array(patch).max(24).default([]),
 });
-const derived = new Set([
-  'learningCertificateId',
-  'isFirstEducation',
-  'isHighestEducation',
-  'isHighestDegree',
-  'isMainMajor',
-]);
 const prefill = ['name', 'email', 'idType'];
 
 function allowedFields(
@@ -49,11 +42,7 @@ function allowedFields(
       .filter((field) => field.objectCode === objectCode && field.editable && templateFieldAllowed(field))
       .map(({ fieldCode }) => fieldCode),
   );
-  if (
-    Object.keys(values).some(
-      (key) => !allowed.has(key) || derived.has(key) || (current && !current.some((f) => f.code === key)),
-    )
-  )
+  if (Object.keys(values).some((key) => !allowed.has(key) || (current && !current.some((f) => f.code === key))))
     throw new AppError('FORBIDDEN', '采集字段不在当前可写范围', { reason: 'COLLECTION_FIELD_NOT_ALLOWED' });
 }
 
