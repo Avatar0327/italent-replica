@@ -335,3 +335,42 @@ it('AC-EN-BE16-07 P2-2 局部配置管理员无法探测隐藏规则优先级，
   });
   await json(await enable(20), 200);
 });
+
+it('AC-EN-BE16-07 P2-3 HR 按材料定义引用权读取冻结名称，撤权同时裁剪引用与名称', async () => {
+  const w = await world('ZZ_BE16_MATERIAL_NAME_SNAPSHOT');
+  const frozenName = 'ZZ_BE16_FROZEN_MATERIAL_NAME';
+  const rule = await json<Receipt>(
+    await w.request('POST', w.rules, {
+      ifMatch: 0,
+      body: {
+        name: 'ZZ_BE16_NAME_RULE',
+        orgIds: [w.org.id],
+        priority: 10,
+        items: [definition(frozenName, true)],
+      },
+    }),
+    201,
+  );
+  const { recordId } = await addPending(w, '2026-10-10', 'ZZ_BE16_FROZEN_NAME_ENTRY');
+  const path = w.rules + '/' + rule.id;
+  const config = await json<Rule>(await w.request('GET', path), 200);
+  const edited = await json<Receipt>(
+    await w.request('PATCH', path, {
+      ifMatch: config.revision,
+      body: { items: [{ ...config.items[0], name: 'ZZ_BE16_RENAMED_MATERIAL' }] },
+    }),
+    200,
+  );
+  expect((await w.request('DELETE', path, { ifMatch: edited.revision })).status).toBe(204);
+  w.rights.admin = false;
+  await json(await w.request('GET', path), 403);
+  const listed = await json<{ items: (Item & { definitionName?: string })[] }>(await w.list(recordId), 200);
+  expect(listed.items.map(({ definitionName }) => definitionName)).toEqual([frozenName]);
+  expect(listed.items[0]?.definitionId).toBe(config.items[0]?.id);
+
+  w.rights.materialFields.delete('definitionId');
+  const restricted = await json<{ items: Record<string, unknown>[] }>(await w.list(recordId), 200);
+  expect(restricted.items).toEqual([expect.objectContaining({ status: 'pending' })]);
+  expect(restricted.items[0]).not.toHaveProperty('definitionId');
+  expect(restricted.items[0]).not.toHaveProperty('definitionName');
+});
