@@ -4,6 +4,14 @@ import { m as report } from '../hr-reports/messages.js';
 import { pageSize, type DisplayTable } from '../hr-reports/model.js';
 import { m } from './messages.js';
 
+export type GroupChartKind = 'column' | 'bar' | 'pie';
+export interface ChartPoint {
+  key: string;
+  label: string;
+  value: number | null;
+  text: string;
+}
+
 const base = '/api/tenant/analytics/hr-dashboard';
 export const asOfBounds = { min: '0001-01-02', max: '9999-12-01' };
 
@@ -72,13 +80,13 @@ export function canRetryRead(error: unknown) {
   return status === 429 || status === 0 || (status !== undefined && status >= 500);
 }
 
-export function boardErrorText(error: unknown, detail: boolean) {
+export function boardErrorText(error: unknown, detail: boolean, missing: string = m.indicatorMissing) {
   if (error instanceof ApiError && error.status === 413 && error.code === 'PAYLOAD_TOO_LARGE') return m.limit;
   switch (readStatus(error)) {
     case 403:
       return detail ? m.detailDenied : m.boardDenied;
     case 404:
-      return detail ? m.indicatorMissing : m.boardMissing;
+      return detail ? missing : m.boardMissing;
     case 400:
       return report.invalid;
     case 429:
