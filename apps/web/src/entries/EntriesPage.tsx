@@ -1,5 +1,5 @@
 import { Alert, Button, Drawer, Dropdown, Space, Tabs, type TableColumnsType } from 'antd';
-import { useCallback, useEffect, useRef, useState, type Key } from 'react';
+import { useCallback, useEffect, useRef, useState, type Key, type ReactNode } from 'react';
 import dayjs from 'dayjs';
 import { EMPLOYEE_STATUS_LABELS, ENTRY_STATUS_LABELS } from '@italent/domain';
 import { ListPage } from '../foundation/templates.js';
@@ -80,36 +80,16 @@ function EntryList() {
     await read.read();
     setKeys([]);
   };
-  const columns: TableColumnsType<Row> = m.columns[view].split('|').map((title) => ({
-    title,
-    key: title,
-    width: m.columnWidths[title] ?? 140,
-    ellipsis: true,
-    render: (_, row) => cell(title, row),
-  }));
-  columns.push({
-    title: (
-      <Space>
-        {'操作'}
-        <Button size="small" disabled aria-label={m.settings}>
-          ⚙
-        </Button>
-      </Space>
-    ),
-    key: 'actions',
-    fixed: 'right',
-    width: canViewHistory ? 232 : 164,
-    render: (_, row) => (
-      <RowActions
-        row={row}
-        view={view}
-        access={access}
-        canViewHistory={canViewHistory}
-        refresh={refresh}
-        open={(action) => setOpen({ row, action })}
-      />
-    ),
-  });
+  const columns = entryColumns(view, canViewHistory ? 232 : 164, (row) => (
+    <RowActions
+      row={row}
+      view={view}
+      access={access}
+      canViewHistory={canViewHistory}
+      refresh={refresh}
+      open={(action) => setOpen({ row, action })}
+    />
+  ));
   return (
     <div className="entries-page">
       <Tabs
@@ -161,6 +141,30 @@ function EntryList() {
       )}
     </div>
   );
+}
+function entryColumns(view: View, actionWidth: number, actions: (row: Row) => ReactNode): TableColumnsType<Row> {
+  const columns: TableColumnsType<Row> = m.columns[view].split('|').map((title) => ({
+    title,
+    key: title,
+    width: m.columnWidths[title] ?? 140,
+    ellipsis: true,
+    render: (_, row) => cell(title, row),
+  }));
+  columns.push({
+    title: (
+      <Space>
+        {'操作'}
+        <Button size="small" disabled aria-label={m.settings}>
+          ⚙
+        </Button>
+      </Space>
+    ),
+    key: 'actions',
+    fixed: 'right',
+    width: actionWidth,
+    render: (_, row) => actions(row),
+  });
+  return columns;
 }
 function Filters({ view }: { view: View }) {
   const today = useToday();
