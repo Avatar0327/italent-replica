@@ -1,0 +1,32 @@
+.hr-process-section .hr-structure-card h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.hr-process-wide {
+  grid-column: 1 / -1;
+}
+.hr-process-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 6px;
+}
+.hr-process-metrics .board-chart-item {
+  flex: 1 1 90px;
+  grid-template-columns: 1fr;
+  justify-items: start;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+}
+.hr-process-metrics strong {
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+.hr-process-section .board-trend th {
+  overflow-wrap: anywhere;
+}
+.hr-process-section .board-trend th:first-child {
+  width: 84px;
+}

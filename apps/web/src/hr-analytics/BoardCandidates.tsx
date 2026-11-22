@@ -59,7 +59,7 @@ export function organizationField(
   state: ReturnType<typeof useCandidates<OrgCandidate>>,
   key: string,
   label: string,
-  includeChildren?: string,
+  includeChildren?: string | null,
 ): QueryField {
   const treeData = state.items.map(({ id, name, parentId, enabled }) => ({
     id,
@@ -90,6 +90,7 @@ export function organizationField(
     ),
     appliedText: (value, filters) => {
       const name = treeData.find((node) => node.value === value)?.title ?? value;
+      if (includeChildren === null) return `${label} ${name}`;
       const descendants =
         includeChildren && filters[includeChildren] === 'false' ? m.withoutDescendants : m.descendants;
       return `${label} ${name}（${descendants}）`;

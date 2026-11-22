@@ -25,27 +25,42 @@ export function useBoardRead<Query, Target, Overview extends BoardResponse, Deta
   initial: Query,
   overviewUrl: (query: Query) => string,
   detailUrl: (selection: Selection<Target>, query: Query) => string | null,
+  inlineUrl?: (overview: Overview, query: Query, page: number) => string | null,
 ) {
   const [query, setQuery] = useState({ filters: initial, generation: 0 });
   const [selected, select] = useState<Selection<Target>>();
   const [detailGeneration, setDetailGeneration] = useState(0);
   const [invalidated, setInvalidated] = useState<Invalidated>();
   const read = useReportRead<Overview>(invalidated ? null : overviewUrl(query.filters), query.generation);
-  const detail = useReportRead<Detail>(selected ? detailUrl(selected, query.filters) : null, detailGeneration);
+  const [inlinePage, setInlinePage] = useState({ page: 1, generation: 0 });
+  const inline = useReportRead<Detail>(
+    read.data?.hasDataPermission && inlineUrl ? inlineUrl(read.data, query.filters, inlinePage.page) : null,
+    inlinePage.generation,
+  );
+  const inlineInvalidation = detailInvalidation(inline.error, inline.data);
+  const detail = useReportRead<Detail>(
+    selected && !inlineInvalidation ? detailUrl(selected, query.filters) : null,
+    detailGeneration,
+  );
 
-  const currentInvalidation = detailInvalidation(detail.error, detail.data);
+  const currentInvalidation = inlineInvalidation ?? detailInvalidation(detail.error, detail.data);
   const blocked = currentInvalidation ?? invalidated;
   useEffect(() => {
     if (currentInvalidation) setInvalidated(currentInvalidation);
-  }, [currentInvalidation]);
-  const retryAt = Math.max(detail.failure?.retryAt ?? 0, read.failure?.retryAt ?? 0);
+    if (inlineInvalidation) select(undefined);
+  }, [currentInvalidation, inlineInvalidation]);
+  const retryAt = Math.max(detail.failure?.retryAt ?? 0, read.failure?.retryAt ?? 0, inline.failure?.retryAt ?? 0);
   const [lastRetryAt, setLastRetryAt] = useState(0);
   // 关闭抽屉会清掉明细失败，但不能提前解除 Retry-After。
   if (retryAt > lastRetryAt) setLastRetryAt(retryAt);
   const waiting = useReportRetryWait(Math.max(retryAt, lastRetryAt));
   const data = blocked ? undefined : read.data;
 
+  const changeInlinePage = (page: number) => {
+    setInlinePage((previous) => ({ page, generation: previous.generation + 1 }));
+  };
   const apply = (filters: Query) => {
+    if (inlineUrl) changeInlinePage(1);
     select(undefined);
     setInvalidated(undefined);
     setQuery((previous) => ({ filters, generation: previous.generation + 1 }));
@@ -59,7 +74,10 @@ export function useBoardRead<Query, Target, Overview extends BoardResponse, Deta
     data,
     filters: query.filters,
     detail,
-    selected,
+    selected: inlineInvalidation ? undefined : selected,
+    inline,
+    inlinePage: inlinePage.page,
+    changeInlinePage,
     waiting,
     forbidden: blocked === 'forbidden' || readStatus(read.error) === 403,
     login: blocked === 'login' || readStatus(read.error) === 401,

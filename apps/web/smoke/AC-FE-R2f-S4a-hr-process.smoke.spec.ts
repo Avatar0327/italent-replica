@@ -21,9 +21,15 @@ const card = (page: Page, code: Code) => page.getByRole('article', { name: names
 const query = (page: Page) => page.getByRole('button', { name: /^查\s*询$/ });
 const drawer = (page: Page) => page.getByRole('dialog');
 const params = (url: URL) => Object.fromEntries(url.searchParams);
-const group = (key: string, count: number, average: number | null = null, series: string | null = null) => ({
+const group = (
+  key: string,
+  count: number,
+  average: number | null = null,
+  series: string | null = null,
+  label: string | null = null,
+) => ({
   key,
-  label: null,
+  label,
   count,
   average,
   series,
@@ -33,12 +39,13 @@ const group = (key: string, count: number, average: number | null = null, series
 
 function board(hasDataPermission = true, empty = false) {
   const n = empty ? 0 : 24;
+  const hits = empty ? 0 : 12;
   const groups: Partial<Record<Code, ReturnType<typeof group>[]>> = {
     inFlightAbnormal: [group('expired', 1)],
     inFlightByApprover: [group(approver, 6, null, 'transfer'), group(approver, 2, null, 'offer')],
     durationByWeek: [group('2026-11-16', 3, 2.5)],
     durationByCategory: [group('transfer', 3, 2.5)],
-    taskDurationByNode: [{ ...group(node, 3, 1.25), label: node }],
+    taskDurationByNode: [group(node, 3, 1.25, null, node)],
     taskDurationByApprover: [group(approver, 3, 1.25)],
     durationByOrg: [group(department, 3, 2.5)],
   };
@@ -50,7 +57,7 @@ function board(hasDataPermission = true, empty = false) {
     components: HR_PROCESS_COMPONENTS.map((item) => ({
       ...item,
       total: n,
-      hits: item.code === 'inFlightCount' || item.code === 'inFlightWaiting' ? (empty ? 0 : 12) : null,
+      hits: item.code === 'inFlightCount' || item.code === 'inFlightWaiting' ? hits : null,
       rate: null,
       average: null,
       groups: empty ? [] : (groups[item.code] ?? []),
@@ -283,4 +290,76 @@ test('AC-FE-R2f-11 切换看板后迟到的在途分页不得显示', async ({ p
   }
   expect((await late).status()).toBe(200);
   await expect(page.getByText(prefix + '实例_2')).toHaveCount(0);
+});
+
+test('AC-FE-R2f-11 查询错误清退旧数据，429 到期才能手动重试，在途表 401 回共享会话态', async ({ page }) => {
+  const errors = [
+    [400, 'VALIDATION_FAILED', '请检查筛选条件和日期范围'],
+    [404, 'NOT_FOUND', '看板不存在'],
+    [413, 'PAYLOAD_TOO_LARGE', '请缩小筛选范围后重试'],
+    [429, 'RATE_LIMITED', '请求过于频繁，请稍后重试'],
+    [503, 'UNAVAILABLE', '看板加载失败，请重试'],
+  ] as const;
+  let fault: (typeof errors)[number] | undefined;
+  let reads = 0;
+  await page.route(overview, (r) => {
+    reads++;
+    const headers = fault?.[0] === 429 ? { 'Retry-After': '2' } : undefined;
+    return fault
+      ? r.fulfill({
+          status: fault[0],
+          headers,
+          json: { error: { code: fault[1], message: prefix + 'internal' } },
+        })
+      : r.fulfill({ json: board() });
+  });
+  await start(page);
+  const table = card(page, 'inFlightList');
+  for (const error of errors) {
+    await expect(table.getByText(prefix + '实例_1')).toBeVisible();
+    fault = error;
+    await query(page).click();
+    const alert = page.getByRole('alert').filter({ hasText: error[2] });
+    await expect(alert).toBeVisible();
+    await expect(table).toHaveCount(0);
+    await expect(drawer(page)).toHaveCount(0);
+    await expect(page.getByText(prefix + 'internal')).toHaveCount(0);
+    fault = undefined;
+    const retry = alert.getByRole('button', { name: /重\s*试/ });
+    if (error[0] === 429) {
+      await expect(retry).toBeDisabled();
+      await expect(query(page)).toBeDisabled();
+      const prior = reads;
+      await expect(retry).toBeEnabled({ timeout: 5000 });
+      expect(reads).toBe(prior);
+    }
+    if (error[0] >= 429) await retry.click();
+    else {
+      await expect(retry).toHaveCount(0);
+      await query(page).click();
+    }
+  }
+  await expect(table.getByText(prefix + '实例_1')).toBeVisible();
+  await page.route(list, (r) => r.fulfill({ status: 401, json: { error: { code: 'UNAUTHORIZED' } } }));
+  await table.getByTitle('2', { exact: true }).click();
+  await expect(page.getByText('请选择演示身份或提供会话上下文', { exact: true })).toBeVisible();
+  await expect(page.getByRole('article')).toHaveCount(0);
+});
+
+test('AC-FE-R2f-05 无 B51 权限的相邻看板身份直链不读流程概览、候选或明细', async ({ page }) => {
+  await snapshot(page, [HR_MOVEMENT_OBJECT]);
+  const calls: string[] = [];
+  page.on('request', (r) => {
+    const url = new URL(r.url());
+    if (
+      url.pathname.startsWith(base) ||
+      (url.pathname === '/api/tenant/analytics/organization-candidates' &&
+        url.searchParams.get('object') === 'HrProcessDashboard')
+    )
+      calls.push(r.url());
+  });
+  await page.goto('/hr-dashboard/process');
+  await expect(page.getByText('暂无访问权限', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '人事流程看板' })).toHaveCount(0);
+  expect(calls).toEqual([]);
 });
