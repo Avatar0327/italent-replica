@@ -39,7 +39,7 @@ export const ACTIVE_COLLECTION_TASK_STATES = [
   'rehire_pending',
 ] as const;
 
-interface FrozenField {
+export interface CollectionTaskFieldSnapshot {
   objectCode: string;
   fieldCode: string;
   group: string;
@@ -60,7 +60,7 @@ export const onboardingCollectionTasks = pgTable(
     ruleId: uuid('rule_id').notNull(),
     templateRevision: integer('template_revision').notNull(),
     ruleRevision: integer('rule_revision').notNull(),
-    fields: jsonb('fields').$type<FrozenField[]>().notNull(),
+    fields: jsonb('fields').$type<CollectionTaskFieldSnapshot[]>().notNull(),
     requiredSubsets: jsonb('required_subsets').$type<string[]>().notNull(),
     verificationMode: text('verification_mode', { enum: ['independent_channel', 'phone_otp'] }).notNull(),
     requiresApproval: boolean('requires_approval').notNull(),
