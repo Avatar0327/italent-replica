@@ -1,5 +1,5 @@
 import { Button, Input, Select, Space } from 'antd';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   MOVEMENT_CATEGORIES,
   reportCellLabel,
@@ -15,16 +15,18 @@ import {
   type Column,
   type Filters,
 } from './model.js';
-interface Field {
+export interface QueryField {
   key: string;
   label: string;
   type?: string;
   bounds?: { min: string; max: string };
   options?: { value: string; label: string }[];
+  control?(value: string, busy: boolean, change: (value: string) => void): ReactNode;
+  appliedText?(value: string, filters: Filters): string | undefined;
 }
-function fieldsOf(code: string, columns: Column[]): Field[] {
+function fieldsOf(code: string, columns: Column[]): QueryField[] {
   const seen = (key: string) => columns.some((c) => c.key === key);
-  const fields: Field[] = [];
+  const fields: QueryField[] = [];
   if (!['1.07', '1.1.01', '1.1.02'].includes(code)) fields.push({ key: 'asOf', label: m.asOf, type: 'date' });
   if (code === '1.07') {
     fields.push({ key: 'from', label: m.from, type: 'date' }, { key: 'to', label: m.to, type: 'date' });
@@ -66,7 +68,7 @@ function fieldsOf(code: string, columns: Column[]): Field[] {
     });
   return fields;
 }
-function inputBounds(field: Field, draft: Filters) {
+function inputBounds(field: QueryField, draft: Filters) {
   if (field.bounds) return field.bounds;
   if (field.type === 'date') return { min: '0001-01-01', max: '9999-12-31' };
   if (field.key === 'year') return { min: 1900, max: Number(draft.asOf?.slice(0, 4)) || 9999 };
@@ -80,7 +82,7 @@ function FilterControl({
   roster,
   change,
 }: {
-  field: Field;
+  field: QueryField;
   draft: Filters;
   busy: boolean;
   roster: boolean;
@@ -156,7 +158,7 @@ export function QueryFilters({
   applied,
   apply,
 }: {
-  fields: readonly Field[];
+  fields: readonly QueryField[];
   initial: Filters;
   busy: boolean;
   submitDisabled?: boolean;
@@ -190,18 +192,25 @@ export function QueryFilters({
       }}
     >
       <Space wrap align="end">
-        {fields.map((field) => (
-          <label key={field.key} className="hr-report-filter">
-            <span>{field.label}</span>
-            <FilterControl
-              field={field}
-              draft={draft}
-              busy={busy}
-              roster={Boolean(rosterColumns)}
-              change={(value) => setDraft({ ...draft, [field.key]: value })}
-            />
-          </label>
-        ))}
+        {fields.map((field) =>
+          field.control ? (
+            <div key={field.key} className="hr-report-filter">
+              {field.label && <span>{field.label}</span>}
+              {field.control(draft[field.key] ?? '', busy, (value) => setDraft({ ...draft, [field.key]: value }))}
+            </div>
+          ) : (
+            <label key={field.key} className="hr-report-filter">
+              <span>{field.label}</span>
+              <FilterControl
+                field={field}
+                draft={draft}
+                busy={busy}
+                roster={Boolean(rosterColumns)}
+                change={(value) => setDraft({ ...draft, [field.key]: value })}
+              />
+            </label>
+          ),
+        )}
         <Button htmlType="submit" type="primary" disabled={busy || submitDisabled}>
           {m.query}
         </Button>
@@ -211,11 +220,14 @@ export function QueryFilters({
         <p>
           {m.applied}{' '}
           {fields
-            .filter(({ key }) => applied[key])
-            .map(
-              ({ key, label, options }) =>
-                `${label} ${options?.find((option) => option.value === applied[key])?.label ?? applied[key]}`,
-            )
+            .flatMap(({ key, label, options, appliedText }) => {
+              const value = applied[key] ?? '';
+              if (!value) return [];
+              const text = appliedText
+                ? appliedText(value, applied)
+                : `${label} ${options?.find((option) => option.value === value)?.label ?? value}`;
+              return text ? [text] : [];
+            })
             .join('，')}
         </p>
       )}

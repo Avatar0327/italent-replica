@@ -67,9 +67,10 @@ const open = (page: Page, code = '6.01') => card(page, code).getByRole('button',
 async function select(page: Page, field: string, label: string) {
   await lookup(page, field).click();
   await page
-    .locator('.ant-select-dropdown:visible, .ant-select-tree-dropdown:visible')
-    .getByText(label, { exact: true })
-    .click();
+    .locator('.ant-select-dropdown:visible:not([class*="-leave"])')
+    .locator('.ant-select-tree-title, .ant-select-item-option-content')
+    .filter({ hasText: label })
+    .click({ timeout: 8000 });
 }
 
 function hold() {
@@ -177,6 +178,14 @@ test('AC-FE-R2f-03 全部组件、组织开关、编码和名称、按组分页�
     ['1', '2'].map((page) => [`${base}/components/6.14`, { ...expected, group, page, pageSize: '20' }]),
   );
 
+  await lookup(page, '分组').press('ArrowDown');
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option-content')
+    .filter({ hasText: '全部分组' })
+    .click({ timeout: 8000 });
+  await expect(drawer.getByText(`${prefix}row_1`)).toBeVisible();
+  expect(Object.fromEntries(calls.at(-1)!.searchParams)).toEqual({ ...expected, page: '1', pageSize: '20' });
+
   // 触发页内查询提交，验证即使明细仍打开也会清除旧上下文。
   const formElement = page.locator('.hr-dashboard-filters form');
   await formElement.evaluate((element: HTMLFormElement) => element.requestSubmit());
@@ -206,6 +215,45 @@ test('AC-FE-R2f-11 候选分别降级，可选范围外组织，区分空范围�
   await expect(card(page).getByText('0', { exact: false })).toBeVisible();
   await open(page).click();
   await expect(page.getByRole('dialog').locator('.ant-empty-description')).toHaveText('暂无数据');
+});
+
+test('AC-FE-R2f-11 职位序列末页失败不展示半页候选，可独立重试并应用末页选项', async ({ page }) => {
+  const calls: number[] = [];
+  const first = Array.from({ length: 200 }, (_, index) => ({
+    id: `10000000-0000-4000-8010-${String(index).padStart(12, '0')}`,
+    name: `${prefix}序列 ${index}`,
+  }));
+  let failLastPage = true;
+  await page.route('**/job/sequences?*', (route) => {
+    const { searchParams } = new URL(route.request().url());
+    const number = Number(searchParams.get('page'));
+    calls.push(number);
+    expect(searchParams.get('asOf')).toBe(today);
+    expect(searchParams.get('pageSize')).toBe('200');
+    if (number === 2 && failLastPage) return route.fulfill({ status: 503 });
+    return route.fulfill({
+      json: {
+        hasDataPermission: true,
+        items: number === 1 ? first : [{ id: sequence, name: `${prefix}末页序列` }],
+      },
+    });
+  });
+  await page.goto('/hr-dashboard/structure');
+  await expect(card(page)).toBeVisible();
+  await expect(lookup(page, '职位序列')).toBeDisabled();
+  const retry = page.getByRole('button', { name: '重试职位序列候选' });
+  await expect(retry).toBeVisible();
+  await expect(query(page)).toBeEnabled();
+  expect(calls).toEqual([1, 2]);
+  failLastPage = false;
+  await retry.click();
+  await expect(lookup(page, '职位序列')).toBeEnabled();
+  expect(calls).toEqual([1, 2, 1, 2]);
+  await lookup(page, '职位序列').fill('末页序列');
+  await page.locator('.ant-select-dropdown:visible').getByText(`${prefix}末页序列`, { exact: true }).click();
+  const applied = page.waitForRequest(boardPath);
+  await query(page).click();
+  expect(new URL((await applied).url()).searchParams.get('sequenceId')).toBe(sequence);
 });
 
 test('AC-FE-R2f-11 400、404、413、429、503 回收旧图，限流到期后只能手动重试', async ({ page }) => {
@@ -315,7 +363,9 @@ test('AC-FE-R2f-11 切页和换租户后拒绝迟到的旧图、明细与候选'
     await lateDetail.wait;
     return route.fulfill({ json: detail(route, `${prefix}late_row`) });
   });
+  const candidatesRequested = page.waitForRequest(candidatePath);
   await page.goto('/hr-dashboard/structure');
+  await candidatesRequested;
   await expect(open(page), 'B49 查询成功即可打开详情').toBeVisible({ timeout: 5000 });
   const requested = page.waitForRequest(detailPath);
   await open(page).click();
@@ -342,6 +392,6 @@ test('AC-FE-R2f-11 切页和换租户后拒绝迟到的旧图、明细与候选'
   await expect(card(page).getByText(/\b7\b/)).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await lookup(page, '任职机构').click();
-  await expect(page.getByText(`${prefix}新租户`, { exact: true })).toBeVisible();
+  await expect(page.getByRole('treeitem', { name: `${prefix}新租户` })).toBeVisible();
   await expect(page.getByText(`${prefix}旧租户`, { exact: true })).toHaveCount(0);
 });

@@ -5,7 +5,16 @@ import { expect, it } from 'vitest';
 import { menuNodes, type ServerSnapshot } from '../../apps/web/src/foundation/permission-snapshot.js';
 import { PAGES } from '../../apps/web/src/foundation/routes.js';
 import { deliveredTabs } from '../../apps/web/src/hr-analytics/pages.js';
-import { STRUCTURE_BASE, TODAY, structureWorld, type Board, type DetailPage } from './AC-HA-13a-support.js';
+import {
+  structureCards,
+  structureDetailTable,
+  structureDetailUrl,
+  structureOrgUrl,
+  structureOverviewUrl,
+  type StructureDetail,
+  type StructureOverview,
+} from '../../apps/web/src/hr-analytics/structure-model.js';
+import { STRUCTURE_BASE, TODAY, structureWorld } from './AC-HA-13a-support.js';
 import { addMember, createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 
@@ -56,7 +65,7 @@ it('AC-FE-R2f-01/03/11 单授 B49 的真实入口、候选独立范围及统计�
   const entryObjects = snapshot.apps.find(({ app }) => app === 'staff')?.entryObjects;
   expect(entryObjects).toEqual([HR_STRUCTURE_OBJECT]);
 
-  const candidatesPath = `/api/tenant/analytics/organization-candidates?object=HrStructure&asOf=${TODAY}`;
+  const candidatesPath = structureOrgUrl(TODAY);
   const candidates = async () =>
     json<{ items: { id: string; name: string; parentId: string | null; enabled: boolean }[] }>(
       await get(candidatesPath),
@@ -79,7 +88,7 @@ it('AC-FE-R2f-01/03/11 单授 B49 的真实入口、候选独立范围及统计�
     expect((await get(path)).status, path).toBe(403);
 
   async function overview(filters: Record<string, string> = {}) {
-    return json<Board>(await get(`${STRUCTURE_BASE}?${new URLSearchParams({ asOf: TODAY, ...filters })}`));
+    return json<StructureOverview>(await get(structureOverviewUrl({ asOf: TODAY, ...filters })));
   }
   expect(await overview()).toMatchObject({ hasDataPermission: false });
   const scope = await api.request('PUT', `/api/tenant/permission/scopes/${reader.id}/TenantBase`, {
@@ -90,6 +99,7 @@ it('AC-FE-R2f-01/03/11 单授 B49 的真实入口、候选独立范围及统计�
   expect(scope.status, await scope.clone().text()).toBe(200);
 
   const filters = {
+    asOf: TODAY,
     institutionId: parent.id,
     departmentId: parent.id,
     employmentForm: form!.code,
@@ -115,9 +125,11 @@ it('AC-FE-R2f-01/03/11 单授 B49 的真实入口、候选独立范围及统计�
     expect(empty.components[0]?.value, JSON.stringify(zero)).toBe(0);
   }
 
-  const params = new URLSearchParams({ ...filters, asOf: board.asOf, group: '女', page: '1', pageSize: '20' });
-  const detail = await json<DetailPage>(await get(`${STRUCTURE_BASE}/components/6.14?${params}`));
-  expect(board.components.at(-1)?.groups?.find(({ key }) => key === '女')?.count).toBe(detail.total);
+  const detail = await json<StructureDetail>(await get(structureDetailUrl('6.14', filters, 1, '女')));
+  const cards = structureCards(board);
+  expect(cards.find(({ code }) => code === '6.14')?.points.find(({ key }) => key === '女')?.value).toBe(detail.total);
+  const average = await json<StructureDetail>(await get(structureDetailUrl('6.02', filters, 1)));
+  expect(cards.find(({ code }) => code === '6.02')?.wholeCount).toBe(average.total);
   expect(detail).toMatchObject({
     code: '6.14',
     total: 1,
@@ -126,6 +138,8 @@ it('AC-FE-R2f-01/03/11 单授 B49 的真实入口、候选独立范围及统计�
     hasDataPermission: true,
     items: [{ id: inside.id, employeeId: inside.id, organizationId: child.id }],
   });
+  expect(structureDetailTable(detail).columns.map(({ label }) => label)).toEqual(['员工 ID', '部门 ID']);
+  expect((await api.request('GET', structureOverviewUrl(filters), { ...who, user: denied.id })).status).toBe(403);
   for (const code of ['6.09', '6.10']) expect((await get(`${STRUCTURE_BASE}/components/${code}`)).status).toBe(404);
 
   expect(menuNodes(PAGES.entries, snapshot)[0]?.children?.map(({ key }) => key)).toEqual(['hr-dashboard']);
