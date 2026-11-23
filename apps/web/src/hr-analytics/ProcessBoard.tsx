@@ -1,3 +1,4 @@
+import { useState, type CSSProperties } from 'react';
 import { Button } from 'antd';
 import { APPROVAL_CATEGORIES, APPROVAL_CATEGORY_NAMES } from '@italent/domain';
 import { PageState } from '../foundation/PageState.js';
@@ -34,6 +35,7 @@ import {
   type ProcessDetail,
   type ProcessDrill,
   type ProcessOverview,
+  type ProcessPoint,
 } from './process-model.js';
 import { useBoardRead } from './useBoardRead.js';
 import './hr-process.css';
@@ -59,29 +61,107 @@ const trends = {
   taskDurationByApprover: { kind: 'combo', categoryWidth: 172, dimensionLabel: p.approverId },
 } as const;
 
-function trendOf(component: ProcessComponent) {
-  const known = trends[component.code as keyof typeof trends];
-  if (known || !isProcessRatio(component)) return known;
-  const dimensionLabel = processDimension(component);
-  return {
-    kind: 'combo',
-    percent: true,
-    categoryWidth: component.code === 'nonCompliantByWeek' ? 95 : 172,
-    ...(dimensionLabel ? { dimensionLabel } : {}),
-  } as const;
+const DIVERGING = new Set<string>(['submitLagByCategory', 'approveLagByCategory']);
+const barStyle = (size: number) =>
+  ({ '--point-size': `${size * 100}%`, '--point-color': 'var(--shell-primary)' }) as CSSProperties;
+
+/** 7.2.17 / 7.2.19 的差值可为负（早于业务日期）：零轴居中，负值向左、正值向右。 */
+function ProcessLagChart({ points, open }: { points: readonly ProcessPoint[]; open?(key: string): void }) {
+  if (!points.length) return <p className="board-chart-empty">{m.empty}</p>;
+  const scale = Math.max(...points.map(({ value }) => Math.abs(value ?? 0)));
+  return (
+    <div className="board-chart board-chart-bar hr-process-diverging">
+      <ul>
+        {points.map((point) => {
+          const value = point.value ?? 0;
+          return (
+            <li key={point.key} style={barStyle(scale ? Math.abs(value) / scale / 2 : 0)}>
+              <ChartItem point={point} open={open && (() => open(point.key))}>
+                <span className="board-chart-label" title={point.label}>
+                  {point.label}
+                </span>
+                <span className={`board-chart-mark${value < 0 ? ' hr-process-negative' : ''}`} aria-hidden="true">
+                  <span />
+                </span>
+                <span className="board-chart-number">{point.text}</span>
+              </ChartItem>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * 比率卡按「条/表」（docs/08_设计/R2-T10 §4.4）：分组 × 占比 / 分子 / 分母，每格一个独立按钮，
+ * 分子等于分母时也不会互相遮挡。
+ */
+function ProcessRatioTable({
+  categories,
+  series,
+  dimension = m.trendPeriod,
+  open,
+}: ReturnType<typeof processTrend> & { dimension?: string; open?(key: string): void }) {
+  if (!categories.length) return <p className="board-chart-empty">{m.empty}</p>;
+  const rows = categories.map(({ key, label }) => ({
+    key,
+    label,
+    cells: series.flatMap(({ key: field, points }) =>
+      points.filter(({ category }) => category === key).map((point) => ({ field, point })),
+    ),
+  }));
+  return (
+    <div className="board-chart hr-process-ratio">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">{dimension}</th>
+            {series.map(({ key, label }) => (
+              <th scope="col" key={key}>
+                {label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ key, label, cells }) => (
+            <tr key={key}>
+              <th scope="row">{label}</th>
+              {cells.map(({ field, point }) => (
+                <td key={point.key}>
+                  <ChartItem point={point} open={open && (() => open(point.key))}>
+                    {field === 'rate' && (
+                      <span className="board-chart-mark" aria-hidden="true">
+                        <span style={barStyle(Math.min(1, Math.max(0, point.value ?? 0)))} />
+                      </span>
+                    )}
+                    <span className="board-chart-number">{point.text}</span>
+                  </ChartItem>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function ProcessChart({ component, open }: { component: ProcessComponent; open?: OpenDrill }) {
   const points = processPoints(component);
-  const trend = trendOf(component);
-  const data = trend && processTrend(component, points);
+  const trend = trends[component.code as keyof typeof trends];
+  const ratio = isProcessRatio(component);
+  const data = (trend || ratio) && processTrend(component, points);
   const openPoint =
     open &&
     ((key: string) => {
       const point = (data ? data.series.flatMap((item) => item.points) : points).find((item) => item.key === key);
       if (point) open(point.drill, point.option ?? point.key);
     });
+  if (ratio && data) return <ProcessRatioTable {...data} dimension={processDimension(component)} open={openPoint} />;
   if (trend && data) return <BoardTrendChart {...trend} {...data} open={openPoint} />;
+  if (DIVERGING.has(component.code)) return <ProcessLagChart points={points} open={openPoint} />;
   return <BoardChart kind="bar" points={points} open={openPoint} />;
 }
 
@@ -169,9 +249,15 @@ function ProcessCard({
 function ProcessDetails({
   board,
   department,
+  closing,
+  close,
+  afterClose,
 }: {
   board: ProcessRead;
   department: ReturnType<typeof organizationField>;
+  closing: boolean;
+  close(): void;
+  afterClose(): void;
 }) {
   const { data, detail, selected, waiting } = board;
   if (!selected) return null;
@@ -218,7 +304,9 @@ function ProcessDetails({
         )
       }
       waiting={waiting}
-      close={board.closeDetail}
+      open={!closing}
+      close={close}
+      afterClose={afterClose}
       changePage={(page) => board.changeDetail({ ...selected, page })}
       retry={() => board.changeDetail(selected)}
     />
@@ -226,10 +314,13 @@ function ProcessDetails({
 }
 
 export function ProcessBoard({ today, refresh }: { today: string; refresh(): void }) {
+  // 关闭抽屉分两步：先停明细读取、播放关闭过渡，过渡结束再清选中项，组件库才能把焦点还给原入口。
+  const [closing, setClosing] = useState(false);
   const board = useBoardRead<Filters, Target, ProcessOverview, ProcessDetail>(
     processDefaults(today),
     processOverviewUrl,
-    ({ target, page }) => processDetailUrl(target.component.code, target.filters, page, target.drill),
+    ({ target, page }) =>
+      closing ? null : processDetailUrl(target.component.code, target.filters, page, target.drill),
     (data, filters, page) =>
       data.components.some(({ code }) => code === 'inFlightList')
         ? processDetailUrl('inFlightList', processResultFilters(filters, data), page, {})
@@ -272,12 +363,14 @@ export function ProcessBoard({ today, refresh }: { today: string; refresh(): voi
                   board={board}
                   open={
                     data.hasDataPermission && !waiting
-                      ? (drill, pointKey) =>
+                      ? (drill, pointKey) => {
+                          setClosing(false);
                           board.changeDetail({
                             target: { component, filters: applied, drill, pointKey },
                             asOf: data.asOf,
                             page: 1,
-                          })
+                          });
+                        }
                       : undefined
                   }
                 />
@@ -285,7 +378,17 @@ export function ProcessBoard({ today, refresh }: { today: string; refresh(): voi
             </div>
           </section>
         ))}
-      <ProcessDetails board={board} department={department} />
+      <ProcessDetails
+        board={board}
+        department={department}
+        closing={closing}
+        close={() => setClosing(true)}
+        afterClose={() => {
+          if (!closing) return;
+          setClosing(false);
+          board.closeDetail();
+        }}
+      />
     </>
   );
 }

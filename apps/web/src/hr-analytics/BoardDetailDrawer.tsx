@@ -16,7 +16,9 @@ export function BoardDetailDrawer({
   controls,
   missing,
   waiting,
+  open = true,
   close,
+  afterClose,
   changePage,
   retry,
 }: {
@@ -31,15 +33,19 @@ export function BoardDetailDrawer({
   controls?: ReactNode;
   missing?: string;
   waiting: boolean;
+  /** 与 afterClose 一起传：关闭时先置 false 播放过渡，过渡结束由 afterClose 卸载，焦点才能归还入口。 */
+  open?: boolean;
   close(): void;
+  afterClose?(): void;
   changePage(page: number): void;
   retry(): void;
 }) {
   const { data, error, loading } = read;
   return (
     <DetailPage
-      open
+      open={open}
       onClose={close}
+      afterClose={afterClose}
       title={title}
       summary={
         <>

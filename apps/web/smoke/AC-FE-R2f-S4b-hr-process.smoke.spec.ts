@@ -196,7 +196,8 @@ const diverging = (page: Page, code: Code) =>
         const track = mark.getBoundingClientRect();
         const bar = mark.firstElementChild!.getBoundingClientRect();
         const center = track.left + track.width / 2;
-        const at = (x: number) => Math.round(((x - center) / (track.width / 2)) * 100) / 100;
+        // 亚像素误差会得到 -0，统一成 0
+        const at = (x: number) => Math.round(((x - center) / (track.width / 2)) * 100) / 100 || 0;
         const axis = getComputedStyle(mark, '::before');
         return { from: at(bar.left), to: at(bar.right), axis: axis.content !== 'none' && axis.width !== 'auto' };
       }),

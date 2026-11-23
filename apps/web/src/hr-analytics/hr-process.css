@@ -30,3 +30,48 @@
 .hr-process-section .board-trend th:first-child {
   width: 84px;
 }
+.hr-process-diverging .board-chart-mark {
+  position: relative;
+  display: block;
+}
+.hr-process-diverging .board-chart-mark::before {
+  content: '';
+  position: absolute;
+  inset-block: -4px;
+  left: 50%;
+  width: 1px;
+  background: var(--shell-text);
+}
+.hr-process-diverging .board-chart-mark > span {
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+}
+.hr-process-diverging .hr-process-negative > span {
+  left: auto;
+  right: 50%;
+}
+.hr-process-ratio {
+  overflow-x: auto;
+}
+.hr-process-ratio table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.hr-process-ratio th {
+  font-size: 12px;
+  font-weight: 500;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.hr-process-ratio th:first-child {
+  width: 30%;
+}
+.hr-process-ratio thead th:nth-child(2) {
+  width: 34%;
+}
+.hr-process-ratio .board-chart-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
