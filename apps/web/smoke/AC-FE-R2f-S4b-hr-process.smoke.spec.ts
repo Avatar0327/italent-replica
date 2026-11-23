@@ -48,16 +48,20 @@ function board() {
     lateSubmitByInitiator: [group(initiator, 1), group(prefix + '发起人', 12)],
     lateApprovalByCategory: [group('offer', 1)],
     lateApprovalByApprover: [group(approver, 2)],
-    // 正、零、负同图，正负等绝对值且文字宽度不同（审查 P2-1）
+    // 7.2.02 也画横条：两类计数位数悬殊（1 / 1000），窄卡里数值与条都须留在卡内（审查 P2-2 第 3 轮）
+    inFlightAbnormal: [group('approverLeft', 1), group('expired', 1000)],
+    // 正、零、负同图，正负等绝对值且文字宽度不同（审查 P2-1）；末行是半幅以内的样本（0.4 倍刻度）
     submitLagByCategory: [
       group('transfer', 2, null, 12.5),
       group('offer', 1, null, 0),
       group('contract', 1, null, -12.5),
+      group('entry', 1, null, 5),
     ],
     approveLagByCategory: [
       group('transfer', 2, null, -0.5),
       group('offer', 1, null, 0),
       group('contract', 1, null, 0.5),
+      group('entry', 1, null, -0.2),
     ],
     transferApprovalRate: [group(org, 6, 5)],
     offerApprovalRate: [group(org, 1, 1)],
@@ -211,23 +215,36 @@ const diverging = (page: Page, code: Code) =>
 test('AC-FE-R2f-05 7.2.17 与 7.2.19 差值图带零轴，负值向左、正值向右、零值无条', async ({ page }) => {
   await page.goto('/hr-dashboard/process');
   await expect(card(page, 'submitLagByCategory').getByText('-12.5 天', { exact: true })).toBeVisible({ timeout: 5000 });
-  expect(await diverging(page, 'submitLagByCategory'), '12.5 / 0 / -12.5 天').toEqual([
+  expect(await diverging(page, 'submitLagByCategory'), '12.5 / 0 / -12.5 / 5 天').toEqual([
     { from: 0, to: 1, axis: true },
     { from: 0, to: 0, axis: true },
     { from: -1, to: 0, axis: true },
+    { from: 0, to: 0.4, axis: true },
   ]);
-  expect(await diverging(page, 'approveLagByCategory'), '-0.5 / 0 / 0.5 天').toEqual([
+  expect(await diverging(page, 'approveLagByCategory'), '-0.5 / 0 / 0.5 / -0.2 天').toEqual([
     { from: -1, to: 0, axis: true },
     { from: 0, to: 0, axis: true },
     { from: 0, to: 1, axis: true },
+    { from: -0.4, to: 0, axis: true },
   ]);
-  for (const code of ['submitLagByCategory', 'approveLagByCategory'] as const) {
-    const rows = await pixels(card(page, code));
-    const axes = rows.map(({ left, width }) => left + width / 2);
-    expect.soft(spread(axes), `${code} 同图各行零轴横坐标 ${axes.join(' / ')}px 应一致`).toBeLessThanOrEqual(1);
-    const bars = rows.map(({ bar }) => bar).filter(Boolean);
-    expect(bars, `${code} 等绝对值的正负条像素长度应相等`).toHaveLength(2);
-    expect.soft(Math.abs(bars[0]! - bars[1]!), `${code} 正负条长 ${bars.join(' / ')}px`).toBeLessThanOrEqual(1);
+  for (const [layout, apply] of layouts) {
+    await apply(page);
+    for (const [code, full, opposite, partial] of [
+      ['submitLagByCategory', 0, 2, 3],
+      ['approveLagByCategory', 2, 0, 3],
+    ] as const) {
+      // 绝对像素：零轴、等绝对值条长、半幅以内条长都按全图同一刻度比，不按各行自己的轨道归一
+      const rows = await pixels(card(page, code));
+      const axes = rows.map(({ left, width }) => left + width / 2);
+      expect
+        .soft(spread(axes), `${layout} ${code} 同图各行零轴横坐标 ${axes.join(' / ')}px 应一致`)
+        .toBeLessThanOrEqual(1);
+      const [a, b, c] = [rows[full]!.bar, rows[opposite]!.bar, rows[partial]!.bar];
+      expect.soft(Math.abs(a - b), `${layout} ${code} 等绝对值正负条长 ${a} / ${b}px`).toBeLessThanOrEqual(1);
+      expect
+        .soft(Math.abs(c - a * 0.4), `${layout} ${code} 0.4 倍刻度的条长 ${c}px 应为满幅 ${a}px 的 0.4`)
+        .toBeLessThanOrEqual(1);
+    }
   }
 });
 
@@ -243,16 +260,77 @@ const pixels = (scope: ReturnType<typeof card>) =>
   );
 const spread = (values: number[]) => Math.max(...values) - Math.min(...values);
 
+// 模拟不支持 subgrid 的浏览器（Vite 默认构建目标含 Chrome 111，subgrid 从 117 起才支持；审查 P2-1 第 3 轮）：
+// 丢弃样式表里取值含 subgrid 的声明，与浏览器忽略不认识的取值等效
+const dropSubgrid = (page: Page) =>
+  page.evaluate(() => {
+    const visit = (rules: CSSRuleList) => {
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSStyleRule)
+          for (const name of ['grid-template-columns', 'grid-template-rows'])
+            if (rule.style.getPropertyValue(name).includes('subgrid')) rule.style.removeProperty(name);
+        if ('cssRules' in rule) visit((rule as CSSGroupingRule).cssRules);
+      }
+    };
+    for (const sheet of Array.from(document.styleSheets)) visit(sheet.cssRules);
+  });
+const layouts = [
+  ['原样', async () => {}],
+  ['不支持 subgrid', dropSubgrid],
+] as const;
+
+// 本 PR 内全部横条（同类位置清单）：都走 hr-process.css 里同一条两行布局规则
+const BARS = [
+  'inFlightAbnormal',
+  'lateSubmitByInitiator',
+  'submitLagByCategory',
+  'approveLagByCategory',
+  'nonCompliantByWeek',
+] as const;
+
+// 卡内越界的轨道或数值文字（数值按文字本身的范围量，文字溢出自己的盒子也算）
+const outside = (scope: ReturnType<typeof card>) =>
+  scope.evaluate((article) => {
+    const box = article.getBoundingClientRect();
+    return Array.from(article.querySelectorAll('.board-chart-mark, .board-chart-number')).flatMap((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const rect = element.classList.contains('board-chart-mark')
+        ? element.getBoundingClientRect()
+        : range.getBoundingClientRect();
+      const out = rect.left < box.left - 0.5 || rect.right > box.right + 0.5;
+      const span = (r: DOMRect) => `${Math.round(r.left)}–${Math.round(r.right)}`;
+      return out ? [`${element.className}「${element.textContent}」${span(rect)} / 卡 ${span(box)}`] : [];
+    });
+  });
+
+async function tracks(page: Page, viewport: string) {
+  for (const [layout, apply] of layouts) {
+    await apply(page);
+    for (const code of BARS) {
+      const rows = await pixels(card(page, code));
+      expect(rows.length, `${code} 至少两行`).toBeGreaterThan(1);
+      const drift = Math.max(spread(rows.map(({ left }) => left)), spread(rows.map(({ width }) => width)));
+      expect
+        .soft(drift, `${viewport} ${layout} ${code} 各行轨道 ${JSON.stringify(rows)} 的起点与宽度应一致`)
+        .toBeLessThanOrEqual(1);
+      expect.soft(await outside(card(page, code)), `${viewport} ${layout} ${code} 数值与条应在卡内`).toEqual([]);
+    }
+  }
+}
+
 test('AC-FE-R2f-05 B51 同一张条形图各行共用轨道，数值文字宽度不影响刻度', async ({ page }) => {
   await page.goto('/hr-dashboard/process');
   await expect(card(page, 'submitLagByCategory').getByText('-12.5 天', { exact: true })).toBeVisible({ timeout: 5000 });
-  const codes = ['lateSubmitByInitiator', 'submitLagByCategory', 'approveLagByCategory', 'nonCompliantByWeek'] as const;
-  for (const code of codes) {
-    const rows = await pixels(card(page, code));
-    expect(rows.length, `${code} 至少两行`).toBeGreaterThan(1);
-    const drift = Math.max(spread(rows.map(({ left }) => left)), spread(rows.map(({ width }) => width)));
-    expect.soft(drift, `${code} 各行轨道 ${JSON.stringify(rows)} 的起点与宽度应一致`).toBeLessThanOrEqual(1);
-  }
+  await tracks(page, '1280px');
+});
+
+test('AC-FE-R2f-05 约 720px 窗口侧栏展开时，7.2.02 的 1 与 1000 混排仍对齐且不越出卡片', async ({ page }) => {
+  await page.setViewportSize({ width: 720, height: 900 });
+  await page.goto('/hr-dashboard/process');
+  await expect(page.getByRole('button', { name: '收起菜单' }), '侧栏应保持展开').toBeVisible({ timeout: 5000 });
+  await expect(card(page, 'inFlightAbnormal').locator('.board-chart-number')).toHaveText(['1', /^1,?000$/]);
+  await tracks(page, '720px');
 });
 
 test('AC-FE-R2f-05 分子等于分母时分子、分母各有不被遮挡的入口，钻取分别带 / 不带 hit', async ({ page }) => {
