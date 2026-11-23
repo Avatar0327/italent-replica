@@ -2,7 +2,12 @@ import { sql, type Tx } from '@italent/db';
 import { FORM_DEPENDENCY_RESET, changedInputFields, requestInputFields, type FieldOriginInput } from '@italent/domain';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { derivationFields } from './field-derivations.js';
-import { appendFieldOrigins, loadFieldOrigins, type FieldOriginDraft } from './field-origin-store.js';
+import {
+  appendFieldOrigins,
+  loadFieldOrigins,
+  type FieldOriginDraft,
+  type SettledFields,
+} from './field-origin-store.js';
 import type { PreparedFormInheritance } from './inheritance.js';
 import { rowsOf, type EmploymentPayloadRow } from './record-store.js';
 import type { EmploymentContext, EmploymentRecord, NormalizedEmploymentInput, PresetFields } from './types.js';
@@ -178,4 +183,26 @@ export function appendPayloadFieldOrigins(
     ctx,
     origins.map((row) => ({ ...row, payloadVersionId, employeeId, businessId, recordId })),
   );
+}
+
+/** 把 settleFieldValues 的判定结果并入候选态：字段值回到判定后的有效值，退回延迟的字段重新待定。 */
+export function applySettledFields<Prepared extends PreparedFormInheritance>(
+  prepared: Prepared,
+  settled: Pick<SettledFields, 'values' | 'deferred' | 'explicit'>,
+): Prepared {
+  if (!settled.values.size) return prepared;
+  const fields = { ...prepared.fields } as Record<string, unknown>;
+  const customFields = { ...prepared.customFields };
+  for (const [code, value] of settled.values) {
+    if (code.startsWith('preset:')) fields[code.slice('preset:'.length)] = value;
+    else customFields[code.slice('custom:'.length)] = value as never;
+  }
+  const taken = new Set(settled.values.keys());
+  return {
+    ...prepared,
+    fields: fields as unknown as PresetFields,
+    customFields,
+    explicitFieldCodes: [...prepared.explicitFieldCodes.filter((code) => !taken.has(code)), ...settled.explicit],
+    deferredFieldCodes: [...new Set([...prepared.deferredFieldCodes, ...settled.deferred])],
+  };
 }

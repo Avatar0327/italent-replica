@@ -24,7 +24,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
-import { changedInputFields, clearedTransferFields, tenantLocalDate } from '@italent/domain';
+import { changedInputFields, clearedTransferFields, requestInputFields, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
@@ -82,13 +82,15 @@ import {
 } from './types.js';
 import { queueExitAccount } from './exit-account-store.js';
 import {
+  applySettledFields,
+  appendPayloadFieldOrigins,
   discardedFormFields,
   endDiscardedFormOverrides,
   fieldOriginEditor,
   formFieldOrigins,
   originActorKind,
 } from './field-origin-write.js';
-import { type FieldOriginDraft } from './field-origin-store.js';
+import { settleFieldValues, type FieldOriginDraft } from './field-origin-store.js';
 
 export const NEW_CYCLE_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 
@@ -383,6 +385,46 @@ async function requireUnchangedExitDates(
     });
 }
 
+interface EditedPayloadInput {
+  readonly business: LockedEmploymentBusiness;
+  readonly normalized: NormalizedEmploymentInput;
+  readonly patch: EmploymentBusinessPatch;
+  readonly selected: Awaited<ReturnType<typeof selectEmploymentCycle>> | undefined;
+  readonly options: RescheduleOptions;
+}
+
+/**
+ * 修改草稿的候选态：先重推继承、写来源草稿，再按适用性判定已有值（F-036 §4.6），最后解析有效值供校验。
+ * 判定必须在校验之前：职位不再属于新部门时，要先退成空值，校验才不会拿旧职位去比新部门。
+ */
+async function prepareEditedPayload(tx: Tx, ctx: EmploymentContext, input: EditedPayloadInput) {
+  const { business, normalized, patch, selected, options } = input;
+  const before = business.payload;
+  const patched = await prepareEmploymentPatch(
+    tx,
+    ctx,
+    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
+    before,
+  );
+  const actor = await fieldOriginEditor(tx, ctx, before, options);
+  const drafts = formFieldOrigins(patched, normalized, { request: patch, businessId: business.id, before, actor });
+  await endDiscardedFormOverrides(tx, ctx, before, patched, discardedFormFields(patch.fields), drafts);
+  // 本次请求自己输入的字段不判：新值由校验把关。
+  const settled = await settleFieldValues(
+    tx,
+    ctx,
+    business.id,
+    { fields: patched.fields, deferredFieldCodes: patched.deferredFieldCodes },
+    { pending: drafts, skip: requestInputFields(patch) },
+  );
+  const prepared = applySettledFields(patched, settled);
+  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
+    staffId: selected?.cycle.id ?? '',
+    predecessor: selected?.predecessor ?? null,
+  });
+  return { prepared, effective, settled };
+}
+
 export async function updateEmploymentBusiness(
   tx: Tx,
   ctx: EmploymentContext,
@@ -420,15 +462,12 @@ export async function updateEmploymentBusiness(
         effectiveDate: normalized.effectiveDate,
         expectedStaffId: before.selectedStaffId,
       });
-  const prepared = await prepareEmploymentPatch(
-    tx,
-    ctx,
-    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
-    before,
-  );
-  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
-    staffId: selected?.cycle.id ?? '',
-    predecessor: selected?.predecessor ?? null,
+  const { prepared, effective, settled } = await prepareEditedPayload(tx, ctx, {
+    business,
+    normalized,
+    patch,
+    selected,
+    options,
   });
   await validatePreparedEmployment(tx, ctx, business.employeeId, normalized.kind, prepared, effective.fields, business);
   await assertEstablishmentCapacity(tx, ctx, {
@@ -441,16 +480,13 @@ export async function updateEmploymentBusiness(
     positionId: effective.fields.positionId,
   });
   await bumpEmploymentBusiness(tx, ctx, business);
-  const actor = await fieldOriginEditor(tx, ctx, before, options);
-  const origins = formFieldOrigins(prepared, normalized, { request: patch, businessId: id, before, actor });
-  await endDiscardedFormOverrides(tx, ctx, before, prepared, discardedFormFields(patch.fields), origins);
   business.payload = await appendEmploymentPayload(tx, ctx, business.employeeId, id, normalized, prepared, {
     previous: before,
     selectedStaffId: selected?.cycle.id,
     changeType: before.changeType ?? undefined,
     // 改期后按新生效日的前一条重新确定继承的人员状态（PR #93 首审 P2-1），不沿用原日期下的值
     status: inheritedStatus(normalized.kind, selected?.predecessor ?? null),
-    origins,
+    origins: settled.origins,
   });
   await bindRehireRetirement(tx, ctx, business);
   // 申请修改是人工意图：事件绑定新载荷版本，迟到重建据此把它当作新的初始输入（R6-P2-01）。
@@ -890,6 +926,52 @@ function cycleIdentity(payload: LockedEmploymentBusiness['payload'], selected: S
   };
 }
 
+/**
+ * F-036 §4.4.2 写点 #16：落地把每个延迟字段的解析结果记成 resolved 行（值、取值的前驱记录、本单记录），
+ * 不追加载荷版本；解析值再按适用性谓词判一次，被退回的落地值写 fallback 行。部门先于职位解析。
+ */
+async function resolveLanding(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  effective: { staffId: string; predecessor: EmploymentRecord | null },
+) {
+  const resolved = await resolveEffectiveInheritance(tx, ctx, business.payload, effective);
+  return recordLandingResolutions(tx, ctx, business, resolved);
+}
+
+async function recordLandingResolutions(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  resolved: Awaited<ReturnType<typeof resolveEffectiveInheritance>>,
+) {
+  const rows: FieldOriginDraft[] = resolved.resolutions.map(({ fieldCode, value, sourceRecordId }) => ({
+    fieldCode,
+    originKind: 'resolved',
+    value,
+    sourceRecordId,
+    sourceBusinessId: sourceRecordId,
+  }));
+  await appendPayloadFieldOrigins(tx, ctx, business.payload, business.id, rows);
+  // 落地时延迟字段都已解析，谓词看到的是已确定的部门。
+  const candidate = { fields: resolved.fields, deferredFieldCodes: [] };
+  const settled = await settleFieldValues(tx, ctx, business.id, candidate);
+  await appendPayloadFieldOrigins(tx, ctx, business.payload, business.id, settled.origins);
+  if (!settled.values.size) return resolved;
+  const fields: Record<string, unknown> = { ...resolved.fields };
+  const customFields: Record<string, unknown> = { ...resolved.customFields };
+  for (const [code, value] of settled.values) {
+    if (code.startsWith('preset:')) fields[code.slice('preset:'.length)] = value;
+    else customFields[code.slice('custom:'.length)] = value;
+  }
+  return {
+    ...resolved,
+    fields: fields as unknown as typeof resolved.fields,
+    customFields: customFields as typeof resolved.customFields,
+  };
+}
+
 export async function materializeEmploymentRecord(
   tx: Tx,
   ctx: EmploymentContext,
@@ -905,7 +987,7 @@ export async function materializeEmploymentRecord(
   const newCycle = NEW_CYCLE_KINDS.includes(payload.kind);
   const selected = await cycleForMaterialization(tx, ctx, business, newCycle, position);
   const { staffId, entryDate, traineeStartDate, sourceStaffId } = cycleIdentity(payload, selected);
-  const inherited = await resolveEffectiveInheritance(tx, ctx, payload, {
+  const inherited = await resolveLanding(tx, ctx, business, {
     staffId: sourceStaffId,
     predecessor: selected?.predecessor ?? null,
   });

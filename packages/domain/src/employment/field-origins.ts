@@ -191,7 +191,8 @@ export function projectOriginMarkers(
       if (recordEdit && legacy ? previousExplicit.has(code) : lastWriter.reason !== SAME_VALUE_CONFIRMATION)
         explicit.add(code);
     }
-    if (!lastWriter && state.policy === 'deferred') deferred.add(code);
+    // F-036-S6：落地解析值（resolved）不改变“该字段走延迟策略”的投影，只有人工覆盖才让它离开延迟。
+    if ((!lastWriter || lastWriter === state.resolved) && state.policy === 'deferred') deferred.add(code);
   }
   for (const code of previousExplicit) if (markerField(code) && !states.has(code)) explicit.add(code);
   for (const code of previousDeferred)

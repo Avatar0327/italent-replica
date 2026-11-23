@@ -25,7 +25,9 @@ const database = useTestDb();
 /** 调动必填部门，HR 总会填部门（覆盖值有效，不解析）；其余延迟字段按形态解析，职位只在延迟时解析。 */
 function expectedResolved(shape: Shape) {
   if (shape === 'position') return ['preset:positionId'];
-  return shape === 'both' ? transferDeferredExcept() : transferDeferredExcept('preset:positionId');
+  // 岗位 / 职级 / 职等 / 序列由职位带出，策略行是 none（不继承，也就没有延迟解析）
+  const derived = ['preset:postId', 'preset:levelId', 'preset:gradeId', 'preset:sequenceId'];
+  return transferDeferredExcept(...derived, ...(shape === 'both' ? [] : ['preset:positionId']));
 }
 
 async function states(w: DeferralWorld, businessId: string) {

@@ -5,7 +5,7 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
-import * as store from '../../apps/api/src/modules/employment/field-origin-store.js';
+import { registerFieldApplicability } from '../../apps/api/src/modules/employment/field-origin-store.js';
 import {
   createTransfer,
   deferralWorld,
@@ -19,26 +19,19 @@ import {
 const database = useTestDb();
 const POSITION = 'preset:positionId';
 
-type Predicate = (
-  row: { value: unknown },
-  candidate: { fields: Record<string, unknown>; deferredFieldCodes: readonly string[] },
-) => boolean | undefined;
-type Register = (fieldCode: string, predicate: Predicate) => () => void;
-
 const unregister: (() => void)[] = [];
 afterEach(() => {
   for (const off of unregister.splice(0)) off();
 });
 
-/** 经命名空间可选调用：实现前缺少注册入口时不抛“模块不存在”，而是让下面的业务断言（没有 fallback 行）失败。 */
+/** 注入 J3“职位必须属于任职部门”的判定；部门仍待定（延迟）时无法判断，返回 undefined。 */
 function injectJ3(w: DeferralWorld) {
-  const register = (store as { registerFieldApplicability?: Register }).registerFieldApplicability;
-  const off = register?.(POSITION, (row, candidate) =>
+  const off = registerFieldApplicability(POSITION, (row, candidate) =>
     candidate.deferredFieldCodes.includes('preset:departmentId')
       ? undefined
       : w.orgOf.get(String(row.value)) === candidate.fields.departmentId,
   );
-  if (off) unregister.push(off);
+  unregister.push(off);
 }
 
 const positionRows = (w: DeferralWorld, id: string) => ledger(w, id, [POSITION]);
@@ -96,6 +89,8 @@ describe('AC-TRF-72 继承值：部门改走再改回', () => {
     const atB = await land(w, draft, '2026-11-01');
     expect(atB.fields).toMatchObject({ departmentId: w.to.id, positionId: null });
 
+    // 第一个世界的谓词只认它自己的组织：建第二个世界（含入职落地）之前先注销，免得串到别人的入职记录
+    for (const off of unregister.splice(0)) off();
     const other = await deferralWorld(database().db, 'f036s6-trf72-land-a', 'inherit');
     injectJ3(other);
     const back = await createTransfer(other, 'application', '2026-11-01', { departmentId: other.from.id });
@@ -103,6 +98,20 @@ describe('AC-TRF-72 继承值：部门改走再改回', () => {
     await patch(other, back.id, { departmentId: other.from.id });
     const atA = await land(other, back, '2026-11-01');
     expect(atA.fields).toMatchObject({ departmentId: other.from.id, positionId: other.position.id });
+  });
+});
+
+describe('AC-TRF-72 同一请求自己输入的字段不判', () => {
+  it('Z5：同一次保存改部门并选 B 部门的职位 → 继承值 fallback，新选的职位原样保存', async () => {
+    const w = await deferralWorld(database().db, 'f036s6-trf72-z5', 'inherit');
+    injectJ3(w);
+    const draft = await createTransfer(w, 'application', '2026-11-01', { departmentId: w.from.id });
+    const inherit = (await positionRows(w, draft.id)).find((row) => row.kind === 'inherit')!;
+    await patch(w, draft.id, { departmentId: w.to.id, positionId: w.target.id });
+    const rows = await positionRows(w, draft.id);
+    expect(rows.find((row) => row.kind === 'hr-input')).toMatchObject({ value: w.target.id });
+    expect(decisions(rows).map((row) => [row.kind, row.refSeq])).toEqual([['fallback', inherit.seq]]);
+    expect(await savedPosition(w, draft.id)).toBe(w.target.id);
   });
 });
 
