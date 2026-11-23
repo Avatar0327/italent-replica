@@ -44,16 +44,21 @@ function board() {
     // fullWeek / offerApprovalRate：分子等于分母（审查 P2-2）
     nonCompliantByWeek: [group(week, 4, 1), group(fullWeek, 2, 2)],
     lateSubmitByCategory: [group('transfer', 2)],
-    lateSubmitByInitiator: [group(initiator, 1), group(prefix + '发起人', 3)],
+    // 数值文字宽度不同（1 / 12），各行条形仍须共用同一轨道（审查 P2-1 第 2 轮）
+    lateSubmitByInitiator: [group(initiator, 1), group(prefix + '发起人', 12)],
     lateApprovalByCategory: [group('offer', 1)],
     lateApprovalByApprover: [group(approver, 2)],
-    // 正、零、负同图（审查 P2-1）
+    // 正、零、负同图，正负等绝对值且文字宽度不同（审查 P2-1）
     submitLagByCategory: [
-      group('transfer', 2, null, 1.5),
+      group('transfer', 2, null, 12.5),
       group('offer', 1, null, 0),
-      group('contract', 1, null, -0.5),
+      group('contract', 1, null, -12.5),
     ],
-    approveLagByCategory: [group('transfer', 2, null, -0.5), group('offer', 1, null, 0), group('contract', 1, null, 1)],
+    approveLagByCategory: [
+      group('transfer', 2, null, -0.5),
+      group('offer', 1, null, 0),
+      group('contract', 1, null, 0.5),
+    ],
     transferApprovalRate: [group(org, 6, 5)],
     offerApprovalRate: [group(org, 1, 1)],
   };
@@ -141,7 +146,7 @@ test('AC-FE-R2f-05 质量与应用补全四分区，7.2.15 只占位，比率命
   await expect(placeholder.getByText(approver)).toHaveCount(0);
 
   const ranking = card(page, 'lateSubmitByInitiator');
-  await expect(ranking.getByRole('button', { name: /^查看详情：/ })).toHaveText([/发起人.*3/, /1/]);
+  await expect(ranking.getByRole('button', { name: /^查看详情：/ })).toHaveText([/发起人.*12/, /1/]);
   await expect(card(page, 'submitLag').getByText('1.5 天', { exact: true })).toBeVisible();
   await expect(card(page, 'approveLagByCategory').getByText('-0.5 天')).toBeVisible();
 
@@ -205,17 +210,49 @@ const diverging = (page: Page, code: Code) =>
 
 test('AC-FE-R2f-05 7.2.17 与 7.2.19 差值图带零轴，负值向左、正值向右、零值无条', async ({ page }) => {
   await page.goto('/hr-dashboard/process');
-  await expect(card(page, 'submitLagByCategory').getByText('-0.5 天', { exact: true })).toBeVisible({ timeout: 5000 });
-  expect(await diverging(page, 'submitLagByCategory'), '1.5 / 0 / -0.5 天').toEqual([
+  await expect(card(page, 'submitLagByCategory').getByText('-12.5 天', { exact: true })).toBeVisible({ timeout: 5000 });
+  expect(await diverging(page, 'submitLagByCategory'), '12.5 / 0 / -12.5 天').toEqual([
     { from: 0, to: 1, axis: true },
     { from: 0, to: 0, axis: true },
-    { from: -0.33, to: 0, axis: true },
+    { from: -1, to: 0, axis: true },
   ]);
-  expect(await diverging(page, 'approveLagByCategory'), '-0.5 / 0 / 1 天').toEqual([
-    { from: -0.5, to: 0, axis: true },
+  expect(await diverging(page, 'approveLagByCategory'), '-0.5 / 0 / 0.5 天').toEqual([
+    { from: -1, to: 0, axis: true },
     { from: 0, to: 0, axis: true },
     { from: 0, to: 1, axis: true },
   ]);
+  for (const code of ['submitLagByCategory', 'approveLagByCategory'] as const) {
+    const rows = await pixels(card(page, code));
+    const axes = rows.map(({ left, width }) => left + width / 2);
+    expect.soft(spread(axes), `${code} 同图各行零轴横坐标 ${axes.join(' / ')}px 应一致`).toBeLessThanOrEqual(1);
+    const bars = rows.map(({ bar }) => bar).filter(Boolean);
+    expect(bars, `${code} 等绝对值的正负条像素长度应相等`).toHaveLength(2);
+    expect.soft(Math.abs(bars[0]! - bars[1]!), `${code} 正负条长 ${bars.join(' / ')}px`).toBeLessThanOrEqual(1);
+  }
+});
+
+// 各行条形轨道的像素位置与条长，用于核对同图共用刻度；比较时容许 1px 亚像素误差
+const pixels = (scope: ReturnType<typeof card>) =>
+  scope.locator('.board-chart-mark').evaluateAll((marks) =>
+    marks.map((mark) => {
+      const track = mark.getBoundingClientRect();
+      const bar = mark.firstElementChild!.getBoundingClientRect();
+      const round = (x: number) => Math.round(x * 10) / 10;
+      return { left: round(track.left), width: round(track.width), bar: round(bar.width) };
+    }),
+  );
+const spread = (values: number[]) => Math.max(...values) - Math.min(...values);
+
+test('AC-FE-R2f-05 B51 同一张条形图各行共用轨道，数值文字宽度不影响刻度', async ({ page }) => {
+  await page.goto('/hr-dashboard/process');
+  await expect(card(page, 'submitLagByCategory').getByText('-12.5 天', { exact: true })).toBeVisible({ timeout: 5000 });
+  const codes = ['lateSubmitByInitiator', 'submitLagByCategory', 'approveLagByCategory', 'nonCompliantByWeek'] as const;
+  for (const code of codes) {
+    const rows = await pixels(card(page, code));
+    expect(rows.length, `${code} 至少两行`).toBeGreaterThan(1);
+    const drift = Math.max(spread(rows.map(({ left }) => left)), spread(rows.map(({ width }) => width)));
+    expect.soft(drift, `${code} 各行轨道 ${JSON.stringify(rows)} 的起点与宽度应一致`).toBeLessThanOrEqual(1);
+  }
 });
 
 test('AC-FE-R2f-05 分子等于分母时分子、分母各有不被遮挡的入口，钻取分别带 / 不带 hit', async ({ page }) => {
