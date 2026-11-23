@@ -87,7 +87,9 @@ it('AC-FE-R2f-05 不合规与应用的比率卡用服务端 rate/hits/total，�
   expect(new Set(cells.map(({ key }) => key)).size).toBe(6);
   const drills = trend.series.map(({ points }) => points[0]!.drill);
   expect(drills).toEqual([{ group: week, hit: true }, { group: week, hit: true }, { group: week }]);
-  expect(parameterValues(processDetailUrl('nonCompliantByWeek', window, 1, drills[1]!))).toMatchObject({
+  expect(
+    parameterValues(processDetailUrl('nonCompliantByWeek', { from: window.from, to: window.to }, 1, drills[1]!)),
+  ).toMatchObject({
     group: week,
     hit: 'true',
   });

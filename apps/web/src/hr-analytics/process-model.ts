@@ -10,24 +10,48 @@ import {
 } from '@italent/domain';
 import { pageQuery } from '../foundation/client.js';
 import { cellText, pageSize, type DisplayTable, type Filters, type Row } from '../hr-reports/model.js';
-import { candidateUuid } from './BoardCandidates.js';
 import { m } from './messages.js';
-import { validAsOf, type ChartPoint, type TrendSeries } from './model.js';
+import { candidateUuid, validAsOf, type ChartPoint, type TrendSeries } from './model.js';
 
 const base = '/api/tenant/analytics/hr-process-dashboard';
 const p = m.processBoard;
-const modules = ['inFlight', 'timeliness'] as const;
+const modules = ['inFlight', 'timeliness', 'quality', 'usage'] as const;
+const COUNT_CODES = new Set<HrProcessComponentCode>([
+  'inFlightAbnormal',
+  'inFlightByApprover',
+  'lateSubmitByCategory',
+  'lateSubmitByInitiator',
+  'lateApprovalByCategory',
+]);
+const CATEGORY_CODES = new Set<HrProcessComponentCode>([
+  'durationByCategory',
+  'lateSubmitByCategory',
+  'lateApprovalByCategory',
+  'submitLagByCategory',
+  'approveLagByCategory',
+]);
+const LAG_CODES = new Set<HrProcessComponentCode>([
+  'submitLag',
+  'submitLagByCategory',
+  'approveLag',
+  'approveLagByCategory',
+]);
+const LAG_CARDS = new Set<HrProcessComponentCode>(['submitLag', 'approveLag']);
 
 export interface ProcessGroup {
   key: string;
   label: string | null;
   series: string | null;
   count: number;
+  hits: number | null;
+  rate: number | null;
   average: number | null;
 }
 export type ProcessComponent = HrProcessComponent & {
   total: number;
   hits: number | null;
+  rate: number | null;
+  average: number | null;
   groups: ProcessGroup[];
 };
 interface ProcessWindow {
@@ -104,6 +128,32 @@ export function processSections(components: readonly ProcessComponent[]) {
   }));
 }
 
+/** 7.2.11 与 ④ 应用：rate / hits / total 全取服务端回执，前端不重算占比。 */
+export const isProcessRatio = ({ code, module }: HrProcessComponent) =>
+  module === 'usage' || code === 'nonCompliantByWeek';
+
+/** 7.2.15 回执是任务级聚合，规格要实例级排名：首版只显示占位，不出图、不读明细（U6，DEC-962，F-543）。 */
+export const processUnavailable = (code: HrProcessComponentCode) => code === 'lateApprovalByApprover';
+
+export const isProcessStat = (component: HrProcessComponent) =>
+  ['inFlightCount', 'inFlightAbnormal', 'inFlightWaiting'].includes(component.code) ||
+  LAG_CARDS.has(component.code) ||
+  isProcessRatio(component);
+
+const ratioLabels = (code: HrProcessComponentCode) => (code === 'nonCompliantByWeek' ? p.nonCompliant : p.approval);
+
+/** 钻取命中项（分子）时在抽屉语境里标明。 */
+export const processDrillLabel = (component: HrProcessComponent, drill: ProcessDrill) =>
+  isProcessRatio(component) && drill.hit === true ? ratioLabels(component.code).hits : undefined;
+
+/** 维度列名：应用分区按回执分组主体（docs/08_设计/R2-T10 §B51 7.1.20～24）。 */
+export function processDimension({ code, module }: HrProcessComponent) {
+  if (code === 'lateSubmitByInitiator') return p.initiatorId;
+  if (code === 'offerApprovalRate') return p.offerDepartment;
+  if (code === 'contractApprovalRate') return p.signingCompany;
+  return module === 'usage' ? p.secondLevelOrg : undefined;
+}
+
 function categoryName(value: string) {
   return APPROVAL_CATEGORY_NAMES[value as ApprovalCategory] ?? value;
 }
@@ -114,11 +164,30 @@ function abnormalName(value: string) {
 
 function groupName(code: HrProcessComponentCode, key: string) {
   if (code === 'inFlightAbnormal') return abnormalName(key);
-  if (code === 'durationByCategory') return categoryName(key);
+  if (CATEGORY_CODES.has(code)) return categoryName(key);
   return key;
 }
 
-export function processMetrics({ code, total, hits }: ProcessComponent) {
+const daysText = (value: number | null) => (value === null ? cellText('value', value) : p.days(value));
+
+export interface ProcessMetric {
+  label: string;
+  value: number | null;
+  text?: string;
+  drill?: ProcessDrill;
+}
+
+export function processMetrics(component: ProcessComponent): ProcessMetric[] {
+  const { code, total, hits, rate, average } = component;
+  if (isProcessRatio(component)) {
+    const labels = ratioLabels(code);
+    return [
+      { label: labels.rate, value: rate, text: cellText('rate', rate) },
+      { label: labels.hits, value: hits, drill: { hit: true } },
+      { label: labels.total, value: total, drill: {} },
+    ];
+  }
+  if (LAG_CARDS.has(code)) return [{ label: p.averageLag, value: average, text: daysText(average), drill: {} }];
   if (code === 'inFlightCount') {
     return [
       { label: p.started, value: total, drill: {} },
@@ -135,30 +204,69 @@ export function processMetrics({ code, total, hits }: ProcessComponent) {
   return [{ label: p.abnormalTotal, value: total, drill: {} }];
 }
 
-const daysText = (value: number | null) => (value === null ? cellText('value', value) : p.days(value));
-
-interface ProcessPoint extends ChartPoint {
+export interface ProcessPoint extends ChartPoint {
   category: string;
   categoryLabel: string;
   series: string | null;
   drill: ProcessDrill;
+  /** 同一分组派生的多个图形点共用的分组选项键（抽屉分组选择用）。 */
+  option?: string;
+}
+interface ProcessSeries extends TrendSeries {
+  points: ProcessPoint[];
 }
 
-export function processPoints({ code, groups }: ProcessComponent): ProcessPoint[] {
-  return groups.map(({ key, label, series, count, average }) => {
+function pointValue(component: ProcessComponent, { count, rate, average }: ProcessGroup) {
+  if (isProcessRatio(component)) return { value: rate, text: cellText('rate', rate) };
+  if (COUNT_CODES.has(component.code)) return { value: count, text: cellText('count', count) };
+  return { value: average, text: daysText(average) };
+}
+
+const byKey = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+export function processPoints(component: ProcessComponent): ProcessPoint[] {
+  const { code, groups } = component;
+  const points = groups.map((item) => {
+    const { key, label, series } = item;
     const categoryLabel = label || groupName(code, key);
-    const countOnly = code === 'inFlightAbnormal' || code === 'inFlightByApprover';
     return {
       key: JSON.stringify([key, series]),
       category: key,
       categoryLabel,
       series,
       label: series === null ? categoryLabel : `${categoryLabel} · ${categoryName(series)}`,
-      value: countOnly ? count : average,
-      text: countOnly ? cellText('count', count) : daysText(average),
+      ...pointValue(component, item),
       drill: { group: key, series: series ?? undefined },
     };
   });
+  // 7.2.13 排名：数量降序，同值按键（docs/08_设计/R2-T10 §B51）
+  if (code === 'lateSubmitByInitiator') {
+    points.sort((a, b) => (b.value ?? 0) - (a.value ?? 0) || byKey(a.category, b.category));
+  }
+  return points;
+}
+
+/** 比率组件的柱线组合：占比为柱，分子、分母为线；分子与占比钻取带 hit=true，分母不带。 */
+function ratioSeries(component: ProcessComponent, points: readonly ProcessPoint[]): ProcessSeries[] {
+  const labels = ratioLabels(component.code);
+  const byGroup = new Map(component.groups.map((item) => [item.key, item]));
+  const derived = (field: 'rate' | 'hits' | 'count', label: string, hit?: true): ProcessSeries => ({
+    key: field,
+    label,
+    points: points.map((point) => {
+      const value = byGroup.get(point.category)![field];
+      return {
+        ...point,
+        key: JSON.stringify([point.category, field]),
+        option: point.key,
+        value,
+        text: cellText(field === 'rate' ? 'rate' : 'count', value),
+        hint: label,
+        drill: hit ? { ...point.drill, hit } : point.drill,
+      };
+    }),
+  });
+  return [derived('rate', labels.rate, true), derived('hits', labels.hits, true), derived('count', labels.total)];
 }
 
 export function processTrend(component: ProcessComponent, points: readonly ProcessPoint[]) {
@@ -167,8 +275,10 @@ export function processTrend(component: ProcessComponent, points: readonly Proce
       points.map(({ category, categoryLabel }) => [category, { key: category, label: categoryLabel }]),
     ).values(),
   ];
-  let series: TrendSeries[];
-  if (component.code === 'inFlightByApprover') {
+  let series: ProcessSeries[];
+  if (isProcessRatio(component)) {
+    series = ratioSeries(component, points);
+  } else if (component.code === 'inFlightByApprover') {
     series = APPROVAL_CATEGORIES.flatMap((key) => {
       const matches = points.filter((point) => point.series === key);
       return matches.length ? [{ key, label: categoryName(key), points: matches }] : [];
@@ -220,18 +330,32 @@ export function inFlightTable(detail: ProcessDetail | undefined, timezone: strin
   };
 }
 
+function hitLabel(data: ProcessDetail) {
+  if (isProcessRatio(data)) return ratioLabels(data.code).hit;
+  if (data.code === 'inFlightCount') return p.inFlightCount;
+  return data.code === 'inFlightWaiting' ? p.overSevenDays : undefined;
+}
+
+const idLabels: Partial<Record<HrProcessComponent['subject'], string>> = { task: p.taskId, business: p.businessId };
+
 export function processDetailTable(data: ProcessDetail): DisplayTable {
-  const averages = data.module === 'timeliness';
-  const hits = data.code === 'inFlightCount' || data.code === 'inFlightWaiting';
-  const hitLabel = data.code === 'inFlightCount' ? p.inFlightCount : p.overSevenDays;
-  const group = data.code === 'inFlightAbnormal' || data.code === 'inFlightByApprover' || averages;
+  const lag = LAG_CODES.has(data.code);
+  const averages = data.module === 'timeliness' || lag;
+  const hit = hitLabel(data);
+  const later = data.module === 'quality' || data.module === 'usage';
+  const group =
+    data.code === 'inFlightAbnormal' ||
+    data.code === 'inFlightByApprover' ||
+    data.module === 'timeliness' ||
+    (later && !LAG_CARDS.has(data.code));
+  const id = idLabels[data.subject];
   const columns = {
-    ...(data.subject === 'task' ? { id: p.taskId } : {}),
+    ...(id ? { id } : {}),
     instanceId: p.listColumns.instanceId,
-    ...(group ? { group: m.group } : {}),
+    ...(group ? { group: processDimension(data) ?? m.group } : {}),
     ...(data.code === 'inFlightByApprover' ? { series: p.category } : {}),
-    ...(averages ? { value: p.sampleDays } : {}),
-    ...(hits ? { hit: hitLabel } : {}),
+    ...(averages ? { value: lag ? p.lagDays : p.sampleDays } : {}),
+    ...(hit ? { hit } : {}),
   };
   return {
     key: data.code,

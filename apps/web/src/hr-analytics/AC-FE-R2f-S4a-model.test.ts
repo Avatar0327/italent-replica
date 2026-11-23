@@ -65,7 +65,7 @@ it('AC-FE-R2f-05 租户日期默认闭区间、合法筛选与回执窗口保持
   });
   expect(
     parameterValues(
-      processDetailUrl('inFlightCount', defaults, 1, processMetrics(component('inFlightCount'))[2]!.drill),
+      processDetailUrl('inFlightCount', defaults, 1, processMetrics(component('inFlightCount'))[2]!.drill!),
     ),
   ).toMatchObject({ hit: 'false' });
 });

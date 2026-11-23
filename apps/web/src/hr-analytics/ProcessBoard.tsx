@@ -15,7 +15,11 @@ import { m } from './messages.js';
 import { asOfBounds, canRetryRead, organizationCandidatesUrl } from './model.js';
 import {
   inFlightTable,
+  isProcessRatio,
+  isProcessStat,
   processDefaults,
+  processDimension,
+  processDrillLabel,
   processDetailTable,
   processDetailUrl,
   processMetrics,
@@ -24,6 +28,7 @@ import {
   processResultFilters,
   processSections,
   processTrend,
+  processUnavailable,
   validProcessFilters,
   type ProcessComponent,
   type ProcessDetail,
@@ -48,31 +53,44 @@ type Target = { component: ProcessComponent; filters: Filters; drill: ProcessDri
 type ProcessRead = ReturnType<typeof useBoardRead<Filters, Target, ProcessOverview, ProcessDetail>>;
 type OpenDrill = (drill: ProcessDrill, pointKey?: string) => void;
 
+const trends = {
+  inFlightByApprover: { kind: 'stacked', categoryWidth: 172, dimensionLabel: p.approverId },
+  durationByWeek: { kind: 'line', categoryWidth: 95 },
+  taskDurationByApprover: { kind: 'combo', categoryWidth: 172, dimensionLabel: p.approverId },
+} as const;
+
+function trendOf(component: ProcessComponent) {
+  const known = trends[component.code as keyof typeof trends];
+  if (known || !isProcessRatio(component)) return known;
+  const dimensionLabel = processDimension(component);
+  return {
+    kind: 'combo',
+    percent: true,
+    categoryWidth: component.code === 'nonCompliantByWeek' ? 95 : 172,
+    ...(dimensionLabel ? { dimensionLabel } : {}),
+  } as const;
+}
+
 function ProcessChart({ component, open }: { component: ProcessComponent; open?: OpenDrill }) {
   const points = processPoints(component);
+  const trend = trendOf(component);
+  const data = trend && processTrend(component, points);
   const openPoint =
     open &&
     ((key: string) => {
-      const point = points.find((item) => item.key === key);
-      if (point) open(point.drill, point.key);
+      const point = (data ? data.series.flatMap((item) => item.points) : points).find((item) => item.key === key);
+      if (point) open(point.drill, point.option ?? point.key);
     });
-  const trends = {
-    inFlightByApprover: { kind: 'stacked', categoryWidth: 172, dimensionLabel: p.approverId },
-    durationByWeek: { kind: 'line', categoryWidth: 95 },
-    taskDurationByApprover: { kind: 'combo', categoryWidth: 172, dimensionLabel: p.approverId },
-  } as const;
-  const trend = trends[component.code as keyof typeof trends];
-  if (trend) return <BoardTrendChart {...trend} {...processTrend(component, points)} open={openPoint} />;
+  if (trend && data) return <BoardTrendChart {...trend} {...data} open={openPoint} />;
   return <BoardChart kind="bar" points={points} open={openPoint} />;
 }
 
 function ProcessMetrics({ component, open }: { component: ProcessComponent; open?: OpenDrill }) {
   return (
     <div className="hr-process-metrics">
-      {processMetrics(component).map(({ label, value, drill }) => {
-        const text = cellText('value', value);
+      {processMetrics(component).map(({ label, value, text = cellText('value', value), drill }) => {
         return (
-          <ChartItem key={label} point={{ key: label, label, value, text }} open={open && (() => open(drill))}>
+          <ChartItem key={label} point={{ key: label, label, value, text }} open={open && drill && (() => open(drill))}>
             <span>{label}</span>
             <strong>{text}</strong>
           </ChartItem>
@@ -122,7 +140,9 @@ function ProcessCard({
 }) {
   const { code, name } = component;
   const list = code === 'inFlightList';
-  const metrics = code === 'inFlightCount' || code === 'inFlightAbnormal' || code === 'inFlightWaiting';
+  const unavailable = processUnavailable(code);
+  const metrics = isProcessStat(component);
+  const chart = !list && !unavailable && (!metrics || code === 'inFlightAbnormal' || isProcessRatio(component));
   return (
     <article
       aria-label={name}
@@ -132,18 +152,16 @@ function ProcessCard({
     >
       <header>
         <h3>{name}</h3>
-        {!list && !metrics && (
+        {!list && !metrics && !unavailable && (
           <Button type="link" aria-label={m.viewDetails} disabled={!open} onClick={() => open?.({})}>
             {m.viewDetails}
           </Button>
         )}
       </header>
       {metrics && <ProcessMetrics component={component} open={open} />}
-      {list ? (
-        <ProcessList board={board} />
-      ) : (
-        (!metrics || code === 'inFlightAbnormal') && <ProcessChart component={component} open={open} />
-      )}
+      {list && <ProcessList board={board} />}
+      {unavailable && <p className="board-chart-empty">{m.statisticsUnavailable}</p>}
+      {chart && <ProcessChart component={component} open={open} />}
     </article>
   );
 }
@@ -157,8 +175,10 @@ function ProcessDetails({
 }) {
   const { data, detail, selected, waiting } = board;
   if (!selected) return null;
-  const { component, filters, pointKey } = selected.target;
+  const { component, filters, pointKey, drill } = selected.target;
   const points = processPoints(component);
+  // 比率组件换分组时保留分子 / 分母的命中条件，只改 group
+  const kept = isProcessRatio(component) && drill.hit !== undefined ? { hit: drill.hit } : {};
   const category = categoryField.options.find(({ value }) => value === filters.category)?.label;
   const departmentText = filters.departmentId && department.appliedText?.(filters.departmentId, filters);
   return (
@@ -172,7 +192,12 @@ function ProcessDetails({
         data?.hasDataPermission && (
           <>
             <p>
-              {[p.window(filters.from!, filters.to!), category && `${p.category} ${category}`, departmentText]
+              {[
+                p.window(filters.from!, filters.to!),
+                category && `${p.category} ${category}`,
+                departmentText,
+                processDrillLabel(component, drill),
+              ]
                 .filter(Boolean)
                 .join('，')}
             </p>
@@ -184,7 +209,7 @@ function ProcessDetails({
                 const point = points.find((item) => item.key === key);
                 board.changeDetail({
                   ...selected,
-                  target: { ...selected.target, pointKey: point?.key, drill: point?.drill ?? {} },
+                  target: { ...selected.target, pointKey: point?.key, drill: { ...point?.drill, ...kept } },
                   page: 1,
                 });
               }}
