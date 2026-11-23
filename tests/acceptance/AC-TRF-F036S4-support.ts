@@ -194,7 +194,11 @@ export async function selfWorld(db: Db, label: string) {
     });
   }
 
-  /** “零写入”的三处行数里阶段 ① 存在的两处：载荷版本数、来源行数（employment_propagation_commands 阶段 ② 才有）。 */
+  /**
+   * “零写入”的两处行数：载荷版本数、覆盖行数（employment_propagation_commands 阶段 ② 才有）。
+   * 覆盖行 = 除策略行（inherit / deferred / resolved / none / copy）以外的来源行：改生效日会重新处理继承，
+   * 每个可继承字段各追加一条策略行（AC-EMP-22），那不是员工输入，也不改“最后写入来源”。
+   */
   async function counts(businessId: string) {
     return withTenant(db, w.tenant.id, async (tx) => {
       const [row] = resultRows<{ versions: number; origins: number }>(
@@ -202,7 +206,8 @@ export async function selfWorld(db: Db, label: string) {
         SELECT (SELECT count(*)::int FROM employment_payload_versions
                   WHERE tenant_id = ${w.tenant.id} AND business_id = ${businessId}::uuid) AS versions,
                (SELECT count(*)::int FROM employment_field_origins
-                  WHERE tenant_id = ${w.tenant.id} AND business_id = ${businessId}::uuid) AS origins`),
+                  WHERE tenant_id = ${w.tenant.id} AND business_id = ${businessId}::uuid
+                    AND origin_kind NOT IN ('inherit','deferred','resolved','none','copy')) AS origins`),
       );
       return row!;
     });

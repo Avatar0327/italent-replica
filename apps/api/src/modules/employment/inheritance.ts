@@ -77,6 +77,8 @@ export interface InheritanceInput {
   readonly fields?: Partial<PresetFields>;
   readonly customFields?: CustomFields;
   readonly staffId?: string;
+  /** F-036 S4：沿用上一版覆盖值的字段编码；它们不是本次输入，不受“当前表单是否允许编辑”的校验约束。 */
+  readonly carriedFieldCodes?: ReadonlySet<string>;
   /** F-363：仅待入职重建服务传入锁内旧引用；不由 HTTP 请求体解析。 */
   readonly retainedEmploymentForm?: string | null;
 }
@@ -138,7 +140,8 @@ async function applyExplicitPresetFields(
 ): Promise<void> {
   const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
   for (const [field, value] of Object.entries(parsedFields)) {
-    if (input.kind === 'transfer' && fieldMode(`preset:${field}`) !== 'editable')
+    const carried = input.carriedFieldCodes?.has(`preset:${field}`) === true;
+    if (input.kind === 'transfer' && !carried && fieldMode(`preset:${field}`) !== 'editable')
       throw new AppError('VALIDATION_FAILED', '当前表单不允许编辑此任职字段');
     setField(fields, field as PresetField, value ?? null);
     explicitFieldCodes.push(`preset:${field}`);

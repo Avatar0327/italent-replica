@@ -508,8 +508,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const current = await authorizeBusinessWrite(deps, ctx, id);
     requireResultApplicable(result, current.kind);
     const exitTarget = { employeeId: current.employeeId, kind: current.kind };
-    await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id, input));
-    await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit', undefined, options);
+    await withTenant(deps.db, ctx.tenantId, (tx) => requireDraftEditWrite(tx, ctx, id, input, options));
     const departmentId = input.fields?.departmentId;
     if (departmentId !== undefined && ctx.transferTarget)
       ctx = { ...ctx, transferTarget: { ...ctx.transferTarget, departmentId } };
@@ -542,8 +541,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
               targetDepartmentId: departmentId,
               referenceChange: input,
               authorize: async (tx, scoped) => {
-                await requireEmployeeTransferBusiness(tx, scoped, id, input);
-                await requireEmploymentWrite(scoped, 'update', input, 'Employment.Edit', undefined, options);
+                await requireDraftEditWrite(tx, scoped, id, input, options);
                 if (departmentId !== undefined)
                   await requireScopedEmploymentObject(tx, scoped, current.employeeId, departmentId, id);
               },
@@ -1046,6 +1044,38 @@ function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
   router.post('/employees/:id/import', (c) => importEmployment(c, deps));
 }
 
+/**
+ * 员工自助单据上同值的职位、职务、职级、序列不算本次输入（DEC-950）：先定本次输入，字段写权校验只问扣完之后的这份。
+ * 修改、其同键重放与导入编辑行都走这一个函数。
+ */
+async function requireDraftEditWrite(
+  tx: Tx,
+  ctx: EmploymentContext,
+  id: string,
+  input: EmploymentBusinessPatch,
+  options: { readonly commandOnly?: boolean },
+) {
+  const current = await requireEmployeeTransferBusiness(tx, ctx, id, input);
+  await requireEmploymentWrite(ctx, 'update', current ?? input, 'Employment.Edit', undefined, {
+    commandOnly: writeIsCommandOnly(options, input, current),
+  });
+}
+
+/**
+ * 扣掉同值字段之后一个业务字段都不剩（请求体只带了同值字段）：按没有变化的整版重提处理，
+ * 不报“必须提供要写入的业务字段”（F-036 §5.2）。请求体本来就是空的，仍是 400。
+ */
+function writeIsCommandOnly(
+  options: { readonly commandOnly?: boolean },
+  original: EmploymentBusinessPatch,
+  current: EmploymentBusinessPatch | undefined,
+): boolean {
+  if (options.commandOnly) return true;
+  if (!current || current === original || !Object.keys(original.fields ?? {}).length) return false;
+  const { fields, customFields, pendingTransferAck: _ack, confirmed: _confirmed, ...rest } = current;
+  return !Object.keys({ ...rest, ...fields, ...customFields }).length;
+}
+
 async function importEmployment(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   const id = uuidParam(c);
   const ctx = await readContext(c, deps, 'object.view', revision(c), id);
@@ -1111,8 +1141,10 @@ async function authorizeImport(
       const patch = normalizeBusinessPatch(item.patch);
       const current = await authorizeBusinessWrite(deps, ctx, item.id, employeeId);
       targets.push({ id: item.id, employeeId, kind: current.kind, patch });
-      await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, item.id, patch));
-      if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit');
+      await withTenant(deps.db, ctx.tenantId, async (tx) => {
+        if (preview) await requireEmployeeTransferBusiness(tx, ctx, item.id, patch);
+        else await requireDraftEditWrite(tx, ctx, item.id, patch, {});
+      });
       const departmentId = patch.fields?.departmentId;
       if (departmentId !== undefined)
         await withTenant(deps.db, ctx.tenantId, (tx) =>
