@@ -82,12 +82,23 @@ type OriginStates = Awaited<ReturnType<typeof loadFieldOrigins>>;
 
 export interface OriginFacts {
   readonly states: OriginStates;
-  /**
-   * 业务已落地：任职记录里已有以业务 ID 为键的行（落地时的有效值解析），且生效日已到（租户时区）。
-   * 直接业务保存时就写记录行，但生效日之前它仍随前驱变化向后更新，延迟字段还没定；所以两个事实要同时成立。
-   * 只看“最新载荷是不是记录快照”两头都不准：按时 / 当天落地不追加快照，生效日前的向后更新却会追加。
-   */
+  /** `isBusinessLanded` 的结果：本接口判断“业务是否已落地”的唯一事实。 */
   readonly landed: boolean;
+}
+
+/**
+ * 业务是否已落地（唯一事实函数，设计 §4.9 “尚未落地解析”）：同一快照里，时间轴上有该业务的有效条目，
+ * 且条目的实际生效日已到（租户时区）。不看任职记录行是否存在、不看载荷版本：
+ * - 直接业务保存时就写记录行，但生效日前仍随前驱变化；离职作废的未来调动保留记录行，却已被摘出时间轴、永远不会落地；
+ * - 申请批准后没有记录行也没有时间轴条目，由调度 / 审批落地时才一起写入，迟到顺延的实际生效日以条目为准。
+ */
+export async function isBusinessLanded(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<boolean> {
+  const [row] = rowsOf<{ landed: boolean }>(
+    await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM employment_timeline
+      WHERE tenant_id = ${ctx.tenantId}::uuid AND record_id = ${businessId}::uuid
+        AND start_date <= ${tenantLocalDate(ctx.now, ctx.timezone)}::date) AS landed`),
+  );
+  return row?.landed === true;
 }
 
 /** 来源台账与落地事实：在 `decideEmploymentRead` 的值所在快照里读（并发写入不会让旧值配上新来源或新事实）。冻结分支不读。 */
@@ -98,12 +109,7 @@ export async function loadOriginFacts(
   frozen: boolean,
 ): Promise<OriginFacts> {
   if (frozen) return { states: new Map() as OriginStates, landed: false };
-  const [row] = rowsOf<{ materialized: boolean }>(
-    await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM employment_records
-      WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${value.id}::uuid) AS materialized`),
-  );
-  const reached = value.effectiveDate <= tenantLocalDate(ctx.now, ctx.timezone);
-  return { states: await loadFieldOrigins(tx, ctx, value.id), landed: row?.materialized === true && reached };
+  return { states: await loadFieldOrigins(tx, ctx, value.id), landed: await isBusinessLanded(tx, ctx, value.id) };
 }
 
 /** 来源业务 ID：逐个走与直接读来源单相同的读取决定（`sourceReadable`），不可读只清 ID。 */
@@ -143,7 +149,7 @@ export async function liveOriginRows(
         reason: writer.reason,
       },
       policy: state?.policy ?? null,
-      // 业务已落地的延迟字段不再待解析（以任职记录行为准，不看载荷版本）；resolved 写入归 S6，本片不写
+      // 业务已落地的延迟字段不再待解析（以时间轴上的有效条目为准）；resolved 写入归 S6，本片不写
       pending: state?.policy === 'deferred' && writer === null && !facts.landed,
       suspended: (state?.suspended.size ?? 0) > 0,
     };

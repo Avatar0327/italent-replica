@@ -56,8 +56,17 @@ export async function decideEmploymentRead<T = undefined>(
   return { ...snapshot, read };
 }
 
-const isDenied = (error: unknown) =>
-  error instanceof AppError && (error.code === 'NOT_FOUND' || error.code === 'FORBIDDEN');
+/**
+ * 来源业务“读不到”的三种情形都只清来源 ID（设计 §4.9：来源业务不可读 → ID 置空）：取不到、对象权限不过、
+ * 办理份缺失（读它的详情是 503 APPROVAL_HANDLING_CONTENT_MISSING）。办理份缺失无法证明来源可读，失败闭合；
+ * 它不能让目标业务整页 503（目标自己办理份缺失才是 503，与详情一致）。其它 503（存储不可用等）照常穿透。
+ */
+const isUnreadable = (error: unknown) =>
+  error instanceof AppError &&
+  (error.code === 'NOT_FOUND' ||
+    error.code === 'FORBIDDEN' ||
+    (error.code === 'SERVICE_UNAVAILABLE' &&
+      (error.details as { reason?: string } | undefined)?.reason === 'APPROVAL_HANDLING_CONTENT_MISSING'));
 
 /**
  * 来源业务对操作人是否可读：与“直接读这张来源单的详情”完全同一个决定——从入口上下文起，
@@ -73,7 +82,7 @@ export async function sourceReadable(
     await decideEmploymentRead(deps, entry, sourceId, () => asOf, await selectEmploymentRead(deps, entry, sourceId));
     return true;
   } catch (error) {
-    if (isDenied(error)) return false;
+    if (isUnreadable(error)) return false;
     throw error;
   }
 }
