@@ -18,6 +18,7 @@ export interface MineRow {
   readonly initiatedAt?: string | null;
   readonly expiresAt?: string | null;
   readonly canSign?: boolean;
+  readonly failureReason?: string | null;
   readonly files?: readonly { readonly seq: number; readonly templateName?: string; readonly content?: string }[];
 }
 export const minePath = (id: string) => `${MINE_PATH}/${encodeURIComponent(id)}`;

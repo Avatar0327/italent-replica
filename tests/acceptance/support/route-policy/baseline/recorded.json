@@ -36,6 +36,77 @@
       }
     ]
   },
+  "GET /api/tenant/analytics/contract-board/components/:code/export": {
+    "outcome": [
+      {
+        "auditAdded": [
+          "export"
+        ],
+        "status": 200
+      },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "VALIDATION_FAILED",
+        "reason": "EXPORT_ROW_LIMIT",
+        "status": 422
+      }
+    ]
+  },
+  "GET /api/tenant/analytics/hr-dashboard/indicators/:code/export": {
+    "outcome": [
+      {
+        "auditAdded": [
+          "export"
+        ],
+        "status": 200
+      },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      }
+    ]
+  },
+  "GET /api/tenant/analytics/hr-movement/components/:code/export": {
+    "outcome": [
+      {
+        "auditAdded": [
+          "export"
+        ],
+        "status": 200
+      },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "VALIDATION_FAILED",
+        "reason": "EXPORT_ROW_LIMIT",
+        "status": 422
+      }
+    ]
+  },
+  "GET /api/tenant/analytics/hr-structure/components/:code/export": {
+    "outcome": [
+      {
+        "auditAdded": [
+          "export"
+        ],
+        "status": 200
+      },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "VALIDATION_FAILED",
+        "reason": "EXPORT_ROW_LIMIT",
+        "status": 422
+      }
+    ]
+  },
   "GET /api/tenant/analytics/organization-candidates": {
     "fixedKeys": [
       {
@@ -79,6 +150,69 @@
         "code": "FIELD_FORBIDDEN",
         "status": 403
       },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "NOT_FOUND",
+        "status": 404
+      },
+      {
+        "status": 200
+      }
+    ]
+  },
+  "GET /api/tenant/employment/pending-entries/:id/esign-context": {
+    "fixedKeys": [
+      {
+        "keys": [
+          "canInitiate",
+          "items",
+          "reason",
+          "revision",
+          "sourceId"
+        ]
+      },
+      {
+        "keys": [
+          "canInitiate",
+          "items",
+          "revision",
+          "sourceId"
+        ]
+      }
+    ],
+    "outcome": [
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "NOT_FOUND",
+        "status": 404
+      },
+      {
+        "code": "TENANT_NOT_MEMBER",
+        "status": 403
+      },
+      {
+        "status": 200
+      }
+    ]
+  },
+  "GET /api/tenant/employment/pending-entries/:id/esign-records": {
+    "fixedKeys": [
+      {
+        "keys": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ]
+      }
+    ],
+    "outcome": [
       {
         "code": "FORBIDDEN",
         "status": 403
@@ -250,6 +384,77 @@
       {
         "code": "NOT_FOUND",
         "status": 404
+      }
+    ]
+  },
+  "POST /api/tenant/employment/pending-entries/:id/esign-tasks": {
+    "fixedKeys": [
+      {
+        "keys": [
+          "sourceId",
+          "taskId"
+        ]
+      }
+    ],
+    "ledger": [
+      {
+        "ledgerAdded": [
+          201
+        ],
+        "status": 201
+      }
+    ],
+    "outcome": [
+      {
+        "auditAdded": [
+          "esign.task.initiated"
+        ],
+        "ledgerAdded": [
+          201
+        ],
+        "status": 201
+      },
+      {
+        "code": "FIELD_FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "NOT_FOUND",
+        "status": 404
+      },
+      {
+        "status": 201
+      }
+    ],
+    "precondition:esign.entryEligibility": [
+      {
+        "code": "CONFLICT",
+        "reason": "ENTRY_CANCELLED",
+        "status": 409
+      }
+    ],
+    "precondition:esign.noSigning": [
+      {
+        "code": "CONFLICT",
+        "reason": "ESIGN_TASK_IN_PROGRESS",
+        "status": 409
+      }
+    ],
+    "precondition:esign.revision": [
+      {
+        "code": "REVISION_CONFLICT",
+        "status": 409
+      }
+    ],
+    "precondition:esign.templates": [
+      {
+        "code": "VALIDATION_FAILED",
+        "reason": "ESIGN_TEMPLATE_UNAVAILABLE",
+        "status": 400
       }
     ]
   },

@@ -2,11 +2,11 @@
  * 人员流动分析看板（B50）与流动情况报表（B54）的路由（R2 BE-13b，规格 35“补充：BE-13…”、“流动情况各报表的算法”）：
  * - GET /api/tenant/analytics/hr-movement?asOf=&departmentId=：6.25～6.32、3.1.36（近 12 个月相对 asOf）；
  * - GET …/hr-movement/components/:code?group=&page=&pageSize=：构成数字（或某个分组）的人员明细，分页；
+ * - GET …/hr-movement/components/:code/export：授权明细全量 CSV，成功交付前写操作日志（F-547）；
  * - GET …/hr-movement/reports/:report?asOf=&year=&month=&departmentId=&parentId=：六个页签的行 × 列。
  * - GET …/hr-movement/reports/:report/export?<页面当前筛选>&mode=data|formula：各月 / 各机构两个页签的 xlsx 下载
  *   （F-482，DEC-803②、DEC-809；其余页签不导出）。
- * 看板对象 TenantBase.HrMovement、报表对象 TenantBase.HrMovementReport，各自的查看权与数据范围。看板、明细和报表查询只读，
- * 不写台账 / 审计；导出沿用报表对象的查看权与数据范围（能看就能导出），每次成功导出写一条对象操作日志（原站未测，复刻口径）。
+ * 看板对象 TenantBase.HrMovement、报表对象 TenantBase.HrMovementReport，各自的查看权与数据范围。
  */
 import { withTenant } from '@italent/db';
 import {
@@ -15,6 +15,7 @@ import {
   HR_MOVEMENT_REPORT_OBJECT,
   HR_MOVEMENT_REPORTS,
   movementMonths,
+  type HrMovementCode,
   type HrMovementReportCode,
 } from '@italent/domain';
 import type { Context, Hono } from 'hono';
@@ -25,6 +26,7 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery } from '../job/context.js';
 import { objectContext } from '../permission/module-route-access.js';
 import { registerPersonScopedObject } from '../permission/scope-resolver.js';
+import { COMPONENT_EXPORT_PAGE, exportComponent, validateComponentExportQuery } from './component-export.js';
 import { analyticsScope } from './hr-dashboard-routes.js';
 import { loadEstablishment, loadExitDictionaries, loadMovement, loadSnapshots } from './hr-movement.js';
 import {
@@ -32,6 +34,7 @@ import {
   filterMovement,
   movementComponents,
   movementMembers,
+  type Member,
   type MovementLookup,
 } from './hr-movement-board.js';
 import { movementReport, reportWindow, type ReportPeriod } from './hr-movement-report.js';
@@ -85,6 +88,22 @@ function loadBoard(
   });
 }
 
+function componentOf(c: Context) {
+  const component = HR_MOVEMENT_COMPONENTS.find((item) => item.code === c.req.param('code'));
+  if (!component) throw new AppError('NOT_FOUND', '组件不存在');
+  return component;
+}
+
+function requireComponentMembers(code: HrMovementCode, lookup: MovementLookup, group: string | undefined) {
+  const members = movementMembers(code, lookup, group);
+  if (!members) throw new AppError('VALIDATION_FAILED', '按月或按编制对象统计的组件须指定 group（月份或编制对象）');
+  return members;
+}
+
+function projectMember(m: Member) {
+  return { id: m.employeeId, employeeId: m.employeeId, organizationId: m.departmentId };
+}
+
 const integer = (raw: string | undefined, name: string, min: number, max: number) => {
   if (raw === undefined) return undefined;
   const value = /^\d{1,4}$/.test(raw) ? Number(raw) : NaN;
@@ -132,6 +151,38 @@ function reportTables(
   });
 }
 
+function registerComponentExportRoute(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get(`${HR_MOVEMENT_BASE}/components/:code/export`, async (c) => {
+    const ctx = await boardContext(c, deps);
+    validateComponentExportQuery(c, ['asOf', 'departmentId', 'group']);
+    const component = componentOf(c);
+    // DEC-970：F-544 修正正式人群口径后，由后合入片开放 6.32 下载并补与 D 的正向对照。
+    if (component.code === '6.32') throw new AppError('NOT_FOUND', '组件不存在');
+    const group = groupQuery(c);
+    const departmentId = uuidQuery(c, 'departmentId');
+    const lookup = await loadBoard(deps, ctx, departmentId, component.code === '3.1.36');
+    const members = requireComponentMembers(component.code, lookup, group);
+    const total = members.length;
+    return exportComponent(
+      c,
+      deps,
+      ctx.base,
+      {
+        board: 'hr-movement',
+        object: HR_MOVEMENT_OBJECT,
+        component,
+        asOf: ctx.asOf,
+        columns: [
+          { key: 'id', label: '明细行 ID' },
+          { key: 'employeeId', label: '员工 ID' },
+          { key: 'organizationId', label: '组织 ID' },
+        ],
+      },
+      { total, items: total > COMPONENT_EXPORT_PAGE.limit ? [] : members.map(projectMember) },
+    );
+  });
+}
+
 export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(HR_MOVEMENT_BASE, async (c) => {
     const ctx = await boardContext(c, deps);
@@ -145,27 +196,25 @@ export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRo
 
   router.get(`${HR_MOVEMENT_BASE}/components/:code`, async (c) => {
     const ctx = await boardContext(c, deps);
-    const component = HR_MOVEMENT_COMPONENTS.find((item) => item.code === c.req.param('code'));
-    if (!component) throw new AppError('NOT_FOUND', '组件不存在');
+    const component = componentOf(c);
     const group = groupQuery(c);
     const departmentId = uuidQuery(c, 'departmentId');
     const page = pageQuery(c);
     const lookup = await loadBoard(deps, ctx, departmentId, component.code === '3.1.36');
-    const members = movementMembers(component.code, lookup, group);
-    if (!members) throw new AppError('VALIDATION_FAILED', '按月或按编制对象统计的组件须指定 group（月份或编制对象）');
+    const members = requireComponentMembers(component.code, lookup, group);
     return c.json({
       asOf: ctx.asOf,
       ...component,
       group: group ?? null,
       total: members.length,
-      items: members
-        .slice(page.offset, page.offset + page.limit)
-        .map((m) => ({ id: m.employeeId, employeeId: m.employeeId, organizationId: m.departmentId })),
+      items: members.slice(page.offset, page.offset + page.limit).map(projectMember),
       page: page.page,
       pageSize: page.pageSize,
       hasDataPermission: ctx.scope.hasDataPermission,
     });
   });
+
+  registerComponentExportRoute(router, deps);
 
   router.get(`${HR_MOVEMENT_BASE}/reports/:report`, async (c) => {
     const ctx = await reportContext(c, deps);
