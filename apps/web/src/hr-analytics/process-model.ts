@@ -247,7 +247,7 @@ export function processPoints(component: ProcessComponent): ProcessPoint[] {
   return points;
 }
 
-/** 比率组件的柱线组合：占比为柱，分子、分母为线；分子与占比钻取带 hit=true，分母不带。 */
+/** 比率组件的三列（占比 / 分子 / 分母，条表各占一格）；分子与占比钻取带 hit=true，分母不带。 */
 function ratioSeries(component: ProcessComponent, points: readonly ProcessPoint[]): ProcessSeries[] {
   const labels = ratioLabels(component.code);
   const byGroup = new Map(component.groups.map((item) => [item.key, item]));
