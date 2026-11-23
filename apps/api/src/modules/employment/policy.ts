@@ -752,13 +752,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   ),
   // ---- transfer/routes.ts：调动预览与发起 ----------------------------------------------------------------------------
   // 只读预览：normalizeTransferInput（transfer.previewInput：结构 400、本人入口只读字段 403、入口 / 表单不匹配 400）；
-  // previewTransfer → requireTransferSource(initiator)（按钮 + 绑定 + 源范围）→ 有目标部门时 requireScopedEmploymentObject；
+  // previewTransfer → requireTransferSource(initiator)（按钮 + 绑定 + 源范围）→ 员工发起时按字段写权判定（employeePreviewWrite，
+  // DEC-205，先于表单校验）→ 有目标部门时 requireScopedEmploymentObject；
   // 响应：trimEmploymentResponse + visibleTransferForm（fieldModes 按可见 / 可编辑降级）+ allowedActions 布尔披露
   'POST /transfers/employees/:id/preview': object({
     object: EMPLOYMENT,
     operation: 'view',
     button: INITIATOR_BUTTON,
-    guards: ['transfer.direct', 'transfer.previewInput', TRANSFER_SOURCE],
+    guards: ['transfer.direct', 'transfer.previewInput', 'employment.employeePreviewWrite', TRANSFER_SOURCE],
     scope: guardScope('transfer.previewScope', NF_EMPLOYEE),
     fields: projector('transfer.preview', 'transfer.preview'),
     write: previewWrite,
