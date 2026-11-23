@@ -4387,8 +4387,9 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
   ],
   'apps/api/src/modules/employment/field-origins-read.ts#frozenOriginRows': ['#shownEntries'],
-  'apps/api/src/modules/employment/field-origins-read.ts#latestIsRecordSnapshot': [
+  'apps/api/src/modules/employment/field-origins-read.ts#isBusinessLanded': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/field-origins-read.ts#liveOriginRows': [
     '#ORIGIN_LABELS',
@@ -4396,19 +4397,12 @@ export const GRAPH: Graph = {
     '#shownEntries',
     'packages/domain/src/employment/field-origins.ts#effectiveOrigin',
   ],
-  'apps/api/src/modules/employment/field-origins-read.ts#locateOrigins': [
+  'apps/api/src/modules/employment/field-origins-read.ts#loadOriginFacts': [
     'apps/api/src/modules/employment/field-origin-store.ts#loadFieldOrigins',
-    '#latestIsRecordSnapshot',
-    '#readGate',
-    '#requireRead',
+    '#isBusinessLanded',
   ],
-  'apps/api/src/modules/employment/field-origins-read.ts#readGate': [
-    'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
-    'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
-  ],
-  'apps/api/src/modules/employment/field-origins-read.ts#readableSources': ['#isDenied', '#readGate', '#requireRead'],
-  'apps/api/src/modules/employment/field-origins-read.ts#requireRead': [
-    'apps/api/src/authorization.ts#requirePermission',
+  'apps/api/src/modules/employment/field-origins-read.ts#readableSources': [
+    'apps/api/src/modules/employment/read-decision.ts#sourceReadable',
   ],
   'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS': ['#PRESET_FIELDS'],
   'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS': [
@@ -6601,6 +6595,16 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/probation.ts#normalizeProbationInfo',
     'packages/domain/src/employment/probation.ts#resolveDeferredProbation',
   ],
+  'apps/api/src/modules/employment/read-decision.ts#decideEmploymentRead': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
+    'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
+  ],
+  'apps/api/src/modules/employment/read-decision.ts#sourceReadable': [
+    'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead',
+    '#decideEmploymentRead',
+    '#isUnreadable',
+  ],
   'apps/api/src/modules/employment/read-model.ts#findCurrentRecord': ['#record', '#recordsQuery', '#rowsOf'],
   'apps/api/src/modules/employment/read-model.ts#findPredecessor': ['#loadEmploymentRecord', '#rowsOf'],
   'apps/api/src/modules/employment/read-model.ts#listEmploymentRecords': [
@@ -8170,14 +8174,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#pageQuery',
   ],
   'apps/api/src/modules/employment/routes.ts#route:GET /businesses/:id': [
-    'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead',
     'apps/api/src/modules/employment/context.ts#queryDate',
     'apps/api/src/modules/employment/context.ts#readPageContext',
-    'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
+    'apps/api/src/modules/employment/read-decision.ts#decideEmploymentRead',
     '#shownBusiness',
     'apps/api/src/modules/job/context.ts#uuidParam',
-    'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
   'apps/api/src/modules/employment/routes.ts#route:GET /businesses/:id/field-origins': [
     'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead',
@@ -8185,7 +8187,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/field-origins-read.ts#frozenOriginRows',
     'apps/api/src/modules/employment/field-origins-read.ts#liveOriginRows',
-    'apps/api/src/modules/employment/field-origins-read.ts#locateOrigins',
+    'apps/api/src/modules/employment/field-origins-read.ts#loadOriginFacts',
+    'apps/api/src/modules/employment/read-decision.ts#decideEmploymentRead',
     '#shownBusiness',
     '#withUnifiedNotFound',
     'apps/api/src/modules/job/context.ts#uuidParam',
