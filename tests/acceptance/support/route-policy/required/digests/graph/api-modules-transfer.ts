@@ -111,17 +111,38 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/employee-policy.ts#EMPLOYEE_READONLY_FIELDS': [
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_READONLY_FIELDS',
   ],
+  'apps/api/src/modules/transfer/employee-policy.ts#isOwnDraft': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness': [
     'apps/api/src/modules/employment/record-store.ts#camelRow',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/record-store.ts#snapshotFields',
+    '#isOwnDraft',
     '#requireEmployeeTransferFields',
+    '#requireTrustedSavedFields',
+    '#withoutSameValueFields',
   ],
   'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferFields': [
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/transfer/employee-managers.ts#requireManagerCandidate',
     '#EMPLOYEE_READONLY_FIELDS',
+  ],
+  'apps/api/src/modules/transfer/employee-policy.ts#requireTrustedSavedFields': [
+    'apps/api/src/modules/employment/field-origin-store.ts#loadFieldOrigins',
+    '#trustedSource',
+    'packages/domain/src/employment/field-origins.ts#EMPLOYEE_SAME_VALUE_FIELDS',
+  ],
+  'apps/api/src/modules/transfer/employee-policy.ts#trustedSource': [
+    '#DERIVATION_SOURCE',
+    '#trustedSource',
+    'packages/domain/src/employment/field-origins.ts#TRUSTED_ORIGIN_KINDS',
+    'packages/domain/src/employment/field-origins.ts#isTrustedSavedValue',
+  ],
+  'apps/api/src/modules/transfer/employee-policy.ts#withoutSameValueFields': [
+    'packages/domain/src/employment/field-origins.ts#EMPLOYEE_SAME_VALUE_FIELDS',
+    'packages/domain/src/employment/field-origins.ts#sameAsSavedValue',
   ],
   'apps/api/src/modules/transfer/form-configuration.ts#formInput': ['#modes'],
   'apps/api/src/modules/transfer/form-configuration.ts#listTransferForms': [
