@@ -87,16 +87,25 @@ export interface OriginFacts {
 }
 
 /**
- * 业务是否已落地（唯一事实函数，设计 §4.9 “尚未落地解析”）：同一快照里，时间轴上有该业务的有效条目，
- * 且条目的实际生效日已到（租户时区）。不看任职记录行是否存在、不看载荷版本：
- * - 直接业务保存时就写记录行，但生效日前仍随前驱变化；离职作废的未来调动保留记录行，却已被摘出时间轴、永远不会落地；
- * - 申请批准后没有记录行也没有时间轴条目，由调度 / 审批落地时才一起写入，迟到顺延的实际生效日以条目为准。
+ * 业务是否已落地（唯一事实函数，设计 §4.9 “尚未落地解析”）。“已落地” = 该业务曾在某个租户日期实际生效过：
+ * 它的生效结果进入过时间轴，且那条条目的生效日已到。事后被摘下 / 重排不改变“曾落地”这个事实；
+ * 从未实际生效的（作废的未来调动、离职提前摘下的未来调动、撤回 / 驳回 / 未到点的申请）仍是“未落地”。
+ * 同一只读快照里按两个事实判（不读记录行、不读载荷版本，也不新增任何表或列）：
+ * 1. 时间轴上现有该业务的条目，且条目生效日 ≤ 租户今天；
+ * 2. 摘除台账（exit_effects future_transfer_detached，只追加）记下的被摘窗口起点 ≤ 摘除当天的租户日期——
+ *    摘下时它已经生效过（如同日落地、随后被退休顺延重排摘出）；窗口起点晚于摘除当天的是提前摘出，从未生效。
  */
 export async function isBusinessLanded(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<boolean> {
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
   const [row] = rowsOf<{ landed: boolean }>(
-    await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM employment_timeline
-      WHERE tenant_id = ${ctx.tenantId}::uuid AND record_id = ${businessId}::uuid
-        AND start_date <= ${tenantLocalDate(ctx.now, ctx.timezone)}::date) AS landed`),
+    await tx.execute(sql`SELECT (
+      EXISTS (SELECT 1 FROM employment_timeline
+        WHERE tenant_id = ${ctx.tenantId}::uuid AND record_id = ${businessId}::uuid AND start_date <= ${today}::date)
+      OR EXISTS (SELECT 1 FROM exit_effects x
+        WHERE x.tenant_id = ${ctx.tenantId}::uuid AND x.target_id = ${businessId}::uuid
+          AND x.kind = 'future_transfer_detached' AND x.phase = 'effective' AND x.target_type = 'employment-record'
+          AND (x.detail -> 'window' ->> 'from')::date <= (x.created_at AT TIME ZONE ${ctx.timezone})::date)
+    ) AS landed`),
   );
   return row?.landed === true;
 }

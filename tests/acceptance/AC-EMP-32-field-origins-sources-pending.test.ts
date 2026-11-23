@@ -17,7 +17,8 @@ import { type EmploymentSession } from './AC-EMP-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
 import { exitActivationWorld } from './AC-EXIT-activation-support.js';
 import { activationWorld } from './AC-TRF-activation-support.js';
-import { dedicatedBody, retirementWorld } from './AC-RT-support.js';
+import { retirementCancelWorld } from './AC-RT-cancel-support.js';
+import { dedicatedBody, retireBody, retirementWorld } from './AC-RT-support.js';
 import { cmd } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -430,5 +431,52 @@ describe('AC-EMP-32 pending：曾落地的业务被摘出时间轴后仍是已�
     const transfer = await transferOn('2026-10-20');
     expect(placeOf(await originsOn(transfer.id, '2026-10-19')), '前一天').toMatchObject({ pending: true });
     expect(placeOf(await originsOn(transfer.id, '2026-10-20')), '生效日').toMatchObject({ pending: false });
+  });
+});
+
+describe('AC-EMP-32 pending：摘下后挂回 / 删除（第 5 轮路径矩阵）', () => {
+  async function cancelWorld(label: string) {
+    const x = await retirementCancelWorld(database().db, `emp32-${label}-${uniqueSuffix()}`, '2026-10-06');
+    const configured = await x.session.request('PUT', '/transfers/settings', {
+      ifMatch: 0,
+      body: { unrestrictTargetDepartment: false, autoPopulate: false },
+    });
+    expect(configured.status, await configured.clone().text()).toBe(200);
+    const employee = await x.session.getEmployee(x.employee.id);
+    const transfer = await x.session.business(
+      x.employee.id,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-25', fields: { departmentId: x.to.id } },
+      employee.revision,
+    );
+    const retire = await x.createdRetire(x.employee.id, retireBody('2026-10-05', 'direct'));
+    expect(retire.status).toBe('effective');
+    const originsStatus = async (day: string) => {
+      x.session.setNow(`${day}T01:00:00Z`);
+      const response = await x.session.request('GET', `/businesses/${transfer.id}/field-origins`);
+      const body = response.status === 200 ? ((await response.json()) as OriginsBody) : null;
+      return { status: response.status, place: body?.fields.find((row) => row.fieldCode === 'preset:place') };
+    };
+    return { x, transfer, retire, originsStatus };
+  }
+
+  it('撤销退休把被摘下的未来调动挂回：生效日前仍 pending，生效日起不再 pending', async () => {
+    const { x, retire, originsStatus } = await cancelWorld('reattach');
+    expect(await originsStatus('2026-10-24'), '摘下期间').toMatchObject({ status: 200, place: { pending: true } });
+    x.session.setNow('2026-10-06T01:00:00Z');
+    await x.retireCancelled(retire.id, {});
+    expect(await originsStatus('2026-10-24'), '挂回后生效日前').toMatchObject({
+      status: 200,
+      place: { pending: true },
+    });
+    expect(await originsStatus('2026-10-25'), '挂回后生效日').toMatchObject({ status: 200, place: { pending: false } });
+  });
+
+  it('被退休提前摘下的调动再被 HR 删除：从未实际生效，原计划日之后工作地仍 pending', async () => {
+    const { x, transfer, originsStatus } = await cancelWorld('deleted');
+    x.session.setNow('2026-10-26T01:00:00Z');
+    const current = await x.business(transfer.id);
+    const deleted = await x.session.request('DELETE', `/businesses/${transfer.id}`, { ifMatch: current.revision });
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    expect(await originsStatus('2026-10-26')).toMatchObject({ status: 200, place: { pending: true } });
   });
 });
