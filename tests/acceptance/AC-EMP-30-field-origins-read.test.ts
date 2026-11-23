@@ -326,7 +326,7 @@ describe('AC-EMP-30 只读来源接口：值与来源取同一读取快照', () 
 });
 
 describe('AC-EMP-30 只读来源接口：延迟继承字段落地后不再待解析', () => {
-  it('关闭自动带出的直接调动：落地前 pending = true，调度顺延落地后 pending = false（策略仍是 deferred）', async () => {
+  it('关闭自动带出的直接调动：生效日前 pending = true，生效日到后 pending = false（策略仍是 deferred）', async () => {
     const w = await activationWorld(database().db, `emp30-pending-${uniqueSuffix()}`);
     const configured = await w.session.request('PUT', '/transfers/settings', {
       ifMatch: 0,
@@ -347,8 +347,7 @@ describe('AC-EMP-30 只读来源接口：延迟继承字段落地后不再待解
     };
 
     expect(await placeRow()).toMatchObject({ value: '原地点', policy: 'deferred', pending: true });
-    const run = await w.runScheduler('2026-10-06T01:00:00Z');
-    expect(run).toMatchObject({ failed: [], errors: [] });
+    w.session.setNow('2026-10-06T01:00:00Z');
     expect(await w.session.record(transfer.id, '2026-10-06')).toMatchObject({ fields: { place: '原地点' } });
     expect(await placeRow()).toMatchObject({ value: '原地点', policy: 'deferred', pending: false });
   });

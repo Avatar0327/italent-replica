@@ -5,11 +5,13 @@
  * 全部走真实业务入口造数；期望值手写。
  */
 import { runEmploymentActivations } from '@italent/api';
+import { sql, withTenant } from '@italent/db';
 import { APPROVAL_TYPES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { denyButtons, gateWorld } from './AC-EXIT-gate-support.js';
 import { BASE, adjustmentOf, bodyOf, hrDraft, managerWorld, rename, type OriginField } from './AC-EMP-30-support.js';
+import { resultRows } from './AC-ORG-people-support.js';
 import { activationWorld } from './AC-TRF-activation-support.js';
 import { cmd } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -147,7 +149,7 @@ describe('AC-EMP-32 pending 取落地与物化的事实', () => {
     });
     expect(configured.status, await configured.clone().text()).toBe(200);
     const person = await w.hired();
-    const transferOn = (effectiveDate: string) =>
+    const directOn = (effectiveDate: string) =>
       w.session.business(
         person.employee.id,
         { kind: 'transfer', mode: 'direct', effectiveDate, fields: { departmentId: w.to.id } },
@@ -158,47 +160,61 @@ describe('AC-EMP-32 pending 取落地与物化的事实', () => {
       expect(response.status, await response.clone().text()).toBe(200);
       return ((await response.json()) as OriginsBody).fields;
     };
-    return { w, person, transferOn, origins };
+    const payloads = (id: string) =>
+      withTenant(w.db, w.session.tenant.id, async (tx) =>
+        resultRows<{ version: number; snapshot: boolean }>(
+          await tx.execute(sql`SELECT version_no AS version, is_record_snapshot AS snapshot
+            FROM employment_payload_versions WHERE tenant_id = ${w.session.tenant.id}
+              AND business_id = ${id}::uuid ORDER BY version_no`),
+        ),
+      );
+    return { w, person, directOn, origins, payloads };
   }
 
-  const deferredRows = (rows: OriginsBody['fields']) => rows.filter((row) => row.policy === 'deferred');
+  const pendingOf = (rows: OriginsBody['fields']) => rows.filter((row) => row.pending).map((row) => row.fieldCode);
+  const deferredCount = (rows: OriginsBody['fields']) => rows.filter((row) => row.policy === 'deferred').length;
 
-  it('当天生效的直接调动：落地后没有任何待解析字段（载荷仍只有首版）', async () => {
+  it('当天生效的直接调动：落地后没有待解析字段（载荷仍只有首版、不是记录快照）', async () => {
     const x = await pendingWorld('2026-10-05');
-    const transfer = await x.transferOn('2026-10-05');
-    expect(transfer.status).toBe('effective');
+    const transfer = await x.directOn('2026-10-05');
     const rows = await x.origins(transfer.id);
-    expect(deferredRows(rows).length, '前提：关闭自动带出后存在延迟继承字段').toBeGreaterThan(0);
-    expect(rows.filter((row) => row.pending).map((row) => row.fieldCode)).toEqual([]);
+    expect(deferredCount(rows), '前提：关闭自动带出后存在延迟继承字段').toBeGreaterThan(0);
+    expect(await x.payloads(transfer.id)).toEqual([{ version: 1, snapshot: false }]);
+    expect(pendingOf(rows)).toEqual([]);
   });
 
-  it('按时调度落地（生效日当天由定时任务生效）：落地前有待解析字段，落地后没有', async () => {
+  it('按时调度落地（审批通过的申请，生效日当天由定时任务生效）：落地前有待解析字段，落地后没有', async () => {
     const x = await pendingWorld('2026-10-01');
-    const transfer = await x.transferOn('2026-10-05');
-    const before = await x.origins(transfer.id);
-    expect(before.filter((row) => row.pending).length, '前提：落地前存在待解析字段').toBeGreaterThan(0);
+    const employee = await x.w.hired('按时落地员工');
+    const application = await x.w.apply(employee.employee.id, '2026-10-05', { departmentId: x.w.to.id });
+    await x.w.approve(application, '2026-10-02T01:00:00Z');
+    expect(pendingOf(await x.origins(application.id)).length, '前提：落地前存在待解析字段').toBeGreaterThan(0);
     const run = await x.w.runScheduler('2026-10-05T01:00:00Z');
     expect(run).toMatchObject({ failed: [], errors: [] });
-    const after = await x.origins(transfer.id);
-    expect(deferredRows(after).length).toBeGreaterThan(0);
-    expect(after.filter((row) => row.pending).map((row) => row.fieldCode)).toEqual([]);
+    x.w.session.setNow('2026-10-05T01:00:00Z'); // 定时任务入口自带时钟，读接口的时钟要同步推进
+    const after = await x.origins(application.id);
+    expect(deferredCount(after)).toBeGreaterThan(0);
+    expect(await x.payloads(application.id)).toEqual([{ version: 1, snapshot: false }]);
+    expect(pendingOf(after)).toEqual([]);
   });
 
   it('迟到顺延落地（生效日之后才运行定时任务）：落地后没有待解析字段', async () => {
     const x = await pendingWorld('2026-10-01');
-    const transfer = await x.transferOn('2026-10-05');
+    const employee = await x.w.hired('迟到落地员工');
+    const application = await x.w.apply(employee.employee.id, '2026-10-05', { departmentId: x.w.to.id });
+    await x.w.approve(application, '2026-10-02T01:00:00Z');
     const run = await x.w.runScheduler('2026-10-06T01:00:00Z');
     expect(run).toMatchObject({ failed: [], errors: [] });
-    const after = await x.origins(transfer.id);
-    expect(deferredRows(after).length).toBeGreaterThan(0);
-    expect(after.filter((row) => row.pending).map((row) => row.fieldCode)).toEqual([]);
+    x.w.session.setNow('2026-10-06T01:00:00Z');
+    const after = await x.origins(application.id);
+    expect(deferredCount(after)).toBeGreaterThan(0);
+    expect(pendingOf(after)).toEqual([]);
   });
 
-  it('生效日前补录前驱的工作地：向后更新给调动追加记录快照，被触碰的工作地不再待定，没碰的延迟字段仍待解析', async () => {
+  it('生效日前补录前驱的工作地：给调动追加记录快照，被触碰的工作地有来源，没碰的延迟字段仍待解析', async () => {
     const x = await pendingWorld('2026-10-01');
-    const transfer = await x.transferOn('2026-10-05');
-    const before = await x.origins(transfer.id);
-    const untouched = before.filter((row) => row.pending && row.fieldCode !== 'preset:place').map((r) => r.fieldCode);
+    const transfer = await x.directOn('2026-10-05');
+    const untouched = pendingOf(await x.origins(transfer.id)).filter((code) => code !== 'preset:place');
     expect(untouched.length, '前提：除工作地外还有待解析字段').toBeGreaterThan(0);
     const hire = await x.w.business(x.person.hire.id);
     const patched = await x.w.session.request('PATCH', `/records/${x.person.hire.id}`, {
@@ -206,10 +222,18 @@ describe('AC-EMP-32 pending 取落地与物化的事实', () => {
       body: { fields: { place: 'ZZ_补录工作地' } },
     });
     expect(patched.status, await patched.clone().text()).toBe(200);
+    expect((await x.payloads(transfer.id)).at(-1), '前提：向后更新给调动追加了记录快照').toEqual({
+      version: 2,
+      snapshot: true,
+    });
 
     const after = await x.origins(transfer.id);
     const row = (code: string) => after.find((entry) => entry.fieldCode === code);
-    expect(row('preset:place')).toMatchObject({ value: 'ZZ_补录工作地', origin: { kind: 'forward-update' } });
-    for (const code of untouched) expect(row(code), `${code} 未被更新触碰`).toMatchObject({ pending: true });
+    expect(row('preset:place')).toMatchObject({
+      value: 'ZZ_补录工作地',
+      origin: { kind: 'forward-update' },
+      pending: false,
+    });
+    expect(pendingOf(after).sort()).toEqual([...untouched].sort());
   });
 });

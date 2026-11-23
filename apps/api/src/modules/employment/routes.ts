@@ -95,7 +95,8 @@ import {
   ReportingCycleDeletionError,
 } from './deletion-guards.js';
 import { visibleEmploymentRecords } from './visibility.js';
-import { frozenOriginRows, liveOriginRows, locateOrigins } from './field-origins-read.js';
+import { frozenOriginRows, liveOriginRows, loadOriginFacts } from './field-origins-read.js';
+import { decideEmploymentRead } from './read-decision.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import type { EmploymentBusiness, EmploymentBusinessPatch, EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
@@ -492,11 +493,20 @@ function registerFieldOrigins(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readPageContext(c, deps, 'detail');
     const asOf = queryDate(c, ctx);
     const read = await selectEmploymentRead(deps, ctx, id);
-    const located = await withUnifiedNotFound(() => locateOrigins(deps, ctx, id, asOf, !!read.frozen));
-    const { contentView, ...shown } = (await shownBusiness(deps, located.ctx, read, located.value)) as {
+    const decision = await withUnifiedNotFound(() =>
+      decideEmploymentRead(
+        deps,
+        ctx,
+        id,
+        () => asOf,
+        read,
+        (tx, gated, value) => loadOriginFacts(tx, gated, value, !!read.frozen),
+      ),
+    );
+    const { contentView, ...shown } = (await shownBusiness(deps, decision.ctx, read, decision.value)) as {
       contentView: unknown;
     };
-    const fields = read.frozen ? frozenOriginRows(shown) : await liveOriginRows(deps, located, asOf, shown);
+    const fields = read.frozen ? frozenOriginRows(shown) : await liveOriginRows(deps, ctx, decision.extra, asOf, shown);
     return c.json({ businessId: id, contentView, fields });
   });
 }
@@ -506,15 +516,9 @@ function registerFieldOrigins(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/businesses/:id', async (c) => {
     const id = uuidParam(c);
-    let ctx = await readPageContext(c, deps, 'detail');
-    const read = await selectEmploymentRead(deps, ctx, id);
-    if (!read.frozen) ctx = await withTenant(deps.db, ctx.tenantId, (tx) => transferBusinessContext(tx, ctx, id));
-    const scope = read.frozen || ctx.transferTarget ? undefined : ctx.scope;
-    const value = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      loadEmploymentBusiness(tx, ctx.tenantId, id, queryDate(c, ctx), scope),
-    );
-    if (!value) throw new AppError('NOT_FOUND', '任职业务不存在');
-    await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: value.employeeId });
+    const entry = await readPageContext(c, deps, 'detail');
+    const read = await selectEmploymentRead(deps, entry, id);
+    const { ctx, value } = await decideEmploymentRead(deps, entry, id, () => queryDate(c, entry), read);
     return c.json(await shownBusiness(deps, ctx, read, value));
   });
   router.get('/records/:id', async (c) => {
