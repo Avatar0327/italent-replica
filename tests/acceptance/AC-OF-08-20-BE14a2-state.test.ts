@@ -232,8 +232,8 @@ describe('AC-OF-16 / 19 / 20 行操作矩阵', () => {
     expect(of('invalid')).toEqual({ primary: ['copy'], menu: ['viewMail', 'view'] });
   });
 
-  // BE-14a3 接线后“发起审批”出现在待发主按钮；审批中的催办 / 转交 / 撤销仍未接线；BE-14b1 接线发送 / 重发
-  it('接口只返回已接线的动作：审批中动作 / 邮件 / 签署 / 关联实习生不出现（编辑并同步随 BE-14b3 接线）', async () => {
+  // BE-14a3 接线发起审批，BE-14b1 接线发送 / 重发，F-505 S4 接线签署。
+  it('AC-OF-20 / F-505 S4：接口矩阵在已接受、已入职返回签署，审批中动作、邮件和关联实习生保持未接线', async () => {
     const w = await offerWorld(testDb().db, 'matrix');
     const pending = await w.social();
     expect(actionsOf(await w.get(pending.id))).toEqual({
@@ -245,8 +245,8 @@ describe('AC-OF-16 / 19 / 20 行操作矩阵', () => {
     expect(actionsOf(await w.get(approved.id))).toEqual({ primary: ['edit'], menu: ['invalidate'] });
     const cases: [string, Actions][] = [
       ['sent', { primary: ['resend'], menu: ['editSync', 'transfer', 'invalidate', 'view'] }],
-      ['accepted', { primary: ['editSync'], menu: ['transfer', 'invalidate', 'view'] }],
-      ['onboarded', { primary: [], menu: ['view'] }],
+      ['accepted', { primary: ['editSync'], menu: ['transfer', 'invalidate', 'sign', 'view'] }],
+      ['onboarded', { primary: [], menu: ['sign', 'view'] }],
     ];
     for (const [status, actions] of cases) {
       const offer = await w.social();

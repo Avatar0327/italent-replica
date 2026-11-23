@@ -7,4 +7,12 @@ export const notes: Record<string, DecisionAnnotation> = {
     decisions: ['DEC-763', 'DEC-960'],
     level: 'L2',
   },
+  'hr-dashboard': {
+    original: '组织员工下的数据分析包含人事看板，按各看板的数据权限取数。',
+    decision:
+      '人事管理看板与人员结构分析按各自授权开放，统计与分页明细按回执显示。' +
+      '人员结构分析使用分析专用组织候选。省份数据源待 F-549。单据类指标的适用范围见看板提示。',
+    decisions: ['DEC-763', 'DEC-960', 'DEC-961', 'DEC-962', 'DEC-963'],
+    level: 'L2',
+  },
 };

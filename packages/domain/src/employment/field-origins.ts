@@ -25,7 +25,11 @@ export interface OriginRow {
   readonly originKind: FieldOriginKind;
   readonly value: unknown;
   readonly refSeq?: bigint | null;
+  readonly reason?: string | null;
 }
+
+export const SAME_VALUE_CONFIRMATION = 'same-value-confirmation';
+export const FORM_DEPENDENCY_RESET = 'form-dependency-reset';
 
 export interface FieldOriginState<Row extends OriginRow = OriginRow> {
   readonly policy: FieldOriginPolicy | null;
@@ -84,7 +88,12 @@ export function foldFieldOrigins<Row extends OriginRow>(rows: readonly Row[]): M
       state.resolved = row;
     } else if (kind === 'fallback' || kind === 'restore') {
       if (row.refSeq == null) continue;
-      if (kind === 'fallback') state.suspended.add(row.refSeq);
+      if (kind === 'fallback' && row.reason === FORM_DEPENDENCY_RESET) {
+        if (state.override?.seq === row.refSeq) {
+          state.override = null;
+          state.retained = false;
+        }
+      } else if (kind === 'fallback') state.suspended.add(row.refSeq);
       else state.suspended.delete(row.refSeq);
     } else {
       state.override = row;
@@ -161,17 +170,41 @@ export function isTrustedSavedValue(state: FieldOriginState | undefined, rule: R
   return lastWriter !== null && rule.has(lastWriter.originKind);
 }
 
-export function projectOriginMarkers(states: ReadonlyMap<string, FieldOriginState>) {
-  const explicitFieldCodes: string[] = [];
-  const deferredFieldCodes: string[] = [];
+const BUSINESS_DATES = new Set(['preset:effectiveDate', 'preset:lastWorkDate', 'preset:plannedEffectiveDate']);
+
+const markerField = (code: string) => !code.startsWith('status:') && !BUSINESS_DATES.has(code);
+
+export function projectOriginMarkers(
+  states: ReadonlyMap<string, FieldOriginState>,
+  legacy?: { explicitFieldCodes?: readonly string[]; deferredFieldCodes?: readonly string[] },
+) {
+  const explicit = new Set<string>();
+  const deferred = new Set<string>();
+  const previousExplicit = new Set(legacy?.explicitFieldCodes);
+  const previousDeferred = legacy?.deferredFieldCodes ?? [];
   for (const [code, state] of states) {
-    if (code.startsWith('status:')) continue;
+    if (!markerField(code)) continue;
     const { lastWriter } = effectiveOrigin(state);
-    if (lastWriter && lastWriter === state.override && lastWriter.originKind !== 'derive')
-      explicitFieldCodes.push(code);
-    if (!lastWriter && state.policy === 'deferred') deferredFieldCodes.push(code);
+    if (lastWriter && lastWriter === state.override && lastWriter.originKind !== 'derive') {
+      // S2 已有的同值确认行可能没有原因码，其旧标记仍能区分是否有一次实际改值。
+      const recordEdit = lastWriter.originKind === 'hr-record';
+      if (recordEdit && legacy ? previousExplicit.has(code) : lastWriter.reason !== SAME_VALUE_CONFIRMATION)
+        explicit.add(code);
+    }
+    if (!lastWriter && state.policy === 'deferred') deferred.add(code);
   }
-  return { explicitFieldCodes, deferredFieldCodes };
+  for (const code of previousExplicit) if (markerField(code) && !states.has(code)) explicit.add(code);
+  for (const code of previousDeferred)
+    if (markerField(code) && !states.get(code)?.policy && !effectiveOrigin(states.get(code)).lastWriter)
+      deferred.add(code);
+  return {
+    explicitFieldCodes: orderedMarkers(explicit, previousExplicit),
+    deferredFieldCodes: orderedMarkers(deferred, previousDeferred),
+  };
+}
+
+function orderedMarkers(codes: ReadonlySet<string>, previous: Iterable<string>) {
+  return [...new Set([...previous].filter((code) => codes.has(code)).concat([...codes]))];
 }
 
 export function deferralShape(

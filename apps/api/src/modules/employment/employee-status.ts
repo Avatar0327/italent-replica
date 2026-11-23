@@ -1,5 +1,4 @@
 import type { FieldOriginDraft } from './field-origin-store.js';
-import { appendPayloadFieldOrigins } from './field-origin-write.js';
 import { completeRehireSeniority } from './rehire-seniority.js';
 /**
  * 人员状态 / 入职状态的业务流转端口（F-022；docs/02_业务建模/15 §9、29 PB-R7、34 EN-R8～R11）。
@@ -319,9 +318,8 @@ async function appendStatusVersion(
       deferredFieldCodes: record ? [] : payload.deferredFieldCodes,
       createdAt: ctx.now.toISOString(),
     },
-    status,
+    { ctx, status, origins, recordId: record?.id },
   );
-  await appendPayloadFieldOrigins(tx, ctx, { ...payload, id }, record?.id, origins);
   return id;
 }
 

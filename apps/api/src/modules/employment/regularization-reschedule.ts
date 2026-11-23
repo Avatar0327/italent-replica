@@ -16,6 +16,7 @@ import { auditEmployment, requireScopedEmploymentObject } from './context.js';
 import { ENTRY_LIKE_KINDS, propagateEmployeeStatus, type TimelinePoint } from './employee-status.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { derivationFields } from './field-derivations.js';
+import type { FieldOriginDraft } from './field-origin-store.js';
 import { INHERITED_FIELDS } from './fields.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
 import {
@@ -109,6 +110,7 @@ async function appendRescheduledVersion(
   business: LockedEmploymentBusiness,
   effectiveDate: string,
   overrides: Partial<EmploymentPayloadRow>,
+  origins: readonly FieldOriginDraft[] | 'carry-only',
 ) {
   const previous = business.payload;
   const next: EmploymentPayloadRow = {
@@ -120,12 +122,13 @@ async function appendRescheduledVersion(
     ...overrides,
   };
   const { fields, ...metadata } = next;
-  await insertEmploymentRow(tx, 'employment_payload_versions', {
-    ...metadata,
-    ...fields,
-    createdAt: ctx.now.toISOString(),
-  });
-  business.payload = next;
+  const markers = await insertEmploymentRow(
+    tx,
+    'employment_payload_versions',
+    { ...metadata, ...fields, createdAt: ctx.now.toISOString() },
+    { ctx, origins, recordId: next.isRecordSnapshot ? business.id : undefined },
+  );
+  business.payload = { ...next, ...markers };
 }
 
 /**
@@ -139,18 +142,27 @@ function reinherited(payload: EmploymentPayloadRow, record: EmploymentRecord, pr
   for (const origin of form.fieldDerivations ?? []) explicit.add(`preset:${derivationFields(origin).field}`);
   const excluded = new Set(form.excludedAutofillFields ?? []);
   const fields = { ...record.fields };
+  const origins: FieldOriginDraft[] = [];
+  const inherit = (fieldCode: string, value: unknown) =>
+    origins.push({ fieldCode, originKind: 'inherit', value, sourceRecordId: previous?.id ?? null });
   for (const field of INHERITED_FIELDS) {
     const code = `preset:${field}`;
     if (explicit.has(code) || (excluded.has(field) && form.fieldModes[code] === 'editable')) continue;
-    Object.assign(fields, { [field]: previous?.fields[field] ?? null });
+    const value = previous?.fields[field] ?? null;
+    Object.assign(fields, { [field]: value });
+    inherit(code, value);
   }
   const customFields = { ...record.customFields };
   for (const id of Object.keys(customFields)) {
     const mode = form.fieldModes[`custom:${id}`];
     const inherits = form.customInheritance[id] || mode === 'readonly' || mode === 'hidden';
-    if (inherits && !explicit.has(`custom:${id}`)) customFields[id] = previous?.customFields[id] ?? null;
+    if (inherits && !explicit.has(`custom:${id}`)) {
+      const value = previous?.customFields[id] ?? null;
+      customFields[id] = value;
+      inherit(`custom:${id}`, value);
+    }
   }
-  return { fields, customFields };
+  return { fields, customFields, origins };
 }
 
 /** 摘下已落地记录的时间轴行：前一条区间接到后一条（同 late-transfer）。 */
@@ -203,20 +215,28 @@ async function relocateRecord(
   }
   await detachTimeline(tx, ctx, business, oldPoint);
   const predecessor = await findPredecessor(tx, ctx.tenantId, record.employeeId, target.date, target.order);
-  const moved = { ...record, ...reinherited(business.payload, record, predecessor) };
+  const { origins, ...inherited } = reinherited(business.payload, record, predecessor);
+  const moved = { ...record, ...inherited };
   await validateTransferReposition(tx, ctx, business, moved);
   await insertEmploymentTimeline(tx, ctx, business.employeeId, business.id, record.staffId, target.date);
   const landed = await currentPoint(tx, ctx, business.id);
   if (landed?.date !== target.date || landed.order !== target.order)
     throw new AppError('SERVICE_UNAVAILABLE', '转正改期的插入位置与预算位置不一致');
-  await appendRescheduledVersion(tx, ctx, business, target.date, {
-    commandId: ctx.commandId,
-    triggerBusinessId: business.id,
-    fields: moved.fields,
-    customFields: moved.customFields,
-    isRecordSnapshot: true,
-    deferredFieldCodes: [],
-  });
+  await appendRescheduledVersion(
+    tx,
+    ctx,
+    business,
+    target.date,
+    {
+      commandId: ctx.commandId,
+      triggerBusinessId: business.id,
+      fields: moved.fields,
+      customFields: moved.customFields,
+      isRecordSnapshot: true,
+      deferredFieldCodes: [],
+    },
+    origins,
+  );
   if (earlier && predecessor && predecessor.staffId === record.staffId)
     await propagateEmployeeStatus(
       tx,
@@ -268,11 +288,18 @@ export async function rescheduleRegularization(
       truncated: conflicts.length > 100,
     });
   // 人工改期版本：命令号 / 触发业务都为空（约束 command_pair），计划日 = 新日期；已落地的随后追加记录快照
-  await appendRescheduledVersion(tx, ctx, business, effectiveDate, {
-    commandId: null,
-    triggerBusinessId: null,
-    isRecordSnapshot: false,
-  });
+  await appendRescheduledVersion(
+    tx,
+    ctx,
+    business,
+    effectiveDate,
+    {
+      commandId: null,
+      triggerBusinessId: null,
+      isRecordSnapshot: false,
+    },
+    'carry-only',
+  );
   if (record) {
     await relocateRecord(tx, ctx, business, record, oldPoint, target);
     await personnelHooks.sync(tx, ctx, business.employeeId, businessId, 'regularization', effectiveDate);

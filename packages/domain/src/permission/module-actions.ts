@@ -30,6 +30,11 @@ import {
 } from '../employment/retirement-intention.js';
 import { PART_TIME_BUTTONS, PART_TIME_FIELDS, PART_TIME_SYSTEM_FIELDS } from '../employment/part-time-constants.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
+import {
+  ONBOARDING_BUTTONS,
+  ONBOARDING_ENTRY_STATUS_FIELDS,
+  ONBOARDING_FORM_FIELDS,
+} from '../onboarding/permission.js';
 import type { ButtonDefinition, DataOperation, ObjectDefinition } from './object-permission.js';
 
 export const ORG_EMPLOYEE_APP = 'TenantBase';
@@ -61,7 +66,12 @@ const crud = [
   button('update', 'detail', 'update'),
   button('delete', 'detail', 'delete'),
 ];
-function object(code: string, fields: readonly string[], buttons = crud, system: readonly string[] = []) {
+function object(
+  code: string,
+  fields: readonly string[],
+  buttons: readonly ButtonDefinition[] = crud,
+  system: readonly string[] = [],
+) {
   const systems = new Set([...systemFields, ...system]);
   return {
     code: `TenantBase.${code}`,
@@ -438,8 +448,9 @@ export const MODULE_OBJECTS = {
       'title',
       'formRef',
       'remark',
+      ...ONBOARDING_FORM_FIELDS.settings,
     ],
-    crud,
+    [...crud, ...ONBOARDING_BUTTONS.settings],
     ['operatorUserId'],
   ),
   // R2 BE-12b 人事分析 - 人事看板（规格 35 §2.1）：只读聚合查询，无业务字段、无按钮；数据范围按人员 / 组织裁剪，
@@ -526,6 +537,51 @@ export const MODULE_OBJECTS = {
     [button('Employee.Create', 'list', 'create')],
     ['status', 'employeeStatus', 'entryStatus'],
   ),
+  onboardingCollection: object(
+    'OnboardingCollection',
+    ONBOARDING_FORM_FIELDS.collection,
+    [button('detail', 'list_row')],
+    [
+      'status',
+      'taskId',
+      'templateId',
+      'ruleId',
+      'approvalInstanceId',
+      'submittedAt',
+      'completedAt',
+      ...ONBOARDING_FORM_FIELDS.collectionApproval,
+    ],
+  ),
+  onboardingQrCode: object('OnboardingQrCode', [], ONBOARDING_BUTTONS.qrCode, [
+    'purpose',
+    'schemeId',
+    'status',
+    'expiresAt',
+    'issuedAt',
+    'revokedAt',
+    'version',
+  ]),
+  onboardingPreparation: object('OnboardingPreparation', ['result'], ONBOARDING_BUTTONS.preparation, [
+    'status',
+    'itemId',
+    'ruleId',
+    'assignees',
+    'dueOn',
+    'completedAt',
+    'completedBy',
+  ]),
+  onboardingMaterial: object(
+    'OnboardingMaterial',
+    ['attachmentId'],
+    [button('detail', 'list_row')],
+    ['status', 'definitionId', 'required', 'allowSupplement', 'submittedAt', 'receivedAt'],
+  ),
+  onboardingIntegration: object(
+    'OnboardingIntegration',
+    ['name', 'description', 'formValues'],
+    ONBOARDING_BUTTONS.integration,
+    ['status', 'schemeId', 'cycleId', 'assignees', 'startOn', 'dueOn', 'completedAt'],
+  ),
   employmentRecord: object(
     'EmploymentRecord',
     [
@@ -578,6 +634,7 @@ export const MODULE_OBJECTS = {
       ...RETIREMENT_INTENTION_EDITABLE_FIELDS,
     ],
     [
+      ...ONBOARDING_BUTTONS.employmentRecord,
       button('Employment.Create', 'detail', 'create'),
       button('Transfer.Hr', 'detail', 'create'),
       // F-481 §10：批量补发，只随 HR 类身份的完整任职功能预置。
@@ -648,6 +705,7 @@ export const MODULE_OBJECTS = {
       // 人员状态 / 入职状态只经业务流转写入（F-022，15 §9.3）：可授查看，不可授编辑。
       'employeeStatus',
       'entryStatus',
+      ...ONBOARDING_ENTRY_STATUS_FIELDS,
       'activation',
       ...EXIT_REQUEST_SYSTEM_FIELDS,
       // R2-T04 退休扩展字段：类型由 L 与快照 P 派生，P 快照与是否返聘不可手改
