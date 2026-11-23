@@ -15,7 +15,7 @@ const RESULT = fixed(
     'sourceId',
     'taskId',
   ],
-  'F-120 未登记类型返回八键摘要；F-553 登记的签署类型只返回 sourceId、taskId 两键',
+  'F-120 基础摘要；F-553 签署只回 sourceId、taskId；BE-16 任务池仅回状态、业务 ID、版本和命令信息',
 );
 
 export const COMMAND_RESULT_POLICIES = defineTable('command-result', {
