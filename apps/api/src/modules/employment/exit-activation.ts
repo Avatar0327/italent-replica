@@ -120,12 +120,24 @@ export async function postponeLateExit(
     triggerBusinessId: business.id,
   };
   const { fields, ...metadata } = next;
-  await insertEmploymentRow(tx, 'employment_payload_versions', {
-    ...metadata,
-    ...fields,
-    createdAt: ctx.now.toISOString(),
-  });
-  business.payload = next;
+  const markers = await insertEmploymentRow(
+    tx,
+    'employment_payload_versions',
+    { ...metadata, ...fields, createdAt: ctx.now.toISOString() },
+    {
+      ctx,
+      recordId: business.id,
+      origins: [
+        {
+          fieldCode: 'preset:lastWorkDate',
+          originKind: 'system-input',
+          value: resolved.lastWorkDate,
+          reason: 'late-execution',
+        },
+      ],
+    },
+  );
+  business.payload = { ...next, ...markers };
   await auditEmployment(
     tx,
     ctx,

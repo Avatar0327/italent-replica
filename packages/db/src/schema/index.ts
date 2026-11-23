@@ -40,3 +40,5 @@ export * from './esign.js';
 export * from './job-graph.js';
 export * from './admin-regions.js';
 export * from './social-insurance.js';
+export * from './onboarding.js';
+export * from './onboarding-integration-pool.js';

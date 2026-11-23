@@ -4,6 +4,7 @@ import type { ModuleDeclared } from '../../module-declared.js';
 export const EMPLOYMENT_DECLARED: ModuleDeclared = {
   /** R1c：含 ≥2 个准入承载节点的备选的端点（需要 need 登记） */
   multiCarrierAdmission: [
+    'GET /api/tenant/employment/pending-entries/:id/esign-records',
     'POST /api/tenant/employment/employment-forms',
     'PUT /api/tenant/employment/employment-forms/:id',
     'GET /api/tenant/employment/transfers/employees/:id/contracts',
@@ -51,6 +52,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
   ],
   /** 状态码相同、错误体不同，由实际行为证明非法标识声明适用的端点 */
   sameStatusInvalidId: [
+    'POST /api/tenant/employment/pending-entries/:id/esign-tasks',
     'GET /api/tenant/employment/employment-types/:id/delete-result/:commandId',
     'PUT /api/tenant/employment/employment-forms/:id',
     'PATCH /api/tenant/employment/businesses/:id',

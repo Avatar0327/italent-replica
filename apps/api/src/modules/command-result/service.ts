@@ -2,7 +2,17 @@ import { auditCommandFailures, and, commandLedger, eq, sql, type Tx } from '@ita
 import { tryAdvisoryLock } from '../../advisory-lock.js';
 import { commandTypeOf } from '../../command-type.js';
 import { commandExecutionKey, voidedCommandHttpStatus } from '../../commands.js';
-import { ERROR_STATUS, type ErrorCode } from '../../errors.js';
+import { AppError, ERROR_STATUS, type ErrorCode } from '../../errors.js';
+import type { TenantContext } from '../../tenant-context.js';
+import { ESIGN_COMMAND_RESULTS } from '../esign/source-command-result.js';
+import { INTEGRATION_POOL_COMMAND_RESULTS } from '../onboarding/integration-pool-result.js';
+import { createCommandResultRegistry, type CommandResultDeps, type CommandResultRegistration } from './registry.js';
+
+const commandResultRegistry = createCommandResultRegistry([
+  ...ESIGN_COMMAND_RESULTS,
+  ...INTEGRATION_POOL_COMMAND_RESULTS,
+]);
+type RegisteredResult = ReturnType<CommandResultRegistration['project']>;
 
 export interface OwnCommandResult {
   readonly commandId: string;
@@ -24,13 +34,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  *    历史 / 系统行）直接 undefined，不得再回退到失败审计——否则别人用同一命令 ID 碰撞留下的失败审计会被当成“本人失败”；
  * 2. DEC-956：只有已作废的本人台账行可给出未执行结论；审计证明回滚本身不能阻止旧键后续写入。
  * 3. 台账没有且本人同键写入不在途，才看本人最新时间整组失败审计；其中任一条不确定则维持未知。
- * 摘要只取台账响应里的 id / revision / kind，不返回响应正文；整个查询只读。
+ * 摘要只取台账响应里的 id / revision / kind；登记类型（F-553）的成功回执则以同一事务授权后得到的投影为准。整个查询只读。
  */
 export async function readOwnCommandResult(
   tx: Tx,
-  ctx: { readonly tenantId: string; readonly userId: string },
+  ctx: TenantContext,
   commandId: string,
-): Promise<OwnCommandResult | undefined> {
+  deps?: CommandResultDeps,
+): Promise<OwnCommandResult | RegisteredResult | undefined> {
   // 先取锁再读台账，避免并发提交刚落库、回查却选中旧的回滚证据。拿不到锁仍可返回已有的权威台账。
   const idle = await tryAdvisoryLock(tx, ...commandExecutionKey(ctx.tenantId, ctx.userId, commandId));
   const [entry] = await tx
@@ -40,6 +51,12 @@ export async function readOwnCommandResult(
   if (entry) {
     if (entry.actorUserId !== ctx.userId) return undefined;
     const rollbackHttpStatus = voidedCommandHttpStatus(entry);
+    // 已作废的台账行没有成功回执可供登记类型核对来源，只给未执行摘要；其余登记类型按 F-553 授权投影。
+    const registration = entry.commandType ? commandResultRegistry.get(entry.commandType) : undefined;
+    if (registration && rollbackHttpStatus === undefined) {
+      if (!deps || entry.responseStatus < 200 || entry.responseStatus >= 300) return undefined;
+      return readRegisteredCommandResult(tx, deps, ctx, registration, entry.responseBody);
+    }
     return {
       commandId,
       status: rollbackHttpStatus === undefined ? ledgerStatus(entry.responseStatus) : 'not_executed',
@@ -52,16 +69,36 @@ export async function readOwnCommandResult(
   if (!idle) return undefined;
   const latest = await latestFailureGroup(tx, ctx, commandId);
   if (!latest?.occurredAt || latest.hasUncertain) return undefined;
+  const commandType = commandTypeOf(latest.method, latest.path);
+  // 没有成功回执就无法核对登记类型的来源与任务绑定。
+  if (commandType && commandResultRegistry.has(commandType)) return undefined;
   return {
     commandId,
     status: 'failed',
-    commandType: commandTypeOf(latest.method, latest.path),
+    commandType,
     businessType: null,
     businessId: null,
     revision: null,
     httpStatus: latest.httpStatus ?? ERROR_STATUS[latest.errorCode as ErrorCode] ?? null,
     completedAt: latest.occurredAt.toISOString(),
   };
+}
+
+async function readRegisteredCommandResult(
+  tx: Tx,
+  deps: CommandResultDeps,
+  ctx: TenantContext,
+  registration: CommandResultRegistration,
+  body: unknown,
+): Promise<RegisteredResult | undefined> {
+  try {
+    await registration.authorize(tx, deps, ctx, body);
+    return registration.project(body);
+  } catch (error) {
+    // 来源缺失、越界与任务错绑走路由统一的 404 信封。
+    if (error instanceof AppError && error.code === 'NOT_FOUND') return undefined;
+    throw error;
+  }
 }
 
 /**

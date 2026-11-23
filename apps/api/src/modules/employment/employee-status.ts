@@ -1,3 +1,4 @@
+import type { FieldOriginDraft } from './field-origin-store.js';
 import { completeRehireSeniority } from './rehire-seniority.js';
 /**
  * 人员状态 / 入职状态的业务流转端口（F-022；docs/02_业务建模/15 §9、29 PB-R7、34 EN-R8～R11）。
@@ -221,7 +222,12 @@ async function appendStatusSnapshot(
   status: VersionStatus,
   options: { readonly bump?: boolean } = {},
 ): Promise<void> {
-  const versionId = await appendStatusVersion(tx, ctx, business.payload, record, status, record.id);
+  const origins: FieldOriginDraft[] = [];
+  if (status.employeeStatus !== record.employeeStatus)
+    origins.push({ fieldCode: 'status:employeeStatus', originKind: 'system-input', value: status.employeeStatus });
+  if (status.entryStatus !== record.entryStatus)
+    origins.push({ fieldCode: 'status:entryStatus', originKind: 'system-input', value: status.entryStatus });
+  const versionId = await appendStatusVersion(tx, ctx, business.payload, record, status, record.id, origins);
   await auditEmployment(
     tx,
     ctx,
@@ -292,6 +298,7 @@ async function appendStatusVersion(
   record: EmploymentRecord | null,
   status: VersionStatus,
   triggerBusinessId: string,
+  origins: readonly FieldOriginDraft[],
 ): Promise<string> {
   const { fields, ...metadata } = payload;
   const id = randomUUID();
@@ -311,7 +318,7 @@ async function appendStatusVersion(
       deferredFieldCodes: record ? [] : payload.deferredFieldCodes,
       createdAt: ctx.now.toISOString(),
     },
-    status,
+    { ctx, status, origins, recordId: record?.id },
   );
   return id;
 }
@@ -352,7 +359,15 @@ export async function propagateEmployeeStatus(
       ? await loadEmploymentRecord(tx, ctx.tenantId, target.payload.businessId, target.payload.effectiveDate)
       : null;
     const status = { employeeStatus: to, entryStatus: target.entryStatus as EntryStatusCode | null };
-    const versionId = await appendStatusVersion(tx, ctx, target.payload, record, status, source.id);
+    const origins: FieldOriginDraft[] = [
+      {
+        fieldCode: 'status:employeeStatus',
+        originKind: 'status-propagate',
+        value: to,
+        sourceBusinessId: source.id,
+      },
+    ];
+    const versionId = await appendStatusVersion(tx, ctx, target.payload, record, status, source.id, origins);
     await tx.execute(sql`UPDATE employment_business_objects SET revision=revision+1
       WHERE tenant_id=${ctx.tenantId} AND employee_id=${source.employeeId}::uuid
         AND id=${target.payload.businessId}::uuid`);

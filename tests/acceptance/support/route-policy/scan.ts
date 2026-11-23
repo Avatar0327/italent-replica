@@ -525,6 +525,7 @@ export interface RouteModule {
   readonly dirs: readonly string[];
 }
 const SUB_APPS = new Set([
+  'onboarding',
   'employment',
   'approval',
   'contracts',
@@ -538,6 +539,7 @@ const SUB_APPS = new Set([
 export function moduleDirs(fullPath: string): RouteModule {
   const modules = path.join(API_SRC, 'modules');
   const table: readonly (readonly [string, string, readonly string[]])[] = [
+    ['onboarding', '/api/tenant/onboarding/integration/task-pool', [path.join(modules, 'onboarding')]],
     ['employment', '/api/tenant/employment', ['employment', 'transfer'].map((d) => path.join(modules, d))],
     ['approval', '/api/tenant/approval', [path.join(modules, 'approval')]],
     ['contracts', '/api/tenant/contracts', [path.join(modules, 'contracts')]],
@@ -568,6 +570,7 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['avatar', '/api/tenant/avatars', [path.join(modules, 'avatar')]],
     ['attachments', '/api/tenant/attachments', [path.join(modules, 'attachments')]],
     ['command-result', '/api/tenant/commands', [path.join(modules, 'command-result')]],
+    ['hr-analysis', '/api/tenant/analytics/organization-candidates', [path.join(modules, 'analytics')]],
     ['hr-dashboard', '/api/tenant/analytics/hr-dashboard', [path.join(modules, 'analytics')]],
     ['hr-process-dashboard', '/api/tenant/analytics/hr-process-dashboard', [path.join(modules, 'analytics')]],
     ['hr-structure', '/api/tenant/analytics/hr-structure', [path.join(modules, 'analytics')]],

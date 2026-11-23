@@ -3,6 +3,7 @@
  * 任职记录查看权（readPageContext）→ 分页前 DEC-177 范围过滤 → 字段按任职记录 / 人员对象字段权裁剪。
  * view=cancelled（撤销的退休记录，F-277）是五视图之外的额外取值：沿用离职撤销视图（#432）的形态，不按 asOf 过滤。
  */
+import { readExitDutyTransferPlan } from './exit-duty-transfer.js';
 import {
   RETIREMENT_UPCOMING_DAYS,
   RETIREMENT_UPCOMING_DAYS_KEY,
@@ -93,7 +94,9 @@ async function projectRetirementDetail(
     // F-476 P4：办理份未冻结返聘计划，不得从现值回填，也不得借用已办读取的数据范围例外。
     const { rehire, contract } = read.frozen ? {} : await retirementRehireDetail(tx, deps, ctx, detail, show);
     const payload = rehire === undefined ? shown : { ...shown, rehire };
-    return trimRetirementDetail({ ...payload, ...actions }, { ...show, contract });
+    const dutyTransfer =
+      !read.frozen && show.employment('dutyTransfer') ? await readExitDutyTransferPlan(tx, ctx, detail.id) : {};
+    return trimRetirementDetail({ ...payload, ...actions, ...dutyTransfer }, { ...show, contract });
   });
   return { ...projected, contentView };
 }

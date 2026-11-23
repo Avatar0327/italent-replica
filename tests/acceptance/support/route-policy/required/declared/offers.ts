@@ -5,11 +5,13 @@ export const OFFERS_DECLARED: ModuleDeclared = {
   // 转移表单的 target 必填：占位请求在请求体校验处 400，非法标识在 uuidParam 处 400（BE-14a2）
   // link-employee 的 employeeId 必填：占位请求在请求体校验处 400，非法标识在 uuidParam 处 400（BE-14b2）
   sameStatusInvalidId: [
+    'POST /api/tenant/offers/:id/esign-tasks',
     'POST /api/tenant/offers/:id/transfer',
     'POST /api/tenant/offers/:id/toolbar-transfer',
     'POST /api/tenant/offers/:id/link-employee',
   ],
   multiCarrierAdmission: [
+    'GET /api/tenant/offers/:id/esign-records',
     'POST /api/tenant/offers/dictionaries/:kind',
     'PUT /api/tenant/offers/dictionaries/:kind/:id',
   ],

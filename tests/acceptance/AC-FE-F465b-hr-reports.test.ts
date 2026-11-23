@@ -226,6 +226,24 @@ describe('AC-FE-F465b / DEC-763/802/803 组织员工报表', () => {
     expect(urls.some((u) => u.includes('/hr-analysis/roster?'))).toBe(true);
     expect(urls.some((u) => u.includes('/reports/roster'))).toBe(false);
   });
+  it('AC-FE-F465b 统计报表按同一回执本地翻页，不重读原查询', async () => {
+    const report = qualityPage();
+    data = {
+      ...report,
+      rows: Array.from({ length: 21 }, (_, index) => ({
+        ...report.rows[0]!,
+        organizationId: `ZZ_FER2F_${index + 1}`,
+        organizationName: `ZZ_FER2F_机构_${index + 1}`,
+      })),
+    };
+    await render('quality');
+    const before = urls.length;
+    const next = host.querySelector('.ant-pagination-next button') as HTMLButtonElement;
+    await act(async () => next.click());
+    await settle();
+    expect(text()).toContain('ZZ_FER2F_机构_21');
+    expect(urls).toHaveLength(before);
+  });
   it('导出使用已经查询的日期和筛选，移除分页；查询草稿不改变导出', async () => {
     vi.stubGlobal('URL', URL);
     URL.createObjectURL = vi.fn(() => 'blob:synthetic');
@@ -238,6 +256,47 @@ describe('AC-FE-F465b / DEC-763/802/803 组织员工报表', () => {
     expect(url).toContain('asOf=2026-10-06');
     expect(url).not.toContain('page=');
     expect(url).not.toContain('pageSize=');
+  });
+  it('AC-FE-R2f-11 旧名册 1.01 导出限流禁用查询和导出，到期后可手动重试', async () => {
+    await render('1.01');
+    const queryButton = button('查询')!;
+    const exportButton = button('导出')!;
+    expect(queryButton.disabled).toBe(false);
+    expect(exportButton.disabled).toBe(false);
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    const limited = vi.fn((_path: string) =>
+      Promise.resolve(
+        Response.json({ error: { code: 'REQUEST_RATE_LIMITED' } }, { status: 429, headers: { 'Retry-After': '60' } }),
+      ),
+    );
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const path = String(input);
+      return path.startsWith('/api/tenant/hr-analysis/reports/1.01/export?') ? limited(path) : original(input, init);
+    });
+
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    try {
+      await act(async () => exportButton.click());
+      expect(limited).toHaveBeenCalledTimes(1);
+      expect(text()).toContain('请求过于频繁，请稍后重试');
+      expect.soft(queryButton.disabled, '限流期间查询按钮禁用').toBe(true);
+      expect.soft(exportButton.disabled, '限流期间导出按钮禁用').toBe(true);
+      await act(async () => exportButton.click());
+      expect(limited, '限流期间重复点击不发额外导出请求').toHaveBeenCalledTimes(1);
+
+      await act(() => vi.advanceTimersByTimeAsync(59_999));
+      expect(queryButton.disabled).toBe(true);
+      expect(exportButton.disabled).toBe(true);
+      await act(() => vi.advanceTimersByTimeAsync(1));
+      expect(queryButton.disabled).toBe(false);
+      expect(exportButton.disabled).toBe(false);
+      expect(limited, '到期后仍需人工点击').toHaveBeenCalledTimes(1);
+      await act(async () => exportButton.click());
+      expect(limited).toHaveBeenCalledTimes(2);
+      expect(limited.mock.calls[1]).toEqual(limited.mock.calls[0]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('离开再返回、后退再前进时丢弃旧查询回调，重新读取当前报表', async () => {
     await render('1.01');

@@ -7,6 +7,7 @@ import { AppError } from '../../errors.js';
 import { assertRevision } from './context.js';
 import type { PreparedInheritance } from './inheritance.js';
 import type { VersionStatus } from './employee-status.js';
+import { appendFieldOrigins, projectPayloadMarkers, type FieldOriginDraft } from './field-origin-store.js';
 import {
   PRESET_FIELD_NAMES,
   type ChangeType,
@@ -217,6 +218,25 @@ const VERSION_TABLES = new Set(['employment_payload_versions', 'employment_recor
 const JSON_COLUMNS = new Set(['customFields', 'formSnapshot']);
 const ARRAY_COLUMNS = new Set(['deferredFieldCodes', 'explicitFieldCodes']);
 
+type PayloadInput = Pick<EmploymentPayloadRow, 'id' | 'tenantId' | 'employeeId' | 'businessId' | 'previousVersionId'> &
+  Partial<Pick<EmploymentPayloadRow, 'deferredFieldCodes' | 'explicitFieldCodes'>> &
+  Record<string, unknown>;
+type PayloadMarkers = Pick<EmploymentPayloadRow, 'deferredFieldCodes' | 'explicitFieldCodes'>;
+type OtherEmploymentTable =
+  | 'employment_business_objects'
+  | 'employment_state_events'
+  | 'employment_cycles'
+  | 'employment_records'
+  | 'employment_record_tombstones';
+
+interface OriginWrite {
+  readonly ctx: Pick<EmploymentContext, 'tenantId' | 'userId' | 'now' | 'commandId'>;
+  readonly origins: readonly FieldOriginDraft[] | 'carry-only';
+  readonly recordId?: string;
+  readonly status?: VersionStatus;
+  readonly manualPlan?: boolean;
+}
+
 /**
  * 表名固定于本模块；字段名由服务构造，业务值全部绑定为参数。
  * 任职版本（载荷、记录）的人员状态 / 入职状态是所有追加路径共用的继承点（F-022）：调用方展开旧载荷带来的值一律丢弃，
@@ -224,19 +244,53 @@ const ARRAY_COLUMNS = new Set(['deferredFieldCodes', 'explicitFieldCodes']);
  */
 export async function insertEmploymentRow(
   tx: Tx,
-  table: string,
+  table: 'employment_payload_versions',
+  input: PayloadInput,
+  write: OriginWrite,
+): Promise<PayloadMarkers>;
+export async function insertEmploymentRow(
+  tx: Tx,
+  table: OtherEmploymentTable,
   input: Record<string, unknown>,
   status?: VersionStatus,
-  manualPlan = false,
-): Promise<void> {
+): Promise<void>;
+export async function insertEmploymentRow(
+  tx: Tx,
+  table: string,
+  input: Record<string, unknown>,
+  write?: VersionStatus | OriginWrite,
+): Promise<void | PayloadMarkers> {
+  if (table === 'employment_payload_versions') {
+    if (!write || !('origins' in write) || write.ctx.tenantId !== input.tenantId)
+      throw new TypeError('载荷版本缺少同租户字段来源');
+    const payload = input as PayloadInput;
+    const origins = write.origins === 'carry-only' ? [] : write.origins;
+    const markers = await projectPayloadMarkers(tx, write.ctx, payload, origins);
+    await insertVersionRow(tx, table, { ...input, ...markers, manualPlan: write.manualPlan ?? false }, write.status);
+    await appendFieldOrigins(
+      tx,
+      write.ctx,
+      origins.map((row) => ({
+        ...row,
+        businessId: payload.businessId,
+        employeeId: payload.employeeId,
+        payloadVersionId: payload.id,
+        recordId: write.recordId,
+      })),
+    );
+    return markers;
+  }
+  await insertVersionRow(tx, table, input, write as VersionStatus | undefined);
+}
+
+async function insertVersionRow(tx: Tx, table: string, input: Record<string, unknown>, status?: VersionStatus) {
   if (VERSION_TABLES.has(table)) {
     await validateEmploymentForm(tx, String(input.tenantId), input.employmentForm);
     await validateEmploymentType(tx, String(input.tenantId), input.employmentType);
   }
   if (!TABLES.has(table)) throw new TypeError('非任职模块写入表');
-  const values = VERSION_TABLES.has(table)
-    ? { ...versionValues(input, status), ...(table === 'employment_payload_versions' ? { manualPlan } : {}) }
-    : input;
+  const values = VERSION_TABLES.has(table) ? versionValues(input, status) : input;
+  if (table === 'employment_payload_versions') values.manualPlan = input.manualPlan;
   const keys = Object.keys(values).filter((key) => values[key] !== undefined);
   const columns = sql.join(
     keys.map((key) => sql.identifier(key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`))),

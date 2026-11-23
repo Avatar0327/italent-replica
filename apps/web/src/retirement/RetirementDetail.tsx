@@ -2,10 +2,12 @@ import { Button, Descriptions, Drawer, Modal, Space, Table, Tabs, Tag, message }
 import { useState } from 'react';
 import { NameOf } from '../contracts/references.js';
 import { exits } from '../exit/exit-model.js';
+import { validObject } from '../foundation/forms/ConflictCommands.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import type { Values } from '../foundation/forms/values.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { PageState } from '../foundation/PageState.js';
+import { fieldAccess } from '../foundation/permission-model.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useBusinessRead } from '../intern/commands.js';
 import { refPaths } from '../part-time/references.js';
@@ -29,11 +31,36 @@ import {
   type Row,
 } from './model.js';
 import { RetireForm } from './RetireForm.js';
+import { RehirePlanRead } from './RehirePlan.js';
+import { rehireApplicationAccess } from './rehire-model.js';
+import { RetirementEdit, retirementEditFields } from './RetirementEdit.js';
 
-type DetailProps = { view: RetirementView; row: Row; onClose(): void; refresh(): Promise<unknown> };
+type DetailProps = {
+  view: RetirementView;
+  row: Row;
+  onClose(): void;
+  refresh(): Promise<unknown>;
+  knownRehire(employeeId: string): boolean;
+  openRehire(employeeId: string, existing?: boolean): void;
+};
+
+function RehireEntry({ row, knownRehire, openRehire }: Pick<DetailProps, 'row' | 'knownRehire' | 'openRehire'>) {
+  const permission = usePermissions(object).snapshot.objects[object];
+  const access = rehireApplicationAccess(permission);
+  const id = row.employeeId;
+  const known =
+    !!id && fieldAccess(permission, 'kind').visible && fieldAccess(permission, 'mode').visible && knownRehire(id);
+  if (!id) return null;
+  return (
+    <>
+      {access.create && access.preview && <Button onClick={() => openRehire(id)}>{m.rehire.application}</Button>}
+      {known && <Button onClick={() => openRehire(id, true)}>{m.rehire.open}</Button>}
+    </>
+  );
+}
 
 /** 即将 / 过期未退休的员工行：复用人员详情（B6），顶部挂退休办理 / 退休申请 / 意向退休日期申请。 */
-export function PersonDetail({ view, row, onClose, refresh }: DetailProps) {
+export function PersonDetail({ view, row, onClose, refresh, knownRehire, openRehire }: DetailProps) {
   const permissions = usePermissions(object);
   const entries = entriesFor(view, row, permissions.snapshot.objects[object]);
   const [open, setOpen] = useState<Entry>();
@@ -49,6 +76,7 @@ export function PersonDetail({ view, row, onClose, refresh }: DetailProps) {
           {m.entries[entry]}
         </Button>
       ))}
+      <RehireEntry row={row} knownRehire={knownRehire} openRehire={openRehire} />
     </Space>
   );
   return (
@@ -62,17 +90,29 @@ export function PersonDetail({ view, row, onClose, refresh }: DetailProps) {
 }
 
 /** 退休单详情（GET /retirements/:id）：动作取详情里的最新状态与 revision，列表行只用于打开。 */
-export function RetirementDetail({ view, row, onClose, refresh }: DetailProps) {
+export function RetirementDetail({ view, row, onClose, refresh, knownRehire, openRehire }: DetailProps) {
   const result = useRead<Row>(slotKey(retirements, row.id!));
   const permissions = usePermissions(object);
   const detail = result.data;
-  const entries = detail ? entriesFor(view, detail, permissions.snapshot.objects[object]) : [];
+  const permission = permissions.snapshot.objects[object];
+  const entries = detail ? entriesFor(view, detail, permission) : [];
+  const [editing, setEditing] = useState(false);
+  const [feedback, toast] = message.useMessage();
+  const current = detail && !!detail.employeeId && validObject(detail);
+  const editable =
+    (detail?.contentView as { mode?: string } | undefined)?.mode === 'frozen'
+      ? []
+      : retirementEditFields(permission, detail);
+  const restore = current && Array.isArray(detail.actions) && detail.actions.includes('restore');
   const reload = async () => {
     await refresh();
     await result.reload();
   };
   const actions = entries
-    .filter((entry): entry is BillEntry => entry === 'submit' || entry === 'withdraw' || entry === 'cancel')
+    .filter(
+      (entry): entry is Exclude<BillEntry, 'restore'> =>
+        entry === 'submit' || entry === 'withdraw' || entry === 'cancel',
+    )
     .map((entry) => <BillAction key={entry} row={detail!} action={entry} refresh={reload} />);
   return (
     <Drawer open width={760} title={detail?.name ? String(detail.name) : m.title} onClose={onClose}>
@@ -80,10 +120,26 @@ export function RetirementDetail({ view, row, onClose, refresh }: DetailProps) {
         <PageState kind="error" error={result.error} retry={result.refresh} />
       ) : (
         <>
-          {actions.length > 0 && (
+          {toast}
+          {detail && (
             <Space wrap className="retirement-actions">
               {actions}
+              {current && editable.length > 0 && <Button onClick={() => setEditing(true)}>{m.entries.edit}</Button>}
+              {restore && <BillAction row={detail} action="restore" refresh={reload} />}
+              <RehireEntry row={detail} knownRehire={knownRehire} openRehire={openRehire} />
             </Space>
+          )}
+          {detail && editing && (
+            <RetirementEdit
+              detail={detail}
+              editable={editable}
+              refresh={reload}
+              onClose={() => setEditing(false)}
+              onDone={() => {
+                setEditing(false);
+                void feedback.success(m.edit.success);
+              }}
+            />
           )}
           {detail && (
             <Tabs
@@ -136,6 +192,7 @@ function RecordTab({ detail }: { detail: Row }) {
           children: references[key] ? <NameOf path={references[key]} id={detail[key]} /> : cellValue(detail, key),
         }))}
       />
+      <RehirePlanRead plan={detail.rehire} />
     </>
   );
 }
@@ -166,7 +223,7 @@ function billBody(action: BillEntry, extra: Extra): Values {
   return action === 'submit' && extra.ack ? { pendingTransferAck: extra.ack } : {};
 }
 
-type BillEntry = 'submit' | 'withdraw' | 'cancel';
+type BillEntry = 'submit' | 'withdraw' | 'cancel' | 'restore';
 type BillProps = { row: Row; action: BillEntry; refresh(): Promise<unknown> };
 /**
  * 单据动作（提交 / 撤回 / 撤销）：按单据 revision 提交，与办理 / 申请共用员工恢复槽，任一入口结果未知都锁住同一员工；
@@ -201,9 +258,9 @@ function BillAction({ row, action, refresh }: BillProps) {
       });
       if (!done) return;
       // 同一单据已在详情处理并确认：提交 / 撤销后员工入口不再接续，撤回回到草稿则继续原单（第 4 轮 P2-R3-1）
-      drafts.settled(id, action, readback);
+      if (action !== 'restore') drafts.settled(id, action, readback);
       setConfirming(false);
-      void message.success(m.success[action]);
+      void message.success(action === 'restore' ? m.restoreSuccess : m.success[action]);
     } catch {
       // 拒绝 / 冲突 / 结果未知由内核状态条显示
     }
@@ -228,6 +285,15 @@ function BillAction({ row, action, refresh }: BillProps) {
           {m.cancelWarning}
           {status}
         </Modal>
+      </Space>
+    );
+  if (action === 'restore')
+    return (
+      <Space direction="vertical">
+        <Button loading={cmd.form.busy} disabled={cmd.disabled} onClick={() => void run()}>
+          {m.entries.restore}
+        </Button>
+        {status}
       </Space>
     );
   const title = action === 'withdraw' ? m.withdrawConfirm : m.submitConfirm;

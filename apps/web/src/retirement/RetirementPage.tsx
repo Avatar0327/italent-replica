@@ -6,6 +6,7 @@ import { NameOf } from '../contracts/references.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
+import { useSession } from '../foundation/Session.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import { InternCommands } from '../intern/commands.js';
 import { refPaths } from '../part-time/references.js';
@@ -24,6 +25,7 @@ import {
   type Row,
 } from './model.js';
 import { PersonDetail, RetirementDetail } from './RetirementDetail.js';
+import { RehireApplication, type RehireApplicationTarget } from './RehireApplication.js';
 import './retirement.css';
 
 const personObject = 'TenantBase.Employee';
@@ -40,9 +42,63 @@ export function RetirementPage() {
   );
 }
 
+const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+function useRehireApplicationDialog(params: URLSearchParams, setParams: ReturnType<typeof useSearchParams>[1]) {
+  const { tenantId, identityKey } = useSession();
+  const sessionKey = JSON.stringify([tenantId, identityKey]);
+  const [createFor, setCreateFor] = useState<{ sessionKey: string; employeeId: string }>();
+  const [known, setKnown] = useState<Record<string, string>>({});
+  const appId = params.get('rehireApplication');
+  const appEmployee = params.get('rehireEmployee');
+  const linked: RehireApplicationTarget | undefined =
+    appId && uuid.test(appId) && appEmployee && uuid.test(appEmployee)
+      ? { employeeId: appEmployee, id: appId }
+      : undefined;
+  const rehire: RehireApplicationTarget | undefined =
+    linked ?? (createFor?.sessionKey === sessionKey ? createFor : undefined);
+  const keyOf = (employeeId: string) => JSON.stringify([sessionKey, employeeId]);
+  const linkApplication = (employeeId: string, id: string) => {
+    const next = new URLSearchParams(params);
+    next.set('rehireApplication', id);
+    next.set('rehireEmployee', employeeId);
+    setParams(next);
+  };
+  const closeRehire = () => {
+    setCreateFor(undefined);
+    if (!linked) return;
+    const next = new URLSearchParams(params);
+    next.delete('rehireApplication');
+    next.delete('rehireEmployee');
+    setParams(next, { replace: true });
+  };
+  const entries = {
+    knownRehire: (employeeId: string) => !!known[keyOf(employeeId)],
+    openRehire: (employeeId: string, existing?: boolean) => {
+      const id = existing && known[keyOf(employeeId)];
+      if (id) linkApplication(employeeId, id);
+      else setCreateFor({ employeeId, sessionKey });
+    },
+  };
+  const dialog = rehire && (
+    <RehireApplication
+      key={JSON.stringify([sessionKey, rehire.employeeId, rehire.id])}
+      employeeId={rehire.employeeId}
+      id={rehire.id}
+      onClose={closeRehire}
+      onCreated={(id) => {
+        setCreateFor(undefined);
+        setKnown((previous) => ({ ...previous, [keyOf(rehire.employeeId)]: id }));
+        linkApplication(rehire.employeeId, id);
+      }}
+    />
+  );
+  return { entries, dialog, reset: () => setCreateFor(undefined) };
+}
+
 function RetirementList() {
   const [params, setParams] = useSearchParams();
   const view = views.find((item) => item.key === params.get('view'))?.key ?? 'upcoming';
+  const rehire = useRehireApplicationDialog(params, setParams);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Filters>({});
   // 入口按行所属视图判定：选中时连同视图一起记下，切换视图的瞬间点到旧行也不会张冠李戴
@@ -53,6 +109,7 @@ function RetirementList() {
     setPage(1);
     setFilters({});
     select(undefined);
+    rehire.reset();
   };
   const applyFilters = (next: Filters) => {
     setPage(1);
@@ -60,6 +117,7 @@ function RetirementList() {
   };
   const items = result.data?.items ?? [];
   const close = () => select(undefined);
+  const Detail = selected && (isPersonView(selected.view) ? PersonDetail : RetirementDetail);
   return (
     <>
       <h1>{m.title}</h1>
@@ -93,24 +151,17 @@ function RetirementList() {
           </Button>
         </div>
       </section>
-      {selected &&
-        (isPersonView(selected.view) ? (
-          <PersonDetail
-            key={`${selected.view}/${selected.row.employeeId}`}
-            view={selected.view}
-            row={selected.row}
-            onClose={close}
-            refresh={result.reload}
-          />
-        ) : (
-          <RetirementDetail
-            key={`${selected.view}/${selected.row.id}`}
-            view={selected.view}
-            row={selected.row}
-            onClose={close}
-            refresh={result.reload}
-          />
-        ))}
+      {selected && Detail && (
+        <Detail
+          key={`${selected.view}/${selected.row.id ?? selected.row.employeeId}`}
+          view={selected.view}
+          row={selected.row}
+          onClose={close}
+          refresh={result.reload}
+          {...rehire.entries}
+        />
+      )}
+      {rehire.dialog}
     </>
   );
 }
