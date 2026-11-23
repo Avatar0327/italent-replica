@@ -13,7 +13,7 @@ const from = '2026-10-24';
 const department = '10000000-0000-4000-8000-100000000051';
 const approver = '10000000-0000-4000-8000-100000000052';
 const node = prefix + '经理审批 & / +';
-const active = HR_PROCESS_COMPONENTS.slice(0, 10);
+const active = HR_PROCESS_COMPONENTS;
 type Code = (typeof HR_PROCESS_COMPONENTS)[number]['code'];
 
 const names = Object.fromEntries(HR_PROCESS_COMPONENTS.map(({ code, name }) => [code, name]));
@@ -166,7 +166,7 @@ test('AC-FE-R2f-05 审批人和发起周图表使用各自的维度表头', asyn
   await expect(card(page, 'durationByWeek').getByRole('columnheader')).toHaveText(['统计期间', '2026-11-16']);
 });
 
-test('AC-FE-R2f-05 B51 单授权根入口，仅在途与时效两组十项，筛选、图表与分页明细', async ({ page }) => {
+test('AC-FE-R2f-05 B51 单授权根入口，四分区 24 项（S4b 补全质量与应用），筛选、图表与分页明细', async ({ page }) => {
   const reads: URL[] = [];
   page.on('request', (r) => {
     const url = new URL(r.url());
@@ -175,9 +175,9 @@ test('AC-FE-R2f-05 B51 单授权根入口，仅在途与时效两组十项，筛
   await page.goto('/hr-dashboard');
   await expect(page, 'B51 单授权访问根路径应打开人事流程看板').toHaveURL(/\/hr-dashboard\/process$/, { timeout: 5000 });
   await expect(page.getByRole('navigation', { name: '人事看板' }).getByRole('link')).toHaveText(['人事流程看板']);
-  for (const name of ['在途流程监控', '流程时效分析'])
+  for (const name of ['在途流程监控', '流程时效分析', '流程质量分析', '流程应用情况'])
     await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
-  await expect(page.getByRole('article')).toHaveCount(10);
+  await expect(page.getByRole('article')).toHaveCount(24);
   expect(
     await page.getByRole('article').evaluateAll((items) => items.map((item) => item.getAttribute('aria-label'))),
   ).toEqual(active.map(({ name }) => name));
