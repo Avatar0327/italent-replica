@@ -4,14 +4,18 @@
  *  - `pending` 取“来源业务是否已落地、字段是否已物化进任职记录”的事实，不看载荷版本是不是记录快照。
  * 全部走真实业务入口造数；期望值手写。
  */
+import './support/exit-gate-enforced.js';
 import { runEmploymentActivations } from '@italent/api';
 import { sql, withTenant } from '@italent/db';
 import { APPROVAL_TYPES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { denyButtons, gateWorld } from './AC-EXIT-gate-support.js';
 import { BASE, adjustmentOf, bodyOf, hrDraft, managerWorld, rename, type OriginField } from './AC-EMP-30-support.js';
+import { type EmploymentSession } from './AC-EMP-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
+import { exitActivationWorld } from './AC-EXIT-activation-support.js';
 import { activationWorld } from './AC-TRF-activation-support.js';
 import { cmd } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -235,5 +239,115 @@ describe('AC-EMP-32 pending 取落地与物化的事实', () => {
       pending: false,
     });
     expect(pendingOf(after).sort()).toEqual([...untouched].sort());
+  });
+});
+
+describe('AC-EMP-32 pending：未落地的业务一律仍待解析（第 4 轮，设计 §4.9 “尚未落地解析”）', () => {
+  async function closedAutoPopulate(world: { session: EmploymentSession }) {
+    const configured = await world.session.request('PUT', '/transfers/settings', {
+      ifMatch: 0,
+      body: { unrestrictTargetDepartment: false, autoPopulate: false },
+    });
+    expect(configured.status, await configured.clone().text()).toBe(200);
+  }
+  const originsAt = async (world: { session: EmploymentSession }, id: string, day: string) => {
+    world.session.setNow(`${day}T01:00:00Z`);
+    const response = await world.session.request('GET', `/businesses/${id}/field-origins`);
+    expect(response.status, await response.clone().text()).toBe(200);
+    return ((await response.json()) as OriginsBody).fields;
+  };
+  const pendingCodes = (rows: OriginsBody['fields']) => rows.filter((row) => row.pending).map((row) => row.fieldCode);
+
+  it('离职作废的未来直接调动：原计划日前后读来源接口，工作地都仍是 pending（作废的业务从未落地）', async () => {
+    const x = await exitActivationWorld(database().db, `emp32-voided-${uniqueSuffix()}`, '2026-10-06');
+    await closedAutoPopulate(x);
+    const employee = await x.session.getEmployee(x.employee.id);
+    const transfer = await x.session.business(
+      x.employee.id,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-25', fields: { departmentId: x.to.id } },
+      employee.revision,
+    );
+    const leave = await x.directLeave('2026-10-20');
+    expect(await x.activate(leave.id, '2026-10-21')).toMatchObject({ outcome: 'effective' });
+    expect(await x.stateOfBusiness(transfer.id), '前提：离职生效把未来调动作废').toBe('voided');
+    expect(await x.timeline(), '前提：作废的调动不在时间轴上').toHaveLength(2);
+
+    for (const day of ['2026-10-24', '2026-10-25', '2026-10-26']) {
+      const rows = await originsAt(x, transfer.id, day);
+      const place = rows.find((row) => row.fieldCode === 'preset:place');
+      expect(place, day).toMatchObject({ policy: 'deferred', origin: null, pending: true });
+      expect(pendingCodes(rows), day).toContain('preset:place');
+    }
+  });
+
+  async function unlandedWorld(label: string) {
+    const x = await activationWorld(database().db, `emp32-unlanded-${label}-${uniqueSuffix()}`, {
+      today: '2026-10-01',
+    });
+    await closedAutoPopulate(x);
+    const person = await x.hired(`${label}员工`);
+    const application = await x.apply(person.employee.id, '2026-10-05', { departmentId: x.to.id });
+    return { x, person, application };
+  }
+  const transition = async (
+    x: Awaited<ReturnType<typeof unlandedWorld>>['x'],
+    id: string,
+    action: 'reject' | 'approve',
+    at: string,
+  ) => {
+    const { runEmploymentTransition } = await import('../../apps/api/src/modules/employment/transitions.js');
+    const current = await x.business(id);
+    const result = await runEmploymentTransition(
+      x.db,
+      {
+        tenantId: x.session.tenant.id,
+        userId: x.session.user.id,
+        timezone: x.session.tenant.timezone,
+        now: new Date(at),
+        commandId: randomUUID(),
+        expectedRevision: current.revision,
+      },
+      { id, action },
+    );
+    expect(result.status).toBe(200);
+  };
+
+  it.each([
+    ['撤回', 'withdraw'],
+    ['撤销', 'revoke'],
+  ] as const)('申请被%s：生效日当天与之后都没有落地，工作地仍 pending', async (_name, action) => {
+    const { x, application } = await unlandedWorld(action);
+    const current = await x.business(application.id);
+    const response = await x.session.request('POST', `/businesses/${application.id}/${action}`, {
+      ifMatch: current.revision,
+      body: {},
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    for (const day of ['2026-10-04', '2026-10-05', '2026-10-08']) {
+      expect(pendingCodes(await originsAt(x, application.id, day)), day).toContain('preset:place');
+    }
+  });
+
+  it('申请被驳回：生效日当天与之后都没有落地，工作地仍 pending', async () => {
+    const { x, application } = await unlandedWorld('reject');
+    await transition(x, application.id, 'reject', '2026-10-02T01:00:00Z');
+    for (const day of ['2026-10-04', '2026-10-05', '2026-10-08']) {
+      expect(pendingCodes(await originsAt(x, application.id, day)), day).toContain('preset:place');
+    }
+  });
+
+  it('改期后仍待前序（调度因前序区间含本单记需重建，未落地）：生效日之后工作地仍 pending', async () => {
+    const x = await activationWorld(database().db, `emp32-resched-${uniqueSuffix()}`, { today: '2026-10-01' });
+    await closedAutoPopulate(x);
+    const person = await x.hired('改期员工');
+    const approve = async (date: string, at: string) =>
+      x.approve(await x.apply(person.employee.id, date, { departmentId: x.to.id }), at);
+    const earlier = await approve('2026-10-05', '2026-10-01T02:00:00Z');
+    await approve('2026-10-06', '2026-10-08T01:00:00Z');
+    const run = await x.runScheduler('2026-10-09T01:00:00Z');
+    expect(run, '前提：前序记需重建而没有落地').toMatchObject({ failed: [earlier.id] });
+    for (const day of ['2026-10-09', '2026-10-12']) {
+      expect(pendingCodes(await originsAt(x, earlier.id, day)), day).toContain('preset:place');
+    }
   });
 });
