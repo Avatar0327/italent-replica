@@ -17,6 +17,7 @@ import { type EmploymentSession } from './AC-EMP-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
 import { exitActivationWorld } from './AC-EXIT-activation-support.js';
 import { activationWorld } from './AC-TRF-activation-support.js';
+import { dedicatedBody, retirementWorld } from './AC-RT-support.js';
 import { cmd } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -343,11 +344,91 @@ describe('AC-EMP-32 pending：未落地的业务一律仍待解析（第 4 轮�
     const approve = async (date: string, at: string) =>
       x.approve(await x.apply(person.employee.id, date, { departmentId: x.to.id }), at);
     const earlier = await approve('2026-10-05', '2026-10-01T02:00:00Z');
-    await approve('2026-10-06', '2026-10-08T01:00:00Z');
+    const later = await approve('2026-10-06', '2026-10-08T01:00:00Z');
+    // 调度前先读真正被改期的后单：它是 approved、生效日已被改到审批当天，工作地仍待解析
+    const rescheduled = await x.business(later.id);
+    expect(rescheduled, '前提：后单已审批通过、尚未落地').toMatchObject({ status: 'approved' });
+    expect(rescheduled.effectiveDate, '前提：后单的生效日已因迟到审批而改期').not.toBe('2026-10-06');
+    expect(pendingCodes(await originsAt(x, later.id, '2026-10-08')), '后单（调度前）').toContain('preset:place');
     const run = await x.runScheduler('2026-10-09T01:00:00Z');
     expect(run, '前提：前序记需重建而没有落地').toMatchObject({ failed: [earlier.id] });
     for (const day of ['2026-10-09', '2026-10-12']) {
       expect(pendingCodes(await originsAt(x, earlier.id, day)), day).toContain('preset:place');
     }
+  });
+});
+
+describe('AC-EMP-32 pending：曾落地的业务被摘出时间轴后仍是已落地（第 5 轮，设计 §4.9）', () => {
+  async function retiringWorld(label: string) {
+    const x = await retirementWorld(database().db, `emp32-${label}-${uniqueSuffix()}`, '2026-10-06');
+    const configured = await x.session.request('PUT', '/transfers/settings', {
+      ifMatch: 0,
+      body: { unrestrictTargetDepartment: false, autoPopulate: false },
+    });
+    expect(configured.status, await configured.clone().text()).toBe(200);
+    const transferOn = async (effectiveDate: string) => {
+      const { revision } = await x.session.getEmployee(x.employee.id);
+      const transfer = await x.session.business(
+        x.employee.id,
+        { kind: 'transfer', mode: 'direct', effectiveDate, fields: { departmentId: x.to.id } },
+        revision,
+      );
+      expect(transfer.status).toBe('effective');
+      return transfer;
+    };
+    const retire = async (lastWorkDate: string) => {
+      const { revision } = await x.session.getEmployee(x.employee.id);
+      const response = await x.session.request('POST', `/retirements/employees/${x.employee.id}`, {
+        ifMatch: revision,
+        body: dedicatedBody(lastWorkDate, 'direct'),
+      });
+      expect(response.status, await response.clone().text()).toBe(201);
+    };
+    const originsOn = async (id: string, day: string) => {
+      x.session.setNow(`${day}T01:00:00Z`);
+      const response = await x.session.request('GET', `/businesses/${id}/field-origins`);
+      expect(response.status, await response.clone().text()).toBe(200);
+      return ((await response.json()) as OriginsBody).fields;
+    };
+    return { x, transferOn, retire, originsOn };
+  }
+  const placeOf = (rows: OriginsBody['fields']) => rows.find((row) => row.fieldCode === 'preset:place');
+
+  it('当天已落地的调动被退休顺延重排摘出时间轴：此前实际生效过，工作地不再 pending', async () => {
+    const { x, transferOn, retire, originsOn } = await retiringWorld('retire-sameday');
+    const transfer = await transferOn('2026-10-06');
+    expect(placeOf(await originsOn(transfer.id, '2026-10-06')), '前提：摘出前已落地').toMatchObject({
+      policy: 'deferred',
+      pending: false,
+    });
+    x.session.setNow('2026-10-06T01:00:00Z');
+    await retire('2026-10-04');
+    expect(
+      (await x.timeline()).map((row) => row.kind),
+      '前提：调动已被摘出时间轴',
+    ).toEqual(['hire', 'retirement']);
+    for (const day of ['2026-10-06', '2026-10-07', '2026-10-20']) {
+      expect(placeOf(await originsOn(transfer.id, day)), day).toMatchObject({ policy: 'deferred', pending: false });
+    }
+  });
+
+  it('未来调动被退休提前摘出：原计划日前后都没有实际生效，工作地仍 pending', async () => {
+    const { x, transferOn, retire, originsOn } = await retiringWorld('retire-future');
+    const transfer = await transferOn('2026-10-20');
+    await retire('2026-10-05');
+    expect(
+      (await x.timeline()).map((row) => row.kind),
+      '前提：调动已被摘出时间轴',
+    ).toEqual(['hire', 'retirement']);
+    for (const day of ['2026-10-19', '2026-10-20', '2026-10-25']) {
+      expect(placeOf(await originsOn(transfer.id, day)), day).toMatchObject({ policy: 'deferred', pending: true });
+    }
+  });
+
+  it('直接办理的未来调动：生效日前 pending，生效日当天起不再 pending（时间轴条目的生效日已到）', async () => {
+    const { transferOn, originsOn } = await retiringWorld('direct-future');
+    const transfer = await transferOn('2026-10-20');
+    expect(placeOf(await originsOn(transfer.id, '2026-10-19')), '前一天').toMatchObject({ pending: true });
+    expect(placeOf(await originsOn(transfer.id, '2026-10-20')), '生效日').toMatchObject({ pending: false });
   });
 });
