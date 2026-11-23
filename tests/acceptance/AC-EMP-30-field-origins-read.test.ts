@@ -123,7 +123,7 @@ async function fixture(hidden: string[] = []) {
   expect(scope.status, await scope.clone().text()).toBe(200);
   const actor = w.as(manager.userId);
   const read = (path: string, who: { user?: string; tenant?: string } = actor) => api.request('GET', path, who);
-  return { w, a, b, member, member2, stranger, away, bystander, manager, actor, read };
+  return { w, a, b, far, member, member2, stranger, away, bystander, manager, actor, read };
 }
 
 interface ErrorEnvelope {
@@ -185,7 +185,8 @@ describe('AC-EMP-30 只读来源接口：行内容与字段裁剪', () => {
     const x = await fixture(hidden);
     const draft = await hrDraft(x.w, x.member.employeeId, { departmentId: x.b, place: 'ZZ_地点', remarks: 'ZZ_备注' });
     const visibleSource = await hrDraft(x.w, x.member2.employeeId, { departmentId: x.b });
-    const hiddenSource = await hrDraft(x.w, x.away.employeeId, { departmentId: x.b });
+    // 来源业务的部门与员工都在操作人范围外（DEC-177：任一在范围内即可见，所以部门也要放在范围外）
+    const hiddenSource = await hrDraft(x.w, x.away.employeeId, { departmentId: x.far });
     await seedOrigins(x.w, draft.id, x.member.employeeId, [
       { fieldCode: 'preset:place', originKind: 'forward-update', value: 'ZZ_地点', sourceBusinessId: visibleSource.id },
       {
@@ -217,7 +218,8 @@ describe('AC-EMP-30 只读来源接口：行内容与字段裁剪', () => {
         sourceBusinessId: x.visibleSource.id,
         reason: null,
       },
-      policy: null,
+      // 草稿保存时台账已写下该字段的“继承”策略行；来源行（向后更新）是覆盖行，二者并存
+      policy: 'inherit',
       pending: false,
       suspended: false,
     });
@@ -225,13 +227,15 @@ describe('AC-EMP-30 只读来源接口：行内容与字段裁剪', () => {
       fieldCode: 'preset:remarks',
       value: 'ZZ_备注',
       origin: { kind: 'forward-update', label: '向后更新', at: SEEDED_AT, sourceBusinessId: null, reason: null },
-      policy: null,
+      // 草稿保存时台账已写下该字段的“继承”策略行；来源行（向后更新）是覆盖行，二者并存
+      policy: 'inherit',
       pending: false,
       suspended: false,
     });
     expect(row('preset:departmentId')).toMatchObject({
       value: x.b,
       origin: { kind: 'hr-input', sourceBusinessId: null },
+      policy: 'none',
     });
     // 不外露操作人、命令、被挂起行的值
     expect(JSON.stringify(body)).not.toContain(x.w.hr.id);

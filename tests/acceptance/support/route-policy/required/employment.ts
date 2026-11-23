@@ -2462,6 +2462,20 @@ export const EMPLOYMENT: RequiredTable = {
       [at(EMP, 'GET', '/businesses/:id', 'transferBusinessContext(tx, ctx, id)'), ...BUSINESS_SOURCE],
     ),
   ],
+  'GET /api/tenant/employment/businesses/:id/field-origins': [
+    // F-036-S5（设计 §4.9）：与详情路由同一批读上下文 / 守卫；字段裁剪经 shownBusiness → trimEmploymentResponse，
+    // 用的 getModuleViewableFields 属于第 ① 项的对象查看权。冻结分支不读来源台账。
+    recordView(at(EMP, 'GET', '/businesses/:id/field-origins', "let ctx = await readPageContext(c, deps, 'detail')"), [
+      'object:readPageContext',
+      'object:object.* 动作',
+    ]),
+    INITIATOR_BUTTON(at(EMP, 'GET', '/businesses/:id/field-origins', 'transferBusinessContext(tx, ctx, id)')),
+    ob(
+      'guard:transfer.source',
+      ['guard:transfer.source'],
+      [at(EMP, 'GET', '/businesses/:id/field-origins', 'transferBusinessContext(tx, ctx, id)'), ...BUSINESS_SOURCE],
+    ),
+  ],
   'GET /api/tenant/employment/records/:id': [
     recordView(at(EMP, 'GET', '/records/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
   ],
