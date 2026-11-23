@@ -1823,10 +1823,10 @@ export const EMPLOYMENT: RequiredTable = {
         {
           role: 'impl',
           unit: `${SRC}/transfer/preview.ts#previewTransfer`,
-          anchor: 'await requireTransferWrite(accessContext, input)',
+          anchor: 'await requireTransferEditedWrite(accessContext, input)',
         },
       ],
-      '条件守卫：员工发起的预览先按职位类字段写权判定（DEC-205 可配置），再做表单校验，没有编辑权的字段是 403 不是 400',
+      '条件守卫：员工发起的预览先按请求里实际编辑的业务字段判写权（DEC-205 可配置；路由参数不算编辑字段），再做表单校验，没有编辑权的字段是 403 不是 400',
     ),
     {
       ...ob(
@@ -1837,12 +1837,12 @@ export const EMPLOYMENT: RequiredTable = {
           {
             role: 'impl',
             unit: `${SRC}/transfer/preview.ts#previewTransfer`,
-            anchor: 'await requireTransferWrite(accessContext, input)',
+            anchor: 'await requireTransferEditedWrite(accessContext, input)',
           },
           {
             role: 'impl',
-            unit: `${SERVICE}#requireTransferWrite`,
-            anchor: "await requireEmploymentWrite(ctx, 'create', input.writable)",
+            unit: `${SERVICE}#requireTransferEditedWrite`,
+            anchor: "await requireEmploymentWrite(ctx, 'create', edited)",
           },
           WRITE_OBJECT,
         ],
