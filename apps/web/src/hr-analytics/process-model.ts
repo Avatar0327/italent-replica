@@ -222,7 +222,8 @@ function pointValue(component: ProcessComponent, { count, rate, average }: Proce
   return { value: average, text: daysText(average) };
 }
 
-const byKey = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+// 按码位比较，与服务端排序键一致（不随浏览器区域设置变化）
+const byKey = (a: string, b: string) => Number(a > b) - Number(a < b);
 
 export function processPoints(component: ProcessComponent): ProcessPoint[] {
   const { code, groups } = component;
@@ -254,7 +255,7 @@ function ratioSeries(component: ProcessComponent, points: readonly ProcessPoint[
     key: field,
     label,
     points: points.map((point) => {
-      const value = byGroup.get(point.category)![field];
+      const value = byGroup.get(point.category)?.[field] ?? null;
       return {
         ...point,
         key: JSON.stringify([point.category, field]),
