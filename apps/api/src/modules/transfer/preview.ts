@@ -10,7 +10,7 @@ import { authorizeInTransaction } from '../permission/module-access.js';
 import { resolveTransferForm } from './configuration.js';
 import { transferDirectActions, requireTransferSource } from './access.js';
 import { transferPartTimePort, type OngoingPartTimes } from './linkage/part-time.js';
-import { transferTargetContext, type TransferInput } from './service.js';
+import { requireTransferWrite, transferTargetContext, type TransferInput } from './service.js';
 import { requireEmployeeTransferFields } from './employee-policy.js';
 
 export async function previewTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
@@ -20,6 +20,8 @@ export async function previewTransfer(tx: Tx, ctx: EmploymentContext, employeeId
   if (input.initiator === 'employee') {
     ctx = { ...ctx, selfServiceEmployeeId: employeeId };
     await requireEmployeeTransferFields(tx, ctx, input.employment.effectiveDate, input.employment.fields, employeeId);
+    // 字段写权先于表单校验（DEC-205：职位编辑权可配置）：没有编辑权的字段在预览里也是 403，而不是被表单当成 400。
+    await requireTransferWrite(accessContext, input);
   }
   const employee = await readEmploymentEmployee(tx, ctx, employeeId);
   const prepared = await prepareInheritance(tx, ctx, { ...input.employment, employeeId });

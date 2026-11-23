@@ -523,6 +523,9 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       result === undefined ? input : { ...input, probationResult: result },
       async (tx, context) => {
         const checked = await patchContext(tx, context, id, input);
+        // 员工行锁已取（patchContext 'command'）：同值判定、保存值可信度与字段写权在锁内同一份载荷上重做。
+        // 入口与 guard 在锁外读到的载荷可能已被并发提交改写（HR 传播 / 改单），不能拿旧结论放行（F-036 §5.2）。
+        await requireDraftEditWrite((run) => run(tx), checked, id, input, options);
         // 带试用结果的转正申请走 updateRegularizationApplication（F-347 c）
         if (result !== undefined)
           return {
@@ -1147,7 +1150,11 @@ async function authorizeImport(
       const patch = normalizeBusinessPatch(item.patch);
       const current = await authorizeBusinessWrite(deps, ctx, item.id, employeeId);
       targets.push({ id: item.id, employeeId, kind: current.kind, patch });
-      if (preview) await inTenant(deps, ctx)((tx) => requireEmployeeTransferBusiness(tx, ctx, item.id, patch));
+      // 导入编辑的对象是已生效的任职记录，按生效记录契约校验对象、范围与本次字段写权（同 PATCH /records/:id）；
+      // 员工草稿的只读上限与保存值可信度只约束未生效的草稿，生效后员工的旧命令不能再卡 HR 的编辑（F-036 S4 P2-3）。
+      if (current.status === 'effective') {
+        if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit');
+      } else if (preview) await inTenant(deps, ctx)((tx) => requireEmployeeTransferBusiness(tx, ctx, item.id, patch));
       else await requireDraftEditWrite(inTenant(deps, ctx), ctx, item.id, patch, {});
       const departmentId = patch.fields?.departmentId;
       if (departmentId !== undefined)

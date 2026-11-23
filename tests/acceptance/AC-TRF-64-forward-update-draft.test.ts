@@ -102,7 +102,7 @@ describe('AC-TRF-64 系统写入不算员工输入', () => {
     expect(await s.originKinds(draft.id, 'preset:sequenceId')).not.toContain('derive');
   });
 
-  it('P2-2 沿用的只读自定义字段不当作本次提交：只改生效日仍 200，值保持 B；显式改写仍 400', async () => {
+  it('P2-2 沿用的只读自定义字段不当作本次提交：只改生效日仍 200，值保持 B；显式改写仍被拒绝', async () => {
     const s = await selfWorld(database().db, 'f036s4-64-carried-custom');
     const field = await s.customField('合成备注');
     await ok(await s.formModes({ [`custom:${field}`]: 'readonly' }));
@@ -127,9 +127,9 @@ describe('AC-TRF-64 系统写入不算员工输入', () => {
     expect(response.status, await response.clone().text()).toBe(200);
     expect(await custom()).toMatchObject({ [field]: 'B' });
 
-    // 本次请求点名改写只读字段，仍按表单模式拒绝，值不变。
+    // 本次请求点名改写只读字段仍被拒绝（字段写权 403 或表单模式 400，取决于哪道门先判），值不变。
     const rewrite = await s.patch(person, draft.id, { customFields: { [field]: 'C' } });
-    expect(rewrite.status, await rewrite.clone().text()).toBe(400);
+    expect([400, 403], await rewrite.clone().text()).toContain(rewrite.status);
     expect(await custom()).toMatchObject({ [field]: 'B' });
   });
 });
