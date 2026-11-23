@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { auditEmployment } from './context.js';
+import { exitPlanOrigins } from './field-origin-write.js';
 import { assertRestoredPredecessor } from './deletion-guards.js';
 import { repositionEffectiveRecord } from './late-transfer.js';
 import { loadEmploymentRecord } from './read-model.js';
@@ -50,18 +51,13 @@ export async function repositionExit(
     triggerBusinessId: business.id,
   };
   const { fields, ...metadata } = next;
-  await insertEmploymentRow(
+  const markers = await insertEmploymentRow(
     tx,
     'employment_payload_versions',
-    {
-      ...metadata,
-      ...fields,
-      createdAt: ctx.now.toISOString(),
-    },
-    undefined,
-    true,
+    { ...metadata, ...fields, createdAt: ctx.now.toISOString() },
+    { ctx, recordId: business.id, manualPlan: true, origins: exitPlanOrigins(previous, next) },
   );
-  business.payload = next;
+  business.payload = { ...next, ...markers };
   await repositionEffectiveRecord(tx, ctx, business, before, async () => {
     await reattachFutureTransfers(tx, ctx, business.employeeId, business.id);
   });

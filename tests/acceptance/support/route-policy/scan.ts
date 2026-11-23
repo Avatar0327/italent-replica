@@ -525,6 +525,7 @@ export interface RouteModule {
   readonly dirs: readonly string[];
 }
 const SUB_APPS = new Set([
+  'onboarding',
   'employment',
   'onboarding',
   'approval',
@@ -539,6 +540,7 @@ const SUB_APPS = new Set([
 export function moduleDirs(fullPath: string): RouteModule {
   const modules = path.join(API_SRC, 'modules');
   const table: readonly (readonly [string, string, readonly string[]])[] = [
+    ['onboarding', '/api/tenant/onboarding/integration/task-pool', [path.join(modules, 'onboarding')]],
     ['employment', '/api/tenant/employment', ['employment', 'transfer'].map((d) => path.join(modules, d))],
     ['onboarding', '/api/tenant/onboarding', [path.join(modules, 'onboarding')]],
     ['approval', '/api/tenant/approval', [path.join(modules, 'approval')]],

@@ -33,17 +33,25 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/analytics/hr-dashboard/indicators/:code/export': 'c613c4747358',
   },
   'apps/api/src/modules/analytics/hr-dashboard.ts': {
+    employmentVisible: 'ecbe2e7e6a06',
     hrDashboardPage: '8bccc42f5154',
     indicatorRows: '2a2ce234f174',
     pageRows: '75e6a62ba7ec',
   },
   'apps/api/src/modules/analytics/hr-movement-routes.ts': {
     boardContext: 'aa4bc1989f2b',
+    loadBoard: 'fff63c307e29',
+    projectMember: '083cc831a2c8',
     reportContext: '8ca27169ea99',
     'route:GET /api/tenant/analytics/hr-movement': 'f2c77b11f9a1',
-    'route:GET /api/tenant/analytics/hr-movement/components/:code': '53aa0476716b',
+    'route:GET /api/tenant/analytics/hr-movement/components/:code': 'fb8f55b7b24a',
+    'route:GET /api/tenant/analytics/hr-movement/components/:code/export': '9c805900bd2c',
     'route:GET /api/tenant/analytics/hr-movement/reports/:report': 'ff3b4defe5f6',
     'route:GET /api/tenant/analytics/hr-movement/reports/:report/export': '3a3476699cff',
+  },
+  'apps/api/src/modules/analytics/hr-movement.ts': {
+    loadEstablishment: '9d1aaa21936a',
+    loadMovement: '6dcd74d67e1f',
   },
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts': {
     approvalVisible: '2e0c654e1a67',
@@ -53,11 +61,16 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/analytics/hr-structure-routes.ts': {
     boardContext: '42546e84f947',
+    projectMember: 'd2b6ba49dc5d',
     reportContext: '33293fcda1ae',
     'route:GET /api/tenant/analytics/hr-structure': '92a1e37b8f44',
-    'route:GET /api/tenant/analytics/hr-structure/components/:code': '321c55c85fb7',
+    'route:GET /api/tenant/analytics/hr-structure/components/:code': '63ae0ed43378',
+    'route:GET /api/tenant/analytics/hr-structure/components/:code/export': '8b05c3759a49',
     'route:GET /api/tenant/analytics/hr-structure/reports/:report': 'b7d824e8d5d8',
     'route:GET /api/tenant/analytics/hr-structure/reports/:report/export': '3fc022206c15',
+  },
+  'apps/api/src/modules/analytics/hr-structure.ts': {
+    structurePeople: '11fe4ee731ec',
   },
   'apps/api/src/modules/analytics/organization-candidates.ts': {
     ANALYSIS_CANDIDATE_OBJECTS: '5765a77c4c34',
@@ -204,7 +217,7 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/commands/:commandId/result': '73fb78d96974',
   },
   'apps/api/src/modules/command-result/service.ts': {
-    commandResultRegistry: 'e0952a01537e',
+    commandResultRegistry: '2baf62b2bc58',
     latestFailureGroup: '3a1806588594',
     readOwnCommandResult: '029b54c7bba9',
     readRegisteredCommandResult: '3a68705a67b6',
@@ -616,7 +629,7 @@ export const DIGESTS: Digests = {
     'route:GET /records': '4b23dae37df4',
   },
   'apps/api/src/modules/employment/regularization-reschedule.ts': {
-    rescheduleRegularization: '2020cec359d9',
+    rescheduleRegularization: '21305910655e',
   },
   'apps/api/src/modules/employment/regularization.ts': {
     regularizeOne: '783a0d02bf5e',
@@ -1164,6 +1177,27 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/onboarding/collection-config.ts': {
     writeCollectionResource: '5743015f4701',
+  },
+  'apps/api/src/modules/onboarding/integration-pool-access.ts': {
+    POOL_FIELDS: '28b48494002a',
+    POOL_SETTINGS: '9f0e67befd9d',
+    POOL_WRITE_ALIAS: '22f4eb17ebb4',
+    poolAvailableActions: 'f0e2c2d733d0',
+    requirePoolView: '08ad8884484e',
+    requirePoolWrite: 'b3aaa8cbbcda',
+  },
+  'apps/api/src/modules/onboarding/integration-pool-result.ts': {
+    INTEGRATION_POOL_COMMAND_RESULTS: '42aa78f3140e',
+    POOL_RESULT_TYPES: '7ce47714031e',
+  },
+  'apps/api/src/modules/onboarding/integration-pool-routes.ts': {
+    poolWrite: 'eeab92939127',
+    'route:DELETE /:id': 'd241087be6f4',
+    'route:GET /': '191a8241b2ad',
+    'route:GET /:id': 'bdd12daa4395',
+    'route:GET /categories': 'b964b4d2452d',
+    'route:PATCH /:id': 'e762e59295c0',
+    'route:POST /': '5ca03dcd174f',
   },
   'apps/api/src/modules/org-adjustment/access.ts': {
     OBJECT: 'b007f3f6067a',
@@ -2176,18 +2210,25 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     'a832d6af6609',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard/indicators/:code/export':
     '0c861c124bea',
+  'apps/api/src/modules/analytics/hr-dashboard.ts#employmentVisible': 'a7ff02b4963a',
   'apps/api/src/modules/analytics/hr-dashboard.ts#hrDashboardPage': '897faf88302f',
   'apps/api/src/modules/analytics/hr-dashboard.ts#indicatorRows': 'd76277a6cea4',
   'apps/api/src/modules/analytics/hr-dashboard.ts#pageRows': '377049583bce',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#boardContext': '75939c8efcfb',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#loadBoard': '9b703f770cce',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#projectMember': 'e3b0c44298fc',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#reportContext': '3b25725172cf',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement': 'c00629251c2e',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/components/:code':
-    '6aa0671e386b',
+    'd3bf5dc5d5d9',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/components/:code/export':
+    '1827963c9e8a',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/reports/:report':
     'b1ba560dc863',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/reports/:report/export':
     'baf43a98850f',
+  'apps/api/src/modules/analytics/hr-movement.ts#loadEstablishment': '9c213e793bfb',
+  'apps/api/src/modules/analytics/hr-movement.ts#loadMovement': '32c4e047085a',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#approvalVisible': '55c173015a83',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#processContext': '8371d99ccf32',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard':
@@ -2195,14 +2236,18 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard/components/:code':
     '88d86191c204',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#boardContext': '9f65210d159b',
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#projectMember': 'e3b0c44298fc',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#reportContext': '5a3beab87101',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure': '472176817c4d',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code':
-    '441eb6918e7f',
+    'c109d24806da',
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code/export':
+    '554039e20d58',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report':
     '0268098fd8cb',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report/export':
     '90caf0136978',
+  'apps/api/src/modules/analytics/hr-structure.ts#structurePeople': '243a2b647817',
   'apps/api/src/modules/analytics/organization-candidates.ts#ANALYSIS_CANDIDATE_OBJECTS': '1f397b8d369b',
   'apps/api/src/modules/analytics/organization-candidates.ts#organizationCandidateObject': '20045976b1f6',
   'apps/api/src/modules/analytics/organization-candidates.ts#route:GET /api/tenant/analytics/organization-candidates':
@@ -2309,7 +2354,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/avatar/service.ts#uploadAvatar': '7b148f1cfed9',
   'apps/api/src/modules/avatar/service.ts#whereOwner': '6ae738c83349',
   'apps/api/src/modules/command-result/routes.ts#route:GET /api/tenant/commands/:commandId/result': 'eb3a928cf8b1',
-  'apps/api/src/modules/command-result/service.ts#commandResultRegistry': 'b1789a4abe50',
+  'apps/api/src/modules/command-result/service.ts#commandResultRegistry': '8d830e264e29',
   'apps/api/src/modules/command-result/service.ts#latestFailureGroup': '4bca3a38775a',
   'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': '1ea7aca1cfae',
   'apps/api/src/modules/command-result/service.ts#readRegisteredCommandResult': '19453c7ecdc7',
@@ -3001,6 +3046,21 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/onboarding/collection-config-routes.ts#writeConfig': '21d8ea8d3ade',
   'apps/api/src/modules/onboarding/collection-config-scope.ts#SETTINGS': '962a8dd9a03e',
   'apps/api/src/modules/onboarding/collection-config.ts#writeCollectionResource': 'a4ad939c613b',
+  'apps/api/src/modules/onboarding/integration-pool-access.ts#POOL_FIELDS': 'e3b0c44298fc',
+  'apps/api/src/modules/onboarding/integration-pool-access.ts#POOL_SETTINGS': '962a8dd9a03e',
+  'apps/api/src/modules/onboarding/integration-pool-access.ts#POOL_WRITE_ALIAS': 'e3b0c44298fc',
+  'apps/api/src/modules/onboarding/integration-pool-access.ts#poolAvailableActions': '77b45526f356',
+  'apps/api/src/modules/onboarding/integration-pool-access.ts#requirePoolView': 'c9c6b2d62656',
+  'apps/api/src/modules/onboarding/integration-pool-access.ts#requirePoolWrite': 'c45cd7eaf26a',
+  'apps/api/src/modules/onboarding/integration-pool-result.ts#INTEGRATION_POOL_COMMAND_RESULTS': '32c0bfd47b93',
+  'apps/api/src/modules/onboarding/integration-pool-result.ts#POOL_RESULT_TYPES': '33ef80175879',
+  'apps/api/src/modules/onboarding/integration-pool-routes.ts#poolWrite': 'e67d4c8846e3',
+  'apps/api/src/modules/onboarding/integration-pool-routes.ts#route:DELETE /:id': '6a3e879901cf',
+  'apps/api/src/modules/onboarding/integration-pool-routes.ts#route:GET /': '1bb7558a4715',
+  'apps/api/src/modules/onboarding/integration-pool-routes.ts#route:GET /:id': '0b739b10b163',
+  'apps/api/src/modules/onboarding/integration-pool-routes.ts#route:GET /categories': 'd3e5b26e4caf',
+  'apps/api/src/modules/onboarding/integration-pool-routes.ts#route:PATCH /:id': 'd5b04f8c30a3',
+  'apps/api/src/modules/onboarding/integration-pool-routes.ts#route:POST /': 'fd6bdb361a38',
   'apps/api/src/modules/org-adjustment/access.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHead': '838eace8ec6b',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHeadAction': '803a4a5374ea',

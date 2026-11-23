@@ -1,0 +1,75 @@
+.hr-structure-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+.hr-structure-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  grid-column: span 3;
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: white;
+}
+.hr-structure-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+}
+.hr-structure-card h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.hr-structure-card header .ant-btn {
+  padding-inline: 4px;
+}
+.hr-structure-card strong {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+.hr-structure-stat {
+  grid-column: span 2;
+}
+.hr-structure-chart-summary {
+  margin: 0;
+  color: var(--shell-text);
+}
+.hr-structure-candidate-hint,
+.hr-structure-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.hr-structure-candidate-hint {
+  font-size: 12px;
+}
+.hr-structure-group {
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.hr-structure-group .ant-select {
+  min-width: 160px;
+  max-width: 80%;
+}
+.hr-dashboard-filters .hr-report-filter:has(> .ant-checkbox-wrapper) {
+  min-width: 0;
+}
+.hr-dashboard-filters .ant-checkbox-wrapper {
+  align-items: center;
+  min-height: 32px;
+}
+@media (max-width: 900px) {
+  .hr-structure-card:not(.hr-structure-stat) {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 620px) {
+  .hr-structure-stat {
+    grid-column: 1 / -1;
+  }
+}

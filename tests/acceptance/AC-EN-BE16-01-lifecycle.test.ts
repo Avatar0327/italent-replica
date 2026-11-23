@@ -26,6 +26,8 @@ const now = new Date('2026-10-20T08:00:00Z');
 const pendingDate = '2026-10-22';
 const cases = onboardingEntryCases;
 const NOT_CURRENT = { code: 'CONFLICT', details: { reason: 'ENTRY_CASE_NOT_CURRENT' } };
+const ONBOARDING = '/api/tenant/onboarding';
+const TASK_POOL = `${ONBOARDING}/integration/task-pool`;
 
 async function fixture(label: string, db = testDb().db) {
   const { tenant, user } = await seedTenantWithMember(db, label);
@@ -62,13 +64,20 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
     const f = await fixture('ZZ_BE16_LIFECYCLE');
     const { entry, run, context, replacements } = f;
     const { port, app } = install(f.db);
-    expect(
-      app.routes.filter(
-        ({ path }) =>
-          path.startsWith('/api/tenant/onboarding') &&
-          !/^\/api\/tenant\/onboarding\/(?:collection-(?:templates|rules)(?:\/:id)?|collection-settings)$/.test(path),
-      ),
-    ).toEqual([]);
+    // 采集配置（16a-1）路由不在本断言范围；其余入职路由只允许融入任务池（16b-0）
+    const COLLECTION = /^\/api\/tenant\/onboarding\/(?:collection-(?:templates|rules)(?:\/:id)?|collection-settings)$/;
+    const onboardingRoutes = app.routes
+      .filter(({ path }) => path.startsWith(ONBOARDING) && !COLLECTION.test(path))
+      .map(({ method, path }) => `${method} ${path}`)
+      .sort();
+    expect(onboardingRoutes).toEqual([
+      `DELETE ${TASK_POOL}/:id`,
+      `GET ${TASK_POOL}`,
+      `GET ${TASK_POOL}/:id`,
+      `GET ${TASK_POOL}/categories`,
+      `PATCH ${TASK_POOL}/:id`,
+      `POST ${TASK_POOL}`,
+    ]);
     const created = await run((tx) => port.create(tx, context(), entry));
     expect(await run((tx) => port.create(tx, context(), entry))).toEqual(created);
     const replacement = { ...entry, kind: 'replace' as const, replacementBusinessId: replacements[0], pendingDate };

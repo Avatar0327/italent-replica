@@ -3,7 +3,9 @@ import {
   FIELD_ORIGIN_ANCHORS,
   FIELD_ORIGIN_OVERRIDES,
   FIELD_ORIGIN_POLICIES,
+  FORM_DEPENDENCY_RESET,
   foldFieldOrigins,
+  projectOriginMarkers,
   type FieldOriginKind,
   type OriginDerivationRule,
 } from '@italent/domain';
@@ -66,7 +68,16 @@ export async function loadFieldOrigins(
   businessId: string,
   fieldCodes?: readonly string[],
 ) {
-  if (fieldCodes?.length === 0) return foldFieldOrigins<StoredOrigin>([]);
+  return foldFieldOrigins(await loadFieldOriginRows(tx, ctx, businessId, fieldCodes));
+}
+
+async function loadFieldOriginRows(
+  tx: Tx,
+  ctx: Pick<EmploymentContext, 'tenantId'>,
+  businessId: string,
+  fieldCodes?: readonly string[],
+) {
+  if (fieldCodes?.length === 0) return [];
   const target = sql`o.tenant_id = ${ctx.tenantId}::uuid AND o.business_id = ${businessId}::uuid`;
   // 使用字段索引逐个找下一编码，避免 DISTINCT 遍历该业务的全部历史行。
   const fields = fieldCodes
@@ -101,9 +112,28 @@ export async function loadFieldOrigins(
       SELECT o.id FROM employment_field_origins o
       WHERE ${target} AND o.field_code = c.field_code AND o.ref_seq = c.seq
         AND o.origin_kind IN ('fallback', 'restore')
-      ORDER BY o.seq DESC NULLS LAST LIMIT 1
+      ORDER BY (o.origin_kind = 'fallback' AND o.reason IS NOT DISTINCT FROM ${FORM_DEPENDENCY_RESET}) DESC,
+        o.seq DESC NULLS LAST LIMIT 1
     ) AS decision`;
-  return foldFieldOrigins(await selectOrigins(tx, ctx.tenantId, businessId, ids));
+  return selectOrigins(tx, ctx.tenantId, businessId, ids);
+}
+
+export async function projectPayloadMarkers(
+  tx: Tx,
+  ctx: Pick<EmploymentContext, 'tenantId'>,
+  payload: {
+    businessId: string;
+    previousVersionId: string | null;
+    explicitFieldCodes?: readonly string[];
+    deferredFieldCodes?: readonly string[];
+  },
+  origins: readonly FieldOriginDraft[],
+) {
+  const stored = payload.previousVersionId ? await loadFieldOriginRows(tx, ctx, payload.businessId) : [];
+  const head = stored.reduce((max, row) => (row.seq > max ? row.seq : max), 0n);
+  // 外键要求先写载荷。这里只按本事务内的相对顺序折叠拟写行，实际 seq 仍由数据库分配。
+  const pending = origins.map((row, index) => ({ ...row, seq: head + BigInt(index + 1), value: row.value }));
+  return projectOriginMarkers(foldFieldOrigins([...stored, ...pending]), payload);
 }
 
 interface DerivationAnchorKey {
