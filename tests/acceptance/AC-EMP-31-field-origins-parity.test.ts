@@ -92,12 +92,12 @@ async function independentBusiness(scene: Scene) {
 }
 
 /** 给被读业务的工作地追加一行“向后更新”来源，来源业务是另一张独立的单（手写时刻与值）。 */
-async function seedPlaceSource(scene: Scene, sourceBusinessId: string) {
+async function seedPlaceSource(scene: Scene, sourceBusinessId: string, targetBusinessId = scene.businessId) {
   const { w } = scene;
   await withTenant(w.db, w.tenant.id, async (tx) => {
     const [version] = resultRows<{ id: string }>(
       await tx.execute(sql`SELECT id FROM employment_payload_versions
-        WHERE tenant_id = ${w.tenant.id} AND business_id = ${scene.businessId}::uuid
+        WHERE tenant_id = ${w.tenant.id} AND business_id = ${targetBusinessId}::uuid
         ORDER BY version_no DESC LIMIT 1`),
     );
     await appendFieldOrigins(tx, { tenantId: w.tenant.id, userId: w.hr.id, now: new Date(SOURCE_SEEDED_AT) }, [
@@ -106,7 +106,7 @@ async function seedPlaceSource(scene: Scene, sourceBusinessId: string) {
         originKind: 'forward-update',
         value: AFTER,
         sourceBusinessId,
-        businessId: scene.businessId,
+        businessId: targetBusinessId,
         payloadVersionId: version!.id,
         employeeId: scene.subjectId,
       },
@@ -246,6 +246,29 @@ describe('AC-EMP-31 内容对拍', () => {
     expect(origins.body).toEqual(detail.body);
     expect(JSON.stringify(origins.body)).not.toContain(AFTER);
     expect((await both(x.hr, x.scene)).origins.status).toBe(200);
+  });
+
+  it('己：来源业务的办理份缺失——只清来源 ID，目标业务照常 200（目标自己办理份缺失才是 503，见丁）', async () => {
+    const x = await approvedThenEdited('emp31-f');
+    const { w, approver } = x.scene;
+    // 被读的是同员工的入职业务；它的工作地来源指向审批人办理过的那张调动单
+    const target = await independentBusiness(x.scene);
+    await seedPlaceSource(x.scene, x.scene.businessId, target);
+    const read = () => fetched<OriginsBody>(x.approver, `${EMP}/businesses/${target}/field-origins`);
+    const before = await read();
+    expect(before.status, JSON.stringify(before.body)).toBe(200);
+    expect(placeRow(before)?.origin?.sourceBusinessId, '前提：办理份在时来源 ID 可见').toBe(x.scene.businessId);
+    await w.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
+      await tx.execute(sql`ALTER TABLE approval_handling_contents DISABLE TRIGGER USER`);
+      await tx.execute(sql`DELETE FROM approval_handling_contents WHERE actor_user_id = ${approver.userId}::uuid`);
+      await tx.execute(sql`ALTER TABLE approval_handling_contents ENABLE TRIGGER USER`);
+    });
+    const direct = await fetched<DetailBody>(x.approver, `${EMP}/businesses/${x.scene.businessId}`);
+    expect(direct.status, '前提：直接读来源单的详情是 503').toBe(503);
+    const after = await read();
+    expect(after.status, JSON.stringify(after.body)).toBe(200);
+    expect(placeRow(after)?.origin).toMatchObject({ kind: 'forward-update', sourceBusinessId: null });
   });
 
   it('戊：入口级 401 / 403 两条路由相同；资源级（范围为空的旁观者）两条路由都是 404 任职业务不存在', async () => {
