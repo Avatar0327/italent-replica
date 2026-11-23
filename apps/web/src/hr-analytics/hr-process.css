@@ -31,19 +31,26 @@
   width: 84px;
 }
 /*
- * 同图共用刻度（审查 P2-1）：B51 的横向条形图（BoardChart 条形与差值图）整张图一个 Grid，
- * 各行用 subgrid 继承列宽，数值列取全图最宽值；轨道起点、宽度和零轴因此与数值文字宽度无关。
+ * 同图共用刻度（审查 P2-1 / P2-2 第 3 轮）：B51 的横向条形（BoardChart 条形、差值图）每个条目分两行，
+ * 第一行标签与数值（数值靠右、可换行），第二行轨道占满条目宽度。轨道宽度只取决于图容器宽度，
+ * 与数值位数无关，也不依赖 subgrid（Vite 默认构建目标含 Chrome 111，subgrid 从 117 起才支持）。
  */
-.hr-process-section .board-chart-bar ul {
-  display: grid;
-  grid-template-columns: minmax(6em, 1fr) minmax(30px, 2fr) max-content;
-  column-gap: 8px;
-}
-.hr-process-section .board-chart-bar li,
 .hr-process-section .board-chart-bar .board-chart-item {
-  display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: subgrid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'label number' 'mark mark';
+  gap: 4px 8px;
+}
+.hr-process-section .board-chart-bar .board-chart-label {
+  grid-area: label;
+}
+.hr-process-section .board-chart-bar .board-chart-number {
+  grid-area: number;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.hr-process-section .board-chart-bar .board-chart-mark {
+  grid-area: mark;
 }
 .hr-process-diverging .board-chart-mark {
   position: relative;
