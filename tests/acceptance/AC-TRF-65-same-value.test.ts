@@ -7,6 +7,8 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import type * as Commands from '../../apps/api/src/commands.js';
+import { appendFieldOrigins } from '../../apps/api/src/modules/employment/field-origin-store.js';
+import { resultRows } from './AC-ORG-people-support.js';
 import { waitForLockWaiters } from './AC-TRF-F181a-support.js';
 import { BASE, FOUR, LATER, ok, selfWorld, type Fields, type Four, type SelfWorld } from './AC-TRF-F036S4-support.js';
 
@@ -460,6 +462,54 @@ describe('AC-TRF-65 ⑤ 重放按重放当刻比', () => {
     const before = await snapshot(a.s, a.draft.id);
     await forbidden(await a.s.patch(a.person, a.draft.id, k1.body, k1));
     expect(await snapshot(a.s, a.draft.id)).toEqual(before);
+  });
+});
+
+/**
+ * ⑦ 保存值来源不可信时，同值也是 403（J2 单独判拒，DEC-556 方案 A，待用户追认）。
+ * 目前没有真实入口能给员工单据的职级写入“人工来源”：这里在测试里直接给草稿的职级插一条 hr-input 来源行。
+ * 同单据其余字段（职位、职务、序列）的来源仍是可信的 inherit，所以“任一字段可信即放行”的错误实现也会被这条用例打红。
+ */
+describe('AC-TRF-65 ⑦ 保存值来源不可信：员工提交同值仍 403，单据不变', () => {
+  /** 临时夹具：#99 阶段 ② 有真实入口后换成真实入口构造。 */
+  async function untrustedLevel(b: Awaited<ReturnType<typeof beta>>) {
+    const { db } = database();
+    await withTenant(db, b.s.w.tenant.id, async (tx) => {
+      const [version] = resultRows<{ id: string; employeeId: string }>(
+        await tx.execute(sql`
+          SELECT id, employee_id AS "employeeId" FROM employment_payload_versions
+          WHERE tenant_id=${b.s.w.tenant.id} AND business_id=${b.draft.id}::uuid ORDER BY version_no DESC LIMIT 1
+        `),
+      );
+      await appendFieldOrigins(
+        tx,
+        { tenantId: b.s.w.tenant.id, userId: b.s.w.hr.id, now: new Date('2026-10-19T01:00:00.000Z') },
+        [
+          {
+            businessId: b.draft.id,
+            payloadVersionId: version!.id,
+            employeeId: version!.employeeId,
+            fieldCode: 'preset:levelId',
+            originKind: 'hr-input',
+            value: b.base.level,
+          },
+        ],
+      );
+    });
+  }
+
+  it('对照：来源可信（继承）时，同一份带同值职级的保存是 200', async () => {
+    const b = await beta('f036s4-65-7-control');
+    await ok(await b.s.patch(b.person, b.draft.id, { fields: { levelId: b.base.level }, effectiveDate: LATER }));
+  });
+
+  it('职级保存值来源是 hr-input：带同值职级保存与提交都 403，载荷版本与来源行都不变', async () => {
+    const b = await beta('f036s4-65-7-untrusted');
+    await untrustedLevel(b);
+    const before = await snapshot(b.s, b.draft.id);
+    await forbidden(await b.s.patch(b.person, b.draft.id, { fields: { levelId: b.base.level }, effectiveDate: LATER }));
+    await forbidden(await b.s.submit(b.person, b.draft.id));
+    expect(await snapshot(b.s, b.draft.id)).toEqual(before);
   });
 });
 
