@@ -6,12 +6,14 @@ export function ReadState({
   loading,
   error,
   detail = false,
+  missing,
   waiting,
   retry,
 }: {
   loading: boolean;
   error?: unknown;
   detail?: boolean;
+  missing?: string;
   waiting: boolean;
   retry?: () => void;
 }) {
@@ -27,7 +29,7 @@ export function ReadState({
       type="error"
       role="alert"
       showIcon
-      message={boardErrorText(error, detail)}
+      message={boardErrorText(error, detail, missing)}
       action={
         retry && (
           <Button disabled={waiting} onClick={retry}>

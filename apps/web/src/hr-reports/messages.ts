@@ -55,6 +55,8 @@ export const m = {
   organization: '一级组织',
   drillOrganization: '组织',
   organizationHierarchy: '组织层级',
+  jobSequence: '职务序列',
+  exitTypeAndReason: '离职类型 / 原因',
   groupMonth: '月份',
   total: (n: number) => `共 ${n} 条`,
 } as const;
@@ -76,4 +78,5 @@ export const movementDescriptions: Readonly<Record<string, string>> = {
   flow: '离职按最后工作日归年，统计截至时点日期与所选年度年底中较早的一天。',
   monthly: '离职按最后工作日归月，时点之后的月份留空。',
   institution: '按行政树一级机构统计所选月份，离职按最后工作日归月。',
+  establishment: '实有人数、缺编数和执行率按分析范围统计。',
 };

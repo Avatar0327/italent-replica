@@ -14,9 +14,9 @@
     "evaluation": 34,
     "hr-analysis": 6,
     "hr-dashboard": 3,
-    "hr-movement": 4,
+    "hr-movement": 5,
     "hr-process-dashboard": 2,
-    "hr-structure": 4,
+    "hr-structure": 5,
     "idp": 58,
     "insurance": 4,
     "job": 20,
@@ -42,5 +42,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 956
+  "total": 958
 }

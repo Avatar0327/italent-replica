@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Alert } from 'antd';
 import { DetailPage } from '../foundation/templates.js';
 import { ReadOnlyReportTable } from '../hr-reports/ReportTable.js';
@@ -12,6 +13,8 @@ export function BoardDetailDrawer({
   asOf,
   read,
   table,
+  controls,
+  missing,
   waiting,
   close,
   changePage,
@@ -25,6 +28,8 @@ export function BoardDetailDrawer({
     data?: Pick<RosterPage, 'hasDataPermission' | 'page' | 'pageSize'>;
   };
   table?: DisplayTable;
+  controls?: ReactNode;
+  missing?: string;
   waiting: boolean;
   close(): void;
   changePage(page: number): void;
@@ -39,10 +44,12 @@ export function BoardDetailDrawer({
       summary={
         <>
           <p>{m.asOf(asOf)}</p>
+          {controls}
           <ReadState
             loading={loading}
             error={error}
             detail
+            missing={missing}
             waiting={waiting}
             retry={canRetryRead(error) ? retry : undefined}
           />
@@ -52,6 +59,7 @@ export function BoardDetailDrawer({
               table={table}
               page={data.page}
               pageSize={data.pageSize}
+              paginationDisabled={waiting}
               changePage={changePage}
               emptyText={m.empty}
             />

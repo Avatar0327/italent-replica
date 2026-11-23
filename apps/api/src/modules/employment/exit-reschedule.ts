@@ -1,5 +1,6 @@
 /** F-140：离职人工改期的唯一编排入口（设计 §3.2；DEC-687 / 688）。 */
 import { repositionExit } from './exit-reposition.js';
+import { exitPlanOrigins } from './field-origin-write.js';
 import { replaceExit } from './exit-replacement.js';
 import type { Downstream } from './exit-downstream.js';
 import type { EmploymentBusiness } from './types.js';
@@ -284,12 +285,13 @@ async function writeManualExitPlan(
     plannedEffectiveDate: change.effectiveDate,
   };
   const { fields, ...metadata } = next;
-  await insertEmploymentRow(tx, 'employment_payload_versions', {
-    ...metadata,
-    ...fields,
-    createdAt: ctx.now.toISOString(),
-  });
-  business.payload = next;
+  const markers = await insertEmploymentRow(
+    tx,
+    'employment_payload_versions',
+    { ...metadata, ...fields, createdAt: ctx.now.toISOString() },
+    { ctx, origins: exitPlanOrigins(previous, next) },
+  );
+  business.payload = { ...next, ...markers };
   await bumpEmploymentBusiness(tx, ctx, business);
   await auditEmployment(
     tx,

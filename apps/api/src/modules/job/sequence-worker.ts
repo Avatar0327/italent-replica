@@ -1,4 +1,3 @@
-import { appendPayloadFieldOrigins } from '../employment/field-origin-write.js';
 import {
   classifyCommandFailure,
   recordCommandFailure,
@@ -254,37 +253,39 @@ async function appendSequenceVersion(tx: Tx, ctx: EmploymentContext, target: Seq
   );
   const { fields: _fields, ...metadata } = business.payload;
   const id = randomUUID();
-  await insertEmploymentRow(tx, 'employment_payload_versions', {
-    ...metadata,
-    ...target.fields,
-    sequenceId: target.source.sequenceId,
-    customFields: target.customFields,
-    id,
-    versionNo: business.payload.versionNo + 1,
-    previousVersionId: business.payload.id,
-    commandId: ctx.commandId,
-    triggerBusinessId: business.id,
-    isRecordSnapshot: target.effective,
-    deferredFieldCodes: target.effective
-      ? []
-      : business.payload.deferredFieldCodes.filter((code) => code !== 'preset:sequenceId'),
-    explicitFieldCodes: [...new Set([...business.payload.explicitFieldCodes, 'preset:sequenceId'])],
-    createdAt: ctx.now.toISOString(),
-  });
-  await appendPayloadFieldOrigins(
+  await insertEmploymentRow(
     tx,
-    { ...ctx, userId: SYSTEM_USER_ID },
-    { ...business.payload, id },
-    target.effective ? business.id : undefined,
-    [
-      {
-        fieldCode: 'preset:sequenceId',
-        originKind: 'sequence-sync',
-        value: target.source.sequenceId,
-        derivationRule: target.source.kind === 'posts' ? 'post-sequence' : 'position-sequence',
-        referenceId: target.source.id,
-      },
-    ],
+    'employment_payload_versions',
+    {
+      ...metadata,
+      ...target.fields,
+      sequenceId: target.source.sequenceId,
+      customFields: target.customFields,
+      id,
+      versionNo: business.payload.versionNo + 1,
+      previousVersionId: business.payload.id,
+      commandId: ctx.commandId,
+      triggerBusinessId: business.id,
+      isRecordSnapshot: target.effective,
+      deferredFieldCodes: target.effective
+        ? []
+        : business.payload.deferredFieldCodes.filter((code) => code !== 'preset:sequenceId'),
+      explicitFieldCodes: [...new Set([...business.payload.explicitFieldCodes, 'preset:sequenceId'])],
+      createdAt: ctx.now.toISOString(),
+    },
+    {
+      ctx: { ...ctx, userId: SYSTEM_USER_ID },
+      recordId: target.effective ? business.id : undefined,
+      origins: [
+        {
+          fieldCode: 'preset:sequenceId',
+          originKind: 'sequence-sync',
+          value: target.source.sequenceId,
+          derivationRule: target.source.kind === 'posts' ? 'post-sequence' : 'position-sequence',
+          referenceId: target.source.id,
+        },
+      ],
+    },
   );
   // F-505 设计 §6.2：序列同步直接追加待入职记录的业务内容，同事务通知来源变化（已落地才有记录可判断是否待入职）
   const entry = target.effective
