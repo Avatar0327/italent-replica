@@ -59,7 +59,12 @@ it('AC-EMP-25/26 #11：已落地的迟到调动以 carry-only 投影重排快照
     deferred,
     snapshot: false,
   });
-  expect(before.state).toMatchObject({ policy: 'deferred', resolved: null, lastWriter: null });
+  // F-036-S6 写点 #16：落地把延迟字段的解析结果记成 resolved 行（取自前驱的“原地点”）；策略行与载荷版本不变
+  expect(before.state).toMatchObject({
+    policy: 'deferred',
+    resolved: { originKind: 'resolved', value: '原地点' },
+    lastWriter: { originKind: 'resolved', value: '原地点' },
+  });
 
   const run = await w.runScheduler('2026-10-06T01:00:00Z');
   expect(run).toMatchObject({ failed: [], errors: [] });
