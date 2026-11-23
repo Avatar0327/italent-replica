@@ -19,14 +19,26 @@ export function isUuid(value: string): boolean {
   return UUID.test(value);
 }
 
-/** 在指定租户上下文中执行 fn。租户 ID 不合法直接抛错（fail-closed），不会退化成“不过滤”。 */
-export async function withTenant<T>(db: Db, tenantId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+/** 事务配置（隔离级别、只读）；缺省沿用连接默认。 */
+export type TenantTxConfig = Parameters<Db['transaction']>[1];
+
+/**
+ * 在指定租户上下文中执行 fn。租户 ID 不合法直接抛错（fail-closed），不会退化成“不过滤”。
+ * config 供“同一数据库快照读多张表”的只读路径使用（repeatable read）；drizzle 在 begin 之后立即下发 SET TRANSACTION，
+ * 早于下面的 set_config，所以不影响租户设置。
+ */
+export async function withTenant<T>(
+  db: Db,
+  tenantId: string,
+  fn: (tx: Tx) => Promise<T>,
+  config?: TenantTxConfig,
+): Promise<T> {
   if (!isUuid(tenantId)) throw new TypeError('withTenant：租户 ID 必须是 UUID');
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
     await tx.execute(sql.raw(`SET LOCAL ROLE ${APP_ROLE.tenant}`));
     return fn(tx);
-  });
+  }, config);
 }
 
 /**
