@@ -162,6 +162,7 @@ export const GRAPH: Graph = {
     '#orderedMarkers',
   ],
   'packages/domain/src/employment/field-origins.ts#requestInputFields': ['#inputEntries'],
+  'packages/domain/src/employment/field-origins.ts#settleValueRows': ['#valueRows'],
   'packages/domain/src/employment/late-execution.ts#resolveLateLeave': [
     'packages/domain/src/contracts/rules.ts#addDays',
     '#resolveLateExecution',

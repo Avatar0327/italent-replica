@@ -4366,6 +4366,13 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/field-origins.ts#foldFieldOrigins',
     'packages/domain/src/employment/field-origins.ts#projectOriginMarkers',
   ],
+  'apps/api/src/modules/employment/field-origin-store.ts#settleFieldValues': [
+    '#applicability',
+    '#loadFieldOrigins',
+    '#sameValue',
+    'packages/domain/src/employment/field-origins.ts#effectiveOrigin',
+    'packages/domain/src/employment/field-origins.ts#settleValueRows',
+  ],
   'apps/api/src/modules/employment/field-origin-write.ts#appendPayloadFieldOrigins': [
     'apps/api/src/modules/employment/field-origin-store.ts#appendFieldOrigins',
   ],
@@ -4623,12 +4630,15 @@ export const GRAPH: Graph = {
     '#inheritanceOrigin',
     '#setField',
   ],
+  'apps/api/src/modules/employment/inheritance.ts#byResolutionOrder': ['#RESOLUTION_FIRST'],
   'apps/api/src/modules/employment/inheritance.ts#employeeCode': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch': [
     'apps/api/src/modules/employment/employment-forms.ts#validateSelectedEmploymentForm',
     'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
+    'apps/api/src/modules/employment/field-origin-store.ts#loadFieldOrigins',
+    '#ledgerDeferred',
     '#prepareInheritance',
     '#restoreFrozenDefaults',
   ],
@@ -4654,6 +4664,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance': [
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+    '#byResolutionOrder',
     '#setField',
   ],
   'apps/api/src/modules/employment/inheritance.ts#restoreFrozenDefaults': [
@@ -8779,7 +8790,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': [
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
     'apps/api/src/modules/employment/cycles.ts#assertNotBeforeCurrentCycle',
-    'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'apps/api/src/modules/employment/reporting-cycle.ts#windowBefore',
     'apps/api/src/modules/employment/timeline.ts#employmentTimelineNeighbors',
@@ -8800,6 +8810,7 @@ export const GRAPH: Graph = {
     '#notifyMaterialized',
     '#propagateMaterializedStatus',
     '#registerCompletion',
+    '#resolveLanding',
     '#validateMaterializedReferences',
     'apps/api/src/modules/transfer/required-fields.ts#assertRequiredTransferFields',
   ],
@@ -8821,9 +8832,24 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/field-origins.ts#changedInputFields',
   ],
   'apps/api/src/modules/employment/write-service.ts#payloadAudit': ['#customAudit'],
+  'apps/api/src/modules/employment/write-service.ts#prepareEditedPayload': [
+    'apps/api/src/modules/employment/field-origin-store.ts#settleFieldValues',
+    'apps/api/src/modules/employment/field-origin-write.ts#applySettledFields',
+    'apps/api/src/modules/employment/field-origin-write.ts#discardedFormFields',
+    'apps/api/src/modules/employment/field-origin-write.ts#endDiscardedFormOverrides',
+    'apps/api/src/modules/employment/field-origin-write.ts#fieldOriginEditor',
+    'apps/api/src/modules/employment/field-origin-write.ts#formFieldOrigins',
+    'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch',
+    'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
+    'packages/domain/src/employment/field-origins.ts#requestInputFields',
+  ],
   'apps/api/src/modules/employment/write-service.ts#propagateMaterializedStatus': [
     'apps/api/src/modules/employment/employee-status.ts#propagateEmployeeStatus',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/write-service.ts#recordLandingResolutions': [
+    'apps/api/src/modules/employment/field-origin-store.ts#settleFieldValues',
+    'apps/api/src/modules/employment/field-origin-write.ts#appendPayloadFieldOrigins',
   ],
   'apps/api/src/modules/employment/write-service.ts#registerCompletion': [
     'apps/api/src/modules/transfer/completion.ts#openCompletion',
@@ -8841,6 +8867,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/write-service.ts#requireUnchangedExitDates': [
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitGate',
+  ],
+  'apps/api/src/modules/employment/write-service.ts#resolveLanding': [
+    'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
+    '#recordLandingResolutions',
   ],
   'apps/api/src/modules/employment/write-service.ts#saveEntryExtras': [
     'apps/api/src/modules/employment/entry-pending-contract.ts#saveAddedPendingEntryData',
@@ -8863,13 +8893,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/cycles.ts#assertNotBeforeCurrentCycle',
     'apps/api/src/modules/employment/employee-status.ts#inheritedStatus',
     'apps/api/src/modules/employment/exit-reschedule.ts#lockExitForEdit',
-    'apps/api/src/modules/employment/field-origin-write.ts#discardedFormFields',
-    'apps/api/src/modules/employment/field-origin-write.ts#endDiscardedFormOverrides',
-    'apps/api/src/modules/employment/field-origin-write.ts#fieldOriginEditor',
-    'apps/api/src/modules/employment/field-origin-write.ts#formFieldOrigins',
     'apps/api/src/modules/employment/fields.ts#normalizeBusinessPatch',
-    'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch',
-    'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/regularization-eligibility.ts#assertRegularizationApplication',
     'apps/api/src/modules/employment/retire-rehire-waiting.ts#bindRehireRetirement',
@@ -8879,6 +8903,7 @@ export const GRAPH: Graph = {
     '#assertEmployTypeUsage',
     '#normalizePatchedInput',
     '#payloadAudit',
+    '#prepareEditedPayload',
     '#replanEditableExit',
     '#requireSavedBusiness',
     '#requireUnchangedExitDates',

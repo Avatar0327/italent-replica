@@ -743,7 +743,7 @@ export const DIGESTS: Digests = {
     employmentWithdrawalFailure: '148a6020239b',
   },
   'apps/api/src/modules/employment/write-service.ts': {
-    materializeEmploymentRecord: '9ee842355dd2',
+    materializeEmploymentRecord: '727c6228e99c',
   },
   'apps/api/src/modules/esign/mine.ts': {
     listMine: '13c4a0b5154f',
@@ -2692,7 +2692,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/routes.ts#route:PUT /settings': 'fcfd4017c2bb',
   'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite': '413b0e4e2c2a',
   'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure': '573e99887edc',
-  'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': 'c407882418e6',
+  'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': '02c8ab74931b',
   'apps/api/src/modules/esign/mine.ts#listMine': '105cc9644d98',
   'apps/api/src/modules/esign/mine.ts#ownSignTask': 'a330f2f318b4',
   'apps/api/src/modules/esign/mine.ts#signerPredicate': 'f9b147eca340',
