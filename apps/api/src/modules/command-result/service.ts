@@ -3,9 +3,13 @@ import { commandTypeOf } from '../../command-type.js';
 import { AppError, ERROR_STATUS, type ErrorCode } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { ESIGN_COMMAND_RESULTS } from '../esign/source-command-result.js';
+import { INTEGRATION_POOL_COMMAND_RESULTS } from '../onboarding/integration-pool-result.js';
 import { createCommandResultRegistry, type CommandResultDeps, type CommandResultRegistration } from './registry.js';
 
-const commandResultRegistry = createCommandResultRegistry(ESIGN_COMMAND_RESULTS);
+const commandResultRegistry = createCommandResultRegistry([
+  ...ESIGN_COMMAND_RESULTS,
+  ...INTEGRATION_POOL_COMMAND_RESULTS,
+]);
 type RegisteredResult = ReturnType<CommandResultRegistration['project']>;
 
 export interface OwnCommandResult {

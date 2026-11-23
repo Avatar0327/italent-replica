@@ -1,15 +1,23 @@
 /** F-120 本人同租户；F-553（DEC-968）登记类型在当前事务执行条件授权和最小投影。 */
-import type { Evidence, RequiredTable } from './types.js';
+import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const ROUTES = 'apps/api/src/modules/command-result/routes.ts';
 const SERVICE = 'apps/api/src/modules/command-result/service.ts';
 const SOURCE = 'apps/api/src/modules/esign/source-command-result.ts';
 const TASK = 'apps/api/src/modules/esign/source-result-access.ts';
+const POOL = 'apps/api/src/modules/onboarding/integration-pool-result.ts';
+const POOL_ACCESS = 'apps/api/src/modules/onboarding/integration-pool-access.ts';
 const EMPLOYMENT = 'apps/api/src/modules/employment';
 const DISPATCH: Evidence = {
   role: 'call',
   unit: `${SERVICE}#readOwnCommandResult`,
   anchor: 'return readRegisteredCommandResult(tx, deps, ctx, registration, entry.responseBody)',
+};
+
+const POOL_RESULT_SCOPE: Evidence = {
+  role: 'scope',
+  unit: `${POOL}#INTEGRATION_POOL_COMMAND_RESULTS`,
+  anchor: 'if (httpStatus !== 204) await readIntegrationPoolTask(tx, ctx.tenantId, receipt(body).id)',
 };
 
 export const COMMAND_RESULT: RequiredTable = {
@@ -33,13 +41,13 @@ export const COMMAND_RESULT: RequiredTable = {
     {
       perm: 'guard:command.result.registered',
       facts: ['guard:command.result.registered'],
-      note: '登记命令由当前成员、入口及来源范围、本人任务绑定和历史人员变量读权授权后才投影',
+      note: '签署核来源、任务与历史变量；任务池按当前任职设置权限复核',
       at: [
         DISPATCH,
         {
           role: 'impl',
           unit: `${SERVICE}#commandResultRegistry`,
-          anchor: 'createCommandResultRegistry(ESIGN_COMMAND_RESULTS)',
+          anchor: 'createCommandResultRegistry([...ESIGN_COMMAND_RESULTS, ...INTEGRATION_POOL_COMMAND_RESULTS,])',
         },
         {
           role: 'impl',
@@ -50,6 +58,11 @@ export const COMMAND_RESULT: RequiredTable = {
           role: 'impl',
           unit: `${SERVICE}#readRegisteredCommandResult`,
           anchor: 'return registration.project(body)',
+        },
+        {
+          role: 'impl',
+          unit: `${POOL}#INTEGRATION_POOL_COMMAND_RESULTS`,
+          anchor: 'await requirePoolWrite(authorizeInTransaction(deps.authorize, tx), ctx, operation)',
         },
         {
           role: 'impl',
@@ -78,6 +91,39 @@ export const COMMAND_RESULT: RequiredTable = {
         },
       ],
     },
+    {
+      perm: 'admin:other_settings',
+      purpose: 'when:command.result.registered',
+      need: { scope: 'guard', guard: 'command.result.registered' },
+      at: [
+        DISPATCH,
+        POOL_RESULT_SCOPE,
+        {
+          role: 'impl',
+          unit: `${POOL_ACCESS}#requirePoolWrite`,
+          anchor: 'await requirePermission(authorize, { ...ctx, action: POOL_WRITE_ALIAS, resource: POOL_SETTINGS })',
+        },
+      ],
+    },
+    ...(['create', 'update'] as const).map((operation): Obligation => ({
+      perm: `obj:TenantBase.EmploymentSettings:${operation}`,
+      purpose: 'when:command.result.registered',
+      need: { scope: 'guard', guard: 'command.result.registered' },
+      at: [
+        DISPATCH,
+        POOL_RESULT_SCOPE,
+        {
+          role: 'const',
+          unit: `${POOL}#POOL_RESULT_TYPES`,
+          anchor: `operation: '${operation}'`,
+        },
+        {
+          role: 'impl',
+          unit: `${POOL_ACCESS}#requirePoolWrite`,
+          anchor: 'objectCode: POOL_SETTINGS, operation, payload: { integrationTaskPool: true }',
+        },
+      ],
+    })),
     {
       perm: 'obj:TenantBase.Offer:update',
       purpose: 'when:command.result.registered',
