@@ -1981,7 +1981,7 @@ export const DIGESTS: Digests = {
     'route:GET /transfers/manager/todos': '6ab5bfaed757',
   },
   'apps/api/src/modules/transfer/preview.ts': {
-    previewTransfer: '16393aa1d9b1',
+    previewTransfer: '6712aab0f632',
   },
   'apps/api/src/modules/transfer/routes.ts': {
     authorizeBusinessWrite: '93e23cc9a0f4',
@@ -2002,6 +2002,7 @@ export const DIGESTS: Digests = {
     createTransfer: 'fe7d2a32a85b',
     normalizeTransferInput: '3414efe448b6',
     requireDirectTransfer: '51a8e83b978b',
+    requireTransferEditedWrite: '6bb5ad536546',
     requireTransferWrite: '2a9f6e41f020',
     transferBusinessContext: 'd205bb16e2c5',
     transferTargetContext: '70902a7725a9',
@@ -3608,7 +3609,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/transfer/manager-routes.ts#route:GET /transfers/manager/search': 'b30deab09b8b',
   'apps/api/src/modules/transfer/manager-routes.ts#route:GET /transfers/manager/team': 'b30deab09b8b',
   'apps/api/src/modules/transfer/manager-routes.ts#route:GET /transfers/manager/todos': '5a21b6229ea8',
-  'apps/api/src/modules/transfer/preview.ts#previewTransfer': '944d731945e8',
+  'apps/api/src/modules/transfer/preview.ts#previewTransfer': 'f38228fc3d77',
   'apps/api/src/modules/transfer/routes.ts#authorizeBusinessWrite': '012374a9aee4',
   'apps/api/src/modules/transfer/routes.ts#configurationContext': '627bca51f7c9',
   'apps/api/src/modules/transfer/routes.ts#route:DELETE /transfers/employees/:id/draft/:businessId': 'e4543776eb41',
@@ -3625,6 +3626,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/transfer/service.ts#createTransfer': '88ae192b4964',
   'apps/api/src/modules/transfer/service.ts#normalizeTransferInput': 'f0786ef5eb83',
   'apps/api/src/modules/transfer/service.ts#requireDirectTransfer': '4bdb52ca15df',
+  'apps/api/src/modules/transfer/service.ts#requireTransferEditedWrite': '27b94794f43d',
   'apps/api/src/modules/transfer/service.ts#requireTransferWrite': '27b94794f43d',
   'apps/api/src/modules/transfer/service.ts#transferBusinessContext': 'c7b31c61e80d',
   'apps/api/src/modules/transfer/service.ts#transferTargetContext': '1f7f71f7d487',

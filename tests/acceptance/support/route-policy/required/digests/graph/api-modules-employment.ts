@@ -4632,6 +4632,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/inheritance.ts#employeeCode': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/inheritance.ts#frozenDerivations': [
+    'apps/api/src/modules/employment/field-derivations.ts#derivationFields',
+  ],
   'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch': [
     'apps/api/src/modules/employment/employment-forms.ts#validateSelectedEmploymentForm',
     'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
@@ -4664,6 +4667,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/inheritance.ts#restoreFrozenDefaults': [
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+    '#frozenDerivations',
     '#inheritanceOrigin',
     '#isRequestInput',
     '#owns',

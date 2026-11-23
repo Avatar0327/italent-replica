@@ -692,7 +692,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferFields',
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
     'apps/api/src/modules/transfer/linkage/part-time.ts#transferPartTimePort',
-    'apps/api/src/modules/transfer/service.ts#requireTransferWrite',
+    'apps/api/src/modules/transfer/service.ts#requireTransferEditedWrite',
     'apps/api/src/modules/transfer/service.ts#transferTargetContext',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
@@ -872,6 +872,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/configuration.ts#readEmploymentSettings',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/transfer/access.ts#transferDirectActions',
+  ],
+  'apps/api/src/modules/transfer/service.ts#requireTransferEditedWrite': [
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
   ],
   'apps/api/src/modules/transfer/service.ts#requireTransferWrite': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
