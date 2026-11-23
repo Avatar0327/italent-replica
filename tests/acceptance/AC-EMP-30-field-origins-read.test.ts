@@ -6,12 +6,13 @@
  * 来源行用 appendFieldOrigins 追加手写的几行（它们的 seq 比创建时写入的行大，折叠后即当前来源）。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { sql, withTenant, type Db, type Tx } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { appendFieldOrigins } from '../../apps/api/src/modules/employment/field-origin-store.js';
 import { approvalWorld, permissionAdmin, type ApprovalWorld } from './AC-APV-support.js';
+import { activationWorld } from './AC-TRF-activation-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
 import { createProfile, setObjectPermission } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -71,14 +72,17 @@ async function seedOrigins(w: ApprovalWorld, businessId: string, employeeId: str
   });
 }
 
-/** 三张表的行数：来源台账、审计、命令台账。只读接口调用前后必须不变。 */
-async function writeCounts(w: ApprovalWorld) {
+/** 来源台账、审计、命令台账、任职载荷版本（整租户与目标业务）的行数。只读接口调用前后必须不变。 */
+async function writeCounts(w: ApprovalWorld, businessId?: string) {
   return withTenant(w.db, w.tenant.id, async (tx) => {
-    const [row] = resultRows<{ origins: number; audits: number; commands: number }>(
+    const [row] = resultRows<{ origins: number; audits: number; commands: number; versions: number; target: number }>(
       await tx.execute(sql`SELECT
         (SELECT count(*)::int FROM employment_field_origins WHERE tenant_id = ${w.tenant.id}) AS origins,
         (SELECT count(*)::int FROM audit_events WHERE tenant_id = ${w.tenant.id}) AS audits,
-        (SELECT count(*)::int FROM command_ledger WHERE tenant_id = ${w.tenant.id}) AS commands`),
+        (SELECT count(*)::int FROM command_ledger WHERE tenant_id = ${w.tenant.id}) AS commands,
+        (SELECT count(*)::int FROM employment_payload_versions WHERE tenant_id = ${w.tenant.id}) AS versions,
+        (SELECT count(*)::int FROM employment_payload_versions
+          WHERE tenant_id = ${w.tenant.id} AND business_id = ${businessId ?? randomUUID()}::uuid) AS target`),
     );
     return row;
   });
@@ -123,7 +127,7 @@ async function fixture(hidden: string[] = []) {
   expect(scope.status, await scope.clone().text()).toBe(200);
   const actor = w.as(manager.userId);
   const read = (path: string, who: { user?: string; tenant?: string } = actor) => api.request('GET', path, who);
-  return { w, a, b, far, member, member2, stranger, away, bystander, manager, actor, read };
+  return { w, a, b, outside, far, member, member2, stranger, away, bystander, manager, actor, read };
 }
 
 interface ErrorEnvelope {
@@ -180,6 +184,27 @@ describe('AC-EMP-30 只读来源接口：统一 404', () => {
   });
 });
 
+describe('AC-EMP-30 只读来源接口：非法 asOf 不区分可见性', () => {
+  it('?asOf=bad：范围外、范围内非团队、不存在、有权的四类请求，状态码与完整响应体逐项相等', async () => {
+    const x = await fixture();
+    const targets = {
+      '①源员工在范围外': (await hrDraft(x.w, x.away.employeeId, { departmentId: x.far })).id,
+      '②范围内非团队成员': (await hrDraft(x.w, x.stranger.employeeId, { departmentId: x.b })).id,
+      '③随机合法 UUID': randomUUID(),
+      '④有权读取的团队成员': (await hrDraft(x.w, x.member.employeeId, { departmentId: x.b })).id,
+    };
+    const expected = {
+      status: 400,
+      body: { error: { code: 'VALIDATION_FAILED', message: '业务日期必须为合法 YYYY-MM-DD' } },
+    };
+    for (const [name, id] of Object.entries(targets)) {
+      const { status, body } = await bodyOf(await x.read(`${BASE}/businesses/${id}/field-origins?asOf=bad`));
+      expect({ status, body }, name).toEqual(expected);
+      expect(body.error, name).not.toHaveProperty('details');
+    }
+  });
+});
+
 describe('AC-EMP-30 只读来源接口：行内容与字段裁剪', () => {
   async function seeded(hidden: string[] = []) {
     const x = await fixture(hidden);
@@ -201,7 +226,8 @@ describe('AC-EMP-30 只读来源接口：行内容与字段裁剪', () => {
 
   it('有读权：200，行内容与手写期望一致；来源业务对操作人不可见时 sourceBusinessId 为 null；零写入', async () => {
     const x = await seeded();
-    const before = await writeCounts(x.w);
+    const before = await writeCounts(x.w, x.draft.id);
+    expect(before?.target, '目标业务已有载荷版本').toBeGreaterThan(0);
     const response = await x.read(`${BASE}/businesses/${x.draft.id}/field-origins`);
     expect(response.status, await response.clone().text()).toBe(200);
     const body = (await response.json()) as { businessId: string; contentView: unknown; fields: OriginField[] };
@@ -240,7 +266,7 @@ describe('AC-EMP-30 只读来源接口：行内容与字段裁剪', () => {
     // 不外露操作人、命令、被挂起行的值
     expect(JSON.stringify(body)).not.toContain(x.w.hr.id);
     expect(JSON.stringify(body)).not.toContain(x.hiddenSource.id);
-    expect(await writeCounts(x.w)).toEqual(before);
+    expect(await writeCounts(x.w, x.draft.id)).toEqual(before);
   });
 
   it('对 place 无读权：该字段整行不返回，响应体全文搜不到字段编码、值、来源业务 ID', async () => {
@@ -251,5 +277,191 @@ describe('AC-EMP-30 只读来源接口：行内容与字段裁剪', () => {
     for (const leaked of ['preset:place', 'ZZ_地点', x.visibleSource.id])
       expect(text, `不应出现 ${leaked}`).not.toContain(leaked);
     expect(text).toContain('preset:remarks');
+  });
+});
+
+describe('AC-EMP-30 只读来源接口：来源业务 ID 按来源自身的读取门禁裁剪', () => {
+  async function directTransfer(w: ApprovalWorld, employeeId: string, departmentId: string, place: string) {
+    const current = await w.json<{ revision: number }>(
+      await w.request(w.hr.id, 'GET', `${BASE}/employees/${employeeId}`),
+    );
+    return w.json<{ id: string }>(
+      await w.request(w.hr.id, 'POST', `${BASE}/transfers/employees/${employeeId}`, {
+        ifMatch: current.revision,
+        body: {
+          initiator: 'hr',
+          transferTypeCode: 'in_department',
+          formId: 'TenantBase.TransferMultiFormView',
+          effectiveDate: '2026-10-01',
+          mode: 'direct',
+          fields: { departmentId, place },
+        },
+      }),
+      201,
+    );
+  }
+
+  /** setOrgRoles 直接追加了组织版本而没推进对象 revision；改名前先对齐，否则版本号冲突。 */
+  async function rename(w: ApprovalWorld, orgId: string) {
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`UPDATE org_objects SET revision = (SELECT max(version_no) FROM org_versions
+        WHERE tenant_id = ${w.tenant.id} AND org_id = ${orgId}::uuid)
+        WHERE tenant_id = ${w.tenant.id} AND id = ${orgId}::uuid`),
+    );
+    const org = await w.json<{ revision: number }>(
+      await w.request(w.hr.id, 'GET', `/api/tenant/org/organizations/${orgId}`),
+    );
+    const response = await w.request(w.hr.id, 'PATCH', `/api/tenant/org/organizations/${orgId}`, {
+      ifMatch: org.revision,
+      body: { name: `改名${uniqueSuffix()}`, effectiveDate: '2026-10-08', addEmployment: true },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+  }
+
+  async function adjustmentOf(w: ApprovalWorld, employeeId: string) {
+    const records = await w.json<{ items: { id: string; kind: string }[] }>(
+      await w.request(w.hr.id, 'GET', `${BASE}/employees/${employeeId}/records?asOf=2026-10-10`),
+    );
+    return records.items.find((record) => record.kind === 'org_adjustment')!;
+  }
+
+  it('HR 直接调动 → 组织改名联动生成任职记录 → 纯经理读组织调整来源：调动不可读则 ID 为 null，可读则保留', async () => {
+    const x = await fixture();
+    const own = await directTransfer(x.w, x.member.employeeId, x.a, 'ZZ_团队内调动地点');
+    const foreign = await directTransfer(x.w, x.stranger.employeeId, x.outside, 'ZZ_非团队调动地点');
+    x.w.setNow('2026-10-10T01:00:00Z');
+    await rename(x.w, x.a);
+    await rename(x.w, x.outside);
+    // 前提：经理读不到非团队成员的调动单（详情 403、来源 404），读得到团队成员的
+    expect((await bodyOf(await x.read(`${BASE}/businesses/${foreign.id}`))).status).toBe(403);
+    expect((await bodyOf(await x.read(`${BASE}/businesses/${foreign.id}/field-origins`))).status).toBe(404);
+    expect((await x.read(`${BASE}/businesses/${own.id}`)).status).toBe(200);
+
+    const originsOf = async (employeeId: string) => {
+      const adjustment = await adjustmentOf(x.w, employeeId);
+      const response = await x.read(`${BASE}/businesses/${adjustment.id}/field-origins`);
+      expect(response.status, await response.clone().text()).toBe(200);
+      return (await response.json()) as { fields: OriginField[] };
+    };
+    const hidden = await originsOf(x.stranger.employeeId);
+    const place = hidden.fields.find((f) => f.fieldCode === 'preset:place');
+    expect(place).toMatchObject({ value: 'ZZ_非团队调动地点', origin: { kind: 'copy', sourceBusinessId: null } });
+    expect(JSON.stringify(hidden)).not.toContain(foreign.id);
+
+    const visible = await originsOf(x.member.employeeId);
+    expect(visible.fields.find((f) => f.fieldCode === 'preset:place')).toMatchObject({
+      value: 'ZZ_团队内调动地点',
+      origin: { kind: 'copy', sourceBusinessId: own.id },
+    });
+  });
+});
+
+describe('AC-EMP-30 只读来源接口：值与来源取同一读取快照', () => {
+  const FIRST = 'ZZ_甲地';
+  const SECOND = 'ZZ_乙地';
+  const EDITED_AT = '2026-10-07T08:09:10.000Z';
+  /** 业务读取语句的特征（loadEmploymentBusiness 里独有的试用期版本表）。 */
+  const BUSINESS_READ = 'employment_probation_versions';
+
+  /** 包一层 Db：含业务读取语句的事务提交之后，立即执行一次 after（只执行一次），再返回——此时事务已结束，PGlite 不死锁。 */
+  function interleavedDb(db: Db, after: () => Promise<void>): { db: Db; fired: () => boolean } {
+    let fired = false;
+    const forward = (target: object, prop: string | symbol) => {
+      const value = Reflect.get(target, prop, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    };
+    const proxy = new Proxy(db, {
+      get(target, prop) {
+        if (prop !== 'transaction') return forward(target, prop);
+        return async (fn: (tx: Tx) => Promise<unknown>, config?: object) => {
+          let readBusiness = false;
+          const result = await (
+            target.transaction as (f: (tx: Tx) => Promise<unknown>, c?: object) => Promise<unknown>
+          )(
+            (tx) =>
+              fn(
+                new Proxy(tx, {
+                  get(inner, name) {
+                    if (name !== 'execute') return forward(inner, name);
+                    return (query: { queryChunks?: unknown }) => {
+                      if (JSON.stringify(query.queryChunks ?? []).includes(BUSINESS_READ)) readBusiness = true;
+                      return (inner.execute as (q: unknown) => Promise<unknown>).call(inner, query);
+                    };
+                  },
+                }),
+              ),
+            config,
+          );
+          if (readBusiness && !fired) {
+            fired = true;
+            await after();
+          }
+          return result;
+        };
+      },
+    });
+    return { db: proxy, fired: () => fired };
+  }
+
+  it('GET 读完业务后、有一条真实 PATCH 改了工作地：返回成对的旧值 + 旧来源，下一次 GET 才是新值 + 新来源', async () => {
+    const w = await approvalWorld(database().db, `emp30-snap-${uniqueSuffix()}`);
+    w.setNow('2026-10-01T01:00:00Z');
+    const dept = await w.org('快照部门');
+    const created = await w.employee('快照员工');
+    const hire = await w.hire(created.id, { departmentId: dept, place: FIRST });
+    const patchPlace = async () => {
+      w.setNow(EDITED_AT);
+      const current = await w.business(hire.id);
+      const patched = await w.request(w.hr.id, 'PATCH', `${BASE}/records/${hire.id}`, {
+        ifMatch: current.revision,
+        body: { fields: { place: SECOND } },
+      });
+      expect(patched.status, await patched.clone().text()).toBe(200);
+    };
+    const hooked = interleavedDb(w.db, patchPlace);
+    const api = tenantApi(hooked.db, { clock: w.clock });
+    const placeOf = async () => {
+      const response = await api.request('GET', `${BASE}/businesses/${hire.id}/field-origins`, w.as(w.hr.id));
+      expect(response.status, await response.clone().text()).toBe(200);
+      const body = (await response.json()) as { fields: (OriginField & { origin: { at: string } | null })[] };
+      return body.fields.find((f) => f.fieldCode === 'preset:place');
+    };
+
+    const racing = await placeOf();
+    expect(hooked.fired(), '交错点已触发').toBe(true);
+    expect(racing).toMatchObject({ value: FIRST });
+    expect(racing?.origin?.at).not.toBe(EDITED_AT);
+
+    const settled = await placeOf();
+    expect(settled).toMatchObject({ value: SECOND, origin: { kind: 'hr-record', at: EDITED_AT } });
+  });
+});
+
+describe('AC-EMP-30 只读来源接口：延迟继承字段落地后不再待解析', () => {
+  it('关闭自动带出的直接调动：落地前 pending = true，调度顺延落地后 pending = false（策略仍是 deferred）', async () => {
+    const w = await activationWorld(database().db, `emp30-pending-${uniqueSuffix()}`);
+    const configured = await w.session.request('PUT', '/transfers/settings', {
+      ifMatch: 0,
+      body: { unrestrictTargetDepartment: false, autoPopulate: false },
+    });
+    expect(configured.status, await configured.clone().text()).toBe(200);
+    const person = await w.hired();
+    const transfer = await w.session.business(
+      person.employee.id,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { departmentId: w.to.id } },
+      person.hire.employeeRevision,
+    );
+    const placeRow = async () => {
+      const response = await w.session.request('GET', `/businesses/${transfer.id}/field-origins`);
+      expect(response.status, await response.clone().text()).toBe(200);
+      const body = (await response.json()) as { fields: (OriginField & { policy: string; pending: boolean })[] };
+      return body.fields.find((f) => f.fieldCode === 'preset:place');
+    };
+
+    expect(await placeRow()).toMatchObject({ value: '原地点', policy: 'deferred', pending: true });
+    const run = await w.runScheduler('2026-10-06T01:00:00Z');
+    expect(run).toMatchObject({ failed: [], errors: [] });
+    expect(await w.session.record(transfer.id, '2026-10-06')).toMatchObject({ fields: { place: '原地点' } });
+    expect(await placeRow()).toMatchObject({ value: '原地点', policy: 'deferred', pending: false });
   });
 });

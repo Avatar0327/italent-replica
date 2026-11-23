@@ -6,9 +6,11 @@
  *   甲 = 范围内 HR（发起人，读现值）；乙 = 已办审批人，办理节点未披露工作地；
  *   丙 = 已办审批人，办理节点披露了工作地（办理时为甲地）而办理后被改成乙地；丁 = 办理份缺失；戊 = 入口级与资源级错误。
  */
-import { sql } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { appendFieldOrigins } from '../../apps/api/src/modules/employment/field-origin-store.js';
+import { resultRows } from './AC-ORG-people-support.js';
 import { AFTER, BEFORE, EMP, activateOn, handledScene, realWorld, type Scene } from './AC-F476-p4-support.js';
 
 const testDb = useTestDb();
@@ -17,7 +19,7 @@ const MODIFIED_AT = '2026-10-07T08:09:10.000Z';
 interface OriginRow {
   fieldCode: string;
   value: unknown;
-  origin: { kind: string; label: string | null; at: string } | null;
+  origin: { kind: string; label: string | null; at: string; sourceBusinessId: string | null } | null;
   policy: string | null;
   pending: boolean;
   suspended: boolean;
@@ -74,8 +76,46 @@ function detailValue(detail: Fetched<DetailBody>, code: string): unknown {
 const rowsOf = (origins: Fetched<OriginsBody>) => origins.body.fields ?? [];
 const placeRow = (origins: Fetched<OriginsBody>) => rowsOf(origins).find((row) => row.fieldCode === 'preset:place');
 
+const SOURCE_SEEDED_AT = '2026-10-07T09:00:00.000Z';
+
+/** 同一员工名下另一张业务（入职业务）的 ID：它与被读的调动单是两张独立的单。 */
+async function independentBusiness(scene: Scene) {
+  const { w } = scene;
+  return withTenant(w.db, w.tenant.id, async (tx) => {
+    const [row] = resultRows<{ business_id: string }>(
+      await tx.execute(sql`SELECT DISTINCT business_id FROM employment_payload_versions
+        WHERE tenant_id = ${w.tenant.id} AND employee_id = ${scene.subjectId}::uuid
+          AND business_id <> ${scene.businessId}::uuid LIMIT 1`),
+    );
+    return row!.business_id;
+  });
+}
+
+/** 给被读业务的工作地追加一行“向后更新”来源，来源业务是另一张独立的单（手写时刻与值）。 */
+async function seedPlaceSource(scene: Scene, sourceBusinessId: string) {
+  const { w } = scene;
+  await withTenant(w.db, w.tenant.id, async (tx) => {
+    const [version] = resultRows<{ id: string }>(
+      await tx.execute(sql`SELECT id FROM employment_payload_versions
+        WHERE tenant_id = ${w.tenant.id} AND business_id = ${scene.businessId}::uuid
+        ORDER BY version_no DESC LIMIT 1`),
+    );
+    await appendFieldOrigins(tx, { tenantId: w.tenant.id, userId: w.hr.id, now: new Date(SOURCE_SEEDED_AT) }, [
+      {
+        fieldCode: 'preset:place',
+        originKind: 'forward-update',
+        value: AFTER,
+        sourceBusinessId,
+        businessId: scene.businessId,
+        payloadVersionId: version!.id,
+        employeeId: scene.subjectId,
+      },
+    ]);
+  });
+}
+
 /** 调动单通过 → 生效日落地 → HR 在记录上把工作地改成 AFTER（乙地）。 */
-async function approvedThenEdited(label: string, nodeForm?: readonly string[]) {
+async function approvedThenEdited(label: string, nodeForm?: readonly string[], withSource = false) {
   const scene = await handledScene(testDb().db, label, 'transfer', {
     action: 'approve',
     ...(nodeForm ? { nodeForm } : {}),
@@ -89,13 +129,22 @@ async function approvedThenEdited(label: string, nodeForm?: readonly string[]) {
     body: { fields: { place: AFTER } },
   });
   expect(patched.status, await patched.clone().text()).toBe(200);
+  const sourceId = withSource ? await independentBusiness(scene) : null;
+  if (sourceId) await seedPlaceSource(scene, sourceId);
   const real = await realWorld(scene);
   await real.grantRead(scene.approver.userId);
   await real.setScope(scene.approver.userId, 'contains');
+  // 从未参与审批的 HR：对象权与组织范围都经真实授权器取得，不是 allowAll
+  const reader = await w.person('未参与审批的HR', scene.departmentId);
+  await real.grantRead(reader.userId);
+  await real.setScope(reader.userId, 'contains');
   return {
     scene,
     real,
+    sourceId,
     hr: (path: string) => w.request(w.hr.id, 'GET', path),
+    readerId: reader.userId,
+    reader: (path: string) => real.fetch(reader.userId, path),
     approver: (path: string) => real.fetch(scene.approver.userId, path),
   };
 }
@@ -103,7 +152,8 @@ async function approvedThenEdited(label: string, nodeForm?: readonly string[]) {
 describe('AC-EMP-31 内容对拍', () => {
   it('甲：范围内 HR 读现值——字段集合与值同详情逐项相等，工作地为乙地，来源是 hr-record', async () => {
     const x = await approvedThenEdited('emp31-a');
-    const { detail, origins } = await both(x.hr, x.scene);
+    expect([x.scene.w.hr.id, x.scene.approver.userId], '读者没有参与过这张单').not.toContain(x.readerId);
+    const { detail, origins } = await both(x.reader, x.scene);
     expect(detail.status).toBe(200);
     expect(origins.status, JSON.stringify(origins.body)).toBe(200);
     expect(origins.body.contentView).toEqual(detail.body.contentView);
@@ -124,8 +174,17 @@ describe('AC-EMP-31 内容对拍', () => {
     });
   });
 
-  it('乙：已办审批人、办理节点未披露工作地——两条路由都没有工作地，来源接口全文搜不到它与那次修改', async () => {
-    const x = await approvedThenEdited('emp31-b', ['effectiveDate', 'departmentId']);
+  it('乙：已办审批人、办理节点未披露工作地——两条路由都没有工作地，来源接口全文搜不到它、那次修改与来源业务 ID', async () => {
+    const x = await approvedThenEdited('emp31-b', ['effectiveDate', 'departmentId'], true);
+    // 现值侧确有独立来源：未参与审批的 HR 读到工作地的来源业务 ID（非空，且不是被读的这张单）
+    const live = await both(x.reader, x.scene);
+    expect(live.origins.status, JSON.stringify(live.origins.body)).toBe(200);
+    const liveSource = placeRow(live.origins)?.origin?.sourceBusinessId;
+    expect(liveSource).toBe(x.sourceId);
+    expect(liveSource).toBeTruthy();
+    expect(liveSource).not.toBe(x.scene.businessId);
+    expect(placeRow(live.origins)?.origin?.kind).toBe('forward-update');
+
     const { detail, origins } = await both(x.approver, x.scene);
     expect(detail.status).toBe(200);
     expect(origins.status, JSON.stringify(origins.body)).toBe(200);
@@ -134,7 +193,16 @@ describe('AC-EMP-31 内容对拍', () => {
     expect(origins.body.contentView).toEqual(detail.body.contentView);
     expect(origins.body.contentView?.mode).toBe('frozen');
     const text = JSON.stringify(origins.body);
-    for (const leaked of ['preset:place', 'place', BEFORE, AFTER, 'hr-record', MODIFIED_AT])
+    for (const leaked of [
+      'preset:place',
+      'place',
+      BEFORE,
+      AFTER,
+      'hr-record',
+      'forward-update',
+      MODIFIED_AT,
+      liveSource!,
+    ])
       expect(text, `不应出现 ${leaked}`).not.toContain(leaked);
   });
 
