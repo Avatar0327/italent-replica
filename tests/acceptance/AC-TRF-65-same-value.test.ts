@@ -328,17 +328,18 @@ describe('AC-TRF-65 ④ 新建、预览带这四个字段任一个（值、null�
       for (const field of FOUR)
         for (const value of [same[field], null, same[field].toUpperCase()]) {
           const fields = { departmentId: b.s.source, [field]: value };
-          const body = entry.generic
-            ? {
-                initiator: 'employee',
-                transferTypeCode: 'in_department',
-                formId: 'TenantBase.TransferMultiFormView',
-                effectiveDate: LATER,
-                mode: 'application',
-                submit: false,
-                fields,
-              }
-            : { effectiveDate: LATER, fields };
+          const body =
+            'generic' in entry
+              ? {
+                  initiator: 'employee',
+                  transferTypeCode: 'in_department',
+                  formId: 'TenantBase.TransferMultiFormView',
+                  effectiveDate: LATER,
+                  mode: 'application',
+                  submit: false,
+                  fields,
+                }
+              : { effectiveDate: LATER, fields };
           const response = await b.s.api.request('POST', entry.path(b.person.employeeId), {
             ...b.s.w.as(b.person.userId),
             ...('ifMatch' in entry ? { ifMatch: await revision() } : {}),
