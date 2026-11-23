@@ -25,6 +25,20 @@
       "obj:TenantBase.HrStructure:view"
     ]
   },
+  "GET /api/tenant/analytics/hr-structure/components/:code/export": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "172d83b2672c",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.HrStructure/TenantBase.HrStructure.list"
+    ],
+    "trace": [
+      "obj:TenantBase.HrStructure:view"
+    ]
+  },
   "GET /api/tenant/analytics/hr-structure/reports/:report": {
     "all": {
       "code": "NOT_FOUND",

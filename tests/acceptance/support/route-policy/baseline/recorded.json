@@ -36,6 +36,77 @@
       }
     ]
   },
+  "GET /api/tenant/analytics/contract-board/components/:code/export": {
+    "outcome": [
+      {
+        "auditAdded": [
+          "export"
+        ],
+        "status": 200
+      },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "VALIDATION_FAILED",
+        "reason": "EXPORT_ROW_LIMIT",
+        "status": 422
+      }
+    ]
+  },
+  "GET /api/tenant/analytics/hr-dashboard/indicators/:code/export": {
+    "outcome": [
+      {
+        "auditAdded": [
+          "export"
+        ],
+        "status": 200
+      },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      }
+    ]
+  },
+  "GET /api/tenant/analytics/hr-movement/components/:code/export": {
+    "outcome": [
+      {
+        "auditAdded": [
+          "export"
+        ],
+        "status": 200
+      },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "VALIDATION_FAILED",
+        "reason": "EXPORT_ROW_LIMIT",
+        "status": 422
+      }
+    ]
+  },
+  "GET /api/tenant/analytics/hr-structure/components/:code/export": {
+    "outcome": [
+      {
+        "auditAdded": [
+          "export"
+        ],
+        "status": 200
+      },
+      {
+        "code": "FORBIDDEN",
+        "status": 403
+      },
+      {
+        "code": "VALIDATION_FAILED",
+        "reason": "EXPORT_ROW_LIMIT",
+        "status": 422
+      }
+    ]
+  },
   "GET /api/tenant/analytics/organization-candidates": {
     "fixedKeys": [
       {

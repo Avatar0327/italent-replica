@@ -254,24 +254,37 @@ describe('AC-EMP-19 追加任职版本的各路径继承上一版本的人员状
           WHERE tenant_id=${session.tenant.id} AND business_id=${recordId}::uuid ORDER BY version_no DESC LIMIT 1`),
       );
       // 模拟 F-021 / F-007 等路径：展开旧载荷（含过期的状态值）追加快照
-      await insertEmploymentRow(tx, 'employment_payload_versions', {
-        id: randomUUID(),
-        tenantId: session.tenant.id,
-        employeeId: employee.id,
-        businessId: recordId,
-        versionNo: 2,
-        previousVersionId: payload!.id,
-        commandId: 'stale-spread',
-        triggerBusinessId: recordId,
-        isRecordSnapshot: true,
-        kind: 'hire',
-        mode: 'direct',
-        effectiveDate: '2026-09-01',
-        formId: 'standard',
-        employType: 'internal',
-        employeeStatus: 12,
-        entryStatus: 1,
-      });
+      await insertEmploymentRow(
+        tx,
+        'employment_payload_versions',
+        {
+          id: randomUUID(),
+          tenantId: session.tenant.id,
+          employeeId: employee.id,
+          businessId: recordId,
+          versionNo: 2,
+          previousVersionId: String(payload!.id),
+          commandId: 'stale-spread',
+          triggerBusinessId: recordId,
+          isRecordSnapshot: true,
+          kind: 'hire',
+          mode: 'direct',
+          effectiveDate: '2026-09-01',
+          formId: 'standard',
+          employType: 'internal',
+          employeeStatus: 12,
+          entryStatus: 1,
+        },
+        {
+          ctx: {
+            tenantId: session.tenant.id,
+            userId: session.user.id,
+            now: new Date('2026-10-01T01:00:00Z'),
+            commandId: 'stale-spread',
+          },
+          origins: 'carry-only',
+        },
+      );
     });
     expect(await versionStatuses(session, recordId)).toEqual([
       { s: 2, snapshot: false },
