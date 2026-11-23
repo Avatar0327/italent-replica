@@ -30,6 +30,21 @@
 .hr-process-section .board-trend th:first-child {
   width: 84px;
 }
+/*
+ * 同图共用刻度（审查 P2-1）：B51 的横向条形图（BoardChart 条形与差值图）整张图一个 Grid，
+ * 各行用 subgrid 继承列宽，数值列取全图最宽值；轨道起点、宽度和零轴因此与数值文字宽度无关。
+ */
+.hr-process-section .board-chart-bar ul {
+  display: grid;
+  grid-template-columns: minmax(6em, 1fr) minmax(30px, 2fr) max-content;
+  column-gap: 8px;
+}
+.hr-process-section .board-chart-bar li,
+.hr-process-section .board-chart-bar .board-chart-item {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
 .hr-process-diverging .board-chart-mark {
   position: relative;
   display: block;
@@ -74,4 +89,13 @@
 }
 .hr-process-ratio .board-chart-item {
   grid-template-columns: minmax(0, 1fr) auto;
+}
+/* 占比格的数值放在条上方，条宽只取决于表格列宽，同表各行刻度一致（审查 P2-1）。 */
+.hr-process-ratio .hr-process-rate .board-chart-item {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+.hr-process-rate .board-chart-number {
+  order: -1;
+  text-align: start;
 }

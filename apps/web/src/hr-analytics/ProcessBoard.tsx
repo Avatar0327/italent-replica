@@ -129,7 +129,7 @@ function ProcessRatioTable({
             <tr key={key}>
               <th scope="row">{label}</th>
               {cells.map(({ field, point }) => (
-                <td key={point.key}>
+                <td key={point.key} className={field === 'rate' ? 'hr-process-rate' : undefined}>
                   <ChartItem point={point} open={open && (() => open(point.key))}>
                     {field === 'rate' && (
                       <span className="board-chart-mark" aria-hidden="true">
