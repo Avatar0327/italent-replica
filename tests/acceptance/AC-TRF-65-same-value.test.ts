@@ -3,8 +3,10 @@
  * 设计：docs/08_设计/F-036_字段来源记录与迟到后重建_设计.md §4.6、§5.2、§7.1、§10.1。
  * 夹具：甲＝DEC-950 原例；乙＝继承四字段；乙′＝原任职没有职位；丙＝HR 改当前任职后向后更新传播。
  */
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { waitForLockWaiters } from './AC-TRF-F181a-support.js';
 import { BASE, FOUR, LATER, ok, selfWorld, type Fields, type Four, type SelfWorld } from './AC-TRF-F036S4-support.js';
 
 const database = useTestDb();
@@ -104,7 +106,7 @@ describe('AC-TRF-65 ② 同值正例：200，字段值、来源行数、最后�
     expect(after.effectiveDate).toBe(NEXT_DATE);
     expect(after.fields).toEqual({ ...before.fields });
     expect(after.origins).toEqual(before.origins);
-    expect(after.counts.origins).toBe(before.counts.origins);
+    expect(after.counts.manual).toBe(before.counts.manual);
     expect(after.origins.positionId).toEqual({ value: a.p2, kind: 'approval-edit' });
   });
 
@@ -116,12 +118,12 @@ describe('AC-TRF-65 ② 同值正例：200，字段值、来源行数、最后�
     const after = await snapshot(a.s, a.draft.id);
     expect(after.effectiveDate).toBe(LATER);
     expect(after.origins).toEqual(before.origins);
-    expect(after.counts.origins).toBe(before.counts.origins);
+    expect(after.counts.manual).toBe(before.counts.manual);
     expect(after.origins.positionId).toEqual({ value: a.p1, kind: 'employee-input' });
 
     const replay = await ok(await a.s.patch(a.person, a.draft.id, a.k0.body, a.k0));
     expect(await replay.json()).toEqual(a.firstBody);
-    expect((await snapshot(a.s, a.draft.id)).counts.origins).toBe(before.counts.origins);
+    expect((await snapshot(a.s, a.draft.id)).counts).toEqual(after.counts);
   });
 
   it('c. 乙四字段一起带、逐个带，来源仍是 inherit', async () => {
@@ -138,13 +140,13 @@ describe('AC-TRF-65 ② 同值正例：200，字段值、来源行数、最后�
     expect(together.effectiveDate).toBe(LATER);
     expect(together.fields).toEqual(before.fields);
     expect(together.origins).toEqual(before.origins);
-    expect(together.counts.origins).toBe(before.counts.origins);
+    expect(together.counts.manual).toBe(before.counts.manual);
     for (const field of FOUR) {
       await ok(await b.s.patch(b.person, b.draft.id, { fields: { [field]: same[field] }, effectiveDate: NEXT_DATE }));
       const one = await snapshot(b.s, b.draft.id);
       expect(one.origins, field).toEqual(before.origins);
       expect(one.fields, field).toEqual(before.fields);
-      expect(one.counts.origins, field).toBe(before.counts.origins);
+      expect(one.counts.manual, field).toBe(before.counts.manual);
     }
     expect(before.origins.positionId.kind).toBe('inherit');
     expect(before.origins.postId.kind).toBe('inherit');
@@ -166,7 +168,7 @@ describe('AC-TRF-65 ② 同值正例：200，字段值、来源行数、最后�
     expect(after.effectiveDate).toBe(LATER);
     expect(after.origins).toEqual(before.origins);
     expect(after.fields).toEqual(before.fields);
-    expect(after.counts.origins).toBe(before.counts.origins);
+    expect(after.counts.manual).toBe(before.counts.manual);
   });
 
   it('e. 乙的职位、职务各带大写 UUID，按小写比较，200', async () => {
@@ -181,7 +183,7 @@ describe('AC-TRF-65 ② 同值正例：200，字段值、来源行数、最后�
     const after = await snapshot(b.s, b.draft.id);
     expect(after.fields).toEqual(before.fields);
     expect(after.origins).toEqual(before.origins);
-    expect(after.counts.origins).toBe(before.counts.origins);
+    expect(after.counts.manual).toBe(before.counts.manual);
   });
 
   it('f. 乙只带同值职务：200，不是 400（扣空后无业务字段，按无变化整版重提）', async () => {
@@ -191,7 +193,7 @@ describe('AC-TRF-65 ② 同值正例：200，字段值、来源行数、最后�
     const after = await snapshot(b.s, b.draft.id);
     expect(after.fields).toEqual(before.fields);
     expect(after.origins).toEqual(before.origins);
-    expect(after.counts.origins).toBe(before.counts.origins);
+    expect(after.counts.manual).toBe(before.counts.manual);
   });
 
   it('g. 乙′（原任职没有职位）带 positionId: null，200，不记显式清空', async () => {
@@ -202,7 +204,7 @@ describe('AC-TRF-65 ② 同值正例：200，字段值、来源行数、最后�
     expect(after.effectiveDate).toBe(LATER);
     expect(after.fields).toEqual(before.fields);
     expect(after.origins).toEqual(before.origins);
-    expect(after.counts.origins).toBe(before.counts.origins);
+    expect(after.counts.manual).toBe(before.counts.manual);
   });
 
   it('h. 同键重放 a、c 的同值请求，结果一致，不追加来源行', async () => {
@@ -231,6 +233,29 @@ describe('AC-TRF-65 ② 同值正例：200，字段值、来源行数、最后�
     const cReplay = await ok(await b.s.patch(b.person, b.draft.id, cBody, cOptions));
     expect(await cReplay.json()).toEqual(await cFirst.json());
     expect(await snapshot(b.s, b.draft.id)).toEqual(cAfter);
+  });
+});
+
+describe('AC-TRF-65 ②′ 对照：同值字段不额外写来源', () => {
+  it('带四个同值字段改期与纯改期请求，载荷版本与来源表（含策略行）增量完全一致', async () => {
+    const run = async (label: string, withSame: boolean) => {
+      const b = await beta(label);
+      const before = await b.s.counts(b.draft.id);
+      const fields = Object.fromEntries(
+        FOUR.map((field) => [
+          field,
+          { positionId: b.base.position, postId: b.base.post, levelId: b.base.level, sequenceId: b.base.sequence }[
+            field
+          ],
+        ]),
+      );
+      await ok(await b.s.patch(b.person, b.draft.id, { effectiveDate: LATER, ...(withSame ? { fields } : {}) }));
+      const after = await b.s.counts(b.draft.id);
+      return { versions: after.versions - before.versions, origins: after.origins - before.origins };
+    };
+    const control = await run('f036s4-65-2p-control', false);
+    expect(control.origins).toBeGreaterThan(0);
+    expect(await run('f036s4-65-2p-same', true)).toEqual(control);
   });
 });
 
@@ -276,7 +301,15 @@ describe('AC-TRF-65 ③ 变值负例：403，单据前后一致，不记来源�
 });
 
 describe('AC-TRF-65 ④ 新建、预览带这四个字段任一个（值、null、大写 UUID）→ 403', () => {
-  it('新建与预览入口不做同值放行', async () => {
+  /** 四个入口：通用员工入口的新建与预览、本人入口 /self-service/transfer 的新建与预览。 */
+  const ENTRIES = [
+    { name: '通用新建', path: (id: string) => `${BASE}/transfers/employees/${id}`, generic: true, ifMatch: true },
+    { name: '通用预览', path: (id: string) => `${BASE}/transfers/employees/${id}/preview`, generic: true },
+    { name: '本人新建', path: () => '/api/tenant/self-service/transfer', ifMatch: true },
+    { name: '本人预览', path: () => '/api/tenant/self-service/transfer/preview' },
+  ] as const;
+
+  it('四个入口 × 四字段 × 三种值（同值、null、大写 UUID）全部 403，不因同值放行', async () => {
     const b = await beta('f036s4-65-4');
     const same: Record<Four, string> = {
       positionId: b.base.position,
@@ -291,35 +324,53 @@ describe('AC-TRF-65 ④ 新建、预览带这四个字段任一个（值、null�
         )
       ).employee.revision;
     const seen: string[] = [];
-    for (const suffix of ['', '/preview'])
+    for (const entry of ENTRIES)
       for (const field of FOUR)
         for (const value of [same[field], null, same[field].toUpperCase()]) {
-          const response = await b.s.api.request(
-            'POST',
-            `${BASE}/transfers/employees/${b.person.employeeId}${suffix}`,
-            {
-              ...b.s.w.as(b.person.userId),
-              ifMatch: await revision(),
-              body: {
+          const fields = { departmentId: b.s.source, [field]: value };
+          const body = entry.generic
+            ? {
                 initiator: 'employee',
                 transferTypeCode: 'in_department',
                 formId: 'TenantBase.TransferMultiFormView',
                 effectiveDate: LATER,
                 mode: 'application',
                 submit: false,
-                fields: { departmentId: b.s.source, [field]: value },
-              },
-            },
-          );
+                fields,
+              }
+            : { effectiveDate: LATER, fields };
+          const response = await b.s.api.request('POST', entry.path(b.person.employeeId), {
+            ...b.s.w.as(b.person.userId),
+            ...('ifMatch' in entry ? { ifMatch: await revision() } : {}),
+            body,
+          });
           const kind = value === null ? 'null' : value === same[field] ? 'same' : 'upper';
-          seen.push(`${suffix || '/create'} ${field} ${kind} ${response.status}`);
+          seen.push(`${entry.name} ${field} ${kind} ${response.status}`);
         }
-    // 预览里表单本就不开放职位编辑，校验先于权限判定回 400；仍是拒绝，不因同值放行。其余入口与字段都是 403。
-    expect(seen.filter((line) => !line.endsWith(' 403'))).toEqual([
-      '/preview positionId same 400',
-      '/preview positionId null 400',
-      '/preview positionId upper 400',
-    ]);
+    expect(seen.filter((line) => !line.endsWith(' 403'))).toEqual([]);
+    expect(seen).toHaveLength(ENTRIES.length * FOUR.length * 3);
+  });
+
+  it('通用员工预览：无职位编辑权时字段权限 403 先于表单校验；租户开了职位编辑权则照常预览（DEC-205）', async () => {
+    const a = await alpha('f036s4-65-4-dec205');
+    await a.person.positionEdit(false);
+    const preview = (positionId: unknown) =>
+      a.s.api.request('POST', `${BASE}/transfers/employees/${a.person.employeeId}/preview`, {
+        ...a.s.w.as(a.person.userId),
+        body: {
+          initiator: 'employee',
+          transferTypeCode: 'in_department',
+          formId: 'TenantBase.TransferMultiFormView',
+          effectiveDate: LATER,
+          mode: 'application',
+          submit: false,
+          fields: { departmentId: a.s.source, positionId },
+        },
+      });
+    await forbidden(await preview(a.p1));
+    await a.person.positionEdit(true);
+    const allowed = await preview(a.p1);
+    expect(allowed.status, await allowed.clone().text()).toBe(200);
   });
 });
 
@@ -353,3 +404,63 @@ describe('AC-TRF-65 ⑥ 提交接口带任职字段 → 400', () => {
     expect(await snapshot(b.s, b.draft.id)).toEqual(before);
   });
 });
+
+/**
+ * 员工行锁屏障（审查 P1-1）：甲（员工自填 P1 后收回职位编辑权，表单快照里职位仍可编辑）的草稿上，
+ * 员工带 P1 的同值请求在事务外 / 命令守卫读到 P1 → 放行同值；排在员工行锁上等待期间，HR 把草稿职位改成 P2 并提交。
+ * 员工请求带 HR 提交后的 revision，越过乐观锁进到锁内：此时 P1 对草稿已是新值，只能算本次输入。
+ */
+async function raceAfterHr(label: string, withHr: boolean) {
+  const a = await alpha(label);
+  const { w } = a.s;
+  const key = `k-${label}`;
+  const revision = (await a.s.show(a.draft.id)).revision;
+  const request = () =>
+    a.s.patch(
+      a.person,
+      a.draft.id,
+      { fields: { positionId: a.p1 }, effectiveDate: LATER },
+      { revision: revision + (withHr ? 1 : 0), key },
+    );
+  const before = await snapshot(a.s, a.draft.id);
+  const employeeRows = await a.s.originKinds(a.draft.id, 'preset:positionId');
+  const [hr, employee] = await withTenant(w.db, w.tenant.id, async (barrier) => {
+    await barrier.execute(sql`SELECT id FROM employment_employees
+      WHERE tenant_id=${w.tenant.id} AND id=${a.person.employeeId}::uuid FOR UPDATE`);
+    const hrResponse = withHr ? a.s.hrEditDraft(a.draft.id, { positionId: a.p2 }, revision) : undefined;
+    if (hrResponse) await waitForLockWaiters(w.db, 1);
+    const employeeResponse = request();
+    await waitForLockWaiters(w.db, withHr ? 2 : 1);
+    return [hrResponse, employeeResponse] as const;
+  });
+  return { a, before, employeeRows, hr: hr && (await hr), employee: await employee, request, key };
+}
+
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+  'AC-TRF-65 ⑧ 同值判定与写权校验绑定锁内同一份载荷（真 PG）',
+  () => {
+    it('同值请求等锁期间 HR 把草稿职位改成 P2：锁内它已是职位输入，员工无职位编辑权 → 403，载荷与来源都不写', async () => {
+      const r = await raceAfterHr('f036s4-65-8-race', true);
+      expect(r.hr!.status, await r.hr!.clone().text()).toBe(200);
+      expect(r.employee.status, await r.employee.clone().text()).toBe(403);
+      const after = await snapshot(r.a.s, r.a.draft.id);
+      // 草稿只剩 HR 写入的 P2：员工的同值请求没有把职位写回 P1，也没有追加职位来源行，生效日期也没动。
+      expect(after.fields).toMatchObject({ positionId: r.a.p2 });
+      expect(after.origins.positionId?.value).toBe(r.a.p2);
+      expect(await r.a.s.originKinds(r.a.draft.id, 'preset:positionId')).toHaveLength(r.employeeRows.length + 1);
+      expect(after.effectiveDate).toBe(r.before.effectiveDate);
+    });
+
+    it('对照：没有 HR 改动时同一个同值请求仍是 200，同键重放返回首次结果且不追加行', async () => {
+      const r = await raceAfterHr('f036s4-65-8-control', false);
+      expect(r.employee.status, await r.employee.clone().text()).toBe(200);
+      const first = await r.employee.json();
+      const after = await snapshot(r.a.s, r.a.draft.id);
+      expect(after.effectiveDate).toBe(LATER);
+      expect(after.origins.positionId).toEqual(r.before.origins.positionId);
+      const replay = await ok(await r.request());
+      expect(await replay.json()).toEqual(first);
+      expect(await snapshot(r.a.s, r.a.draft.id)).toEqual(after);
+    });
+  },
+);

@@ -173,14 +173,31 @@ export async function selfWorld(db: Db, label: string) {
   }
 
   /** HR 改员工当前任职（`PATCH /records/:id`），向后更新会传播进本人草稿。 */
-  async function hrEditCurrent(person: Employee, fields: Fields) {
-    const record = await w.json<{ revision: number }>(
-      await w.request(w.hr.id, 'GET', `${BASE}/records/${person.recordId}`),
-    );
-    return w.request(w.hr.id, 'PATCH', `${BASE}/records/${person.recordId}`, {
+  async function hrEditCurrent(person: Employee, fields: Fields, customFields?: Fields, recordId = person.recordId) {
+    const record = await w.json<{ revision: number }>(await w.request(w.hr.id, 'GET', `${BASE}/records/${recordId}`));
+    return w.request(w.hr.id, 'PATCH', `${BASE}/records/${recordId}`, {
       ifMatch: record.revision,
-      body: { fields },
+      body: { fields, ...(customFields ? { customFields } : {}) },
     });
+  }
+
+  /** HR 直接改员工这张草稿（`PATCH /businesses/:id`），写成 HR 输入。 */
+  async function hrEditDraft(id: string, fields: Fields, revision: number) {
+    return w.request(w.hr.id, 'PATCH', `${BASE}/businesses/${id}`, { ifMatch: revision, body: { fields } });
+  }
+
+  /** 某张调动单据生效后落成的任职记录 id。 */
+  async function recordOfBusiness(businessId: string) {
+    return withTenant(
+      db,
+      w.tenant.id,
+      async (tx) =>
+        resultRows<{ id: string }>(
+          await tx.execute(sql`SELECT r.id FROM employment_records r
+          JOIN employment_payload_versions p ON p.tenant_id = r.tenant_id AND p.id = r.payload_version_id
+          WHERE r.tenant_id = ${w.tenant.id} AND p.business_id = ${businessId}::uuid`),
+        )[0]!.id,
+    );
   }
 
   /** 草稿上某字段的最后写入来源与值（从台账折叠，不直接读载荷）。 */
@@ -195,21 +212,54 @@ export async function selfWorld(db: Db, label: string) {
   }
 
   /**
-   * “零写入”的两处行数：载荷版本数、覆盖行数（employment_propagation_commands 阶段 ② 才有）。
-   * 覆盖行 = 除策略行（inherit / deferred / resolved / none / copy）以外的来源行：改生效日会重新处理继承，
-   * 每个可继承字段各追加一条策略行（AC-EMP-22），那不是员工输入，也不改“最后写入来源”。
+   * “零写入”的行数：载荷版本数、`origins` = 来源表全量行数（含策略行 inherit / deferred / resolved / none / copy），
+   * `manual` = 去掉策略行后的覆盖 / 派生行数。拒绝与重放必须一行不加（比 `origins`）；成功改期会重新处理继承、
+   * 追加策略行（AC-EMP-22），那类用例比 `manual`，并与同夹具的纯改期请求对照全量行数。
    */
   async function counts(businessId: string) {
     return withTenant(db, w.tenant.id, async (tx) => {
-      const [row] = resultRows<{ versions: number; origins: number }>(
+      const [row] = resultRows<{ versions: number; origins: number; manual: number }>(
         await tx.execute(sql`
         SELECT (SELECT count(*)::int FROM employment_payload_versions
                   WHERE tenant_id = ${w.tenant.id} AND business_id = ${businessId}::uuid) AS versions,
                (SELECT count(*)::int FROM employment_field_origins
+                  WHERE tenant_id = ${w.tenant.id} AND business_id = ${businessId}::uuid) AS origins,
+               (SELECT count(*)::int FROM employment_field_origins
                   WHERE tenant_id = ${w.tenant.id} AND business_id = ${businessId}::uuid
-                    AND origin_kind NOT IN ('inherit','deferred','resolved','none','copy')) AS origins`),
+                    AND origin_kind NOT IN ('inherit','deferred','resolved','none','copy')) AS manual`),
       );
       return row!;
+    });
+  }
+
+  /** 某字段在来源表里的全部来源种类（按写入顺序），用来断言有没有多出 `derive` 等系统写入。 */
+  async function originKinds(businessId: string, field: string) {
+    return withTenant(db, w.tenant.id, async (tx) =>
+      resultRows<{ kind: string }>(
+        await tx.execute(sql`SELECT origin_kind AS kind FROM employment_field_origins
+          WHERE tenant_id = ${w.tenant.id} AND business_id = ${businessId}::uuid AND field_code = ${field}
+          ORDER BY created_at, id`),
+      ).map((row) => row.kind),
+    );
+  }
+
+  /** HR 建一个文本自定义字段，返回编码 `custom:<id>`。 */
+  async function customField(name: string) {
+    const created = await w.json<{ id: string }>(
+      await w.request(w.hr.id, 'POST', `${BASE}/custom-fields`, {
+        ifMatch: 0,
+        body: { name, valueType: 'text', objectType: 'employment' },
+      }),
+      201,
+    );
+    return created.id;
+  }
+
+  /** 覆盖标准调动表单的字段模式（员工草稿用的 TenantBase.TransferMultiFormView）。 */
+  async function formModes(fieldModes: Record<string, string>) {
+    return w.request(w.hr.id, 'PUT', `${BASE}/transfers/forms/TenantBase.TransferMultiFormView`, {
+      ifMatch: 0,
+      body: { name: '合成员工调动表单', group: 'transfer', fieldModes },
     });
   }
 
@@ -239,8 +289,13 @@ export async function selfWorld(db: Db, label: string) {
     submit,
     show,
     hrEditCurrent,
+    hrEditDraft,
     reviewEdit,
     origin,
+    originKinds,
+    customField,
+    formModes,
+    recordOfBusiness,
     counts,
   };
 }

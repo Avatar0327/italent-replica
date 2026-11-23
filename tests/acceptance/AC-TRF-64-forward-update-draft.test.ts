@@ -72,4 +72,64 @@ describe('AC-TRF-64 系统写入不算员工输入', () => {
     expect(response.status, await response.clone().text()).toBe(200);
     expect(await s.origin(draft.id, 'sequenceId')).toEqual({ value: nextSequence, kind: 'sequence-sync' });
   });
+
+  it('P2-1 沿用的职务不触发序列派生：员工带同值职务、序列并改期，序列仍是 HR 显式保留的 S1，不追加 derive 来源', async () => {
+    const s = await selfWorld(database().db, 'f036s4-64-carried-derive');
+    const old = await s.catalog();
+    const nextSequence = await s.jobs.sequence();
+    const nextPost = await s.jobs.post(nextSequence);
+    const nextPosition = await s.jobs.position(nextPost);
+    const person = await s.employee('合成员工', {
+      postId: old.post,
+      sequenceId: old.sequence,
+      levelId: old.level,
+      positionId: old.position,
+    });
+    const draft = await s.draftOf(person);
+    // HR 把当前任职改成新职务、新职位，同时显式保留序列 S1，向后更新传播进草稿。
+    await ok(await s.hrEditCurrent(person, { postId: nextPost, positionId: nextPosition, sequenceId: old.sequence }));
+    expect((await s.show(draft.id)).fields).toMatchObject({ postId: nextPost, sequenceId: old.sequence });
+    const before = await s.originKinds(draft.id, 'preset:sequenceId');
+    expect(before).not.toContain('derive');
+
+    const response = await s.patch(person, draft.id, {
+      fields: { postId: nextPost, sequenceId: old.sequence },
+      effectiveDate: LATER,
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    // 职务、序列都是沿用值，改期只重新处理继承；序列不被新职务的序列 S2 覆盖，也没有新的派生来源行。
+    expect((await s.show(draft.id)).fields).toMatchObject({ postId: nextPost, sequenceId: old.sequence });
+    expect(await s.originKinds(draft.id, 'preset:sequenceId')).not.toContain('derive');
+  });
+
+  it('P2-2 沿用的只读自定义字段不当作本次提交：只改生效日仍 200，值保持 B；显式改写仍 400', async () => {
+    const s = await selfWorld(database().db, 'f036s4-64-carried-custom');
+    const field = await s.customField('合成备注');
+    await ok(await s.formModes({ [`custom:${field}`]: 'readonly' }));
+    const old = await s.catalog();
+    const person = await s.employee('合成员工', {
+      postId: old.post,
+      sequenceId: old.sequence,
+      levelId: old.level,
+      positionId: old.position,
+    });
+    const draft = await s.draftOf(person);
+    await ok(await s.hrEditCurrent(person, {}, { [field]: 'B' }));
+    const custom = async () =>
+      (
+        await s.w.json<{ customFields: Record<string, unknown> }>(
+          await s.w.request(s.w.hr.id, 'GET', `/api/tenant/employment/businesses/${draft.id}`),
+        )
+      ).customFields;
+    expect(await custom()).toMatchObject({ [field]: 'B' });
+
+    const response = await s.patch(person, draft.id, { effectiveDate: LATER });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await custom()).toMatchObject({ [field]: 'B' });
+
+    // 本次请求点名改写只读字段，仍按表单模式拒绝，值不变。
+    const rewrite = await s.patch(person, draft.id, { customFields: { [field]: 'C' } });
+    expect(rewrite.status, await rewrite.clone().text()).toBe(400);
+    expect(await custom()).toMatchObject({ [field]: 'B' });
+  });
 });

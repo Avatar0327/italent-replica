@@ -63,7 +63,7 @@ describe('AC-TRF-66 导入编辑传播进草稿后，员工三个入口都放行
     expect((await s.show(draft.id)).effectiveDate).toBe(LATER);
     expect((await s.show(draft.id)).fields).toMatchObject({ positionId: other.position });
     expect(await s.origin(draft.id, 'positionId')).toEqual({ value: other.position, kind: 'forward-update' });
-    expect((await s.counts(draft.id)).origins).toBe(before.origins);
+    expect((await s.counts(draft.id)).manual).toBe(before.manual);
   });
 
   it('入口二 提交：200，职位与来源不变', async () => {
@@ -111,5 +111,48 @@ describe('AC-TRF-66 导入编辑传播进草稿后，员工三个入口都放行
     const response = await s.patch(person, draft.id, { effectiveDate: LATER }, options);
     expect(response.status, await response.clone().text()).toBe(403);
     expect({ counts: await s.counts(draft.id), shown: await s.show(draft.id) }).toEqual(before);
+  });
+});
+
+describe('AC-TRF-66 已生效的任职记录：导入编辑按生效记录契约校验，不套员工草稿的 J2', () => {
+  it('员工调动生效后 HR 同值确认序列（hr-record）；HR 导入编辑只改工作地 → 200；员工旧命令同键重放仍 403', async () => {
+    const s = await selfWorld(database().db, 'f036s4-66-effective-import');
+    const base = await s.catalog();
+    const person = await s.employee('合成员工', {
+      postId: base.post,
+      sequenceId: base.sequence,
+      levelId: base.level,
+      positionId: base.position,
+    });
+    const draft = await s.draftOf(person, {}, '2026-09-25');
+    const old = { key: 'k-f036s4-66-effective', revision: draft.revision };
+    await ok(await s.patch(person, draft.id, { effectiveDate: '2026-09-26' }, old));
+    await ok(await s.submit(person, draft.id));
+    const { w } = s;
+    const instance = await w.instanceOf(draft.id, person.userId);
+    await ok(await w.taskAction(s.reviewer.userId, w.pending(instance)[0]!.id, 'approve', instance.revision));
+    expect((await s.show(draft.id)).status).toBe('effective');
+
+    // HR 经 /records/:id 同值确认序列：来源记为 hr-record（不属于员工草稿可信来源）。
+    const recordId = await s.recordOfBusiness(draft.id);
+    await ok(await s.hrEditCurrent(person, { sequenceId: base.sequence }, undefined, recordId));
+    expect(await s.originKinds(recordId, 'preset:sequenceId')).toContain('hr-record');
+
+    const employee = await w.json<{ revision: number }>(
+      await w.request(w.hr.id, 'GET', `${BASE}/employees/${person.employeeId}`),
+    );
+    const record = await w.json<{ revision: number }>(await w.request(w.hr.id, 'GET', `${BASE}/records/${recordId}`));
+    const imported = await w.request(w.hr.id, 'POST', `${BASE}/employees/${person.employeeId}/import`, {
+      ifMatch: employee.revision,
+      body: {
+        items: [
+          { operation: 'edit', id: recordId, revision: record.revision, patch: { fields: { place: '新工作地' } } },
+        ],
+      },
+    });
+    expect(imported.status, await imported.clone().text()).toBe(200);
+
+    const replay = await s.patch(person, draft.id, { effectiveDate: '2026-09-26' }, old);
+    expect(replay.status, await replay.clone().text()).toBe(403);
   });
 });
