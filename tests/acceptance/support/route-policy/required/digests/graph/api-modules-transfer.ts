@@ -692,6 +692,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferFields',
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
     'apps/api/src/modules/transfer/linkage/part-time.ts#transferPartTimePort',
+    'apps/api/src/modules/transfer/service.ts#requireTransferWrite',
     'apps/api/src/modules/transfer/service.ts#transferTargetContext',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],

@@ -4333,7 +4333,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/field-derivations.ts#changedDerivationKeys': ['#rules'],
   'apps/api/src/modules/employment/field-derivations.ts#derivationFields': ['#rules'],
-  'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields': ['#resolveDerivation', '#rules'],
+  'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields': [
+    '#resolveDerivation',
+    '#rules',
+    '#triggers',
+  ],
   'apps/api/src/modules/employment/field-derivations.ts#resolveDerivation': [
     '#sequenceForNewPost',
     '#soleOtherPositionManager',
@@ -4611,10 +4615,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/inheritance.ts#applyCustomInheritance': [
     'apps/api/src/modules/employment/fields.ts#validateCustomValue',
     '#inheritanceOrigin',
+    '#isRequestInput',
     '#owns',
   ],
   'apps/api/src/modules/employment/inheritance.ts#applyExplicitPresetFields': [
     'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields',
+    '#isRequestInput',
     '#owns',
     '#setField',
   ],
@@ -4659,6 +4665,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/inheritance.ts#restoreFrozenDefaults': [
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
     '#inheritanceOrigin',
+    '#isRequestInput',
     '#owns',
     '#setField',
   ],
