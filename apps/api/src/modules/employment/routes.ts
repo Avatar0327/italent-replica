@@ -508,7 +508,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const current = await authorizeBusinessWrite(deps, ctx, id);
     requireResultApplicable(result, current.kind);
     const exitTarget = { employeeId: current.employeeId, kind: current.kind };
-    await withTenant(deps.db, ctx.tenantId, (tx) => requireDraftEditWrite(tx, ctx, id, input, options));
+    await requireDraftEditWrite(inTenant(deps, ctx), ctx, id, input, options);
     const departmentId = input.fields?.departmentId;
     if (departmentId !== undefined && ctx.transferTarget)
       ctx = { ...ctx, transferTarget: { ...ctx.transferTarget, departmentId } };
@@ -541,7 +541,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
               targetDepartmentId: departmentId,
               referenceChange: input,
               authorize: async (tx, scoped) => {
-                await requireDraftEditWrite(tx, scoped, id, input, options);
+                await requireDraftEditWrite((run) => run(tx), scoped, id, input, options);
                 if (departmentId !== undefined)
                   await requireScopedEmploymentObject(tx, scoped, current.employeeId, departmentId, id);
               },
@@ -1049,17 +1049,23 @@ function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
  * 修改、其同键重放与导入编辑行都走这一个函数。
  */
 async function requireDraftEditWrite(
-  tx: Tx,
+  inTx: <T>(run: (tx: Tx) => Promise<T>) => Promise<T>,
   ctx: EmploymentContext,
   id: string,
   input: EmploymentBusinessPatch,
   options: { readonly commandOnly?: boolean },
 ) {
-  const current = await requireEmployeeTransferBusiness(tx, ctx, id, input);
+  const current = await inTx((tx) => requireEmployeeTransferBusiness(tx, ctx, id, input));
+  // 写权校验要走授权器自己的连接，不能放在事务里等：调用方已在事务里时 inTx 直接复用它。
   await requireEmploymentWrite(ctx, 'update', current ?? input, 'Employment.Edit', undefined, {
     commandOnly: writeIsCommandOnly(options, input, current),
   });
 }
+
+const inTenant =
+  (deps: TenantRouteDeps, ctx: EmploymentContext) =>
+  <T>(run: (tx: Tx) => Promise<T>) =>
+    withTenant(deps.db, ctx.tenantId, run);
 
 /**
  * 扣掉同值字段之后一个业务字段都不剩（请求体只带了同值字段）：按没有变化的整版重提处理，
@@ -1141,10 +1147,8 @@ async function authorizeImport(
       const patch = normalizeBusinessPatch(item.patch);
       const current = await authorizeBusinessWrite(deps, ctx, item.id, employeeId);
       targets.push({ id: item.id, employeeId, kind: current.kind, patch });
-      await withTenant(deps.db, ctx.tenantId, async (tx) => {
-        if (preview) await requireEmployeeTransferBusiness(tx, ctx, item.id, patch);
-        else await requireDraftEditWrite(tx, ctx, item.id, patch, {});
-      });
+      if (preview) await inTenant(deps, ctx)((tx) => requireEmployeeTransferBusiness(tx, ctx, item.id, patch));
+      else await requireDraftEditWrite(inTenant(deps, ctx), ctx, item.id, patch, {});
       const departmentId = patch.fields?.departmentId;
       if (departmentId !== undefined)
         await withTenant(deps.db, ctx.tenantId, (tx) =>
