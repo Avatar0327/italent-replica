@@ -19,20 +19,39 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/analytics/contract-board-routes.ts': {
     boardContext: '4a3e91c51fbe',
     'route:GET /api/tenant/analytics/contract-board': '1b0731a6ea06',
-    'route:GET /api/tenant/analytics/contract-board/components/:code': '0fdf7a01efb5',
+    'route:GET /api/tenant/analytics/contract-board/components/:code': 'bf0bed607afc',
+    'route:GET /api/tenant/analytics/contract-board/components/:code/export': '60b1e125fb6f',
+  },
+  'apps/api/src/modules/analytics/contract-board.ts': {
+    boardRows: '7a74f3fe8d6f',
   },
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts': {
+    analyticsScope: '16cb179fd9a0',
     dashboardContext: 'cc49a288a205',
     'route:GET /api/tenant/analytics/hr-dashboard': '3f0859908cca',
-    'route:GET /api/tenant/analytics/hr-dashboard/indicators/:code': '34d6b762af0b',
+    'route:GET /api/tenant/analytics/hr-dashboard/indicators/:code': '8292b11ff1f5',
+    'route:GET /api/tenant/analytics/hr-dashboard/indicators/:code/export': 'c613c4747358',
+  },
+  'apps/api/src/modules/analytics/hr-dashboard.ts': {
+    employmentVisible: 'ecbe2e7e6a06',
+    hrDashboardPage: '8bccc42f5154',
+    indicatorRows: '2a2ce234f174',
+    pageRows: '75e6a62ba7ec',
   },
   'apps/api/src/modules/analytics/hr-movement-routes.ts': {
     boardContext: 'aa4bc1989f2b',
+    loadBoard: 'fff63c307e29',
+    projectMember: '083cc831a2c8',
     reportContext: '8ca27169ea99',
     'route:GET /api/tenant/analytics/hr-movement': 'f2c77b11f9a1',
-    'route:GET /api/tenant/analytics/hr-movement/components/:code': '53aa0476716b',
+    'route:GET /api/tenant/analytics/hr-movement/components/:code': 'fb8f55b7b24a',
+    'route:GET /api/tenant/analytics/hr-movement/components/:code/export': '9c805900bd2c',
     'route:GET /api/tenant/analytics/hr-movement/reports/:report': 'ff3b4defe5f6',
     'route:GET /api/tenant/analytics/hr-movement/reports/:report/export': '3a3476699cff',
+  },
+  'apps/api/src/modules/analytics/hr-movement.ts': {
+    loadEstablishment: '9d1aaa21936a',
+    loadMovement: '6dcd74d67e1f',
   },
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts': {
     approvalVisible: '2e0c654e1a67',
@@ -42,11 +61,16 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/analytics/hr-structure-routes.ts': {
     boardContext: '42546e84f947',
+    projectMember: 'd2b6ba49dc5d',
     reportContext: '33293fcda1ae',
     'route:GET /api/tenant/analytics/hr-structure': '92a1e37b8f44',
-    'route:GET /api/tenant/analytics/hr-structure/components/:code': '321c55c85fb7',
+    'route:GET /api/tenant/analytics/hr-structure/components/:code': '63ae0ed43378',
+    'route:GET /api/tenant/analytics/hr-structure/components/:code/export': '8b05c3759a49',
     'route:GET /api/tenant/analytics/hr-structure/reports/:report': 'b7d824e8d5d8',
     'route:GET /api/tenant/analytics/hr-structure/reports/:report/export': '3fc022206c15',
+  },
+  'apps/api/src/modules/analytics/hr-structure.ts': {
+    structurePeople: '11fe4ee731ec',
   },
   'apps/api/src/modules/analytics/organization-candidates.ts': {
     ANALYSIS_CANDIDATE_OBJECTS: '5765a77c4c34',
@@ -605,7 +629,7 @@ export const DIGESTS: Digests = {
     'route:GET /records': '4b23dae37df4',
   },
   'apps/api/src/modules/employment/regularization-reschedule.ts': {
-    rescheduleRegularization: '2020cec359d9',
+    rescheduleRegularization: '21305910655e',
   },
   'apps/api/src/modules/employment/regularization.ts': {
     regularizeOne: '783a0d02bf5e',
@@ -2129,20 +2153,36 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/contract-board-routes.ts#route:GET /api/tenant/analytics/contract-board':
     'bb53ace7a311',
   'apps/api/src/modules/analytics/contract-board-routes.ts#route:GET /api/tenant/analytics/contract-board/components/:code':
-    'af5c24e28850',
+    '0788eb431aca',
+  'apps/api/src/modules/analytics/contract-board-routes.ts#route:GET /api/tenant/analytics/contract-board/components/:code/export':
+    '3d71fb7ec048',
+  'apps/api/src/modules/analytics/contract-board.ts#boardRows': '5c104cdc1cd4',
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#analyticsScope': '12c56f83e88d',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dashboardContext': '74c0d9467abe',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard': 'bbddc4840c46',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard/indicators/:code':
-    '980851c99aab',
+    'a832d6af6609',
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard/indicators/:code/export':
+    '0c861c124bea',
+  'apps/api/src/modules/analytics/hr-dashboard.ts#employmentVisible': 'a7ff02b4963a',
+  'apps/api/src/modules/analytics/hr-dashboard.ts#hrDashboardPage': '897faf88302f',
+  'apps/api/src/modules/analytics/hr-dashboard.ts#indicatorRows': 'd76277a6cea4',
+  'apps/api/src/modules/analytics/hr-dashboard.ts#pageRows': '377049583bce',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#boardContext': '75939c8efcfb',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#loadBoard': '9b703f770cce',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#projectMember': 'e3b0c44298fc',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#reportContext': '3b25725172cf',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement': 'c00629251c2e',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/components/:code':
-    '6aa0671e386b',
+    'd3bf5dc5d5d9',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/components/:code/export':
+    '1827963c9e8a',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/reports/:report':
     'b1ba560dc863',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/reports/:report/export':
     'baf43a98850f',
+  'apps/api/src/modules/analytics/hr-movement.ts#loadEstablishment': '9c213e793bfb',
+  'apps/api/src/modules/analytics/hr-movement.ts#loadMovement': '32c4e047085a',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#approvalVisible': '55c173015a83',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#processContext': '8371d99ccf32',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard':
@@ -2150,14 +2190,18 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard/components/:code':
     '88d86191c204',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#boardContext': '9f65210d159b',
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#projectMember': 'e3b0c44298fc',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#reportContext': '5a3beab87101',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure': '472176817c4d',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code':
-    '441eb6918e7f',
+    'c109d24806da',
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code/export':
+    '554039e20d58',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report':
     '0268098fd8cb',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report/export':
     '90caf0136978',
+  'apps/api/src/modules/analytics/hr-structure.ts#structurePeople': '243a2b647817',
   'apps/api/src/modules/analytics/organization-candidates.ts#ANALYSIS_CANDIDATE_OBJECTS': '1f397b8d369b',
   'apps/api/src/modules/analytics/organization-candidates.ts#organizationCandidateObject': '20045976b1f6',
   'apps/api/src/modules/analytics/organization-candidates.ts#route:GET /api/tenant/analytics/organization-candidates':

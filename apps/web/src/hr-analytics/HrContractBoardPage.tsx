@@ -152,7 +152,7 @@ function ContractBoard({ today, refresh }: { today: string; refresh(): void }) {
             data?.hasDataPermission &&
             applied && (
               <>
-                <AppliedFilters fields={fields} applied={applied} />
+                <AppliedFilters fields={fields} applied={applied} showDepartment={false} />
                 <BoardGroupSelector
                   target={selected.target}
                   disabled={waiting}
