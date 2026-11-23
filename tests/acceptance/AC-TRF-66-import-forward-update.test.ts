@@ -152,7 +152,15 @@ describe('AC-TRF-66 已生效的任职记录：导入编辑按生效记录契约
     });
     expect(imported.status, await imported.clone().text()).toBe(200);
 
+    // 403 前后载荷版本与来源表行数（草稿与生效记录两个键）、单据内容完全一致：被拒的重放没有写任何东西。
+    const state = async () => ({
+      draft: await s.counts(draft.id),
+      record: await s.counts(recordId),
+      shown: await s.show(draft.id),
+    });
+    const before = await state();
     const replay = await s.patch(person, draft.id, { effectiveDate: '2026-09-26' }, old);
     expect(replay.status, await replay.clone().text()).toBe(403);
+    expect(await state()).toEqual(before);
   });
 });

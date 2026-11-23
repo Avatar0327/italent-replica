@@ -70,8 +70,11 @@ export async function selfWorld(db: Db, label: string) {
     return { sequence, post, level, position };
   }
 
-  /** 员工身份：可编辑除只读上限与（默认）职位之外的全部非系统字段，随 `positionEdit` 开关职位编辑权。 */
-  async function employee(name: string, fields: Fields = {}) {
+  /**
+   * 员工身份：可编辑除只读上限与（默认）职位之外的全部非系统字段，随 `positionEdit` 开关职位编辑权；
+   * 传 `editable` 则只给这些字段编辑权（最小字段授权，用来证明预览只判请求里真正编辑的业务字段）。
+   */
+  async function employee(name: string, fields: Fields = {}, editable?: readonly string[]) {
     const person = await w.person(name, source, fields);
     const profile = await createProfile(admin, `s4-${randomUUID()}`);
     const def = MODULE_OBJECTS.employmentRecord;
@@ -85,7 +88,11 @@ export async function selfWorld(db: Db, label: string) {
             fields: def.fields.map((field) => ({
               fieldCode: field.code,
               view: true,
-              edit: !field.system && (positionEdit || field.code !== 'positionId'),
+              // editable：最小字段授权（只给列出的字段编辑权，职位仍随 positionEdit 开关），否则除系统字段外全开。
+              edit:
+                !field.system &&
+                (positionEdit || field.code !== 'positionId') &&
+                (editable === undefined || editable.includes(field.code)),
             })),
             buttons: def.buttons
               .filter((button) => !button.code.startsWith('Transfer.') || button.code === 'Transfer.Self')

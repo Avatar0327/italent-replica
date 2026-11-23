@@ -5,9 +5,35 @@
  */
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type * as Commands from '../../apps/api/src/commands.js';
 import { waitForLockWaiters } from './AC-TRF-F181a-support.js';
 import { BASE, FOUR, LATER, ok, selfWorld, type Fields, type Four, type SelfWorld } from './AC-TRF-F036S4-support.js';
+
+// 失败后回查：让命令主事务的 guard.before 第一次抛错，runCommand 随后走 replayAfterFailure 的回查出口；
+// 路径上没有 guard 时原样透传（同 AC-TRF-F181a-draft-guard）。
+const hooks = vi.hoisted(() => ({ failMainTransaction: false }));
+vi.mock('../../apps/api/src/commands.js', async (importOriginal) => {
+  const original = await importOriginal<typeof Commands>();
+  return {
+    ...original,
+    runCommand: (...args: Parameters<typeof original.runCommand>) => {
+      const [db, ctx, command] = args;
+      const guard = command.guard;
+      if (!hooks.failMainTransaction || !guard) return original.runCommand(db, ctx, command);
+      hooks.failMainTransaction = false;
+      let calls = 0;
+      const flaky = {
+        ...guard,
+        before: async (tx: Parameters<typeof guard.before>[0]) => {
+          if (calls++ === 0) throw new Error('模拟主事务并发冲突');
+          await guard.before(tx);
+        },
+      };
+      return original.runCommand(db, ctx, { ...command, guard: flaky });
+    },
+  };
+});
 
 const database = useTestDb();
 const NEXT_DATE = '2026-11-02';
@@ -375,6 +401,51 @@ describe('AC-TRF-65 ④ 新建、预览带这四个字段任一个（值、null�
   });
 });
 
+describe('AC-TRF-65 ④′ 通用员工预览只按请求里真正编辑的业务字段判写权（第 3 轮 P2-3）', () => {
+  /** 只授生效日、部门、职位编辑权：initiator / transferTypeCode / formId / mode 等路由参数没有编辑权。 */
+  async function minimal(label: string) {
+    const s = await selfWorld(database().db, label);
+    const base = await s.catalog();
+    const person = await s.employee(
+      '合成员工',
+      { postId: base.post, sequenceId: base.sequence, levelId: base.level, positionId: base.position },
+      ['effectiveDate', 'departmentId', 'positionId'],
+    );
+    await person.positionEdit(true);
+    const preview = (fields: Fields) =>
+      s.api.request('POST', `${BASE}/transfers/employees/${person.employeeId}/preview`, {
+        ...s.w.as(person.userId),
+        body: {
+          initiator: 'employee',
+          transferTypeCode: 'in_department',
+          formId: 'TenantBase.TransferMultiFormView',
+          effectiveDate: LATER,
+          mode: 'application',
+          submit: false,
+          fields: { departmentId: s.source, ...fields },
+        },
+      });
+    return { s, base, person, preview };
+  }
+
+  it('最小字段授权 + 职位编辑权：带职位的预览与省略职位的预览都是 200', async () => {
+    const m = await minimal('f036s4-65-4p-allow');
+    for (const [name, fields] of [
+      ['带职位', { positionId: m.base.position }],
+      ['省略职位', {}],
+    ] as const) {
+      const response = await m.preview(fields);
+      expect(response.status, `${name} ${await response.clone().text()}`).toBe(200);
+    }
+  });
+
+  it('同一最小授权收回职位编辑权后，带职位的预览仍是 403（字段权限先于表单校验）', async () => {
+    const m = await minimal('f036s4-65-4p-deny');
+    await m.person.positionEdit(false);
+    await forbidden(await m.preview({ positionId: m.base.position }));
+  });
+});
+
 describe('AC-TRF-65 ⑤ 重放按重放当刻比', () => {
   it('K1（带 P1）当时通过，HR 把职位改成 P2 后同键重放 K1 → 403，不返回缓存', async () => {
     const a = await alpha('f036s4-65-5');
@@ -410,8 +481,9 @@ describe('AC-TRF-65 ⑥ 提交接口带任职字段 → 400', () => {
  * 员工行锁屏障（审查 P1-1）：甲（员工自填 P1 后收回职位编辑权，表单快照里职位仍可编辑）的草稿上，
  * 员工带 P1 的同值请求在事务外 / 命令守卫读到 P1 → 放行同值；排在员工行锁上等待期间，HR 把草稿职位改成 P2 并提交。
  * 员工请求带 HR 提交后的 revision，越过乐观锁进到锁内：此时 P1 对草稿已是新值，只能算本次输入。
+ * `withEmployee = false` 是“只有 HR 改单”的对照：同一夹具、同一屏障，只是员工请求不发。
  */
-async function raceAfterHr(label: string, withHr: boolean) {
+async function raceAfterHr(label: string, withHr: boolean, withEmployee = true) {
   const a = await alpha(label);
   const { w } = a.s;
   const key = `k-${label}`;
@@ -430,11 +502,51 @@ async function raceAfterHr(label: string, withHr: boolean) {
       WHERE tenant_id=${w.tenant.id} AND id=${a.person.employeeId}::uuid FOR UPDATE`);
     const hrResponse = withHr ? a.s.hrEditDraft(a.draft.id, { positionId: a.p2 }, revision) : undefined;
     if (hrResponse) await waitForLockWaiters(w.db, 1);
-    const employeeResponse = request();
-    await waitForLockWaiters(w.db, withHr ? 2 : 1);
+    const employeeResponse = withEmployee ? request() : undefined;
+    if (employeeResponse) await waitForLockWaiters(w.db, withHr ? 2 : 1);
     return [hrResponse, employeeResponse] as const;
   });
-  return { a, before, employeeRows, hr: hr && (await hr), employee: await employee, request, key };
+  const settled = { hr: hr && (await hr), employee: employee && (await employee) };
+  const delta = await countsDelta(a.s, a.draft.id, before.counts);
+  return { a, before, employeeRows, ...settled, request, key, delta };
+}
+
+/** 与 `before` 相比，载荷版本数、来源表全部行数、非继承来源行数各增加了多少。 */
+async function countsDelta(s: SelfWorld, id: string, before: Awaited<ReturnType<SelfWorld['counts']>>) {
+  const after = await s.counts(id);
+  return {
+    versions: after.versions - before.versions,
+    origins: after.origins - before.origins,
+    manual: after.manual - before.manual,
+  };
+}
+
+/**
+ * 重放屏障（第 3 轮 P2-1）：员工用职位 P1 成功执行命令 K0 → 租户收回职位编辑权 → 员工重放 K0 的同时 HR 把职位改成 P2。
+ * 重放的授权判定必须在员工行锁内、按重放当刻的草稿重做：HR 先排到锁上，重放排在后面，进锁后 P1 已是新值（本次输入）→ 403。
+ * `kind = 'recheck'`：重放的命令主事务先“并发冲突”失败，走失败后回查出口——它同样不得拿缓存的 200 交出去。
+ */
+async function replayRace(label: string, kind: 'direct' | 'recheck', withHr: boolean, withReplay = true) {
+  const a = await alpha(label);
+  const { w } = a.s;
+  const revision = (await a.s.show(a.draft.id)).revision;
+  const before = await snapshot(a.s, a.draft.id);
+  let replayDone = false;
+  const [hr, replay] = await withTenant(w.db, w.tenant.id, async (barrier) => {
+    await barrier.execute(sql`SELECT id FROM employment_employees
+      WHERE tenant_id=${w.tenant.id} AND id=${a.person.employeeId}::uuid FOR UPDATE`);
+    const hrResponse = withHr ? a.s.hrEditDraft(a.draft.id, { positionId: a.p2 }, revision) : undefined;
+    if (hrResponse) await waitForLockWaiters(w.db, 1);
+    if (kind === 'recheck' && withReplay) hooks.failMainTransaction = true;
+    const replayResponse = withReplay ? a.s.patch(a.person, a.draft.id, a.k0.body, a.k0) : undefined;
+    void replayResponse?.finally(() => (replayDone = true));
+    // 已修复的实现里重放会排到锁上；未修复时它不等锁、直接返回，这时由断言判它的结果。
+    if (replayResponse) await waitForLockWaiters(w.db, (withHr ? 1 : 0) + 1, () => replayDone);
+    return [hrResponse, replayResponse] as const;
+  });
+  hooks.failMainTransaction = false;
+  const settled = { hr: hr && (await hr), replay: replay && (await replay) };
+  return { a, before, ...settled, delta: await countsDelta(a.s, a.draft.id, before.counts) };
 }
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
@@ -443,25 +555,51 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
     it('同值请求等锁期间 HR 把草稿职位改成 P2：锁内它已是职位输入，员工无职位编辑权 → 403，载荷与来源都不写', async () => {
       const r = await raceAfterHr('f036s4-65-8-race', true);
       expect(r.hr!.status, await r.hr!.clone().text()).toBe(200);
-      expect(r.employee.status, await r.employee.clone().text()).toBe(403);
+      expect(r.employee!.status, await r.employee!.clone().text()).toBe(403);
       const after = await snapshot(r.a.s, r.a.draft.id);
       // 草稿只剩 HR 写入的 P2：员工的同值请求没有把职位写回 P1，也没有追加职位来源行，生效日期也没动。
       expect(after.fields).toMatchObject({ positionId: r.a.p2 });
       expect(after.origins.positionId?.value).toBe(r.a.p2);
       expect(await r.a.s.originKinds(r.a.draft.id, 'preset:positionId')).toHaveLength(r.employeeRows.length + 1);
       expect(after.effectiveDate).toBe(r.before.effectiveDate);
+      // 全量增量（载荷版本、全部来源行）与“只有 HR 改单”的对照完全一致：被拒的员工请求一行都没多写。
+      const control = await raceAfterHr('f036s4-65-8-hr-only', true, false);
+      expect(control.delta.versions).toBeGreaterThan(0);
+      expect(r.delta).toEqual(control.delta);
     });
 
     it('对照：没有 HR 改动时同一个同值请求仍是 200，同键重放返回首次结果且不追加行', async () => {
       const r = await raceAfterHr('f036s4-65-8-control', false);
-      expect(r.employee.status, await r.employee.clone().text()).toBe(200);
-      const first = await r.employee.json();
+      expect(r.employee!.status, await r.employee!.clone().text()).toBe(200);
+      const first = await r.employee!.json();
       const after = await snapshot(r.a.s, r.a.draft.id);
       expect(after.effectiveDate).toBe(LATER);
       expect(after.origins.positionId).toEqual(r.before.origins.positionId);
       const replay = await ok(await r.request());
       expect(await replay.json()).toEqual(first);
       expect(await snapshot(r.a.s, r.a.draft.id)).toEqual(after);
+    });
+
+    describe.each(['direct', 'recheck'] as const)('⑨ 缓存命中的同键重放按锁内当刻判（%s）', (kind) => {
+      it('K0 当时通过，收回职位编辑权后重放等锁期间 HR 把职位改成 P2：重放 403，零写入，不返回缓存', async () => {
+        const r = await replayRace(`f036s4-65-9-${kind}`, kind, true);
+        expect(r.hr!.status, await r.hr!.clone().text()).toBe(200);
+        expect(r.replay!.status, await r.replay!.clone().text()).toBe(403);
+        const after = await snapshot(r.a.s, r.a.draft.id);
+        expect(after.fields).toMatchObject({ positionId: r.a.p2 });
+        // 与只有 HR 改单的对照比全部载荷版本与来源行：被拒的重放没有写任何东西。
+        const control = await replayRace(`f036s4-65-9-${kind}-hr-only`, kind, true, false);
+        expect(control.delta.versions).toBeGreaterThan(0);
+        expect(r.delta).toEqual(control.delta);
+      });
+
+      it('对照：职位没变时合法重放仍是 200，返回首次结果，单据与行数不变', async () => {
+        const r = await replayRace(`f036s4-65-9-${kind}-ok`, kind, false);
+        expect(r.replay!.status, await r.replay!.clone().text()).toBe(200);
+        expect(await r.replay!.json()).toEqual(r.a.firstBody);
+        expect(await snapshot(r.a.s, r.a.draft.id)).toEqual(r.before);
+        expect(r.delta).toEqual({ versions: 0, origins: 0, manual: 0 });
+      });
     });
   },
 );

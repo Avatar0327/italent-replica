@@ -2,9 +2,12 @@
  * AC-TRF-64（F-036-S4）：向后更新、序列同步这类系统写入，不算员工输入。
  * 设计：docs/08_设计/F-036_字段来源记录与迟到后重建_设计.md §5.2、§7.1、§10.1。
  */
+import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { allowAll } from './support/tenant-api.js';
+import { loadFieldOrigins } from '../../apps/api/src/modules/employment/field-origin-store.js';
+import { forwardFixture, forwardJobApi } from './AC-FWD-support.js';
+import { allowAll, tenantApi } from './support/tenant-api.js';
 import { runSequenceSyncJobs } from '../../apps/api/src/modules/job/sequence-worker.js';
 import { LATER, ok, selfWorld } from './AC-TRF-F036S4-support.js';
 
@@ -131,5 +134,98 @@ describe('AC-TRF-64 系统写入不算员工输入', () => {
     const rewrite = await s.patch(person, draft.id, { customFields: { [field]: 'C' } });
     expect([400, 403], await rewrite.clone().text()).toContain(rewrite.status);
     expect(await custom()).toMatchObject({ [field]: 'B' });
+  });
+});
+
+/**
+ * P2-2（第 3 轮审查）：同日保存恢复冻结值时，派生标记（fieldDerivations）要与冻结值一起保留；
+ * 否则下一次改期认不出“上一版按同一职务派生过序列”，跳过重取，把序列清成 null。
+ */
+describe('AC-TRF-64 P2-2 同日保存保留冻结值与派生标记', () => {
+  async function world(label: string) {
+    const { db } = database();
+    const { session, employee, org, hired } = await forwardFixture(db, label);
+    const jobs = forwardJobApi(db, session);
+    const api = tenantApi(db, { clock: () => new Date('2026-10-01T01:00:00.000Z') });
+    const s1 = await jobs.create('sequences');
+    const s2 = await jobs.create('sequences');
+    const post = await jobs.create('posts', { sequenceId: s1.id });
+    const draft = await session.business(
+      employee.id,
+      {
+        kind: 'transfer',
+        mode: 'application',
+        effectiveDate: '2026-11-01',
+        fields: { departmentId: org.id, postId: post.id },
+      },
+      hired.employeeRevision,
+    );
+    const show = async () =>
+      (await (await session.request('GET', `/businesses/${draft.id}`)).json()) as {
+        revision: number;
+        effectiveDate: string;
+        fields: { sequenceId: string | null };
+      };
+    const patch = async (body: object) => {
+      const response = await session.request('PATCH', `/businesses/${draft.id}`, {
+        ifMatch: (await show()).revision,
+        body,
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+    };
+    /** 职务配置：从 effectiveDate 起把序列改成 sequenceId（null = 清空）。 */
+    const configure = async (sequenceId: string | null, effectiveDate: string) => {
+      const url = `/api/tenant/job/posts/${post.id}`;
+      const as = { user: session.user.id, tenant: session.tenant.id };
+      const current = (await (await api.request('GET', url, as)).json()) as { revision: number };
+      const response = await api.request('PATCH', url, {
+        ...as,
+        ifMatch: current.revision,
+        body: { sequenceId, effectiveDate },
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+    };
+    const lastWriter = () =>
+      withTenant(
+        db,
+        session.tenant.id,
+        async (tx) =>
+          (await loadFieldOrigins(tx, { tenantId: session.tenant.id }, draft.id, ['preset:sequenceId'])).get(
+            'preset:sequenceId',
+          )?.lastWriter,
+      );
+    return { s1, s2, post, show, patch, configure, lastWriter };
+  }
+
+  it('对照：中间没有同日保存，改期照常按新日期重取序列 S2，并追加 derive 来源', async () => {
+    const x = await world('f036s4-64-rederive-control');
+    expect((await x.show()).fields.sequenceId).toBe(x.s1.id);
+    await x.configure(x.s2.id, '2026-12-01');
+    await x.patch({ effectiveDate: '2026-12-01' });
+    expect((await x.show()).fields.sequenceId).toBe(x.s2.id);
+    expect(await x.lastWriter()).toMatchObject({
+      originKind: 'derive',
+      derivationRule: 'post-sequence',
+      value: x.s2.id,
+    });
+  });
+
+  it('两次保存：配置清空序列后原日期再保存保留 S1；配置再从新日期关联 S2，只改生效日仍重取 S2 并追加 derive', async () => {
+    const x = await world('f036s4-64-rederive-two-saves');
+    expect((await x.show()).fields.sequenceId).toBe(x.s1.id);
+    await x.configure(null, '2026-11-01');
+    await x.patch({ effectiveDate: '2026-11-01' });
+    expect((await x.show()).fields.sequenceId).toBe(x.s1.id);
+    await x.configure(x.s2.id, '2026-12-01');
+    await x.patch({ effectiveDate: '2026-12-01' });
+    const shown = await x.show();
+    expect(shown.effectiveDate).toBe('2026-12-01');
+    expect(shown.fields.sequenceId).toBe(x.s2.id);
+    expect(await x.lastWriter()).toMatchObject({
+      originKind: 'derive',
+      derivationRule: 'post-sequence',
+      referenceId: x.post.id,
+      value: x.s2.id,
+    });
   });
 });
