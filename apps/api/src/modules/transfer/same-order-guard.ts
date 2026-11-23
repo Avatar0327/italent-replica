@@ -12,7 +12,7 @@ import { transferBusinessContext, transferTargetContext, type TransferInput } fr
  * 重放命中台账时执行体不会再跑，范围收空后仍会把原回执（单据、员工、目标部门、生效日期）返回出去。
  * 这里在 CommandGuard.before（首次执行、直接重放、失败回查都先经过它）里：
  *   1. 丢掉入口的旧例外，按本事务内的当前范围重新解析（commandContext）；
- *   2. 重算同单来源与目标例外（transferBusinessContext / transferTargetContext）；
+ *   2. 先取员工行锁，再重算同单来源与目标例外（transferBusinessContext 'command' / transferTargetContext）；
  *   3. 由调用方的 authorize 按新上下文复核对象 / 按钮 / 字段 / 业务特有来源；
  *   4. 登记为本事务的命令上下文（adoptCommandContext）——执行体、重放复核和结果复核都读这一份。
  * 凡是会写同一张调动单或对它做状态动作、并走命令台账的入口都用这里，不要各写一套。
@@ -54,11 +54,13 @@ export function sameOrderWriteGuard(
     deps,
     entry,
     async (tx, fresh) => {
+      // 'command' 阶段先取参与人与员工行锁，再算同单来源并交给 authorize：草稿上的同值判定、保存值可信度和字段写权
+      // 读的是锁保护的当前载荷；首次执行、缓存重放、失败回查都经此处，缓存命中后才交出旧结果（第 3 轮 P2-1，DEC-431①）。
       const scoped = await transferBusinessContext(
         tx,
         fresh,
         spec.businessId,
-        'before-command',
+        'command',
         spec.targetDepartmentId,
         spec.referenceChange,
       );

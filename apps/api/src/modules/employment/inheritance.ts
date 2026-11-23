@@ -470,11 +470,31 @@ function restoreFrozenDefaults(
         ? inheritanceOrigin(row.fieldCode, 'inherit', previous.sourceRecordId, frozen.get(row.fieldCode))
         : row,
     ),
-    formSnapshot: { ...previous.formSnapshot, fieldDerivations: prepared.formSnapshot.fieldDerivations },
+    formSnapshot: {
+      ...previous.formSnapshot,
+      fieldDerivations: frozenDerivations(previous, prepared, frozen),
+    },
     sourceRecordId: previous.sourceRecordId,
     sourceStaffId: previous.sourceStaffId,
     deferredFieldCodes: prepared.deferredFieldCodes,
   };
+}
+
+/**
+ * 冻结值与它的派生依据一起保留（第 3 轮 P2-2）：被恢复成上一版的字段，派生标记也取上一版的；本次重新派生出的标记只留给
+ * 没被冻结的字段。否则同日保存后 fieldDerivations 丢了依据，下一次改期认不出“上一版按同一依据派生过”，不再重取。
+ * 上一版的依据 referenceId 与当前依赖不一致时（传播覆盖、依赖换选）triggers() 本来就不匹配，不会误触发。
+ */
+function frozenDerivations(
+  previous: PreparedInheritance,
+  prepared: PreparedFormInheritance,
+  frozen: ReadonlyMap<string, unknown>,
+): readonly FieldDerivation[] {
+  const isFrozen = (origin: FieldDerivation) => frozen.has(`preset:${derivationFields(origin).field}`);
+  return [
+    ...(prepared.formSnapshot.fieldDerivations ?? []).filter((origin) => !isFrozen(origin)),
+    ...(previous.formSnapshot.fieldDerivations ?? []).filter(isFrozen),
+  ];
 }
 
 export async function resolveEffectiveInheritance(

@@ -127,6 +127,15 @@ export async function requireTransferWrite(ctx: EmploymentContext, input: Transf
   await requireEmploymentWrite(ctx, 'create', input.writable);
 }
 
+/**
+ * 预览只判请求里真正编辑的业务字段（生效日、原因、任职字段、自定义字段）。initiator / transferTypeCode / formId / mode
+ * 是路由参数，由服务端固定或另行校验（表单与入口匹配、按钮），不是员工编辑的字段，不能拿它们判字段写权（第 3 轮 P2-3）。
+ */
+export async function requireTransferEditedWrite(ctx: EmploymentContext, input: TransferInput): Promise<void> {
+  const { initiator: _initiator, transferTypeCode: _type, formId: _form, mode: _mode, ...edited } = input.writable;
+  await requireEmploymentWrite(ctx, 'create', edited);
+}
+
 export async function transferTargetContext(
   tx: Tx,
   ctx: EmploymentContext,
