@@ -69,8 +69,8 @@ export function useEntryCommand(
         },
       });
       if (result.status !== 'done') throw result.error ?? new Error(kernel.unknown);
+      // 替换 ID 随本命令落定由内核放开（F-110 第 4 轮：放开只在内核）。
       command.clear();
-      if (replacement) store.unpin([replacement], key);
     },
   };
 }

@@ -10,7 +10,8 @@ import { slotKey } from '../foundation/forms/slot.js';
 import { changedFields, type Values } from '../foundation/forms/values.js';
 import { collection, detailPath, type Detail } from './model.js';
 
-const store = createFormStore({ recovery: sharedRecovery('org-adjustment') });
+// DEC-955 只禁调动 / 审批写入：组织调整在浏览器不支持 Web Locks 时退回无锁登记，照常保存。
+const store = createFormStore({ recovery: sharedRecovery('org-adjustment', { requireLocks: false }) });
 type Action = 'create' | 'edit' | 'submit' | 'void';
 const required = ['subject', 'effectiveDate', 'adjustmentRange', 'approvalSubjectOrgId'] as const;
 

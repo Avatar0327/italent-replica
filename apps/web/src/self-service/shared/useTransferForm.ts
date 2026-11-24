@@ -21,6 +21,8 @@ import { emptyLinkage } from '../../transfer/linkage-api.js';
 import { useContractChoices } from '../../transfer/useLinkage.js';
 import { applyPendingDraft, catalogType } from '../../transfer/draft-restore.js';
 import { useDraftRestore } from '../../transfer/useDraftRestore.js';
+import { transferCommands } from '../../transfer/commands.js';
+import { commandId } from '../../foundation/client.js';
 import type {
   EmployeeChoice,
   FieldValue,
@@ -94,14 +96,18 @@ export function useTransferForm(
     adapter,
     runCommand,
   );
-  const hr = useHrTransferCommand(tenantId, model, loadingPreview, setModel);
+  // 表单原提示区显示最近一次操作（清除暂存 / 暂存、保存、提交）的失败，不固定谁优先（F-110 第 4 轮 P2-3）。
+  const [operation, setOperation] = useState<Operation>('save');
+  const hr = useHrTransferCommand(tenantId, model, loadingPreview, setModel, () => setOperation('save'));
   const commands = hrScope ? hr : legacy;
   useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator, !adapter);
   useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator, !adapter);
   usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice, adapter);
   // R1-T10 的联动仅接入 HR；经理自助本轮仍不提供跨对象联动。
   useContractChoices(tenantId, initiator === 'hr' ? model.employeeId : '', initiator, setModel);
-  const draft = useDraftRestore(tenantId, restoreDrafts ? hrScope : undefined, model.employeeId, setModel);
+  const draft = useDraftRestore(tenantId, restoreDrafts ? hrScope : undefined, model.employeeId, setModel, () =>
+    setOperation('clear'),
+  );
   const selection = selectField(setModel, setError);
   const field = editField(setModel);
   const reread = (update: (current: TransferFormModel) => TransferFormModel) => {
@@ -121,7 +127,7 @@ export function useTransferForm(
     notice,
     ...commands,
     processing: !!hrScope && hr.processing,
-    ...draftCommandState(draft, hr, commands, hrScope),
+    ...draftCommandState(draft, hr, commands, operation, hrScope),
     commandNotice: hrScope ? hr.commandNotice : '',
     loadingPreview,
     draft,
@@ -220,11 +226,19 @@ function useTransferCommand(
       return;
     if (missingTransferRequiredFields(model.preview.form, { ...model.preview.fields, ...model.fields }).length > 0)
       return;
+    // DEC-955：浏览器没有 Web Locks 时调动写入一律不发出（含不经内核的页面级直写）；在生成命令 ID、置忙碌之前判定，
+    // 否则 http 页面在 randomUUID 处抛错、按钮停在忙碌（F-110 第 2 轮 P2-1）。
+    const refused = transferCommands.refusal();
+    if (refused) {
+      setError(refused);
+      return;
+    }
     requestInProgress.current = true;
     setBusy(true);
     setError('');
-    const command = { id: crypto.randomUUID() };
+    const command = { id: '' };
     try {
+      command.id = commandId();
       const result = await executeConfirmed(tenantId, { model, action, saved, adapter, runCommand }, command, ask);
       if (!result.id || !Number.isInteger(result.revision) || !result.status) throw new Error(text.unknown);
       setSaved(result);
@@ -277,7 +291,7 @@ function executeConfirmed(
   ask: () => Promise<boolean>,
 ) {
   return sendWithEstablishmentConfirm((confirmed) => {
-    if (confirmed) command.id = crypto.randomUUID();
+    if (confirmed) command.id = commandId();
     return executeTransfer(tenantId, { ...input, commandId: command.id, confirmed });
   }, ask);
 }
@@ -305,6 +319,8 @@ function executeTransfer(
 }
 
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;
+/** 表单原提示区归属的最近一次操作：清除暂存，或暂存 / 保存 / 提交。 */
+type Operation = 'clear' | 'save';
 type SetText = React.Dispatch<React.SetStateAction<string>>;
 function useCatalog(
   tenantId: string,
@@ -470,13 +486,18 @@ function draftCommandState(
   draft: ReturnType<typeof useDraftRestore>,
   hr: ReturnType<typeof useHrTransferCommand>,
   commands: ReturnType<typeof useHrTransferCommand> | ReturnType<typeof useTransferCommand>,
+  operation: Operation,
   scope?: string,
 ) {
   const locked = !!scope && (draft.command.locked || draft.status === 'loading');
+  // 表单原提示区只有一个来源：最近一次操作是清除暂存就显示清除的失败，否则显示暂存 / 保存 / 提交的失败（第 4 轮 P2-3）。
+  const formError = operation === 'clear' ? draft.error : hr.commandError;
   return {
     busy: commands.busy || locked,
     conflict: scope ? (draft.command.locked ? draft.command : hr.conflict) : undefined,
-    commandError: scope ? draft.error || hr.commandError : '',
+    commandError: scope ? formError : '',
+    /** 处理中只显示与当前恢复命令关联的本次竞争原因；清除、保存的旧错误留在表单原位置（第 3 轮 P2-3）。 */
+    processingError: scope ? hr.processingError : '',
     submit: (action: TransferAction) => (locked ? Promise.resolve() : commands.submit(action)),
   };
 }
