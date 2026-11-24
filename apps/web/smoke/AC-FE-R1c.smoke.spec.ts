@@ -1306,6 +1306,111 @@ test('AC-FE-F110-26 同一员工两页同时登记：后登记的一页提示其
   await pageB.close();
 });
 
+const DRAFT_DELETE_FORBIDDEN = '没有删除权限，无法清除暂存';
+const STRICT_ESTABLISHMENT = '已超出设定编制，不可继续操作';
+/** 同一员工的两页：A 的调动写入挂起到 respond；B 的写入交给 answerB（未给时同样挂起），各自计数。 */
+async function racePages(page: Page, answerB?: () => { status: number; json: unknown }) {
+  const writes: string[] = [];
+  const writesB: string[] = [];
+  let respond = () => {};
+  const answered = new Promise<void>((resolve) => (respond = resolve));
+  const pageB = await page.context().newPage();
+  await demoRoutes(pageB);
+  await approvalFixtures(pageB);
+  for (const target of [page, pageB]) {
+    await target.route('**/transfers/employees/' + employee, async (route) => {
+      writes.push(route.request().headers()['idempotency-key']!);
+      if (target === pageB) writesB.push(route.request().method());
+      const reply = target === pageB ? answerB?.() : undefined;
+      if (reply) return route.fulfill(reply);
+      await answered;
+      return route.fulfill({ json: draftResult }).catch(() => {});
+    });
+  }
+  return { pageB, writes, writesB, respond };
+}
+async function openEmployee(target: Page) {
+  await switchIdentity(target, '/transfer');
+  await openHr(target);
+  await target.locator('select[name="employeeId"]').selectOption(employee);
+}
+/** B 带出暂存后点击清除，服务端 403：拒绝原因留在表单原位置。 */
+async function clearForbidden(pageB: Page) {
+  const stored = await hrRecoveryFixture(pageB);
+  stored.saved = true;
+  const deletes: string[] = [];
+  await pageB.route('**/transfers/employees/*/draft/*', (route) => {
+    deletes.push(route.request().method());
+    return route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN', message: '无权删除' } } });
+  });
+  await openEmployee(pageB);
+  await expect(pageB.getByRole('status').filter({ hasText: '已带出上次暂存信息' })).toBeVisible();
+  await pageB.getByRole('button', { name: '点击清除', exact: true }).click();
+  await expect(pageB.locator('.transfer-content').getByText(DRAFT_DELETE_FORBIDDEN, { exact: true })).toBeVisible();
+  return deletes;
+}
+
+// 第 3 轮 P2-3：“处理中”只显示本次竞争、且与当前恢复命令关联的“其他标签页”，不被先前清除失败的提示盖住。
+test('AC-FE-F110-26b 先清除失败再两页竞争：B 显示其他标签页、零写入，锁到 A 的命令且保留 A 的恢复槽', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const { pageB, writes, writesB, respond } = await racePages(page);
+  const deletes = await clearForbidden(pageB);
+  await openEmployee(page);
+  const holder = await holdLockInOtherTab(page, transferRecoveryKey);
+  try {
+    await page.getByRole('button', { name: '暂存', exact: true }).click();
+    await pageB.getByRole('button', { name: '暂存', exact: true }).click();
+  } finally {
+    await holder.close();
+  }
+  await expect.poll(() => writes).toHaveLength(1);
+  await expect(pageB.getByText(processing)).toBeVisible();
+  await expect(pageB.getByRole('alert').filter({ hasText: OTHER_TAB })).toBeVisible();
+  await expect(pageB.getByText(DRAFT_DELETE_FORBIDDEN)).toHaveCount(0);
+  expect(await pendingTransferIds(pageB)).toEqual([writes[0]]);
+  expect(writesB).toEqual([]);
+  expect(deletes).toEqual(['DELETE']);
+  respond();
+  await pageB.close();
+});
+
+test('AC-FE-F110-26c B 上一笔被严格控编拒绝后只同步到 A 的命令：处理中不显示 B 的旧保存错误', async ({ page }) => {
+  test.setTimeout(60_000);
+  const strict = {
+    error: { code: 'CONFLICT', message: STRICT_ESTABLISHMENT, details: { reason: 'ESTABLISHMENT_EXCEEDED' } },
+  };
+  const { pageB, writes, writesB, respond } = await racePages(page, () => ({ status: 409, json: strict }));
+  await openEmployee(pageB);
+  await pageB.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect(pageB.getByText(STRICT_ESTABLISHMENT)).toBeVisible();
+  await openEmployee(page);
+  await page.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect.poll(() => writes).toHaveLength(2);
+  // B 没有再点：只经存储同步锁到 A 的命令，处理中不带任何本页旧错误，也没有本次竞争提示。
+  await expect(pageB.getByText(processing)).toBeVisible();
+  await expect(pageB.getByText(STRICT_ESTABLISHMENT)).toHaveCount(0);
+  await expect(pageB.getByText(OTHER_TAB)).toHaveCount(0);
+  expect(await pendingTransferIds(pageB)).toEqual([writes[1]]);
+  expect(writesB).toEqual(['POST']);
+  respond();
+  await pageB.close();
+});
+
+// 正例（修前合法路径）：没有竞争时，清除失败仍在表单原位置提示，随后照常暂存。
+test('AC-FE-F110-26d 无竞争时清除失败提示留在表单原位置，之后暂存照常成功', async ({ page }) => {
+  test.setTimeout(60_000);
+  const { pageB, writesB, respond } = await racePages(page, () => ({ status: 200, json: draftResult }));
+  await clearForbidden(pageB);
+  await expect(pageB.getByRole('button', { name: '暂存', exact: true })).toBeEnabled();
+  await pageB.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect(pageB.getByText('信息暂存成功，下次选择此人可自动带出')).toBeVisible();
+  expect(writesB).toHaveLength(1);
+  respond();
+  await pageB.close();
+});
+
 // 第 2 轮 P3：登记等锁超时被拒的命令没有登记过，不再为它排一个无超时的清理锁请求。
 test('AC-FE-F110-28 他页持锁时暂存超时被拒：不残留本次尝试的排队锁请求，他页关闭后照常暂存', async ({ page }) => {
   test.setTimeout(60_000);
