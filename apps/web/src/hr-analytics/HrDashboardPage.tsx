@@ -128,7 +128,7 @@ function ManagementBoard({ today, refresh }: { today: string; refresh(): void })
           read={detail}
           table={detail.data?.hasDataPermission ? detailTable(detail.data) : undefined}
           waiting={waiting}
-          close={board.closeDetail}
+          drawer={board.detailDrawer}
           changePage={(page) => board.changeDetail({ ...selected, page })}
           retry={() => board.changeDetail(selected)}
         />

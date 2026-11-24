@@ -31,7 +31,7 @@ export function useCandidates<T>(
     waiting,
   };
 }
-export type CandidateState = ReturnType<typeof useCandidates<unknown>>;
+export type CandidateState<T = unknown> = ReturnType<typeof useCandidates<T>>;
 
 export function CandidateHint({ label, state }: { label: string; state: CandidateState }) {
   if (state.loading) return null;
@@ -56,7 +56,7 @@ export function CandidateHint({ label, state }: { label: string; state: Candidat
 export const candidateUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function organizationField(
-  state: ReturnType<typeof useCandidates<OrgCandidate>>,
+  state: CandidateState<OrgCandidate>,
   key: string,
   label: string,
   includeChildren?: string,
