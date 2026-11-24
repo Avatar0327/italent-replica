@@ -1398,6 +1398,20 @@ test('AC-FE-F110-26c B 上一笔被严格控编拒绝后只同步到 A 的命令
   await pageB.close();
 });
 
+// 问 2 的另一来源：没有竞争，本页自己的命令处理中，也不带先前清除失败的提示。
+test('AC-FE-F110-26e 清除失败后本页暂存处理中：只显示处理中，不带旧的清除失败提示', async ({ page }) => {
+  test.setTimeout(60_000);
+  const { pageB, writesB, respond } = await racePages(page);
+  await clearForbidden(pageB);
+  await pageB.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect.poll(() => writesB).toEqual(['POST']);
+  await expect(pageB.getByText(processing)).toBeVisible();
+  await expect(pageB.getByText(DRAFT_DELETE_FORBIDDEN)).toHaveCount(0);
+  await expect(pageB.getByText(OTHER_TAB)).toHaveCount(0);
+  respond();
+  await pageB.close();
+});
+
 // 正例（修前合法路径）：没有竞争时，清除失败仍在表单原位置提示，随后照常暂存。
 test('AC-FE-F110-26d 无竞争时清除失败提示留在表单原位置，之后暂存照常成功', async ({ page }) => {
   test.setTimeout(60_000);
