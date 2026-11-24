@@ -15,6 +15,7 @@ import {
 } from '@italent/db';
 import { type SQL } from 'drizzle-orm';
 import { tenantLocalDate } from '@italent/domain';
+import { asUuid, lockKey } from '../../advisory-lock.js';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { isActiveAccount } from '../approval/resolver.js';
@@ -42,9 +43,15 @@ const tableFor = (kind: PreparationConfigKind) => (kind === 'preparationItems' ?
 const identity = (table: typeof items | typeof rules, tenantId: string, id: string) =>
   and(eq(table.tenantId, tenantId), eq(table.id, id));
 
+/** 租户准备配置锁键：租户 UUID 走公共函数转规范文本，大小写变体取同一把锁（F-491，DEC-374）。 */
+const preparationGate = (tenantId: string) => lockKey('onboarding:preparation:', asUuid(tenantId));
+
 export async function lockPreparationConfig(tx: Tx, tenantId: string, mode: 'read' | 'write') {
-  const lock = mode === 'read' ? sql`pg_advisory_xact_lock_shared` : sql`pg_advisory_xact_lock`;
-  await tx.execute(sql`SELECT ${lock}(hashtextextended(${`onboarding:preparation:${tenantId.toLowerCase()}`}, 0))`);
+  if (mode === 'write') {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${preparationGate(tenantId)})`);
+    return;
+  }
+  await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(${preparationGate(tenantId)})`);
 }
 
 export async function preparationRuleChildren(tx: Tx, tenantId: string, ruleId: string) {
