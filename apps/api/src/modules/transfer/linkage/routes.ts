@@ -34,7 +34,7 @@ import { loadLinkageItem, retryLinkageItem } from './items.js';
 import { requireLinkageSource, updateTransferLinkage } from './service.js';
 import { linkageBeforeCommand } from './store.js';
 import { registerTransferDeletionProbes } from './deletion-probes.js';
-import { sameOrderScopeGuard } from '../same-order-guard.js';
+import { sameOrderScopeGuard, transferReceiptNames } from '../same-order-guard.js';
 import { readTransferLinkage } from './view.js';
 
 type Deps = TenantRouteDeps;
@@ -132,7 +132,7 @@ function registerRetry(router: Hono<TenantEnv>, deps: Deps) {
     await requireEmploymentWrite(ctx, 'update', {}, 'Employment.RetryActivation');
     const access: LinkageAccess = {};
     // 子项所属调动须对当前操作人可见，改写的字段 / 组织按当前权限判定（每次请求重验，幂等重放同样经此）。
-    await withTenant(deps.db, ctx.tenantId, (tx) => authorizeRetry(tx, deps, ctx, id, access));
+    const parentKind = await withTenant(deps.db, ctx.tenantId, (tx) => authorizeRetry(tx, deps, ctx, id, access));
     return runWrite(
       c,
       deps,
@@ -144,7 +144,8 @@ function registerRetry(router: Hono<TenantEnv>, deps: Deps) {
       }),
       {
         guard: sameOrderScopeGuard(deps, ctx, {
-          receiptNames: true, // 调动专用入口，恒为调动单（DEC-1000）
+          // 子项表也承载离职职责转交：按父单类型表态，只有调动单随命令保存回执名称（DEC-1000，第 8 轮 P3）
+          ...transferReceiptNames(parentKind),
           authorize: async (tx, scoped) => {
             await requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation');
             await authorizeRetry(tx, deps, scoped, id, {});
@@ -155,16 +156,18 @@ function registerRetry(router: Hono<TenantEnv>, deps: Deps) {
   });
 }
 
+/** 返回父单类型（调动或离职职责转交），供入口选择回执名称开关；不额外查询。 */
 async function authorizeRetry(tx: Tx, deps: Deps, ctx: EmploymentContext, id: string, access: LinkageAccess) {
   const item = await loadLinkageItem(tx, ctx.tenantId, id);
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  if (!(await loadEmploymentBusiness(tx, ctx.tenantId, item.businessId, today, ctx.scope)))
-    throw new AppError('NOT_FOUND', '联动子项不存在');
+  const parent = await loadEmploymentBusiness(tx, ctx.tenantId, item.businessId, today, ctx.scope);
+  if (!parent) throw new AppError('NOT_FOUND', '联动子项不存在');
   const bound = { ...ctx, authorize: authorizeInTransaction(deps.authorize, tx) };
   if (item.itemType === 'duty_subordinate') await authorizeSubordinateField(bound, item.relation as DutyRelation);
   if (item.itemType === 'duty_org_role')
     await authorizeOrgRole(tx, bound, access, item.orgId!, item.orgRole as OrgRole);
   if (item.itemType === 'insurance_archive') await authorizeInsuranceFields(tx, bound, item.businessId);
+  return parent.kind;
 }
 
 /** 表单“变更的合同”候选：该员工当前有效的合同，按合同查看权与合同范围（含创建人）过滤。 */

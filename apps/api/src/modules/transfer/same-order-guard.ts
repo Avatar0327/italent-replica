@@ -167,18 +167,17 @@ export function sameOrderScopeGuard(
 export function sameOrderCreateGuard(
   deps: TenantRouteDeps,
   entry: EmploymentContext,
-  spec: {
+  spec: ReceiptNamesSpec & {
     readonly employeeId: string;
     readonly input: TransferInput;
     readonly targetDepartmentId: string | null;
     readonly authorize: (tx: Tx, scoped: EmploymentContext) => Promise<void>;
   },
 ): ScopedCommandGuard {
-  // 只服务调动发起 / 覆盖暂存（调动专用入口），恒为调动单。
   return refreshGuard(
     deps,
     entry,
-    true,
+    spec.receiptNames,
     async (tx, fresh) => {
       await spec.authorize(tx, fresh);
       return transferTargetContext(tx, fresh, spec.employeeId, spec.input, spec.targetDepartmentId);
