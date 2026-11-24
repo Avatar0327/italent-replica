@@ -43,6 +43,8 @@ it.skipIf(testDbMode() !== 'pg').each(['app', 'app_owner'])(
     const name = find<{ name: string }>(await owner.db.execute(sql`SELECT current_database() AS name`)).name;
     const url = new URL(process.env.TEST_DATABASE_URL!);
     url.username = role;
+    // scripts/pg-roles.sql 里两个角色的口令与角色同名；沿用原 URL 的口令会在 CI 的 postgres:postgres 下认证失败
+    url.password = role;
     url.pathname = `/${name}`;
     const runtime = createPgDb(url.toString(), { max: 3 });
     try {
