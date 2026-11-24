@@ -5342,6 +5342,49 @@
         ]
       }
     },
+    "GET /api/tenant/employment/businesses/:id/field-origins": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "requireTransferButton"
+        ],
+        "domain": [
+          "transfer.initiator"
+        ],
+        "fieldsOut": [
+          "trimEmploymentResponse"
+        ],
+        "guard": [
+          "transfer.source"
+        ],
+        "object": [
+          "object.* 动作",
+          "readPageContext"
+        ],
+        "scope": [
+          "checkScope",
+          "employment visibility",
+          "readPageContext",
+          "scope.all",
+          "scopeSql",
+          "visible()"
+        ]
+      }
+    },
     "GET /api/tenant/employment/completion-todos": {
       "edge": {
         "anonymous": {

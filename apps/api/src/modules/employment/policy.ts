@@ -1051,6 +1051,17 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: RESPONSE,
     ...byId,
   }),
+  // 字段来源（F-036-S5，设计 §4.9）：与业务详情同一批读上下文 / 守卫，字段与值只取详情会返回的那份内容；
+  // 定位业务三步的 404 / 403 归一为 404「任职业务不存在」（只读，不写审计、不带命令 ID）
+  'GET /businesses/:id/field-origins': object({
+    guards: ['transfer.source'],
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: INITIATOR_BUTTON,
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
+    fields: RESPONSE,
+    ...byId,
+  }),
   // 记录详情：loadEmploymentRecord（DEC-177 可见）→ 404「任职记录不存在」→ requirePermission(tenant.employment.read, employeeId)
   'GET /records/:id': object({
     object: EMPLOYMENT,

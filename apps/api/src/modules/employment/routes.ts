@@ -95,6 +95,8 @@ import {
   ReportingCycleDeletionError,
 } from './deletion-guards.js';
 import { visibleEmploymentRecords } from './visibility.js';
+import { frozenOriginRows, liveOriginRows, loadOriginFacts } from './field-origins-read.js';
+import { decideEmploymentRead } from './read-decision.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import type { EmploymentBusiness, EmploymentBusinessPatch, EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
@@ -162,6 +164,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerAllPeople(module, deps);
   registerInheritancePreview(module, deps);
   registerBusinesses(module, deps);
+  registerFieldOrigins(module, deps);
   registerActivation(module, deps);
   registerForwardUpdates(module, deps);
   registerBatchEdit(module, deps);
@@ -471,20 +474,52 @@ async function shownBusiness(
   return { ...(body as object), contentView: read.contentView };
 }
 
+/** 定位业务三步的 NOT_FOUND / FORBIDDEN 归一为 404 “任职业务不存在”（无 details）；其它错误码原样抛出。 */
+async function withUnifiedNotFound<T>(locate: () => Promise<T>): Promise<T> {
+  try {
+    return await locate();
+  } catch (error) {
+    if (error instanceof AppError && (error.code === 'NOT_FOUND' || error.code === 'FORBIDDEN'))
+      throw new AppError('NOT_FOUND', '任职业务不存在');
+    throw error;
+  }
+}
+
+function registerFieldOrigins(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  // F-036-S5（设计 §4.9）：字段来源只读接口。第 1～3、7 步与详情路由逐步同调；第 4～6 步（定位业务并确认可看）
+  // 的“不存在 / 无权”一律归一为同一个 404，不让状态码或文案区分“存在但不可见”。只读：不写审计、不带命令 ID。
+  // asOf 在入口鉴权后、任何资源守卫之前解析：非法日期对可见与不可见的业务一律同一个 400。
+  router.get('/businesses/:id/field-origins', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readPageContext(c, deps, 'detail');
+    const asOf = queryDate(c, ctx);
+    const read = await selectEmploymentRead(deps, ctx, id);
+    const decision = await withUnifiedNotFound(() =>
+      decideEmploymentRead(
+        deps,
+        ctx,
+        id,
+        () => asOf,
+        read,
+        (tx, gated, value) => loadOriginFacts(tx, gated, value, !!read.frozen),
+      ),
+    );
+    const { contentView, ...shown } = (await shownBusiness(deps, decision.ctx, read, decision.value)) as {
+      contentView: unknown;
+    };
+    const fields = read.frozen ? frozenOriginRows(shown) : await liveOriginRows(deps, ctx, decision.extra, asOf, shown);
+    return c.json({ businessId: id, contentView, fields });
+  });
+}
+
 // F-476 P4：GET /businesses/:id 先判内容来源——已办审批人读本人冻结内容（流程事实取现值），不套用其当前数据范围（DEC-834④），
 // 字段仍叠当前字段权；其余读现值，范围照旧。
 function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/businesses/:id', async (c) => {
     const id = uuidParam(c);
-    let ctx = await readPageContext(c, deps, 'detail');
-    const read = await selectEmploymentRead(deps, ctx, id);
-    if (!read.frozen) ctx = await withTenant(deps.db, ctx.tenantId, (tx) => transferBusinessContext(tx, ctx, id));
-    const scope = read.frozen || ctx.transferTarget ? undefined : ctx.scope;
-    const value = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      loadEmploymentBusiness(tx, ctx.tenantId, id, queryDate(c, ctx), scope),
-    );
-    if (!value) throw new AppError('NOT_FOUND', '任职业务不存在');
-    await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: value.employeeId });
+    const entry = await readPageContext(c, deps, 'detail');
+    const read = await selectEmploymentRead(deps, entry, id);
+    const { ctx, value } = await decideEmploymentRead(deps, entry, id, () => queryDate(c, entry), read);
     return c.json(await shownBusiness(deps, ctx, read, value));
   });
   router.get('/records/:id', async (c) => {
