@@ -752,13 +752,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   ),
   // ---- transfer/routes.ts：调动预览与发起 ----------------------------------------------------------------------------
   // 只读预览：normalizeTransferInput（transfer.previewInput：结构 400、本人入口只读字段 403、入口 / 表单不匹配 400）；
-  // previewTransfer → requireTransferSource(initiator)（按钮 + 绑定 + 源范围）→ 有目标部门时 requireScopedEmploymentObject；
+  // previewTransfer → requireTransferSource(initiator)（按钮 + 绑定 + 源范围）→ 员工发起时按字段写权判定（employeePreviewWrite，
+  // DEC-205，先于表单校验）→ 有目标部门时 requireScopedEmploymentObject；
   // 响应：trimEmploymentResponse + visibleTransferForm（fieldModes 按可见 / 可编辑降级）+ allowedActions 布尔披露
   'POST /transfers/employees/:id/preview': object({
     object: EMPLOYMENT,
     operation: 'view',
     button: INITIATOR_BUTTON,
-    guards: ['transfer.direct', 'transfer.previewInput', TRANSFER_SOURCE],
+    guards: ['transfer.direct', 'transfer.previewInput', 'employment.employeePreviewWrite', TRANSFER_SOURCE],
     scope: guardScope('transfer.previewScope', NF_EMPLOYEE),
     fields: projector('transfer.preview', 'transfer.preview'),
     write: previewWrite,
@@ -1045,6 +1046,17 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'view',
     // 调动单详情经 transferBusinessContext → requireTransferSource（按单据 initiator 校验发起按钮）
+    button: INITIATOR_BUTTON,
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
+    fields: RESPONSE,
+    ...byId,
+  }),
+  // 字段来源（F-036-S5，设计 §4.9）：与业务详情同一批读上下文 / 守卫，字段与值只取详情会返回的那份内容；
+  // 定位业务三步的 404 / 403 归一为 404「任职业务不存在」（只读，不写审计、不带命令 ID）
+  'GET /businesses/:id/field-origins': object({
+    guards: ['transfer.source'],
+    object: EMPLOYMENT,
+    operation: 'view',
     button: INITIATOR_BUTTON,
     scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
     fields: RESPONSE,

@@ -2,7 +2,7 @@ import { linkagePayload, sourceDepartment } from './linkage-api.js';
 import { jobReferences, text } from './messages.js';
 import { OPTIONS_PATH as EMPLOYMENT_TYPE_OPTIONS } from '../employment-types/model.js';
 import type { Choice, TransferAction, TransferBusiness, TransferFormModel, TransferPreview } from './types.js';
-import { ApiError, createApiClient, rejectionMessage } from '../foundation/client.js';
+import { ApiError, commandId, createApiClient, rejectionMessage } from '../foundation/client.js';
 
 export const EMPLOYMENT_API = '/api/tenant/employment';
 export const TRANSFER_API = `${EMPLOYMENT_API}/transfers`;
@@ -29,7 +29,8 @@ export async function transferRequest<T>(tenantId: string, path: string, options
       ...(method !== 'GET'
         ? {
             command: {
-              id: headers.get('idempotency-key') ?? crypto.randomUUID(),
+              // 预览等非 GET 读取也走命令通道；http 页面没有 randomUUID，读取不能因此失败（F-110 第 2 轮 P2-1）。
+              id: headers.get('idempotency-key') ?? commandId(),
               ...(revision === null ? {} : { revision: Number(revision) }),
               body: typeof options.body === 'string' ? (JSON.parse(options.body) as unknown) : {},
             },

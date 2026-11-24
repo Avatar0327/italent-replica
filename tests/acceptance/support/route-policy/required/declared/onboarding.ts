@@ -20,6 +20,11 @@ export const ONBOARDING_DECLARED: ModuleDeclared = {
     'POST /api/tenant/onboarding/entries/:businessId/collection/remind',
     'POST /api/tenant/onboarding/entries/:businessId/collection/comments',
     'POST /api/tenant/onboarding/collection/start-batch',
+    'GET /api/tenant/onboarding/integration/schemes',
+    'GET /api/tenant/onboarding/integration/schemes/:id',
+    'POST /api/tenant/onboarding/integration/schemes',
+    'PATCH /api/tenant/onboarding/integration/schemes/:id',
+    'DELETE /api/tenant/onboarding/integration/schemes/:id',
     'GET /api/tenant/onboarding/integration/task-pool',
     'GET /api/tenant/onboarding/integration/task-pool/categories',
     'GET /api/tenant/onboarding/integration/task-pool/:id',
@@ -32,5 +37,6 @@ export const ONBOARDING_DECLARED: ModuleDeclared = {
     'POST /api/tenant/onboarding/entries/:businessId/collection/remind',
     'POST /api/tenant/onboarding/entries/:businessId/collection/comments',
     'PATCH /api/tenant/onboarding/integration/task-pool/:id',
+    'PATCH /api/tenant/onboarding/integration/schemes/:id',
   ],
 };

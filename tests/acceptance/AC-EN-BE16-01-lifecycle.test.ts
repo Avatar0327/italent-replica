@@ -38,6 +38,7 @@ const cases = onboardingEntryCases;
 const NOT_CURRENT = { code: 'CONFLICT', details: { reason: 'ENTRY_CASE_NOT_CURRENT' } };
 const ONBOARDING = '/api/tenant/onboarding';
 const TASK_POOL = `${ONBOARDING}/integration/task-pool`;
+const SCHEMES = `${ONBOARDING}/integration/schemes`;
 
 async function fixture(label: string, db = testDb().db) {
   const { tenant, user } = await seedTenantWithMember(db, label);
@@ -92,11 +93,16 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
       .map(({ method, path }) => `${method} ${path}`)
       .sort();
     expect(onboardingRoutes).toEqual([
+      `DELETE ${SCHEMES}/:id`,
       `DELETE ${TASK_POOL}/:id`,
+      `GET ${SCHEMES}`,
+      `GET ${SCHEMES}/:id`,
       `GET ${TASK_POOL}`,
       `GET ${TASK_POOL}/:id`,
       `GET ${TASK_POOL}/categories`,
+      `PATCH ${SCHEMES}/:id`,
       `PATCH ${TASK_POOL}/:id`,
+      `POST ${SCHEMES}`,
       `POST ${TASK_POOL}`,
     ]);
     const created = await run((tx) => port.create(tx, context(), entry));

@@ -396,8 +396,9 @@ export async function updateEmploymentBusiness(
 ): Promise<EmploymentBusiness> {
   const { pendingTransferAck, confirmed, ...businessPatch } = normalizeBusinessPatch(input);
   const business = await lockExitForEdit(tx, ctx, id);
-  await requireEmployeeTransferBusiness(tx, ctx, id, businessPatch);
-  const remaining = await replanEditableExit(tx, ctx, business, businessPatch, {
+  // 员工自助单据上同值的职位、职务、职级、序列不算本次输入（DEC-950），其后一律用扣完之后的这份。
+  const current = (await requireEmployeeTransferBusiness(tx, ctx, id, businessPatch)) ?? businessPatch;
+  const remaining = await replanEditableExit(tx, ctx, business, current, {
     pendingTransferAck,
     confirmed,
     ...options,
@@ -412,7 +413,7 @@ export async function updateEmploymentBusiness(
     throw new AppError('CONFLICT', '审批中的申请只能由当前审批节点修改', { reason: 'APPROVAL_IN_PROGRESS' });
   }
   const before = business.payload;
-  const { normalized, patch } = normalizePatchedInput(ctx, before, remaining);
+  const { normalized, patch, requestFields } = normalizePatchedInput(ctx, before, remaining);
   await assertRegularizationApplication(tx, ctx, business, normalized);
   await assertNotBeforeCurrentCycle(tx, ctx, business.employeeId, normalized);
   await assertBusinessSequence(tx, ctx, business.employeeId, normalized);
@@ -427,7 +428,7 @@ export async function updateEmploymentBusiness(
   const prepared = await prepareEmploymentPatch(
     tx,
     ctx,
-    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
+    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id, requestFieldCodes: requestFields },
     before,
   );
   const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
@@ -524,7 +525,14 @@ export function normalizePatchedInput(
     fields: { ...fields, ...patch.fields },
     customFields: { ...customFields, ...patch.customFields },
   });
-  return { normalized, patch };
+  // F-036 S4：候选态（normalized）= 沿用的覆盖值 + 本次请求。requestFields 是“本次输入”的唯一来源（DEC-431①）：
+  // 沿用的值当时已校验过，也可能由向后更新、序列同步这类系统写入而来，不能再受“当前表单是否允许编辑”约束，
+  // 也不能触发派生；这两处都改读它，不再各自从候选的键集合里猜。
+  const requestFields = new Set([
+    ...Object.keys(patch.fields ?? {}).map((field) => `preset:${field}`),
+    ...Object.keys(patch.customFields ?? {}).map((id) => `custom:${id}`),
+  ]);
+  return { normalized, patch, requestFields };
 }
 
 function assertEmployTypeUsage(input: Pick<NormalizedEmploymentInput, 'kind' | 'fields'>): void {

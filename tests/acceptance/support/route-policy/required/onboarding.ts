@@ -2,6 +2,7 @@
 import { ONBOARDING_COLLECTION } from './onboarding-collection.js';
 import { ONBOARDING_TASKS } from './onboarding-tasks.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
+import { ONBOARDING_SCHEMES } from './onboarding-schemes.js';
 
 const BASE = '/api/tenant/onboarding/integration/task-pool';
 const ROUTES = 'apps/api/src/modules/onboarding/integration-pool-routes.ts';
@@ -118,6 +119,7 @@ function write(route: string, operation: 'create' | 'update'): Obligation[] {
 export const ONBOARDING: RequiredTable = {
   ...ONBOARDING_COLLECTION,
   ...ONBOARDING_TASKS,
+  ...ONBOARDING_SCHEMES,
   [`GET ${BASE}/categories`]: read(
     'GET /categories',
     'await requirePoolView(authorizeInTransaction(deps.authorize, tx), tenantOf(c))',

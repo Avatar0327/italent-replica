@@ -29,6 +29,8 @@ export function useHrTransferCommand(
   model: TransferFormModel,
   loadingPreview: boolean,
   setModel: SetModel,
+  /** 表单原提示区按最近一次操作显示失败（第 4 轮 P2-3）：每次暂存 / 保存 / 提交开始时登记。 */
+  onAttempt?: () => void,
 ) {
   const write = useHrWrite();
   const confirmTerminate = useTerminateConfirm();
@@ -41,20 +43,19 @@ export function useHrTransferCommand(
   const action = (command.state?.context?.action as TransferAction | undefined) ?? chosen;
   const processing = awaitingEstablishment || command.status === 'submitting' || command.status === 'unknown';
   const reread = useRef<{ employeeId: string; loaded: Reread }>(undefined);
-  let commandNotice = '';
-  if (write.result) {
-    commandNotice = write.result.status === 'draft' ? text.hrDraftSaved : savedNotice(write.result, action);
-  }
+  const commandNotice = noticeOf(write.result, action);
   const read = async () => {
     const loaded = await loadPreview(tenantId, model, new AbortController().signal);
     reread.current = { employeeId: model.employeeId, loaded };
     return previewRecord(model.employeeId, loaded.preview);
   };
   // 新一次尝试（含清除、换人后重来）从当前预览起算：丢掉已确认冲突留下的旧版本与重读缓存（#350 第 2 轮 P2-1）。
-  // 内核对锁定中的槽（提交中、冲突、结果未知）不清除，这些状态仍按原规则锁定。
+  // 内核对锁定中的槽（提交中、冲突、结果未知）不清除，这些状态仍按原规则锁定。上一次的提示一并清掉。
   const restart = () => {
     command.clear();
     reread.current = undefined;
+    write.refuse('');
+    onAttempt?.();
   };
   const conflict: CommandForm = {
     ...command,
@@ -75,6 +76,8 @@ export function useHrTransferCommand(
     saved: write.result,
     processing,
     commandError: write.error,
+    // 处理中只显示本次竞争、且仍锁在同一条恢复命令上的原因；表单里的旧错误不带进来（第 3 轮 P2-3）。
+    processingError: write.raceFor(processing ? command.state?.command?.id : undefined),
     commandNotice,
     busy: awaitingEstablishment || command.locked,
     conflict,
@@ -93,7 +96,7 @@ export function useHrTransferCommand(
         if (action !== 'draft' && terminatesOriginalContract(model) && !(await confirmTerminate())) return;
         setAction(action);
         restart();
-        await submitHrTransfer(command, write.run, { tenantId, model, preview, action }, () => {
+        await submitHrTransfer(command, write, { tenantId, model, preview, action }, () => {
           setAwaitingEstablishment(true);
           return confirmEstablishment();
         });
@@ -109,9 +112,14 @@ export function useHrTransferCommand(
   };
 }
 
+function noticeOf(result: ReturnType<typeof useHrWrite>['result'], action: TransferAction) {
+  if (!result) return '';
+  return result.status === 'draft' ? text.hrDraftSaved : savedNotice(result, action);
+}
+
 function submitHrTransfer(
   command: CommandForm,
-  run: ReturnType<typeof useHrWrite>['run'],
+  write: Pick<ReturnType<typeof useHrWrite>, 'run' | 'refuse' | 'raced'>,
   input: {
     tenantId: string;
     model: TransferFormModel;
@@ -125,6 +133,7 @@ function submitHrTransfer(
   const record = previewRecord(employeeId, preview);
   // F-026 / F-110：首次和确认后的请求分别走内核登记，各自的幂等键就是各自的恢复命令 ID。
   return sendWithEstablishmentConfirm(async (confirmed) => {
+    let sent = false;
     const outcome = await command.submit({
       values: draftValues(model, record),
       baseline: record.values,
@@ -132,16 +141,22 @@ function submitHrTransfer(
       revision: record.revision,
       businessId: employeeId,
       context: { action },
-      send: async (sent) => {
+      send: async (issued) => {
+        sent = true;
         // 回执按实际发出的 If-Match 核对（#350 第 2 轮 P2-2）。
-        const revision = sent.revision ?? record.revision;
-        await run(() => saveTransfer(tenantId, model, action, sent.id, revision, confirmed), { employeeId, revision });
+        const revision = issued.revision ?? record.revision;
+        const save = () => saveTransfer(tenantId, model, action, issued.id, revision, confirmed);
+        await write.run(save, { employeeId, revision });
         // 内核按员工记录核对回执；业务单回执已由 useHrWrite 校验并保存。
         return { id: employeeId };
       },
     });
     // A 已落定。确认重提之前保留这条状态，避免持久记录排队删除时被同步重新当作未知命令。
     if (outcome.status === 'rejected' && needsEstablishmentConfirm(outcome.error)) throw outcome.error;
+    // 竞争只看内核结果（第 4 轮 P2-2）：原因随占槽命令显示在“处理中”。其余未发出的拒绝（DEC-954 / DEC-955、
+    // 存储不可用）useHrWrite 没机会提示，用内核的文案、留在表单原位置。
+    if (outcome.race) write.raced(outcome.race.reason, outcome.race.commandId);
+    else if (outcome.status === 'rejected' && !sent) write.refuse((outcome.error as Error | undefined)?.message ?? '');
     // 普通拒绝由 useHrWrite 给出提示，下次提交按当时的预览起算。
     if (outcome.status === 'done' || outcome.status === 'rejected') command.clear();
   }, ask);

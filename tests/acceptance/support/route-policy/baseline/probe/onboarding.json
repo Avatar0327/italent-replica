@@ -39,6 +39,26 @@
       "obj:TenantBase.EmploymentSettings:update"
     ]
   },
+  "DELETE /api/tenant/onboarding/integration/schemes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3b067ec3f59f",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OnboardingIntegration/-"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
   "DELETE /api/tenant/onboarding/integration/task-pool/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -140,10 +160,24 @@
       "obj:TenantBase.EmploymentSettings:view"
     ]
   },
-  "GET /api/tenant/onboarding/entries/:businessId/collection": {
+  "GET /api/tenant/onboarding/integration/schemes": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OnboardingIntegration/-"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:create",
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "GET /api/tenant/onboarding/integration/schemes/:id": {
     "all": {
       "code": "NOT_FOUND",
-      "error": "f3208e885dad",
+      "error": "3b067ec3f59f",
       "status": 404
     },
     "fieldQueries": [],
@@ -152,10 +186,12 @@
       "error": "17147722c2a8",
       "status": 400
     },
-    "scopeQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OnboardingIntegration/-"
+    ],
     "trace": [
-      "obj:TenantBase.EmploymentRecord:view",
-      "obj:TenantBase.OnboardingCollection:view"
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:view"
     ]
   },
   "GET /api/tenant/onboarding/integration/task-pool": {
@@ -239,6 +275,24 @@
       "obj:TenantBase.EmploymentSettings:update"
     ]
   },
+  "PATCH /api/tenant/onboarding/integration/schemes/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "953c35b2231d",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
   "PATCH /api/tenant/onboarding/integration/task-pool/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -283,72 +337,18 @@
     "scopeQueries": [],
     "trace": []
   },
-  "POST /api/tenant/onboarding/collection/start-batch": {
+  "POST /api/tenant/onboarding/integration/schemes": {
     "all": {
       "code": "VALIDATION_FAILED",
-      "error": "614585d55d46",
+      "error": "f016d908295d",
       "status": 400
     },
     "fieldQueries": [],
-    "gap": {
-      "reason": "validation"
-    },
     "scopeQueries": [],
-    "trace": []
-  },
-  "POST /api/tenant/onboarding/entries/:businessId/collection/comments": {
-    "all": {
-      "code": "VALIDATION_FAILED",
-      "error": "10015f0e7873",
-      "status": 400
-    },
-    "fieldQueries": [],
-    "gap": {
-      "reason": "validation"
-    },
-    "invalidId": {
-      "code": "VALIDATION_FAILED",
-      "error": "17147722c2a8",
-      "status": 400
-    },
-    "scopeQueries": [],
-    "trace": []
-  },
-  "POST /api/tenant/onboarding/entries/:businessId/collection/remind": {
-    "all": {
-      "code": "VALIDATION_FAILED",
-      "error": "35dd264d0ba2",
-      "status": 400
-    },
-    "fieldQueries": [],
-    "gap": {
-      "reason": "validation"
-    },
-    "invalidId": {
-      "code": "VALIDATION_FAILED",
-      "error": "17147722c2a8",
-      "status": 400
-    },
-    "scopeQueries": [],
-    "trace": []
-  },
-  "POST /api/tenant/onboarding/entries/:businessId/collection/start": {
-    "all": {
-      "code": "VALIDATION_FAILED",
-      "error": "35dd264d0ba2",
-      "status": 400
-    },
-    "fieldQueries": [],
-    "gap": {
-      "reason": "validation"
-    },
-    "invalidId": {
-      "code": "VALIDATION_FAILED",
-      "error": "17147722c2a8",
-      "status": 400
-    },
-    "scopeQueries": [],
-    "trace": []
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:create"
+    ]
   },
   "POST /api/tenant/onboarding/integration/task-pool": {
     "all": {

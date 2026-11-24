@@ -74,6 +74,21 @@ export async function resolveDerivation(
   );
 }
 
+/**
+ * 哪些派生可以被触发（F-036 S4，DEC-431①）：只有本次请求里实际给出的依赖字段，或上一版已经按同一依据派生过的结果
+ * （改期时随新日期重取）才触发；沿用的覆盖值（向后更新 / 序列同步写进草稿）不是本次输入，不能触发派生。
+ * 缺省（创建、重建）= 候选里的全部字段都是输入。
+ */
+export interface DerivationTrigger {
+  readonly requestFieldCodes?: ReadonlySet<string>;
+  readonly previous?: readonly FieldDerivation[];
+}
+
+function triggers(trigger: DerivationTrigger, rule: DerivationRule, reference: string, referenceId: string): boolean {
+  if (!trigger.requestFieldCodes || trigger.requestFieldCodes.has(`preset:${reference}`)) return true;
+  return trigger.previous?.some((origin) => origin.rule === rule && origin.referenceId === referenceId) === true;
+}
+
 export interface DerivationForm {
   readonly group: BusinessKind | null;
   readonly fieldModes: Readonly<Record<string, string>>;
@@ -87,10 +102,12 @@ export async function derivePresetFields(
   input: { employeeId: string; effectiveDate: string; kind: BusinessKind; formId: string },
   parsed: Partial<PresetFields>,
   form: DerivationForm,
+  trigger: DerivationTrigger = {},
 ) {
   const candidates: FieldDerivation[] = [];
   if (
     parsed.postId &&
+    triggers(trigger, 'post-sequence', 'postId', parsed.postId) &&
     !Object.hasOwn(parsed, 'sequenceId') &&
     (input.kind !== 'transfer' || (form.fieldModes['preset:sequenceId'] ?? 'absent') !== 'absent')
   )
@@ -102,6 +119,7 @@ export async function derivePresetFields(
     form.autoPopulate &&
     form.fieldModes['preset:directManagerId'] === 'editable' &&
     parsed.departmentId &&
+    triggers(trigger, 'department-manager', 'departmentId', parsed.departmentId) &&
     !Object.hasOwn(parsed, 'directManagerId')
   )
     candidates.push({ rule: 'department-manager', referenceId: parsed.departmentId });
