@@ -222,12 +222,12 @@ export const DIGESTS: Digests = {
     whereOwner: 'f9f20cb64429',
   },
   'apps/api/src/modules/command-result/routes.ts': {
-    'route:GET /api/tenant/commands/:commandId/result': '73fb78d96974',
+    'route:GET /api/tenant/commands/:commandId/result': '067c95d5fc17',
   },
   'apps/api/src/modules/command-result/service.ts': {
     commandResultRegistry: '2baf62b2bc58',
-    latestFailureGroup: '3a1806588594',
-    readOwnCommandResult: '029b54c7bba9',
+    latestFailureGroup: 'c0081166b9c5',
+    readOwnCommandResult: 'a0324af45c8f',
     readRegisteredCommandResult: '3a68705a67b6',
   },
   'apps/api/src/modules/contracts/context.ts': {
@@ -2345,8 +2345,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/avatar/service.ts#whereOwner': '6ae738c83349',
   'apps/api/src/modules/command-result/routes.ts#route:GET /api/tenant/commands/:commandId/result': 'eb3a928cf8b1',
   'apps/api/src/modules/command-result/service.ts#commandResultRegistry': '8d830e264e29',
-  'apps/api/src/modules/command-result/service.ts#latestFailureGroup': '4bca3a38775a',
-  'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': '1ea7aca1cfae',
+  'apps/api/src/modules/command-result/service.ts#latestFailureGroup': 'f174a8f63f77',
+  'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': '3aa4b5e07409',
   'apps/api/src/modules/command-result/service.ts#readRegisteredCommandResult': '19453c7ecdc7',
   'apps/api/src/modules/contracts/context.ts#checkFields': '670343aebdbc',
   'apps/api/src/modules/contracts/context.ts#checkScope': '38843b4c716f',

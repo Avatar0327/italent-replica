@@ -20,6 +20,7 @@ export const messages = {
   query: '查询结果',
   resultPending: '暂未查到本次命令的结果，可能仍在处理中，请稍后再查询。',
   resultFailed: '已确认原命令未执行成功，输入已保留，请核对后重新提交。',
+  resultNotExecuted: '已确认原命令未执行，请核对后重新提交。',
   restored: '刷新前或其他标签页提交的命令结果待确认；提交内容未在本页保存，请先查询结果。',
   recoveryUnavailable: '无法保存处理状态，命令未发出，请检查浏览器存储设置后重试。',
   otherTab: '其他标签页有该对象未确认的命令，本次命令未发出；请等待结果或先查询结果。',

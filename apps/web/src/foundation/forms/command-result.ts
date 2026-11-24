@@ -4,7 +4,7 @@ import { messages } from './messages.js';
 /** F-120 本人命令结果摘要（docs/08_设计/F-120_本人命令结果查询_路由声明.md「返回结构」）。 */
 export interface CommandResult {
   commandId: string;
-  status: 'succeeded' | 'failed';
+  status: 'succeeded' | 'failed' | 'not_executed';
   commandType: string | null;
   businessType: string | null;
   businessId: string | null;
@@ -16,6 +16,7 @@ export interface CommandResult {
 export type ResultVerdict =
   | { status: 'succeeded'; businessId?: string }
   | { status: 'failed'; httpStatus: number | null }
+  | { status: 'not_executed' }
   | { status: 'pending' };
 
 export const commandResultPath = (commandId: string) => `/api/tenant/commands/${encodeURIComponent(commandId)}/result`;
@@ -28,7 +29,7 @@ export function parseCommandResult(raw: unknown, commandId: string): CommandResu
   const result = raw as Partial<CommandResult> | null;
   const valid =
     result?.commandId === commandId &&
-    (result.status === 'succeeded' || result.status === 'failed') &&
+    (result.status === 'succeeded' || result.status === 'failed' || validRollback(result)) &&
     nullable(result.businessId, 'string') &&
     nullable(result.businessType, 'string') &&
     (absent(result.revision) || Number.isSafeInteger(result.revision)) &&
@@ -45,6 +46,20 @@ export function parseCommandResult(raw: unknown, commandId: string): CommandResu
   };
 }
 
+function validRollback(result: Partial<CommandResult>) {
+  return (
+    result.status === 'not_executed' &&
+    result.businessId === null &&
+    result.businessType === null &&
+    result.revision === null &&
+    typeof result.httpStatus === 'number' &&
+    result.httpStatus >= 500 &&
+    result.httpStatus < 600 &&
+    typeof result.completedAt === 'string' &&
+    Number.isFinite(Date.parse(result.completedAt))
+  );
+}
+
 /** 唯一的结果查询入口（附件、实习、调动、审批共用）。 */
 export async function readCommandResult(client: Pick<ApiClient, 'request'>, commandId: string, signal?: AbortSignal) {
   const raw = await client.request<unknown>(commandResultPath(commandId), { signal });
@@ -52,8 +67,8 @@ export async function readCommandResult(client: Pick<ApiClient, 'request'>, comm
 }
 
 /**
- * F-120 三分支：200 succeeded → 交给 confirm 按业务读回核对（返回业务 ID，抛错即保持锁定）；
- * 200 failed → 确定失败；404 → 不是确定结论（可能仍在处理），保持“结果待确认”。其余查询错误原样抛出，内核保持只读。
+ * F-120 / F-537：成功交给 confirm 按业务读回核对，确定失败或未执行交给内核解锁。
+ * 404 保持结果待确认；其余查询错误原样抛出，内核保持只读。
  */
 export async function queryCommandResult(
   client: Pick<ApiClient, 'request'>,
@@ -68,5 +83,6 @@ export async function queryCommandResult(
     throw error;
   }
   if (result.status === 'failed') return { status: 'failed', httpStatus: result.httpStatus ?? null };
+  if (result.status === 'not_executed') return { status: 'not_executed' };
   return { status: 'succeeded', businessId: await confirm(result) };
 }
