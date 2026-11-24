@@ -339,8 +339,10 @@ it('AC-EN-BE16-02 真实租户管理员具备字段更新权，可归档租户�
 
 it('AC-EN-BE16-02 F-491 租户配置锁键对租户 UUID 大小写不敏感，写锁与共享锁落在同一把键上', async () => {
   const w = await world('ZZ_BE16_LOCK_KEY');
-  const upper = w.tenant.toUpperCase();
-  const lower = w.tenant.toLowerCase();
+  // 固定含 a–f 的合法 UUID：随机租户 ID 可能全是数字，大写与小写相同，用例会空转
+  const lower = 'abcdef12-3456-4abc-8def-0123456789ab';
+  const upper = lower.toUpperCase();
+  expect(upper).not.toBe(lower);
   const heldFor = (tx: Parameters<Parameters<typeof withTenant>[2]>[0], mode: string) =>
     tx.execute(sql`
       SELECT count(*)::int AS n FROM pg_locks
