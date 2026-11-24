@@ -414,6 +414,7 @@ export const GRAPH: Graph = {
     '#authorizeRetry',
     '#parse',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
+    'apps/api/src/modules/transfer/same-order-guard.ts#transferReceiptNames',
   ],
   'apps/api/src/modules/transfer/linkage/routes.ts#route:PUT /transfers/:id/linkage': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
