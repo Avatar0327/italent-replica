@@ -613,6 +613,22 @@ const INITIATOR_BUTTON = (call: Evidence, facts: readonly string[] = ['button:re
     [call, ...TRANSFER_BUTTON],
     '按钮 = 发起人（hr / manager / employee）对应的 Transfer.*',
   );
+// F-036-S5 第 3 轮：详情与来源接口的同单调动门禁收进 read-decision.ts 的 decideEmploymentRead（现值读取才过门禁，
+// 已办冻结份按 DEC-834④ 不套当前范围）。义务与改动前相同，只是强制调用点多一跳：路由 → decideEmploymentRead → 门禁。
+const READ_DECISION_GATE: Evidence = {
+  role: 'impl',
+  unit: `${SRC}/employment/read-decision.ts#decideEmploymentRead`,
+  anchor: 'const ctx = read.frozen ? entry : await transferBusinessContext(tx, entry, id)',
+};
+const readDecisionGuards = (call: Evidence): Obligation[] => [
+  ob(
+    `btn:${RECORD}#{mapper:transfer.initiatorButton}`,
+    ['button:requireTransferButton'],
+    [call, READ_DECISION_GATE, ...TRANSFER_BUTTON],
+    '按钮 = 发起人（hr / manager / employee）对应的 Transfer.*',
+  ),
+  ob('guard:transfer.source', ['guard:transfer.source'], [call, READ_DECISION_GATE, ...BUSINESS_SOURCE]),
+];
 const configWrite = (call: Evidence, object: string, operation: 'create' | 'update', write: Evidence): Obligation[] =>
   withNeeds(configWriteBase(call, object, operation, write), {
     'admin:other_settings': bound(NONE),
@@ -1815,6 +1831,40 @@ export const EMPLOYMENT: RequiredTable = {
         DIRECT_OPERATION,
       ],
     ),
+    ob(
+      'guard:employment.employeePreviewWrite',
+      [],
+      [
+        at(TRF, 'POST', '/transfers/employees/:id/preview', 'return previewTransfer(tx, ctx, id, input)'),
+        {
+          role: 'impl',
+          unit: `${SRC}/transfer/preview.ts#previewTransfer`,
+          anchor: 'await requireTransferEditedWrite(accessContext, input)',
+        },
+      ],
+      '条件守卫：员工发起的预览先按请求里实际编辑的业务字段判写权（DEC-205 可配置；路由参数不算编辑字段），再做表单校验，没有编辑权的字段是 403 不是 400',
+    ),
+    {
+      ...ob(
+        `obj:${RECORD}:create`,
+        ['objectOp:TenantBase.EmploymentRecord:create'],
+        [
+          at(TRF, 'POST', '/transfers/employees/:id/preview', 'return previewTransfer(tx, ctx, id, input)'),
+          {
+            role: 'impl',
+            unit: `${SRC}/transfer/preview.ts#previewTransfer`,
+            anchor: 'await requireTransferEditedWrite(accessContext, input)',
+          },
+          {
+            role: 'impl',
+            unit: `${SERVICE}#requireTransferEditedWrite`,
+            anchor: "await requireEmploymentWrite(ctx, 'create', edited)",
+          },
+          WRITE_OBJECT,
+        ],
+      ),
+      purpose: 'when:employment.employeePreviewWrite',
+    },
     {
       perm: `obj:${RECORD}:create`,
       purpose: 'disclosure:fieldModes',
@@ -2451,16 +2501,20 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   'GET /api/tenant/employment/businesses/:id': [
     // F-476 P4：已办审批人的内容取舍要按当前字段查看权裁剪（getModuleViewableFields → object.view），同一对象查看权
-    recordView(at(EMP, 'GET', '/businesses/:id', "let ctx = await readPageContext(c, deps, 'detail')"), [
+    recordView(at(EMP, 'GET', '/businesses/:id', "const entry = await readPageContext(c, deps, 'detail')"), [
       'object:readPageContext',
       'object:object.* 动作',
     ]),
-    INITIATOR_BUTTON(at(EMP, 'GET', '/businesses/:id', 'transferBusinessContext(tx, ctx, id)')),
-    ob(
-      'guard:transfer.source',
-      ['guard:transfer.source'],
-      [at(EMP, 'GET', '/businesses/:id', 'transferBusinessContext(tx, ctx, id)'), ...BUSINESS_SOURCE],
+    ...readDecisionGuards(at(EMP, 'GET', '/businesses/:id', 'await decideEmploymentRead(deps, entry, id,')),
+  ],
+  'GET /api/tenant/employment/businesses/:id/field-origins': [
+    // F-036-S5（设计 §4.9）：与详情路由同一批读上下文 / 守卫；字段裁剪经 shownBusiness → trimEmploymentResponse，
+    // 用的 getModuleViewableFields 属于第 ① 项的对象查看权。冻结分支不读来源台账。
+    recordView(
+      at(EMP, 'GET', '/businesses/:id/field-origins', "const ctx = await readPageContext(c, deps, 'detail')"),
+      ['object:readPageContext', 'object:object.* 动作'],
     ),
+    ...readDecisionGuards(at(EMP, 'GET', '/businesses/:id/field-origins', 'decideEmploymentRead( deps, ctx, id,')),
   ],
   'GET /api/tenant/employment/records/:id': [
     recordView(at(EMP, 'GET', '/records/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
@@ -2484,7 +2538,8 @@ export const EMPLOYMENT: RequiredTable = {
           EMP,
           'PATCH',
           '/businesses/:id',
-          "await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit', undefined, options)",
+          // F-036 S4：入口写权收进 requireDraftEditWrite（本人单据先定“本次输入”，再按它判字段写权）
+          'await requireDraftEditWrite(inTenant(deps, ctx), ctx, id, input, options)',
         ),
         WRITE_BUTTON,
       ],
@@ -2497,7 +2552,15 @@ export const EMPLOYMENT: RequiredTable = {
     ob(
       'guard:employment.employeeTransferBusiness',
       [],
-      [at(EMP, 'PATCH', '/businesses/:id', 'requireEmployeeTransferBusiness(tx, ctx, id, input)'), EMPLOYEE_TRANSFER],
+      [
+        at(
+          EMP,
+          'PATCH',
+          '/businesses/:id',
+          'await requireDraftEditWrite(inTenant(deps, ctx), ctx, id, input, options)',
+        ),
+        EMPLOYEE_TRANSFER,
+      ],
     ),
     directOperation(
       at(

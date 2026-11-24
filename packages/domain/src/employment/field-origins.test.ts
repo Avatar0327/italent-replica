@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EMPLOYEE_SAME_VALUE_FIELDS,
+  TRUSTED_ORIGIN_KINDS,
   changedInputFields,
   deferralShape,
   effectiveOrigin,
@@ -7,6 +9,7 @@ import {
   isTrustedSavedValue,
   projectOriginMarkers,
   requestInputFields,
+  sameAsSavedValue,
   settleValueRows,
   type FieldOriginKind,
   type OriginRow,
@@ -100,5 +103,33 @@ describe('F-036 §4.6 字段来源领域函数', () => {
     expect(changedInputFields(previous, body)).toEqual(new Set(['preset:place', 'preset:remarks']));
     expect(changedInputFields(previous, { fields: { positionId: null } })).toEqual(new Set([position]));
     expect(changedInputFields(previous, {})).toEqual(new Set());
+  });
+
+  it('同值判定：UUID 按小写比，null 与无保存值都算空，空只等于空', () => {
+    const id = 'abcdef01-0000-4000-8000-000000000001';
+    expect(sameAsSavedValue(id, id.toUpperCase())).toBe(true);
+    expect(sameAsSavedValue(id, 'abcdef01-0000-4000-8000-000000000002')).toBe(false);
+    expect(sameAsSavedValue(null, null)).toBe(true);
+    expect(sameAsSavedValue(undefined, null)).toBe(true);
+    expect(sameAsSavedValue(id, null)).toBe(false);
+    expect(sameAsSavedValue(null, id)).toBe(false);
+    expect(sameAsSavedValue(undefined, id)).toBe(false);
+    expect(sameAsSavedValue('', null)).toBe(false);
+    expect([...EMPLOYEE_SAME_VALUE_FIELDS]).toEqual(['positionId', 'postId', 'levelId', 'sequenceId']);
+  });
+
+  it('可信来源集合：职位含人工来源与已保存的员工输入，职务、职级、序列只认系统类来源', () => {
+    const trusted = (field: keyof typeof TRUSTED_ORIGIN_KINDS, kind: FieldOriginKind) =>
+      TRUSTED_ORIGIN_KINDS[field].has(kind);
+    for (const kind of ['employee-input', 'hr-input', 'approval-edit', 'hr-record'] as const) {
+      expect(trusted('positionId', kind)).toBe(true);
+      for (const field of ['postId', 'levelId', 'sequenceId'] as const) expect(trusted(field, kind)).toBe(false);
+    }
+    for (const field of ['postId', 'levelId', 'sequenceId'] as const)
+      for (const kind of ['inherit', 'resolved', 'copy', 'forward-update', 'system-input', 'retain'] as const)
+        expect(trusted(field, kind)).toBe(true);
+    expect(trusted('sequenceId', 'sequence-sync')).toBe(true);
+    expect(trusted('postId', 'sequence-sync')).toBe(false);
+    expect(trusted('sequenceId', 'derive')).toBe(false);
   });
 });

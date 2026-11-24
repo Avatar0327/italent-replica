@@ -9,23 +9,27 @@ import { TransferForm } from './TransferForm.js';
 import { text } from '../../transfer/messages.js';
 import { CommandStatus } from '../../foundation/forms/CommandStatus.js';
 import { fieldLabels } from '../../transfer/hr-conflict.js';
-import { useTransferForm } from './useTransferForm.js';
+import { useTransferForm, type TransferDraftState } from './useTransferForm.js';
 type TransferApplicationProps = {
   tenantId: string;
   initiator: 'hr' | 'employee' | 'manager';
   hrScope?: string;
   runCommand?: ApplicationCommandRunner;
+  pageDraft?: TransferDraftState;
   /** HR 调动管理全页表单：按入口（他人调动申请 / 调动）与写权限决定区块与按钮；员工、经理入口不传。 */
   hrForm?: { mode: HrFormMode; writable: boolean; onCancel: () => void };
 };
 export function TransferApplication(props: TransferApplicationProps) {
-  const { tenantId, initiator, runCommand, hrScope, hrForm } = props;
-  const state = useTransferForm(tenantId, initiator, undefined, runCommand, hrScope, hrForm?.mode === 'apply');
+  const { tenantId, initiator, runCommand, hrScope, hrForm, pageDraft } = props;
+  const restoreDrafts = hrForm?.mode === 'apply';
+  const state = useTransferForm(tenantId, initiator, undefined, runCommand, hrScope, restoreDrafts, pageDraft);
   // F-110：处理中整页只读；结果未知时给“查询结果”（按原命令 ID），不给重新提交。
+  // 同一员工被别页抢先登记时本页锁到那条命令上，只显示本次为何未发出；表单里的旧错误不带进来（第 3 轮 P2-3）。
   if (hrScope && state.processing)
     return (
       <>
         <p role="status">{text.processing}</p>
+        {state.processingError && <p role="alert">{state.processingError}</p>}
         {state.conflict && <CommandStatus submission={state.conflict} />}
       </>
     );

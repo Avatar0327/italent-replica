@@ -20,6 +20,7 @@ import { INSURANCE_DECLARED } from './insurance.js';
 import { HR_ANALYSIS_DECLARED } from './hr-analysis.js';
 import { IDP_DECLARED } from './idp.js';
 import { JOB_DECLARED } from './job.js';
+import { ONBOARDING_DECLARED } from './onboarding.js';
 import { OFFERS_DECLARED } from './offers.js';
 import { ORG_DECLARED } from './org.js';
 import { ORG_ADJUSTMENT_DECLARED } from './org-adjustment.js';
@@ -57,6 +58,7 @@ export const DECLARED: Readonly<Record<string, ModuleDeclared>> = {
   'hr-analysis': HR_ANALYSIS_DECLARED,
   idp: IDP_DECLARED,
   job: JOB_DECLARED,
+  onboarding: ONBOARDING_DECLARED,
   offers: OFFERS_DECLARED,
   org: ORG_DECLARED,
   'org-adjustment': ORG_ADJUSTMENT_DECLARED,

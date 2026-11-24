@@ -43,6 +43,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/audit/establishment-capacity.ts#capacityAuditChanges': ['#PART_FIELDS'],
   'apps/api/src/audit/establishment-capacity.ts#visibleCapacityParts': ['#PART_FIELDS'],
+  'apps/api/src/audit/failures.ts#CommandFailureError': ['#storageFailureMessage'],
   'apps/api/src/audit/failures.ts#failureResponse': ['#CommandFailureError'],
   'apps/api/src/audit/failures.ts#isDefiniteFailure': ['#CommandFailureError'],
   'apps/api/src/audit/failures.ts#recordCommandFailure': [
@@ -386,6 +387,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/idp/key-info-scope.ts#KEY_INFO',
     'apps/api/src/modules/idp/key-info-scope.ts#keyInfoScopeSql',
     'apps/api/src/modules/idp/key-info-scope.ts#keyInfoSnapshot',
+    'apps/api/src/modules/onboarding/integration-schemes-access.ts#SCHEME_FIELDS',
+    'apps/api/src/modules/onboarding/integration-schemes-access.ts#SCHEME_SCOPE',
+    'apps/api/src/modules/onboarding/integration-schemes-access.ts#SCHEME_SETTINGS',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
     'apps/api/src/modules/permission/module-route-access.ts#JOB_OBJECT_CODES',
     'apps/api/src/modules/permission/scope-audit.ts#creatorSql',

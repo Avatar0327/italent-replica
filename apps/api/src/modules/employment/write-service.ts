@@ -1,3 +1,4 @@
+import { createPendingEntryCase } from './entry-case.js';
 import { applyInternSeniority } from './intern-seniority.js';
 import { applyRehireSeniority } from './rehire-seniority.js';
 import { assertRegularizationApplication } from './regularization-eligibility.js';
@@ -126,6 +127,7 @@ export interface CreateEmploymentOptions {
   readonly establishmentWarnings?: EstablishmentWarning[];
   /** F-022 入职写入端口（R2-T01 接线）：添加待入职、是否有试用期；不开放给请求体。 */
   readonly entry?: EntryOptions;
+  readonly replacingPendingEntry?: true;
   /** F-363：待入职改期 / 编辑重建时的锁内旧用工形式，仅服务端传入。 */
   readonly retainedEmploymentForm?: string | null;
   /** 离职创建须经 exit-application.ts 的门禁（R2-T03 §4A）；只有它持有这个凭证。 */
@@ -220,6 +222,8 @@ export async function createEmploymentBusiness(
   if (normalized.mode === 'direct' && !gatedDirect)
     await materializeEmploymentRecord(tx, ctx, business, withImportedUntil(options));
   await appendEmploymentState(tx, ctx, business, business.state);
+  if (options.entry?.pendingEntry && !options.replacingPendingEntry && NEW_CYCLE_KINDS.includes(normalized.kind))
+    await createPendingEntryCase(tx, ctx, employeeId, id, normalized.effectiveDate);
   await bindRehireRetirement(tx, ctx, business);
   await bumpEmploymentEmployee(tx, ctx, employee);
   // 待入职试用期、待入职合同是字段级变更（DEC-019），随创建进同一条审计（F-188 / F-194）
@@ -397,6 +401,7 @@ interface EditedPayloadInput {
   readonly patch: EmploymentBusinessPatch;
   readonly selected: Awaited<ReturnType<typeof selectEmploymentCycle>> | undefined;
   readonly options: RescheduleOptions;
+  readonly requestFields: ReadonlySet<string>;
 }
 
 /**
@@ -404,12 +409,12 @@ interface EditedPayloadInput {
  * 判定必须在校验之前：职位不再属于新部门时，要先退成空值，校验才不会拿旧职位去比新部门。
  */
 async function prepareEditedPayload(tx: Tx, ctx: EmploymentContext, input: EditedPayloadInput) {
-  const { business, normalized, patch, selected, options } = input;
+  const { business, normalized, patch, selected, options, requestFields } = input;
   const before = business.payload;
   const patched = await prepareEmploymentPatch(
     tx,
     ctx,
-    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
+    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id, requestFieldCodes: requestFields },
     before,
   );
   const actor = await fieldOriginEditor(tx, ctx, before, options);
@@ -440,8 +445,9 @@ export async function updateEmploymentBusiness(
 ): Promise<EmploymentBusiness> {
   const { pendingTransferAck, confirmed, ...businessPatch } = normalizeBusinessPatch(input);
   const business = await lockExitForEdit(tx, ctx, id);
-  await requireEmployeeTransferBusiness(tx, ctx, id, businessPatch);
-  const remaining = await replanEditableExit(tx, ctx, business, businessPatch, {
+  // 员工自助单据上同值的职位、职务、职级、序列不算本次输入（DEC-950），其后一律用扣完之后的这份。
+  const current = (await requireEmployeeTransferBusiness(tx, ctx, id, businessPatch)) ?? businessPatch;
+  const remaining = await replanEditableExit(tx, ctx, business, current, {
     pendingTransferAck,
     confirmed,
     ...options,
@@ -456,7 +462,7 @@ export async function updateEmploymentBusiness(
     throw new AppError('CONFLICT', '审批中的申请只能由当前审批节点修改', { reason: 'APPROVAL_IN_PROGRESS' });
   }
   const before = business.payload;
-  const { normalized, patch } = normalizePatchedInput(ctx, before, remaining);
+  const { normalized, patch, requestFields } = normalizePatchedInput(ctx, before, remaining);
   await assertRegularizationApplication(tx, ctx, business, normalized);
   await assertNotBeforeCurrentCycle(tx, ctx, business.employeeId, normalized);
   await assertBusinessSequence(tx, ctx, business.employeeId, normalized);
@@ -474,6 +480,7 @@ export async function updateEmploymentBusiness(
     patch,
     selected,
     options,
+    requestFields,
   });
   await validatePreparedEmployment(tx, ctx, business.employeeId, normalized.kind, prepared, effective.fields, business);
   await assertEstablishmentCapacity(tx, ctx, {
@@ -562,7 +569,14 @@ export function normalizePatchedInput(
     fields: { ...fields, ...patch.fields },
     customFields: { ...customFields, ...patch.customFields },
   });
-  return { normalized, patch };
+  // F-036 S4：候选态（normalized）= 沿用的覆盖值 + 本次请求。requestFields 是“本次输入”的唯一来源（DEC-431①）：
+  // 沿用的值当时已校验过，也可能由向后更新、序列同步这类系统写入而来，不能再受“当前表单是否允许编辑”约束，
+  // 也不能触发派生；这两处都改读它，不再各自从候选的键集合里猜。
+  const requestFields = new Set([
+    ...Object.keys(patch.fields ?? {}).map((field) => `preset:${field}`),
+    ...Object.keys(patch.customFields ?? {}).map((id) => `custom:${id}`),
+  ]);
+  return { normalized, patch, requestFields };
 }
 
 function assertEmployTypeUsage(input: Pick<NormalizedEmploymentInput, 'kind' | 'fields'>): void {

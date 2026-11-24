@@ -1,22 +1,21 @@
-import { Button, Checkbox, Select, TreeSelect } from 'antd';
-import { useState } from 'react';
+import { Checkbox, Select } from 'antd';
 import { pageQuery, type ApiClient } from '../foundation/client.js';
 import { QueryFilters, type QueryField } from '../hr-reports/ReportFilters.js';
-import { useReportRetryWait } from '../hr-reports/ReportReadState.js';
 import { m as report } from '../hr-reports/messages.js';
 import type { Filters } from '../hr-reports/model.js';
-import { useReportRead } from '../hr-reports/useReportRead.js';
+import {
+  CandidateHint,
+  candidateUuid,
+  organizationField,
+  useCandidates,
+  type CandidateState,
+  type OrgCandidate,
+} from './BoardCandidates.js';
 import { m } from './messages.js';
-import { canRetryRead, validAsOf } from './model.js';
+import { validAsOf } from './model.js';
 import { includeChildrenDefaults, organizationFilters, structureOrgUrl } from './structure-model.js';
 import type { dictionaryFilters } from './structure-model.js';
 
-interface OrgCandidate {
-  id: string;
-  name: string;
-  parentId: string | null;
-  enabled: boolean;
-}
 interface Candidate {
   id?: string;
   code?: string;
@@ -39,42 +38,6 @@ async function readSequences(api: ApiClient, path: string, signal: AbortSignal):
     if (result.items.length < pageSize) return { items };
   }
   return { items: [] };
-}
-
-function useCandidates<T>(
-  path: string | null,
-  load?: (api: ApiClient, path: string, signal: AbortSignal) => Promise<List<T>>,
-) {
-  const [generation, next] = useState(0);
-  const read = useReportRead<List<T>>(path, generation, load);
-  const waiting = useReportRetryWait(read.failure?.retryAt ?? 0);
-  return {
-    items: read.data?.items ?? [],
-    loading: read.loading,
-    retry: canRetryRead(read.error) ? () => next((value) => value + 1) : undefined,
-    waiting,
-  };
-}
-type CandidateState = ReturnType<typeof useCandidates<unknown>>;
-
-function CandidateHint({ label, state }: { label: string; state: CandidateState }) {
-  if (state.loading) return null;
-  return (
-    <div className="hr-structure-candidate-hint">
-      <span>{m.candidateUnavailable}</span>
-      {state.retry && (
-        <Button
-          type="link"
-          size="small"
-          disabled={state.waiting}
-          aria-label={m.retryCandidate(label)}
-          onClick={state.retry}
-        >
-          {report.retry}
-        </Button>
-      )}
-    </div>
-  );
 }
 
 function choices(items: Candidate[], field: 'id' | 'code' | 'name'): Choice[] {
@@ -114,49 +77,17 @@ function dictionaryField(
 }
 
 function organizationFields(state: ReturnType<typeof useCandidates<OrgCandidate>>): QueryField[] {
-  const treeData = state.items.map(({ id, name, parentId, enabled }) => ({
-    id,
-    parentId,
-    value: id,
-    title: enabled ? name : m.inactive(name),
-  }));
   return (Object.keys(organizationFilters) as (keyof typeof organizationFilters)[]).flatMap((key) => {
     const label = m.filters[key];
     return [
-      {
-        key,
-        label,
-        control: (value, busy, change) => (
-          <>
-            <TreeSelect<string>
-              aria-label={label}
-              value={value || undefined}
-              allowClear
-              showSearch
-              treeNodeFilterProp="title"
-              treeDataSimpleMode={{ id: 'id', pId: 'parentId' }}
-              treeData={treeData}
-              placeholder={treeData.length ? report.all : undefined}
-              loading={state.loading}
-              disabled={busy || !treeData.length}
-              onChange={(next) => change(next ?? '')}
-            />
-            {!treeData.length && <CandidateHint label={label} state={state} />}
-          </>
-        ),
-        appliedText: (value, filters) => {
-          const name = treeData.find((node) => node.value === value)?.title ?? value;
-          const descendants = filters[organizationFilters[key]] === 'false' ? m.withoutDescendants : m.descendants;
-          return `${label} ${name}（${descendants}）`;
-        },
-      },
+      organizationField(state, key, label, organizationFilters[key]),
       {
         key: organizationFilters[key],
         label: '',
         control: (value, busy, change) => (
           <Checkbox
             checked={value !== 'false'}
-            disabled={busy || !treeData.length}
+            disabled={busy || !state.items.length}
             aria-label={`${label}${m.descendants}`}
             onChange={(event) => change(String(event.target.checked))}
           >
@@ -168,8 +99,6 @@ function organizationFields(state: ReturnType<typeof useCandidates<OrgCandidate>
     ];
   });
 }
-
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function StructureFilters({
   asOf,
@@ -210,7 +139,9 @@ export function StructureFilters({
       submitDisabled={waiting}
       validate={(filters) =>
         validAsOf(asOf) &&
-        ['institutionId', 'departmentId', 'sequenceId'].every((key) => !filters[key] || uuid.test(filters[key]))
+        ['institutionId', 'departmentId', 'sequenceId'].every(
+          (key) => !filters[key] || candidateUuid.test(filters[key]),
+        )
       }
       apply={(filters) => apply({ ...filters, asOf })}
     />

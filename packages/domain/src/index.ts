@@ -25,6 +25,7 @@ export * from './hr-analysis/segments.js';
 export * from './approval/index.js';
 
 export * from './contracts/rules.js';
+export { addMonths } from './audit/retention.js';
 export * from './employment/employee-status.js';
 export * from './employment/field-origins.js';
 export * from './employment/late-execution.js';

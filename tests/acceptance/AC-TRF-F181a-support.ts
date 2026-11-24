@@ -110,9 +110,13 @@ export async function saved(response: Response) {
   return (await response.json()) as { id: string; revision: number };
 }
 
-/** 等 n 个请求都卡在员工行锁上（pg_stat_activity 观察），确认并发交错真的发生。 */
-export async function waitForLockWaiters(db: Db, count: number) {
+/**
+ * 等 n 个请求都卡在员工行锁上（pg_stat_activity 观察），确认并发交错真的发生。
+ * `stop` 为真时提前返回（例如被测请求没有排到锁上就已经结束，由断言去判它的结果）。
+ */
+export async function waitForLockWaiters(db: Db, count: number, stop?: () => boolean) {
   for (let i = 0; i < 400; i++) {
+    if (stop?.()) return;
     const result = await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
       WHERE datname=current_database() AND wait_event_type='Lock' AND query ILIKE '%employment_employees%'`);
     const found = (Array.isArray(result) ? result : (result as { rows: { n: number }[] }).rows) as { n: number }[];

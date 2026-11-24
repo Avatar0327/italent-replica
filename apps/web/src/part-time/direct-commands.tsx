@@ -62,7 +62,7 @@ export function useDirectCommand(
     ...cmd,
     form: { ...cmd.form, reload },
     async finish(receipt: Row | undefined, refresh: () => Promise<void>) {
-      // 创建成功后的新 ID 也钉在同一条原命令上；后续读取失败时编辑入口仍然锁定。
+      // 创建成功后的新 ID 也钉在同一条原命令上；后续读取失败时编辑入口仍然锁定。命令落定后由内核放开（F-110 第 4 轮）。
       const holder = store.holder(sourceSlots);
       const replacement = receipt && action === 'create' ? scoped(slotKey(collection, receipt.id)) : undefined;
       if (holder && replacement) store.pin([replacement], holder);
@@ -71,7 +71,6 @@ export function useDirectCommand(
       } catch {
         throw new Error(d.invalidReceipt);
       }
-      if (holder && replacement) store.unpin([replacement], holder);
     },
   };
 }
