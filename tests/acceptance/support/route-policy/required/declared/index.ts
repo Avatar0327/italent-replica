@@ -26,6 +26,7 @@ import { ORG_ADJUSTMENT_DECLARED } from './org-adjustment.js';
 import { PERMISSION_DECLARED } from './permission.js';
 import { PERSONNEL_DECLARED } from './personnel.js';
 import { QUALIFICATION_DECLARED } from './qualification.js';
+import { ONBOARDING_DECLARED } from './onboarding.js';
 import { ROOT_DECLARED } from './root.js';
 import { SELF_SERVICE_DECLARED } from './self-service.js';
 import { SUCCESSION_DECLARED } from './succession.js';
@@ -70,4 +71,5 @@ export const DECLARED: Readonly<Record<string, ModuleDeclared>> = {
   talent: TALENT_DECLARED,
   'talent-review': TALENT_REVIEW_DECLARED,
   'tenant-settings': TENANT_SETTINGS_DECLARED,
+  onboarding: ONBOARDING_DECLARED,
 };

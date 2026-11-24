@@ -1,5 +1,5 @@
 import { useRef, type ReactNode } from 'react';
-import { Alert } from 'antd';
+import { Alert, Select } from 'antd';
 import { DetailPage } from '../foundation/templates.js';
 import { ReadOnlyReportTable } from '../hr-reports/ReportTable.js';
 import { m as report } from '../hr-reports/messages.js';
@@ -75,5 +75,39 @@ export function BoardDetailDrawer({
         )
       }
     />
+  );
+}
+
+export function BoardGroupSelector({
+  options,
+  group,
+  required,
+  disabled,
+  change,
+}: {
+  options: readonly { key: string; label: string }[];
+  group?: string;
+  required?: boolean;
+  disabled: boolean;
+  change(group?: string): void;
+}) {
+  if (!options.length) return null;
+  // 选择值用位置承载，完整的分组键只从当前概览回执取。
+  const position = options.findIndex(({ key }) => key === group);
+  return (
+    <div className="hr-structure-group">
+      <span>{m.group}</span>
+      <Select<number>
+        aria-label={m.group}
+        value={required && position < 0 ? undefined : position}
+        placeholder={m.chooseGroup}
+        options={[
+          ...(required ? [] : [{ value: -1, label: m.allGroups }]),
+          ...options.map(({ label }, value) => ({ value, label })),
+        ]}
+        disabled={disabled}
+        onChange={(index) => change(options[index]?.key)}
+      />
+    </div>
   );
 }

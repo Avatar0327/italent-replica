@@ -1,4 +1,4 @@
-import { Alert, Button } from 'antd';
+import { Button } from 'antd';
 import { useParams } from 'react-router';
 import { CONTRACT_BOARD_TOP_COMPANIES } from '@italent/domain';
 import { DecisionNote } from '../foundation/DecisionNote.js';
@@ -6,14 +6,11 @@ import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useSession } from '../foundation/Session.js';
 import { tenantDate } from '../foundation/dates.js';
-import { ui } from '../foundation/messages.js';
 import { AppliedFilters, QueryFilters } from '../hr-reports/ReportFilters.js';
-import { m as report } from '../hr-reports/messages.js';
 import type { Filters } from '../hr-reports/model.js';
 import { BoardChart } from './BoardCharts.js';
-import { BoardDetailDrawer } from './BoardDetailDrawer.js';
-import { BoardGroupSelector } from './BoardGroupSelector.js';
-import { ReadState } from './ReadState.js';
+import { BoardDetailDrawer, BoardGroupSelector } from './BoardDetailDrawer.js';
+import { BoardReadFeedback } from './ReadState.js';
 import { useContractFilterFields } from './ContractBoardFilters.js';
 import {
   appliedContractFilters,
@@ -28,7 +25,6 @@ import {
   type ContractOverview,
 } from './contract-board-model.js';
 import { m } from './messages.js';
-import { canRetryRead } from './model.js';
 import { useBoardRead } from './useBoardRead.js';
 import '../hr-reports/hr-reports.css';
 import './hr-dashboard.css';
@@ -103,7 +99,7 @@ function ContractBoard({ today, refresh }: { today: string; refresh(): void }) {
     contractOverviewUrl,
     ({ target, asOf, page }, filters) => contractDetailUrl(target.card.code, { ...filters, asOf }, page, target.group),
   );
-  const { data, read, detail, selected, waiting, forbidden, noScope } = board;
+  const { data, read, detail, selected, waiting, forbidden } = board;
   const fields = useContractFilterFields(!forbidden && !board.login);
   if (board.login) return <PageState kind="login" />;
   const applied = data && appliedContractFilters(board.filters, data.asOf);
@@ -124,22 +120,7 @@ function ContractBoard({ today, refresh }: { today: string; refresh(): void }) {
           {data && <p className="hr-dashboard-date">{m.asOf(data.asOf)}</p>}
         </div>
       )}
-      {forbidden ? (
-        <Alert
-          type="error"
-          role="alert"
-          message={m.boardDenied}
-          action={<Button onClick={refresh}>{ui.refreshPage}</Button>}
-        />
-      ) : (
-        <ReadState
-          loading={read.loading}
-          error={read.error}
-          waiting={waiting}
-          retry={canRetryRead(read.error) ? board.retry : undefined}
-        />
-      )}
-      {noScope && <Alert type="info" message={report.noScope} />}
+      <BoardReadFeedback board={board} refresh={refresh} />
       {data && <ContractSections data={data} waiting={waiting} open={open} />}
       {selected && (
         <BoardDetailDrawer
@@ -154,7 +135,8 @@ function ContractBoard({ today, refresh }: { today: string; refresh(): void }) {
               <>
                 <AppliedFilters fields={fields} applied={applied} showDepartment={false} />
                 <BoardGroupSelector
-                  target={selected.target}
+                  group={selected.target.group}
+                  options={selected.target.card.points}
                   disabled={waiting}
                   change={(group) =>
                     board.changeDetail({ ...selected, target: { ...selected.target, group }, page: 1 })

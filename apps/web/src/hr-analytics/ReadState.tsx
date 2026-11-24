@@ -1,6 +1,8 @@
 import { Alert, Button, Spin } from 'antd';
+import { ui } from '../foundation/messages.js';
 import { m as report } from '../hr-reports/messages.js';
-import { boardErrorText } from './model.js';
+import { m } from './messages.js';
+import { boardErrorText, canRetryRead } from './model.js';
 
 export function ReadState({
   loading,
@@ -38,5 +40,41 @@ export function ReadState({
         )
       }
     />
+  );
+}
+
+export function BoardReadFeedback({
+  board,
+  refresh,
+}: {
+  board: {
+    read: { loading: boolean; error?: unknown };
+    waiting: boolean;
+    forbidden: boolean;
+    noScope: boolean;
+    retry(): void;
+  };
+  refresh(): void;
+}) {
+  const { read, waiting, forbidden, noScope, retry } = board;
+  return (
+    <>
+      {forbidden ? (
+        <Alert
+          type="error"
+          role="alert"
+          message={m.boardDenied}
+          action={<Button onClick={refresh}>{ui.refreshPage}</Button>}
+        />
+      ) : (
+        <ReadState
+          loading={read.loading}
+          error={read.error}
+          waiting={waiting}
+          retry={canRetryRead(read.error) ? retry : undefined}
+        />
+      )}
+      {noScope && <Alert type="info" message={report.noScope} />}
+    </>
   );
 }

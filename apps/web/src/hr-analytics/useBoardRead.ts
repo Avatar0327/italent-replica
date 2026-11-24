@@ -24,7 +24,7 @@ function detailInvalidation(error: unknown, data?: BoardResponse): Invalidated |
 export function useBoardRead<Query, Target, Overview extends BoardResponse, Detail extends BoardResponse>(
   initial: Query,
   overviewUrl: (query: Query) => string,
-  detailUrl: (selection: Selection<Target>, query: Query) => string,
+  detailUrl: (selection: Selection<Target>, query: Query) => string | null,
 ) {
   const [query, setQuery] = useState({ filters: initial, generation: 0 });
   const [selected, select] = useState<Selection<Target> & { open: boolean }>();
