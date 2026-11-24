@@ -160,6 +160,24 @@
       "obj:TenantBase.EmploymentSettings:view"
     ]
   },
+  "GET /api/tenant/onboarding/entries/:businessId/collection": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "f3208e885dad",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view",
+      "obj:TenantBase.OnboardingCollection:view"
+    ]
+  },
   "GET /api/tenant/onboarding/integration/schemes": {
     "all": {
       "status": 200
@@ -333,6 +351,73 @@
     "fieldQueries": [],
     "gap": {
       "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/onboarding/collection/start-batch": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "614585d55d46",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/onboarding/entries/:businessId/collection/comments": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "10015f0e7873",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/onboarding/entries/:businessId/collection/remind": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "35dd264d0ba2",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/onboarding/entries/:businessId/collection/start": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "35dd264d0ba2",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
     },
     "scopeQueries": [],
     "trace": []
