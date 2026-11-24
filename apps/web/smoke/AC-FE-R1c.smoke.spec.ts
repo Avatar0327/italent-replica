@@ -1119,6 +1119,94 @@ test('AC-FE-F110-20 HR 确认重提：他页持锁时 B 排队，A 已落定的�
   expect(await pendingTransferIds(page)).toEqual([writes[1]]);
 });
 
+const LOCK_BUSY = '检测到你在另一个标签页打开了此单据，请关闭后重试。';
+const LOCKS_UNSUPPORTED = '当前浏览器环境不支持安全保存（需 https 访问），命令未发出。';
+
+/** 同源另开一个真实标签页，一直占着恢复记录的互斥锁；关闭该页时浏览器释放。 */
+async function holdLockInOtherTab(page: Page, key: string) {
+  const other = await page.context().newPage();
+  await other.route('**/lock-holder', (route) => route.fulfill({ body: '', contentType: 'text/html' }));
+  await other.goto('/lock-holder');
+  await other.evaluate(
+    (name) =>
+      new Promise<void>((held) => {
+        void navigator.locks.request(name, { mode: 'exclusive' }, () => {
+          held();
+          return new Promise<void>(() => {});
+        });
+      }),
+    key,
+  );
+  return other;
+}
+// http 非安全上下文与老浏览器没有 navigator.locks（DEC-955）。
+const withoutWebLocks = (page: Page) =>
+  page.addInitScript(() =>
+    Object.defineProperty(Navigator.prototype, 'locks', { configurable: true, get: () => undefined }),
+  );
+
+test('AC-FE-F110-21 DEC-954 他页持锁：本页暂存提示另一个标签页打开、零请求、输入保留；他页关闭后照常暂存', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  let writes = 0;
+  await page.route('**/transfers/employees/' + employee, (route) => {
+    writes++;
+    return route.fulfill({ json: draftResult });
+  });
+  await switchIdentity(page, '/transfer');
+  await openHr(page);
+  await page.locator('select[name="employeeId"]').selectOption(employee);
+  await page.locator('input[name="place"]').fill('合成新工作地');
+  const other = await holdLockInOtherTab(page, transferRecoveryKey);
+  try {
+    await page.getByRole('button', { name: '暂存', exact: true }).click();
+    await expect(page.getByText(LOCK_BUSY)).toBeVisible({ timeout: 10_000 });
+    expect(writes).toBe(0);
+    await expect(page.locator('input[name="place"]')).toHaveValue('合成新工作地');
+    expect(await pendingTransferIds(page)).toEqual([]);
+  } finally {
+    await other.close();
+  }
+  await page.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect(page.getByText('信息暂存成功，下次选择此人可自动带出')).toBeVisible();
+  expect(writes).toBe(1);
+});
+
+test('AC-FE-F110-22 DEC-955 浏览器无 Web Locks：调动暂存提示需 https、零请求，不降级', async ({ page }) => {
+  await withoutWebLocks(page);
+  let writes = 0;
+  await page.route('**/transfers/employees/' + employee, (route) => {
+    writes++;
+    return route.fulfill({ json: draftResult });
+  });
+  await switchIdentity(page, '/transfer');
+  await openHr(page);
+  await page.locator('select[name="employeeId"]').selectOption(employee);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await page.getByRole('button', { name: '暂存', exact: true }).click();
+    await expect(page.getByText(LOCKS_UNSUPPORTED)).toBeVisible();
+  }
+  expect(writes).toBe(0);
+  expect(await pendingTransferIds(page)).toEqual([]);
+});
+
+test('AC-FE-F110-22 DEC-955 浏览器无 Web Locks：审批同意提示需 https、零请求', async ({ page }) => {
+  await withoutWebLocks(page);
+  let writes = 0;
+  await page.route('**/api/tenant/approval/tasks/*/approve', (route) => {
+    writes++;
+    return route.fulfill({ json: detail(5, 'approved') });
+  });
+  await switchIdentity(page, '/approval');
+  await openTodo(page);
+  await page.getByRole('button', { name: button('同意') }).click();
+  await actionButton(page, '保存').click();
+  await expect(page.getByText(LOCKS_UNSUPPORTED)).toBeVisible();
+  expect(writes).toBe(0);
+  expect(await page.evaluate(() => localStorage.getItem('italent.commands.pending:approval'))).toBeNull();
+});
+
 for (const status of [400, 422]) {
   test(`AC-FE-R1c-13 驳回 ${status} 字段错误修正后可直接提交`, async ({ page }) => {
     let writes = 0;
