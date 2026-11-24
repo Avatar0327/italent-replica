@@ -4447,7 +4447,7 @@ export const GRAPH: Graph = {
     '#ORIGIN_LABELS',
     '#readableSources',
     '#shownEntries',
-    'packages/domain/src/employment/field-origins.ts#effectiveOrigin',
+    '#shownWriter',
   ],
   'apps/api/src/modules/employment/field-origins-read.ts#loadOriginFacts': [
     'apps/api/src/modules/employment/field-origin-store.ts#loadFieldOrigins',
@@ -4455,6 +4455,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/field-origins-read.ts#readableSources': [
     'apps/api/src/modules/employment/read-decision.ts#sourceReadable',
+  ],
+  'apps/api/src/modules/employment/field-origins-read.ts#shownWriter': [
+    'packages/domain/src/employment/field-origins.ts#effectiveOrigin',
   ],
   'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS': ['#PRESET_FIELDS'],
   'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS': [
