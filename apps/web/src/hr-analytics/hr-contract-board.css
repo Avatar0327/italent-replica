@@ -1,0 +1,40 @@
+.hr-contract-board .hr-contract-count {
+  display: inline-flex;
+  align-items: baseline;
+  justify-self: start;
+  height: auto;
+  padding: 0;
+  gap: 8px;
+  text-align: start;
+}
+.hr-contract-board .hr-contract-count:disabled {
+  color: var(--shell-text);
+  opacity: 1;
+}
+.hr-contract-board .hr-contract-count strong {
+  font-variant-numeric: tabular-nums;
+}
+.hr-contract-scope {
+  margin: 8px 0;
+  color: var(--shell-text);
+}
+.hr-contract-bars {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.hr-contract-bars .hr-structure-card {
+  grid-column: auto;
+}
+.hr-contract-bars h3,
+.hr-contract-bars p {
+  margin: 0;
+}
+.hr-contract-bars h3 {
+  font-size: 14px;
+}
+@media (max-width: 1200px) {
+  .hr-contract-bars {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -118,6 +118,7 @@ export interface DetailSection {
 export function DetailPage({
   open,
   onClose,
+  afterClose,
   title,
   summary,
   actions,
@@ -127,6 +128,8 @@ export function DetailPage({
 }: {
   open: boolean;
   onClose(): void;
+  /** 需要关闭过渡时保留抽屉挂载，由调用方在过渡结束时清理。 */
+  afterClose?(): void;
   title: string;
   summary?: ReactNode;
   actions?: ReactNode;
@@ -135,14 +138,15 @@ export function DetailPage({
   defaultTab?: string;
   sections?: DetailSection[];
 }) {
-  return open ? (
+  return open || afterClose ? (
     <Drawer
-      open
+      open={open}
       placement="right"
       closable={{ placement: 'end' }}
       width={960}
       title={title}
       onClose={onClose}
+      afterOpenChange={afterClose && ((visible) => !visible && afterClose())}
       extra={actions}
       rootClassName="detail-drawer"
     >
