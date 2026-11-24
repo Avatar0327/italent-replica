@@ -263,3 +263,61 @@ describe('AC-FE-F558-1 第 2 轮：普通拒绝与竞争分开', () => {
     expect(executeB).toHaveBeenCalledTimes(1);
   });
 });
+
+// 第 2 轮 P2-2：查询期间 reading 挡住了 storage 同步；查询结束后须按记录再同步一次，否则一直锁在已落定的别页命令上。
+describe('AC-FE-F558-1 第 2 轮：回查期间错过别页落定通知', () => {
+  it('B 锁到 A 的命令后按原 ID 查询：A 成功删记录的通知先到、404 后到，B 查询结束即解锁；本页自己的未知命令仍锁定', async () => {
+    const tenant = randomUUID();
+    const scope = JSON.stringify([tenant, 'synthetic-user', 'employee']);
+    const own = JSON.stringify([tenant, 'synthetic-user', 'manager']);
+    const b = await openTab();
+    const a = await openTab();
+    const first = commandOf();
+    const holderA = pendingExecute();
+    enter(a);
+    const runA = a.app.runApplicationCommand(scope, first, holderA.execute);
+    await vi.waitFor(() => expect(holderA.execute).toHaveBeenCalledTimes(1));
+
+    enter(b);
+    const mine = commandOf();
+    await expect(b.app.runApplicationCommand(own, mine, offline)).rejects.toThrow(PROCESSING);
+    const executeB = vi.fn(async () => business());
+    await refusal(b, b.app.runApplicationCommand(scope, commandOf(), executeB));
+    expect(b.app.readApplicationSession(scope)).toMatchObject({
+      race: OTHER_TAB,
+      pending: { commandId: first.commandId },
+    });
+    let notFound = () => {};
+    const fetch = vi.fn((path: string) =>
+      path === `/api/tenant/commands/${first.commandId}/result`
+        ? new Promise<Response>(
+            (resolve) => (notFound = () => resolve(Response.json({ error: { code: 'NOT_FOUND' } }, { status: 404 }))),
+          )
+        : Promise.resolve(Response.json({}, { status: 500 })),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const query = b.app.queryApplicationResult(scope, tenant);
+    expect(b.app.readApplicationSession(scope).reading).toBe(true);
+
+    enter(a);
+    holderA.answer(business());
+    await runA;
+    await vi.waitFor(() => expect(recorded()).toEqual([mine.commandId]));
+    enter(b);
+    storageEvent(); // 删除通知先到：B 正在查询，这次同步被挡住
+    notFound(); // 此前发出的 GET 后到：查不到
+    await query;
+
+    expect(b.app.readApplicationSession(scope)).toMatchObject({ pending: null, race: '', reading: false });
+    // 本页自己的结果未知命令不受这次同步影响：仍锁定待确认，记录仍在。
+    expect(b.app.readApplicationSession(own)).toMatchObject({
+      restored: false,
+      pending: { commandId: mine.commandId },
+    });
+    expect(recorded()).toEqual([mine.commandId]);
+    // B 全程只有一次结果查询（GET），没有写请求。
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls.map(([path]) => path)).toEqual([`/api/tenant/commands/${first.commandId}/result`]);
+    expect(executeB).not.toHaveBeenCalled();
+  });
+});
