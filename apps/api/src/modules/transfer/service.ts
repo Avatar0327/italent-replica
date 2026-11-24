@@ -247,8 +247,9 @@ const planChanged = () =>
  * 同单写入口的“取锁阶段”（DEC-993 单入口；第 6 轮拆段，DEC-996）：只按单据找到发起员工，按锁序分两段取齐会阻塞的锁。
  * ① 员工段：参与员工闭包（含 extra 里请求新带入、且现存的下属）→ 发起员工行，取完重新规划；集合在取锁期间变大
  *   （如别人把某员工的虚线经理改成发起员工）就继续按 UUID 序补员工锁——这一段手上只有员工锁，不持任何业务头；
- * ② 业务头段：员工闭包取齐后统一锁各参与者的业务头，再规划一次；此时集合若又变大，不再回头等员工锁（那会在持业务头时等
- *   员工锁，逆序），直接 409 TRANSFER_LOCK_PLAN_CHANGED 放弃本事务，由重入（失败回查 / 客户端显式重提）重新规划。
+ * ② 业务头段：员工闭包取齐后统一锁各参与者的业务头（单人闭包也锁本单业务头，第 7 轮 P2-1），再规划一次；此时集合若又变大，
+ *   不再回头等员工锁（那会在持业务头时等员工锁，逆序），直接 409 TRANSFER_LOCK_PLAN_CHANGED 放弃本事务，
+ *   由重入（失败回查 / 客户端显式重提）重新规划。
  * 审批实例只在首次执行体里锁（重放 / 回查不到那一步），不在此预锁。两段取齐后封口：本函数返回后事务里不会再因新参与者等锁；
  * transferBusinessContext 'command' 阶段的取锁都是重入。本函数不读任何授权输入。
  * 请求点名但查无此人的新增下属不取锁、不在这里报错（第 5 轮 P2-3）：报错会抢在台账指纹比对之前，把同键异内容的 409 遮成 400；
@@ -270,7 +271,7 @@ export async function lockTransferBusinessEmployee(
     await lockEmploymentEmployee(tx, ctx, employeeId);
     if (await transferLocksCover(tx, ctx, employeeId, present)) break;
   }
-  await lockTransferHeads(tx, ctx);
+  await lockTransferHeads(tx, ctx, businessId);
   if (!(await transferLocksCover(tx, ctx, employeeId, present))) throw planChanged();
   await sealTransferLocks(tx, ctx);
 }

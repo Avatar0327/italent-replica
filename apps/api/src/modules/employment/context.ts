@@ -30,6 +30,7 @@ import { trimEmploymentManagerReferences } from '../transfer/response-disclosure
 import { recordAudit } from '../../audit/record.js';
 import { discloseAssessmentConflictReceipt } from './assessment-conflict-disclosure.js';
 import { isEmploymentRecordVisible, visibleEmploymentRecords } from './visibility.js';
+import { takeReceiptNames, withReceiptNames, type ReceiptNames } from './receipt-names.js';
 export type { EmploymentContext } from './types.js';
 export { pageQuery, revision, uuidParam } from '../job/context.js';
 
@@ -370,9 +371,15 @@ async function projectActivationFailures(
   return row;
 }
 
-function withEmploymentFormNames(deps: TenantRouteDeps, ctx: EmploymentContext, value: unknown) {
+/** names：命令随回执保存的字典名称（S4 同单写回执，DEC-999）；缺省或未命中的编码按字典现名补。 */
+function withEmploymentFormNames(deps: TenantRouteDeps, ctx: EmploymentContext, value: unknown, names?: ReceiptNames) {
   return withTenant(deps.db, ctx.tenantId, async (tx) =>
-    employmentTypeNames(tx, ctx.tenantId, await employmentFormNames(tx, ctx.tenantId, value)),
+    employmentTypeNames(
+      tx,
+      ctx.tenantId,
+      await employmentFormNames(tx, ctx.tenantId, value, names?.employmentForm),
+      names?.employmentType,
+    ),
   );
 }
 
@@ -401,11 +408,12 @@ export async function trimEmploymentResponse(
   ctx: EmploymentContext,
   value: unknown,
   frozen?: FrozenFailureView,
+  names?: ReceiptNames,
 ): Promise<unknown> {
   const objectCode = ctx.objectCode ?? EMPLOYMENT_OBJECT;
   const viewable = await getModuleViewableFields(deps, ctx, objectCode);
   value = await projectActivationFailures(deps, value, failureProjection(ctx, viewable, frozen));
-  if (viewable === undefined) return withEmploymentFormNames(deps, ctx, value);
+  if (viewable === undefined) return withEmploymentFormNames(deps, ctx, value, names);
   const visibleBefore = await visiblePreviousRecords(deps, ctx, value);
   const trim = (record: unknown): unknown => {
     if (Array.isArray(record)) return record.map(trim);
@@ -467,7 +475,7 @@ export async function trimEmploymentResponse(
     objectCode === EMPLOYMENT_OBJECT
       ? await trimEmploymentManagerReferences(deps, ctx, trim(value))
       : await trimModuleResponse(deps, ctx, objectCode, value as Record<string, unknown>);
-  return withEmploymentFormNames(deps, ctx, trimmed);
+  return withEmploymentFormNames(deps, ctx, trimmed, names);
 }
 
 /**
@@ -575,6 +583,8 @@ export function adoptCommandContext(tx: Tx, ctx: EmploymentContext, scoped: Empl
 /** 带事务内范围标记的 CommandGuard：runWrite 对它改用 commandContext 执行与校验结果，见 runWrite。 */
 export interface ScopedCommandGuard extends CommandGuard {
   readonly scoped: true;
+  /** 回执里的字典显示值随命令保存（S4 同单写入口，DEC-999，见 receipt-names.ts）。 */
+  readonly receiptNames?: true;
 }
 export const scopedGuard = (guard: CommandGuard): ScopedCommandGuard => ({ ...guard, scoped: true });
 const isScopedGuard = (guard: CommandGuard | undefined): guard is ScopedCommandGuard =>
@@ -672,7 +682,7 @@ export async function runWrite(
       const commandResult = await execute(tx, context);
       // Validate linked writes in the command transaction so an out-of-scope footprint rolls back atomically.
       await authorizeEmploymentResult(tx, context, deps.authorize, commandId, commandResult.body);
-      return commandResult;
+      return scoped?.receiptNames ? withReceiptNames(tx, ctx.tenantId, commandResult) : commandResult;
     },
   });
   if (!scoped)
@@ -683,10 +693,12 @@ export async function runWrite(
   if (payload?.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
   // 只换范围：事务内的 authorize 已随事务结束，不能带出事务外使用。
   const current = adoptedScope ? { ...ctx, scope: adopted } : ctx;
-  const disclosed = await discloseAssessmentConflictReceipt(deps, current, canonicalReceipt(result.body));
+  // 保存的字典名称只用于补名称，先从回执里剥掉；裁剪仍按当前授权与命令事务采用的范围（DEC-999）。
+  const receipt = takeReceiptNames(result.body);
+  const disclosed = await discloseAssessmentConflictReceipt(deps, current, canonicalReceipt(receipt.body));
   const body = options.project
     ? await options.project(disclosed, current)
-    : await trimEmploymentResponse(deps, current, disclosed);
+    : await trimEmploymentResponse(deps, current, disclosed, undefined, receipt.names);
   return c.json(canonicalReceipt(body), result.status);
 }
 

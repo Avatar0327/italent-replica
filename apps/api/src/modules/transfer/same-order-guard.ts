@@ -29,6 +29,8 @@ import {
  * 第 4 轮 P2：上一版先解析范围、再在 derive 里等锁，等锁期间收回的范围仍被沿用（锁内字段校验通过后返回 200 + 原回执）。
  * 第 5 轮 P2：取锁阶段只按“第一次规划”取锁，derive 里第二次规划发现新进参与者时仍会在读完范围之后等锁；回执裁剪还在用入口范围。
  * 第 6 轮 P2：补锁循环每轮都连业务头一起锁，第二轮会在持甲、乙业务头时等丙的员工锁（逆序）；现分两段，员工锁全部先于业务头。
+ * 第 7 轮 P2-1：单人闭包的业务头段什么都不锁，首次执行在读完授权之后才等本单业务头；现单人闭包也在封口前锁本单业务头。
+ * 第 7 轮 P2-2：回执里的字典显示值（用工形式 / 人员类别名称）随命令保存（receiptNames），重放不再现查字典名。
  * 凡是会写同一张调动单或对它做状态动作、并走命令台账的入口都用这里，不要各写一套。
  */
 /**
@@ -42,7 +44,7 @@ function refreshGuard(
   check: (tx: Tx, scoped: EmploymentContext) => Promise<void>,
   lock?: (tx: Tx) => Promise<void>,
 ): ScopedCommandGuard {
-  return scopedGuard({
+  const guard = scopedGuard({
     before: async (tx) => {
       await lock?.(tx);
       const resolved = await commandContext(tx, deps, { ...entry, transferTarget: undefined });
@@ -65,6 +67,8 @@ function refreshGuard(
       adoptCommandContext(tx, entry, scoped);
     },
   });
+  // S4 同单写回执的字典显示值随命令保存（DEC-999）：重放（直接 / 失败回查）原文不随字典改名而变。
+  return { ...guard, receiptNames: true };
 }
 
 export interface SameOrderSpec {

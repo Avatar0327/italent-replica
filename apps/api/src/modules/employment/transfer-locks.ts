@@ -173,9 +173,16 @@ async function lockHeads(tx: Tx, ctx: EmploymentContext, ids: readonly string[])
 /**
  * 员工闭包已取齐（transferLocksCover 为真）之后统一锁持锁集合内各参与者的业务头（DEC-996 拆段）。
  * 补锁循环里只取员工锁，等丙的员工锁时手上不会已有甲、乙的业务头（锁序：参与员工 → 业务头 → 审批实例）。
+ * 单人闭包（持锁集合只有发起员工）lockHeads 不取业务头，这里补锁本单业务头（第 7 轮 P2-1，DEC-999）：否则守卫封口、
+ * 读完授权后，首次执行（lockEmploymentBusiness）才在本单业务头上等锁，等锁期间收回的范围会被漏掉。
+ * 这把锁就是首次执行本来要取的那一把（发起员工行已持有，同一顺序），只是提前到读授权之前；执行体里再取是重入。
  */
-export async function lockTransferHeads(tx: Tx, ctx: EmploymentContext): Promise<void> {
-  await lockHeads(tx, ctx, await heldIds(tx, ctx));
+export async function lockTransferHeads(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<void> {
+  const held = await heldIds(tx, ctx);
+  if (held.length > 1) return lockHeads(tx, ctx, held);
+  await tx.execute(sql`
+    SELECT id FROM employment_business_objects WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE
+  `);
 }
 
 /**
