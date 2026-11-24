@@ -88,6 +88,7 @@ export async function runApplicationCommand(
   transferCommands.clear(scope);
   commands.set(scope, command);
   let received: TransferBusiness | undefined;
+  let sent = false;
   const state = await transferCommands.submit(scope, {
     values: {},
     baseline: {},
@@ -97,6 +98,7 @@ export async function runApplicationCommand(
     businessId: command.businessId,
     context: contextOf(command),
     async send() {
+      sent = true;
       try {
         received = await execute();
       } catch (cause) {
@@ -106,6 +108,8 @@ export async function runApplicationCommand(
       return received;
     },
   });
+  // 登记就被拒：命令未发出。前置拒绝（DEC-955）时连命令都没生成，不能按命令 ID 判成“处理中”。
+  if (state.status === 'rejected' && !sent) throw new ApplicationCommandHandled(errorOf(state), true);
   if (state.command?.id !== command.commandId) throw new ApplicationCommandHandled(m.processing);
   if (state.status === 'done' && received) {
     saved.set(scope, received);
