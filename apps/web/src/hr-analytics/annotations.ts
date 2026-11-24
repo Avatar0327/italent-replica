@@ -7,6 +7,12 @@ export const notes: Record<string, DecisionAnnotation> = {
     decisions: ['DEC-763', 'DEC-960'],
     level: 'L2',
   },
+  'hr-contract-board': {
+    original: '合同情况单板展示合同变动及签署情况，签署统计在各分组内按员工去重。',
+    decision: '按合同情况对象独立开放。公司和合同类型沿用已授权主数据，详情按接口分页展示 ID。',
+    decisions: ['DEC-763', 'DEC-767', 'DEC-961', 'DEC-962', 'DEC-963'],
+    level: 'L2',
+  },
   'hr-dashboard': {
     original: '组织员工下的数据分析包含人事看板，按各看板的数据权限取数。',
     decision:

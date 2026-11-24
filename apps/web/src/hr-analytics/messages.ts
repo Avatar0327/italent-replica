@@ -5,6 +5,23 @@ export const m = {
   dashboard: '人事看板',
   management: '人事管理看板',
   structure: '人员结构分析',
+  contract: {
+    title: '合同情况',
+    changes: '合同变动统计',
+    changeScope: '统计已生效的合同申请。终止按实际终止日，其他按生效日。',
+    signatures: '签署情况统计',
+    signingScope: '统计当前在职且有有效合同的员工，同组内每人计一次，签署明细每人每组展示一份代表合同。',
+    expiringScope: '未来 30 天合同到期按数据权限内的合同记录统计，可能包含外部人员。',
+    topCompanies: (top: number) => `显示前 ${top} 个法人，占比按全部法人分组计算`,
+    people: (count: number) => `${count} 人`,
+    filters: {
+      changeFrom: '变动日期起',
+      changeTo: '变动日期止',
+      companyId: '公司',
+      typeId: '合同类型',
+      termType: '合同期限类型',
+    },
+  },
   structureScope: '统计范围为数据权限内的在职内部员工（含试用，不含实习生）。',
   movement: '人员流动分析',
   movementScope:
