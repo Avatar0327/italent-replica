@@ -378,6 +378,11 @@ export const GRAPH: Graph = {
     'apps/api/src/tenant-context.ts#tenantOf',
   ],
   'apps/api/src/modules/onboarding/material-config.ts#definition': ['#name', '#uuid'],
+  'apps/api/src/modules/onboarding/material-config.ts#lockMaterialConfig': ['#materialGate'],
+  'apps/api/src/modules/onboarding/material-config.ts#materialGate': [
+    'apps/api/src/advisory-lock.ts#asUuid',
+    'apps/api/src/advisory-lock.ts#lockKey',
+  ],
   'apps/api/src/modules/onboarding/material-config.ts#materialRuleBody': ['#ruleShape'],
   'apps/api/src/modules/onboarding/material-config.ts#materialRulePatch': ['#ruleShape'],
   'apps/api/src/modules/onboarding/material-config.ts#materialRuleScope': ['#ruleRoots', '#visibleRegion'],
