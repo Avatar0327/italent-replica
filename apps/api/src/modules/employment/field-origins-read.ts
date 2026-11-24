@@ -142,8 +142,8 @@ async function readableSources(deps: TenantRouteDeps, entry: EmploymentContext, 
  * 所以未落地业务上的 `resolved` 行不作为可见来源。生效后（`landed`）它才是来源。
  */
 function shownWriter(state: ReturnType<OriginStates['get']>, landed: boolean) {
-  const { lastWriter } = effectiveOrigin(state);
-  return !landed && lastWriter?.originKind === 'resolved' ? null : lastWriter;
+  // 未落地时把 resolved 从候选里去掉再选：仍有效的继承来源（如转正改期重算写入的 inherit）照常展示，只有延迟字段变空
+  return effectiveOrigin(state && !landed ? { ...state, resolved: null } : state).lastWriter;
 }
 
 /** 现值分支：`entry` 是入口授权上下文（不是过了调动门禁的那份）；用快照里折叠好的台账状态给 `shown` 的每个字段附来源。只读，不写任何表。 */

@@ -8,7 +8,14 @@ import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { saveTransferForm } from '../../apps/api/src/modules/transfer/configuration.js';
-import { employeeRevision, hire, pbWorld, rescheduleRegularization, type PbWorld } from './AC-PB-support.js';
+import {
+  employeeRevision,
+  hire,
+  pbWorld,
+  rescheduleRegularization,
+  transferAt,
+  type PbWorld,
+} from './AC-PB-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
@@ -97,5 +104,28 @@ describe('AC-EMP-33 转正改期后的工作地来源', () => {
       origin: { kind: 'inherit' },
     });
     expect(await placeValue(w, regularization.id, '2026-12-10')).toBe('调动地点');
+  });
+});
+
+describe('AC-EMP-33 修前合法路径仍成功：落地解析值只在业务实际生效后才是可见来源', () => {
+  it('直接办理的未来调动：生效日前延迟字段 pending 且没有来源，生效日当天起 pending 消失、来源是 resolved', async () => {
+    const w = await pbWorld(database().db, `emp33-direct-${uniqueSuffix()}`);
+    const configured = await w.session.request('PUT', '/transfers/settings', {
+      ifMatch: 0,
+      body: { unrestrictTargetDepartment: false, autoPopulate: false },
+    });
+    expect(configured.status, await configured.clone().text()).toBe(200);
+    const { employee } = await hire(w, { months: 3 });
+    const transfer = await transferAt(w, employee.id, '2026-11-15', {});
+    const placeOn = async (day: string) => {
+      w.session.setNow(`${day}T02:00:00Z`);
+      return placeOrigin(w, transfer.id);
+    };
+    expect(await placeOn('2026-11-14'), '生效日前').toMatchObject({ policy: 'deferred', pending: true, origin: null });
+    expect(await placeOn('2026-11-15'), '生效日').toMatchObject({
+      policy: 'deferred',
+      pending: false,
+      origin: { kind: 'resolved' },
+    });
   });
 });

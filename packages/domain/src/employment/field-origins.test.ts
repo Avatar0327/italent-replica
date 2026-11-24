@@ -56,6 +56,29 @@ describe('F-036 §4.6 字段来源领域函数', () => {
     expect(effectiveOrigin(state())).toEqual({ value: '落地岗位', lastWriter: resolved });
   });
 
+  it('更晚的继承策略行取代旧的落地解析值（转正改期重算）；延迟策略与更晚的解析值不受影响', () => {
+    const resolved = origin(1n, 'resolved', '旧前驱工作地');
+    const inherited = origin(2n, 'inherit', null);
+    const state = (...rows: OriginRow[]) => foldFieldOrigins(rows).get(position)!;
+    // 台账行都保留，只是旧解析值不再有取值效力
+    expect(effectiveOrigin(state(resolved, inherited))).toEqual({ value: null, lastWriter: inherited });
+    expect(state(resolved, inherited).resolved).toBe(resolved);
+    expect(isTrustedSavedValue(state(resolved, inherited), new Set(['resolved']))).toBe(false);
+    // 被取代的解析值不再参与适用性判定，也就不会再被退回或恢复
+    expect(settleValueRows(state(resolved, inherited), () => false)).toEqual([
+      { fieldCode: position, originKind: 'fallback', refSeq: 2n },
+    ]);
+    // 人工覆盖仍排在继承行之前
+    const override = origin(3n, 'hr-input', '人工值');
+    expect(effectiveOrigin(state(resolved, inherited, override)).lastWriter).toBe(override);
+    // 之后再落地的解析值重新生效
+    const landed = origin(3n, 'resolved', '新落地工作地');
+    expect(effectiveOrigin(state(resolved, inherited, landed))).toEqual({ value: '新落地工作地', lastWriter: landed });
+    // 延迟策略后续行不取代解析值
+    const deferred = origin(2n, 'deferred', null);
+    expect(effectiveOrigin(state(resolved, deferred))).toEqual({ value: '旧前驱工作地', lastWriter: resolved });
+  });
+
   it('延迟形态独立于覆盖；派生、保留及状态各按投影规则处理', () => {
     const positionPolicy = origin(1n, 'deferred', null);
     const departmentPolicy = origin(2n, 'deferred', null, department);
