@@ -55,5 +55,7 @@ export function useHrWrite() {
       throw cause;
     }
   };
-  return { error, result, run, setResult };
+  /** 内核登记恢复记录时就拒绝（未发出，DEC-954 / DEC-955 等）：run 没跑，提示由这里给出；传空串清掉上次的。 */
+  const refuse = (message: string) => setError(message);
+  return { error, result, run, refuse, setResult };
 }

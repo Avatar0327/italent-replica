@@ -93,7 +93,8 @@ export function useHrTransferCommand(
         if (action !== 'draft' && terminatesOriginalContract(model) && !(await confirmTerminate())) return;
         setAction(action);
         restart();
-        await submitHrTransfer(command, write.run, { tenantId, model, preview, action }, () => {
+        write.refuse('');
+        await submitHrTransfer(command, write, { tenantId, model, preview, action }, () => {
           setAwaitingEstablishment(true);
           return confirmEstablishment();
         });
@@ -111,7 +112,7 @@ export function useHrTransferCommand(
 
 function submitHrTransfer(
   command: CommandForm,
-  run: ReturnType<typeof useHrWrite>['run'],
+  write: Pick<ReturnType<typeof useHrWrite>, 'run' | 'refuse'>,
   input: {
     tenantId: string;
     model: TransferFormModel;
@@ -125,6 +126,7 @@ function submitHrTransfer(
   const record = previewRecord(employeeId, preview);
   // F-026 / F-110：首次和确认后的请求分别走内核登记，各自的幂等键就是各自的恢复命令 ID。
   return sendWithEstablishmentConfirm(async (confirmed) => {
+    let sent = false;
     const outcome = await command.submit({
       values: draftValues(model, record),
       baseline: record.values,
@@ -132,16 +134,20 @@ function submitHrTransfer(
       revision: record.revision,
       businessId: employeeId,
       context: { action },
-      send: async (sent) => {
+      send: async (issued) => {
+        sent = true;
         // 回执按实际发出的 If-Match 核对（#350 第 2 轮 P2-2）。
-        const revision = sent.revision ?? record.revision;
-        await run(() => saveTransfer(tenantId, model, action, sent.id, revision, confirmed), { employeeId, revision });
+        const revision = issued.revision ?? record.revision;
+        const save = () => saveTransfer(tenantId, model, action, issued.id, revision, confirmed);
+        await write.run(save, { employeeId, revision });
         // 内核按员工记录核对回执；业务单回执已由 useHrWrite 校验并保存。
         return { id: employeeId };
       },
     });
     // A 已落定。确认重提之前保留这条状态，避免持久记录排队删除时被同步重新当作未知命令。
     if (outcome.status === 'rejected' && needsEstablishmentConfirm(outcome.error)) throw outcome.error;
+    // 登记就被拒（锁被他页占用、不支持锁、别页已登记、存储不可用）时命令未发出，useHrWrite 没机会提示，用内核的文案。
+    if (outcome.status === 'rejected' && !sent) write.refuse((outcome.error as Error).message);
     // 普通拒绝由 useHrWrite 给出提示，下次提交按当时的预览起算。
     if (outcome.status === 'done' || outcome.status === 'rejected') command.clear();
   }, ask);

@@ -1,7 +1,13 @@
 import { newCommand, type Command } from '../client.js';
 import type { ResultVerdict } from './command-result.js';
 import { messages } from './messages.js';
-import { RecoveryConflict, type CommandRecovery, type PendingRecord } from './recovery.js';
+import {
+  RecoveryConflict,
+  RecoveryLockBusy,
+  RecoveryLocksUnsupported,
+  type CommandRecovery,
+  type PendingRecord,
+} from './recovery.js';
 import { changedFields, refillDraft, sameValue, type Values } from './values.js';
 export type { Values } from './values.js';
 export interface Latest {
@@ -249,6 +255,13 @@ function createCore(recovery?: CommandRecovery) {
 type Core = ReturnType<typeof createCore>;
 
 /** 首次提交：登记恢复记录后才发出；锁定中（含别的标签页未确认）原样返回。 */
+/** 登记恢复记录被拒的原因 → 提示（DEC-954 / DEC-955 各有专门文案，不复用“其他标签页”与“存储不可用”）。 */
+function registerRefusal(error: unknown) {
+  if (error instanceof RecoveryLockBusy) return messages.lockBusy;
+  if (error instanceof RecoveryLocksUnsupported) return messages.locksUnsupported;
+  if (error instanceof RecoveryConflict) return messages.otherTab;
+  return messages.recoveryUnavailable;
+}
 async function submitTo(core: Core, key: string, input: SubmitInput) {
   // 槽在同步前取：同步可能把本条目的槽改钉到别页的命令上，登记时仍须按这些槽核对占用。
   const slots = core.pins.slotsOf(key);
@@ -282,11 +295,10 @@ async function submitTo(core: Core, key: string, input: SubmitInput) {
   try {
     await core.persist(key, state, slots);
   } catch (error) {
-    const other = error instanceof RecoveryConflict;
-    const reason = other ? messages.otherTab : messages.recoveryUnavailable;
-    core.land(key, state, { ...state, status: 'rejected', error: new Error(reason) });
+    // 四类都未发出命令，按“明确拒绝”落定：输入保留，可改正后重提。
+    core.land(key, state, { ...state, status: 'rejected', error: new Error(registerRefusal(error)) });
     // 别页抢先登记了同一条目或槽：再同步一次，本页锁到那条命令上。
-    if (other) core.sync();
+    if (error instanceof RecoveryConflict) core.sync();
     return core.entries.get(key)!;
   }
   core.land(key, state, await delivered(state, input.send));

@@ -22,7 +22,8 @@ export interface CommandRecovery {
   load(): PendingRecord[] | undefined;
   /**
    * 发送前登记（第 3 轮：跨标签页互斥）：在锁内读占用、检查、写入，已有别的命令占着同一条目或同一恢复槽时
-   * 以 RecoveryConflict 拒绝、不写入；拿不到锁（浏览器不支持 Web Locks）或写不进去时以其他错误拒绝。内核都不发出命令。
+   * 以 RecoveryConflict 拒绝、不写入；锁被别的标签页一直占着时以 RecoveryLockBusy、浏览器不支持 Web Locks 时以
+   * RecoveryLocksUnsupported 拒绝（DEC-954 / DEC-955）；写不进去时以其他错误拒绝。内核都不发出命令。
    */
   save(record: PendingRecord): Promise<void>;
   /** 删本命令的记录，同样在锁内读改写；失败不抛（结果已在内存落定）。 */
@@ -32,6 +33,22 @@ export interface CommandRecovery {
 }
 /** 别的命令占着同一条目或同一恢复槽：本次命令不发出。 */
 export class RecoveryConflict extends Error {}
+/** DEC-954：等锁超时，锁被别的标签页一直占着（例如那页卡在登记中）：本次命令不发出。 */
+export class RecoveryLockBusy extends Error {}
+/** DEC-955：浏览器没有 Web Locks（http 非安全上下文或老浏览器），拿不到确定占用：本次命令不发出，不降级。 */
+export class RecoveryLocksUnsupported extends Error {}
+/**
+ * 等锁上限。锁内只读写一次 localStorage，正常持锁是毫秒级；同时登记的别页、本页排队中的删除都在这段时间内放开，
+ * 超过它才判为“锁被他页占用”（DEC-954），短暂互斥照常排队（F110-20）。
+ */
+export const LOCK_WAIT_MS = 3000;
+export interface SharedRecoveryOptions {
+  /**
+   * DEC-955 只禁调动 / 审批写入：其余业务（组织调整）传 false，浏览器不支持 Web Locks 时退回无锁的读—查—写，
+   * 仍能拦住同页与已落盘的别页命令，只是两页同一刻登记的竞争窗口不再互斥。默认 true。
+   */
+  requireLocks?: boolean;
+}
 
 const validRecord = (value: unknown) => {
   const record = value as Partial<PendingRecord> | null;
@@ -46,7 +63,8 @@ const occupies = (item: PendingRecord, record: PendingRecord) =>
   item.commandId !== record.commandId &&
   (item.key === record.key || item.slots.some((slot) => record.slots.includes(slot)));
 
-export function sharedRecovery(name: string): CommandRecovery {
+export function sharedRecovery(name: string, options: SharedRecoveryOptions = {}): CommandRecovery {
+  const requireLocks = options.requireLocks ?? true;
   const storageKey = `italent.commands.pending:${name}`;
   // 记录损坏时抛错：读不出哪些命令未确认，就不能放行新命令（save 失败 → 不发出）。
   const read = (): PendingRecord[] => {
@@ -63,12 +81,31 @@ export function sharedRecovery(name: string): CommandRecovery {
   /**
    * 第 3 轮 P2：同一存储数组的读—查—写（登记与删除）都放进同名的 Web Locks 独占锁：同源各标签页按请求先后串行，
    * 不会两页都读到空记录后各自写入并发出。锁按存储键整份加（记录是一个数组，按条目 / 槽分锁仍会互相覆盖）；
-   * 条目键与槽已含租户与身份，存储键按业务分开。浏览器不支持时拿不到确定占用，一律拒绝登记（不发出），不退回无锁读写。
+   * 条目键与槽已含租户与身份，存储键按业务分开。浏览器不支持时拿不到确定占用，调动 / 审批一律拒绝登记（不发出，
+   * DEC-955），不退回无锁读写。wait 只给登记用：删除不发命令，排队等锁即可。
    */
-  const exclusive = async <T>(run: () => T): Promise<T> => {
+  const exclusive = async <T>(run: () => T, wait?: number): Promise<T> => {
     const locks = globalThis.navigator?.locks;
-    if (!locks) throw new Error('cross-tab lock unavailable');
-    return locks.request(storageKey, { mode: 'exclusive' }, run);
+    if (!locks) {
+      if (!requireLocks) return run();
+      throw new RecoveryLocksUnsupported('web locks unsupported');
+    }
+    if (wait === undefined) return locks.request(storageKey, { mode: 'exclusive' }, run);
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), wait);
+    const granted = () => {
+      clearTimeout(timer);
+      return run();
+    };
+    try {
+      return await locks.request(storageKey, { mode: 'exclusive', signal: abort.signal }, granted);
+    } catch (error) {
+      // 授予前定时器已清，abort 只会发生在等锁期间：此时回调没跑过，记录未写。
+      if (abort.signal.aborted) throw new RecoveryLockBusy('cross-tab lock held elsewhere');
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   };
   return {
     load() {
@@ -83,7 +120,7 @@ export function sharedRecovery(name: string): CommandRecovery {
         const records = read();
         if (records.some((item) => occupies(item, record))) throw new RecoveryConflict('command pending elsewhere');
         write([...records.filter((item) => item.key !== record.key), record]);
-      });
+      }, LOCK_WAIT_MS);
     },
     async remove(key, commandId) {
       try {
