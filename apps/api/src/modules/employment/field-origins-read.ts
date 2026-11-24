@@ -98,7 +98,7 @@ export interface OriginFacts {
  *    被摘下后才删除的墓碑此列为空，不据此判，只看第 2 条；旧墓碑不回填（DEC-402）。
  * 已知限制（F-557）：挂回不留回执，`repositionExit` 同事务挂回再重摘会写新的摘除行。第 2 条可信的前提是
  * 离职摘除台账里未作废的目标摘下时都已生效，退休日期不可改（守卫见 AC-EMP-32 “离职改期先挂回再重摘”）。
- * 放开退休改期、或挂回目标可能是未生效调动之前，须按 F-557 升级到在场台账。
+ * 放开退休改期，或新增可让未到期调动被摘下后再挂回 / 重摘的路径之前，须按 F-557 升级到在场台账。
  */
 export async function isBusinessLanded(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<boolean> {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
