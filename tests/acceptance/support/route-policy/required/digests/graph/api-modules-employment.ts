@@ -8636,6 +8636,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/timeline.ts#removeEmploymentTimeline',
     '#assertDeletionNotPaused',
     '#auditDeletedRecord',
+    '#timelineStartDate',
     'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -8661,6 +8662,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/transitions.ts#snapshotRecord': [
     'apps/api/src/modules/employment/read-model.ts#snapshotFields',
+  ],
+  'apps/api/src/modules/employment/transitions.ts#timelineStartDate': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/transitions.ts#transitionEmployment': [
     'apps/api/src/modules/employment/activation-checks.ts#assertEstablishmentCapacity',
