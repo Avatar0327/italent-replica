@@ -8096,6 +8096,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/establishment/employment-check.ts#checksEmploymentCapacity',
     'apps/api/src/modules/transfer/access.ts#requireTransferSource',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
+    'apps/api/src/modules/transfer/same-order-guard.ts#transferReceiptNames',
     'apps/api/src/modules/transfer/service.ts#requireDirectTransfer',
   ],
   'apps/api/src/modules/employment/routes.ts#importEmployment': [
@@ -8143,6 +8144,7 @@ export const GRAPH: Graph = {
     '#authorizeBusinessWrite',
     '#discloseDeletionBlock',
     '#routesToCancel',
+    '#sameOrderTarget',
     '#transitionConfirmation',
     '#transitionControls',
     'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite',
@@ -8264,6 +8266,7 @@ export const GRAPH: Graph = {
     '#readBusinessPatch',
     '#requireDraftEditWrite',
     '#requireResultApplicable',
+    '#sameOrderTarget',
     'apps/api/src/modules/employment/write-service.ts#updateEmploymentBusiness',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
@@ -8299,6 +8302,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
+    'apps/api/src/modules/transfer/same-order-guard.ts#transferReceiptNames',
   ],
   'apps/api/src/modules/employment/routes.ts#route:POST /custom-fields': [
     'apps/api/src/modules/employment/configuration.ts#createCustomField',
@@ -8447,6 +8451,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-cancel.ts#isCancellableState',
     'apps/api/src/modules/employment/exit-gate.ts#businessState',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
+  ],
+  'apps/api/src/modules/employment/routes.ts#sameOrderTarget': [
+    'apps/api/src/modules/transfer/same-order-guard.ts#transferReceiptNames',
   ],
   'apps/api/src/modules/employment/routes.ts#shownBusiness': [
     'apps/api/src/modules/employment/approval-content.ts#composeBusiness',
