@@ -99,6 +99,11 @@ function useResultQuery(form: ReturnType<typeof useCommandForm>) {
         const result = await readCommandResult(api, id).catch((cause: unknown) => {
           throw cause instanceof ApiError ? cause : new Error(c.invalidReceipt, { cause });
         });
+        if (result.status === 'not_executed') {
+          if (form.peek()?.command?.id === id) await form.recoverResult(async () => ({ status: 'not_executed' }));
+          setQuery({});
+          return;
+        }
         if (result.status === 'succeeded') {
           if (
             !result.businessId ||
