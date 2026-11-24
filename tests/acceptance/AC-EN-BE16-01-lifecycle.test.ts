@@ -72,8 +72,10 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
     const f = await fixture('ZZ_BE16_LIFECYCLE');
     const { entry, run, context, replacements } = f;
     const { port, app } = install(f.db);
+    // 采集配置（16a-1）路由不在本断言范围；其余入职路由只允许融入任务池（16b-0）
+    const COLLECTION = /^\/api\/tenant\/onboarding\/(?:collection-(?:templates|rules)(?:\/:id)?|collection-settings)$/;
     const onboardingRoutes = app.routes
-      .filter(({ path }) => path.startsWith(ONBOARDING))
+      .filter(({ path }) => path.startsWith(ONBOARDING) && !COLLECTION.test(path))
       .map(({ method, path }) => `${method} ${path}`)
       .sort();
     expect(onboardingRoutes).toEqual([
@@ -228,8 +230,8 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
       const created = await port.create(tx, ctx, { ...entry, pendingDate: business.record.effectiveDate });
       const hire = { ...entry, kind: 'hire' as const, hiredRecordId: recordId };
       await expect(port.apply(tx, ctx, { ...hire, hiredOn: '2026-10-30' })).rejects.toMatchObject(NOT_CURRENT);
-      const completed = await completePendingEntry(tx, ctx, recordId, { probation: false });
-      const hired = await port.apply(tx, ctx, { ...hire, hiredOn: completed.effectiveDate });
+      await completePendingEntry(tx, ctx, recordId, { probation: false });
+      const [hired] = await tx.select().from(cases).where(eq(cases.id, created.id));
       expect(hired).toMatchObject({ id: created.id, state: 'hired', hiredRecordId: recordId, hiredOn: '2026-10-19' });
     });
   });
