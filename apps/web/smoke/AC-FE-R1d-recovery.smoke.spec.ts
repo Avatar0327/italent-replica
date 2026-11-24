@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { test, expect, employee, tenant, insecureContext, selfServiceButtons } from './fixtures.js';
+import { test, expect, demoRoutes, employee, tenant, insecureContext, selfServiceButtons } from './fixtures.js';
 
 const business = '50000000-0000-4000-8000-000000000002';
 const department = '60000000-0000-4000-8000-000000000002';
@@ -469,3 +469,52 @@ test('AC-FE-F110-27 正例：提交暂存申请已发出后被拒，仍须先重
   await submit.click();
   await expect.poll(() => submits).toEqual(['4', '5']);
 });
+
+const OTHER_TAB = '其他标签页有该对象未确认的命令，本次命令未发出；请等待结果或先查询结果。';
+// F-558 ①：同一单两页同时提交（第三页占着锁让两页排队），后登记的一页本次未发出，提示走内核 raceOf 的原因，
+// 不只显示“处理中”；先登记那页落定后，后一页解锁、原输入仍在。
+for (const manager of [false, true]) {
+  test(`AC-FE-F558-1 ${manager ? '经理' : '本人'}两页同时提交：后一页提示其他标签页、零请求，落定后输入保留`, async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(60_000);
+    const writes: { tab: number; command: string }[] = [];
+    let respond = () => {};
+    const answered = new Promise<void>((resolve) => (respond = resolve));
+    const pageB = await context.newPage();
+    await demoRoutes(pageB);
+    const tabs = [page, pageB];
+    const drawers = [];
+    for (const [tab, target] of tabs.entries()) {
+      await target.route(manager ? `**/transfers/employees/${employee}` : '**/self-service/transfer', async (route) => {
+        writes.push({ tab, command: route.request().headers()['idempotency-key']! });
+        await answered;
+        return route.fulfill({ status: 201, json: { ...draft, status: 'in_review' } }).catch(() => {});
+      });
+      const drawer = await setup(target, manager);
+      await drawer.locator('input[name="effectiveDate"]').fill('2026-11-02');
+      drawers.push(drawer);
+    }
+    const holder = await holdLockInOtherTab(page);
+    try {
+      for (const drawer of drawers) await drawer.getByRole('button', { name: '提交', exact: true }).click();
+    } finally {
+      await holder.close();
+    }
+    await expect.poll(() => writes).toHaveLength(1);
+    const loser = drawers[1 - writes[0]!.tab]!;
+    await expect(loser.getByText(OTHER_TAB)).toBeVisible();
+    await expect(loser.getByText('处理中 / 结果待确认')).toBeVisible();
+    await expect(loser).toContainText(writes[0]!.command);
+    await expect(loser.getByRole('button', { name: '提交', exact: true })).toBeHidden();
+    respond();
+    // 先登记那页确认成功、删掉恢复记录；后一页收到 storage 事件解锁，提示随锁定一起消失，输入原样可再提交。
+    await expect(loser.getByText(OTHER_TAB)).toHaveCount(0);
+    await expect(loser.getByRole('button', { name: '提交', exact: true })).toBeEnabled();
+    await expect(loser.locator('input[name="effectiveDate"]')).toHaveValue('2026-11-02');
+    if (manager) await expect(loser.locator('select[name="employeeId"]')).toHaveValue(employee);
+    expect(writes).toHaveLength(1);
+    await pageB.close();
+  });
+}
