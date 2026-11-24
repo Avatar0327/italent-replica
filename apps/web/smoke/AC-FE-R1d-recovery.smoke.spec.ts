@@ -383,12 +383,13 @@ async function holdLockInOtherTab(page: Page) {
   );
   return other;
 }
-/** F-558 第 2 轮 P3：持锁页上确认 count 次登记都已在排队（navigator.locks.query），再释放，确保走的是登记竞争。 */
+/** 持锁页上按锁名数正在排队的登记请求（navigator.locks.query）。 */
 const queuedOn = (holder: Page) =>
   holder.evaluate(
     async (name) => (await navigator.locks.query()).pending?.filter((lock) => lock.name === name).length ?? 0,
     transferRecoveryKey,
   );
+/** F-558 第 2 轮 P3：持锁页上确认 count 次登记都已在排队（navigator.locks.query），再释放，确保走的是登记竞争。 */
 async function releaseWhenQueued(holder: Page, count: number) {
   try {
     await expect.poll(() => queuedOn(holder)).toBe(count);
@@ -484,8 +485,9 @@ test('AC-FE-F110-27 正例：提交暂存申请已发出后被拒，仍须先重
 });
 
 const OTHER_TAB = '其他标签页有该对象未确认的命令，本次命令未发出；请等待结果或先查询结果。';
-const FOUND_ELSEWHERE =
-  '已查到原命令的结果：这次提交不是本页发出的，本页输入未提交，仍保留在下方；是否再提交请核对后决定。';
+// 查到成功但归属无法确认时的中性提示（F-558 第 3 轮）：不声称本页未提交。
+const FOUND_RESULT =
+  '已查到原命令执行成功，但无法确认是否由本页发出；本页输入仍保留在下方，请先在“我的申请”核对，避免重复提交。';
 // F-558 ①：同一单两页同时提交（第三页占着锁让两页排队），后登记的一页本次未发出，提示走内核 raceOf 的原因，
 // 不只显示“处理中”；先登记那页落定后，后一页解锁、原输入仍在。
 for (const manager of [false, true]) {
@@ -596,7 +598,7 @@ for (const manager of [false, true]) {
     // 本页原输入仍在、可编辑（不被他页结果替换或清空），他页的结果另行显示。
     await expect(loser.locator('input[name="effectiveDate"]')).toHaveValue(dates[loserTab]!);
     await expect(loser.getByRole('button', { name: '提交', exact: true })).toBeEnabled();
-    await expect(loser.getByText(FOUND_ELSEWHERE)).toBeVisible();
+    await expect(loser.getByText(FOUND_RESULT)).toBeVisible();
     await expect(loser).toContainText(business);
     expect(queries).toEqual([`/api/tenant/commands/${writes[0]!.command}/result`]);
     expect(writes).toHaveLength(1);
@@ -670,7 +672,7 @@ for (const manager of [false, true]) {
     // B 的输入仍在、可编辑，不显示“已提交”（不当作本页保存成功）；查到的结果另行显示。
     await expect(drawerB.locator('input[name="effectiveDate"]')).toHaveValue(dates[1]!);
     await expect(drawerB.getByText('申请已提交审批，请在“我的申请”核对。')).toHaveCount(0);
-    await expect(drawerB.getByText(FOUND_ELSEWHERE)).toBeVisible();
+    await expect(drawerB.getByText(FOUND_RESULT)).toBeVisible();
     await expect(drawerB).toContainText(business);
     await duplicate.getByRole('button', { name: '关闭', exact: true }).click();
     await openForm(duplicate, manager);

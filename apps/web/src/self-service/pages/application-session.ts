@@ -22,8 +22,8 @@ export interface ApplicationSession {
   /** F-558：本次提交没有发出、锁到了别的标签页的命令上时的原因（内核 raceOf）；只对当前锁定的那条命令显示。 */
   race: string;
   /**
-   * F-558 第 2 轮 P2-3：按原命令 ID 查到的结果不是本页发出的命令（别的标签页）：只展示，不记成本页已保存，
-   * 本页输入另行保留，是否再提交由用户决定。
+   * F-558 P2-3：按原命令 ID 查到成功，但无法确认是本页发出的命令（别的标签页、复制标签页等）：只展示结果，
+   * 不记成本页已保存，本页输入另行保留，是否再提交由用户核对后决定（第 3 轮起提示中性，不声称本页未提交）。
    */
   found: TransferBusiness | null;
 }
@@ -31,6 +31,11 @@ export interface ApplicationSession {
 // 整页刷新、另开标签页后仍只读，只能按原命令 ID 查询结果解锁。提交内容摘要与已保存单据只在本页内存，不落存储。
 const commands = new Map<string, ApplicationCommand>();
 const saved = new Map<string, TransferBusiness>();
+/**
+ * F-558 第 3 轮 P2-3：本页内存里的已发出证据（实际调用过发送的命令 ID）。只在本页模块实例里：
+ * 整页刷新会丢、复制标签页不会带过去，会话存储写失败也不影响。结果未知时留着，供回查出口判定归属。
+ */
+const sentHere = new Set<string>();
 /**
  * F-558：本次操作的结果，按作用域记最近一次（下次提交时清掉）。内核只随提交结果带回竞争与普通拒绝（不存进条目）：
  * race 显示与否仍按当前锁定的命令判定；refused 是本次未发出的普通拒绝，留在表单提示区（第 2 轮 P2-1）；
@@ -47,8 +52,9 @@ const cache = new Map<
   string,
   { state?: Submission; saved?: TransferBusiness; note?: Note; value: ApplicationSession }
 >();
-// F-558 第 2 轮 P2-3：本标签页发起过的命令 ID（会话存储随整页刷新保留、各标签页各一份；只存 ID，不存内容）。
-// 查到结果时据此分辨“本页（含刷新前）的命令保存成功”与“查到别的标签页的命令结果”。
+// F-558 第 2 轮 P2-3：本标签页发起过的命令 ID（会话存储随整页刷新保留；只存 ID，不存内容）。第 3 轮起只在没有
+// 内存证据时（整页刷新后）兜底判归属，保住 F110-08 / F110-11 刷新后查回成功的正例；复制标签页会克隆会话存储，
+// 这条兜底是否保留待总编排决定（见 PR 未决）。
 const ISSUED = 'italent.self-service.issued-commands';
 const ISSUED_LIMIT = 20;
 function issuedHere(): string[] {
@@ -63,7 +69,7 @@ function markIssued(commandId: string) {
   try {
     sessionStorage.setItem(ISSUED, JSON.stringify([...issuedHere(), commandId].slice(-ISSUED_LIMIT)));
   } catch {
-    // 写不进时查到的结果按别页处理：只展示、保留本页输入，不会丢输入。
+    // 写不进时：本页不刷新仍按内存证据判归属；刷新后归属无法确认，只展示结果、保留输入，提示中性。
   }
 }
 const contextOf = (command: ApplicationCommand) => ({
@@ -158,6 +164,7 @@ export async function runApplicationCommand(
     context: contextOf(command),
     async send() {
       sent = true;
+      sentHere.add(command.commandId);
       try {
         received = await execute();
       } catch (cause) {
@@ -167,6 +174,7 @@ export async function runApplicationCommand(
       return received;
     },
   });
+  if (state.status !== 'unknown') sentHere.delete(command.commandId);
   // 锁到了别的标签页的命令上：本次未发出，提示其他标签页（F-558，与 HR 页同一来源），不只显示“处理中”。
   if (state.race) {
     setNote(scope, { race: state.race });
@@ -198,9 +206,12 @@ export async function queryApplicationResult(scope: string, tenantId: string) {
   const result = await transferCommands.recoverResult(scope, (sent) =>
     transferResult(tenantId, sent.id, (value) => (business = value)),
   );
+  // 第 3 轮 P2-3：归属在这一个出口判定，先认本页内存里的已发出证据；没有内存证据时按会话存储兜底（整页刷新）。
+  // 归属无法确认（别的标签页、会话存储写失败后刷新）只展示结果、保留本页输入，提示中性，不声称本页未提交。
+  const own = sentHere.has(state.command.id) || issuedHere().includes(state.command.id);
+  if (result && result.status !== 'unknown') sentHere.delete(state.command.id);
   if (result?.status !== 'done' || !business) return;
-  // 本页（含刷新前）发起的命令才算本页保存成功；别的标签页的命令只展示结果，本页输入保留（第 2 轮 P2-3）。
-  if (issuedHere().includes(state.command.id)) saved.set(scope, business);
+  if (own) saved.set(scope, business);
   else setNote(scope, { found: business });
   transferCommands.clear(scope);
 }

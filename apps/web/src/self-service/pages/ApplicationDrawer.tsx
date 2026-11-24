@@ -64,9 +64,9 @@ function ApplicationDraftDrawer({ scope, ...props }: ApplicationDrawerProps & { 
   return (
     <FormDrawer open={props.open} onClose={close} title={title}>
       {state.error && <Alert type="error" message={state.error} />}
-      {/* F-558 第 2 轮 P2-3：查到的是别的标签页的命令结果，只展示；本页输入保留在下方表单，是否再提交由用户决定。 */}
+      {/* F-558 P2-3：查到成功但无法确认由本页发出，只展示结果（中性提示）；本页输入保留在下方，再提交由用户决定。 */}
       {state.found && (
-        <Alert type="info" showIcon message={m.foundElsewhere} description={`${m.businessId}：${state.found.id}`} />
+        <Alert type="info" showIcon message={m.foundResult} description={`${m.businessId}：${state.found.id}`} />
       )}
       {/* DEC-473：待确认时保持只读，结果确定失败或未执行后恢复编辑。 */}
       <div hidden={!!state.pending} inert={!!state.pending}>
