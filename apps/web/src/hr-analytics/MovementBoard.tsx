@@ -171,7 +171,7 @@ function MovementDetails({ board, departmentText }: { board: MovementRead; depar
         )
       }
       waiting={waiting}
-      close={board.closeDetail}
+      drawer={board.detailDrawer}
       changePage={(page) => board.changeDetail({ ...selected, page })}
       retry={() => board.changeDetail(selected)}
     />

@@ -110,7 +110,7 @@ describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
     expect(result.menus.map((menu) => menu.key)).toEqual([
       app,
       ...(code === M.contract.code ? ['contracts'] : []),
-      // FE-R2f S1/S2/S3/S4/S7/S8/S9a：数据分析在任一已交付子项可见时显示。
+      // FE-R2f S1/S2/S3/S4/S5/S7/S8/S9a：数据分析在任一已交付子项可见时显示。
       ...([
         M.hrRoster.code,
         M.hrDashboard.code,
@@ -119,6 +119,7 @@ describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
         M.hrMovement.code,
         M.hrMovementReport.code,
         M.hrProcessDashboard.code,
+        M.contractBoard.code,
       ].includes(code)
         ? ['hr-analytics']
         : []),

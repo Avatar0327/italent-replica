@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import { Button } from 'antd';
 import { APPROVAL_CATEGORIES, APPROVAL_CATEGORY_NAMES } from '@italent/domain';
 import { PageState } from '../foundation/PageState.js';
@@ -249,15 +249,9 @@ function ProcessCard({
 function ProcessDetails({
   board,
   department,
-  closing,
-  close,
-  afterClose,
 }: {
   board: ProcessRead;
   department: ReturnType<typeof organizationField>;
-  closing: boolean;
-  close(): void;
-  afterClose(): void;
 }) {
   const { data, detail, selected, waiting } = board;
   if (!selected) return null;
@@ -304,9 +298,7 @@ function ProcessDetails({
         )
       }
       waiting={waiting}
-      open={!closing}
-      close={close}
-      afterClose={afterClose}
+      drawer={board.detailDrawer}
       changePage={(page) => board.changeDetail({ ...selected, page })}
       retry={() => board.changeDetail(selected)}
     />
@@ -314,13 +306,10 @@ function ProcessDetails({
 }
 
 export function ProcessBoard({ today, refresh }: { today: string; refresh(): void }) {
-  // 关闭抽屉分两步：先停明细读取、播放关闭过渡，过渡结束再清选中项，组件库才能把焦点还给原入口。
-  const [closing, setClosing] = useState(false);
   const board = useBoardRead<Filters, Target, ProcessOverview, ProcessDetail>(
     processDefaults(today),
     processOverviewUrl,
-    ({ target, page }) =>
-      closing ? null : processDetailUrl(target.component.code, target.filters, page, target.drill),
+    ({ target, page }) => processDetailUrl(target.component.code, target.filters, page, target.drill),
     (data, filters, page) =>
       data.components.some(({ code }) => code === 'inFlightList')
         ? processDetailUrl('inFlightList', processResultFilters(filters, data), page, {})
@@ -363,14 +352,12 @@ export function ProcessBoard({ today, refresh }: { today: string; refresh(): voi
                   board={board}
                   open={
                     data.hasDataPermission && !waiting
-                      ? (drill, pointKey) => {
-                          setClosing(false);
+                      ? (drill, pointKey) =>
                           board.changeDetail({
                             target: { component, filters: applied, drill, pointKey },
                             asOf: data.asOf,
                             page: 1,
-                          });
-                        }
+                          })
                       : undefined
                   }
                 />
@@ -378,17 +365,7 @@ export function ProcessBoard({ today, refresh }: { today: string; refresh(): voi
             </div>
           </section>
         ))}
-      <ProcessDetails
-        board={board}
-        department={department}
-        closing={closing}
-        close={() => setClosing(true)}
-        afterClose={() => {
-          if (!closing) return;
-          setClosing(false);
-          board.closeDetail();
-        }}
-      />
+      <ProcessDetails board={board} department={department} />
     </>
   );
 }

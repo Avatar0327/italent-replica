@@ -1,4 +1,5 @@
 import {
+  CONTRACT_BOARD_OBJECT,
   HR_DASHBOARD_OBJECT,
   HR_MOVEMENT_OBJECT,
   HR_MOVEMENT_REPORT_OBJECT,
@@ -48,6 +49,12 @@ export const pages: ModulePages = {
           label: reports.movementReports,
           objectCode: HR_MOVEMENT_REPORT_OBJECT,
           page: lazyPage('HrMovementReportsPage', () => import('../hr-reports/HrMovementReportsPage.js')),
+        },
+        {
+          id: 'hr-contract-board',
+          label: m.contract.title,
+          objectCode: CONTRACT_BOARD_OBJECT,
+          page: lazyPage('HrContractBoardPage', () => import('./HrContractBoardPage.js')),
         },
       ],
     },

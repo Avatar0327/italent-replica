@@ -28,7 +28,7 @@ export function useBoardRead<Query, Target, Overview extends BoardResponse, Deta
   inlineUrl?: (overview: Overview, query: Query, page: number) => string | null,
 ) {
   const [query, setQuery] = useState({ filters: initial, generation: 0 });
-  const [selected, select] = useState<Selection<Target>>();
+  const [selected, select] = useState<Selection<Target> & { open: boolean }>();
   const [detailGeneration, setDetailGeneration] = useState(0);
   const [invalidated, setInvalidated] = useState<Invalidated>();
   const read = useReportRead<Overview>(invalidated ? null : overviewUrl(query.filters), query.generation);
@@ -38,8 +38,9 @@ export function useBoardRead<Query, Target, Overview extends BoardResponse, Deta
     inlinePage.generation,
   );
   const inlineInvalidation = detailInvalidation(inline.error, inline.data);
+  // 关闭开始时取消读取，选中项留到抽屉过渡结束以完成库内焦点归还。
   const detail = useReportRead<Detail>(
-    selected && !inlineInvalidation ? detailUrl(selected, query.filters) : null,
+    selected?.open && !inlineInvalidation ? detailUrl(selected, query.filters) : null,
     detailGeneration,
   );
 
@@ -66,7 +67,7 @@ export function useBoardRead<Query, Target, Overview extends BoardResponse, Deta
     setQuery((previous) => ({ filters, generation: previous.generation + 1 }));
   };
   const changeDetail = (selection: Selection<Target>) => {
-    select(selection);
+    select({ ...selection, open: true });
     setDetailGeneration((generation) => generation + 1);
   };
   return {
@@ -85,6 +86,10 @@ export function useBoardRead<Query, Target, Overview extends BoardResponse, Deta
     apply,
     retry: () => apply(query.filters),
     changeDetail,
-    closeDetail: () => select(undefined),
+    detailDrawer: {
+      open: selected?.open ?? false,
+      onClose: () => select((current) => (current?.open ? { ...current, open: false } : current)),
+      afterClose: () => select((current) => (current?.open ? current : undefined)),
+    },
   };
 }
