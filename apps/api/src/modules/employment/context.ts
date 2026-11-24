@@ -412,6 +412,7 @@ export async function trimEmploymentResponse(
     if (!record || typeof record !== 'object') return record;
     const source = record as Record<string, unknown>;
     const result: Record<string, unknown> = {};
+    let hidePrevious = false;
     for (const [key, field] of Object.entries(source)) {
       if (key === 'items') result.items = trim(field);
       else if (key === 'fields' && !Array.isArray(field))
@@ -426,7 +427,7 @@ export async function trimEmploymentResponse(
       else if (key === 'before') {
         const allowed = visibleBefore(source);
         result.before = allowed ? trim(field) : null;
-        if (!allowed && Object.hasOwn(source, 'previousRecordId')) result.previousRecordId = null;
+        hidePrevious = !allowed;
       } else if ((key === 'changes' || key === 'wholeRecordSkips') && Array.isArray(field))
         // DEC-120 的整条跳过提醒与 changes 同形，字段值同样按可见字段裁剪；reason 是协议元数据。
         result[key] = field.map((change) => {
@@ -456,6 +457,9 @@ export async function trimEmploymentResponse(
         });
       else if (PROTOCOL_KEYS.has(key) || viewable.has(key)) result[key] = field;
     }
+    // 前驱不可见时前驱标识一并置空。放在循环之后才与键序无关：回执按键排序（重放的 jsonb 也是）时 before 在
+    // previousRecordId 之前，在循环里置空会被后面的通用分支用原值写回（DEC-996）。
+    if (hidePrevious && Object.hasOwn(source, 'previousRecordId')) result.previousRecordId = null;
     return result;
   };
   // Flat employee/configuration DTOs use the shared helper; nested employment DTOs require field-level traversal.
@@ -592,6 +596,26 @@ function withReplayRecheck(
   };
 }
 
+/**
+ * 回执的确定性形状（DEC-996）：先做一次 JSON 往返（与台账 jsonb 存下的值同一口径：undefined 去掉、Date 成字符串），
+ * 再把对象键按码点排序。首次响应来自执行对象、重放来自台账 jsonb（jsonb 按键长重排键序），不规范化时同一份回执
+ * 解析后相等、原文却不同；裁剪前后各规范化一次，首次与重放走完全相同的裁剪输入与输出键序。
+ */
+export function canonicalReceipt(value: unknown): unknown {
+  if (value === undefined) return value;
+  const sorted = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(sorted);
+    if (!node || typeof node !== 'object') return node;
+    const record = node as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(record)
+        .sort()
+        .map((key) => [key, sorted(record[key])]),
+    );
+  };
+  return sorted(JSON.parse(JSON.stringify(value)));
+}
+
 export async function runWrite(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
@@ -659,11 +683,11 @@ export async function runWrite(
   if (payload?.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
   // 只换范围：事务内的 authorize 已随事务结束，不能带出事务外使用。
   const current = adoptedScope ? { ...ctx, scope: adopted } : ctx;
-  const disclosed = await discloseAssessmentConflictReceipt(deps, current, result.body);
+  const disclosed = await discloseAssessmentConflictReceipt(deps, current, canonicalReceipt(result.body));
   const body = options.project
     ? await options.project(disclosed, current)
     : await trimEmploymentResponse(deps, current, disclosed);
-  return c.json(body, result.status);
+  return c.json(canonicalReceipt(body), result.status);
 }
 
 export function assertRevision(expected: number, actual: number): void {

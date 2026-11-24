@@ -16,15 +16,19 @@ import {
  * 入口（事务外）算出的数据范围与 Switch 31 目标部门例外（transferTarget）只是请求内快照。命令事务里不能再沿用它们：
  * 重放命中台账时执行体不会再跑，范围收空后仍会把原回执（单据、员工、目标部门、生效日期）返回出去。
  * 这里在 CommandGuard.before（首次执行、直接重放、失败回查都先经过它）里，严格按这个顺序（DEC-993 单入口）：
- *   0. 取锁阶段（lock 步骤）：参与员工（含请求新带入的下属）→ 员工行 → 各参与者业务头，取齐后重新规划确认没有新增，
- *      然后封口。此时一个授权输入都还没读——等锁期间别人收回的授权，要在等完锁之后才读；封口之后本事务不再因新参与者等锁
- *      （需要新锁就 409 TRANSFER_LOCK_PLAN_CHANGED，放弃本事务，由重入先取齐锁再读授权）；
- *   1. 丢掉入口的旧例外，按当前授权解析数据范围（commandContext）并重判入口旗标（trustedScopeBypass）——授权只在这里读一次；
+ *   0. 取锁阶段（lock 步骤，lockTransferBusinessEmployee）：先循环取齐参与员工闭包（含请求新带入、且现存的下属）与员工行，
+ *      再统一锁各参与者业务头，复核集合没有变大后封口。此时一个授权输入都还没读——等锁期间别人收回的授权，要在等完锁之后才读；
+ *      封口之后本事务不再因新参与者等锁（需要新锁就 409 TRANSFER_LOCK_PLAN_CHANGED，放弃本事务，由重入先取齐锁再读授权）；
+ *   1. 丢掉入口的旧例外，按当前授权解析数据范围（commandContext）并重判入口旗标（trustedScopeBypass）——这两项各解析一次；
  *   2. 重算同单来源与目标例外（transferBusinessContext 'command' / transferTargetContext）：只消费第 1 步的范围；
+ *      Switch 31 备选来源会逐个发起人类型重查按钮与来源关系（可能与第 3 步再各查一次 Transfer.Hr 等按钮）；
  *   3. 由调用方的 authorize 按新上下文复核对象 / 按钮 / 字段 / 业务特有来源；
  *   4. 登记为本事务的命令上下文（adoptCommandContext）——执行体、重放复核、结果复核和回执裁剪（runWrite）都读这一份。
+ * 承诺的是“授权输入全部在封口之后、同一事务里读”，不是“每个授权输入只查一次”：第 1～3 步之间没有任何会阻塞的等锁，
+ * 重复查询读到的只会是同样或更新的授权；后一次读到撤权就按撤权拒绝（fail-closed），不会拿等锁之前的旧值放行（DEC-996）。
  * 第 4 轮 P2：上一版先解析范围、再在 derive 里等锁，等锁期间收回的范围仍被沿用（锁内字段校验通过后返回 200 + 原回执）。
  * 第 5 轮 P2：取锁阶段只按“第一次规划”取锁，derive 里第二次规划发现新进参与者时仍会在读完范围之后等锁；回执裁剪还在用入口范围。
+ * 第 6 轮 P2：补锁循环每轮都连业务头一起锁，第二轮会在持甲、乙业务头时等丙的员工锁（逆序）；现分两段，员工锁全部先于业务头。
  * 凡是会写同一张调动单或对它做状态动作、并走命令台账的入口都用这里，不要各写一套。
  */
 /**
@@ -102,6 +106,7 @@ export function sameOrderWriteGuard(
       await requireBusinessWriteScope(tx, scoped.authorize!, scoped, spec.businessId, spec.employeeId);
     },
     // 请求新带入的下属也在取锁阶段一并取齐：写入执行体里的取锁此后都是重入，封口后不会再等锁。
+    // 查无此人的不在这里报错，留给首次执行的业务校验，免得遮蔽同键异内容的 409（第 5 轮 P2-3）。
     (tx) =>
       lockTransferBusinessEmployee(tx, entry, spec.businessId, spec.referenceChange?.fields?.addedSubordinateIds ?? []),
   );

@@ -1,6 +1,12 @@
 import { requireManagerBusinessReferences } from './manager-business-references.js';
 import { requireManagerReferenceValues } from './manager-references.js';
-import { lockTransferParticipants, sealTransferLocks, transferLocksCover } from '../employment/transfer-locks.js';
+import {
+  existingTransferEmployees,
+  lockTransferHeads,
+  lockTransferParticipants,
+  sealTransferLocks,
+  transferLocksCover,
+} from '../employment/transfer-locks.js';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { tenantLocalDate } from '@italent/domain';
@@ -234,14 +240,19 @@ async function transferRequestEmployee(tx: Tx, ctx: EmploymentContext, businessI
 /** 取锁—复核—再取锁的上限：参与集合每轮都在涨说明有人持续改关系，放弃本次交还调用方刷新重试。 */
 const LOCK_PLAN_ATTEMPTS = 4;
 
+const planChanged = () =>
+  new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
+
 /**
- * 同单写入口的“取锁阶段”（DEC-993 单入口，第 5 轮）：只按单据找到发起员工，把会阻塞的锁一次取齐——
- * 参与员工（含 extra 里请求新带入的下属）→ 员工行 →（lockTransferParticipants 内）各参与者业务头——锁序与
- * transferBusinessContext 'command' 阶段完全相同；审批实例只在首次执行体里锁，重放 / 回查不到那一步，不在此预锁
- * （预锁会在组织锁之前取实例，逆序）。取齐后重新规划，若参与集合在取锁期间又变大（如别人把某员工的虚线经理改成发起员工），
- * 在授权还没读之前继续按序补锁；补不齐（UUID 顺序冲突 / 连续变大）由 acquire / 本函数抛 409 TRANSFER_LOCK_PLAN_CHANGED，
- * 放弃本事务，由重入（失败回查 / 客户端显式重提）先取齐锁再读授权。
- * 全部取齐后封口：本函数返回后事务里不会再因新参与者等锁。本函数不读任何授权输入，调用方在其返回之后才读且只读一次。
+ * 同单写入口的“取锁阶段”（DEC-993 单入口；第 6 轮拆段，DEC-996）：只按单据找到发起员工，按锁序分两段取齐会阻塞的锁。
+ * ① 员工段：参与员工闭包（含 extra 里请求新带入、且现存的下属）→ 发起员工行，取完重新规划；集合在取锁期间变大
+ *   （如别人把某员工的虚线经理改成发起员工）就继续按 UUID 序补员工锁——这一段手上只有员工锁，不持任何业务头；
+ * ② 业务头段：员工闭包取齐后统一锁各参与者的业务头，再规划一次；此时集合若又变大，不再回头等员工锁（那会在持业务头时等
+ *   员工锁，逆序），直接 409 TRANSFER_LOCK_PLAN_CHANGED 放弃本事务，由重入（失败回查 / 客户端显式重提）重新规划。
+ * 审批实例只在首次执行体里锁（重放 / 回查不到那一步），不在此预锁。两段取齐后封口：本函数返回后事务里不会再因新参与者等锁；
+ * transferBusinessContext 'command' 阶段的取锁都是重入。本函数不读任何授权输入。
+ * 请求点名但查无此人的新增下属不取锁、不在这里报错（第 5 轮 P2-3）：报错会抢在台账指纹比对之前，把同键异内容的 409 遮成 400；
+ * 留给首次执行的业务校验（validateTransferSubordinates → 400 TRANSFER_PERSON_NOT_ELIGIBLE），那时授权与指纹都已判过。
  * 单据不是调动单时什么都不取。
  */
 export async function lockTransferBusinessEmployee(
@@ -252,12 +263,16 @@ export async function lockTransferBusinessEmployee(
 ) {
   const employeeId = await transferRequestEmployee(tx, ctx, businessId);
   if (!employeeId) return;
-  for (let attempt = 0; attempt < LOCK_PLAN_ATTEMPTS; attempt += 1) {
-    await lockTransferParticipants(tx, ctx, employeeId, extra);
+  const present = await existingTransferEmployees(tx, ctx, extra);
+  for (let attempt = 0; ; attempt += 1) {
+    if (attempt === LOCK_PLAN_ATTEMPTS) throw planChanged();
+    await lockTransferParticipants(tx, ctx, employeeId, present, { deferHeads: true });
     await lockEmploymentEmployee(tx, ctx, employeeId);
-    if (await transferLocksCover(tx, ctx, employeeId, extra)) return sealTransferLocks(tx, ctx);
+    if (await transferLocksCover(tx, ctx, employeeId, present)) break;
   }
-  throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
+  await lockTransferHeads(tx, ctx);
+  if (!(await transferLocksCover(tx, ctx, employeeId, present))) throw planChanged();
+  await sealTransferLocks(tx, ctx);
 }
 
 /** 同单操作按当前调用人的权限判断；原发起人类型仅是业务事实，不决定后续操作者的身份。 */

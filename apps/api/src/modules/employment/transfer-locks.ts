@@ -102,14 +102,21 @@ export async function sealTransferLocks(tx: Tx, ctx: EmploymentContext): Promise
 /** 取锁结果：busy = 有参与者行被他人持锁（SKIP LOCKED 跳过）；missing = 员工主档本身不存在（F-238，两者不能混为一谈）。 */
 export type SweepLockOutcome = 'acquired' | 'busy' | 'missing';
 
+interface AcquireOptions {
+  readonly skipLocked?: boolean;
+  readonly rescheduledExitId?: string;
+  /** 只取员工锁，业务头留给调用方在员工闭包取齐之后用 lockTransferHeads 统一取（同单写入口的补锁循环，DEC-996）。 */
+  readonly deferHeads?: boolean;
+}
+
 async function acquire(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
   extra: readonly string[],
-  skipLocked: boolean,
-  rescheduledExitId?: string,
+  options: AcquireOptions,
 ): Promise<SweepLockOutcome> {
+  const { skipLocked = false, rescheduledExitId } = options;
   if (![employeeId, ...extra].every(isUuid)) throw new AppError('VALIDATION_FAILED', '员工标识必须是 UUID');
   employeeId = employeeId.toLowerCase();
   extra = [...new Set(extra.map((id) => id.toLowerCase()))];
@@ -150,13 +157,46 @@ async function acquire(
       throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
   }
   await tx.execute(sql`SELECT set_config(${settingKey(ctx.tenantId)},${JSON.stringify(all)},true)`);
-  // 各参与者的业务头在审批实例之前取锁；员工锁保证业务集合不会再被其他事务改写。
-  if (planned.length > 1)
+  if (!options.deferHeads) await lockHeads(tx, ctx, planned);
+  return 'acquired';
+}
+
+/** 各参与者的业务头在审批实例之前取锁；员工锁保证业务集合不会再被其他事务改写。 */
+async function lockHeads(tx: Tx, ctx: EmploymentContext, ids: readonly string[]) {
+  if (ids.length > 1)
     await tx.execute(sql`
-    SELECT id FROM employment_business_objects WHERE tenant_id=${ctx.tenantId} AND employee_id=ANY(${array(planned)})
+    SELECT id FROM employment_business_objects WHERE tenant_id=${ctx.tenantId} AND employee_id=ANY(${array(ids)})
     ORDER BY employee_id,id FOR UPDATE
   `);
-  return 'acquired';
+}
+
+/**
+ * 员工闭包已取齐（transferLocksCover 为真）之后统一锁持锁集合内各参与者的业务头（DEC-996 拆段）。
+ * 补锁循环里只取员工锁，等丙的员工锁时手上不会已有甲、乙的业务头（锁序：参与员工 → 业务头 → 审批实例）。
+ */
+export async function lockTransferHeads(tx: Tx, ctx: EmploymentContext): Promise<void> {
+  await lockHeads(tx, ctx, await heldIds(tx, ctx));
+}
+
+/**
+ * 请求里点名的员工中现在存在的那些（普通读，不取锁、不被行锁阻塞）。员工主档不删除、标识由服务端生成，
+ * 存在与否在本事务内是稳定事实；查无此人的不取锁，留给首次执行的业务校验（DEC-996，见 lockTransferBusinessEmployee）。
+ */
+export async function existingTransferEmployees(
+  tx: Tx,
+  ctx: EmploymentContext,
+  ids: readonly string[],
+): Promise<string[]> {
+  // 不是 UUID 的同样当作查无此人（入口 schema 已拦，这里不抛错：抛错同样会抢在指纹比对之前）。
+  const candidates = ids.filter(isUuid);
+  if (!candidates.length) return [];
+  const found = rowsOf<{ id: string }>(
+    await tx.execute(sql`
+    SELECT id::text AS id FROM employment_employees WHERE tenant_id=${ctx.tenantId} AND id=ANY(${array(candidates)})
+  `),
+  );
+  const present = new Set(found.map((row) => row.id.toLowerCase()));
+  return candidates.filter((id) => present.has(id.toLowerCase()));
 }
 
 /** SKIP LOCKED 跳过了行时区分原因：本人已取到（在 rows 里）或主档仍在 → 被锁；主档查不到 → 不存在。普通读不被行锁阻塞。 */
@@ -181,9 +221,8 @@ export const lockTransferParticipants = (
   ctx: EmploymentContext,
   employeeId: string,
   extra: readonly string[] = [],
-  options: { skipLocked?: boolean; rescheduledExitId?: string } = {},
-): Promise<SweepLockOutcome> =>
-  acquire(tx, ctx, employeeId, extra, options.skipLocked === true, options.rescheduledExitId);
+  options: AcquireOptions = {},
+): Promise<SweepLockOutcome> => acquire(tx, ctx, employeeId, extra, options);
 
 /**
  * 断言这些员工的锁已在本事务的预锁集合内（落地 / 执行只能重入、复核，不得再新取员工锁：新取会在持组织锁之后逆序，与先锁下属再取
