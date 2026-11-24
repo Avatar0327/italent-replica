@@ -37,6 +37,7 @@ const shared = new MemoryStorage();
 const RECORDS = 'italent.commands.pending:transfer';
 const PROCESSING = '处理中 / 结果待确认';
 const OTHER_TAB = '其他标签页有该对象未确认的命令，本次命令未发出；请等待结果或先查询结果。';
+const LOCK_BUSY = '检测到你在另一个标签页打开了此单据，请关闭后重试。';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -70,6 +71,12 @@ const commandOf = () => ({
 // 自助调动提交回执的形状（self-service 调动返回调动单：id、revision、employeeRevision、status）。
 const business = () => ({ id: randomUUID(), revision: 1, employeeRevision: 7, status: 'in_review' });
 const recorded = () => (JSON.parse(shared.getItem(RECORDS) ?? '[]') as { commandId: string }[]).map((r) => r.commandId);
+/** 回执由测试控制何时到达的执行函数（A 已发出、回执未到）。 */
+function pendingExecute() {
+  let answer = (_: ReturnType<typeof business>) => {};
+  const execute = vi.fn(() => new Promise<ReturnType<typeof business>>((resolve) => (answer = resolve)));
+  return { execute, answer: (value: ReturnType<typeof business>) => answer(value) };
+}
 /** 捕获本次提交的拒绝，断言它是“已处理”且未发出。 */
 async function refusal(tab: Awaited<ReturnType<typeof openTab>>, run: Promise<unknown>) {
   const error = await run.then(
@@ -168,5 +175,91 @@ describe('AC-FE-F558-1 自助抽屉两页同时提交走其他标签页提示', 
     expect(session).toMatchObject({ saved, pending: null, error: '' });
     expect((session as { race?: string }).race ?? '').toBe('');
     expect(shared.getItem(RECORDS)).toBeNull();
+  });
+});
+
+// 第 2 轮 P2-1：登记阶段的普通拒绝（DEC-954 等锁超时）与登记竞争分开消费；普通拒绝留在本次操作的表单提示区，
+// 竞争提示只随匹配的当前锁定命令显示，占槽命令已落定时不残留。
+describe('AC-FE-F558-1 第 2 轮：普通拒绝与竞争分开', () => {
+  it('B 等锁 3 秒超时、同步时接管了 A 的同作用域记录：等锁提示不丢，A 落定、B 回到表单后仍在', async () => {
+    const scope = JSON.stringify([randomUUID(), 'synthetic-user', 'employee']);
+    const b = await openTab();
+    const a = await openTab();
+    const first = commandOf();
+    const holderA = pendingExecute();
+    enter(a);
+    const runA = a.app.runApplicationCommand(scope, first, holderA.execute);
+    await vi.waitFor(() => expect(holderA.execute).toHaveBeenCalledTimes(1));
+    const record = shared.getItem(RECORDS)!;
+    // 跨标签页交错（浏览器里两页各自一个线程）：B 提交前同步读记录时，A 的登记还没落盘；B 排队等锁期间才写入。
+    shared.removeItem(RECORDS);
+    const release = await holdLock(RECORDS);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const executeB = vi.fn(async () => business());
+    try {
+      enter(b);
+      const refused = refusal(b, b.app.runApplicationCommand(scope, commandOf(), executeB));
+      shared.setItem(RECORDS, record);
+      await vi.advanceTimersByTimeAsync(3000);
+      const error = await refused;
+      expect(error.notSent).toBe(true);
+      expect(executeB).not.toHaveBeenCalled();
+      // 落定时的同步接管了 A 的命令：锁到 A 上，但不是登记竞争，不带其他标签页提示；等锁提示仍是本次操作的结果。
+      expect(b.app.readApplicationSession(scope)).toMatchObject({
+        pending: { commandId: first.commandId },
+        race: '',
+        error: LOCK_BUSY,
+      });
+    } finally {
+      vi.useRealTimers();
+      release();
+    }
+
+    enter(a);
+    const saved = business();
+    holderA.answer(saved);
+    await expect(runA).resolves.toEqual(saved);
+    await vi.waitFor(() => expect(shared.getItem(RECORDS)).toBeNull());
+    enter(b);
+    storageEvent();
+    expect(b.app.readApplicationSession(scope)).toMatchObject({ pending: null, race: '', error: LOCK_BUSY });
+    expect(executeB).not.toHaveBeenCalled();
+  });
+
+  it('B 登记冲突、处理拒绝前 A 已落定（内核不带竞争）：不残留其他标签页提示，B 表单可再提交', async () => {
+    const scope = JSON.stringify([randomUUID(), 'synthetic-user', 'employee']);
+    const b = await openTab();
+    const a = await openTab();
+    const saved = business();
+    const executeA = vi.fn(async () => saved);
+    const executeB = vi.fn(async () => business());
+    const release = await holdLock(RECORDS);
+    enter(a);
+    const runA = a.app.runApplicationCommand(scope, commandOf(), executeA);
+    // 跨标签页交错：B 的登记读到 A 的记录被拒之后、B 处理这次拒绝之前，A 已收到回执并删掉记录（A 的删除排在 B 之后）。
+    const request = navigator.locks.request.bind(navigator.locks);
+    const spy = vi.spyOn(navigator.locks, 'request').mockImplementationOnce((...args: unknown[]) =>
+      (request as (...rest: unknown[]) => Promise<unknown>)(...args).catch(async (cause: unknown) => {
+        await vi.waitFor(() => expect(shared.getItem(RECORDS)).toBeNull());
+        throw cause;
+      }),
+    );
+    enter(b);
+    const runB = refusal(b, b.app.runApplicationCommand(scope, commandOf(), executeB));
+    spy.mockRestore();
+    release();
+    await expect(runA).resolves.toEqual(saved);
+    const error = await runB;
+    expect(error.notSent).toBe(true);
+    expect(executeB).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(shared.getItem(RECORDS)).toBeNull());
+    enter(b);
+    storageEvent();
+    // 占槽的 A 已落定、记录已删：B 没有锁定的命令，其他标签页提示不能留在表单上。
+    expect(b.app.readApplicationSession(scope)).toMatchObject({ pending: null, race: '', error: '' });
+    await expect(b.app.runApplicationCommand(scope, commandOf(), executeB)).resolves.toMatchObject({
+      status: 'in_review',
+    });
+    expect(executeB).toHaveBeenCalledTimes(1);
   });
 });
