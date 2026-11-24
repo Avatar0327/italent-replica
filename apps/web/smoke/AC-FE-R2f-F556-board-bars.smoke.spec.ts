@@ -11,8 +11,8 @@ import { expect, seedDemoUser, snapshotFixture, test } from './fixtures.js';
 
 /*
  * F-556 跨看板横条几何回归：凡走共用 BoardChart 横条（board-charts.css 的两行规则）的看板各取横条图，
- * 同一图内各行轨道左右边界一致、与数值文字长短无关；≤375px 窗口横条图不横向滚动、最小内容宽不超过卡片，
- * 轨道与数值不越出图框。
+ * 同一图内各行轨道左右边界一致、与数值文字长短无关；≤375px 窗口横条图不横向滚动，
+ * 正常排版下图框、轨道与数值都落在卡片内容区，长数值只在剩余空间换行、分组标签保持完整可见。
  * 横条使用方以代码为准：S2 结构（6.05 / 6.11）、S4b 流程（7.2.x 条形与差值图）、S5 合同（签署分组）；
  * S1 管理看板只有指标卡、S3 异动看板只有纵向柱 / 饼 / 趋势，没有横条。
  * 夹具形状照后端：hr-structure-board.ts groups()（按人数降序）、hr-process-dashboard.ts、contract-board.ts。
@@ -181,20 +181,37 @@ const tracks = (chart: Locator) =>
   );
 const spread = (values: number[]) => Math.max(...values) - Math.min(...values);
 
-// 越出给定框（卡片或横条图）的轨道或数值文字（数值按文字本身的范围量）
-const outside = (scope: Locator) =>
-  scope.evaluate((element) => {
-    const box = element.getBoundingClientRect();
-    return Array.from(element.querySelectorAll('.board-chart-mark, .board-chart-number')).flatMap((item) => {
+// 越出给定框的图框、轨道或数值文字（数值按文字本身的范围量）；content 为真时量框的内容区（扣边框与内边距）
+const outside = (scope: Locator, content = false) =>
+  scope.evaluate((element, content) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const inset = (side: 'Left' | 'Right') =>
+      content ? parseFloat(style[`border${side}Width`]) + parseFloat(style[`padding${side}`]) : 0;
+    const box = { left: rect.left + inset('Left'), right: rect.right - inset('Right') };
+    const items = element.querySelectorAll('.board-chart-bar, .board-chart-bar .board-chart-mark, .board-chart-number');
+    return Array.from(items).flatMap((item) => {
       const range = document.createRange();
       range.selectNodeContents(item);
-      const rect = item.classList.contains('board-chart-mark')
-        ? item.getBoundingClientRect()
-        : range.getBoundingClientRect();
-      const out = rect.left < box.left - 0.5 || rect.right > box.right + 0.5;
-      return out ? [`${item.className}「${item.textContent}」${Math.round(rect.left)}–${Math.round(rect.right)}`] : [];
+      const own = item.classList.contains('board-chart-number') ? range : item;
+      const { left, right } = own.getBoundingClientRect();
+      const out = left < box.left - 0.5 || right > box.right + 0.5;
+      const name = `${item.className}「${item.textContent}」`;
+      return out
+        ? [`${name}${Math.round(left)}–${Math.round(right)} 超出 ${Math.round(box.left)}–${Math.round(box.right)}`]
+        : [];
     });
-  });
+  }, content);
+
+// 被挤没或被裁的分组标签：宽度为 0，或文字宽于可见宽度（overflow: hidden + 省略号）
+const clipped = (chart: Locator) =>
+  chart.locator('.board-chart-label').evaluateAll((labels) =>
+    labels.flatMap((label) => {
+      const width = label.getBoundingClientRect().width;
+      const cut = width < 1 || label.scrollWidth > label.clientWidth;
+      return cut ? [`「${label.textContent}」可见宽 ${Math.round(width)} / 文字宽 ${label.scrollWidth}`] : [];
+    }),
+  );
 
 async function show(page: Page, board: Board) {
   await seedDemoUser(page);
@@ -219,50 +236,31 @@ async function aligned(page: Page, board: Board, viewport: string) {
     expect
       .soft(drift, `${viewport} ${board.name} ${code} 各行轨道 ${JSON.stringify(rows)} 左右边界应一致`)
       .toBeLessThanOrEqual(1);
-    expect
-      .soft(await outside(card.locator('.board-chart-bar')), `${viewport} ${board.name} ${code} 轨道与数值应在图内`)
-      .toEqual([]);
+    const chart = card.locator('.board-chart-bar');
+    expect.soft(await outside(chart), `${viewport} ${board.name} ${code} 轨道与数值应在图内`).toEqual([]);
+    // 正常排版下（不改任何宽度）直接量：图框、轨道与数值都落在卡片内容区
+    expect.soft(await outside(card, true), `${viewport} ${board.name} ${code} 横条应落在卡片内容区`).toEqual([]);
+    // 同一长值样本：数值再长也只在剩余空间换行，标签保留可读宽度、文字不被裁
+    expect.soft(await clipped(chart), `${viewport} ${board.name} ${code} 分组标签应完整可见`).toEqual([]);
   }
 }
-
-// 横条图最小内容宽（按 min-content 排版量出）与卡片内容宽：前者不超过后者，横条自身就不会把卡片撑出横向溢出
-const minContent = (card: Locator) =>
-  card.evaluate((element) => {
-    const chart = element.querySelector<HTMLElement>('.board-chart-bar')!;
-    const style = getComputedStyle(element);
-    const content = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-    const width = chart.style.width;
-    chart.style.width = 'min-content';
-    const chartMin = chart.getBoundingClientRect().width;
-    chart.style.width = width;
-    return { chart: Math.round(chartMin * 10) / 10, card: Math.round(content * 10) / 10 };
-  });
 
 for (const board of boards) {
   test(`F-556 ${board.name}看板横条同图各行轨道左右边界一致，与数值文字长短无关`, async ({ page }) => {
     await show(page, board);
     await aligned(page, board, '1280px');
-    for (const code of board.bars)
-      expect
-        .soft(await outside(article(page, board.components, code)), `1280px ${board.name} ${code} 轨道与数值应在卡内`)
-        .toEqual([]);
   });
 
-  test(`F-556 ${board.name}看板 375px 窗口横条无横向溢出，各行仍对齐且留在图内`, async ({ page }) => {
+  test(`F-556 ${board.name}看板 375px 窗口横条落在卡片内容区，各行仍对齐、标签完整可见`, async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     await show(page, board);
     await aligned(page, board, '375px');
-    // 只量横条本身而不是整页或整张卡：375px 下 PC 外壳顶栏与侧栏（DEC-007 首期只做 PC）、卡头大号总数等
-    // 非横条内容本来就可能更宽，与横条布局无关；横条图不得横向滚动，最小内容宽不得超过卡片内容宽
+    // 只量横条而不是整页：375px 下 PC 外壳顶栏与侧栏（DEC-007 首期只做 PC）本来就把页面撑宽，与横条无关；
+    // 卡头按钮、大号指标自身的宽度也不在本回归范围内，但不得再把横条连带撑出卡片内容区（上面 aligned 已量）
     for (const code of board.bars) {
-      const card = article(page, board.components, code);
-      const chart = card.locator('.board-chart-bar');
+      const chart = article(page, board.components, code).locator('.board-chart-bar');
       const scroll = await chart.evaluate((element) => element.scrollWidth - element.clientWidth);
       expect.soft(scroll, `375px ${board.name} ${code} 横条图不应横向滚动`).toBeLessThanOrEqual(0);
-      const { chart: least, card: room } = await minContent(card);
-      expect
-        .soft(least, `375px ${board.name} ${code} 横条图最小内容宽 ${least}px 应不超过卡片内容宽 ${room}px`)
-        .toBeLessThanOrEqual(room);
     }
   });
 }
