@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { isLocked, type Submission } from '../foundation/forms/store.js';
 import { usePinnedCommand, type CommandForm } from '../foundation/forms/useCommandForm.js';
 import { loadPreview, savedNotice } from '../self-service/shared/transfer-loading.js';
 import { text } from './messages.js';
@@ -51,10 +52,11 @@ export function useHrTransferCommand(
     return previewRecord(model.employeeId, loaded.preview);
   };
   // 新一次尝试（含清除、换人后重来）从当前预览起算：丢掉已确认冲突留下的旧版本与重读缓存（#350 第 2 轮 P2-1）。
-  // 内核对锁定中的槽（提交中、冲突、结果未知）不清除，这些状态仍按原规则锁定。
+  // 内核对锁定中的槽（提交中、冲突、结果未知）不清除，这些状态仍按原规则锁定。上一次的提示一并清掉。
   const restart = () => {
     command.clear();
     reread.current = undefined;
+    write.refuse('');
   };
   const conflict: CommandForm = {
     ...command,
@@ -75,6 +77,8 @@ export function useHrTransferCommand(
     saved: write.result,
     processing,
     commandError: write.error,
+    // 处理中只显示本次竞争、且仍锁在同一条恢复命令上的原因；表单里的旧错误不带进来（第 3 轮 P2-3）。
+    processingError: write.raceFor(processing ? command.state?.command?.id : undefined),
     commandNotice,
     busy: awaitingEstablishment || command.locked,
     conflict,
@@ -93,7 +97,6 @@ export function useHrTransferCommand(
         if (action !== 'draft' && terminatesOriginalContract(model) && !(await confirmTerminate())) return;
         setAction(action);
         restart();
-        write.refuse('');
         await submitHrTransfer(command, write, { tenantId, model, preview, action }, () => {
           setAwaitingEstablishment(true);
           return confirmEstablishment();
@@ -112,7 +115,7 @@ export function useHrTransferCommand(
 
 function submitHrTransfer(
   command: CommandForm,
-  write: Pick<ReturnType<typeof useHrWrite>, 'run' | 'refuse'>,
+  write: Pick<ReturnType<typeof useHrWrite>, 'run' | 'refuse' | 'raced'>,
   input: {
     tenantId: string;
     model: TransferFormModel;
@@ -146,9 +149,24 @@ function submitHrTransfer(
     });
     // A 已落定。确认重提之前保留这条状态，避免持久记录排队删除时被同步重新当作未知命令。
     if (outcome.status === 'rejected' && needsEstablishmentConfirm(outcome.error)) throw outcome.error;
-    // 登记就被拒（锁被他页占用、不支持锁、别页已登记、存储不可用）时命令未发出，useHrWrite 没机会提示，用内核的文案。
-    if (outcome.status === 'rejected' && !sent) write.refuse((outcome.error as Error | undefined)?.message ?? '');
+    if (outcome.status === 'rejected' && !sent) refuseUnsent(command, outcome, write);
     // 普通拒绝由 useHrWrite 给出提示，下次提交按当时的预览起算。
     if (outcome.status === 'done' || outcome.status === 'rejected') command.clear();
   }, ask);
+}
+
+/**
+ * 登记就被拒（锁被他页占用、不支持锁、别页已登记、存储不可用）时命令未发出，useHrWrite 没机会提示，用内核的文案。
+ * 别页抢先登记、本页已锁到那条命令上：原因只随那条命令显示在“处理中”（第 3 轮 P2-3）；其余留在表单原位置。
+ */
+function refuseUnsent(
+  command: CommandForm,
+  outcome: Submission,
+  write: Pick<ReturnType<typeof useHrWrite>, 'refuse' | 'raced'>,
+) {
+  const message = (outcome.error as Error | undefined)?.message ?? '';
+  const holding = command.peek();
+  const commandId = holding?.command?.id;
+  if (isLocked(holding) && commandId && commandId !== outcome.command?.id) write.raced(message, commandId);
+  else write.refuse(message);
 }

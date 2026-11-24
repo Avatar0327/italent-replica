@@ -487,6 +487,8 @@ function draftCommandState(
     busy: commands.busy || locked,
     conflict: scope ? (draft.command.locked ? draft.command : hr.conflict) : undefined,
     commandError: scope ? draft.error || hr.commandError : '',
+    /** 处理中只显示与当前恢复命令关联的本次竞争原因；清除、保存的旧错误留在表单原位置（第 3 轮 P2-3）。 */
+    processingError: scope ? hr.processingError : '',
     submit: (action: TransferAction) => (locked ? Promise.resolve() : commands.submit(action)),
   };
 }
