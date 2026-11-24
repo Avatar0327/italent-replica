@@ -171,6 +171,20 @@ export async function directTransfer(w: DeferralWorld, effectiveDate: string, fi
   return createTransfer(w, 'direct', effectiveDate, fields);
 }
 
+/**
+ * 走真实业务创建入口（POST /employees/:id/businesses，kind: org_adjustment）办一条直接组织调整，造“前驱”。
+ * 设计 §7.1 AC-TRF-72 成对用例的前驱是 HR 新增的组织调整，不是调动。
+ */
+export async function directOrgAdjustment(w: DeferralWorld, effectiveDate: string, fields: Record<string, unknown>) {
+  const employee = await w.session.getEmployee(w.employee.id);
+  const response = await w.session.request('POST', `/employees/${w.employee.id}/businesses`, {
+    ifMatch: employee.revision,
+    body: { kind: 'org_adjustment', mode: 'direct', effectiveDate, fields },
+  });
+  expect(response.status, await response.clone().text()).toBe(201);
+  return (await response.json()) as EmploymentBusiness;
+}
+
 /** 走真实 /records/:id 编辑一条已生效记录，触发向后更新。 */
 export async function editRecord(w: DeferralWorld, id: string, fields: Record<string, unknown>) {
   const response = await w.session.request('PATCH', `/records/${id}`, {

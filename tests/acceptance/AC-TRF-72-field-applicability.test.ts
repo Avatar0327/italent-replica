@@ -9,6 +9,7 @@ import {
   clearInjected,
   createTransfer,
   deferralWorld,
+  directOrgAdjustment,
   directTransfer,
   editRecord,
   injectJ3,
@@ -138,7 +139,7 @@ describe('AC-TRF-72 覆盖值：HR 改选职位后部门改走再改回', () => 
 
 describe('AC-TRF-72 落地解析值：覆盖值被退回后落地取前驱', () => {
   it.each(['不改备注', '中间改一次备注'])(
-    'Z4：延迟职位 → HR 选 A 部门的职位 → 部门改 B → 另有 B/Q 调动先落地（%s）',
+    'Z4：延迟职位 → HR 选 A 部门的职位 → 部门改 B → HR 新增 B/Q 组织调整先落地（%s）',
     async (variant) => {
       const w = await deferralWorld(database().db, `f036s6-trf72-z4-${variant}`, 'open');
       // 前驱记录职位为空，申请里的延迟职位才会被向后更新命中（值匹配要求目标值等于编辑前的值）
@@ -158,8 +159,9 @@ describe('AC-TRF-72 落地解析值：覆盖值被退回后落地取前驱', () 
         expect(decisions(await positionRows(w, draft.id))).toHaveLength(1);
       }
 
-      // HR 另办一条 10-18 的调动：落在 B 部门 Q 职位，先于申请落地
-      const lateral = await directTransfer(w, '2026-10-18', { departmentId: w.to.id, positionId: w.target.id });
+      // HR 另办一条 10-18 的组织调整（设计 §7.1 的前驱）：落在 B 部门 Q 职位，先于申请落地
+      const lateral = await directOrgAdjustment(w, '2026-10-18', { departmentId: w.to.id, positionId: w.target.id });
+      expect(lateral.kind).toBe('org_adjustment');
       expect(lateral.record).toMatchObject({ fields: { departmentId: w.to.id, positionId: w.target.id } });
 
       const landed = await land(w, draft, '2026-11-01');

@@ -3,7 +3,8 @@
  * 序列同步写出在途第 2 版、落地后记录快照取最新值；postId / levelId / gradeId / sequenceId 的策略直接断言为 none。
  * 造数据全走真实入口（业务调动、/records/:id 编辑、岗位序列同步 + 作业）。
  */
-import { withTenant } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
+import { deferralShape } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { loadFieldOrigins } from '../../apps/api/src/modules/employment/field-origin-store.js';
@@ -18,6 +19,7 @@ import {
   type DeferralWorld,
 } from './AC-EMP-27-deferral-support.js';
 import { forwardJobApi } from './AC-FWD-support.js';
+import { resultRows } from './AC-ORG-people-support.js';
 import { worker } from './AC-JOB-sequence-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -77,9 +79,14 @@ describe('AC-EMP-27 申请路径的真实写入', () => {
     expect(forward).toMatchObject({ value: w.sibling.id, version: 2 });
     expect((await states(w, draft.id)).get('preset:positionId')).toMatchObject({ policy: 'deferred' });
 
+    const beforeLanding = await states(w, draft.id);
     const landed = await land(w, draft, '2026-11-01');
     expect(landed.fields).toMatchObject({ positionId: w.sibling.id });
     expect(await payloadVersions(w, draft.id)).toEqual([1, 2]);
+    // 落地后策略行与 deferralShape 仍在（§4.5：有效值只让字段退出“待定”标记，不改策略）
+    const afterLanding = await states(w, draft.id);
+    expect(afterLanding.get('preset:positionId')).toMatchObject({ policy: 'deferred' });
+    expect(deferralShape(afterLanding)).toBe(deferralShape(beforeLanding));
   });
 
   it('岗位序列同步写出在途申请的第 2 版，落地记录取最新序列', async () => {
@@ -115,4 +122,38 @@ describe('AC-EMP-27 申请路径的真实写入', () => {
     expect(landed.fields.sequenceId).toBe(replacement.id);
     expect((await states(w, draft.id)).get('preset:sequenceId')).toMatchObject({ policy: 'none' });
   });
+});
+
+const policies = (map: Awaited<ReturnType<typeof states>>) =>
+  Object.fromEntries([...map].map(([code, state]) => [code, state.policy]));
+
+describe('AC-EMP-27 真实载荷快照写入之后策略行与 deferralShape 保持', () => {
+  it.each(['both', 'department', 'position'] as const)(
+    '%s：迟到调动重排写出 v2 记录快照，策略行、来源行与 deferralShape 都不变',
+    async (shape) => {
+      const w = await deferralWorld(database().db, `f036s6-r3-snapshot-${shape}`, shape);
+      const transfer = await directTransfer(w, '2026-10-05', shape === 'both' ? {} : { departmentId: w.from.id });
+      const beforeStates = await states(w, transfer.id);
+      const beforeRows = (await ledger(w, transfer.id)).map((row) => row.seq);
+      expect(deferralShape(beforeStates)).toBe(shape);
+      expect(await payloadVersions(w, transfer.id)).toEqual([1]);
+
+      const run = await w.runScheduler('2026-10-06T01:00:00Z');
+      expect(run).toMatchObject({ failed: [], errors: [] });
+      // 迟到落地写出的是真实的记录快照版本（is_record_snapshot），不是普通编辑版本
+      expect(await payloadVersions(w, transfer.id)).toEqual([1, 2]);
+      const [version] = await withTenant(w.db, w.session.tenant.id, async (tx) =>
+        resultRows<{ snapshot: boolean }>(
+          await tx.execute(sql`SELECT is_record_snapshot AS snapshot FROM employment_payload_versions
+            WHERE tenant_id = ${w.session.tenant.id} AND business_id = ${transfer.id}::uuid AND version_no = 2`),
+        ),
+      );
+      expect(version?.snapshot).toBe(true);
+
+      const afterStates = await states(w, transfer.id);
+      expect(deferralShape(afterStates)).toBe(shape);
+      expect(policies(afterStates)).toEqual(policies(beforeStates));
+      expect((await ledger(w, transfer.id)).map((row) => row.seq)).toEqual(beforeRows);
+    },
+  );
 });
