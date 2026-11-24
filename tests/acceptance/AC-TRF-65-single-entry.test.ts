@@ -13,6 +13,9 @@
  *    首次 PATCH 放锁后按当前授权拒绝、零写入；范围没收回时照常 200（真 PG）。
  * ⑰ 回执里的字典显示值（用工形式、人员类别名称）随命令保存：字典改名后同键重放（直接 / 失败回查）原文仍与首次逐字节一致，
  *    部分撤权后仍按当前范围裁掉范围外员工的标识（真 PG 与 PGlite 都跑）。
+ * 第 8 轮（DEC-1000）：
+ * ⑱ 回执名称只由调动入口随命令保存：通用 PATCH 改转正草稿日期后字典改名，同键重放（直接 / 失败回查）与详情一样取现名；
+ *    未改名时重放原文与首次逐字节一致（真 PG 与 PGlite 都跑）。
  * 夹具：甲＝部门 HR 重放的调动草稿所属员工；乙＝与甲同部门的另一名员工（⑪：把甲设为乙的虚线经理后进入甲的离职清空参与集合）；
  * 丙＝UUID 最大的第三名员工（⑬：取锁之后才把甲设为丙的虚线经理）。
  */
@@ -22,8 +25,9 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import type * as Commands from '../../apps/api/src/commands.js';
 import type * as TransferLocks from '../../apps/api/src/modules/employment/transfer-locks.js';
+import { installProbationSeeds, withLoginEmail } from './AC-EMP-support.js';
 import { waitForLockWaiters } from './AC-TRF-F181a-support.js';
-import { BASE, LATER, betaWorld, ok, scopedHr, selfWorld, snapshotOf } from './AC-TRF-F036S4-support.js';
+import { BASE, DATE, LATER, betaWorld, ok, scopedHr, selfWorld, snapshotOf } from './AC-TRF-F036S4-support.js';
 
 // 失败后回查：让命令主事务的 guard.before 第一次抛错，runCommand 随后走 replayAfterFailure 的回查出口。
 // afterFirstLock：重放请求第一次取参与员工锁（lockTransferParticipants）返回后执行一次——用来在“取锁之后、读授权之前 / 之后”
@@ -558,6 +562,79 @@ describe('AC-TRF-65 ⑰ 回执字典显示值随命令保存：字典改名后�
       expect(JSON.stringify(replayed).toLowerCase()).not.toContain(d.outsider.employeeId.toLowerCase());
       expect(replayed).toEqual(withoutManager(d.firstBody, d.outsider.employeeId));
       expect(await snapshotOf(d.s, d.draft.id)).toEqual(before);
+    });
+  });
+});
+
+/**
+ * ⑱ 夹具（第 8 轮，DEC-1000）：回执名称只由调动入口随命令保存，转正等非调动单据不受影响。员工引用新建的用工形式与人员类别，
+ * 全权 HR 在通用入口建一张转正申请草稿，再用通用 PATCH 改生效日期（命令 K0）；首次回执带两个字典的名称。
+ */
+async function regularizationWorld(label: string) {
+  const d = await dictionaryWorld(label);
+  const { w } = d.s;
+  const { employmentForm, employmentType } = d.firstBody.fields;
+  const person = await w.json<{ id: string; revision: number }>(
+    await w.request(w.hr.id, 'POST', `${BASE}/employees`, {
+      ifMatch: 0,
+      body: { name: '合成试用员工', code: `S4_${randomUUID().replaceAll('-', '')}` },
+    }),
+    201,
+  );
+  // 入职控制项 probation：试用期内的员工才能发起转正（regularization-eligibility.ts）；转正须选试用结果字典项。
+  await installProbationSeeds(w.db, w.tenant.id);
+  const hire = { kind: 'hire', mode: 'direct', effectiveDate: '2020-01-01', probation: true };
+  const hired = await w.json<{ employeeRevision: number }>(
+    await w.request(w.hr.id, 'POST', `${BASE}/employees/${person.id}/businesses`, {
+      ifMatch: person.revision,
+      body: withLoginEmail(person.id, {
+        ...hire,
+        fields: { departmentId: d.s.source, employmentForm, employmentType },
+      }),
+    }),
+    201,
+  );
+  const draft = await w.json<{ id: string; kind: string; status: string; revision: number }>(
+    await w.request(w.hr.id, 'POST', `${BASE}/employees/${person.id}/businesses`, {
+      ifMatch: hired.employeeRevision,
+      body: { kind: 'regularization', mode: 'application', effectiveDate: DATE, probationResult: 'normal' },
+    }),
+    201,
+  );
+  expect({ kind: draft.kind, status: draft.status }).toEqual({ kind: 'regularization', status: 'draft' });
+  const k0 = { ifMatch: draft.revision, idempotencyKey: `k0-reg-${label}`, body: { effectiveDate: LATER } };
+  const patch = () => w.request(w.hr.id, 'PATCH', `${BASE}/businesses/${draft.id}`, k0);
+  const firstText = await (await ok(await patch())).text();
+  expect(JSON.parse(firstText).fields).toMatchObject({
+    employmentFormName: '合成正式员工',
+    employmentTypeName: '合成人员类别',
+  });
+  return { ...d, draft, patch, firstText };
+}
+
+describe('AC-TRF-65 ⑱ 回执名称只在调动入口随命令保存：转正草稿改名后同键重放仍取现名（DEC-1000）', () => {
+  describe.each(['direct', 'recheck'] as const)('缓存命中的同键重放（%s）', (kind) => {
+    const replay = async (r: Awaited<ReturnType<typeof regularizationWorld>>) => {
+      if (kind === 'recheck') hooks.failMainTransaction = true;
+      const response = await ok(await r.patch());
+      hooks.failMainTransaction = false;
+      return response;
+    };
+
+    it('只改用工形式与人员类别的名称：转正草稿的重放与详情一样显示现名（不冻结首次名称）', async () => {
+      const r = await regularizationWorld(`f036s4-65-18-${kind}`);
+      await r.rename();
+      const replayed = await (await replay(r)).json();
+      expect(replayed.fields).toMatchObject({ employmentFormName: '合成改名', employmentTypeName: '合成类别改名' });
+      const detail = await r.s.w.json<{ fields: Record<string, unknown> }>(
+        await r.s.w.request(r.s.w.hr.id, 'GET', `${BASE}/businesses/${r.draft.id}`),
+      );
+      expect(detail.fields).toMatchObject({ employmentFormName: '合成改名', employmentTypeName: '合成类别改名' });
+    });
+
+    it('对照：字典没改名时转正草稿的重放原文与首次逐字节一致', async () => {
+      const r = await regularizationWorld(`f036s4-65-18-${kind}-same`);
+      expect(await (await replay(r)).text()).toBe(r.firstText);
     });
   });
 });
