@@ -24111,6 +24111,7 @@
           "transfer.initiator"
         ],
         "fieldsIn": [
+          "requireEmploymentWrite",
           "transfer write"
         ],
         "fieldsOut": [
@@ -24124,6 +24125,9 @@
         "object": [
           "object.* 动作",
           "readPageContext"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create"
         ],
         "scope": [
           "employment scope",

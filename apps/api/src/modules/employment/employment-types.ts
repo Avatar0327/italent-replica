@@ -134,10 +134,18 @@ export async function validateEmploymentType(tx: Tx, tenantId: string, id: unkno
   await validateSelectedEmploymentType(tx, tenantId, id, id);
 }
 
-/** 名称补充发生在字段权限裁剪后（看不到 employmentType 就不补名称）；停用 / 删除后仍显示历史名称。 */
-export async function employmentTypeNames(tx: Tx, tenantId: string, value: unknown): Promise<unknown> {
+/**
+ * 名称补充发生在字段权限裁剪后（看不到 employmentType 就不补名称）；停用 / 删除后仍显示历史名称。
+ * frozen：命令随回执保存的标识 → 名称（receipt-names.ts，DEC-999），命中的不再查字典现名，其余照旧现查。
+ */
+export async function employmentTypeNames(
+  tx: Tx,
+  tenantId: string,
+  value: unknown,
+  frozen: Readonly<Record<string, string | null>> = {},
+): Promise<unknown> {
   const ids = new Set<string>();
-  function visit(node: unknown, names?: ReadonlyMap<string, string>): unknown {
+  function visit(node: unknown, names?: ReadonlyMap<string, string | null>): unknown {
     if (Array.isArray(node)) return node.map((child) => visit(child, names));
     if (!node || typeof node !== 'object' || node instanceof Date) return node;
     const object = node as Record<string, unknown>;
@@ -150,11 +158,14 @@ export async function employmentTypeNames(tx: Tx, tenantId: string, value: unkno
   }
   visit(value);
   if (!ids.size) return value;
-  const found = await tx
-    .select({ id: table.id, name: table.name })
-    .from(table)
-    .where(and(eq(table.tenantId, tenantId), sql`${table.id}::text IN ${[...ids]}`));
-  return visit(value, new Map(found.map((row) => [row.id, row.name])));
+  const missing = [...ids].filter((id) => !Object.hasOwn(frozen, id));
+  const found = missing.length
+    ? await tx
+        .select({ id: table.id, name: table.name })
+        .from(table)
+        .where(and(eq(table.tenantId, tenantId), sql`${table.id}::text IN ${missing}`))
+    : [];
+  return visit(value, new Map([...Object.entries(frozen), ...found.map((row) => [row.id, row.name] as const)]));
 }
 
 const lock = (tx: Tx, tenantId: string) => advisoryLock(tx, asUuid(tenantId), ':employment-types');
