@@ -4344,7 +4344,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost': [
     'apps/api/src/modules/job/read-model.ts#loadJobObject',
   ],
-  'apps/api/src/modules/employment/field-origin-store.ts#appendFieldOrigins': ['#jsonValue'],
+  'apps/api/src/modules/employment/field-origin-store.ts#appendFieldOrigins': [
+    '#allocateSeqs',
+    '#jsonValue',
+    '#requireKey',
+  ],
+  'apps/api/src/modules/employment/field-origin-store.ts#applicabilityOf': ['#applicability'],
   'apps/api/src/modules/employment/field-origin-store.ts#loadDerivationAnchors': [
     '#selectOrigins',
     '#textList',
@@ -4361,16 +4366,23 @@ export const GRAPH: Graph = {
     '#loadFieldOriginRows',
     'packages/domain/src/employment/field-origins.ts#foldFieldOrigins',
   ],
+  'apps/api/src/modules/employment/field-origin-store.ts#policyKinds': [
+    'packages/domain/src/employment/field-origins.ts#FIELD_ORIGIN_POLICIES',
+  ],
   'apps/api/src/modules/employment/field-origin-store.ts#projectPayloadMarkers': [
     '#loadFieldOriginRows',
     'packages/domain/src/employment/field-origins.ts#foldFieldOrigins',
     'packages/domain/src/employment/field-origins.ts#projectOriginMarkers',
   ],
+  'apps/api/src/modules/employment/field-origin-store.ts#repeatsPolicy': ['#policyKinds', '#sameValue'],
   'apps/api/src/modules/employment/field-origin-store.ts#settleFieldValues': [
+    '#FIELD_NOT_APPLICABLE',
     '#applicability',
-    '#loadFieldOrigins',
-    '#sameValue',
+    '#exemptKinds',
+    '#loadFieldOriginRows',
+    '#repeatsPolicy',
     'packages/domain/src/employment/field-origins.ts#effectiveOrigin',
+    'packages/domain/src/employment/field-origins.ts#foldFieldOrigins',
     'packages/domain/src/employment/field-origins.ts#settleValueRows',
   ],
   'apps/api/src/modules/employment/field-origin-write.ts#appendPayloadFieldOrigins': [
@@ -4392,6 +4404,12 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/field-origin-write.ts#originActorKind': [
     'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
+  ],
+  'apps/api/src/modules/employment/field-origin-write.ts#requireSavedValuesApplicable': [
+    'apps/api/src/modules/employment/field-origin-store.ts#settleFieldValues',
+    'apps/api/src/modules/employment/record-store.ts#camelRow',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/record-store.ts#snapshotFields',
   ],
   'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS': ['#PRESET_FIELDS'],
   'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS': [
@@ -4664,9 +4682,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance': [
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
-    '#byResolutionOrder',
+    '#resolveFromPredecessor',
     '#setField',
   ],
+  'apps/api/src/modules/employment/inheritance.ts#resolveFromPredecessor': ['#byResolutionOrder', '#setField'],
+  'apps/api/src/modules/employment/inheritance.ts#resolveReopenedFields': ['#resolveFromPredecessor'],
   'apps/api/src/modules/employment/inheritance.ts#restoreFrozenDefaults': [
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
     '#inheritanceOrigin',
@@ -8058,6 +8078,11 @@ export const GRAPH: Graph = {
     '#requireImportTransferAccess',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
   ],
+  'apps/api/src/modules/employment/routes.ts#authorizeTransition': [
+    'apps/api/src/modules/employment/field-origin-write.ts#requireSavedValuesApplicable',
+    'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite',
+    'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
+  ],
   'apps/api/src/modules/employment/routes.ts#discloseDeletionBlock': [
     'apps/api/src/modules/employment/deletion-guards.ts#PendingApplicationError',
     'apps/api/src/modules/employment/deletion-guards.ts#ReportingCycleDeletionError',
@@ -8127,6 +8152,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-routes.ts#runExitCancel',
     'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard',
     '#authorizeBusinessWrite',
+    '#authorizeTransition',
     '#discloseDeletionBlock',
     '#routesToCancel',
     '#transitionConfirmation',
@@ -8784,6 +8810,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/write-service.ts#insertNewEmploymentCycle': [
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
   ],
+  'apps/api/src/modules/employment/write-service.ts#landingRows': [
+    'apps/api/src/modules/employment/field-origin-store.ts#FIELD_NOT_APPLICABLE',
+    'apps/api/src/modules/employment/field-origin-store.ts#applicabilityOf',
+  ],
   'apps/api/src/modules/employment/write-service.ts#latestTimelineRecord': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
@@ -8841,7 +8871,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/field-origin-write.ts#formFieldOrigins',
     'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
-    'packages/domain/src/employment/field-origins.ts#requestInputFields',
   ],
   'apps/api/src/modules/employment/write-service.ts#propagateMaterializedStatus': [
     'apps/api/src/modules/employment/employee-status.ts#propagateEmployeeStatus',
@@ -8850,6 +8879,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/write-service.ts#recordLandingResolutions': [
     'apps/api/src/modules/employment/field-origin-store.ts#settleFieldValues',
     'apps/api/src/modules/employment/field-origin-write.ts#appendPayloadFieldOrigins',
+    'apps/api/src/modules/employment/inheritance.ts#resolveReopenedFields',
+    '#landingRows',
   ],
   'apps/api/src/modules/employment/write-service.ts#registerCompletion': [
     'apps/api/src/modules/transfer/completion.ts#openCompletion',
