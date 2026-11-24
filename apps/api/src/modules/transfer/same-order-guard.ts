@@ -31,15 +31,19 @@ import {
  * 第 6 轮 P2：补锁循环每轮都连业务头一起锁，第二轮会在持甲、乙业务头时等丙的员工锁（逆序）；现分两段，员工锁全部先于业务头。
  * 第 7 轮 P2-1：单人闭包的业务头段什么都不锁，首次执行在读完授权之后才等本单业务头；现单人闭包也在封口前锁本单业务头。
  * 第 7 轮 P2-2：回执里的字典显示值（用工形式 / 人员类别名称）随命令保存（receiptNames），重放不再现查字典名。
+ * 第 8 轮 P2：上一版在本函数里无条件开启 receiptNames，通用 PATCH / 状态动作 / 生效重试 / 通用新建对转正等非调动单据
+ *   也经这里，非调动单据的重放就改成了旧名（与详情不一致）。现由各入口按“是否调动单”显式传入，这里不再替调用方决定。
  * 凡是会写同一张调动单或对它做状态动作、并走命令台账的入口都用这里，不要各写一套。
  */
 /**
  * 命令事务内重算上下文的公共步骤：（可选）先取锁 → 丢掉入口的旧例外 → 当前范围与旗标 → 由调用方派生同单来源 / 例外 → 复核 →
  * 登记为命令上下文。`lock` 必须在读任何授权输入之前完成，之后读到的全部授权输入都是锁内的当前值。
+ * `receiptNames` 只改回执的字典显示值来源，不影响取锁点、授权读取时机与错误码。
  */
 function refreshGuard(
   deps: TenantRouteDeps,
   entry: EmploymentContext,
+  receiptNames: boolean,
   derive: (tx: Tx, fresh: EmploymentContext) => Promise<EmploymentContext>,
   check: (tx: Tx, scoped: EmploymentContext) => Promise<void>,
   lock?: (tx: Tx) => Promise<void>,
@@ -67,11 +71,22 @@ function refreshGuard(
       adoptCommandContext(tx, entry, scoped);
     },
   });
-  // S4 同单写回执的字典显示值随命令保存（DEC-999）：重放（直接 / 失败回查）原文不随字典改名而变。
-  return { ...guard, receiptNames: true };
+  // 调动单（S4）回执的字典显示值随命令保存（DEC-999）：重放（直接 / 失败回查）原文不随字典改名而变。
+  // 非调动单据不开启，重放照旧按字典现名补名称，与详情一致（DEC-1000）。
+  return receiptNames ? { ...guard, receiptNames: true } : guard;
 }
 
-export interface SameOrderSpec {
+/**
+ * 回执的字典显示值是否随命令保存（DEC-999 / DEC-1000）：只有调动单（kind = 'transfer'，含跨部门 / 跨组织 / 批量等表单）开启。
+ * 各入口必须显式给出，不设缺省：共享守卫不知道调用它的是哪类单据。
+ */
+export interface ReceiptNamesSpec {
+  readonly receiptNames: boolean;
+}
+/** 通用入口按单据类型判定：只有调动单开启回执名称保存。 */
+export const transferReceiptNames = (kind: string): ReceiptNamesSpec => ({ receiptNames: kind === 'transfer' });
+
+export interface SameOrderSpec extends ReceiptNamesSpec {
   readonly businessId: string;
   readonly employeeId?: string;
   /** 编辑可改目标部门：按新部门重算目标例外。 */
@@ -90,6 +105,7 @@ export function sameOrderWriteGuard(
   return refreshGuard(
     deps,
     entry,
+    spec.receiptNames,
     async (tx, fresh) => {
       // 锁已在 lock 步骤取完（'command' 阶段再取是幂等的）；同单来源、草稿上的同值判定、保存值可信度和字段写权
       // 读的是锁保护的当前载荷与锁内范围；首次执行、缓存重放、失败回查都经此处，缓存命中后才交出旧结果（第 3 轮 P2-1，DEC-431①）。
@@ -123,7 +139,7 @@ export function sameOrderWriteGuard(
 export function sameOrderScopeGuard(
   deps: TenantRouteDeps,
   entry: EmploymentContext,
-  spec: {
+  spec: ReceiptNamesSpec & {
     readonly authorize: (tx: Tx, scoped: EmploymentContext) => Promise<void>;
     readonly writeScope?: { readonly businessId: string; readonly employeeId?: string };
   },
@@ -131,6 +147,7 @@ export function sameOrderScopeGuard(
   return refreshGuard(
     deps,
     entry,
+    spec.receiptNames,
     async (_tx, fresh) => fresh,
     async (tx, scoped) => {
       await spec.authorize(tx, scoped);
@@ -157,9 +174,11 @@ export function sameOrderCreateGuard(
     readonly authorize: (tx: Tx, scoped: EmploymentContext) => Promise<void>;
   },
 ): ScopedCommandGuard {
+  // 只服务调动发起 / 覆盖暂存（调动专用入口），恒为调动单。
   return refreshGuard(
     deps,
     entry,
+    true,
     async (tx, fresh) => {
       await spec.authorize(tx, fresh);
       return transferTargetContext(tx, fresh, spec.employeeId, spec.input, spec.targetDepartmentId);

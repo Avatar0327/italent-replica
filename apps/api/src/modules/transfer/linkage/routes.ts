@@ -109,6 +109,7 @@ export function registerTransferLinkageRoutes(router: Hono<TenantEnv>, deps: Dep
       {
         // 命令事务内按当前范围重验（统一 guard）：重放 / 失败回查不沿用入口的旧范围
         guard: sameOrderScopeGuard(deps, ctx, {
+          receiptNames: true, // 调动专用入口，恒为调动单（DEC-1000）
           authorize: async (tx, scoped) => {
             const today = tenantLocalDate(scoped.now, scoped.timezone);
             const current = await loadEmploymentBusiness(tx, scoped.tenantId, id, today, scoped.scope);
@@ -143,6 +144,7 @@ function registerRetry(router: Hono<TenantEnv>, deps: Deps) {
       }),
       {
         guard: sameOrderScopeGuard(deps, ctx, {
+          receiptNames: true, // 调动专用入口，恒为调动单（DEC-1000）
           authorize: async (tx, scoped) => {
             await requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation');
             await authorizeRetry(tx, deps, scoped, id, {});

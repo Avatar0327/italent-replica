@@ -583,7 +583,7 @@ export function adoptCommandContext(tx: Tx, ctx: EmploymentContext, scoped: Empl
 /** 带事务内范围标记的 CommandGuard：runWrite 对它改用 commandContext 执行与校验结果，见 runWrite。 */
 export interface ScopedCommandGuard extends CommandGuard {
   readonly scoped: true;
-  /** 回执里的字典显示值随命令保存（S4 同单写入口，DEC-999，见 receipt-names.ts）。 */
+  /** 回执里的字典显示值随命令保存（只由调动单入口开启，DEC-999 / DEC-1000，见 receipt-names.ts）。 */
   readonly receiptNames?: true;
 }
 export const scopedGuard = (guard: CommandGuard): ScopedCommandGuard => ({ ...guard, scoped: true });

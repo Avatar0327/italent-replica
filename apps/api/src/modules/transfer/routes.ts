@@ -185,6 +185,7 @@ function registerDraftRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       {
         // 命令事务内按当前授权重过删除授权链（调动同单写统一 guard：来源 / 范围 / 目标例外都在命令内重算）
         guard: sameOrderWriteGuard(deps, ctx, {
+          receiptNames: true, // 调动专用入口，恒为调动单（DEC-1000）
           businessId,
           employeeId: id,
           authorize: (_tx, scoped) => requireEmploymentWrite(scoped, 'delete', {}, 'Employment.Delete'),

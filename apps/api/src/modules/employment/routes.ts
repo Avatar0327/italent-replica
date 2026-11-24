@@ -100,7 +100,7 @@ import type { EmploymentBusiness, EmploymentBusinessPatch, EmploymentContext } f
 import { registerTransferRoutes } from '../transfer/routes.js';
 import { requireTransferSource } from '../transfer/access.js';
 import { requireDirectTransfer, transferBusinessContext } from '../transfer/service.js';
-import { sameOrderScopeGuard, sameOrderWriteGuard } from '../transfer/same-order-guard.js';
+import { sameOrderScopeGuard, sameOrderWriteGuard, transferReceiptNames } from '../transfer/same-order-guard.js';
 import { batchEditEmploymentRecords, normalizeBatchEdit } from './batch-edit.js';
 import { recordOperationLog } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
@@ -354,6 +354,7 @@ function genericCapacityCreateGuard(
 ) {
   if (!checksEmploymentCapacity(input.kind)) return undefined;
   return sameOrderScopeGuard(deps, ctx, {
+    ...transferReceiptNames(input.kind),
     authorize: async (tx, scoped) => {
       await requirePermission(scoped.authorize!, {
         ...scoped,
@@ -539,8 +540,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         guard: isExitKind(current.kind)
           ? exitCommandGuard(deps, ctx, 'update', { ...exitTarget, patch: input }, { businessId: id })
           : sameOrderWriteGuard(deps, ctx, {
-              businessId: id,
-              employeeId: current.employeeId,
+              ...sameOrderTarget(id, current),
               targetDepartmentId: departmentId,
               referenceChange: input,
               authorize: async (tx, scoped) => {
@@ -554,6 +554,13 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
   registerBusinessTransitions(router, deps);
 }
+
+/** 通用同单写入口的目标单据：回执名称只对调动单随命令保存（DEC-1000，转正等非调动单据照旧现查字典名）。 */
+const sameOrderTarget = (businessId: string, current: { readonly kind: string; readonly employeeId: string }) => ({
+  ...transferReceiptNames(current.kind),
+  businessId,
+  employeeId: current.employeeId,
+});
 
 /**
  * 通用 DELETE 对离职单是否按“撤销”处理：有离职扩展行，且（处于可撤销状态，或这个幂等键已是本业务的撤销命令——重放）。
@@ -605,8 +612,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
                 { businessId: id },
               )
             : sameOrderWriteGuard(deps, ctx, {
-                businessId: id,
-                employeeId: current.employeeId,
+                ...sameOrderTarget(id, current),
                 ...(action === 'submit' ? { referenceChange: {} } : {}),
                 authorize: async (tx, scoped) => {
                   if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
@@ -744,6 +750,7 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
               { businessId: id },
             )
           : sameOrderScopeGuard(deps, ctx, {
+              ...transferReceiptNames(current.kind),
               writeScope: { businessId: id, employeeId: current.employeeId },
               authorize: (_tx, scoped) => requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation'),
             }),
