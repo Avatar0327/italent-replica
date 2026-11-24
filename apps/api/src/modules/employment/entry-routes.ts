@@ -2,16 +2,23 @@
  * 待入职状态动作路由（R2 BE-2a；34 EN-R8 / R9 / R10 / R14）：办理入职、取消、改期、编辑（F-188）、删除。
  * 策略登记在 employment/policy.ts；写权限沿用任职记录的“编辑 / 删除”对象操作与按钮（原站是否另有独立权限项未验证）。
  */
-import { withTenant } from '@italent/db';
+import { withTenant, type Tx } from '@italent/db';
 import { ENTRY_CANCEL_REASON_CODES, ENTRY_EDIT_EMPLOY_TYPES, ENTRY_REMARK_MAX, tenantLocalDate } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { getModuleViewableFields } from '../permission/module-access.js';
+import { COLLECTION } from '../onboarding/collection-access.js';
+import {
+  authorizeInTransaction,
+  getModuleViewableFields,
+  getModuleViewableFieldsInTransaction,
+  resolveModuleScopeInTransaction,
+} from '../permission/module-access.js';
 import {
   EMPLOYEE_OBJECT,
+  EMPLOYMENT_OBJECT,
   jsonBody,
   pageQuery,
   readContext,
@@ -30,7 +37,7 @@ import { generateEntryContract, requireEntryContractAccess } from './entry-contr
 import { entryContractSchema, type EntryContract } from './entry-contract-schema.js';
 import { pendingActionGuard, pendingDeleteGuard } from './replay-guard.js';
 import { cancelPendingEntry, deletePendingEntry, editPendingEntry, postponePendingEntry } from './entry-actions.js';
-import { ENTRY_VIEWS, listEntryView } from './entry-views.js';
+import { ENTRY_COLLECTION_STATUSES, ENTRY_VIEWS, listEntryView } from './entry-views.js';
 import type { EmploymentContext } from './types.js';
 import { requireSavedBusiness } from './write-service.js';
 
@@ -203,6 +210,27 @@ function registerEntryEditRoutes(
   });
 }
 
+async function entryCollectionQuery(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: EmploymentContext, tx: Tx) {
+  const filter = c.req.query('collectionStatus');
+  const sort = c.req.query('sortBy') === 'collectionStatus';
+  const authorize = authorizeInTransaction(deps.authorize, tx);
+  const fields = await getModuleViewableFieldsInTransaction(deps, ctx, EMPLOYMENT_OBJECT, tx);
+  const taskFields = await getModuleViewableFieldsInTransaction(deps, ctx, COLLECTION, tx);
+  const allowed =
+    (fields?.has('collectionStatus') ?? true) &&
+    (taskFields?.has('status') ?? true) &&
+    (await authorize({ ...ctx, action: 'object.view', resource: COLLECTION }));
+  if (!allowed) {
+    if (filter !== undefined || sort) throw new AppError('FORBIDDEN', '采集状态不可查看');
+    return undefined;
+  }
+  return {
+    scope: await resolveModuleScopeInTransaction(deps, ctx, tx, COLLECTION),
+    ...(filter !== undefined ? { status: parse(z.enum(ENTRY_COLLECTION_STATUSES), filter) } : {}),
+    ...(sort ? { order: parse(z.enum(['asc', 'desc']), c.req.query('direction') ?? 'asc') } : {}),
+  };
+}
+
 /**
  * 入职四视图（EN-R1）：列表按任职记录的数据范围裁剪，字段按任职记录可见字段裁剪；
  * 员工姓名 / 工号属于人员对象，按人员对象的可见字段另行裁剪（无权看就不出现，不整体拒绝）。
@@ -212,9 +240,20 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readPageContext(c, deps, 'list');
     const view = parse(z.enum(ENTRY_VIEWS), c.req.query('view'));
     const page = pageQuery(c);
-    const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listEntryView(tx, ctx.tenantId, { view, today: tenantLocalDate(ctx.now, ctx.timezone), page }, ctx.scope),
-    );
+    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const collection = await entryCollectionQuery(c, deps, ctx, tx);
+      return listEntryView(
+        tx,
+        ctx.tenantId,
+        {
+          view,
+          today: tenantLocalDate(ctx.now, ctx.timezone),
+          page,
+          ...(collection ? { collection } : {}),
+        },
+        ctx.scope,
+      );
+    });
     const identity = await getModuleViewableFields(deps, ctx, EMPLOYEE_OBJECT);
     const shown = (field: string) => identity === undefined || identity.has(field);
     const trimmed = (await trimEmploymentResponse(
@@ -230,8 +269,9 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           contractStartDate: _start,
           contractEndDate: _end,
           cancelRemark: _cancelRemark,
+          collectionStatus,
           ...record
-        }) => record,
+        }) => ({ ...record, ...(collectionStatus ? { collectionStatus } : {}) }),
       ),
     )) as object[];
     return c.json({

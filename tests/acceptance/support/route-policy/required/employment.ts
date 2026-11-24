@@ -2593,6 +2593,26 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   'GET /api/tenant/employment/pending-entries': [
     recordView(at(ENTRY, 'GET', '/pending-entries', "const ctx = await readPageContext(c, deps, 'list')")),
+    {
+      perm: 'obj:TenantBase.OnboardingCollection:view',
+      purpose: 'disclosure:collectionStatus',
+      facts: ['object:object.* 动作'],
+      need: { scope: 'list', predicate: 'onboarding.collectionEntryScope' },
+      at: [
+        at(ENTRY, 'GET', '/pending-entries', 'const collection = await entryCollectionQuery(c, deps, ctx, tx)'),
+        fn(ENTRY, 'entryCollectionQuery', "action: 'object.view', resource: COLLECTION"),
+        {
+          role: 'scope',
+          unit: `${SRC}/employment/entry-views.ts#listEntryView`,
+          anchor: 'collection && employmentScopePredicate(',
+        },
+        {
+          role: 'const',
+          unit: `${SRC}/onboarding/collection-access.ts#COLLECTION`,
+          anchor: 'MODULE_OBJECTS.onboardingCollection.code',
+        },
+      ],
+    },
   ],
   // ---- employment/intern-routes.ts：R2 BE-6a 实习四视图 / 直接实习转正 / 重聘判定 ------------------------------------------
   'GET /api/tenant/employment/interns': [
