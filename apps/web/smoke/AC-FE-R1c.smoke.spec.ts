@@ -2,6 +2,7 @@ import { actionButton } from './action-button.js';
 import {
   test,
   expect,
+  tenant,
   user,
   employee,
   demoRoutes,
@@ -1131,11 +1132,16 @@ test('AC-FE-F110-20 HR 确认重提：他页持锁时 B 排队，A 已落定的�
 const LOCK_BUSY = '检测到你在另一个标签页打开了此单据，请关闭后重试。';
 const LOCKS_UNSUPPORTED = '当前浏览器环境不支持安全保存（需 https 访问），命令未发出。';
 
-/** 同源另开一个真实标签页，一直占着恢复记录的互斥锁；关闭该页时浏览器释放。 */
-async function holdLockInOtherTab(page: Page, key: string) {
+/** 同源的空白标签页：不装应用，只用来占锁或改共用记录（其他标签页随之收到 storage 事件）。 */
+async function blankTab(page: Page) {
   const other = await page.context().newPage();
   await other.route('**/lock-holder', (route) => route.fulfill({ body: '', contentType: 'text/html' }));
   await other.goto('/lock-holder');
+  return other;
+}
+/** 同源另开一个真实标签页，一直占着恢复记录的互斥锁；关闭该页时浏览器释放。 */
+async function holdLockInOtherTab(page: Page, key: string) {
+  const other = await blankTab(page);
   await other.evaluate(
     (name) =>
       new Promise<void>((held) => {
@@ -1329,13 +1335,13 @@ async function racePages(page: Page, answerB?: () => { status: number; json: unk
   }
   return { pageB, writes, writesB, respond };
 }
-async function openEmployee(target: Page) {
+async function openEmployee(target: Page, employeeId = employee) {
   await switchIdentity(target, '/transfer');
   await openHr(target);
-  await target.locator('select[name="employeeId"]').selectOption(employee);
+  await target.locator('select[name="employeeId"]').selectOption(employeeId);
 }
-/** B 带出暂存后点击清除，服务端 403：拒绝原因留在表单原位置。 */
-async function clearForbidden(pageB: Page) {
+/** B 选人后带出暂存，清除这份暂存时服务端 403。 */
+async function forbiddenDraft(pageB: Page) {
   const stored = await hrRecoveryFixture(pageB);
   stored.saved = true;
   const deletes: string[] = [];
@@ -1345,6 +1351,11 @@ async function clearForbidden(pageB: Page) {
   });
   await openEmployee(pageB);
   await expect(pageB.getByRole('status').filter({ hasText: '已带出上次暂存信息' })).toBeVisible();
+  return deletes;
+}
+/** B 带出暂存后点击清除，服务端 403：拒绝原因留在表单原位置。 */
+async function clearForbidden(pageB: Page) {
+  const deletes = await forbiddenDraft(pageB);
   await pageB.getByRole('button', { name: '点击清除', exact: true }).click();
   await expect(pageB.locator('.transfer-content').getByText(DRAFT_DELETE_FORBIDDEN, { exact: true })).toBeVisible();
   return deletes;
@@ -1372,6 +1383,11 @@ test('AC-FE-F110-26b 先清除失败再两页竞争：B 显示其他标签页、
   expect(await pendingTransferIds(pageB)).toEqual([writes[0]]);
   expect(writesB).toEqual([]);
   expect(deletes).toEqual(['DELETE']);
+  // 第 4 轮 P2-4：同一标签页退出并重开表单、尚未选人，集合槽仍锁到 A：有“查询结果”，且按 A 的命令 ID 查询。
+  await closeHr(pageB);
+  await openHr(pageB);
+  await expect(pageB.getByText(processing)).toBeVisible();
+  await queryLockedTo(pageB, writes[0]!);
   respond();
   await pageB.close();
 });
@@ -1421,6 +1437,256 @@ test('AC-FE-F110-26d 无竞争时清除失败提示留在表单原位置，之�
   await pageB.getByRole('button', { name: '暂存', exact: true }).click();
   await expect(pageB.getByText('信息暂存成功，下次选择此人可自动带出')).toBeVisible();
   expect(writesB).toHaveLength(1);
+  respond();
+  await pageB.close();
+});
+
+const employeeTwo = '30000000-0000-4000-8000-000000000002';
+type Reply = () => { status: number; json: unknown };
+/**
+ * 第 4 轮：B 的员工列表多一位合成员工二。两页对不同员工操作，仍共用调动集合恢复槽（commands.ts transferSlot）；
+ * B 对员工二的写入交给 answer（未给时照常暂存成功），按请求方法计数。
+ */
+async function secondEmployee(pageB: Page, answer?: Reply) {
+  await pageB.route('**/employment/employees?**', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { id: employee, name: '合成员工', code: 'DEMO-001', revision: 3 },
+          { id: employeeTwo, name: '合成员工二', code: 'DEMO-002', revision: 3 },
+        ],
+      },
+    }),
+  );
+  const writesTwo: string[] = [];
+  await pageB.route('**/transfers/employees/' + employeeTwo, (route) => {
+    writesTwo.push(route.request().method());
+    return route.fulfill(answer?.() ?? { json: draftResult });
+  });
+  return writesTwo;
+}
+/** 点“查询结果”，只看按哪条命令 ID 查询（一律 404：仍在处理中）。 */
+async function queryLockedTo(target: Page, commandId: string) {
+  const queries: string[] = [];
+  await target.route('**/api/tenant/commands/*/result', (route) => {
+    queries.push(new URL(route.request().url()).pathname);
+    return route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND' } } });
+  });
+  const query = target.getByRole('button', { name: '查询结果', exact: true });
+  await expect(query).toBeVisible();
+  await query.click();
+  await expect.poll(() => queries).toEqual([resultPath(commandId)]);
+}
+/**
+ * B 锁到别页的命令且带出本次竞争：先等竞争提示出现（拒绝已落定，避开等锁期间的“提交中”），
+ * 再确认它在“处理中”里而不在可编辑表单里，并按那条命令的 ID 查询。
+ */
+async function expectRaceLockedTo(target: Page, commandId: string) {
+  await expect(target.getByRole('alert').filter({ hasText: OTHER_TAB })).toBeVisible();
+  await expect(target.locator('.transfer-content')).toHaveCount(0);
+  await expect(target.getByText(processing)).toBeVisible();
+  expect(await pendingTransferIds(target)).toEqual([commandId]);
+  await queryLockedTo(target, commandId);
+}
+const saved = '信息暂存成功，下次选择此人可自动带出';
+
+// 第 4 轮 P2-1：B 等登记锁时先收到 A 的 storage 事件、再被登记冲突拒绝；拒绝落定后集合槽仍须对齐到 A。
+test('AC-FE-F110-29 不同员工：B 等锁时先收到 A 的登记事件再被拒，仍锁到 A 并按 A 的命令 ID 查询', async ({ page }) => {
+  test.setTimeout(60_000);
+  const { pageB, writes, respond } = await racePages(page);
+  const writesTwo = await secondEmployee(pageB);
+  await openEmployee(page);
+  await openEmployee(pageB, employeeTwo);
+  const holder = await holdLockInOtherTab(page, transferRecoveryKey);
+  // 排在 A 与 B 之间的一页：A 登记写入后它再持锁片刻，B 拿到锁之前 A 的 storage 事件已到 B。
+  const gap = await blankTab(page);
+  try {
+    await page.getByRole('button', { name: '暂存', exact: true }).click();
+    await expect.poll(() => pendingLocks(page)).toBe(1);
+    await gap.evaluate((key) => {
+      void navigator.locks.request(key, { mode: 'exclusive' }, () => new Promise((done) => setTimeout(done, 800)));
+    }, transferRecoveryKey);
+    await expect.poll(() => pendingLocks(page)).toBe(2);
+    await pageB.getByRole('button', { name: '暂存', exact: true }).click();
+    await expect.poll(() => pendingLocks(page)).toBe(3);
+  } finally {
+    await holder.close();
+  }
+  await expect.poll(() => writes).toHaveLength(1);
+  await expectRaceLockedTo(pageB, writes[0]!);
+  expect(writesTwo).toEqual([]);
+  respond();
+  await gap.close();
+  await pageB.close();
+});
+
+// 正例（修前合法路径）：不同员工没有竞争，A 落定后 B 对员工二照常暂存一次，不残留恢复记录。
+test('AC-FE-F110-29 正例：不同员工 A 落定后，B 对员工二照常暂存一次', async ({ page }) => {
+  test.setTimeout(60_000);
+  const { pageB, writes, respond } = await racePages(page);
+  const writesTwo = await secondEmployee(pageB);
+  await openEmployee(page);
+  await openEmployee(pageB, employeeTwo);
+  await page.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect.poll(() => writes).toHaveLength(1);
+  await expect(pageB.getByText(processing)).toBeVisible();
+  respond();
+  await expect(page.getByText(saved)).toBeVisible();
+  await expect(pageB.getByText(processing)).toHaveCount(0);
+  await pageB.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect(pageB.getByText(saved)).toBeVisible();
+  expect(writesTwo).toEqual(['POST']);
+  expect(await pendingTransferIds(pageB)).toEqual([]);
+  await pageB.close();
+});
+
+const confirmRequired = {
+  error: { code: 'CONFLICT', message: '已超出设定编制', details: { reason: 'CONFIRMATION_REQUIRED' } },
+};
+// 第 4 轮 P2-2：B 等超编确认时 A 先登记；B 点“继续保存”时提交前同步就发现占用，同样走竞争出口。
+for (const target of [
+  { label: '同一员工', employeeId: employee, writesBeforeA: 1 },
+  { label: '不同员工', employeeId: employeeTwo, writesBeforeA: 0 },
+]) {
+  test(`AC-FE-F110-30 ${target.label}：超编确认期间 A 先登记，B 继续保存零第二次请求、处理中显示其他标签页`, async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const answer: Reply = () => ({ status: 409, json: confirmRequired });
+    const { pageB, writes, writesB, respond } = await racePages(page, answer);
+    const writesTwo = await secondEmployee(pageB, answer);
+    await openEmployee(pageB, target.employeeId);
+    await pageB.getByRole('button', { name: '暂存', exact: true }).click();
+    const confirm = establishmentDialog(pageB);
+    await expect(confirm).toBeVisible();
+    await openEmployee(page);
+    await page.getByRole('button', { name: '暂存', exact: true }).click();
+    // A 的写入挂起：A 的命令已登记、结果未确认。
+    await expect.poll(() => writes).toHaveLength(target.writesBeforeA + 1);
+    const commandA = writes.at(-1)!;
+    await expect.poll(() => pendingTransferIds(pageB)).toEqual([commandA]);
+    await confirm.getByRole('button', { name: button('继续保存') }).click();
+    await expectRaceLockedTo(pageB, commandA);
+    expect([...writesB, ...writesTwo], 'B 只有超编确认前的一次请求').toEqual(['POST']);
+    respond();
+    await pageB.close();
+  });
+}
+
+// 第 4 轮 P2-2 反向：两次读恢复记录之间别页登记了员工一、B 对员工二等锁超时。B 的拒绝是 DEC-954，不是竞争：
+// 处理中不显示它；别页的命令落定后，原因留在表单原提示区。
+test('AC-FE-F110-31 两次同步之间别页登记、B 等锁超时：DEC-954 不进处理中，留在表单原位置', async ({ page }) => {
+  test.setTimeout(60_000);
+  const { pageB, respond } = await racePages(page);
+  const writesTwo = await secondEmployee(pageB);
+  await openEmployee(pageB, employeeTwo);
+  const other = {
+    key: JSON.stringify([tenant, user, `/api/tenant/employment/transfers/employees/${employee}`]),
+    slots: [JSON.stringify([tenant, user, '/api/tenant/employment/transfers'])],
+    commandId: '70000000-0000-4000-8000-000000000001',
+    revision: 3,
+    businessId: employee,
+    context: { action: 'draft' },
+  };
+  // 本页第二次读共用记录时先写入别页的登记（本页写入不触发本页的 storage 事件，B 只在这次读里看到它）。
+  await pageB.evaluate(
+    ({ key, value }) => {
+      const original = Storage.prototype.getItem;
+      let reads = 0;
+      Storage.prototype.getItem = function (this: Storage, name: string) {
+        if (name === key && ++reads === 2) localStorage.setItem(key, value);
+        return original.call(this, name);
+      };
+    },
+    { key: transferRecoveryKey, value: JSON.stringify([other]) },
+  );
+  const holder = await holdLockInOtherTab(page, transferRecoveryKey);
+  try {
+    await pageB.getByRole('button', { name: '暂存', exact: true }).click();
+    await expect.poll(() => pendingLocks(pageB)).toBe(1);
+    // B 等锁超时（DEC-954）：排队的锁请求撤掉，拒绝已落定。
+    await expect.poll(() => pendingLocks(pageB), { timeout: 10_000 }).toBe(0);
+    await expect(pageB.getByText(processing)).toBeVisible();
+    await expect(pageB.getByText(LOCK_BUSY)).toHaveCount(0);
+  } finally {
+    await holder.close();
+  }
+  expect(await pendingTransferIds(pageB)).toEqual([other.commandId]);
+  // 别页的命令落定、记录删掉：B 回到表单，DEC-954 原因在表单原提示区。
+  const settle = await blankTab(page);
+  await settle.evaluate((key) => localStorage.removeItem(key), transferRecoveryKey);
+  await expect(pageB.getByText(processing)).toHaveCount(0);
+  await expect(pageB.locator('.transfer-content').getByText(LOCK_BUSY)).toBeVisible();
+  expect(writesTwo).toEqual([]);
+  respond();
+  await settle.close();
+  await pageB.close();
+});
+
+const UNAVAILABLE = '无法保存处理状态，命令未发出，请检查浏览器存储设置后重试。';
+const strictBody = {
+  error: { code: 'CONFLICT', message: STRICT_ESTABLISHMENT, details: { reason: 'ESTABLISHMENT_EXCEEDED' } },
+};
+/** 让 B 接下来的暂存被拒的一种原因；返回收尾。 */
+const refusals: { label: string; reason: string; posts: string[]; arrange: (pageB: Page) => Promise<() => unknown> }[] =
+  [
+    { label: '严格控编', reason: STRICT_ESTABLISHMENT, posts: ['POST'], arrange: async () => () => {} },
+    {
+      label: 'DEC-954 等锁超时',
+      reason: LOCK_BUSY,
+      posts: [],
+      arrange: async (pageB) => {
+        const other = await holdLockInOtherTab(pageB, transferRecoveryKey);
+        return () => other.close();
+      },
+    },
+    {
+      label: '恢复存储不可用',
+      reason: UNAVAILABLE,
+      posts: [],
+      arrange: async (pageB) => {
+        await pageB.evaluate((key) => localStorage.setItem(key, '{bad'), transferRecoveryKey);
+        return () => {};
+      },
+    },
+  ];
+// 第 4 轮 P2-3：表单原提示区显示最近一次操作的失败。先清除 403、再暂存被拒，显示的是本次暂存的原因。
+for (const refusal of refusals) {
+  test(`AC-FE-F110-32 清除 403 后暂存被拒（${refusal.label}）：原提示区显示本次原因，不显示旧清除错误`, async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const { pageB, writesB, respond } = await racePages(page, () => ({ status: 409, json: strictBody }));
+    const deletes = await clearForbidden(pageB);
+    const finish = await refusal.arrange(pageB);
+    const form = pageB.locator('.transfer-content');
+    try {
+      await pageB.getByRole('button', { name: '暂存', exact: true }).click();
+      await expect(form.getByText(refusal.reason)).toBeVisible({ timeout: 10_000 });
+      await expect(form.getByText(DRAFT_DELETE_FORBIDDEN, { exact: true })).toHaveCount(0);
+    } finally {
+      await finish();
+    }
+    expect(writesB).toEqual(refusal.posts);
+    expect(deletes).toEqual(['DELETE']);
+    respond();
+    await pageB.close();
+  });
+}
+
+// 正例（修前合法路径）：暂存被拒之后再清除 403，原提示区显示的是清除的原因。
+test('AC-FE-F110-32 正例：暂存被严格控编拒绝后再清除 403，原提示区显示清除失败', async ({ page }) => {
+  test.setTimeout(60_000);
+  const { pageB, writesB, respond } = await racePages(page, () => ({ status: 409, json: strictBody }));
+  const deletes = await forbiddenDraft(pageB);
+  const form = pageB.locator('.transfer-content');
+  await pageB.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect(form.getByText(STRICT_ESTABLISHMENT)).toBeVisible();
+  await pageB.getByRole('button', { name: '点击清除', exact: true }).click();
+  await expect(form.getByText(DRAFT_DELETE_FORBIDDEN, { exact: true })).toBeVisible();
+  await expect(form.getByText(STRICT_ESTABLISHMENT)).toHaveCount(0);
+  expect(writesB).toEqual(['POST']);
+  expect(deletes).toEqual(['DELETE']);
   respond();
   await pageB.close();
 });
