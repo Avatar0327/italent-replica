@@ -1,6 +1,12 @@
 import { requireManagerBusinessReferences } from './manager-business-references.js';
 import { requireManagerReferenceValues } from './manager-references.js';
-import { lockTransferParticipants } from '../employment/transfer-locks.js';
+import {
+  existingTransferEmployees,
+  lockTransferHeads,
+  lockTransferParticipants,
+  sealTransferLocks,
+  transferLocksCover,
+} from '../employment/transfer-locks.js';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { tenantLocalDate } from '@italent/domain';
@@ -127,6 +133,15 @@ export async function requireTransferWrite(ctx: EmploymentContext, input: Transf
   await requireEmploymentWrite(ctx, 'create', input.writable);
 }
 
+/**
+ * 预览只判请求里真正编辑的业务字段（生效日、原因、任职字段、自定义字段）。initiator / transferTypeCode / formId / mode
+ * 是路由参数，由服务端固定或另行校验（表单与入口匹配、按钮），不是员工编辑的字段，不能拿它们判字段写权（第 3 轮 P2-3）。
+ */
+export async function requireTransferEditedWrite(ctx: EmploymentContext, input: TransferInput): Promise<void> {
+  const { initiator: _initiator, transferTypeCode: _type, formId: _form, mode: _mode, ...edited } = input.writable;
+  await requireEmploymentWrite(ctx, 'create', edited);
+}
+
 export async function transferTargetContext(
   tx: Tx,
   ctx: EmploymentContext,
@@ -210,6 +225,55 @@ export async function requireDirectTransfer(tx: Tx, ctx: EmploymentContext) {
     throw new AppError('CONFLICT', '本租户调动须走审批', { reason: 'DIRECT_TRANSFER_DISABLED' });
   const actions = await transferDirectActions(ctx, true);
   if (!actions.directList && !actions.directRow) throw new AppError('FORBIDDEN', '无权发起直接调动');
+}
+
+async function transferRequestEmployee(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  const [request] = rowsOf<{ employeeId: string }>(
+    await tx.execute(sql`
+    SELECT employee_id AS "employeeId" FROM transfer_requests
+    WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid
+  `),
+  );
+  return request?.employeeId;
+}
+
+/** 取锁—复核—再取锁的上限：参与集合每轮都在涨说明有人持续改关系，放弃本次交还调用方刷新重试。 */
+const LOCK_PLAN_ATTEMPTS = 4;
+
+const planChanged = () =>
+  new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
+
+/**
+ * 同单写入口的“取锁阶段”（DEC-993 单入口；第 6 轮拆段，DEC-996）：只按单据找到发起员工，按锁序分两段取齐会阻塞的锁。
+ * ① 员工段：参与员工闭包（含 extra 里请求新带入、且现存的下属）→ 发起员工行，取完重新规划；集合在取锁期间变大
+ *   （如别人把某员工的虚线经理改成发起员工）就继续按 UUID 序补员工锁——这一段手上只有员工锁，不持任何业务头；
+ * ② 业务头段：员工闭包取齐后统一锁各参与者的业务头（单人闭包也锁本单业务头，第 7 轮 P2-1），再规划一次；此时集合若又变大，
+ *   不再回头等员工锁（那会在持业务头时等员工锁，逆序），直接 409 TRANSFER_LOCK_PLAN_CHANGED 放弃本事务，
+ *   由重入（失败回查 / 客户端显式重提）重新规划。
+ * 审批实例只在首次执行体里锁（重放 / 回查不到那一步），不在此预锁。两段取齐后封口：本函数返回后事务里不会再因新参与者等锁；
+ * transferBusinessContext 'command' 阶段的取锁都是重入。本函数不读任何授权输入。
+ * 请求点名但查无此人的新增下属不取锁、不在这里报错（第 5 轮 P2-3）：报错会抢在台账指纹比对之前，把同键异内容的 409 遮成 400；
+ * 留给首次执行的业务校验（validateTransferSubordinates → 400 TRANSFER_PERSON_NOT_ELIGIBLE），那时授权与指纹都已判过。
+ * 单据不是调动单时什么都不取。
+ */
+export async function lockTransferBusinessEmployee(
+  tx: Tx,
+  ctx: EmploymentContext,
+  businessId: string,
+  extra: readonly string[] = [],
+) {
+  const employeeId = await transferRequestEmployee(tx, ctx, businessId);
+  if (!employeeId) return;
+  const present = await existingTransferEmployees(tx, ctx, extra);
+  for (let attempt = 0; ; attempt += 1) {
+    if (attempt === LOCK_PLAN_ATTEMPTS) throw planChanged();
+    await lockTransferParticipants(tx, ctx, employeeId, present, { deferHeads: true });
+    await lockEmploymentEmployee(tx, ctx, employeeId);
+    if (await transferLocksCover(tx, ctx, employeeId, present)) break;
+  }
+  await lockTransferHeads(tx, ctx, businessId);
+  if (!(await transferLocksCover(tx, ctx, employeeId, present))) throw planChanged();
+  await sealTransferLocks(tx, ctx);
 }
 
 /** 同单操作按当前调用人的权限判断；原发起人类型仅是业务事实，不决定后续操作者的身份。 */

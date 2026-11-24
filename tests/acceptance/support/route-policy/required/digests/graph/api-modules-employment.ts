@@ -1303,10 +1303,13 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/context.ts#runWrite': [
     'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#discloseAssessmentConflictReceipt',
+    '#canonicalReceipt',
     '#commandContext',
     '#isScopedGuard',
     '#trimEmploymentResponse',
     '#withReplayRecheck',
+    'apps/api/src/modules/employment/receipt-names.ts#takeReceiptNames',
+    'apps/api/src/modules/employment/receipt-names.ts#withReceiptNames',
     'apps/api/src/modules/permission/employment-replay.ts#authorizeEmploymentResult',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
   ],
@@ -4352,7 +4355,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/field-derivations.ts#changedDerivationKeys': ['#rules'],
   'apps/api/src/modules/employment/field-derivations.ts#derivationFields': ['#rules'],
-  'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields': ['#resolveDerivation', '#rules'],
+  'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields': [
+    '#resolveDerivation',
+    '#rules',
+    '#triggers',
+  ],
   'apps/api/src/modules/employment/field-derivations.ts#resolveDerivation': [
     '#sequenceForNewPost',
     '#soleOtherPositionManager',
@@ -4648,10 +4655,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/inheritance.ts#applyCustomInheritance': [
     'apps/api/src/modules/employment/fields.ts#validateCustomValue',
     '#inheritanceOrigin',
+    '#isRequestInput',
     '#owns',
   ],
   'apps/api/src/modules/employment/inheritance.ts#applyExplicitPresetFields': [
     'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields',
+    '#isRequestInput',
     '#owns',
     '#setField',
   ],
@@ -4662,6 +4671,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/inheritance.ts#employeeCode': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/inheritance.ts#frozenDerivations': [
+    'apps/api/src/modules/employment/field-derivations.ts#derivationFields',
   ],
   'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch': [
     'apps/api/src/modules/employment/employment-forms.ts#validateSelectedEmploymentForm',
@@ -4695,7 +4707,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/inheritance.ts#restoreFrozenDefaults': [
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+    '#frozenDerivations',
     '#inheritanceOrigin',
+    '#isRequestInput',
     '#owns',
     '#setField',
   ],
@@ -6658,6 +6672,15 @@ export const GRAPH: Graph = {
     '#columnName',
     'apps/api/src/modules/employment/types.ts#PRESET_FIELD_NAMES',
   ],
+  'apps/api/src/modules/employment/receipt-names.ts#namesOf': ['#isPlainObject', '#namesOf'],
+  'apps/api/src/modules/employment/receipt-names.ts#takeReceiptNames': ['#RECEIPT_NAMES_KEY', '#isPlainObject'],
+  'apps/api/src/modules/employment/receipt-names.ts#withReceiptNames': [
+    'apps/api/src/modules/employment/employment-forms.ts#employmentFormNames',
+    'apps/api/src/modules/employment/employment-types.ts#employmentTypeNames',
+    '#RECEIPT_NAMES_KEY',
+    '#isPlainObject',
+    '#namesOf',
+  ],
   'apps/api/src/modules/employment/record-edit.ts#bumpAndNotifyEntry': [
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
     'apps/api/src/modules/employment/entry-source-events.ts#entrySourceEvents',
@@ -8092,6 +8115,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#normalizeBusinessPatch',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     '#authorizeBusinessWrite',
+    '#inTenant',
+    '#requireDraftEditWrite',
     '#requireImportTransferAccess',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
   ],
@@ -8119,6 +8144,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/establishment/employment-check.ts#checksEmploymentCapacity',
     'apps/api/src/modules/transfer/access.ts#requireTransferSource',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
+    'apps/api/src/modules/transfer/same-order-guard.ts#transferReceiptNames',
     'apps/api/src/modules/transfer/service.ts#requireDirectTransfer',
   ],
   'apps/api/src/modules/employment/routes.ts#importEmployment': [
@@ -8166,6 +8192,7 @@ export const GRAPH: Graph = {
     '#authorizeBusinessWrite',
     '#discloseDeletionBlock',
     '#routesToCancel',
+    '#sameOrderTarget',
     '#transitionConfirmation',
     '#transitionControls',
     'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite',
@@ -8176,6 +8203,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
+  ],
+  'apps/api/src/modules/employment/routes.ts#requireDraftEditWrite': [
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    '#writeIsCommandOnly',
+    'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
   ],
   'apps/api/src/modules/employment/routes.ts#requireImportTransferAccess': [
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
@@ -8281,20 +8313,21 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/routes.ts#route:PATCH /businesses/:id': [
     'apps/api/src/modules/employment/activation-checks.ts#withEstablishmentConfirmation',
     'apps/api/src/modules/employment/context.ts#readContext',
-    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/regularization.ts#updateRegularizationApplication',
     'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard',
     '#authorizeBusinessWrite',
+    '#inTenant',
     '#patchContext',
     '#readBusinessPatch',
+    '#requireDraftEditWrite',
     '#requireResultApplicable',
+    '#sameOrderTarget',
     'apps/api/src/modules/employment/write-service.ts#updateEmploymentBusiness',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
-    'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
@@ -8327,6 +8360,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
+    'apps/api/src/modules/transfer/same-order-guard.ts#transferReceiptNames',
   ],
   'apps/api/src/modules/employment/routes.ts#route:POST /custom-fields': [
     'apps/api/src/modules/employment/configuration.ts#createCustomField',
@@ -8476,6 +8510,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#businessState',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
   ],
+  'apps/api/src/modules/employment/routes.ts#sameOrderTarget': [
+    'apps/api/src/modules/transfer/same-order-guard.ts#transferReceiptNames',
+  ],
   'apps/api/src/modules/employment/routes.ts#shownBusiness': [
     'apps/api/src/modules/employment/approval-content.ts#composeBusiness',
     'apps/api/src/modules/employment/approval-content.ts#disclosedBy',
@@ -8570,6 +8607,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',
     '#employeeExists',
+    '#heldIds',
+    '#isSealed',
+    '#lockHeads',
     '#participants',
     '#settingKey',
   ],
@@ -8579,10 +8619,24 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/transfer-locks.ts#employeeExists': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#existingTransferEmployees': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#array',
+  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#heldIds': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#settingKey',
+  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#isSealed': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#sealKey',
+  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#lockHeads': ['#array'],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferBusiness': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#lockTransferParticipants',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#lockTransferHeads': ['#heldIds', '#lockHeads'],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants': ['#acquire'],
   'apps/api/src/modules/employment/transfer-locks.ts#participants': [
     'apps/api/src/modules/employment/exit-duty-participants.ts#pendingClearSubordinates',
@@ -8591,6 +8645,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#sealTransferLocks': ['#sealKey'],
+  'apps/api/src/modules/employment/transfer-locks.ts#transferLocksCover': ['#heldIds', '#participants'],
   'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
   ],
