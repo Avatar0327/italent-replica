@@ -8530,6 +8530,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',
     '#employeeExists',
+    '#heldIds',
+    '#isSealed',
     '#participants',
     '#settingKey',
   ],
@@ -8538,6 +8540,14 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/transfer-locks.ts#employeeExists': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#heldIds': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#settingKey',
+  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#isSealed': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#sealKey',
   ],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferBusiness': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -8551,6 +8561,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#sealTransferLocks': ['#sealKey'],
+  'apps/api/src/modules/employment/transfer-locks.ts#transferLocksCover': ['#heldIds', '#participants'],
   'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
   ],

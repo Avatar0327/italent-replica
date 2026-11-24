@@ -863,6 +863,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/service.ts#lockTransferBusinessEmployee': [
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
+    'apps/api/src/modules/employment/transfer-locks.ts#sealTransferLocks',
+    'apps/api/src/modules/employment/transfer-locks.ts#transferLocksCover',
+    '#LOCK_PLAN_ATTEMPTS',
     '#transferRequestEmployee',
   ],
   'apps/api/src/modules/transfer/service.ts#normalizeTransferInput': [

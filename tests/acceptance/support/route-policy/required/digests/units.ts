@@ -621,7 +621,7 @@ export const DIGESTS: Digests = {
     'route:POST /probation-results': '6b1c61cbbb81',
     'route:POST /regularizations': '52b92717eba2',
     'route:PUT /employees/:id/probation': '604dbfac27aa',
-    'route:PUT /employees/:id/regularization-draft': 'cf486c0583bb',
+    'route:PUT /employees/:id/regularization-draft': 'a3845527dbc7',
     'route:PUT /probation-results/:id': 'e1504b0925a6',
   },
   'apps/api/src/modules/employment/record-list.ts': {
