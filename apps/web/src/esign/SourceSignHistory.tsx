@@ -1,0 +1,138 @@
+import { esignFailureText } from '@italent/domain';
+import { Button, Pagination, Table, type TableColumnsType } from 'antd';
+import { useEffect, useState } from 'react';
+import { useRead } from '../contracts/useRead.js';
+import { usePermissions } from '../foundation/Permissions.js';
+import { useSession } from '../foundation/Session.js';
+import { dateTime } from '../talent-review/ConfigList.js';
+import { useESignDownload } from './download.js';
+import { m } from './messages.js';
+import { RECORD_BUTTONS, RECORD_OBJECT, filesPath, parseRecords, type RecordRow } from './records-model.js';
+import { sceneText } from './sign-model.js';
+import { sourceSignKey, sourceSignPath, sourceStatus, unreadable, type SignSource } from './source-sign-model.js';
+import { useTasksChanged } from './task-changes.js';
+
+const PAGE_SIZE = 20;
+const s = m.source;
+
+/** 按来源与当前签署记录权限独立读取。来源调用方只传来源 ID，不传列表快照。 */
+export function SourceSignHistory({ source }: { source: SignSource }) {
+  const key = sourceSignKey(useSession(), source);
+  return <HistoryReader key={key} source={source} />;
+}
+
+function HistoryReader({ source }: { source: SignSource }) {
+  const { timezone } = useSession();
+  const permission = usePermissions(RECORD_OBJECT);
+  const object = permission.snapshot.objects[RECORD_OBJECT];
+  const canView = object?.objectCode === RECORD_OBJECT && !object.summary && !permission.loading && !permission.error;
+  const visible = (field: string) => permission.field(field).visible;
+  const download = useESignDownload();
+  const [page, setPage] = useState(1);
+  const path = `${sourceSignPath(source)}/esign-records?page=${page}&pageSize=${PAGE_SIZE}`;
+  const read = useRead<unknown>(canView ? path : null);
+  useTasksChanged(read.refresh);
+
+  let records;
+  let error = read.error;
+  try {
+    if (read.data !== undefined) records = parseRecords(read.data);
+  } catch (cause) {
+    error = cause;
+  }
+  const lastPage = records ? Math.max(1, Math.ceil(records.total / PAGE_SIZE)) : page;
+  const correctingPage = page > lastPage;
+  useEffect(() => {
+    if (correctingPage) setPage(lastPage);
+  }, [correctingPage, lastPage]);
+
+  if (!canView || unreadable(error)) return null;
+  const loading = read.loading || correctingPage;
+  const rows = loading ? [] : (records?.items ?? []);
+  const columns = historyColumns(
+    visible,
+    timezone,
+    page === 1,
+    permission.can(RECORD_BUTTONS.download, 'list') ? download : undefined,
+  );
+  return (
+    <section aria-label={s.history}>
+      <h3>{s.history}</h3>
+      {!!error && (
+        <p role="alert">
+          {s.historyError} <Button onClick={read.refresh}>{s.retry}</Button>
+        </p>
+      )}
+      {loading && <p role="status">{s.historyLoading}</p>}
+      {!loading && records && !rows.length && <p>{s.emptyHistory}</p>}
+      {!!rows.length && (
+        <Table<RecordRow> rowKey="id" dataSource={rows} columns={columns} pagination={false} size="small" />
+      )}
+      {!loading && !!records && records.total > PAGE_SIZE && (
+        <Pagination
+          current={page}
+          pageSize={PAGE_SIZE}
+          total={records.total}
+          showSizeChanger={false}
+          onChange={setPage}
+        />
+      )}
+    </section>
+  );
+}
+
+function historyColumns(
+  visible: (field: string) => boolean,
+  timezone: string,
+  latestPage: boolean,
+  download?: ReturnType<typeof useESignDownload>,
+): TableColumnsType<RecordRow> {
+  const statusVisible = visible('status');
+  const filesVisible = visible('files');
+  return [
+    {
+      title: m.records.scene,
+      render: (_, row, index) => (
+        <>
+          {sceneText(visible('scene') ? row.scene : undefined)}
+          {latestPage && index === 0 && (
+            <div>
+              <small>{s.latest}</small>
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      title: m.records.initiatedAt,
+      render: (_, row) => dateTime(visible('initiatedAt') ? row.initiatedAt : undefined, timezone),
+    },
+    {
+      title: m.records.status,
+      render: (_, row) => {
+        if (!statusVisible) return m.missing;
+        const status = sourceStatus(row.status, row.currentNode);
+        const reason = row.status === 'failed' ? esignFailureText(row.failureReason ?? null) : null;
+        return reason ? m.reissue.failed(reason) : status;
+      },
+    },
+    {
+      title: m.records.files,
+      render: (_, row) => {
+        if (!filesVisible) return m.missing;
+        const names = row.files?.flatMap((file) => (file.name ? [file.name] : [])) ?? [];
+        if (!names.length) return m.missing;
+        return (
+          <>
+            <span>{names.join(m.fileSeparator)}</span>
+            {row.status === 'completed' && statusVisible && download && (
+              <Button type="link" onClick={() => void download(filesPath([row.id]))}>
+                {m.records.download}
+              </Button>
+            )}
+          </>
+        );
+      },
+    },
+  ];
+}
