@@ -7,6 +7,12 @@ const SOURCE = 'apps/api/src/modules/esign/source-command-result.ts';
 const TASK = 'apps/api/src/modules/esign/source-result-access.ts';
 const POOL = 'apps/api/src/modules/onboarding/integration-pool-result.ts';
 const POOL_ACCESS = 'apps/api/src/modules/onboarding/integration-pool-access.ts';
+const SCHEMES = 'apps/api/src/modules/onboarding/integration-schemes';
+const SCHEME_RESULT_SCOPE: Evidence = {
+  role: 'scope',
+  unit: `${SCHEMES}-result.ts#INTEGRATION_SCHEME_COMMAND_RESULTS`,
+  anchor: 'await requireSchemeResultScope(tx, ctx.tenantId, scope, body, httpStatus === 204)',
+};
 const EMPLOYMENT = 'apps/api/src/modules/employment';
 const DISPATCH: Evidence = {
   role: 'call',
@@ -41,13 +47,15 @@ export const COMMAND_RESULT: RequiredTable = {
     {
       perm: 'guard:command.result.registered',
       facts: ['guard:command.result.registered'],
-      note: '签署核来源、任务与历史变量；任务池按当前任职设置权限复核',
+      note: '签署核来源、任务与历史变量；任务池按当前任职设置权限复核，融入方案另核当前组织范围',
       at: [
         DISPATCH,
         {
           role: 'impl',
           unit: `${SERVICE}#commandResultRegistry`,
-          anchor: 'createCommandResultRegistry([...ESIGN_COMMAND_RESULTS, ...INTEGRATION_POOL_COMMAND_RESULTS,])',
+          anchor:
+            'createCommandResultRegistry([...ESIGN_COMMAND_RESULTS, ...INTEGRATION_POOL_COMMAND_RESULTS, ' +
+            '...INTEGRATION_SCHEME_COMMAND_RESULTS,])',
         },
         {
           role: 'impl',
@@ -63,6 +71,11 @@ export const COMMAND_RESULT: RequiredTable = {
           role: 'impl',
           unit: `${POOL}#INTEGRATION_POOL_COMMAND_RESULTS`,
           anchor: 'await requirePoolWrite(authorizeInTransaction(deps.authorize, tx), ctx, operation)',
+        },
+        {
+          role: 'impl',
+          unit: `${SCHEMES}-result.ts#INTEGRATION_SCHEME_COMMAND_RESULTS`,
+          anchor: 'await requireSchemeWriteScope(tx, deps, ctx, operation)',
         },
         {
           role: 'impl',
@@ -98,6 +111,7 @@ export const COMMAND_RESULT: RequiredTable = {
       at: [
         DISPATCH,
         POOL_RESULT_SCOPE,
+        SCHEME_RESULT_SCOPE,
         {
           role: 'impl',
           unit: `${POOL_ACCESS}#requirePoolWrite`,
@@ -112,6 +126,7 @@ export const COMMAND_RESULT: RequiredTable = {
       at: [
         DISPATCH,
         POOL_RESULT_SCOPE,
+        SCHEME_RESULT_SCOPE,
         {
           role: 'const',
           unit: `${POOL}#POOL_RESULT_TYPES`,
