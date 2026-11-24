@@ -16,6 +16,7 @@ import { BASE, adjustmentOf, bodyOf, hrDraft, managerWorld, rename, type OriginF
 import { type EmploymentSession } from './AC-EMP-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
 import { exitActivationWorld } from './AC-EXIT-activation-support.js';
+import { cancelWorld as exitCancelWorld } from './AC-EXIT-cancel-support.js';
 import { activationWorld } from './AC-TRF-activation-support.js';
 import { retirementCancelWorld } from './AC-RT-cancel-support.js';
 import { dedicatedBody, retireBody, retirementWorld } from './AC-RT-support.js';
@@ -433,6 +434,17 @@ describe('AC-EMP-32 pending：曾落地的业务被摘出时间轴后仍是已�
     expect(placeOf(await originsOn(transfer.id, '2026-10-20')), '生效日').toMatchObject({ pending: false });
   });
 
+  it('仍在时间轴上的未来调动在生效日前被 HR 删除：从未实际生效，原计划日之后工作地仍 pending', async () => {
+    const { x, transferOn, originsOn } = await retiringWorld('delete-future');
+    const transfer = await transferOn('2026-10-20');
+    x.session.setNow('2026-10-06T02:00:00Z');
+    const current = await x.business(transfer.id);
+    const deleted = await x.session.request('DELETE', `/businesses/${transfer.id}`, { ifMatch: current.revision });
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    for (const day of ['2026-10-07', '2026-10-21'])
+      expect(placeOf(await originsOn(transfer.id, day)), day).toMatchObject({ policy: 'deferred', pending: true });
+  });
+
   it('已落地（当天生效）的调动被 HR 删除：此前实际生效过，工作地不再 pending', async () => {
     const { x, transferOn, originsOn } = await retiringWorld('delete-landed');
     const transfer = await transferOn('2026-10-06');
@@ -483,6 +495,36 @@ describe('AC-EMP-32 pending：摘下后挂回 / 删除（第 5 轮路径矩阵�
     expect(await originsStatus('2026-10-25'), '挂回后生效日').toMatchObject({ status: 200, place: { pending: false } });
   });
 
+  it('第 6 轮：撤销退休挂回、到期后再被 HR 删除：此前实际生效过，工作地仍不 pending', async () => {
+    const { x, transfer, retire, originsStatus } = await cancelWorld('reattach-delete');
+    x.session.setNow('2026-10-06T01:00:00Z');
+    await x.retireCancelled(retire.id, {});
+    expect(await originsStatus('2026-10-26'), '前提：挂回后到期').toMatchObject({
+      status: 200,
+      place: { policy: 'deferred', pending: false },
+    });
+    x.session.setNow('2026-10-26T02:00:00Z');
+    const current = await x.business(transfer.id);
+    const deleted = await x.session.request('DELETE', `/businesses/${transfer.id}`, { ifMatch: current.revision });
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    expect(
+      (await x.timeline()).map((row) => row.kind),
+      '前提：调动已不在时间轴上',
+    ).toEqual(['hire']);
+    for (const day of ['2026-10-27', '2026-11-10'])
+      expect(await originsStatus(day), `删除后 ${day}`).toMatchObject({ status: 200, place: { pending: false } });
+  });
+
+  it('撤销退休挂回后、到期前被离职作废：从未实际生效，原计划日之后工作地仍 pending', async () => {
+    const { x, transfer, retire, originsStatus } = await cancelWorld('reattach-void');
+    x.session.setNow('2026-10-06T01:00:00Z');
+    await x.retireCancelled(retire.id, {});
+    const leave = await x.directLeave('2026-10-15');
+    expect(await x.runScheduler('2026-10-16T02:00:00Z')).toMatchObject({ activated: [leave.id] });
+    expect(await x.stateOfBusiness(transfer.id), '前提：调动已被离职作废').toBe('voided');
+    expect(await originsStatus('2026-10-26')).toMatchObject({ status: 200, place: { pending: true } });
+  });
+
   it('被退休提前摘下的调动再被 HR 删除：从未实际生效，原计划日之后工作地仍 pending', async () => {
     const { x, transfer, originsStatus } = await cancelWorld('deleted');
     x.session.setNow('2026-10-26T01:00:00Z');
@@ -490,5 +532,94 @@ describe('AC-EMP-32 pending：摘下后挂回 / 删除（第 5 轮路径矩阵�
     const deleted = await x.session.request('DELETE', `/businesses/${transfer.id}`, { ifMatch: current.revision });
     expect(deleted.status, await deleted.clone().text()).toBe(200);
     expect(await originsStatus('2026-10-26')).toMatchObject({ status: 200, place: { pending: true } });
+  });
+});
+
+describe('AC-EMP-32 pending：已生效离职改期先挂回再重摘（第 6 轮路径矩阵，exit-reposition.ts）', () => {
+  /**
+   * 离职改早不能越过同周期任职记录（EXIT_RESCHEDULE_CROSSES_RECORD），所以改期能摘下的只有与原离职同日、排在它前面的调动；
+   * 生效日在原离职之后的调动已在离职生效时摘下并作废（DEC-725③）。
+   */
+  async function leaveWorld(label: string) {
+    const x = await exitCancelWorld(database().db, `emp32-${label}-${uniqueSuffix()}`);
+    const configured = await x.session.request('PUT', '/transfers/settings', {
+      ifMatch: 0,
+      body: { unrestrictTargetDepartment: false, autoPopulate: false },
+    });
+    expect(configured.status, await configured.clone().text()).toBe(200);
+    const sameDay = await x.directTransfer(x.to, '2026-10-21');
+    const later = await x.directTransfer(x.other, '2026-10-25');
+    const leave = await x.directLeave('2026-10-20');
+    expect(await x.runScheduler('2026-10-21T02:00:00Z')).toMatchObject({ activated: [leave.id] });
+    let minute = 0;
+    const reschedule = async (lastWorkDate: string) => {
+      x.setNow(`2026-11-05T02:${String(minute++).padStart(2, '0')}:00Z`);
+      const response = await x.session.request('PATCH', `/exits/${leave.id}`, {
+        ifMatch: (await x.business(leave.id)).revision,
+        body: { lastWorkDate },
+      });
+      expect(response.status, `改期到 ${lastWorkDate}：${await response.clone().text()}`).toBe(200);
+    };
+    const placeOn = async (day: string) => {
+      x.session.setNow(`${day}T03:00:00Z`);
+      const response = await x.session.request('GET', `/businesses/${sameDay.id}/field-origins`);
+      expect(response.status, await response.clone().text()).toBe(200);
+      return ((await response.json()) as OriginsBody).fields.find((row) => row.fieldCode === 'preset:place');
+    };
+    const kinds = async () => (await x.timeline()).map((row) => row.kind);
+    return { x, sameDay, later, reschedule, placeOn, kinds };
+  }
+
+  it('改早越过已落地调动（摘下不作废）→ 改晚挂回（无回执）→ HR 删除：每步之后工作地都不 pending', async () => {
+    const { x, sameDay, later, reschedule, placeOn, kinds } = await leaveWorld('reposition');
+    expect(await x.tombstoned(later.id), '前提：原离职之后的调动已在生效时作废').toBe(true);
+    expect(await placeOn('2026-11-05'), '前提：同日调动已落地').toMatchObject({ policy: 'deferred', pending: false });
+    await reschedule('2026-10-05');
+    expect(await kinds(), '改早后同日调动被摘下').toEqual(['hire', 'leave']);
+    expect(await x.tombstoned(sameDay.id), '改期重摘不作废').toBe(false);
+    expect(await placeOn('2026-11-05'), '摘下后').toMatchObject({ pending: false });
+    await reschedule('2026-10-25');
+    expect(await kinds(), '改晚后同日调动被挂回').toEqual(['hire', 'transfer', 'leave']);
+    expect(await placeOn('2026-11-05'), '挂回后').toMatchObject({ pending: false });
+    x.setNow('2026-11-05T04:00:00Z');
+    const deleted = await x.session.request('DELETE', `/businesses/${sameDay.id}`, {
+      ifMatch: (await x.business(sameDay.id)).revision,
+    });
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    expect(await placeOn('2026-11-06'), '删除后').toMatchObject({ pending: false });
+  });
+
+  it('改早摘下（不作废）后 HR 删除：只写墓碑、不在时间轴上，靠摘除台账仍判已落地', async () => {
+    const { x, sameDay, reschedule, placeOn, kinds } = await leaveWorld('reposition-delete');
+    await reschedule('2026-10-05');
+    x.setNow('2026-11-05T04:00:00Z');
+    const deleted = await x.session.request('DELETE', `/businesses/${sameDay.id}`, {
+      ifMatch: (await x.business(sameDay.id)).revision,
+    });
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    expect(await kinds()).toEqual(['hire', 'leave']);
+    expect(await placeOn('2026-11-06'), '删除后').toMatchObject({ pending: false });
+  });
+
+  /**
+   * 守卫（DEC-991 已知限制，升级见 F-557）：`repositionExit` 在同一事务里先挂回、再按新位置重摘，每次都写新的摘除台账行，
+   * 挂回本身不留回执。判定第 2 条把“摘下时窗口起点 ≤ 摘除当天”当作“摘下时已生效”，所以必须保证：离职摘除台账里还能被挂回的
+   * 目标（无墓碑），摘下时都已实际生效。今天成立靠两条：改早不得越过同周期记录（只能摘下与原离职同日、已生效的调动；挂回后也不能再改回去），生效前就被离职
+   * 摘下的调动一律作废（DEC-725③）。退休会留下未作废的提前摘除，但退休日期不可改（DEC-636，AC-RT-09 锁住），走不到
+   * `repositionExit`。任一前提放开，本用例变红，须先按 F-557 升级到在场台账。
+   */
+  it('守卫：离职摘除台账里未作废的目标，摘下时都已实际生效', async () => {
+    const { x, reschedule } = await leaveWorld('reposition-guard');
+    await reschedule('2026-10-05');
+    await reschedule('2026-10-25');
+    const rows = await x.sqlRows<{ record: string; from: string; on: string }>(sql`
+      SELECT x.target_id::text AS record, x.detail->'window'->>'from' AS "from",
+        (x.created_at AT TIME ZONE ${x.session.tenant.timezone})::date::text AS "on"
+      FROM exit_effects x
+      WHERE x.tenant_id=${x.session.tenant.id} AND x.kind='future_transfer_detached'
+        AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones d
+          WHERE d.tenant_id=x.tenant_id AND d.record_id=x.target_id)`);
+    expect(rows.length, '前提：改期写了可挂回的摘除行').toBeGreaterThan(0);
+    for (const row of rows) expect(row.from <= row.on, `${row.record} 摘下时已生效`).toBe(true);
   });
 });
