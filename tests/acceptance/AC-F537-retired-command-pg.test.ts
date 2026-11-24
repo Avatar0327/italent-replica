@@ -36,7 +36,9 @@ function hookLock(
   return wrapped;
 }
 
-it.skipIf(testDbMode() !== 'pg').each(['app', 'app_owner'])(
+// app / app_owner 登录角色只在普通角色分片由 scripts/pg-roles.sql 建出（REQUIRE_APP_ROLE=1，约定同 AC-CI-F212）；
+// 普通 PG 分片与 PGlite 没有这两个角色，连接会报认证失败，故跳过。
+it.skipIf(testDbMode() !== 'pg' || process.env.REQUIRE_APP_ROLE !== '1').each(['app', 'app_owner'])(
   'AC-F537 P2-1 GET 先锁、旧键 POST 排队及晚到均被拒，回执恒为未执行 (%s)',
   async (role) => {
     const owner = await createTestDb();
