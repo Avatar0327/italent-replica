@@ -5,10 +5,13 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
-import { registerFieldApplicability } from '../../apps/api/src/modules/employment/field-origin-store.js';
 import {
+  clearInjected,
   createTransfer,
   deferralWorld,
+  directTransfer,
+  editRecord,
+  injectJ3,
   ledger,
   patchBusiness,
   submitBusiness,
@@ -19,20 +22,7 @@ import {
 const database = useTestDb();
 const POSITION = 'preset:positionId';
 
-const unregister: (() => void)[] = [];
-afterEach(() => {
-  for (const off of unregister.splice(0)) off();
-});
-
-/** 注入 J3“职位必须属于任职部门”的判定；部门仍待定（延迟）时无法判断，返回 undefined。 */
-function injectJ3(w: DeferralWorld) {
-  const off = registerFieldApplicability(POSITION, (row, candidate) =>
-    candidate.deferredFieldCodes.includes('preset:departmentId')
-      ? undefined
-      : w.orgOf.get(String(row.value)) === candidate.fields.departmentId,
-  );
-  unregister.push(off);
-}
+afterEach(clearInjected);
 
 const positionRows = (w: DeferralWorld, id: string) => ledger(w, id, [POSITION]);
 const decisions = (rows: LedgerRow[]) => rows.filter((row) => row.kind === 'fallback' || row.kind === 'restore');
@@ -90,7 +80,7 @@ describe('AC-TRF-72 继承值：部门改走再改回', () => {
     expect(atB.fields).toMatchObject({ departmentId: w.to.id, positionId: null });
 
     // 第一个世界的谓词只认它自己的组织：建第二个世界（含入职落地）之前先注销，免得串到别人的入职记录
-    for (const off of unregister.splice(0)) off();
+    clearInjected();
     const other = await deferralWorld(database().db, 'f036s6-trf72-land-a', 'inherit');
     injectJ3(other);
     const back = await createTransfer(other, 'application', '2026-11-01', { departmentId: other.from.id });
@@ -151,11 +141,14 @@ describe('AC-TRF-72 落地解析值：覆盖值被退回后落地取前驱', () 
     'Z4：延迟职位 → HR 选 A 部门的职位 → 部门改 B → 另有 B/Q 调动先落地（%s）',
     async (variant) => {
       const w = await deferralWorld(database().db, `f036s6-trf72-z4-${variant}`, 'open');
-      injectJ3(w);
+      // 前驱记录职位为空，申请里的延迟职位才会被向后更新命中（值匹配要求目标值等于编辑前的值）
+      const base = await directTransfer(w, '2026-09-15', { departmentId: w.from.id, positionId: null });
       const draft = await createTransfer(w, 'application', '2026-11-01', { departmentId: w.from.id });
       expect(w.shape).toBe('open');
-      await patch(w, draft.id, { positionId: w.sibling.id });
-      const override = (await positionRows(w, draft.id)).find((row) => row.kind === 'hr-input')!;
+      injectJ3(w);
+      await editRecord(w, base.id, { positionId: w.sibling.id });
+      const override = (await positionRows(w, draft.id)).find((row) => row.kind === 'forward-update')!;
+      expect(override).toMatchObject({ value: w.sibling.id, version: 2 });
       await patch(w, draft.id, { departmentId: w.to.id });
       const fallback = decisions(await positionRows(w, draft.id));
       expect(fallback).toHaveLength(1);
@@ -166,16 +159,7 @@ describe('AC-TRF-72 落地解析值：覆盖值被退回后落地取前驱', () 
       }
 
       // HR 另办一条 10-18 的调动：落在 B 部门 Q 职位，先于申请落地
-      const lateral = await w.session.business(
-        w.employee.id,
-        {
-          kind: 'transfer',
-          mode: 'direct',
-          effectiveDate: '2026-10-18',
-          fields: { departmentId: w.to.id, positionId: w.target.id },
-        },
-        (await w.session.getEmployee(w.employee.id)).revision,
-      );
+      const lateral = await directTransfer(w, '2026-10-18', { departmentId: w.to.id, positionId: w.target.id });
       expect(lateral.record).toMatchObject({ fields: { departmentId: w.to.id, positionId: w.target.id } });
 
       const landed = await land(w, draft, '2026-11-01');

@@ -81,7 +81,8 @@ it('AC-EMP-25/26 #11：已落地的迟到调动以 carry-only 投影重排快照
     version: 2,
     date: '2026-10-06',
     explicit: ['preset:departmentId'],
-    deferred,
+    // §4.5：已落地解析（有效 resolved）的字段不再出现在载荷的“延迟”标记里；策略行仍是 deferred（上面的 state）
+    deferred: [],
     snapshot: true,
     origins: 0,
   });

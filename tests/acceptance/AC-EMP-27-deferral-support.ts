@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant, type Db } from '@italent/db';
 import { expect } from 'vitest';
+import { registerFieldApplicability } from '../../apps/api/src/modules/employment/field-origin-store.js';
 import { activationWorld, type ActivationWorld } from './AC-TRF-activation-support.js';
 import type { EmploymentBusiness } from './AC-EMP-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
@@ -144,4 +145,37 @@ export async function payloadVersions(w: DeferralWorld, businessId: string) {
 export async function patchBusiness(w: DeferralWorld, id: string, body: Record<string, unknown>) {
   const current = await w.business(id);
   return w.session.request('PATCH', `/businesses/${id}`, { ifMatch: current.revision, body });
+}
+
+const POSITION = 'preset:positionId';
+const injected: (() => void)[] = [];
+
+/** 注入 J3“职位必须属于任职部门”的判定（真实版由 #99 承接）；部门仍待定（延迟）时无法判断，返回 undefined。 */
+export function injectJ3(w: DeferralWorld) {
+  injected.push(
+    registerFieldApplicability(POSITION, (row, candidate) =>
+      candidate.deferredFieldCodes.includes('preset:departmentId')
+        ? undefined
+        : w.orgOf.get(String(row.value)) === candidate.fields.departmentId,
+    ),
+  );
+}
+
+/** 注销本文件注入的全部谓词（每个用例结束调用，免得串到别的世界）。 */
+export function clearInjected() {
+  for (const off of injected.splice(0)) off();
+}
+
+/** 走业务入口办一条直接调动（HR 在记录上落地，用来造“前驱”）。 */
+export async function directTransfer(w: DeferralWorld, effectiveDate: string, fields: Record<string, unknown>) {
+  return createTransfer(w, 'direct', effectiveDate, fields);
+}
+
+/** 走真实 /records/:id 编辑一条已生效记录，触发向后更新。 */
+export async function editRecord(w: DeferralWorld, id: string, fields: Record<string, unknown>) {
+  const response = await w.session.request('PATCH', `/records/${id}`, {
+    ifMatch: (await w.business(id)).revision,
+    body: { fields },
+  });
+  expect(response.status, await response.clone().text()).toBe(200);
 }
