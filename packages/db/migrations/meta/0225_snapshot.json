@@ -1,5 +1,5 @@
 {
-  "id": "22c58b41-ef0d-4779-b1c6-83aa6fc1b83e",
+  "id": "7fed5f3d-6914-43d0-a343-08f8aa1d69c5",
   "prevId": "d560f629-8ef0-4fca-bc13-8b4706eec508",
   "version": "7",
   "dialect": "postgresql",
@@ -24438,7 +24438,7 @@
         },
         "approval_instances_business_type": {
           "name": "approval_instances_business_type",
-          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch','probation_assessment','retirement_intention','org_adjustment','exit_handover')"
+          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch','probation_assessment','retirement_intention','org_adjustment',\n        'exit_handover','entry_info_collection')"
         },
         "approval_instances_category": {
           "name": "approval_instances_category",
@@ -68426,436 +68426,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.org_adjustment_transfer_items": {
-      "name": "org_adjustment_transfer_items",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "adjustment_id": {
-          "name": "adjustment_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "base_record_id": {
-          "name": "base_record_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "base_employee_revision": {
-          "name": "base_employee_revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "department_id": {
-          "name": "department_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "department_item_id": {
-          "name": "department_item_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "position_id": {
-          "name": "position_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "position_item_id": {
-          "name": "position_item_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "post_id": {
-          "name": "post_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "level_id": {
-          "name": "level_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "direct_manager_id": {
-          "name": "direct_manager_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dotted_manager_id": {
-          "name": "dotted_manager_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "transfer_type_code": {
-          "name": "transfer_type_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "form_id": {
-          "name": "form_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason_code": {
-          "name": "reason_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "with_establishment": {
-          "name": "with_establishment",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "linkage": {
-          "name": "linkage",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "generated_by_item_id": {
-          "name": "generated_by_item_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "generated_reason": {
-          "name": "generated_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_business_id": {
-          "name": "created_business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "exec_phase": {
-          "name": "exec_phase",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "execution_result": {
-          "name": "execution_result",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "execution_reason": {
-          "name": "execution_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "execution_message": {
-          "name": "execution_message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "org_adjustment_transfer_employee": {
-          "name": "org_adjustment_transfer_employee",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "org_adjustment_transfer_items_tenant_id_tenants_id_fk": {
-          "name": "org_adjustment_transfer_items_tenant_id_tenants_id_fk",
-          "tableFrom": "org_adjustment_transfer_items",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_transfer_adjustment_fk": {
-          "name": "org_adjustment_transfer_adjustment_fk",
-          "tableFrom": "org_adjustment_transfer_items",
-          "tableTo": "org_adjustments",
-          "columnsFrom": [
-            "tenant_id",
-            "adjustment_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_transfer_base_fk": {
-          "name": "org_adjustment_transfer_base_fk",
-          "tableFrom": "org_adjustment_transfer_items",
-          "tableTo": "employment_records",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "base_record_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_transfer_business_fk": {
-          "name": "org_adjustment_transfer_business_fk",
-          "tableFrom": "org_adjustment_transfer_items",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "created_business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_transfer_department_fk": {
-          "name": "org_adjustment_transfer_department_fk",
-          "tableFrom": "org_adjustment_transfer_items",
-          "tableTo": "org_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "department_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_transfer_position_fk": {
-          "name": "org_adjustment_transfer_position_fk",
-          "tableFrom": "org_adjustment_transfer_items",
-          "tableTo": "job_position_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "position_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_transfer_post_fk": {
-          "name": "org_adjustment_transfer_post_fk",
-          "tableFrom": "org_adjustment_transfer_items",
-          "tableTo": "job_post_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "post_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_transfer_level_fk": {
-          "name": "org_adjustment_transfer_level_fk",
-          "tableFrom": "org_adjustment_transfer_items",
-          "tableTo": "job_level_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "level_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_transfer_direct_manager_fk": {
-          "name": "org_adjustment_transfer_direct_manager_fk",
-          "tableFrom": "org_adjustment_transfer_items",
-          "tableTo": "employment_employees",
-          "columnsFrom": [
-            "tenant_id",
-            "direct_manager_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_transfer_dotted_manager_fk": {
-          "name": "org_adjustment_transfer_dotted_manager_fk",
-          "tableFrom": "org_adjustment_transfer_items",
-          "tableTo": "employment_employees",
-          "columnsFrom": [
-            "tenant_id",
-            "dotted_manager_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_transfer_department_item_fk": {
-          "name": "org_adjustment_transfer_department_item_fk",
-          "tableFrom": "org_adjustment_transfer_items",
-          "tableTo": "org_adjustment_org_items",
-          "columnsFrom": [
-            "tenant_id",
-            "adjustment_id",
-            "department_item_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "adjustment_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_transfer_generated_by_fk": {
-          "name": "org_adjustment_transfer_generated_by_fk",
-          "tableFrom": "org_adjustment_transfer_items",
-          "tableTo": "org_adjustment_org_items",
-          "columnsFrom": [
-            "tenant_id",
-            "adjustment_id",
-            "generated_by_item_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "adjustment_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "org_adjustment_transfer_seq": {
-          "name": "org_adjustment_transfer_seq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "adjustment_id",
-            "seq"
-          ]
-        },
-        "org_adjustment_transfer_business": {
-          "name": "org_adjustment_transfer_business",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "created_business_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "org_adjustment_transfer_department_ref": {
-          "name": "org_adjustment_transfer_department_ref",
-          "value": "num_nonnulls(\"org_adjustment_transfer_items\".\"department_id\", \"org_adjustment_transfer_items\".\"department_item_id\") = 1"
-        },
-        "org_adjustment_transfer_position_ref": {
-          "name": "org_adjustment_transfer_position_ref",
-          "value": "num_nonnulls(\"org_adjustment_transfer_items\".\"position_id\", \"org_adjustment_transfer_items\".\"position_item_id\") <= 1"
-        },
-        "org_adjustment_transfer_generation": {
-          "name": "org_adjustment_transfer_generation",
-          "value": "(\"org_adjustment_transfer_items\".\"generated_by_item_id\" IS NULL) = (\"org_adjustment_transfer_items\".\"generated_reason\" IS NULL)"
-        },
-        "org_adjustment_transfer_baseline": {
-          "name": "org_adjustment_transfer_baseline",
-          "value": "\"org_adjustment_transfer_items\".\"base_employee_revision\" > 0 AND \"org_adjustment_transfer_items\".\"seq\" > 0"
-        },
-        "org_adjustment_transfer_phase": {
-          "name": "org_adjustment_transfer_phase",
-          "value": "\"org_adjustment_transfer_items\".\"exec_phase\" IN (0, 2)"
-        },
-        "org_adjustment_transfer_result": {
-          "name": "org_adjustment_transfer_result",
-          "value": "\"org_adjustment_transfer_items\".\"execution_result\" IN (1, 2)"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.org_adjustments": {
       "name": "org_adjustments",
       "schema": "",
@@ -71181,6 +70751,287 @@
         "social_insurance_plans_code_nonempty": {
           "name": "social_insurance_plans_code_nonempty",
           "value": "btrim(\"social_insurance_plans\".\"code\") <> ''"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.onboarding_entry_cases": {
+      "name": "onboarding_entry_cases",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root_business_id": {
+          "name": "root_business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "current_business_id": {
+          "name": "current_business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "pending_date": {
+          "name": "pending_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hired_record_id": {
+          "name": "hired_record_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hired_on": {
+          "name": "hired_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "onboarding_entry_cases_state_date": {
+          "name": "onboarding_entry_cases_state_date",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pending_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "onboarding_entry_cases_tenant_id_tenants_id_fk": {
+          "name": "onboarding_entry_cases_tenant_id_tenants_id_fk",
+          "tableFrom": "onboarding_entry_cases",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_entry_cases_root_fk": {
+          "name": "onboarding_entry_cases_root_fk",
+          "tableFrom": "onboarding_entry_cases",
+          "tableTo": "employment_business_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "root_business_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_entry_cases_current_fk": {
+          "name": "onboarding_entry_cases_current_fk",
+          "tableFrom": "onboarding_entry_cases",
+          "tableTo": "employment_business_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "current_business_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_entry_cases_hired_record_fk": {
+          "name": "onboarding_entry_cases_hired_record_fk",
+          "tableFrom": "onboarding_entry_cases",
+          "tableTo": "employment_records",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "hired_record_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_entry_cases_creator_fk": {
+          "name": "onboarding_entry_cases_creator_fk",
+          "tableFrom": "onboarding_entry_cases",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "created_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_entry_cases_updater_fk": {
+          "name": "onboarding_entry_cases_updater_fk",
+          "tableFrom": "onboarding_entry_cases",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "updated_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "onboarding_entry_cases_tenant_id": {
+          "name": "onboarding_entry_cases_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "onboarding_entry_cases_root": {
+          "name": "onboarding_entry_cases_root",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "root_business_id"
+          ]
+        },
+        "onboarding_entry_cases_current": {
+          "name": "onboarding_entry_cases_current",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "current_business_id"
+          ]
+        },
+        "onboarding_entry_cases_hired_record": {
+          "name": "onboarding_entry_cases_hired_record",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "hired_record_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "onboarding_entry_cases_state_valid": {
+          "name": "onboarding_entry_cases_state_valid",
+          "value": "\"onboarding_entry_cases\".\"state\" IN ('pending','cancelled','hired','deleted')"
+        },
+        "onboarding_entry_cases_revision_positive": {
+          "name": "onboarding_entry_cases_revision_positive",
+          "value": "\"onboarding_entry_cases\".\"revision\" > 0"
+        },
+        "onboarding_entry_cases_dates_finite": {
+          "name": "onboarding_entry_cases_dates_finite",
+          "value": "isfinite(\"onboarding_entry_cases\".\"pending_date\") AND (\"onboarding_entry_cases\".\"hired_on\" IS NULL OR isfinite(\"onboarding_entry_cases\".\"hired_on\"))"
+        },
+        "onboarding_entry_cases_hire_valid": {
+          "name": "onboarding_entry_cases_hire_valid",
+          "value": "(\"onboarding_entry_cases\".\"state\" = 'hired' AND \"onboarding_entry_cases\".\"hired_on\" IS NOT NULL AND \"onboarding_entry_cases\".\"hired_record_id\" IS NOT NULL)\n        OR (\"onboarding_entry_cases\".\"state\" <> 'hired' AND \"onboarding_entry_cases\".\"hired_on\" IS NULL AND \"onboarding_entry_cases\".\"hired_record_id\" IS NULL)"
         }
       },
       "isRLSEnabled": false

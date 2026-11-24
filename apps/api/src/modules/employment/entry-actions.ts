@@ -1,3 +1,4 @@
+import { applyCurrentEntryCase } from './entry-case.js';
 /**
  * 待入职的状态动作（R2 BE-2a；docs/02_业务建模/34 EN-R8 / R9 / R14，DEC-484② / DEC-540 保守口径）：
  * 取消入职、改期入职、编辑待入职（F-188）、删除待入职。只做 F-129 已核实的状态变化，不联动信息采集；
@@ -85,6 +86,7 @@ async function cancelEntryCore(
   if (!mode.rejectUnchanged && before.entryStatus === ENTRY_STATUS.cancelled) return { record: before, changed: false };
   const reason = input.reason ?? DEFAULT_CANCEL_REASON;
   const record = await changePendingEntryStatus(tx, ctx, recordId, 'cancelled', mode);
+  await applyCurrentEntryCase(tx, ctx, { kind: 'cancel', employeeId: record.employeeId, businessId: recordId });
   // F-328 返工 P2-1：取消待重聘同时撤回对离职账号的恢复（已启用的按离职事实重新停用）
   await withdrawRehireAccount(tx, ctx, record);
   await logEntryAction(tx, ctx, {
@@ -194,69 +196,87 @@ async function replacePendingEntry(
     (previousContract && input.syncContract
       ? { ...previousContract, startDate: input.effectiveDate }
       : previousContract);
-  await transitionEmployment(tx, ctx, { id: record.id, action: 'delete' });
-  await clearPendingContract(tx, ctx, record.id);
-  const employee = await lockEmploymentEmployee(tx, ctx, record.employeeId);
-  const created = await createEmploymentBusiness(
-    tx,
-    { ...ctx, expectedRevision: employee.revision },
-    record.employeeId,
-    {
-      // 保留原业务类型（hire / rehire / retire_rehire）与表单标识：重聘、返聘改期后仍是重聘、返聘
-      kind: record.kind,
-      mode: 'direct',
-      formId: business.payload.formId,
-      effectiveDate: input.effectiveDate,
-      fields:
-        (input.offer ?? input.employType)
-          ? { ...(input.offer?.fields ?? record.fields), ...(input.employType ? { employType: input.employType } : {}) }
-          : record.fields,
-      customFields: record.customFields,
-    },
-    {
-      retainedEmploymentForm: record.fields.employmentForm,
-      entry: {
-        pendingEntry: true,
-        entryStatus: input.entryStatus,
-        ...(probation === null ? {} : { probation }),
-        ...(probationMonths === undefined ? {} : { probationMonths }),
-        pendingContract: contract,
+  const fields = input.offer?.fields ?? record.fields;
+  return transitionEmployment(tx, ctx, { id: record.id, action: 'delete' }, async () => {
+    await clearPendingContract(tx, ctx, record.id);
+    const employee = await lockEmploymentEmployee(tx, ctx, record.employeeId);
+    const created = await createEmploymentBusiness(
+      tx,
+      { ...ctx, expectedRevision: employee.revision },
+      record.employeeId,
+      {
+        // 保留原业务类型（hire / rehire / retire_rehire）与表单标识：重聘、返聘改期后仍是重聘、返聘
+        kind: record.kind,
+        mode: 'direct',
+        formId: business.payload.formId,
+        effectiveDate: input.effectiveDate,
+        fields: input.employType ? { ...fields, employType: input.employType } : fields,
+        customFields: record.customFields,
       },
-    },
-  );
+      {
+        replacingPendingEntry: true,
+        retainedEmploymentForm: record.fields.employmentForm,
+        entry: {
+          pendingEntry: true,
+          entryStatus: input.entryStatus,
+          ...(probation === null ? {} : { probation }),
+          ...(probationMonths === undefined ? {} : { probationMonths }),
+          pendingContract: contract,
+        },
+      },
+    );
+    await recordEntryReplacement(tx, ctx, record, created.id, input);
+    await auditEmployment(
+      tx,
+      ctx,
+      `employment.entry.${input.action}`,
+      'employment-business',
+      created.id,
+      {
+        businessId: record.id,
+        effectiveDate: record.effectiveDate,
+        entryStatus: record.entryStatus,
+        probation: previousProbation,
+        ...pendingContractAudit(previousContract),
+        ...(input.employType ? { employType: record.fields.employType } : {}),
+      },
+      {
+        businessId: created.id,
+        effectiveDate: input.effectiveDate,
+        entryStatus: input.entryStatus,
+        probation,
+        ...pendingContractAudit(contract),
+        ...(input.employType ? { employType: input.employType } : {}),
+      },
+    );
+    return { business: created, contract };
+  });
+}
+
+async function recordEntryReplacement(
+  tx: Tx,
+  ctx: EmploymentContext,
+  record: EmploymentRecord,
+  businessId: string,
+  input: ReplaceInput,
+) {
+  await applyCurrentEntryCase(tx, ctx, {
+    kind: 'replace',
+    employeeId: record.employeeId,
+    businessId: record.id,
+    replacementBusinessId: businessId,
+    pendingDate: input.effectiveDate,
+    intent: input.action === 'postpone' && record.entryStatus === ENTRY_STATUS.cancelled ? 'restore' : 'preserve',
+  });
   await logEntryAction(tx, ctx, {
     employeeId: record.employeeId,
-    businessId: created.id,
+    businessId,
     previousBusinessId: record.id,
     action: input.action,
     remark: input.remark,
     fromDate: record.effectiveDate,
     toDate: input.effectiveDate,
   });
-  await auditEmployment(
-    tx,
-    ctx,
-    `employment.entry.${input.action}`,
-    'employment-business',
-    created.id,
-    {
-      businessId: record.id,
-      effectiveDate: record.effectiveDate,
-      entryStatus: record.entryStatus,
-      probation: previousProbation,
-      ...pendingContractAudit(previousContract),
-      ...(input.employType ? { employType: record.fields.employType } : {}),
-    },
-    {
-      businessId: created.id,
-      effectiveDate: input.effectiveDate,
-      entryStatus: input.entryStatus,
-      probation,
-      ...pendingContractAudit(contract),
-      ...(input.employType ? { employType: input.employType } : {}),
-    },
-  );
-  return { business: created, contract };
 }
 
 /**

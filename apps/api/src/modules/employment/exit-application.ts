@@ -48,9 +48,8 @@ import type { ChangeType, CustomFields, EmploymentBusiness, EmploymentContext, P
 import { lockExitParticipants } from './exit-lock-plan.js';
 import { createEmploymentBusiness, requireSavedBusiness } from './write-service.js';
 import { authorizeLinkageWrite } from '../transfer/linkage/access.js';
-import { normalizeLinkage, type LinkageOptions } from '../transfer/linkage/input.js';
-import { appendLinkageVersion } from '../transfer/linkage/store.js';
-import { validateLinkage } from '../transfer/linkage/validation.js';
+import { dutySubordinateIds, normalizeLinkage, type LinkageOptions } from '../transfer/linkage/input.js';
+import { requirePendingRetirementDutyPlan, writeDutyTransferPlan } from './exit-duty-transfer.js';
 import { queueExitAccount } from './exit-account-store.js';
 import { assertRefsUnchanged } from '../attachments/binding.js';
 import { bindOnCreate, gateExit, writeRefs } from './exit-attachments.js';
@@ -251,12 +250,15 @@ async function writeRetirement(
   await writeRetirementExtension(tx, ctx, business, retirement);
 }
 
-/** 职责转交计划的授权（逐下属 / 组织角色字段权，§9.1）、校验与保存；任一不通过整单回滚。 */
-async function saveDutyTransfer(tx: Tx, ctx: EmploymentContext, business: EmploymentBusiness, options: LinkageOptions) {
-  const target = { businessId: business.id, employeeId: business.employeeId };
-  await authorizeLinkageWrite(tx, ctx, {}, { employeeId: business.employeeId, operation: 'create', options });
-  await validateLinkage(tx, ctx, business.employeeId, options);
-  await appendLinkageVersion(tx, ctx, target, options);
+async function saveDutyTransfer(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: { readonly id: string; readonly employeeId: string },
+  options: LinkageOptions,
+  operation: 'create' | 'update' = 'create',
+) {
+  await authorizeLinkageWrite(tx, ctx, {}, { employeeId: business.employeeId, operation, options });
+  await writeDutyTransferPlan(tx, ctx, business, options);
 }
 
 const SETTLED = ['voided', 'disapproved', 'deleted'];
@@ -264,6 +266,7 @@ const SETTLED = ['voided', 'disapproved', 'deleted'];
 /** 编辑离职请求：扩展字段与计划日期；未生效改期走 F-140 单一入口。 */
 export interface ExitPatch extends RescheduleOptions {
   readonly fields: Omit<ExitOptions, 'dutyTransfer' | 'pendingTransferAck'>;
+  readonly dutyTransfer?: LinkageOptions;
   readonly dates: { readonly lastWorkDate?: string; readonly effectiveDate?: string };
 }
 
@@ -288,19 +291,24 @@ async function timingValues(
   return { dutyTransferTiming: next.timing, dutyTransferDate: next.date };
 }
 
-const exitPatchSchema = exitOptionsSchema.omit({ dutyTransfer: true }).extend({
+const retirementDutyPatchSchema = exitOptionsSchema.extend({
   confirmed: z.boolean().optional(),
   lastWorkDate: z.string().optional(),
   effectiveDate: z.string().optional(),
 });
 
-/** PATCH exits/:id 与审批编辑共用的解析：日期键单独拿出来交给门禁比较，其余按离职扩展字段校验。 */
-export function parseExitPatch(raw: unknown): ExitPatch {
-  const parsed = exitPatchSchema.safeParse(raw);
+const exitPatchSchema = retirementDutyPatchSchema.omit({ dutyTransfer: true });
+
+/** 日期键交给门禁比较，只有专用退休编辑入口开放计划。 */
+export function parseExitPatch(raw: unknown, allowDutyTransfer = false): ExitPatch {
+  const schema = allowDutyTransfer ? retirementDutyPatchSchema : exitPatchSchema;
+  const parsed = schema.safeParse(raw);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '离职字段不合法', parsed.error.issues);
-  const { lastWorkDate, effectiveDate, pendingTransferAck, confirmed, ...fields } = parsed.data;
+  const data: z.infer<typeof retirementDutyPatchSchema> = parsed.data;
+  const { lastWorkDate, effectiveDate, pendingTransferAck, confirmed, dutyTransfer, ...fields } = data;
   return {
     fields,
+    ...(dutyTransfer === undefined ? {} : { dutyTransfer: normalizeLinkage({ dutyTransfer }) }),
     pendingTransferAck,
     confirmed,
     dates: {
@@ -319,8 +327,8 @@ function withDates(
   return { ...business, payload: { ...business.payload, lastWorkDate, effectiveDate } };
 }
 
-/** 编辑审计：只记本次改动的列（变更前取自改前的扩展行）。 */
-async function auditExitUpdate(
+/** 更新扩展列与业务 revision，审计只记本次改动的列。 */
+async function writeExitUpdate(
   tx: Tx,
   ctx: EmploymentContext,
   input: {
@@ -331,6 +339,11 @@ async function auditExitUpdate(
   },
 ) {
   const { kind, business, row, values } = input;
+  await tx
+    .update(exitRequests)
+    .set(values)
+    .where(and(eq(exitRequests.tenantId, ctx.tenantId), eq(exitRequests.businessId, business.id)));
+  await bumpEmploymentBusiness(tx, ctx, business);
   const picked = Object.fromEntries(Object.keys(values).map((key) => [key, row[key]]));
   const action = kind === 'retirement' ? 'retirement.request.update' : 'exit.request.update';
   const scope = { employeeId: business.employeeId };
@@ -354,6 +367,24 @@ async function assertDictionaries(
   }
 }
 
+export function updateRetirementFields(tx: Tx, ctx: EmploymentContext, businessId: string, patch: ExitPatch) {
+  const duty = patch.dutyTransfer;
+  return updateExitFields(tx, ctx, businessId, patch, {
+    kind: 'retirement',
+    ...(duty
+      ? {
+          dutyPlan: {
+            subordinates: dutySubordinateIds(duty),
+            save: async (business) => {
+              await requirePendingRetirementDutyPlan(tx, ctx, business.id);
+              await saveDutyTransfer(tx, ctx, business, duty, 'update');
+            },
+          },
+        }
+      : {}),
+  });
+}
+
 /**
  * 编辑离职（B14 / F-140）：扩展字段与改期同事务，未放开的状态仍由日期门禁拒绝。
  * approvalEdit：审批中心先按节点规则授权，改期仍走同一编排与占用校验。
@@ -366,12 +397,17 @@ export async function updateExitFields(
   options: {
     readonly approvalEdit?: boolean;
     readonly kind?: 'leave' | 'retirement';
+    readonly dutyPlan?: {
+      readonly subordinates: readonly string[];
+      save(business: LockedEmploymentBusiness): Promise<void>;
+    };
     /** 只有本人自助修改置真：patch.fields.attachmentRefs 走绑定；其余出口只许不带或与当前相同（F-479 §2.4 R-2）。 */
     readonly bindAttachments?: boolean;
   } = {},
 ): Promise<EmploymentBusiness & { readonly downstreamHints?: Downstream }> {
   const kind = options.kind ?? 'leave';
-  const business = await lockExitForEdit(tx, ctx, businessId);
+  const duty = options.dutyPlan;
+  const business = await lockExitForEdit(tx, ctx, businessId, duty?.subordinates);
   const [row] = await tx
     .select()
     .from(exitRequests)
@@ -380,8 +416,10 @@ export async function updateExitFields(
     throw new AppError('NOT_FOUND', kind === 'retirement' ? '退休单不存在' : '离职单不存在');
   if (SETTLED.includes(business.state))
     throw new AppError('CONFLICT', '已办结的离职不能再编辑', { reason: 'EXIT_NOT_EDITABLE' });
+  if (duty && business.state === 'effective')
+    throw new AppError('CONFLICT', '退休已生效，不能再修改转交计划', { reason: 'EXIT_NOT_EDITABLE' });
   const { attachmentRefs: nextRefs, ...patchFields } = patch.fields;
-  // 转交时机是本单控制项，不走字段权限（同 dutyTransfer）；其余字段照旧
+  // 转交时机是本单控制项；退休计划另走联动授权，其余字段走任职字段权限。
   const { dutyTransferTiming: askedTiming, dutyTransferDate: askedDate, ...permissionFields } = patchFields;
   const mayReschedule =
     kind === 'leave' && ['draft', 'rejected', 'in_review', 'approved', 'effective'].includes(business.state);
@@ -413,19 +451,17 @@ export async function updateExitFields(
     nextRefs,
     values,
   });
-  if (!Object.keys(values).length && !changing) {
+  const hasColumns = Object.keys(values).length > 0;
+  if (!hasColumns && !changing && !duty) {
     if (mayReschedule && Object.keys(patch.dates).length) return requireSavedBusiness(tx, ctx, businessId);
     // 只带了与当前相同的附件列表：等于没改，按成功返回（既有动作照常，AC-ATT-16）
     if (nextRefs !== undefined) return requireSavedBusiness(tx, ctx, businessId);
     throw new AppError('VALIDATION_FAILED', '必须提供要修改的离职字段');
   }
-  if (Object.keys(values).length) {
-    await tx
-      .update(exitRequests)
-      .set(values)
-      .where(and(eq(exitRequests.tenantId, ctx.tenantId), eq(exitRequests.businessId, businessId)));
-    await bumpEmploymentBusiness(tx, ctx, business);
-    await auditExitUpdate(tx, ctx, { kind, business, row, values });
+  if (hasColumns) await writeExitUpdate(tx, ctx, { kind, business, row, values });
+  if (duty) {
+    await duty.save(business);
+    if (!hasColumns) await bumpEmploymentBusiness(tx, ctx, business);
   }
   // R6 的生效订阅方必须看到本次扩展字段；后续任何门禁失败都回滚整个命令。
   const downstream = changing ? await rescheduleExit(tx, ctx, business, patch.dates, { ...patch, ...options }) : null;
@@ -435,7 +471,7 @@ export async function updateExitFields(
     const { refreshBusinessVersion } = await import('../approval/engine.js');
     await refreshBusinessVersion(tx, ctx, 'employment', businessId);
   }
-  await queueExitAccount(tx, ctx, businessId, patchFields.actualLeaveDate !== undefined);
+  if (!duty || hasColumns) await queueExitAccount(tx, ctx, businessId, patchFields.actualLeaveDate !== undefined);
   const saved = await requireSavedBusiness(tx, ctx, businessId);
   if (!downstream) return saved;
   const { successor, ...downstreamHints } = downstream;

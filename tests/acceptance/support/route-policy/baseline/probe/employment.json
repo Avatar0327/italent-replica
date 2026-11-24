@@ -313,6 +313,26 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "GET /api/tenant/employment/businesses/:id/field-origins": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
   "GET /api/tenant/employment/completion-todos": {
     "all": {
       "status": 200
@@ -865,6 +885,216 @@
       "scope:data.scope.all:"
     ],
     "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/pending-entries/:id/esign-context": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "580c9ff84c8b",
+      "status": 404
+    },
+    "entrySignBranches": {
+      "accepted": {
+        "fieldQueries": [],
+        "keys": [
+          "canInitiate",
+          "items",
+          "revision",
+          "sourceId"
+        ],
+        "scopeQueries": [
+          "scope:TenantBase/TenantBase.EmploymentRecord/-",
+          "scope:data.scope.all:"
+        ],
+        "status": 200,
+        "trace": [
+          "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+          "obj:TenantBase.EmploymentRecord:update"
+        ]
+      },
+      "foreign": {
+        "code": "NOT_FOUND",
+        "fieldQueries": [],
+        "keys": [
+          "error"
+        ],
+        "scopeQueries": [
+          "scope:TenantBase/TenantBase.EmploymentRecord/-",
+          "scope:data.scope.all:"
+        ],
+        "status": 404,
+        "trace": [
+          "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+          "obj:TenantBase.EmploymentRecord:update"
+        ]
+      },
+      "inactive": {
+        "code": "TENANT_NOT_MEMBER",
+        "fieldQueries": [],
+        "keys": [
+          "error"
+        ],
+        "scopeQueries": [],
+        "status": 403,
+        "trace": []
+      },
+      "noButton": {
+        "code": "FORBIDDEN",
+        "fieldQueries": [],
+        "keys": [
+          "error"
+        ],
+        "scopeQueries": [],
+        "status": 403,
+        "trace": [
+          "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+          "obj:TenantBase.EmploymentRecord:update"
+        ]
+      },
+      "noObject": {
+        "code": "FORBIDDEN",
+        "fieldQueries": [],
+        "keys": [
+          "error"
+        ],
+        "scopeQueries": [],
+        "status": 403,
+        "trace": [
+          "obj:TenantBase.EmploymentRecord:update"
+        ]
+      },
+      "noScope": {
+        "code": "NOT_FOUND",
+        "fieldQueries": [],
+        "keys": [
+          "error"
+        ],
+        "scopeQueries": [
+          "scope:TenantBase/TenantBase.EmploymentRecord/-",
+          "scope:data.scope.all:"
+        ],
+        "status": 404,
+        "trace": [
+          "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+          "obj:TenantBase.EmploymentRecord:update"
+        ]
+      }
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "GET /api/tenant/employment/pending-entries/:id/esign-records": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "580c9ff84c8b",
+      "status": 404
+    },
+    "entrySignBranches": {
+      "accepted": {
+        "fieldQueries": [
+          "fields:TenantBase.ESignRecord"
+        ],
+        "keys": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "scopeQueries": [
+          "scope:TenantBase/TenantBase.ESignRecord/TenantBase.ESignRecord.list",
+          "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail"
+        ],
+        "status": 200,
+        "trace": [
+          "obj:TenantBase.ESignRecord:view",
+          "obj:TenantBase.EmploymentRecord:view"
+        ]
+      },
+      "noFiles": {
+        "fieldQueries": [
+          "fields:TenantBase.ESignRecord"
+        ],
+        "keys": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "scopeQueries": [
+          "scope:TenantBase/TenantBase.ESignRecord/TenantBase.ESignRecord.list",
+          "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail"
+        ],
+        "status": 200,
+        "trace": [
+          "obj:TenantBase.ESignRecord:view",
+          "obj:TenantBase.EmploymentRecord:view"
+        ]
+      },
+      "noRecordRead": {
+        "code": "FORBIDDEN",
+        "fieldQueries": [],
+        "keys": [
+          "error"
+        ],
+        "scopeQueries": [],
+        "status": 403,
+        "trace": [
+          "obj:TenantBase.ESignRecord:view",
+          "obj:TenantBase.EmploymentRecord:view"
+        ]
+      },
+      "noScope": {
+        "code": "NOT_FOUND",
+        "fieldQueries": [],
+        "keys": [
+          "error"
+        ],
+        "scopeQueries": [
+          "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail"
+        ],
+        "status": 404,
+        "trace": [
+          "obj:TenantBase.ESignRecord:view",
+          "obj:TenantBase.EmploymentRecord:view"
+        ]
+      },
+      "noSourceRead": {
+        "code": "FORBIDDEN",
+        "fieldQueries": [],
+        "keys": [
+          "error"
+        ],
+        "scopeQueries": [],
+        "status": 403,
+        "trace": [
+          "obj:TenantBase.EmploymentRecord:view"
+        ]
+      }
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.ESignRecord:view",
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
@@ -2498,6 +2728,95 @@
     "trace": [
       "obj:TenantBase.EmploymentRecord:update"
     ]
+  },
+  "POST /api/tenant/employment/pending-entries/:id/esign-tasks": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ed161d139f85",
+      "status": 400
+    },
+    "entrySignBranches": {
+      "accepted": {
+        "fieldQueries": [
+          "fields:TenantBase.Employee"
+        ],
+        "keys": [
+          "sourceId",
+          "taskId"
+        ],
+        "scopeQueries": [
+          "scope:TenantBase/TenantBase.Employee/TenantBase.Employee.detail",
+          "scope:TenantBase/TenantBase.EmploymentRecord/-",
+          "scope:data.scope.all:"
+        ],
+        "status": 201,
+        "trace": [
+          "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+          "obj:TenantBase.Employee:view",
+          "obj:TenantBase.EmploymentRecord:update"
+        ]
+      },
+      "noButton": {
+        "code": "FORBIDDEN",
+        "fieldQueries": [],
+        "keys": [
+          "error"
+        ],
+        "scopeQueries": [],
+        "status": 403,
+        "trace": [
+          "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+          "obj:TenantBase.EmploymentRecord:update"
+        ]
+      },
+      "noScope": {
+        "code": "NOT_FOUND",
+        "fieldQueries": [],
+        "keys": [
+          "error"
+        ],
+        "scopeQueries": [
+          "scope:TenantBase/TenantBase.EmploymentRecord/-",
+          "scope:data.scope.all:"
+        ],
+        "status": 404,
+        "trace": [
+          "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+          "obj:TenantBase.EmploymentRecord:update"
+        ]
+      },
+      "noVariable": {
+        "code": "FIELD_FORBIDDEN",
+        "fieldQueries": [
+          "fields:TenantBase.Employee"
+        ],
+        "keys": [
+          "error"
+        ],
+        "scopeQueries": [
+          "scope:TenantBase/TenantBase.Employee/TenantBase.Employee.detail",
+          "scope:TenantBase/TenantBase.EmploymentRecord/-",
+          "scope:data.scope.all:"
+        ],
+        "status": 403,
+        "trace": [
+          "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+          "obj:TenantBase.Employee:view",
+          "obj:TenantBase.EmploymentRecord:update"
+        ]
+      }
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
   },
   "POST /api/tenant/employment/pending-entries/:id/generate-email": {
     "all": {

@@ -12,10 +12,10 @@ export const registerCommandResultRoutes: TenantRouteModule = (router, deps) => 
     const ctx = tenantOf(c);
     const commandId = c.req.param('commandId');
     if (!COMMAND_ID.test(commandId)) throw new AppError('VALIDATION_FAILED', '命令 ID 格式不合法');
-    const result = await withTenant(deps.db, ctx.tenantId, (tx) => readOwnCommandResult(tx, ctx, commandId));
+    const result = await withTenant(deps.db, ctx.tenantId, (tx) => readOwnCommandResult(tx, ctx, commandId, deps));
+    c.header('Cache-Control', 'private, no-store');
     // 不是本人的、不存在的、结果未知的同为 404；前端不得把 404 当作确定失败
     if (!result) throw new AppError('NOT_FOUND', '没有找到本人发起的该命令结果');
-    c.header('Cache-Control', 'private, no-store');
     return c.json(result);
   });
 };

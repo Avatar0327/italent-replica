@@ -25,7 +25,11 @@ export interface OriginRow {
   readonly originKind: FieldOriginKind;
   readonly value: unknown;
   readonly refSeq?: bigint | null;
+  readonly reason?: string | null;
 }
+
+export const SAME_VALUE_CONFIRMATION = 'same-value-confirmation';
+export const FORM_DEPENDENCY_RESET = 'form-dependency-reset';
 
 export interface FieldOriginState<Row extends OriginRow = OriginRow> {
   readonly policy: FieldOriginPolicy | null;
@@ -84,7 +88,12 @@ export function foldFieldOrigins<Row extends OriginRow>(rows: readonly Row[]): M
       state.resolved = row;
     } else if (kind === 'fallback' || kind === 'restore') {
       if (row.refSeq == null) continue;
-      if (kind === 'fallback') state.suspended.add(row.refSeq);
+      if (kind === 'fallback' && row.reason === FORM_DEPENDENCY_RESET) {
+        if (state.override?.seq === row.refSeq) {
+          state.override = null;
+          state.retained = false;
+        }
+      } else if (kind === 'fallback') state.suspended.add(row.refSeq);
       else state.suspended.delete(row.refSeq);
     } else {
       state.override = row;
@@ -161,17 +170,84 @@ export function isTrustedSavedValue(state: FieldOriginState | undefined, rule: R
   return lastWriter !== null && rule.has(lastWriter.originKind);
 }
 
-export function projectOriginMarkers(states: ReadonlyMap<string, FieldOriginState>) {
-  const explicitFieldCodes: string[] = [];
-  const deferredFieldCodes: string[] = [];
+/** DEC-950：员工自助单据上带同值不算本次输入的四个字段（职位另受编辑权限制，其余三个受只读上限）。 */
+export const EMPLOYEE_SAME_VALUE_FIELDS = ['positionId', 'postId', 'levelId', 'sequenceId'] as const;
+export type EmployeeSameValueField = (typeof EMPLOYEE_SAME_VALUE_FIELDS)[number];
+
+/**
+ * 请求值是否等于当前保存值（F-036 §5.2）：UUID 按小写比；`null` 与“没有保存值”都算空，空只等于空。
+ * 不读来源行：比的是保存值本身，与它由谁写入无关。
+ */
+export function sameAsSavedValue(savedValue: unknown, requestValue: unknown): boolean {
+  const saved = savedValue ?? null;
+  const request = requestValue ?? null;
+  if (saved === null || request === null) return saved === request;
+  if (typeof saved === 'string' && typeof request === 'string') return saved.toLowerCase() === request.toLowerCase();
+  return saved === request;
+}
+
+const KINDS_TRUSTED_ON_JOB_FIELDS: readonly FieldOriginKind[] = [
+  'inherit',
+  'resolved',
+  'copy',
+  'forward-update',
+  'system-input',
+  'retain',
+];
+
+/**
+ * F-036 §5.2 可信来源集合（传给 `isTrustedSavedValue`）。职位另允许人工写入的各类来源与已保存的员工输入
+ * （DEC-945 U7 甲）；职务、职级、序列基线上任何操作者都不能为员工业务写，所以人工来源一律不可信。
+ * `derive` / `derive-edit` 是否可信取决于它依据的字段，由调用方单独判断，不在集合里。
+ */
+export const TRUSTED_ORIGIN_KINDS: Readonly<Record<EmployeeSameValueField, ReadonlySet<FieldOriginKind>>> = {
+  positionId: new Set<FieldOriginKind>([
+    ...KINDS_TRUSTED_ON_JOB_FIELDS,
+    'hr-input',
+    'approval-edit',
+    'hr-record',
+    'employee-input',
+  ]),
+  postId: new Set(KINDS_TRUSTED_ON_JOB_FIELDS),
+  levelId: new Set(KINDS_TRUSTED_ON_JOB_FIELDS),
+  sequenceId: new Set<FieldOriginKind>([...KINDS_TRUSTED_ON_JOB_FIELDS, 'sequence-sync']),
+};
+
+const BUSINESS_DATES = new Set(['preset:effectiveDate', 'preset:lastWorkDate', 'preset:plannedEffectiveDate']);
+
+const markerField = (code: string) => !code.startsWith('status:') && !BUSINESS_DATES.has(code);
+
+export function projectOriginMarkers(
+  states: ReadonlyMap<string, FieldOriginState>,
+  legacy?: { explicitFieldCodes?: readonly string[]; deferredFieldCodes?: readonly string[] },
+) {
+  const explicit = new Set<string>();
+  const deferred = new Set<string>();
+  const previousExplicit = new Set(legacy?.explicitFieldCodes);
+  const previousDeferred = legacy?.deferredFieldCodes ?? [];
   for (const [code, state] of states) {
-    if (code.startsWith('status:')) continue;
+    if (!markerField(code)) continue;
     const { lastWriter } = effectiveOrigin(state);
-    if (lastWriter && lastWriter === state.override && lastWriter.originKind !== 'derive')
-      explicitFieldCodes.push(code);
-    if (!lastWriter && state.policy === 'deferred') deferredFieldCodes.push(code);
+    if (lastWriter && lastWriter === state.override && lastWriter.originKind !== 'derive') {
+      // S2 已有的同值确认行可能没有原因码，其旧标记仍能区分是否有一次实际改值。
+      const recordEdit = lastWriter.originKind === 'hr-record';
+      if (recordEdit && legacy ? previousExplicit.has(code) : lastWriter.reason !== SAME_VALUE_CONFIRMATION)
+        explicit.add(code);
+    }
+    if (!lastWriter && state.policy === 'deferred') deferred.add(code);
   }
-  return { explicitFieldCodes, deferredFieldCodes };
+  for (const code of previousExplicit) if (markerField(code) && !states.has(code)) explicit.add(code);
+  for (const code of previousDeferred)
+    if (markerField(code) && !states.get(code)?.policy && !effectiveOrigin(states.get(code)).lastWriter)
+      deferred.add(code);
+  return {
+    explicitFieldCodes: orderedMarkers(explicit, previousExplicit),
+    deferredFieldCodes: orderedMarkers(deferred, previousDeferred),
+  };
+}
+
+function orderedMarkers(codes: ReadonlySet<string>, previous: Iterable<string>) {
+  return [...new Set([...previous].filter((code) => codes.has(code)).concat([...codes]))];
 }
 
 export function deferralShape(

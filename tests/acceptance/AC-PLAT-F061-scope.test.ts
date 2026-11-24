@@ -68,8 +68,16 @@ const APPROVED = ['Settings', 'Category', 'Role', 'Field'].map((name) => `${TR_A
 const EXTRA_TR = ['Readiness', 'Matrix', 'CalcRule'].map((name) => `${TR_APP}.${name}`);
 /** DEC-415：字段映射 / 表单 / 流程 / 盘点模板 / 盘点项目的看全部预置给盘点管理员。 */
 const DEC_415 = ['FieldMapping', 'Form', 'Flow', 'Template', 'Project'].map((name) => `${TR_APP}.${name}`);
-// R2 BE-8a：黑名单给组织员工的两个预置管理员（标准版系统管理员、人事管理员）
-const DEC_415_BLACKLIST = ['standard_org_system_admin', 'standard_hr_admin'];
+// DEC-415：组织员工模块的两类预置管理员（标准版系统管理员、人事管理员）。
+const DEC_415_ORG_EMPLOYEE_ADMINS = ['standard_org_system_admin', 'standard_hr_admin'];
+// R2-T01 §9.3：四个入职业务对象及独立二维码对象均归组织员工模块。
+const DEC_415_BE16_TARGETS = [
+  'TenantBase.OnboardingCollection',
+  'TenantBase.OnboardingQrCode',
+  'TenantBase.OnboardingPreparation',
+  'TenantBase.OnboardingMaterial',
+  'TenantBase.OnboardingIntegration',
+];
 // DEC-767：人事看板类 7 个对象（含两个报表）的看全部不再给人事管理员，只给系统管理员；报表按管理单元取数（DEC-763②）
 const DEC_415_BOARD_TARGETS = [
   'TenantBase.HrDashboard',
@@ -97,8 +105,8 @@ const MATRIX = `${TR_APP}.Matrix`;
 const PRESET_COUNT = STANDARD_PROFILES.flatMap(presetSeeAllTargets).length;
 
 describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
-  it('批准清单每行写身份、应用、种类、目标与 DEC：DEC-374② 4 + DEC-384 32 + DEC-408② 2 + DEC-415 20 + DEC-767 10（DEC-503）', () => {
-    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(68);
+  it('批准清单逐项核对：DEC-374② 4 + DEC-384 32 + DEC-408② 2 + DEC-415 30（含 BE-16 10）+ DEC-767 10（DEC-503）', () => {
+    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(78);
     const byDec = (dec: string) => SEE_ALL_BACKFILL_APPROVED.filter((a) => a.dec === dec);
     expect(byDec('DEC-374②')).toEqual(
       APPROVED.map((targetCode) => ({
@@ -111,15 +119,24 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     );
     expect(byDec('DEC-384')).toHaveLength(32);
     expect(byDec('DEC-408②').map((a) => a.targetCode)).toEqual([`${TR_APP}.ScoreRule`, `${TR_APP}.ModuleGrade`]);
-    expect(
-      byDec('DEC-415')
-        .filter((a) => a.profileCode === TR)
-        .map((a) => a.targetCode),
-    ).toEqual(DEC_415);
+    const dec415 = byDec('DEC-415');
+    expect(dec415).toHaveLength(30);
+    expect(dec415.filter((a) => a.profileCode === TR).map((a) => a.targetCode)).toEqual(DEC_415);
+    expect(dec415.filter((a) => DEC_415_BE16_TARGETS.includes(a.targetCode))).toEqual(
+      DEC_415_ORG_EMPLOYEE_ADMINS.flatMap((profileCode) =>
+        DEC_415_BE16_TARGETS.map((targetCode) => ({
+          profileCode,
+          appCode: 'TenantBase',
+          targetKind: 'entity',
+          targetCode,
+          dec: 'DEC-415',
+        })),
+      ),
+    );
     // 组织员工模块的预置管理员：黑名单（BE-8a）、试用期考核（BE-15b1）、人事看板（BE-12b）、人事流程看板（BE-13c）、
     // 人员结构分析 / 员工结构报表 / 合同情况（BE-13a）、人员流动分析 / 流动情况报表（BE-13b）、组织调整申请（BE-10a2）、
     // 职责转交记录（R2-T09a）
-    expect(byDec('DEC-415').filter((a) => a.profileCode !== TR)).toEqual(
+    expect(dec415.filter((a) => a.profileCode !== TR && !DEC_415_BE16_TARGETS.includes(a.targetCode))).toEqual(
       [
         'TenantBase.Blacklist',
         'TenantBase.ProbationAssessment',
@@ -133,7 +150,7 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
         'TenantBase.OrganizationApproval',
         'TenantBase.DutyTransferCommon',
       ].flatMap((targetCode) =>
-        DEC_415_BLACKLIST.filter(
+        DEC_415_ORG_EMPLOYEE_ADMINS.filter(
           (profileCode) => profileCode === 'standard_org_system_admin' || !DEC_415_BOARD_TARGETS.includes(targetCode),
         ).map((profileCode) => ({
           profileCode,
@@ -165,7 +182,7 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     const unique = new Set(
       SEE_ALL_BACKFILL_APPROVED.map((a) => `${a.profileCode}|${a.appCode}|${a.targetKind}|${a.targetCode}`),
     );
-    expect(unique.size).toBe(68);
+    expect(unique.size).toBe(78);
   });
 
   it('批准的目标就是身份定义里全部预置看全部的目标：unapprovedSeeAllTargets() 为空，看全部编码与批准清单逐项一致', () => {

@@ -1,5 +1,5 @@
 import { CapacityAuditFields, capacityAuditChanges, visibleCapacityParts } from './establishment-capacity.js';
-import { approvalContentFields } from './controlled-fields.js';
+import { approvalContentFields, approvalPublicVariableFields } from './controlled-fields.js';
 import { NestedAuditFields, type NestedChildren, visibleNested, visibleNestedChanges } from './nested-fields.js';
 /**
  * DEC-197 / DEC-203（PR #75 第二、三轮）：审计查询按查看人**当前**的数据范围与字段权限裁剪，不设全量读取特权。
@@ -61,6 +61,7 @@ import { employmentCreator } from '../modules/employment/context.js';
 import { partTimeRecordCreator, partTimeRequestCreator } from '../modules/employment/part-time/creator-sql.js';
 import { INTENTION_AUDIT_TYPE, intentionCreator } from '../modules/employment/retirement-intention-store.js';
 import { employmentVisibilitySql } from '../modules/employment/visibility.js';
+import { SCHEME_FIELDS, SCHEME_SCOPE, SCHEME_SETTINGS } from '../modules/onboarding/integration-schemes-access.js';
 import {
   getModuleViewableFields,
   type ModuleScope,
@@ -503,6 +504,33 @@ const survey360Rules: readonly Rule[] = [
 
 const RULES: readonly Rule[] = [
   {
+    types: ['onboarding-integration-scheme'],
+    objectCode: SCHEME_SETTINGS,
+    // 方案字段权覆盖整个设置 DTO；保留其多语言、筛选和提醒的嵌套审计值。
+    async resolve(deps, ctx) {
+      if (!(await deps.authorize({ ...ctx, action: 'admin.other_settings' }))) return null;
+      if (
+        !(await deps.authorize({
+          ...ctx,
+          action: 'object.view',
+          resource: SCHEME_SETTINGS,
+          fields: SCHEME_FIELDS,
+        }))
+      )
+        return null;
+      const scope = await resolveModuleScope(deps, ctx, undefined, SCHEME_SCOPE);
+      return scopeSql(scope, { org: sql`scheme_org.org_id` });
+    },
+    visible: (_scope, row, viewer, { extra }) => sql`NOT EXISTS (
+      SELECT 1 FROM (
+        SELECT org_id FROM onboarding_integration_scope_orgs
+        WHERE tenant_id = ${viewer.tenantId} AND scheme_id = ${uuidOf(row.objectId)}
+        UNION ALL SELECT value::uuid FROM jsonb_array_elements_text(${row.before}->'orgIds')
+        UNION ALL SELECT value::uuid FROM jsonb_array_elements_text(${row.after}->'orgIds')
+      ) AS scheme_org WHERE NOT (${extra})
+    )`,
+  },
+  {
     types: ['Account.Avatar'],
     objectCode: 'Account.Avatar',
     fixedFields: [
@@ -887,6 +915,12 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   employment_type: { code: MODULE_OBJECTS.employmentType.code },
   exit_dictionary: { code: 'TenantBase.EmploymentSettings' },
   offer_dictionary: { code: 'TenantBase.EmploymentSettings' },
+  'onboarding-integration-task-pool': {
+    code: MODULE_OBJECTS.employmentSettings.code,
+    // 任务池表单和考核动作属于同一设置字段，审计以完整路径投影它们。
+    derive: (viewable) =>
+      viewable?.has('integrationTaskPool') ? new Set([...viewable, 'integrationTaskPool.action']) : viewable,
+  },
   blacklist_rule: { code: 'TenantBase.EmploymentSettings' },
   exit_handover_item: { code: 'TenantBase.EmploymentSettings' },
   retirement_rule: { code: 'TenantBase.EmploymentSettings' },
@@ -897,7 +931,7 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   'approval-process': { code: 'TenantBase.ApprovalProcess' },
   // F-326：变量与矩阵的审计键（dataType / defaultValue、动态的 row:<id> / column:<id>、删除快照）不在审批流程字段目录
   // 里，由审批流程权限推出精确键与受控动态路径（controlled-fields.ts），没有权限时 fail-closed
-  'approval-public-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
+  'approval-public-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalPublicVariableFields },
   'approval-application-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
   'approval-matrix': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
   'approval-matrix-row': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },

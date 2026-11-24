@@ -12,6 +12,8 @@ import type { EmploymentContext } from './types.js';
 
 // DEC-142：全局账号命令会依次进入多个租户，持锁记录也必须按租户隔离。
 const settingKey = (tenantId: string) => `italent.transfer_employee_locks_${tenantId.replaceAll('-', '')}`;
+// DEC-993：同单写入口把所有会阻塞的取锁做完、读完授权后封口——封口后本事务再需要新锁一律 409，不再等锁。
+const sealKey = (tenantId: string) => `italent.transfer_locks_sealed_${tenantId.replaceAll('-', '')}`;
 const array = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
 
 async function participants(
@@ -58,32 +60,76 @@ async function participants(
   }
 }
 
-async function heldParticipants(tx: Tx, tenantId: string): Promise<string[]> {
+async function isSealed(tx: Tx, ctx: EmploymentContext) {
+  const [row] = rowsOf<{ value: string | null }>(
+    await tx.execute(sql`SELECT current_setting(${sealKey(ctx.tenantId)}, true) AS value`),
+  );
+  return row?.value === 'on';
+}
+
+async function heldIds(tx: Tx, ctx: EmploymentContext): Promise<string[]> {
   const [setting] = rowsOf<{ value: string | null }>(
-    await tx.execute(sql`SELECT current_setting(${settingKey(tenantId)}, true) AS value`),
+    await tx.execute(sql`SELECT current_setting(${settingKey(ctx.tenantId)}, true) AS value`),
   );
   return setting?.value ? (JSON.parse(setting.value) as string[]) : [];
 }
 
+/** 现在重新规划出的参与员工是否都已在本事务的持锁集合内（只读、不取锁）：取锁之后集合又变大则为 false。 */
+export async function transferLocksCover(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  extra: readonly string[] = [],
+): Promise<boolean> {
+  const held = new Set(await heldIds(tx, ctx));
+  const planned = await participants(
+    tx,
+    ctx,
+    employeeId.toLowerCase(),
+    extra.map((id) => id.toLowerCase()),
+  );
+  return planned.every((id) => held.has(id));
+}
+
+/**
+ * 封口（DEC-993 单入口）：调用方已取齐全部会阻塞的锁、且 transferLocksCover 为真之后、读授权输入之前调用。
+ * 事务本地设置，跟随事务 / 保存点回滚；封口后 acquire 遇到未持有的参与员工直接 409，不再等锁。
+ */
+export async function sealTransferLocks(tx: Tx, ctx: EmploymentContext): Promise<void> {
+  await tx.execute(sql`SELECT set_config(${sealKey(ctx.tenantId)},'on',true)`);
+}
+
 /** 取锁结果：busy = 有参与者行被他人持锁（SKIP LOCKED 跳过）；missing = 员工主档本身不存在（F-238，两者不能混为一谈）。 */
 export type SweepLockOutcome = 'acquired' | 'busy' | 'missing';
+
+interface AcquireOptions {
+  readonly skipLocked?: boolean;
+  readonly rescheduledExitId?: string;
+  /** 只取员工锁，业务头留给调用方在员工闭包取齐之后用 lockTransferHeads 统一取（同单写入口的补锁循环，DEC-996）。 */
+  readonly deferHeads?: boolean;
+  /** 组织调整执行器：单人闭包也提前取本人业务头，保持“员工 → 业务头 → 调整单”的锁序。 */
+  readonly lockBusinessHeads?: boolean;
+}
 
 async function acquire(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
   extra: readonly string[],
-  skipLocked: boolean,
-  rescheduledExitId?: string,
-  lockBusinessHeads = false,
+  options: AcquireOptions,
 ): Promise<SweepLockOutcome> {
+  const { skipLocked = false, rescheduledExitId } = options;
   if (![employeeId, ...extra].every(isUuid)) throw new AppError('VALIDATION_FAILED', '员工标识必须是 UUID');
   employeeId = employeeId.toLowerCase();
   extra = [...new Set(extra.map((id) => id.toLowerCase()))];
   const planned = await participants(tx, ctx, employeeId, extra, rescheduledExitId);
-  const held = await heldParticipants(tx, ctx.tenantId);
+  const held = await heldIds(tx, ctx);
   const needed = planned.filter((id) => !held.includes(id));
   if (!needed.length) return 'acquired';
+  // 已封口：授权输入在封口前一次读完，之后不得再因新进参与者阻塞等锁（等锁期间收回的授权会被漏掉）；放弃本事务，
+  // 由调用方按既有 TRANSFER_LOCK_PLAN_CHANGED 约定刷新后重入，重入时先取齐锁再读授权。
+  if (await isSealed(tx, ctx))
+    throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
   if (held.length && needed[0]! < held.at(-1)!)
     throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
   // F-519 的双退让源于 SKIP LOCKED 整组扫描越过忙行抢后续行，两个实例各持半组。
@@ -113,13 +159,54 @@ async function acquire(
       throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
   }
   await tx.execute(sql`SELECT set_config(${settingKey(ctx.tenantId)},${JSON.stringify(all)},true)`);
-  // 各参与者的业务头在审批实例之前取锁；员工锁保证业务集合不会再被其他事务改写。
-  if (lockBusinessHeads || planned.length > 1)
+  if (!options.deferHeads) await lockHeads(tx, ctx, planned, options.lockBusinessHeads === true);
+  return 'acquired';
+}
+
+/** 各参与者的业务头在审批实例之前取锁；员工锁保证业务集合不会再被其他事务改写。 */
+async function lockHeads(tx: Tx, ctx: EmploymentContext, ids: readonly string[], force = false) {
+  // force：组织调整执行器单人闭包也要在组织调整单锁之前先取本人业务头（§9.1 锁序）。
+  if (force || ids.length > 1)
     await tx.execute(sql`
-    SELECT id FROM employment_business_objects WHERE tenant_id=${ctx.tenantId} AND employee_id=ANY(${array(planned)})
+    SELECT id FROM employment_business_objects WHERE tenant_id=${ctx.tenantId} AND employee_id=ANY(${array(ids)})
     ORDER BY employee_id,id FOR UPDATE
   `);
-  return 'acquired';
+}
+
+/**
+ * 员工闭包已取齐（transferLocksCover 为真）之后统一锁持锁集合内各参与者的业务头（DEC-996 拆段）。
+ * 补锁循环里只取员工锁，等丙的员工锁时手上不会已有甲、乙的业务头（锁序：参与员工 → 业务头 → 审批实例）。
+ * 单人闭包（持锁集合只有发起员工）lockHeads 不取业务头，这里补锁本单业务头（第 7 轮 P2-1，DEC-999）：否则守卫封口、
+ * 读完授权后，首次执行（lockEmploymentBusiness）才在本单业务头上等锁，等锁期间收回的范围会被漏掉。
+ * 这把锁就是首次执行本来要取的那一把（发起员工行已持有，同一顺序），只是提前到读授权之前；执行体里再取是重入。
+ */
+export async function lockTransferHeads(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<void> {
+  const held = await heldIds(tx, ctx);
+  if (held.length > 1) return lockHeads(tx, ctx, held);
+  await tx.execute(sql`
+    SELECT id FROM employment_business_objects WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE
+  `);
+}
+
+/**
+ * 请求里点名的员工中现在存在的那些（普通读，不取锁、不被行锁阻塞）。员工主档不删除、标识由服务端生成，
+ * 存在与否在本事务内是稳定事实；查无此人的不取锁，留给首次执行的业务校验（DEC-996，见 lockTransferBusinessEmployee）。
+ */
+export async function existingTransferEmployees(
+  tx: Tx,
+  ctx: EmploymentContext,
+  ids: readonly string[],
+): Promise<string[]> {
+  // 不是 UUID 的同样当作查无此人（入口 schema 已拦，这里不抛错：抛错同样会抢在指纹比对之前）。
+  const candidates = ids.filter(isUuid);
+  if (!candidates.length) return [];
+  const found = rowsOf<{ id: string }>(
+    await tx.execute(sql`
+    SELECT id::text AS id FROM employment_employees WHERE tenant_id=${ctx.tenantId} AND id=ANY(${array(candidates)})
+  `),
+  );
+  const present = new Set(found.map((row) => row.id.toLowerCase()));
+  return candidates.filter((id) => present.has(id.toLowerCase()));
 }
 
 /** SKIP LOCKED 跳过了行时区分原因：本人已取到（在 rows 里）或主档仍在 → 被锁；主档查不到 → 不存在。普通读不被行锁阻塞。 */
@@ -144,17 +231,8 @@ export const lockTransferParticipants = (
   ctx: EmploymentContext,
   employeeId: string,
   extra: readonly string[] = [],
-  options: { skipLocked?: boolean; rescheduledExitId?: string; lockBusinessHeads?: boolean } = {},
-): Promise<SweepLockOutcome> =>
-  acquire(
-    tx,
-    ctx,
-    employeeId,
-    extra,
-    options.skipLocked === true,
-    options.rescheduledExitId,
-    options.lockBusinessHeads,
-  );
+  options: AcquireOptions = {},
+): Promise<SweepLockOutcome> => acquire(tx, ctx, employeeId, extra, options);
 
 /** §9.1：取组织锁后只复核闭包，禁止在较晚的锁级补取员工或业务头。 */
 export async function assertTransferPlanHeld(
@@ -164,7 +242,7 @@ export async function assertTransferPlanHeld(
   extra: readonly string[],
 ) {
   const actual = await participants(tx, ctx, employeeId, extra);
-  const held = new Set(await heldParticipants(tx, ctx.tenantId));
+  const held = new Set(await heldIds(tx, ctx));
   if (actual.some((id) => !held.has(id)))
     throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'ORG_EMPLOYMENT_PLAN_CHANGED' });
 }

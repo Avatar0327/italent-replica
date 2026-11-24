@@ -1,0 +1,50 @@
+/*
+ * 卡头“共 N 人查看详情”按钮：antd 按钮默认 nowrap，9 位数总数在窄卡片里会把按钮撑出卡片（F-559）。
+ * 放开换行并以卡片内容宽为上限：放得下时与原来一样单行；放不下时“查看详情”先折到下一行，
+ * 总数仍放不下才在本行内断开。只改排版，可访问名称与点击区域不变。
+ */
+.hr-contract-board .hr-contract-count {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-self: start;
+  max-width: 100%;
+  height: auto;
+  padding: 0;
+  gap: 0 8px;
+  text-align: start;
+  white-space: normal;
+}
+.hr-contract-board .hr-contract-count:disabled {
+  color: var(--shell-text);
+  opacity: 1;
+}
+.hr-contract-board .hr-contract-count strong {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+}
+.hr-contract-scope {
+  margin: 8px 0;
+  color: var(--shell-text);
+}
+.hr-contract-bars {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.hr-contract-bars .hr-structure-card {
+  grid-column: auto;
+}
+.hr-contract-bars h3,
+.hr-contract-bars p {
+  margin: 0;
+}
+.hr-contract-bars h3 {
+  font-size: 14px;
+}
+@media (max-width: 1200px) {
+  .hr-contract-bars {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

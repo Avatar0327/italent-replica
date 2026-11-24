@@ -25,6 +25,7 @@ export * from './hr-analysis/segments.js';
 export * from './approval/index.js';
 
 export * from './contracts/rules.js';
+export { addMonths } from './audit/retention.js';
 export * from './employment/employee-status.js';
 export * from './employment/field-origins.js';
 export * from './employment/late-execution.js';
@@ -91,3 +92,10 @@ export * from './esign/index.js';
 export * from './job/graph.js';
 export * from './job/graph-text.js';
 export * from './employment/custom-field-definitions.js';
+
+export {
+  ONBOARDING_BUTTONS,
+  ONBOARDING_ENTRY_STATUS_FIELDS,
+  ONBOARDING_FORM_FIELDS,
+  ENTRY_INFO_COLLECTION_PROCESS,
+} from './onboarding/permission.js';

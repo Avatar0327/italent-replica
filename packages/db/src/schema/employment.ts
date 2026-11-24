@@ -573,6 +573,11 @@ export const employmentRecordTombstones = pgTable(
     employeeId: uuid('employee_id').notNull(),
     recordId: uuid('record_id').notNull(),
     commandId: text('command_id').notNull(),
+    /**
+     * DEC-991：删除时记录仍在时间轴上则记它在轴上的生效日，否则为空（已被摘下、或离职作废时先摘后删）。
+     * 字段来源“是否已落地”据此判断删除前是否已实际生效；旧墓碑不回填（DEC-402）。
+     */
+    timelineStartDate: day('timeline_start_date'),
     createdAt: utc(),
   },
   (t) => [

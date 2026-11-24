@@ -1,3 +1,4 @@
+import { closeDeletedEntryCase } from './entry-case.js';
 import { getTenant } from '@italent/db';
 import { restoreRehireSeniority } from './rehire-seniority.js';
 import { assertRegularizationApplication } from './regularization-eligibility.js';
@@ -175,11 +176,24 @@ async function sealOnSubmit(
 }
 
 /** 同事务编排端口；审批中心（R1-T07）对操作者、节点与参与人规则负责。 */
-export async function transitionEmployment(
+export function transitionEmployment(
   tx: Tx,
   ctx: EmploymentContext,
   input: EmploymentTransitionInput,
-): Promise<EmploymentBusiness> {
+): Promise<EmploymentBusiness>;
+/** 替换旧待入职时，重建可能取得编制锁（退休返聘）。在重建结束后才允许订阅者取得签署任务锁。 */
+export function transitionEmployment<T>(
+  tx: Tx,
+  ctx: EmploymentContext,
+  input: EmploymentTransitionInput & { readonly action: 'delete' },
+  finishReplacement: () => Promise<T>,
+): Promise<T>;
+export async function transitionEmployment<T>(
+  tx: Tx,
+  ctx: EmploymentContext,
+  input: EmploymentTransitionInput,
+  finishReplacement?: () => Promise<T>,
+): Promise<EmploymentBusiness | T> {
   if (!input || !ACTIONS.includes(input.action)) throw new AppError('VALIDATION_FAILED', '任职状态动作不合法');
   if (['submit', 'approve', 'activate'].includes(input.action)) await lockTransferBusiness(tx, ctx, input.id);
   const business = await lockEmploymentBusiness(tx, ctx, input.id);
@@ -235,9 +249,7 @@ export async function transitionEmployment(
     ? await reverseCarriedEstablishment(tx, ctx, business.id)
     : [];
   if (input.action === 'delete') {
-    // F-505：入职类业务（待入职）被物理删除——手动删除、改期 / 编辑替换旧记录、Offer 失效删待入职都经此一处
-    if (ENTRY_KINDS.includes(business.payload.kind)) await emitEntryDeleted(tx, ctx, business.id);
-    const previous = await deleteEmploymentBusiness(tx, ctx, business, input.cancelling === true, input.restoreUntil);
+    const previous = await deleteEmploymentBusiness(tx, ctx, business, input, finishReplacement !== undefined);
     const { kind, effectiveDate } = business.payload;
     await personnelHooks.sync(tx, ctx, business.employeeId, business.id, kind, effectiveDate);
     // 前一条的结束日随删除恢复，其同步履历也要同事务跟着变（AC-TRF-08）。
@@ -262,9 +274,8 @@ export async function transitionEmployment(
   }
   await assertReleasedEstablishment(tx, ctx, business.id, business.employeeId, released, input.action === 'delete');
   if (input.action === 'submit') await clearSubmittedRegularizationDraft(tx, ctx, business);
-  // 一条命令只增加一次业务 revision；approve→effective 的两条状态事件不各自递增头版本。
-  await bumpEmploymentBusiness(tx, ctx, business);
-  return requireSavedBusiness(tx, ctx, business.id);
+  const finish = () => (finishReplacement ? finishReplacement() : requireSavedBusiness(tx, ctx, business.id));
+  return finishEmploymentTransition<EmploymentBusiness | T>(tx, ctx, business, input.action, finish);
 }
 
 /**
@@ -403,14 +414,27 @@ function assertTransition(business: LockedEmploymentBusiness, action: Employment
     throw new AppError('CONFLICT', '当前状态不允许此动作', { state: business.state, action });
 }
 
+/**
+ * DEC-991：删除前记录在时间轴上的生效日，写进墓碑，供字段来源判断“删除前是否已实际生效”。
+ * 时间轴是可变投影，删除会摘掉这一行，所以要在 removeEmploymentTimeline 之前取。
+ */
+async function timelineStartDate(tx: Tx, ctx: EmploymentContext, recordId: string): Promise<string | undefined> {
+  const [row] = rowsOf<{ start_date: string }>(
+    await tx.execute(sql`SELECT start_date::text AS start_date FROM employment_timeline
+      WHERE tenant_id = ${ctx.tenantId}::uuid AND record_id = ${recordId}::uuid LIMIT 1`),
+  );
+  return row?.start_date;
+}
+
 /** 返回时间轴上的前一条（已生效记录被删时），供调用方同步其投影。 */
 async function deleteEmploymentBusiness(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
-  exitCancel = false,
-  restoreUntil?: string,
+  { cancelling, restoreUntil }: EmploymentTransitionInput,
+  replacing: boolean,
 ): Promise<{ id: string; kind: string; date: string } | null> {
+  const closesEntryCase = !replacing && ENTRY_KINDS.includes(business.payload.kind) && business.state === 'effective';
   const { fields, customFields, ...metadata } = business.payload;
   const before = {
     ...metadata,
@@ -446,6 +470,7 @@ async function deleteEmploymentBusiness(
       employeeId: business.employeeId,
       recordId: business.id,
       commandId: ctx.commandId,
+      timelineStartDate: record ? await timelineStartDate(tx, ctx, business.id) : undefined,
       createdAt: ctx.now.toISOString(),
     });
     if (record) {
@@ -454,7 +479,7 @@ async function deleteEmploymentBusiness(
         NEW_CYCLE_KINDS.includes(business.payload.kind) || business.payload.kind === 'intern_regularization';
       const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
       if (!isExitKind(record.kind)) await assertDeletionNotPaused(tx, ctx, record, point);
-      if (point && exitCancel)
+      if (point && cancelling)
         previous = await restoreAfterExitDeletion(tx, ctx, record, business, point, restoreUntil);
       else if (point) {
         await assertRestoredPredecessor(tx, ctx, record, { previousId: point.recordId, window: point.window });
@@ -481,6 +506,7 @@ async function deleteEmploymentBusiness(
   await releasePendingContract(tx, ctx, business.id, 'delete');
   // F-203：试用期行（F-188）同样在内核同事务清理，各入口不再各自补清
   await clearPendingProbation(tx, ctx, business.id);
+  if (closesEntryCase) await closeDeletedEntryCase(tx, ctx, business);
   return previous;
 }
 
@@ -561,6 +587,23 @@ function deletionSnapshot(raw: Record<string, unknown>): Record<string, unknown>
   return { ...snapshot, ...Object.fromEntries(Object.entries(custom).map(([id, value]) => [`custom:${id}`, value])) };
 }
 
-async function emitEntryDeleted(tx: Tx, ctx: EmploymentContext, id: string) {
-  await entrySourceEvents.emit(tx, ctx, { source: 'entry', sourceId: id, change: 'deleted', revision: null });
+async function finishEmploymentTransition<T>(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  action: EmploymentTransitionInput['action'],
+  finish: () => Promise<T>,
+): Promise<T> {
+  // 一条命令只增加一次业务 revision；approve→effective 的两条状态事件不各自递增头版本。
+  await bumpEmploymentBusiness(tx, ctx, business);
+  const result = await finish();
+  // F-505 §6.2：手动删除、Offer 入站删除与替换共享此出口。业务校验和业务锁先于任务锁。
+  if (action === 'delete' && ENTRY_KINDS.includes(business.payload.kind))
+    await entrySourceEvents.emit(tx, ctx, {
+      source: 'entry',
+      sourceId: business.id,
+      change: 'deleted',
+      revision: null,
+    });
+  return result;
 }

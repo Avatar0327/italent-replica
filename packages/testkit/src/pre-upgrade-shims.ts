@@ -28,6 +28,12 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
   { table: 'command_ledger', column: 'command_type', type: 'text', migration: 'command_ledger_actor' },
   { table: 'audit_command_failures', column: 'http_status', type: 'integer', migration: 'command_failure_http_status' },
   {
+    table: 'audit_command_failures',
+    column: 'confirmed_rollback',
+    type: 'boolean',
+    migration: 'f537_confirmed_rollback',
+  },
+  {
     table: 'approval_process_nodes',
     column: 'empty_approver_policy',
     type: 'text',
@@ -60,6 +66,13 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
     column: 'work_year_company_before',
     type: 'numeric',
     migration: 'f432_seniority_correction',
+  },
+  // F-036 S5（DEC-991）：删除已生效业务时墓碑记下删除前在时间轴上的生效日。
+  {
+    table: 'employment_record_tombstones',
+    column: 'timeline_start_date',
+    type: 'date',
+    migration: 'f036_tombstone_timeline_start',
   },
 ];
 

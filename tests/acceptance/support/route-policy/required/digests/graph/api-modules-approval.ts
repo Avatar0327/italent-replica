@@ -534,6 +534,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/idp/approval-adapter.ts#idpAdapter',
     'apps/api/src/modules/offer/approval-adapter.ts#offerAdapter',
     'apps/api/src/modules/offer/approval-adapter.ts#offerBatchAdapter',
+    'apps/api/src/modules/onboarding/approval-contract.ts#entryInfoCollectionAdapter',
     'apps/api/src/modules/org-adjustment/approval-adapter.ts#orgAdjustmentAdapter',
     'apps/api/src/modules/talent-review/approval-adapter.ts#talentReviewAdapter',
   ],
@@ -708,8 +709,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/auto-variable-lifecycle.ts#flushAutoVariableLifecycle': [
     '#restartError',
+    '#retireDrainedVersions',
     '#systemRetiredVariables',
     'apps/api/src/modules/approval/auto-variables.ts#retireUnreferencedAutoVariables',
+    'apps/api/src/modules/approval/source-usages.ts#versionAutoVariableReferences',
     'apps/api/src/modules/approval/variables.ts#lockVariableBatch',
   ],
   'apps/api/src/modules/approval/auto-variable-lifecycle.ts#lockBoundProcess': [
@@ -718,9 +721,21 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/auto-variable-lifecycle.ts#register': ['#flushAutoVariableLifecycle', '#keyOf'],
   'apps/api/src/modules/approval/auto-variable-lifecycle.ts#registerResumeCheck': ['#register'],
+  'apps/api/src/modules/approval/auto-variable-lifecycle.ts#registerRetirement': ['#register'],
   'apps/api/src/modules/approval/auto-variable-lifecycle.ts#registerSaveClose': ['#register'],
   'apps/api/src/modules/approval/auto-variable-lifecycle.ts#restartError': [
     'apps/api/src/modules/approval/context.ts#approvalError',
+  ],
+  'apps/api/src/modules/approval/auto-variable-lifecycle.ts#retireDrainedVersions': [
+    '#DISCARDED_PROCESS_REASON',
+    '#OLD_VERSION_REASON',
+    'apps/api/src/modules/approval/auto-variables.ts#retireUnreferencedAutoVariables',
+    'apps/api/src/modules/approval/source-usages.ts#drainedVersions',
+  ],
+  'apps/api/src/modules/approval/auto-variable-lifecycle.ts#systemRetiredVariables': [
+    '#DISCARDED_PROCESS_REASON',
+    '#OLD_VERSION_REASON',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
   ],
   'apps/api/src/modules/approval/auto-variables.ts#MAX_NAME': [
     'packages/domain/src/approval/variables.ts#VARIABLE_TEXT_FIELDS',
@@ -821,7 +836,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/auto-variables.ts#retireUnreferencedAutoVariables': [
     '#RETIRE_REASON',
     '#changeAuto',
-    'apps/api/src/modules/approval/source-usages.ts#findSourceUsages',
+    'apps/api/src/modules/approval/source-usages.ts#referencingProcessCounts',
     'apps/api/src/modules/approval/variables.ts#loadVariable',
   ],
   'apps/api/src/modules/approval/auto-variables.ts#slotSources': [
@@ -1058,7 +1073,13 @@ export const GRAPH: Graph = {
     '#insertVersion',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
-  'apps/api/src/modules/approval/definitions.ts#discardProcess': ['#audited', '#bump', '#lockedForChange'],
+  'apps/api/src/modules/approval/definitions.ts#discardProcess': [
+    'apps/api/src/modules/approval/auto-variable-lifecycle.ts#registerRetirement',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#audited',
+    '#bump',
+    '#lockedForChange',
+  ],
   'apps/api/src/modules/approval/definitions.ts#inheritRecusalSwitches': [
     'packages/domain/src/approval/types.ts#avoidsSelf',
     'packages/domain/src/approval/types.ts#avoidsSubjects',
@@ -1117,6 +1138,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/definitions.ts#processRow': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/definitions.ts#publishProcess': [
+    'apps/api/src/modules/approval/auto-variable-lifecycle.ts#registerRetirement',
     'apps/api/src/modules/approval/auto-variables.ts#applyPendingAutoVariables',
     'apps/api/src/modules/approval/auto-variables.ts#unselectedSpecifiedSlots',
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -1562,9 +1584,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/engine.ts#persistRun': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
+    'apps/api/src/modules/approval/auto-variable-lifecycle.ts#registerRetirement',
     'apps/api/src/modules/approval/context.ts#auditApproval',
     'apps/api/src/modules/approval/context.ts#emitOutbox',
     '#instanceAudit',
+    'apps/api/src/modules/approval/source-usages.ts#LIFECYCLE_INSTANCE_STATUSES',
     'apps/api/src/modules/approval/store.ts#updateInstance',
   ],
   'apps/api/src/modules/approval/engine.ts#recordSelfSkip': [
@@ -2911,6 +2935,7 @@ export const GRAPH: Graph = {
     '#objectField',
     'packages/domain/src/approval/sources.ts#expressionValue',
   ],
+  'apps/api/src/modules/approval/source-usages.ts#RESUMABLE_INSTANCE_STATUSES': ['#LIFECYCLE_INSTANCE_STATUSES'],
   'apps/api/src/modules/approval/source-usages.ts#assertReferencesAcknowledged': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     '#findSourceUsages',
@@ -2920,18 +2945,36 @@ export const GRAPH: Graph = {
     '#USAGE_PAGE_LIMIT',
     '#findSourceUsages',
   ],
+  'apps/api/src/modules/approval/source-usages.ts#boundInstances': ['#statusesOf'],
+  'apps/api/src/modules/approval/source-usages.ts#drainedVersions': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#boundInstances',
+    '#onActiveHead',
+    '#versionIdsOf',
+  ],
   'apps/api/src/modules/approval/source-usages.ts#findSourceUsages': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
-    '#RESUMABLE_INSTANCE_STATUSES',
+    '#boundInstances',
     '#matches',
+    '#onActiveHead',
     '#slots',
   ],
   'apps/api/src/modules/approval/source-usages.ts#referencingProcessCounts': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
-    '#RESUMABLE_INSTANCE_STATUSES',
+    '#boundInstances',
+    '#onActiveHead',
     '#slots',
   ],
+  'apps/api/src/modules/approval/source-usages.ts#slots': ['#versionIdsOf'],
   'apps/api/src/modules/approval/source-usages.ts#sourceUsagePage': ['#USAGE_PAGE_LIMIT', '#findSourceUsages'],
+  'apps/api/src/modules/approval/source-usages.ts#statusesOf': [
+    '#LIFECYCLE_INSTANCE_STATUSES',
+    '#RESUMABLE_INSTANCE_STATUSES',
+  ],
+  'apps/api/src/modules/approval/source-usages.ts#versionAutoVariableReferences': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#slots',
+  ],
   'apps/api/src/modules/approval/store.ts#activateTask': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#assertPendingRoom',

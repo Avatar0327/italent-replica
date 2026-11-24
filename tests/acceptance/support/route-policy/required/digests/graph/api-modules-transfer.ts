@@ -111,17 +111,38 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/employee-policy.ts#EMPLOYEE_READONLY_FIELDS': [
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_READONLY_FIELDS',
   ],
+  'apps/api/src/modules/transfer/employee-policy.ts#isOwnDraft': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness': [
     'apps/api/src/modules/employment/record-store.ts#camelRow',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/record-store.ts#snapshotFields',
+    '#isOwnDraft',
     '#requireEmployeeTransferFields',
+    '#requireTrustedSavedFields',
+    '#withoutSameValueFields',
   ],
   'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferFields': [
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/transfer/employee-managers.ts#requireManagerCandidate',
     '#EMPLOYEE_READONLY_FIELDS',
+  ],
+  'apps/api/src/modules/transfer/employee-policy.ts#requireTrustedSavedFields': [
+    'apps/api/src/modules/employment/field-origin-store.ts#loadFieldOrigins',
+    '#trustedSource',
+    'packages/domain/src/employment/field-origins.ts#EMPLOYEE_SAME_VALUE_FIELDS',
+  ],
+  'apps/api/src/modules/transfer/employee-policy.ts#trustedSource': [
+    '#DERIVATION_SOURCE',
+    '#trustedSource',
+    'packages/domain/src/employment/field-origins.ts#TRUSTED_ORIGIN_KINDS',
+    'packages/domain/src/employment/field-origins.ts#isTrustedSavedValue',
+  ],
+  'apps/api/src/modules/transfer/employee-policy.ts#withoutSameValueFields': [
+    'packages/domain/src/employment/field-origins.ts#EMPLOYEE_SAME_VALUE_FIELDS',
+    'packages/domain/src/employment/field-origins.ts#sameAsSavedValue',
   ],
   'apps/api/src/modules/transfer/form-configuration.ts#formInput': ['#modes'],
   'apps/api/src/modules/transfer/form-configuration.ts#listTransferForms': [
@@ -393,6 +414,7 @@ export const GRAPH: Graph = {
     '#authorizeRetry',
     '#parse',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
+    'apps/api/src/modules/transfer/same-order-guard.ts#transferReceiptNames',
   ],
   'apps/api/src/modules/transfer/linkage/routes.ts#route:PUT /transfers/:id/linkage': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -671,6 +693,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferFields',
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
     'apps/api/src/modules/transfer/linkage/part-time.ts#transferPartTimePort',
+    'apps/api/src/modules/transfer/service.ts#requireTransferEditedWrite',
     'apps/api/src/modules/transfer/service.ts#transferTargetContext',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
@@ -814,32 +837,40 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard': [
     'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
     '#refreshGuard',
+    'apps/api/src/modules/transfer/service.ts#lockTransferBusinessEmployee',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
   'apps/api/src/modules/transfer/service.ts#createTransfer': [
     'apps/api/src/modules/employment/activation-checks.ts#withEstablishmentConfirmation',
     'apps/api/src/modules/employment/approval-hooks.ts#employmentApprovalHooks',
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
+    'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
+    'apps/api/src/modules/transfer/draft-slot.ts#holdTransferDraft',
     'apps/api/src/modules/transfer/draft-slot.ts#occupiesDraftSlot',
     'apps/api/src/modules/transfer/draft-slot.ts#releaseTransferDraft',
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
     'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
     'apps/api/src/modules/transfer/linkage/service.ts#saveNewTransferLinkage',
-    '#createTransferCore',
     '#normalizeTransferInput',
     '#requireDirectTransfer',
     '#requireTransferWrite',
     '#transferTargetContext',
   ],
-  'apps/api/src/modules/transfer/service.ts#createTransferCore': [
-    'apps/api/src/modules/employment/context.ts#auditEmployment',
-    'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
-    'apps/api/src/modules/transfer/draft-slot.ts#holdTransferDraft',
-    'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
+  'apps/api/src/modules/transfer/service.ts#lockTransferBusinessEmployee': [
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/transfer-locks.ts#existingTransferEmployees',
+    'apps/api/src/modules/employment/transfer-locks.ts#lockTransferHeads',
+    'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
+    'apps/api/src/modules/employment/transfer-locks.ts#sealTransferLocks',
+    'apps/api/src/modules/employment/transfer-locks.ts#transferLocksCover',
+    '#LOCK_PLAN_ATTEMPTS',
+    '#planChanged',
+    '#transferRequestEmployee',
   ],
   'apps/api/src/modules/transfer/service.ts#normalizeTransferInput': [
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
@@ -855,6 +886,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/transfer/access.ts#transferDirectActions',
   ],
+  'apps/api/src/modules/transfer/service.ts#requireTransferEditedWrite': [
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+  ],
   'apps/api/src/modules/transfer/service.ts#requireTransferWrite': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
   ],
@@ -869,6 +903,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
     'apps/api/src/modules/transfer/manager-business-references.ts#requireManagerBusinessReferences',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/transfer/service.ts#transferRequestEmployee': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/transfer/service.ts#transferTargetContext': [
     'apps/api/src/modules/transfer/access.ts#requireTransferSource',

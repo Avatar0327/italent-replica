@@ -1,5 +1,5 @@
-import { Alert, Button, Dropdown, Space, Tabs, type TableColumnsType } from 'antd';
-import { useCallback, useEffect, useRef, useState, type Key } from 'react';
+import { Alert, Button, Drawer, Dropdown, Space, Tabs, type TableColumnsType } from 'antd';
+import { useCallback, useEffect, useRef, useState, type Key, type ReactNode } from 'react';
 import dayjs from 'dayjs';
 import { EMPLOYEE_STATUS_LABELS, ENTRY_STATUS_LABELS } from '@italent/domain';
 import { ListPage } from '../foundation/templates.js';
@@ -7,8 +7,12 @@ import { validObject } from '../foundation/forms/ConflictCommands.js';
 import { createFormStore } from '../foundation/forms/store.js';
 import { FormCommands } from '../foundation/forms/useCommandForm.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
+import { usePermissions } from '../foundation/Permissions.js';
 import type { PageResult } from '../foundation/client.js';
 import { NameOf, refPaths, useToday } from '../contracts/references.js';
+import { SourceSignDialog } from '../esign/SourceSignDialog.js';
+import { SourceSignHistory } from '../esign/SourceSignHistory.js';
+import { RECORD_OBJECT } from '../esign/records-model.js';
 import { DeleteBubble } from './DeleteBubble.js';
 import { PostponeForm } from './PostponeForm.js';
 import { CancelForm } from './CancelForm.js';
@@ -17,6 +21,10 @@ import { cancelAvailable, collection, request, type Row, type View } from './mod
 import { EntryStore, useEntryAccess } from './commands.js';
 import { m } from './messages.js';
 import './entries.css';
+
+type RowAction = 'edit' | 'complete' | 'sign' | 'signHistory';
+type EntryAction = RowAction | 'postpone' | 'cancel';
+const isSignAction = (action?: EntryAction) => action === 'sign' || action === 'signHistory';
 
 export function EntriesPage() {
   const session = useSession();
@@ -57,38 +65,31 @@ function useEntries(view: View, page: { page: number; pageSize: number }) {
   return { data: current?.data ?? { items: [] }, loading: !current, error: current?.error, read };
 }
 function EntryList() {
+  const access = useEntryAccess();
+  const records = usePermissions(RECORD_OBJECT);
+  const recordGrant = records.snapshot.objects[RECORD_OBJECT];
+  const canViewHistory =
+    recordGrant?.objectCode === RECORD_OBJECT && !recordGrant.summary && !records.loading && !records.error;
   const [view, setView] = useState<View>('all');
   const [page, setPage] = useState({ page: 1, pageSize: 30 });
   const [keys, setKeys] = useState<Key[]>([]);
-  const [open, setOpen] = useState<{ row: Row; action: 'edit' | 'complete' | 'postpone' | 'cancel' }>();
+  const [open, setOpen] = useState<{ row: Row; action: EntryAction }>();
+  const close = () => setOpen(undefined);
   const read = useEntries(view, page);
   const refresh = async () => {
     await read.read();
     setKeys([]);
   };
-  const columns: TableColumnsType<Row> = m.columns[view].split('|').map((title) => ({
-    title,
-    key: title,
-    width: m.columnWidths[title] ?? 140,
-    ellipsis: true,
-    render: (_, row) => cell(title, row),
-  }));
-  columns.push({
-    title: (
-      <Space>
-        {'操作'}
-        <Button size="small" disabled aria-label={m.settings}>
-          ⚙
-        </Button>
-      </Space>
-    ),
-    key: 'actions',
-    fixed: 'right',
-    width: 164,
-    render: (_, row) => (
-      <RowActions row={row} view={view} refresh={refresh} open={(action) => setOpen({ row, action })} />
-    ),
-  });
+  const columns = entryColumns(view, canViewHistory ? 232 : 164, (row) => (
+    <RowActions
+      row={row}
+      view={view}
+      access={access}
+      canViewHistory={canViewHistory}
+      refresh={refresh}
+      open={(action) => setOpen({ row, action })}
+    />
+  ));
   return (
     <div className="entries-page">
       <Tabs
@@ -115,22 +116,55 @@ function EntryList() {
         columns={columns}
         rowKey="id"
         page={page}
-        onPageChange={setPage}
+        onPageChange={(nextPage) => {
+          setPage(nextPage);
+          setOpen((current) => (isSignAction(current?.action) ? undefined : current));
+        }}
         loading={read.loading}
         error={read.error}
         retry={() => void read.read().catch(() => {})}
         filters={<Filters view={view} />}
         selection={{ keys, onChange: setKeys, actions: null }}
       />
-      {open?.action === 'postpone' && (
-        <PostponeForm row={open.row} onClose={() => setOpen(undefined)} refresh={refresh} />
-      )}
-      {open?.action === 'cancel' && <CancelForm row={open.row} onClose={() => setOpen(undefined)} refresh={refresh} />}
+      {open?.action === 'postpone' && <PostponeForm row={open.row} onClose={close} refresh={refresh} />}
+      {open?.action === 'cancel' && <CancelForm row={open.row} onClose={close} refresh={refresh} />}
       {open && (open.action === 'edit' || open.action === 'complete') && (
-        <CompleteLoader row={open.row} action={open.action} onClose={() => setOpen(undefined)} refresh={refresh} />
+        <CompleteLoader row={open.row} action={open.action} onClose={close} refresh={refresh} />
+      )}
+      {open?.action === 'sign' && access.edit && (
+        <SourceSignDialog source={{ kind: 'entry', id: open.row.id }} onClose={close} />
+      )}
+      {open?.action === 'signHistory' && canViewHistory && (
+        <Drawer open title={m.signHistory} width={720} onClose={close}>
+          <SourceSignHistory source={{ kind: 'entry', id: open.row.id }} />
+        </Drawer>
       )}
     </div>
   );
+}
+function entryColumns(view: View, actionWidth: number, actions: (row: Row) => ReactNode): TableColumnsType<Row> {
+  const columns: TableColumnsType<Row> = m.columns[view].split('|').map((title) => ({
+    title,
+    key: title,
+    width: m.columnWidths[title] ?? 140,
+    ellipsis: true,
+    render: (_, row) => cell(title, row),
+  }));
+  columns.push({
+    title: (
+      <Space>
+        {'操作'}
+        <Button size="small" disabled aria-label={m.settings}>
+          ⚙
+        </Button>
+      </Space>
+    ),
+    key: 'actions',
+    fixed: 'right',
+    width: actionWidth,
+    render: (_, row) => actions(row),
+  });
+  return columns;
 }
 function Filters({ view }: { view: View }) {
   const today = useToday();
@@ -166,18 +200,28 @@ function cell(title: string, row: Row) {
 function RowActions({
   row,
   view,
+  access: p,
+  canViewHistory,
   open,
   refresh,
 }: {
   row: Row;
   view: View;
+  access: ReturnType<typeof useEntryAccess>;
+  canViewHistory: boolean;
   refresh(): Promise<void>;
-  open(action: 'edit' | 'complete'): void;
+  open(action: RowAction): void;
 }) {
-  const p = useEntryAccess();
   const [deleting, setDeleting] = useState(false);
   const removable = p.remove && validObject(row) && !!row.employeeId;
-  if (view === 'hired') return null;
+  const history = canViewHistory && !!row.id && (
+    <Button type="link" onClick={() => open('signHistory')}>
+      {m.signHistory}
+    </Button>
+  );
+  if (view === 'hired') return history;
+  // 入职列表可能裁剪业务字段。发起资格和 If-Match 同取自弹窗的来源上下文。
+  const canOpenSign = p.edit && !!row.id;
   return (
     <DeleteBubble row={row} open={deleting} close={() => setDeleting(false)} refresh={refresh}>
       <Space size={0}>
@@ -211,7 +255,7 @@ function RowActions({
                   ...(p.edit && row.entryStatus !== 1 && validObject(row) && row.employeeId
                     ? [{ key: 'complete', label: m.complete, onClick: () => open('complete') }]
                     : []),
-                  { key: 'sign', label: m.sign, disabled: true },
+                  ...(canOpenSign ? [{ key: 'sign', label: m.sign, onClick: () => open('sign') }] : []),
                   ...(removable ? [{ key: 'delete', label: m.remove, onClick: () => setDeleting(true) }] : []),
                 ],
               }}
@@ -222,6 +266,7 @@ function RowActions({
             </Dropdown>
           </>
         )}
+        {history}
       </Space>
     </DeleteBubble>
   );

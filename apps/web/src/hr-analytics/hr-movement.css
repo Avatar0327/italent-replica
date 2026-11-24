@@ -1,0 +1,23 @@
+.hr-movement-line,
+.hr-movement-area,
+.hr-movement-table {
+  grid-column: 1 / -1;
+}
+.hr-movement-establishment {
+  min-width: 0;
+}
+.hr-movement-establishment .ant-table-cell {
+  white-space: nowrap;
+}
+.hr-movement-establishment .ant-btn {
+  padding-inline: 0;
+  font-variant-numeric: tabular-nums;
+}
+@media (min-width: 1440px) {
+  .hr-movement-pie {
+    grid-column: span 2;
+  }
+  .hr-movement-rate {
+    grid-column: span 4;
+  }
+}

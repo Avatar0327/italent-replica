@@ -1,3 +1,4 @@
+import { createPendingEntryCase } from './entry-case.js';
 import { applyInternSeniority } from './intern-seniority.js';
 import { applyRehireSeniority } from './rehire-seniority.js';
 import { assertRegularizationApplication } from './regularization-eligibility.js';
@@ -24,7 +25,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
-import { clearedTransferFields, tenantLocalDate } from '@italent/domain';
+import { changedInputFields, clearedTransferFields, tenantLocalDate } from '@italent/domain';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
@@ -41,7 +42,7 @@ import { assertInternRegularizationEligible, resolveInFlightRegularization } fro
 import { forwardUpdateEmployment } from './forward-update.js';
 import type { ForwardValues } from './forward-rules.js';
 import { emptyPresetFields } from './types.js';
-import { normalizeBusinessPatch, normalizeEmploymentInput } from './fields.js';
+import { INHERITED_FIELDS, normalizeBusinessPatch, normalizeEmploymentInput } from './fields.js';
 import {
   prepareInheritance,
   prepareEmploymentPatch,
@@ -82,8 +83,14 @@ import {
   type PresetFields,
 } from './types.js';
 import { queueExitAccount } from './exit-account-store.js';
-import { fieldOriginEditor, formFieldOrigins, originActorKind } from './field-origin-write.js';
-import { appendFieldOrigins, type FieldOriginDraft } from './field-origin-store.js';
+import {
+  discardedFormFields,
+  endDiscardedFormOverrides,
+  fieldOriginEditor,
+  formFieldOrigins,
+  originActorKind,
+} from './field-origin-write.js';
+import { type FieldOriginDraft } from './field-origin-store.js';
 
 export const NEW_CYCLE_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 
@@ -115,6 +122,7 @@ export interface CreateEmploymentOptions {
   readonly establishmentWarnings?: EstablishmentWarning[];
   /** F-022 入职写入端口（R2-T01 接线）：添加待入职、是否有试用期；不开放给请求体。 */
   readonly entry?: EntryOptions;
+  readonly replacingPendingEntry?: true;
   /** F-363：待入职改期 / 编辑重建时的锁内旧用工形式，仅服务端传入。 */
   readonly retainedEmploymentForm?: string | null;
   /** 离职创建须经 exit-application.ts 的门禁（R2-T03 §4A）；只有它持有这个凭证。 */
@@ -209,6 +217,8 @@ export async function createEmploymentBusiness(
   if (normalized.mode === 'direct' && !gatedDirect)
     await materializeEmploymentRecord(tx, ctx, business, withImportedUntil(options));
   await appendEmploymentState(tx, ctx, business, business.state);
+  if (options.entry?.pendingEntry && !options.replacingPendingEntry && NEW_CYCLE_KINDS.includes(normalized.kind))
+    await createPendingEntryCase(tx, ctx, employeeId, id, normalized.effectiveDate);
   await bindRehireRetirement(tx, ctx, business);
   await bumpEmploymentEmployee(tx, ctx, employee);
   // 待入职试用期、待入职合同是字段级变更（DEC-019），随创建进同一条审计（F-188 / F-194）
@@ -388,13 +398,16 @@ export async function updateEmploymentBusiness(
   options: RescheduleOptions = {},
 ): Promise<EmploymentBusiness> {
   const { pendingTransferAck, confirmed, ...businessPatch } = normalizeBusinessPatch(input);
-  let patch = businessPatch;
   const business = await lockExitForEdit(tx, ctx, id);
-  await requireEmployeeTransferBusiness(tx, ctx, id, patch);
-  const remaining = await replanEditableExit(tx, ctx, business, patch, { pendingTransferAck, confirmed, ...options });
+  // 员工自助单据上同值的职位、职务、职级、序列不算本次输入（DEC-950），其后一律用扣完之后的这份。
+  const current = (await requireEmployeeTransferBusiness(tx, ctx, id, businessPatch)) ?? businessPatch;
+  const remaining = await replanEditableExit(tx, ctx, business, current, {
+    pendingTransferAck,
+    confirmed,
+    ...options,
+  });
   if (remaining === null) return requireSavedBusiness(tx, ctx, id);
-  patch = remaining;
-  await requireUnchangedExitDates(tx, ctx, business, patch, options);
+  await requireUnchangedExitDates(tx, ctx, business, remaining, options);
   // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。
   if (business.payload.mode !== 'application' || !['draft', 'in_review', 'rejected'].includes(business.state))
     throw new AppError('CONFLICT', '只有草稿、审批中或被驳回的申请可以修改', { reason: 'PAYLOAD_IMMUTABLE' });
@@ -403,7 +416,7 @@ export async function updateEmploymentBusiness(
     throw new AppError('CONFLICT', '审批中的申请只能由当前审批节点修改', { reason: 'APPROVAL_IN_PROGRESS' });
   }
   const before = business.payload;
-  const normalized = normalizePatchedInput(ctx, before, patch);
+  const { normalized, patch, requestFields } = normalizePatchedInput(ctx, before, remaining);
   await assertRegularizationApplication(tx, ctx, business, normalized);
   await assertNotBeforeCurrentCycle(tx, ctx, business.employeeId, normalized);
   await assertBusinessSequence(tx, ctx, business.employeeId, normalized);
@@ -418,7 +431,7 @@ export async function updateEmploymentBusiness(
   const prepared = await prepareEmploymentPatch(
     tx,
     ctx,
-    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
+    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id, requestFieldCodes: requestFields },
     before,
   );
   const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
@@ -438,6 +451,7 @@ export async function updateEmploymentBusiness(
   await bumpEmploymentBusiness(tx, ctx, business);
   const actor = await fieldOriginEditor(tx, ctx, before, options);
   const origins = formFieldOrigins(prepared, normalized, { request: patch, businessId: id, before, actor });
+  await endDiscardedFormOverrides(tx, ctx, before, prepared, discardedFormFields(patch.fields), origins);
   business.payload = await appendEmploymentPayload(tx, ctx, business.employeeId, id, normalized, prepared, {
     previous: before,
     selectedStaffId: selected?.cycle.id,
@@ -461,11 +475,33 @@ export async function updateEmploymentBusiness(
   return requireSavedBusiness(tx, ctx, id);
 }
 
+function omitUnchangedInheritedFields(
+  before: EmploymentPayloadRow,
+  patch: EmploymentBusinessPatch,
+): EmploymentBusinessPatch {
+  const { startsNewCycle, fieldModes, excludedAutofillFields, customInheritance } = before.formSnapshot;
+  if (startsNewCycle) return patch;
+  // DEC-977：同值重提不构成覆盖，改期时由 DEC-041 重新取前驱。
+  const entered = new Set([...before.explicitFieldCodes, ...changedInputFields(before, patch)]);
+  const unchangedEditable = (code: string) => fieldModes[code] === 'editable' && !entered.has(code);
+  const fields = { ...patch.fields };
+  for (const field of INHERITED_FIELDS) {
+    if (!excludedAutofillFields?.includes(field) && unchangedEditable(`preset:${field}`)) delete fields[field];
+  }
+  const customFields = { ...patch.customFields };
+  for (const id of Object.keys(customFields)) {
+    if (customInheritance[id] && Object.hasOwn(before.customFields, id) && unchangedEditable(`custom:${id}`))
+      delete customFields[id];
+  }
+  return { ...patch, fields, customFields };
+}
+
 export function normalizePatchedInput(
   ctx: EmploymentContext,
   before: EmploymentPayloadRow,
-  patch: EmploymentBusinessPatch,
-): NormalizedEmploymentInput {
+  input: EmploymentBusinessPatch,
+) {
+  const patch = omitUnchangedInheritedFields(before, input);
   const fields: Partial<Record<keyof typeof before.fields, unknown>> = Object.fromEntries(
     before.explicitFieldCodes
       .filter((code) => code.startsWith('preset:'))
@@ -474,12 +510,7 @@ export function normalizePatchedInput(
         return [field, before.fields[field]];
       }),
   );
-  if (patch.fields && Object.hasOwn(patch.fields, 'departmentId') && !Object.hasOwn(patch.fields, 'directManagerId'))
-    delete fields.directManagerId;
-  // DEC-107：本次改选了职务而未传序列时，丢弃按旧职务带出（或旧填写）的序列，交由新职务重新带出。
-  if (patch.fields && Object.hasOwn(patch.fields, 'postId') && !Object.hasOwn(patch.fields, 'sequenceId')) {
-    delete fields.sequenceId;
-  }
+  for (const field of discardedFormFields(patch.fields)) delete fields[field];
   const customFields = Object.fromEntries(
     before.explicitFieldCodes
       .filter((code) => code.startsWith('custom:'))
@@ -488,7 +519,7 @@ export function normalizePatchedInput(
   const lastWorkDate = patch.lastWorkDate === undefined ? before.lastWorkDate : patch.lastWorkDate;
   // 修改最后工作日时重新推导 D+1；客户端另填生效日仍由统一校验拒绝矛盾值。
   const effectiveDate = patch.effectiveDate ?? (patch.lastWorkDate === undefined ? before.effectiveDate : undefined);
-  return normalizeEmploymentInput(ctx, {
+  const normalized = normalizeEmploymentInput(ctx, {
     kind: before.kind,
     mode: before.mode,
     formId: before.formId,
@@ -497,6 +528,14 @@ export function normalizePatchedInput(
     fields: { ...fields, ...patch.fields },
     customFields: { ...customFields, ...patch.customFields },
   });
+  // F-036 S4：候选态（normalized）= 沿用的覆盖值 + 本次请求。requestFields 是“本次输入”的唯一来源（DEC-431①）：
+  // 沿用的值当时已校验过，也可能由向后更新、序列同步这类系统写入而来，不能再受“当前表单是否允许编辑”约束，
+  // 也不能触发派生；这两处都改读它，不再各自从候选的键集合里猜。
+  const requestFields = new Set([
+    ...Object.keys(patch.fields ?? {}).map((field) => `preset:${field}`),
+    ...Object.keys(patch.customFields ?? {}).map((id) => `custom:${id}`),
+  ]);
+  return { normalized, patch, requestFields };
 }
 
 function assertEmployTypeUsage(input: Pick<NormalizedEmploymentInput, 'kind' | 'fields'>): void {
@@ -691,25 +730,14 @@ export async function appendEmploymentPayload(
     selectedStaffId: options.selectedStaffId ?? null,
   };
   const { fields, ...metadata } = payload;
-  await insertEmploymentRow(
+  const markers = await insertEmploymentRow(
     tx,
     'employment_payload_versions',
     { ...fields, ...metadata, createdAt: ctx.now.toISOString() },
-    options.status,
-  );
-  await appendFieldOrigins(
-    tx,
-    ctx,
-    options.origins.map((row) => ({
-      ...row,
-      employeeId,
-      businessId,
-      payloadVersionId: payload.id,
-      recordId: options.recordId,
-    })),
+    { ctx, origins: options.origins, recordId: options.recordId, status: options.status },
   );
   // 未显式给出时由插入触发器继承（迁移 0062），以库中的值为准
-  return { ...payload, ...(await storedStatus(tx, ctx, payload.id)) };
+  return { ...payload, ...markers, ...(await storedStatus(tx, ctx, payload.id)) };
 }
 
 async function storedStatus(tx: Tx, ctx: EmploymentContext, payloadId: string) {

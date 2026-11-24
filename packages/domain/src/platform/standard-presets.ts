@@ -5,6 +5,7 @@
  * 编制方案）预置“看全部”，开箱效果与原站一致（`11` §17）；有组织字段的对象（职位、组织编制等）仍按管理单元裁剪。
  * 人才标准管理员（DEC-281⑩）同一口径：只对无组织字段的发展建议类型字典预置看全部，其余按管理单元。
  */
+import { ONBOARDING_ENTRY_STATUS_FIELDS } from '../onboarding/permission.js';
 import { APPROVAL_OBJECTS, APPROVAL_PROCESS_OBJECT } from '../approval/catalog.js';
 import {
   SELF_APPLICATION_OBJECTS,
@@ -73,6 +74,15 @@ const ASSESSMENT_SEE_ALL: PresetSeeAllTarget = {
   targetKind: 'entity',
   targetCode: MODULE_OBJECTS.probationAssessment.code,
 };
+
+/** DEC-415：入职域对象给组织员工模块的两类管理员预置对象级看全部。 */
+export const BE16_SEE_ALL: readonly PresetSeeAllTarget[] = [
+  MODULE_OBJECTS.onboardingCollection,
+  MODULE_OBJECTS.onboardingQrCode,
+  MODULE_OBJECTS.onboardingPreparation,
+  MODULE_OBJECTS.onboardingMaterial,
+  MODULE_OBJECTS.onboardingIntegration,
+].map(({ code }) => ({ appCode: ORG_EMPLOYEE_APP, targetKind: 'entity', targetCode: code }));
 
 /**
  * DEC-415：人事分析 - 人事看板（R2 BE-12b）是组织员工模块的只读新对象，看全部同样默认给本模块的预置管理员（标准版系统管理员、
@@ -188,6 +198,13 @@ const grant = (definition: ObjectDefinition) => {
       ...readOnly(definition),
       buttons: definition.buttons.map((b) => ({ buttonCode: b.code, level: b.level })),
     };
+  if (BE16_SEE_ALL.some(({ targetCode }) => targetCode === definition.code)) {
+    return partial(
+      definition,
+      ['create', 'update'],
+      definition.buttons.map(({ code }) => code),
+    );
+  }
   return READ_ONLY_OBJECTS.has(definition.code) ? readOnly(definition) : full(definition);
 };
 
@@ -248,6 +265,15 @@ function withoutInsuranceAdjust(permission: ObjectPermission): ObjectPermission 
   if (permission.objectCode !== MODULE_OBJECTS.employmentRecord.code) return permission;
   const adjust: readonly string[] = INSURANCE_ADJUST_FIELDS;
   return { ...permission, fields: permission.fields.filter((f) => !adjust.includes(f.fieldCode)) };
+}
+
+/** DEC-967：经理默认任职查看模板不扩权到新的入职状态字段。 */
+function withoutOnboardingStatuses(permission: ObjectPermission): ObjectPermission {
+  if (permission.objectCode !== MODULE_OBJECTS.employmentRecord.code) return permission;
+  return {
+    ...permission,
+    fields: permission.fields.filter(({ fieldCode }) => !ONBOARDING_ENTRY_STATUS_FIELDS.includes(fieldCode)),
+  };
 }
 
 /** 指定数据操作与按钮（按钮编码，含全部级别）；字段全部可见、非系统字段可编辑。 */
@@ -502,6 +528,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     seeAll: [
       BLACKLIST_SEE_ALL,
       ASSESSMENT_SEE_ALL,
+      ...BE16_SEE_ALL,
       HR_DASHBOARD_SEE_ALL,
       HR_PROCESS_DASHBOARD_SEE_ALL,
       ...ANALYTICS_BE13A_SEE_ALL,
@@ -523,7 +550,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
       ...SOCIAL_INSURANCE_VIEW_OBJECTS.map(readOnly),
     ],
     hr: true,
-    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, ORG_ADJUSTMENT_SEE_ALL, DUTY_TRANSFER_SEE_ALL],
+    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, ...BE16_SEE_ALL, ORG_ADJUSTMENT_SEE_ALL, DUTY_TRANSFER_SEE_ALL],
   },
   {
     // 原站描述“相比人事管理员……除去了设置菜单”：不含流程配置对象
@@ -609,7 +636,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     licenseType: null,
     apps: [ORG_EMPLOYEE_APP],
     objects: BUSINESS_OBJECTS.filter((o) => MANAGER_OBJECTS.has(o.code)).map((o) =>
-      withoutInsuranceAdjust(withoutDailyWage(readOnly(o))),
+      withoutOnboardingStatuses(withoutInsuranceAdjust(withoutDailyWage(readOnly(o)))),
     ),
     hr: false,
   },

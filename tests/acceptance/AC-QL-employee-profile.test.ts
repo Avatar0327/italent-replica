@@ -652,6 +652,33 @@ describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404、
     }
   });
 
+  it('DEC-967 五类 BE16 按钮仅预置给组织员工三类 HR，任职状态字段对员工自助不扩权', () => {
+    const hr = ['standard_hr_admin', 'standard_hr_specialist', 'standard_org_system_admin'];
+    const buttons = STANDARD_GRANT_CODES.filter((code) => code.includes('/button:BE16.'));
+    expect(buttons.length).toBeGreaterThan(0);
+    const suffixes = new Set(buttons.map((code) => code.slice(code.indexOf('/'))));
+    for (const suffix of suffixes) {
+      expect(STANDARD_GRANT_CODES.filter((code) => code.endsWith(suffix)).sort()).toEqual(
+        hr.map((profile) => `${profile}${suffix}`),
+      );
+    }
+    for (const field of ['collectionStatus', 'preparationStatus', 'materialStatus']) {
+      expect(STANDARD_GRANT_CODES.filter((code) => code.includes(`/${RECORD}/field:${field}:`)).sort()).toEqual(
+        hr.map((profile) => `${profile}/${RECORD}/field:${field}:view`),
+      );
+    }
+  });
+
+  it('DEC-415 入职域对象的看全部仅给组织员工两类预置管理员', () => {
+    const objects = ['Collection', 'Integration', 'Material', 'Preparation', 'QrCode'];
+    const expected = ['standard_hr_admin', 'standard_org_system_admin'].flatMap((profile) =>
+      objects.map((object) => `${profile}/seeAll:TenantBase:entity:TenantBase.Onboarding${object}`),
+    );
+    expect(
+      STANDARD_GRANT_CODES.filter((code) => code.includes('/seeAll:TenantBase:entity:TenantBase.Onboarding')).sort(),
+    ).toEqual(expected.sort());
+  });
+
   // DEC-439④：version 在合并时由 pnpm merge:main 统一定为 main + 1，不再在测试里钉“合并进来的 main 版本 / 指纹”快照
   // （那份快照在下一个改授权项编码的 PR 合并后必然失效，正是串行队列反复撞号的来源）。递增与历史由 AC-PLAT-F061-grants 守，
   // 本 PR 增删了哪些编码由 AC-PLAT-F061-grants 的动态基线（分叉点编码 + 声明清单，F-097）守。
