@@ -1,7 +1,7 @@
 import { TransferApiError, requestError } from '../../transfer/api.js';
 import { transferCommands, transferResult } from '../../transfer/commands.js';
 import type { TransferBusiness } from '../../transfer/types.js';
-import { isLocked, type Submission } from '../../foundation/forms/store.js';
+import { isLocked, type Race, type Submission } from '../../foundation/forms/store.js';
 import {
   ApplicationCommandHandled,
   type ApplicationCommand,
@@ -19,12 +19,20 @@ export interface ApplicationSession {
   reading: boolean;
   resultPending: boolean;
   queryFailed: boolean;
+  /** F-558：本次提交没有发出、锁到了别的标签页的命令上时的原因（内核 raceOf）；只对当前锁定的那条命令显示。 */
+  race: string;
 }
 // F-110：未确认锁定交给内核（transferCommands，恢复记录各标签页共用，只存命令 ID、员工、单号、动作、生效日），
 // 整页刷新、另开标签页后仍只读，只能按原命令 ID 查询结果解锁。提交内容摘要与已保存单据只在本页内存，不落存储。
 const commands = new Map<string, ApplicationCommand>();
 const saved = new Map<string, TransferBusiness>();
-const cache = new Map<string, { state?: Submission; saved?: TransferBusiness; value: ApplicationSession }>();
+// F-558：内核只随提交结果带回竞争（不存进条目），抽屉按作用域记下最近一次，显示与否仍按当前锁定的命令判定。
+const races = new Map<string, Race>();
+const listeners = new Set<() => void>();
+const cache = new Map<
+  string,
+  { state?: Submission; saved?: TransferBusiness; race?: Race; value: ApplicationSession }
+>();
 const contextOf = (command: ApplicationCommand) => ({
   action: command.action,
   employeeId: command.employeeId,
@@ -52,22 +60,38 @@ function errorOf(state?: Submission) {
 export function readApplicationSession(scope: string): ApplicationSession {
   const state = transferCommands.get(scope);
   const known = saved.get(scope);
+  const race = races.get(scope);
   const hit = cache.get(scope);
-  if (hit && hit.state === state && hit.saved === known) return hit.value;
+  if (hit && hit.state === state && hit.saved === known && hit.race === race) return hit.value;
   const locked = isLocked(state);
+  const pending = locked ? pendingOf(scope, state!) : null;
   const value = {
-    pending: locked ? pendingOf(scope, state!) : null,
+    pending,
     saved: known ?? null,
     error: errorOf(state),
     restored: locked && !!state!.restored,
     reading: !!state?.reading,
     resultPending: locked && !!state!.resultPending,
     queryFailed: locked && !!state!.readError,
+    race: race && pending?.commandId === race.commandId ? race.reason : '',
   };
-  cache.set(scope, { state, saved: known, value });
+  cache.set(scope, { state, saved: known, race, value });
   return value;
 }
-export const subscribeApplicationSession = transferCommands.subscribe;
+export function subscribeApplicationSession(listener: () => void) {
+  listeners.add(listener);
+  const off = transferCommands.subscribe(listener);
+  return () => {
+    listeners.delete(listener);
+    off();
+  };
+}
+function setRace(scope: string, race?: Race) {
+  if (races.get(scope) === race) return;
+  if (race) races.set(scope, race);
+  else races.delete(scope);
+  for (const listener of listeners) listener();
+}
 /**
  * 抽屉入口没有字段级冲突对照界面：确定的 4xx（含 revision 冲突）一律按被拒落定、解除处理中标记，
  * 原因由内部表单按原错误显示并重读草稿（R1d-2）；超时、断线、5xx、无效回执仍未确认。
@@ -81,11 +105,11 @@ export async function runApplicationCommand(
   command: ApplicationCommand,
   execute: Parameters<ApplicationCommandRunner>[1],
 ) {
-  // 先对齐别的标签页的未确认命令（F-110 第 2 轮 P2-2）：别页结果未知时本页同样只读，不换新 ID 执行。
+  // 别页的未确认命令由内核提交判定（F-110 第 4 轮单一出口）：提交前同步与登记冲突都随结果带回竞争，本层不另外猜。
+  // 上一条已确定被拒：新命令按本次动作 / 对象起算，不沿用被拒命令的上下文；锁定中的条目留给内核原样判定。
   transferCommands.sync();
-  if (isLocked(transferCommands.get(scope))) throw new ApplicationCommandHandled(m.processing);
-  // 上一条已确定被拒：新命令按本次动作 / 对象起算，不沿用被拒命令的上下文。
-  transferCommands.clear(scope);
+  if (!isLocked(transferCommands.get(scope))) transferCommands.clear(scope);
+  setRace(scope);
   commands.set(scope, command);
   let received: TransferBusiness | undefined;
   let sent = false;
@@ -108,6 +132,11 @@ export async function runApplicationCommand(
       return received;
     },
   });
+  // 锁到了别的标签页的命令上：本次未发出，提示其他标签页（F-558，与 HR 页同一来源），不只显示“处理中”。
+  if (state.race) {
+    setRace(scope, state.race);
+    throw new ApplicationCommandHandled(state.race.reason, true);
+  }
   // 登记就被拒：命令未发出。前置拒绝（DEC-955）时连命令都没生成，不能按命令 ID 判成“处理中”。
   if (state.status === 'rejected' && !sent) throw new ApplicationCommandHandled(errorOf(state), true);
   if (state.command?.id !== command.commandId) throw new ApplicationCommandHandled(m.processing);
@@ -137,5 +166,6 @@ export function clearConfirmedApplication(scope: string) {
   if (value.pending || !value.saved || value.saved.status === 'draft') return;
   saved.delete(scope);
   commands.delete(scope);
+  setRace(scope);
   transferCommands.clear(scope);
 }

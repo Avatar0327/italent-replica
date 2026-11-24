@@ -81,6 +81,7 @@ function PendingApplication({ state, tenantId }: { state: ApplicationState; tena
   return (
     <section>
       <p role="status">{m.processing}</p>
+      {state.race && <Alert type="warning" showIcon message={state.race} />}
       {state.resultPending && <Alert type="info" showIcon message={kernel.resultPending} />}
       {state.queryFailed && <Alert type="error" showIcon message={m.queryFailed} />}
       <Descriptions
