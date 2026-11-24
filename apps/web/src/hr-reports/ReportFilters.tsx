@@ -159,7 +159,7 @@ export function ReportFilters({
   );
 }
 
-function AppliedFilters({
+export function AppliedFilters({
   fields,
   applied,
   showDepartment,

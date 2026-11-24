@@ -1,5 +1,5 @@
 /**
- * 人事流程看板路由（BE-13c）的 F-039 声明：两个只读 GET，权限都是对象 TenantBase.HrProcessDashboard 的查看权
+ * 人事流程看板路由（BE-13c、F-547）的 F-039 声明：权限都是对象 TenantBase.HrProcessDashboard 的查看权
  * （hr-process-dashboard-routes.ts processContext → objectContext），范围按同一对象的数据范围解析（requestScope），
  * 与审批披露（参与人 / 审批管理员范围）取交集后在 SQL 内先于分页叠加。响应只含固定键的数字、ID 与在途明细 14 列。
  */
@@ -41,5 +41,8 @@ export const HR_PROCESS_DASHBOARD_POLICIES = defineTable('hr-process-dashboard',
       [...WINDOW, 'no', 'code', 'name', 'module', 'subject', 'total', 'items', 'page', 'pageSize'],
       'hr-process-dashboard-routes.ts 明细：固定键，items 只含范围内的 ID 与在途明细列',
     ),
+  ),
+  [`GET ${HR_PROCESS_DASHBOARD_BASE}/components/:code/export`]: read(
+    fixed(['file'], 'processExportColumns：通用六列、7.2.05 在途列表二十列，值沿用 D 的审批披露投影'),
   ),
 });
