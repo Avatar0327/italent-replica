@@ -3,17 +3,26 @@
  * 设计：docs/08_设计/F-036_字段来源记录与迟到后重建_设计.md §4.6、§5.2、§7.1、§10.1。
  * 夹具：甲＝DEC-950 原例；乙＝继承四字段；乙′＝原任职没有职位；丙＝HR 改当前任职后向后更新传播。
  */
-import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
-import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import type * as Commands from '../../apps/api/src/commands.js';
 import { appendFieldOrigins } from '../../apps/api/src/modules/employment/field-origin-store.js';
 import { resultRows } from './AC-ORG-people-support.js';
-import { createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 import { waitForLockWaiters } from './AC-TRF-F181a-support.js';
-import { BASE, FOUR, LATER, ok, selfWorld, type Fields, type Four, type SelfWorld } from './AC-TRF-F036S4-support.js';
+import {
+  BASE,
+  FOUR,
+  LATER,
+  betaWorld,
+  ok,
+  scopedHr,
+  selfWorld,
+  snapshotOf,
+  type Fields,
+  type Four,
+  type SelfWorld,
+} from './AC-TRF-F036S4-support.js';
 
 // 失败后回查：让命令主事务的 guard.before 第一次抛错，runCommand 随后走 replayAfterFailure 的回查出口；
 // 路径上没有 guard 时原样透传（同 AC-TRF-F181a-draft-guard）。
@@ -43,31 +52,13 @@ vi.mock('../../apps/api/src/commands.js', async (importOriginal) => {
 const database = useTestDb();
 const NEXT_DATE = '2026-11-02';
 
-/** 草稿当前状态：行数、字段值、生效日、四个字段的最后写入来源；“不变 / 零写入”都拿它比。 */
-async function snapshot(s: SelfWorld, id: string) {
-  const shown = await s.show(id);
-  const origins = {} as Record<Four, { value: unknown; kind: string | null }>;
-  for (const field of FOUR) origins[field] = await s.origin(id, field);
-  return { counts: await s.counts(id), fields: shown.fields, effectiveDate: shown.effectiveDate, origins };
-}
+/** 夹具已移到 AC-TRF-F036S4-support.ts（AC-TRF-65 单入口回归共用）；这里只绑定本文件的测试库。 */
+const snapshot = snapshotOf;
+const beta = (label: string, withPosition = true) => betaWorld(database().db, label, withPosition);
+
 const forbidden = async (response: Response) => {
   expect(response.status, await response.clone().text()).toBe(403);
 };
-
-/** 乙／乙′：原任职有（无）职位的员工建同部门草稿，四个字段全部继承。 */
-async function beta(label: string, withPosition = true) {
-  const s = await selfWorld(database().db, label);
-  const base = await s.catalog();
-  const other = await s.catalog();
-  const person = await s.employee('合成员工', {
-    postId: base.post,
-    sequenceId: base.sequence,
-    levelId: base.level,
-    ...(withPosition ? { positionId: base.position } : {}),
-  });
-  const draft = await s.draftOf(person);
-  return { s, base, other, person, draft };
-}
 
 /** 甲（DEC-950 原例）：租户给员工身份开职位编辑权，员工自填职位 P1（命令 K0）后收回编辑权。 */
 async function alpha(label: string) {
@@ -660,41 +651,6 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
     });
   },
 );
-
-/**
- * 部门范围 HR：Employment 对象编辑权、全部非系统字段编辑权与 Employment 按钮（含 Transfer.Hr 入口），数据范围只有原部门（org_range，不含下级）。
- * `revokeScope` 由租户管理员把这份范围收空，对象、按钮、字段权限原样保留（第 4 轮 P2：只收范围，别的授权都还在）。
- */
-async function scopedHr(s: SelfWorld) {
-  const { admin, w } = s;
-  const person = await w.person('合成部门HR', s.source);
-  const profile = await createProfile(admin, `s4-hr-${randomUUID()}`);
-  const def = MODULE_OBJECTS.employmentRecord;
-  await ok(
-    await setObjectPermission(
-      admin,
-      profile,
-      {
-        dataOperations: { create: true, update: true, delete: false },
-        fields: def.fields.map((field) => ({ fieldCode: field.code, view: true, edit: !field.system })),
-        buttons: def.buttons
-          .filter((button) => !button.code.startsWith('Transfer.') || button.code === 'Transfer.Hr')
-          .map((button) => ({ buttonCode: button.code, level: button.level })),
-      },
-      def.code,
-    ),
-  );
-  await makeGrantable(admin, [profile.id]);
-  await ok(await grant(admin, person.userId, profile.id), 201);
-  const scope = (orgRanges: readonly object[], ifMatch: number) =>
-    admin.api.request('PUT', `/api/tenant/permission/scopes/${person.userId}/TenantBase`, {
-      ...admin.asAdmin,
-      ifMatch,
-      body: { kind: 'org_range', orgRanges },
-    });
-  await ok(await scope([{ orgId: s.source, includeDescendants: false }], 0));
-  return { ...person, revokeScope: async () => ok(await scope([], 1)) };
-}
 
 /**
  * 范围收回屏障（第 4 轮 P2）：部门范围 HR 首次合法 PATCH（命令 K0）成功 → 同键重放进入守卫、排在员工行锁上等待

@@ -312,3 +312,66 @@ export async function ok(response: Response, status = 200) {
   expect(response.status, await response.clone().text()).toBe(status);
   return response;
 }
+
+/** 草稿当前状态：行数、字段值、生效日、四个字段的最后写入来源；“不变 / 零写入”都拿它比。 */
+export async function snapshotOf(s: SelfWorld, id: string) {
+  const shown = await s.show(id);
+  const origins = {} as Record<Four, { value: unknown; kind: string | null }>;
+  for (const field of FOUR) origins[field] = await s.origin(id, field);
+  return { counts: await s.counts(id), fields: shown.fields, effectiveDate: shown.effectiveDate, origins };
+}
+
+/** 乙／乙′：原任职有（无）职位的员工建同部门草稿，四个字段全部继承。 */
+export async function betaWorld(db: Db, label: string, withPosition = true) {
+  const s = await selfWorld(db, label);
+  const base = await s.catalog();
+  const other = await s.catalog();
+  const person = await s.employee('合成员工', {
+    postId: base.post,
+    sequenceId: base.sequence,
+    levelId: base.level,
+    ...(withPosition ? { positionId: base.position } : {}),
+  });
+  const draft = await s.draftOf(person);
+  return { s, base, other, person, draft };
+}
+
+/**
+ * 部门范围 HR：Employment 对象编辑权、全部非系统字段编辑权与 Employment 按钮（含 Transfer.Hr 入口），数据范围是原部门
+ * 加 `extraOrgs`（org_range，不含下级）。`setScope` 由租户管理员改这份范围（对象、按钮、字段权限原样保留），
+ * `revokeScope` 把它收空（第 4 轮 P2：只收范围，别的授权都还在）；第 5 轮的部分收回用 `setScope(只留某些部门)`。
+ */
+export async function scopedHr(s: SelfWorld, extraOrgs: readonly string[] = []) {
+  const { admin, w } = s;
+  const person = await w.person('合成部门HR', s.source);
+  const profile = await createProfile(admin, `s4-hr-${randomUUID()}`);
+  const def = MODULE_OBJECTS.employmentRecord;
+  await ok(
+    await setObjectPermission(
+      admin,
+      profile,
+      {
+        dataOperations: { create: true, update: true, delete: false },
+        fields: def.fields.map((field) => ({ fieldCode: field.code, view: true, edit: !field.system })),
+        buttons: def.buttons
+          .filter((button) => !button.code.startsWith('Transfer.') || button.code === 'Transfer.Hr')
+          .map((button) => ({ buttonCode: button.code, level: button.level })),
+      },
+      def.code,
+    ),
+  );
+  await makeGrantable(admin, [profile.id]);
+  await ok(await grant(admin, person.userId, profile.id), 201);
+  let revision = 0;
+  const setScope = async (orgIds: readonly string[]) => {
+    const response = await admin.api.request('PUT', `/api/tenant/permission/scopes/${person.userId}/TenantBase`, {
+      ...admin.asAdmin,
+      ifMatch: revision,
+      body: { kind: 'org_range', orgRanges: orgIds.map((orgId) => ({ orgId, includeDescendants: false })) },
+    });
+    await ok(response);
+    revision += 1;
+  };
+  await setScope([s.source, ...extraOrgs]);
+  return { ...person, setScope, revokeScope: () => setScope([]) };
+}
