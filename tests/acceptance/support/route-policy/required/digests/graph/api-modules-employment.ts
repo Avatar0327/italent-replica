@@ -1303,6 +1303,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/context.ts#runWrite': [
     'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#discloseAssessmentConflictReceipt',
+    '#canonicalReceipt',
     '#commandContext',
     '#isScopedGuard',
     '#trimEmploymentResponse',
@@ -8532,6 +8533,7 @@ export const GRAPH: Graph = {
     '#employeeExists',
     '#heldIds',
     '#isSealed',
+    '#lockHeads',
     '#participants',
     '#settingKey',
   ],
@@ -8541,6 +8543,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/transfer-locks.ts#employeeExists': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#existingTransferEmployees': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#array',
+  ],
   'apps/api/src/modules/employment/transfer-locks.ts#heldIds': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#settingKey',
@@ -8549,10 +8555,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#sealKey',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#lockHeads': ['#array'],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferBusiness': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#lockTransferParticipants',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#lockTransferHeads': ['#heldIds', '#lockHeads'],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants': ['#acquire'],
   'apps/api/src/modules/employment/transfer-locks.ts#participants': [
     'apps/api/src/modules/employment/exit-duty-participants.ts#pendingClearSubordinates',
