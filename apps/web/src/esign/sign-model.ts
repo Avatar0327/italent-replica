@@ -1,5 +1,6 @@
 // F-481 §8.2、§8.3：签署记录与我的签署共用的展示口径。界面只显示中文，不露 status / currentNode / scene 英文码。
 import { ApiError } from '../foundation/client.js';
+import { ESIGN_SCENE_LABEL } from '@italent/domain';
 import { m } from './messages.js';
 
 export interface Named {
@@ -11,7 +12,12 @@ export function statusText(status: unknown, node: unknown): string {
   if (status === 'signing' && typeof node === 'string' && m.signingAt[node]) return m.signingAt[node];
   return (typeof status === 'string' && m.status[status]) || m.missing;
 }
-export const sceneText = (scene: unknown) => (typeof scene === 'string' && m.sceneLabels[scene]) || m.missing;
+export function sceneText(scene: unknown) {
+  if (scene === undefined || scene === null) return m.missing;
+  if (scene === 'transfer') return ESIGN_SCENE_LABEL;
+  if (scene === 'offer' || scene === 'entry') return m.sceneLabels[scene];
+  return m.unknownScene;
+}
 export const nameText = (value?: Named | null) => value?.name || m.missing;
 export const fileText = (names: readonly (string | undefined)[]) =>
   names.filter(Boolean).join(m.fileSeparator) || m.missing;

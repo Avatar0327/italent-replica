@@ -3,7 +3,6 @@ import { sql, type Tx } from '@italent/db';
 import { auditEmployment } from './context.js';
 import { changedDerivationKeys, derivationFields, type DerivationRule } from './field-derivations.js';
 import { loadDerivationAnchors, type FieldOriginDraft } from './field-origin-store.js';
-import { appendPayloadFieldOrigins } from './field-origin-write.js';
 import { insertEmploymentRow, rowsOf, type EmploymentPayloadRow } from './record-store.js';
 import type { ForwardFieldChange, ForwardValues } from './forward-rules.js';
 import type { EmploymentContext, PresetFields } from './types.js';
@@ -54,13 +53,13 @@ export async function appendForwardPayload(
     explicitFieldCodes: [...new Set([...payload.explicitFieldCodes, ...codes])],
   };
   const { fields, ...metadata } = next;
-  await insertEmploymentRow(tx, 'employment_payload_versions', {
-    ...metadata,
-    ...fields,
-    createdAt: ctx.now.toISOString(),
-  });
-  await appendPayloadFieldOrigins(tx, ctx, next, isRecordSnapshot ? next.businessId : undefined, origins);
-  return next;
+  const markers = await insertEmploymentRow(
+    tx,
+    'employment_payload_versions',
+    { ...metadata, ...fields, createdAt: ctx.now.toISOString() },
+    { ctx, origins, recordId: isRecordSnapshot ? next.businessId : undefined },
+  );
+  return { ...next, ...markers };
 }
 
 async function latestForwardSourceVersion(tx: Tx, ctx: EmploymentContext, businessId: string | null) {

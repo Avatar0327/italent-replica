@@ -23,11 +23,21 @@ import { entryLifecyclePort } from '../../apps/api/src/modules/employment/onboar
 import { addPending, entryWorld, portContext } from './AC-EN-BE2a-support.js';
 import { seedTenantWithMember } from './support/tenant-api.js';
 
+/**
+ * F-555：本文件的用例与钩子超时放宽到 120 秒（只作用于本文件；vitest.config.ts 的全局 30 秒与 CI 的 --testTimeout 不动，断言与用例不动）。
+ * 为什么：migrateBefore 用例要先建库并迁移到“前一结构”（约 1.5 秒，228 条迁移同一事务的 DDL），再造数据、补跑余下迁移；共享 PG16 被其它会话抢占时 DDL 与建库 / 删库（FORCE）会拖长。
+ * 单条用时本机实测最长 2.0 秒；共享 PG16 冒烟（app_owner）里同 sha 单条 2.6～30 秒以上、超时的用例两轮不同、与负载无单调关系，
+ * 120 秒在那一轮全过、断言失败 0。
+ */
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
+
 const testDb = useTestDb();
 const now = new Date('2026-10-20T08:00:00Z');
 const pendingDate = '2026-10-22';
 const cases = onboardingEntryCases;
 const NOT_CURRENT = { code: 'CONFLICT', details: { reason: 'ENTRY_CASE_NOT_CURRENT' } };
+const ONBOARDING = '/api/tenant/onboarding';
+const TASK_POOL = `${ONBOARDING}/integration/task-pool`;
 
 async function fixture(label: string, db = testDb().db) {
   const { tenant, user } = await seedTenantWithMember(db, label);
@@ -64,23 +74,31 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
     const f = await fixture('ZZ_BE16_LIFECYCLE');
     const { entry, run, context, replacements } = f;
     const { port, app } = install(f.db);
-    const onboarding = '/api/tenant/onboarding';
-    const collection = `${onboarding}/entries/:businessId/collection`;
+    // 采集配置（16a-1）与采集任务（16a-2a）路由不在本断言范围；其余入职路由只允许融入任务池（16b-0）
+    const COLLECTION = /^\/api\/tenant\/onboarding\/(?:collection-(?:templates|rules)(?:\/:id)?|collection-settings)$/;
+    const collectionTask = `${ONBOARDING}/entries/:businessId/collection`;
     const taskRoutes = new Set([
-      `GET ${collection}`,
-      `POST ${collection}/start`,
-      `POST ${collection}/remind`,
-      `POST ${collection}/comments`,
-      `POST ${onboarding}/collection/start-batch`,
+      `GET ${collectionTask}`,
+      `POST ${collectionTask}/start`,
+      `POST ${collectionTask}/remind`,
+      `POST ${collectionTask}/comments`,
+      `POST ${ONBOARDING}/collection/start-batch`,
     ]);
-    expect(
-      app.routes.filter(
+    const onboardingRoutes = app.routes
+      .filter(
         ({ method, path }) =>
-          path.startsWith(onboarding) &&
-          !/^\/api\/tenant\/onboarding\/(?:collection-(?:templates|rules)(?:\/:id)?|collection-settings)$/.test(path) &&
-          !taskRoutes.has(`${method} ${path}`),
-      ),
-    ).toEqual([]);
+          path.startsWith(ONBOARDING) && !COLLECTION.test(path) && !taskRoutes.has(`${method} ${path}`),
+      )
+      .map(({ method, path }) => `${method} ${path}`)
+      .sort();
+    expect(onboardingRoutes).toEqual([
+      `DELETE ${TASK_POOL}/:id`,
+      `GET ${TASK_POOL}`,
+      `GET ${TASK_POOL}/:id`,
+      `GET ${TASK_POOL}/categories`,
+      `PATCH ${TASK_POOL}/:id`,
+      `POST ${TASK_POOL}`,
+    ]);
     const created = await run((tx) => port.create(tx, context(), entry));
     expect(await run((tx) => port.create(tx, context(), entry))).toEqual(created);
     const replacement = { ...entry, kind: 'replace' as const, replacementBusinessId: replacements[0], pendingDate };

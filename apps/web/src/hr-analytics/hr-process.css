@@ -1,0 +1,108 @@
+.hr-process-section .hr-structure-card h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.hr-process-wide {
+  grid-column: 1 / -1;
+}
+.hr-process-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 6px;
+}
+.hr-process-metrics .board-chart-item {
+  flex: 1 1 90px;
+  grid-template-columns: 1fr;
+  justify-items: start;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+}
+.hr-process-metrics strong {
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+.hr-process-section .board-trend th {
+  overflow-wrap: anywhere;
+}
+.hr-process-section .board-trend th:first-child {
+  width: 84px;
+}
+/*
+ * 同图共用刻度（审查 P2-1 / P2-2 第 3 轮）：B51 的横向条形（BoardChart 条形、差值图）每个条目分两行，
+ * 第一行标签与数值（数值靠右、可换行），第二行轨道占满条目宽度。轨道宽度只取决于图容器宽度，
+ * 与数值位数无关，也不依赖 subgrid（Vite 默认构建目标含 Chrome 111，subgrid 从 117 起才支持）。
+ */
+.hr-process-section .board-chart-bar .board-chart-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'label number' 'mark mark';
+  gap: 4px 8px;
+}
+.hr-process-section .board-chart-bar .board-chart-label {
+  grid-area: label;
+}
+.hr-process-section .board-chart-bar .board-chart-number {
+  grid-area: number;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.hr-process-section .board-chart-bar .board-chart-mark {
+  grid-area: mark;
+}
+.hr-process-diverging .board-chart-mark {
+  position: relative;
+  display: block;
+}
+.hr-process-diverging .board-chart-mark::before {
+  content: '';
+  position: absolute;
+  inset-block: -4px;
+  left: 50%;
+  width: 1px;
+  background: var(--shell-text);
+}
+.hr-process-diverging .board-chart-mark > span {
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+}
+.hr-process-diverging .hr-process-negative > span {
+  left: auto;
+  right: 50%;
+}
+.hr-process-ratio {
+  overflow-x: auto;
+}
+.hr-process-ratio table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.hr-process-ratio th {
+  font-size: 12px;
+  font-weight: 500;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.hr-process-ratio th:first-child {
+  width: 30%;
+}
+.hr-process-ratio thead th:nth-child(2) {
+  width: 34%;
+}
+.hr-process-ratio .board-chart-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+/* 占比格的数值放在条上方，条宽只取决于表格列宽，同表各行刻度一致（审查 P2-1）。 */
+.hr-process-ratio .hr-process-rate .board-chart-item {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+.hr-process-rate .board-chart-number {
+  order: -1;
+  text-align: start;
+}

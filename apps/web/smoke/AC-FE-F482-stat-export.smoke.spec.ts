@@ -38,8 +38,9 @@ test.beforeEach(async ({ page, baseURL }) => {
   );
   await page.route('**/hr-analysis/reports', (route) => route.fulfill({ json: reportCatalog() }));
   await page.route('**/analytics/hr-movement/reports/*?*', (route) => {
-    if (new URL(route.request().url()).pathname.endsWith('/export')) return route.fallback();
-    return route.fulfill({ json: movementPage(new URL(route.request().url()).pathname.split('/').at(-1)) });
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/export')) return route.fallback();
+    return route.fulfill({ json: movementPage(url.pathname.split('/').at(-1), url.searchParams) });
   });
   await page.route('**/analytics/hr-structure/reports/quality?*', (route) => route.fulfill({ json: qualityPage() }));
 });
@@ -139,20 +140,15 @@ test('AC-FE-F482 下载中按钮禁用、只发一次请求；完成后恢复', 
   expect(calls).toBe(1);
 });
 
-test('AC-FE-F482 导出失败给出明确提示、不落盘；403 与服务端错误分开说', async ({ page }) => {
-  let status = 403;
+test('AC-FE-F482 导出失败给出明确提示、不落盘；服务端错误、非 XLSX 与撤权分别处理', async ({ page }) => {
   await page.route(REPORTS[2].api, (route) =>
-    route.fulfill({ status, json: { error: { code: status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR', message: 'x' } } }),
+    route.fulfill({ status: 503, json: { error: { code: 'DEPENDENCY_UNAVAILABLE' } } }),
   );
   await page.goto('/hr-reports/quality');
   const main = page.locator('.shell-workspace');
   await expect(main.locator('table')).toBeVisible();
   let downloads = 0;
   page.on('download', () => (downloads += 1));
-  await actionButton(main, '下载 ▾').click();
-  await page.getByRole('menuitem', { name: FORMULA }).click();
-  await expect(main.getByRole('alert')).toHaveText('无权导出该报表');
-  status = 500;
   await actionButton(main, '下载 ▾').click();
   await page.getByRole('menuitem', { name: DATA }).click();
   await expect(main.getByRole('alert')).toHaveText('导出失败，请重试');
@@ -163,6 +159,13 @@ test('AC-FE-F482 导出失败给出明确提示、不落盘；403 与服务端�
   await actionButton(main, '下载 ▾').click();
   await page.getByRole('menuitem', { name: DATA }).click();
   await expect(main.getByRole('alert')).toHaveText('导出失败，请重试');
+  await page.unroute(REPORTS[2].api);
+  await page.route(REPORTS[2].api, (route) => route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN' } } }));
+  await actionButton(main, '下载 ▾').click();
+  await page.getByRole('menuitem', { name: FORMULA }).click();
+  await expect(main.getByRole('alert')).toHaveText('无权导出该报表');
+  await expect(main.locator('table')).toHaveCount(0);
+  await expect(actionButton(main, '下载 ▾')).toHaveCount(0);
   expect(downloads).toBe(0);
 });
 
