@@ -13,6 +13,7 @@ import {
 import { tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { z } from 'zod';
+import { asUuid, lockKey } from '../../advisory-lock.js';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { assertRevision } from '../employment/context.js';
@@ -56,10 +57,16 @@ const ruleKey = (tenantId: string, id: string) => and(eq(rules.tenantId, tenantI
 const scopeKey = (tenantId: string, ruleId: string) =>
   and(eq(scopeOrgs.tenantId, tenantId), eq(scopeOrgs.ruleId, ruleId));
 
+/** 租户材料配置锁键：租户 UUID 走公共函数转规范文本，大小写变体取同一把锁（F-491，DEC-374）。 */
+const materialGate = (tenantId: string) => lockKey('onboarding:material:', asUuid(tenantId));
+
 /** 同一租户的规则写入串行，阶段生成取共享锁读取同一配置版本。 */
 export async function lockMaterialConfig(tx: Tx, tenantId: string, write: boolean) {
-  const lock = write ? sql`pg_advisory_xact_lock` : sql`pg_advisory_xact_lock_shared`;
-  await tx.execute(sql`SELECT ${lock}(hashtextextended(${`onboarding:material:${tenantId}`}, 0))`);
+  if (write) {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${materialGate(tenantId)})`);
+    return;
+  }
+  await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(${materialGate(tenantId)})`);
 }
 
 type OrgContext = Pick<BusinessContext, 'tenantId' | 'timezone' | 'now'>;
