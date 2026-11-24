@@ -8,6 +8,11 @@
  * ⑬ 员工锁全部先于业务头：首轮规划已有甲、乙两名参与者，取锁后丙又进入集合；重放等丙的员工锁期间不得已持有甲、乙的业务头。
  * ⑭ 回执确定性序列化：范围不变时首次响应与重放（直接 / 失败回查）的原始文本逐字节一致（真 PG 与 PGlite 都跑）。
  * ⑮ 请求新带入的下属查无此人：取锁阶段只记下、不报错，同键异内容仍是 409 IDEMPOTENCY_CONFLICT，新键才是业务校验 400。
+ * 第 7 轮（DEC-999）：
+ * ⑯ 单人闭包（草稿没有联动参与者）的首次执行也在读授权之前锁本单业务头：另一事务持有本单业务头期间收回范围，
+ *    首次 PATCH 放锁后按当前授权拒绝、零写入；范围没收回时照常 200（真 PG）。
+ * ⑰ 回执里的字典显示值（用工形式、人员类别名称）随命令保存：字典改名后同键重放（直接 / 失败回查）原文仍与首次逐字节一致，
+ *    部分撤权后仍按当前范围裁掉范围外员工的标识（真 PG 与 PGlite 都跑）。
  * 夹具：甲＝部门 HR 重放的调动草稿所属员工；乙＝与甲同部门的另一名员工（⑪：把甲设为乙的虚线经理后进入甲的离职清空参与集合）；
  * 丙＝UUID 最大的第三名员工（⑬：取锁之后才把甲设为丙的虚线经理）。
  */
@@ -69,15 +74,22 @@ vi.mock('../../apps/api/src/modules/employment/transfer-locks.js', async (import
 const database = useTestDb();
 const pg = Boolean(process.env.TEST_DATABASE_URL);
 
-/** 另开一个事务持有员工行锁直到 release：模拟“另一名经办人正在改这名员工”。 */
-function holdEmployeeLock(db: Parameters<typeof withTenant>[0], tenantId: string, employeeId: string) {
+/**
+ * 另开一个事务持有员工行锁（或 `table = 'heads'` 时持有这张单的业务头）直到 release：模拟“另一名经办人正在改这名员工 / 这张单”。
+ */
+function holdEmployeeLock(
+  db: Parameters<typeof withTenant>[0],
+  tenantId: string,
+  id: string,
+  table: 'employees' | 'heads' = 'employees',
+) {
   let release!: () => void;
   const released = new Promise<void>((resolve) => (release = resolve));
   let locked!: () => void;
   const ready = new Promise<void>((resolve) => (locked = resolve));
+  const from = table === 'employees' ? sql`employment_employees` : sql`employment_business_objects`;
   const done = withTenant(db, tenantId, async (tx) => {
-    await tx.execute(sql`SELECT id FROM employment_employees
-      WHERE tenant_id=${tenantId} AND id=${employeeId}::uuid FOR UPDATE`);
+    await tx.execute(sql`SELECT id FROM ${from} WHERE tenant_id=${tenantId} AND id=${id}::uuid FOR UPDATE`);
     locked();
     await released;
   });
@@ -387,4 +399,165 @@ describe('AC-TRF-65 ⑮ 请求新带入的下属查无此人：取锁阶段只�
       expect(await snapshotOf(s, draft.id)).toEqual(before);
     },
   );
+});
+
+/** 等到有请求卡在业务头（employment_business_objects）的行锁上；`stop` 为真（请求已经返回）就不再等。 */
+async function waitForHeadWaiter(db: Db, stop: () => boolean) {
+  for (let i = 0; i < 400; i++) {
+    if (stop()) return;
+    const found = rows(
+      await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname=current_database() AND wait_event_type='Lock' AND query ILIKE '%employment_business_objects%'`),
+    ) as { n: number }[];
+    if (found[0]!.n >= 1) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error('没有请求卡在业务头行锁上');
+}
+
+/**
+ * ⑯ 屏障：草稿没有联动参与者（单人闭包）。另一事务先持有这张草稿的业务头（模拟另一名经办人正在改这张单），
+ * 部门 HR 随即首次 PATCH（新键）并排到这把锁上；等锁期间管理员收回 HR 的部门范围，放锁后必须按收回后的授权判。
+ * 旧实现单人闭包在守卫里不锁业务头：先封口、读完授权，执行体里才等这把锁，放锁后沿用等锁前的范围写入并返回 200。
+ */
+async function headRace(label: string, revoke: boolean) {
+  const s = await selfWorld(database().db, label);
+  const person = await s.employee('合成员工');
+  const draft = await s.draftOf(person);
+  const hr = await scopedHr(s);
+  const before = await snapshotOf(s, draft.id);
+  const options = { revision: (await s.show(draft.id)).revision, key: `k0-${label}` };
+  const held = holdEmployeeLock(s.w.db, s.w.tenant.id, draft.id, 'heads');
+  await held.ready;
+  let done = false;
+  const response = s.patch(hr, draft.id, { effectiveDate: LATER }, options);
+  void response.finally(() => (done = true));
+  await waitForHeadWaiter(s.w.db, () => done);
+  const waited = !done;
+  if (revoke) await hr.revokeScope();
+  await held.release();
+  return { s, draft, before, waited, response: await response };
+}
+
+describe.runIf(pg)('AC-TRF-65 ⑯ 单人闭包首次执行也在读授权之前锁本单业务头（真 PG）', () => {
+  it('首次 PATCH 等本单业务头期间范围被收回：放锁后 404 NOT_FOUND，零写入', async () => {
+    const r = await headRace('f036s4-65-16', true);
+    expect(r.waited, '首次 PATCH 没有排到本单业务头的行锁上，屏障没有生效').toBe(true);
+    expect(r.response.status, await r.response.clone().text()).toBe(404);
+    expect(await refusal(r.response)).toEqual({ status: 404, code: 'NOT_FOUND', reason: undefined });
+    expect(await snapshotOf(r.s, r.draft.id)).toEqual(r.before);
+  });
+
+  it('对照：范围没被收回：等完本单业务头后照常 200，生效日期已改', async () => {
+    const r = await headRace('f036s4-65-16-ok', false);
+    expect(r.waited).toBe(true);
+    expect(r.response.status, await r.response.clone().text()).toBe(200);
+    expect((await r.response.json()).effectiveDate).toBe(LATER);
+    expect((await r.s.show(r.draft.id)).effectiveDate).toBe(LATER);
+  });
+});
+
+interface Dictionary {
+  id: string;
+  code?: string;
+  revision: number;
+}
+
+/**
+ * ⑰ 夹具：本租户新建一项用工形式与一项人员类别，草稿员工引用这两项；部门 HR 的范围＝员工所在部门 + 乙所在的另一部门，
+ * 首次 PATCH（命令 K0）把虚线经理设为乙。首次回执带两个字典名称与乙的标识。`rename` 由全权 HR 只改两个字典的名称。
+ */
+async function dictionaryWorld(label: string) {
+  const s = await selfWorld(database().db, label);
+  const { w } = s;
+  const form = await w.json<Dictionary>(
+    await w.request(w.hr.id, 'POST', `${BASE}/employment-forms`, {
+      ifMatch: 0,
+      body: {
+        code: 's4_formal',
+        name: '合成正式员工',
+        category: 1,
+        displayOrder: 1,
+        effectiveDate: '2020-01-01',
+        expiryDate: '9999-12-31',
+        enabled: true,
+      },
+    }),
+    201,
+  );
+  const type = await w.json<Dictionary>(
+    await w.request(w.hr.id, 'POST', `${BASE}/employment-types`, {
+      ifMatch: 0,
+      body: { name: '合成人员类别', displayOrder: 1, effectiveDate: '2020-01-01' },
+    }),
+    201,
+  );
+  const otherDepartment = await w.org('合成乙部门');
+  const outsider = await w.person('合成范围外员工', otherDepartment);
+  const person = await s.employee('合成员工', { employmentForm: form.code, employmentType: type.id });
+  const draft = await s.draftOf(person);
+  const hr = await scopedHr(s, [otherDepartment]);
+  const body = { fields: { dottedManagerId: outsider.employeeId }, effectiveDate: LATER };
+  const k0 = { revision: (await s.show(draft.id)).revision, key: `k0-${label}` };
+  const firstText = await (await ok(await s.patch(hr, draft.id, body, k0))).text();
+  const firstBody = JSON.parse(firstText);
+  expect(firstBody.fields).toMatchObject({
+    employmentForm: 's4_formal',
+    employmentFormName: '合成正式员工',
+    employmentType: type.id,
+    employmentTypeName: '合成人员类别',
+    dottedManagerId: outsider.employeeId,
+  });
+  const rename = async () => {
+    const asHr = (path: string, revision: number, name: string) =>
+      w.request(w.hr.id, 'PUT', `${BASE}/${path}`, { ifMatch: revision, body: { name } });
+    await ok(await asHr(`employment-forms/${form.id}`, form.revision, '合成改名'));
+    await ok(await asHr(`employment-types/${type.id}`, type.revision, '合成类别改名'));
+  };
+  return { s, outsider, draft, hr, body, k0, firstText, firstBody, rename };
+}
+
+describe('AC-TRF-65 ⑰ 回执字典显示值随命令保存：字典改名后同键重放原文不变（DEC-999）', () => {
+  describe.each(['direct', 'recheck'] as const)('缓存命中的同键重放（%s）', (kind) => {
+    const replay = async (d: Awaited<ReturnType<typeof dictionaryWorld>>) => {
+      if (kind === 'recheck') hooks.failMainTransaction = true;
+      const response = await ok(await d.s.patch(d.hr, d.draft.id, d.body, d.k0));
+      hooks.failMainTransaction = false;
+      return response;
+    };
+
+    it('只改用工形式与人员类别的名称：重放原文与首次逐字节一致；新命令取当前名称', async () => {
+      const d = await dictionaryWorld(`f036s4-65-17-${kind}`);
+      await d.rename();
+      // 读接口的名称按设计现查字典：零写入对照取改名之后的快照。
+      const before = await snapshotOf(d.s, d.draft.id);
+      expect(await (await replay(d)).text()).toBe(d.firstText);
+      expect(await snapshotOf(d.s, d.draft.id)).toEqual(before);
+      // 新键是一条新命令：回执按这条命令事务里的字典现名。
+      const fresh = await ok(await d.s.patch(d.hr, d.draft.id, d.body, { key: `k1-f036s4-65-17-${kind}` }));
+      expect((await fresh.json()).fields).toMatchObject({
+        employmentFormName: '合成改名',
+        employmentTypeName: '合成类别改名',
+      });
+    });
+
+    it('对照：字典没改名时重放原文与首次逐字节一致', async () => {
+      const d = await dictionaryWorld(`f036s4-65-17-${kind}-same`);
+      const before = await snapshotOf(d.s, d.draft.id);
+      expect(await (await replay(d)).text()).toBe(d.firstText);
+      expect(await snapshotOf(d.s, d.draft.id)).toEqual(before);
+    });
+
+    it('改名后再只收回乙所在部门的范围：重放仍 200，乙的标识按当前范围裁成 null，字典名称仍是首次的', async () => {
+      const d = await dictionaryWorld(`f036s4-65-17-${kind}-partial`);
+      await d.rename();
+      await d.hr.setScope([d.s.source]);
+      const before = await snapshotOf(d.s, d.draft.id);
+      const replayed = await (await replay(d)).json();
+      expect(replayed.fields.dottedManagerId).toBeNull();
+      expect(JSON.stringify(replayed).toLowerCase()).not.toContain(d.outsider.employeeId.toLowerCase());
+      expect(replayed).toEqual(withoutManager(d.firstBody, d.outsider.employeeId));
+      expect(await snapshotOf(d.s, d.draft.id)).toEqual(before);
+    });
+  });
 });
