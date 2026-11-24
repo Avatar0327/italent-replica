@@ -221,6 +221,29 @@ export async function requireDirectTransfer(tx: Tx, ctx: EmploymentContext) {
   if (!actions.directList && !actions.directRow) throw new AppError('FORBIDDEN', '无权发起直接调动');
 }
 
+async function transferRequestEmployee(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  const [request] = rowsOf<{ employeeId: string }>(
+    await tx.execute(sql`
+    SELECT employee_id AS "employeeId" FROM transfer_requests
+    WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid
+  `),
+  );
+  return request?.employeeId;
+}
+
+/**
+ * 同单写入口先取锁、后解析授权输入（第 4 轮 P2，DEC-431①）：只按单据找到发起员工，取参与人锁，再取员工行锁，
+ * 锁序与 transferBusinessContext 'command' 阶段完全相同（参与员工 → 业务头 → 审批实例，本函数不碰审批实例）。
+ * 这里不读任何授权输入（数据范围、权限、例外）：调用方要在本函数返回之后才解析，等锁期间被收回的授权才会被看到。
+ * 'command' 阶段再取一次是幂等的（持锁集合记在事务里）。单据不是调动单时什么都不取。
+ */
+export async function lockTransferBusinessEmployee(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  const employeeId = await transferRequestEmployee(tx, ctx, businessId);
+  if (!employeeId) return;
+  await lockTransferParticipants(tx, ctx, employeeId);
+  await lockEmploymentEmployee(tx, ctx, employeeId);
+}
+
 /** 同单操作按当前调用人的权限判断；原发起人类型仅是业务事实，不决定后续操作者的身份。 */
 export async function transferBusinessContext(
   tx: Tx,
