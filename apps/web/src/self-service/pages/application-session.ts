@@ -21,18 +21,51 @@ export interface ApplicationSession {
   queryFailed: boolean;
   /** F-558：本次提交没有发出、锁到了别的标签页的命令上时的原因（内核 raceOf）；只对当前锁定的那条命令显示。 */
   race: string;
+  /**
+   * F-558 第 2 轮 P2-3：按原命令 ID 查到的结果不是本页发出的命令（别的标签页）：只展示，不记成本页已保存，
+   * 本页输入另行保留，是否再提交由用户决定。
+   */
+  found: TransferBusiness | null;
 }
 // F-110：未确认锁定交给内核（transferCommands，恢复记录各标签页共用，只存命令 ID、员工、单号、动作、生效日），
 // 整页刷新、另开标签页后仍只读，只能按原命令 ID 查询结果解锁。提交内容摘要与已保存单据只在本页内存，不落存储。
 const commands = new Map<string, ApplicationCommand>();
 const saved = new Map<string, TransferBusiness>();
-// F-558：内核只随提交结果带回竞争（不存进条目），抽屉按作用域记下最近一次，显示与否仍按当前锁定的命令判定。
-const races = new Map<string, Race>();
+/**
+ * F-558：本次操作的结果，按作用域记最近一次（下次提交时清掉）。内核只随提交结果带回竞争与普通拒绝（不存进条目）：
+ * race 显示与否仍按当前锁定的命令判定；refused 是本次未发出的普通拒绝，留在表单提示区（第 2 轮 P2-1）；
+ * found 是查到的别页命令结果（第 2 轮 P2-3）。
+ */
+interface Note {
+  race?: Race;
+  refused?: string;
+  found?: TransferBusiness;
+}
+const notes = new Map<string, Note>();
 const listeners = new Set<() => void>();
 const cache = new Map<
   string,
-  { state?: Submission; saved?: TransferBusiness; race?: Race; value: ApplicationSession }
+  { state?: Submission; saved?: TransferBusiness; note?: Note; value: ApplicationSession }
 >();
+// F-558 第 2 轮 P2-3：本标签页发起过的命令 ID（会话存储随整页刷新保留、各标签页各一份；只存 ID，不存内容）。
+// 查到结果时据此分辨“本页（含刷新前）的命令保存成功”与“查到别的标签页的命令结果”。
+const ISSUED = 'italent.self-service.issued-commands';
+const ISSUED_LIMIT = 20;
+function issuedHere(): string[] {
+  try {
+    const value: unknown = JSON.parse(sessionStorage.getItem(ISSUED) ?? '[]');
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+function markIssued(commandId: string) {
+  try {
+    sessionStorage.setItem(ISSUED, JSON.stringify([...issuedHere(), commandId].slice(-ISSUED_LIMIT)));
+  } catch {
+    // 写不进时查到的结果按别页处理：只展示、保留本页输入，不会丢输入。
+  }
+}
 const contextOf = (command: ApplicationCommand) => ({
   action: command.action,
   employeeId: command.employeeId,
@@ -60,22 +93,23 @@ function errorOf(state?: Submission) {
 export function readApplicationSession(scope: string): ApplicationSession {
   const state = transferCommands.get(scope);
   const known = saved.get(scope);
-  const race = races.get(scope);
+  const note = notes.get(scope);
   const hit = cache.get(scope);
-  if (hit && hit.state === state && hit.saved === known && hit.race === race) return hit.value;
+  if (hit && hit.state === state && hit.saved === known && hit.note === note) return hit.value;
   const locked = isLocked(state);
   const pending = locked ? pendingOf(scope, state!) : null;
   const value = {
     pending,
     saved: known ?? null,
-    error: errorOf(state),
+    error: note?.refused ?? errorOf(state),
     restored: locked && !!state!.restored,
     reading: !!state?.reading,
     resultPending: locked && !!state!.resultPending,
     queryFailed: locked && !!state!.readError,
-    race: race && pending?.commandId === race.commandId ? race.reason : '',
+    race: note?.race && pending?.commandId === note.race.commandId ? note.race.reason : '',
+    found: (!pending && note?.found) || null,
   };
-  cache.set(scope, { state, saved: known, race, value });
+  cache.set(scope, { state, saved: known, note, value });
   return value;
 }
 export function subscribeApplicationSession(listener: () => void) {
@@ -86,10 +120,10 @@ export function subscribeApplicationSession(listener: () => void) {
     off();
   };
 }
-function setRace(scope: string, race?: Race) {
-  if (races.get(scope) === race) return;
-  if (race) races.set(scope, race);
-  else races.delete(scope);
+function setNote(scope: string, note?: Note) {
+  if (!notes.has(scope) && !note) return;
+  if (note) notes.set(scope, note);
+  else notes.delete(scope);
   for (const listener of listeners) listener();
 }
 /**
@@ -109,8 +143,9 @@ export async function runApplicationCommand(
   // 上一条已确定被拒：新命令按本次动作 / 对象起算，不沿用被拒命令的上下文；锁定中的条目留给内核原样判定。
   transferCommands.sync();
   if (!isLocked(transferCommands.get(scope))) transferCommands.clear(scope);
-  setRace(scope);
+  setNote(scope);
   commands.set(scope, command);
+  markIssued(command.commandId);
   let received: TransferBusiness | undefined;
   let sent = false;
   const state = await transferCommands.submit(scope, {
@@ -134,11 +169,17 @@ export async function runApplicationCommand(
   });
   // 锁到了别的标签页的命令上：本次未发出，提示其他标签页（F-558，与 HR 页同一来源），不只显示“处理中”。
   if (state.race) {
-    setRace(scope, state.race);
+    setNote(scope, { race: state.race });
     throw new ApplicationCommandHandled(state.race.reason, true);
   }
   // 登记就被拒：命令未发出。前置拒绝（DEC-955）时连命令都没生成，不能按命令 ID 判成“处理中”。
-  if (state.status === 'rejected' && !sent) throw new ApplicationCommandHandled(errorOf(state), true);
+  // 普通拒绝（内核 refused）记为本次操作的提示，落定时同步接管了别页命令、之后别页落定，回到表单仍在（第 2 轮 P2-1）；
+  // 登记冲突但占槽命令已落定（没有 race）不提示其他标签页。被拒的条目不留，提示只取本次操作的结果。
+  if (state.status === 'rejected' && !sent) {
+    setNote(scope, state.refused ? { refused: state.refused } : undefined);
+    transferCommands.clear(scope);
+    throw new ApplicationCommandHandled(state.refused ?? errorOf(state), true);
+  }
   if (state.command?.id !== command.commandId) throw new ApplicationCommandHandled(m.processing);
   if (state.status === 'done' && received) {
     saved.set(scope, received);
@@ -158,7 +199,9 @@ export async function queryApplicationResult(scope: string, tenantId: string) {
     transferResult(tenantId, sent.id, (value) => (business = value)),
   );
   if (result?.status !== 'done' || !business) return;
-  saved.set(scope, business);
+  // 本页（含刷新前）发起的命令才算本页保存成功；别的标签页的命令只展示结果，本页输入保留（第 2 轮 P2-3）。
+  if (issuedHere().includes(state.command.id)) saved.set(scope, business);
+  else setNote(scope, { found: business });
   transferCommands.clear(scope);
 }
 export function clearConfirmedApplication(scope: string) {
@@ -166,6 +209,6 @@ export function clearConfirmedApplication(scope: string) {
   if (value.pending || !value.saved || value.saved.status === 'draft') return;
   saved.delete(scope);
   commands.delete(scope);
-  setRace(scope);
+  setNote(scope);
   transferCommands.clear(scope);
 }

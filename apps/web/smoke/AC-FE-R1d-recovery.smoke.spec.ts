@@ -385,15 +385,18 @@ async function holdLockInOtherTab(page: Page) {
 }
 /** F-558 第 2 轮 P3：持锁页上确认 count 次登记都已在排队（navigator.locks.query），再释放，确保走的是登记竞争。 */
 async function releaseWhenQueued(holder: Page, count: number) {
-  await expect
-    .poll(() =>
-      holder.evaluate(
-        async (name) => (await navigator.locks.query()).pending?.filter((lock) => lock.name === name).length ?? 0,
-        transferRecoveryKey,
-      ),
-    )
-    .toBe(count);
-  await holder.close();
+  try {
+    await expect
+      .poll(() =>
+        holder.evaluate(
+          async (name) => (await navigator.locks.query()).pending?.filter((lock) => lock.name === name).length ?? 0,
+          transferRecoveryKey,
+        ),
+      )
+      .toBe(count);
+  } finally {
+    await holder.close();
+  }
 }
 
 // F-110 第 2 轮 P2-1：http 非安全上下文没有 locks 与 randomUUID；提交前就拒绝，按钮不能停在忙碌。
@@ -510,12 +513,12 @@ for (const manager of [false, true]) {
       await drawer.locator('input[name="effectiveDate"]').fill('2026-11-02');
       drawers.push(drawer);
     }
+    // 第 2 轮 P3：按钮在持锁前定位并确认可点，持锁后只点击；释放前确认两次登记都在排队，竞争不靠时序碰运气。
+    const submits = drawers.map((drawer) => drawer.getByRole('button', { name: '提交', exact: true }));
+    for (const submit of submits) await expect(submit).toBeEnabled();
     const holder = await holdLockInOtherTab(page);
-    try {
-      for (const drawer of drawers) await drawer.getByRole('button', { name: '提交', exact: true }).click();
-    } finally {
-      await holder.close();
-    }
+    for (const submit of submits) await submit.click();
+    await releaseWhenQueued(holder, 2);
     await expect.poll(() => writes).toHaveLength(1);
     const loser = drawers[1 - writes[0]!.tab]!;
     await expect(loser.getByText(OTHER_TAB)).toBeVisible();

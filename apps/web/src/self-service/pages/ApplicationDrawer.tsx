@@ -39,7 +39,7 @@ function ApplicationDraftDrawer({ scope, ...props }: ApplicationDrawerProps & { 
   }, [state.saved, setDraft]);
   const close = () => {
     // 关闭期间可以落定。保留用户输入，重开后按重新读到的预览和当前权限回填。
-    if (state.pending || state.error) setDraft((current) => current && keptForm(current));
+    if (state.pending || state.error || state.found) setDraft((current) => current && keptForm(current));
     else setDraft(undefined);
     props.onClose();
   };
@@ -64,6 +64,10 @@ function ApplicationDraftDrawer({ scope, ...props }: ApplicationDrawerProps & { 
   return (
     <FormDrawer open={props.open} onClose={close} title={title}>
       {state.error && <Alert type="error" message={state.error} />}
+      {/* F-558 第 2 轮 P2-3：查到的是别的标签页的命令结果，只展示；本页输入保留在下方表单，是否再提交由用户决定。 */}
+      {state.found && (
+        <Alert type="info" showIcon message={m.foundElsewhere} description={`${m.businessId}：${state.found.id}`} />
+      )}
       {/* DEC-473：待确认时保持只读，结果确定失败或未执行后恢复编辑。 */}
       <div hidden={!!state.pending} inert={!!state.pending}>
         {content}
