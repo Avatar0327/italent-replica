@@ -24,7 +24,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
-import { changedInputFields, clearedTransferFields, requestInputFields, tenantLocalDate } from '@italent/domain';
+import { changedInputFields, clearedTransferFields, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
@@ -45,6 +45,7 @@ import {
   prepareInheritance,
   prepareEmploymentPatch,
   resolveEffectiveInheritance,
+  resolveReopenedFields,
   type PreparedFormInheritance,
   type PreparedInheritance,
 } from './inheritance.js';
@@ -90,7 +91,12 @@ import {
   formFieldOrigins,
   originActorKind,
 } from './field-origin-write.js';
-import { settleFieldValues, type FieldOriginDraft } from './field-origin-store.js';
+import {
+  FIELD_NOT_APPLICABLE,
+  applicabilityOf,
+  settleFieldValues,
+  type FieldOriginDraft,
+} from './field-origin-store.js';
 
 export const NEW_CYCLE_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 
@@ -409,13 +415,13 @@ async function prepareEditedPayload(tx: Tx, ctx: EmploymentContext, input: Edite
   const actor = await fieldOriginEditor(tx, ctx, before, options);
   const drafts = formFieldOrigins(patched, normalized, { request: patch, businessId: business.id, before, actor });
   await endDiscardedFormOverrides(tx, ctx, before, patched, discardedFormFields(patch.fields), drafts);
-  // 本次请求自己输入的字段不判：新值由校验把关。
+  // 本次请求自己输入的新值不判（由校验把关）；同值回传不算新输入，照常按适用性判（DEC-977）。
   const settled = await settleFieldValues(
     tx,
     ctx,
     business.id,
     { fields: patched.fields, deferredFieldCodes: patched.deferredFieldCodes },
-    { pending: drafts, skip: requestInputFields(patch) },
+    { pending: drafts },
   );
   const prepared = applySettledFields(patched, settled);
   const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
@@ -927,8 +933,8 @@ function cycleIdentity(payload: LockedEmploymentBusiness['payload'], selected: S
 }
 
 /**
- * F-036 §4.4.2 写点 #16：落地把每个延迟字段的解析结果记成 resolved 行（值、取值的前驱记录、本单记录），
- * 不追加载荷版本；解析值再按适用性谓词判一次，被退回的落地值写 fallback 行。部门先于职位解析。
+ * F-036 §4.4.2 写点 #16、§5.3：落地先定有效部门，再判已有覆盖值，最后解析仍待定的字段，
+ * 并登记最终的解析结果（值、取值的前驱、原因）；不追加载荷版本。
  */
 async function resolveLanding(
   tx: Tx,
@@ -937,39 +943,69 @@ async function resolveLanding(
   effective: { staffId: string; predecessor: EmploymentRecord | null },
 ) {
   const resolved = await resolveEffectiveInheritance(tx, ctx, business.payload, effective);
-  return recordLandingResolutions(tx, ctx, business, resolved);
+  return recordLandingResolutions(tx, ctx, business, resolved, effective);
 }
+
+type LandingResolved = Awaited<ReturnType<typeof resolveEffectiveInheritance>>;
 
 async function recordLandingResolutions(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
-  resolved: Awaited<ReturnType<typeof resolveEffectiveInheritance>>,
+  resolved: LandingResolved,
+  effective: { staffId: string; predecessor: EmploymentRecord | null },
 ) {
-  const rows: FieldOriginDraft[] = resolved.resolutions.map(({ fieldCode, value, sourceRecordId }) => ({
-    fieldCode,
-    originKind: 'resolved',
-    value,
-    sourceRecordId,
-    sourceBusinessId: sourceRecordId,
-  }));
-  await appendPayloadFieldOrigins(tx, ctx, business.payload, business.id, rows);
   // 落地时延迟字段都已解析，谓词看到的是已确定的部门。
   const candidate = { fields: resolved.fields, deferredFieldCodes: [] };
-  const settled = await settleFieldValues(tx, ctx, business.id, candidate);
+  // 先只读判一遍：覆盖值被退回后重新待定的字段，要在部门之后补解析。
+  const preview = await settleFieldValues(tx, ctx, business.id, candidate);
+  const resolvedCodes = new Set(resolved.resolutions.map(({ fieldCode }) => fieldCode));
+  const reopened = [...preview.deferred].filter((code) => !resolvedCodes.has(code));
+  const reopenedBase = reopened.length
+    ? resolveReopenedFields(
+        reopened,
+        { fields: resolved.fields, customFields: resolved.customFields, formSnapshot: business.payload.formSnapshot },
+        effective,
+      )
+    : resolved;
+  const resolutions = [...resolved.resolutions, ...(reopened.length ? reopenedBase.resolutions : [])];
+  const final = { ...reopenedBase, resolutions };
+  const rows = landingRows(final);
+  const settled = await settleFieldValues(
+    tx,
+    ctx,
+    business.id,
+    { fields: final.fields, deferredFieldCodes: [] },
+    { pending: rows },
+  );
   await appendPayloadFieldOrigins(tx, ctx, business.payload, business.id, settled.origins);
-  if (!settled.values.size) return resolved;
-  const fields: Record<string, unknown> = { ...resolved.fields };
-  const customFields: Record<string, unknown> = { ...resolved.customFields };
+  const fields: Record<string, unknown> = { ...final.fields };
+  const customFields: Record<string, unknown> = { ...final.customFields };
   for (const [code, value] of settled.values) {
     if (code.startsWith('preset:')) fields[code.slice('preset:'.length)] = value;
     else customFields[code.slice('custom:'.length)] = value;
   }
   return {
-    ...resolved,
-    fields: fields as unknown as typeof resolved.fields,
-    customFields: customFields as typeof resolved.customFields,
+    ...final,
+    fields: fields as unknown as typeof final.fields,
+    customFields: customFields as typeof final.customFields,
   };
+}
+
+/** 解析结果记成 resolved 行；受适用性约束的字段，解析值不适用有效部门时落空值并写明原因。 */
+function landingRows(resolved: LandingResolved): FieldOriginDraft[] {
+  const candidate = { fields: resolved.fields, deferredFieldCodes: [] };
+  return resolved.resolutions.map(({ fieldCode, value, sourceRecordId }) => {
+    const inapplicable = applicabilityOf(fieldCode)?.({ value }, candidate) === false;
+    return {
+      fieldCode,
+      originKind: 'resolved',
+      value: inapplicable ? null : value,
+      ...(inapplicable ? { reason: FIELD_NOT_APPLICABLE } : {}),
+      sourceRecordId,
+      sourceBusinessId: sourceRecordId,
+    };
+  });
 }
 
 export async function materializeEmploymentRecord(

@@ -1,15 +1,17 @@
 import { sql, type Tx } from '@italent/db';
 import { FORM_DEPENDENCY_RESET, changedInputFields, requestInputFields, type FieldOriginInput } from '@italent/domain';
+import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { derivationFields } from './field-derivations.js';
 import {
   appendFieldOrigins,
   loadFieldOrigins,
+  settleFieldValues,
   type FieldOriginDraft,
   type SettledFields,
 } from './field-origin-store.js';
 import type { PreparedFormInheritance } from './inheritance.js';
-import { rowsOf, type EmploymentPayloadRow } from './record-store.js';
+import { camelRow, rowsOf, snapshotFields, type EmploymentPayloadRow } from './record-store.js';
 import type { EmploymentContext, EmploymentRecord, NormalizedEmploymentInput, PresetFields } from './types.js';
 
 interface OriginActorOptions {
@@ -197,12 +199,41 @@ export function applySettledFields<Prepared extends PreparedFormInheritance>(
     if (code.startsWith('preset:')) fields[code.slice('preset:'.length)] = value;
     else customFields[code.slice('custom:'.length)] = value as never;
   }
+  // 台账接管的字段，显式 / 待定标记都以折叠结果为准，不再沿用候选态里的旧标记。
   const taken = new Set(settled.values.keys());
   return {
     ...prepared,
     fields: fields as unknown as PresetFields,
     customFields,
     explicitFieldCodes: [...prepared.explicitFieldCodes.filter((code) => !taken.has(code)), ...settled.explicit],
-    deferredFieldCodes: [...new Set([...prepared.deferredFieldCodes, ...settled.deferred])],
+    deferredFieldCodes: [
+      ...new Set([...prepared.deferredFieldCodes.filter((code) => !taken.has(code)), ...settled.deferred]),
+    ],
   };
+}
+
+/**
+ * F-036 §4.6 J5：提交前（含同键命令重放，返回台账缓存之前）只读地复判已保存字段值的适用性。
+ * 判定会写判定行（回落 / 恢复）说明保存值已过期：不追加来源行，直接 409，让客户端刷新后重新保存。
+ */
+export async function requireSavedValuesApplicable(
+  tx: Tx,
+  ctx: Pick<EmploymentContext, 'tenantId'>,
+  businessId: string,
+) {
+  const [row] = rowsOf<Record<string, unknown>>(
+    await tx.execute(sql`
+      SELECT * FROM employment_payload_versions
+      WHERE tenant_id = ${ctx.tenantId} AND business_id = ${businessId}::uuid
+      ORDER BY version_no DESC LIMIT 1
+    `),
+  );
+  if (!row) return;
+  const payload = camelRow(row);
+  const settled = await settleFieldValues(tx, ctx, businessId, {
+    fields: snapshotFields(payload),
+    deferredFieldCodes: payload.deferredFieldCodes as string[],
+  });
+  if (settled.origins.some(({ originKind }) => originKind === 'fallback' || originKind === 'restore'))
+    throw new AppError('CONFLICT', '已保存的字段值不再适用，请刷新后重新保存', { reason: 'FIELD_NOT_APPLICABLE' });
 }

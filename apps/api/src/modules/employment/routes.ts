@@ -66,6 +66,7 @@ import {
 } from './exit-gate.js';
 import { splitExitOptions } from './exit-initiation.js';
 import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentImport } from './forward-import.js';
+import { requireSavedValuesApplicable } from './field-origin-write.js';
 import { editEmploymentRecord } from './record-edit.js';
 import {
   exitCommandGuard,
@@ -566,6 +567,20 @@ async function routesToCancel(deps: TenantRouteDeps, ctx: EmploymentContext, id:
   });
 }
 
+/** 首次执行与同键重放共用：员工单据校验、提交前复判字段适用性（J5），再校验权限。 */
+async function authorizeTransition(
+  tx: Tx,
+  scoped: EmploymentContext,
+  id: string,
+  action: Parameters<typeof requireEmploymentTransitionWrite>[1],
+) {
+  if (action === 'submit') {
+    await requireEmployeeTransferBusiness(tx, scoped, id);
+    await requireSavedValuesApplicable(tx, scoped, id);
+  }
+  await requireEmploymentTransitionWrite(scoped, action);
+}
+
 function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // R1-T11：revoke = HR 撤销未审批完成的申请（置作废、作废流程，AC-TRF-07）；withdraw 是发起人撤回到草稿（AC-TRF-28）。
   for (const action of ['submit', 'withdraw', 'revoke', 'delete'] as const) {
@@ -607,10 +622,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
                 businessId: id,
                 employeeId: current.employeeId,
                 ...(action === 'submit' ? { referenceChange: {} } : {}),
-                authorize: async (tx, scoped) => {
-                  if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
-                  await requireEmploymentTransitionWrite(scoped, action);
-                },
+                authorize: (tx, scoped) => authorizeTransition(tx, scoped, id, action),
               }),
         };
         const write = runWrite(

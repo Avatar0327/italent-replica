@@ -80,6 +80,13 @@ describe('F-036 §4.6 字段来源领域函数', () => {
       department,
     ]);
     expect(foldFieldOrigins([...rows, origin(8n, 'system-input', '新岗位')]).get(position)?.retained).toBe(false);
+    // §4.5：落地解析值有效时字段不再待定（含值为空的解析值）；解析值被退回后重新待定，策略形态不变。
+    const landed = [positionPolicy, departmentPolicy, origin(9n, 'resolved', null)];
+    expect(projectOriginMarkers(foldFieldOrigins(landed)).deferredFieldCodes).toEqual([department]);
+    expect(deferralShape(foldFieldOrigins(landed))).toBe('both');
+    expect(
+      projectOriginMarkers(foldFieldOrigins([...landed, decision(10n, 'fallback', 9n)])).deferredFieldCodes,
+    ).toEqual([position, department]);
   });
 
   it('请求键和变值分别判断，引用 ID 规范化不改变文本字段语义', () => {
