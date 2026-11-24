@@ -38,7 +38,7 @@ export async function requireSchemeView(authorize: Authorizer, ctx: TenantContex
 
 export async function requireSchemeWrite(authorize: Authorizer, ctx: TenantContext, operation: SchemeOperation) {
   await requirePermission(authorize, { ...ctx, action: SCHEME_WRITE_ALIAS, resource: SCHEME_SETTINGS });
-  // 任职设置对象的删除配置沿用编辑权，与任务池一致（DEC-469）。
+  // 任职设置对象的删除配置沿用编辑权，授权写法与 integration-pool-access.ts 的 requirePoolWrite 一致。
   await requireObjectWrite(authorize, ctx, {
     objectCode: SCHEME_SETTINGS,
     operation,
