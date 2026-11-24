@@ -632,6 +632,9 @@ export const DIGESTS: Digests = {
     'route:PUT /employees/:id/regularization-draft': 'cf486c0583bb',
     'route:PUT /probation-results/:id': 'e1504b0925a6',
   },
+  'apps/api/src/modules/employment/read-decision.ts': {
+    decideEmploymentRead: 'bf63d478fe69',
+  },
   'apps/api/src/modules/employment/record-list.ts': {
     requireViewableFilters: '2d77f9277bca',
     'route:GET /records': '4b23dae37df4',
@@ -2691,6 +2694,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/probation-routes.ts#route:PUT /employees/:id/probation': '98ec4c8d2cb9',
   'apps/api/src/modules/employment/probation-routes.ts#route:PUT /employees/:id/regularization-draft': 'a6f0fe33f871',
   'apps/api/src/modules/employment/probation-routes.ts#route:PUT /probation-results/:id': '598aaee12ea9',
+  'apps/api/src/modules/employment/read-decision.ts#decideEmploymentRead': '80e6771af0b0',
   'apps/api/src/modules/employment/record-list.ts#requireViewableFilters': 'f5174f751364',
   'apps/api/src/modules/employment/record-list.ts#route:GET /records': '9a944cef7503',
   'apps/api/src/modules/employment/regularization-reschedule.ts#rescheduleRegularization': 'cdda3cbdeba6',
