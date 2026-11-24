@@ -30,6 +30,8 @@ export interface CommandRecovery {
   remove(key: string, commandId: string): Promise<void>;
   /** 别的标签页改了记录（storage 事件）时回调；返回取消订阅。 */
   watch?(listener: () => void): () => void;
+  /** 生成命令 ID 之前的前置拒绝（DEC-955）：返回错误即本次不登记、不发出（F-110 第 2 轮 P2-1）。 */
+  precheck?(): Error | undefined;
 }
 /** 别的命令占着同一条目或同一恢复槽：本次命令不发出。 */
 export class RecoveryConflict extends Error {}
@@ -37,6 +39,12 @@ export class RecoveryConflict extends Error {}
 export class RecoveryLockBusy extends Error {}
 /** DEC-955：浏览器没有 Web Locks（http 非安全上下文或老浏览器），拿不到确定占用：本次命令不发出，不降级。 */
 export class RecoveryLocksUnsupported extends Error {}
+/**
+ * DEC-955 前置检查：浏览器没有 Web Locks 时返回拒绝原因。http 非安全上下文同时没有 crypto.randomUUID，
+ * 须在生成命令 ID 之前判定，专门提示才出得来；不登记恢复记录的写入入口（如清除调动暂存）也用它拦截。
+ */
+export const webLocksRefusal = () =>
+  globalThis.navigator?.locks ? undefined : new RecoveryLocksUnsupported('web locks unsupported');
 /**
  * 等锁上限。锁内只读写一次 localStorage，正常持锁是毫秒级；同时登记的别页、本页排队中的删除都在这段时间内放开，
  * 超过它才判为“锁被他页占用”（DEC-954），短暂互斥照常排队（F110-20）。
@@ -108,6 +116,7 @@ export function sharedRecovery(name: string, options: SharedRecoveryOptions = {}
     }
   };
   return {
+    precheck: () => (requireLocks ? webLocksRefusal() : undefined),
     load() {
       try {
         return read();

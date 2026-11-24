@@ -24,10 +24,12 @@ export function TransferApplication(props: TransferApplicationProps) {
   const restoreDrafts = hrForm?.mode === 'apply';
   const state = useTransferForm(tenantId, initiator, undefined, runCommand, hrScope, restoreDrafts, pageDraft);
   // F-110：处理中整页只读；结果未知时给“查询结果”（按原命令 ID），不给重新提交。
+  // 同一员工被别页抢先登记时本页锁到那条命令上，仍显示本次为何未发出（第 2 轮 P2-3）。
   if (hrScope && state.processing)
     return (
       <>
         <p role="status">{text.processing}</p>
+        {state.commandError && <p role="alert">{state.commandError}</p>}
         {state.conflict && <CommandStatus submission={state.conflict} />}
       </>
     );

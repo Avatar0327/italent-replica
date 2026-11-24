@@ -100,8 +100,8 @@ function createPins(notify: () => void, pins: Map<string, string>) {
  * DEC-464/473/475：状态由页面持有；没有强制解锁未知命令或自动重放的接口。
  * 结果未知只能由用户显式按原命令重发（replay：同一命令 ID、请求体、版本；台账同键同内容回放第一次的结果，AGENTS §10）。
  */
-export function createFormStore(options: { recovery?: CommandRecovery } = {}) {
-  const core = createCore(options.recovery);
+export function createFormStore(options: { recovery?: CommandRecovery; precheck?: () => Error | undefined } = {}) {
+  const core = createCore(options.recovery, options.precheck ?? options.recovery?.precheck);
   const { entries, listeners, notify, pins, put, land, recover } = core;
   return {
     get: (key: string) => entries.get(key),
@@ -118,6 +118,8 @@ export function createFormStore(options: { recovery?: CommandRecovery } = {}) {
       notify();
     },
     submit: (key: string, input: SubmitInput) => submitTo(core, key, input),
+    /** 生成命令 ID 之前就会拒绝本存储写入的原因（DEC-955）；自行生成命令 ID 的入口先问它（F-110 第 2 轮 P2-1）。 */
+    refusal: () => core.refusal(),
     /** 只对结果未知的命令：原样重发保存的命令，不重算请求体、不换 ID；其余状态原样返回。 */
     async replay(key: string, send: SubmitInput['send']) {
       const state = entries.get(key);
@@ -169,7 +171,7 @@ export function createFormStore(options: { recovery?: CommandRecovery } = {}) {
 export type FormStore = ReturnType<typeof createFormStore>;
 
 /** 存储内部：条目、恢复槽、恢复记录与结果落地（迟到回执丢弃）。 */
-function createCore(recovery?: CommandRecovery) {
+function createCore(recovery?: CommandRecovery, precheck?: () => Error | undefined) {
   const entries = new Map<string, Submission>();
   const pinned = new Map<string, string>();
   const listeners = new Set<() => void>();
@@ -223,14 +225,20 @@ function createCore(recovery?: CommandRecovery) {
     });
   /**
    * 回执 / 查询结果落地：条目已不是发出时的那个状态（迟到回执）一律丢弃，不覆盖后续命令（F-110 ②）；
-   * 结果确定后删掉本命令的恢复记录。
+   * 结果确定后删掉本命令的恢复记录；登记就被拒的命令没有记录（registered=false），不排删除（第 2 轮 P3）。
    */
-  const land = (key: string, from: Submission, next: Submission) => {
+  const land = (key: string, from: Submission, next: Submission, registered = true) => {
     if (entries.get(key) !== from) return undefined;
     put(key, next);
     // 删除在同一把跨标签页锁内异步执行，与各页登记按请求先后串行，不阻塞落地；失败不影响已落定的结果。
-    if (next.command && !['submitting', 'unknown'].includes(next.status)) void recovery?.remove(key, next.command.id);
+    // 删除不设等锁上限：未登记的命令若也排一条，他页一直持锁时每次重试都会多残留一条排队请求。
+    const settled = next.command && !['submitting', 'unknown'].includes(next.status);
+    if (registered && settled) void recovery?.remove(key, next.command!.id);
     return next;
+  };
+  const refusal = () => {
+    const error = precheck?.();
+    return error && registerRefusal(error);
   };
   const recover = async (
     key: string,
@@ -250,7 +258,7 @@ function createCore(recovery?: CommandRecovery) {
     // 迟到查询不能覆盖新状态；同一次查询期间 replay/reread 也会被 reading 挡住。
     return land(key, reading, next);
   };
-  return { entries, listeners, notify, pins, put, persist, land, recover, sync };
+  return { entries, listeners, notify, pins, put, persist, land, recover, sync, refusal };
 }
 type Core = ReturnType<typeof createCore>;
 
@@ -272,13 +280,7 @@ async function submitTo(core: Core, key: string, input: SubmitInput) {
   const prior = existing?.status === 'done' || existing?.restored ? undefined : existing;
   const baseline = prior?.baseline ?? input.baseline;
   const revision = prior?.revision ?? input.revision;
-  const body = commandBody(input, baseline);
-  // 生效日期是调用方提供的租户业务日期，不从浏览器时区推算。
-  if (input.effectiveDate !== undefined) body.effectiveDate = input.effectiveDate;
-  const command = { ...newCommand(body, revision), ...(input.commandId ? { id: input.commandId } : {}) };
-  const state: Submission = {
-    status: 'submitting',
-    command,
+  const draft = {
     values: structuredClone(input.values),
     baseline: structuredClone(baseline),
     editableFields: [...input.editableFields],
@@ -290,16 +292,30 @@ async function submitTo(core: Core, key: string, input: SubmitInput) {
     deletion: input.deletion,
     latest: prior?.latest,
   };
+  // DEC-955：生成命令 ID 之前拒绝（非安全上下文连 crypto.randomUUID 也没有）；不登记、不发出，输入保留。
+  const refused = core.refusal();
+  if (refused) {
+    const rejected: Submission = { ...draft, status: 'rejected', error: new Error(refused) };
+    core.put(key, rejected);
+    return rejected;
+  }
+  const body = commandBody(input, baseline);
+  // 生效日期是调用方提供的租户业务日期，不从浏览器时区推算。
+  if (input.effectiveDate !== undefined) body.effectiveDate = input.effectiveDate;
+  const command = { ...newCommand(body, revision), ...(input.commandId ? { id: input.commandId } : {}) };
+  const state: Submission = { ...draft, status: 'submitting', command };
   // 先置处理中再等锁：等锁期间本页同条目再提交被 isLocked 挡住，storage 同步也不接管处理中的条目。
   core.put(key, state);
   try {
     await core.persist(key, state, slots);
   } catch (error) {
-    // 四类都未发出命令，按“明确拒绝”落定：输入保留，可改正后重提。
-    core.land(key, state, { ...state, status: 'rejected', error: new Error(registerRefusal(error)) });
-    // 别页抢先登记了同一条目或槽：再同步一次，本页锁到那条命令上。
+    // 四类都未发出命令，按“明确拒绝”落定：输入保留，可改正后重提。本命令没有登记，不排删除。
+    const rejected: Submission = { ...state, status: 'rejected', error: new Error(registerRefusal(error)) };
+    core.land(key, state, rejected, false);
+    // 别页抢先登记了同一条目或槽：再同步一次，本页锁到那条命令上（同一条目时条目随之换成别页的恢复态）。
     if (error instanceof RecoveryConflict) core.sync();
-    return core.entries.get(key)!;
+    // 返回本次的拒绝（第 2 轮 P2-3）：同一条目被别页抢先时条目已换成别页命令，页面仍须拿到“其他标签页”原因。
+    return rejected;
   }
   core.land(key, state, await delivered(state, input.send));
   return core.entries.get(key)!;

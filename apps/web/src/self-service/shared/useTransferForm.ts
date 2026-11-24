@@ -21,6 +21,8 @@ import { emptyLinkage } from '../../transfer/linkage-api.js';
 import { useContractChoices } from '../../transfer/useLinkage.js';
 import { applyPendingDraft, catalogType } from '../../transfer/draft-restore.js';
 import { useDraftRestore } from '../../transfer/useDraftRestore.js';
+import { transferCommands } from '../../transfer/commands.js';
+import { commandId } from '../../foundation/client.js';
 import type {
   EmployeeChoice,
   FieldValue,
@@ -220,11 +222,19 @@ function useTransferCommand(
       return;
     if (missingTransferRequiredFields(model.preview.form, { ...model.preview.fields, ...model.fields }).length > 0)
       return;
+    // DEC-955：浏览器没有 Web Locks 时调动写入一律不发出（含不经内核的页面级直写）；在生成命令 ID、置忙碌之前判定，
+    // 否则 http 页面在 randomUUID 处抛错、按钮停在忙碌（F-110 第 2 轮 P2-1）。
+    const refused = transferCommands.refusal();
+    if (refused) {
+      setError(refused);
+      return;
+    }
     requestInProgress.current = true;
     setBusy(true);
     setError('');
-    const command = { id: crypto.randomUUID() };
+    const command = { id: '' };
     try {
+      command.id = commandId();
       const result = await executeConfirmed(tenantId, { model, action, saved, adapter, runCommand }, command, ask);
       if (!result.id || !Number.isInteger(result.revision) || !result.status) throw new Error(text.unknown);
       setSaved(result);
@@ -277,7 +287,7 @@ function executeConfirmed(
   ask: () => Promise<boolean>,
 ) {
   return sendWithEstablishmentConfirm((confirmed) => {
-    if (confirmed) command.id = crypto.randomUUID();
+    if (confirmed) command.id = commandId();
     return executeTransfer(tenantId, { ...input, commandId: command.id, confirmed });
   }, ask);
 }

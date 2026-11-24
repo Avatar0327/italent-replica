@@ -443,3 +443,29 @@ test('AC-FE-F110-27 经理提交暂存申请遇他页持锁被拒：他页关闭
   expect(submits[0]).toMatchObject({ path: `/api/tenant/employment/businesses/${business}/submit`, ifMatch: '4' });
   expect(submits[0]!.command).toMatch(/^[0-9a-f-]{36}$/);
 });
+
+test('AC-FE-F110-27 正例：提交暂存申请已发出后被拒，仍须先重读草稿，重读后按新 revision 提交', async ({ page }) => {
+  let revision = 4;
+  const submits: (string | undefined)[] = [];
+  await page.route(`**/transfers/employees/${employee}`, (route) =>
+    route.fulfill({ status: 201, json: { id: business, revision: 1, employeeRevision: 7, status: 'draft' } }),
+  );
+  await page.route(`**/employment/businesses/${business}`, (route) => route.fulfill({ json: { ...draft, revision } }));
+  await page.route(`**/employment/businesses/${business}/submit`, (route) => {
+    submits.push(route.request().headers()['if-match']);
+    return submits.length === 1
+      ? route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '单据已被修改' } } })
+      : route.fulfill({ json: { ...draft, revision: 6, status: 'in_review' } });
+  });
+  const drawer = await setup(page, true);
+  await drawer.getByRole('button', { name: '暂存', exact: true }).click();
+  const submit = drawer.getByRole('button', { name: '提交暂存申请', exact: true });
+  await submit.click();
+  await expect.poll(() => submits).toEqual(['4']);
+  await expect(submit).toBeDisabled();
+  revision = 5;
+  await drawer.getByRole('button', { name: '重新读取已暂存申请', exact: true }).click();
+  await expect(drawer.getByTestId('draft-revision')).toHaveText('5');
+  await submit.click();
+  await expect.poll(() => submits).toEqual(['4', '5']);
+});

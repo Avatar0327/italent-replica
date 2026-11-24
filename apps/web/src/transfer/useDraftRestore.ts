@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { webLocksRefusal } from '../foundation/forms/recovery.js';
 import { createFormStore, type SubmitInput } from '../foundation/forms/store.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { useCommandForm, type CommandForm } from '../foundation/forms/useCommandForm.js';
@@ -9,7 +10,8 @@ import { needsEstablishmentConfirm, useEstablishmentConfirm } from './establishm
 import type { TransferFormModel } from './types.js';
 
 // 页面层共用一份内核存储，关闭表单、切换视图或入口不销毁未确认命令（同合同模块）；刷新恢复归 F-110。
-const store = createFormStore();
+// 清除暂存是调动写入（DELETE）：浏览器没有 Web Locks 时同样按 DEC-955 拒绝、不发出（F-110 第 2 轮 P2-2）。
+const store = createFormStore({ precheck: webLocksRefusal });
 export type DraftRestoreStatus = 'idle' | 'loading' | 'restored' | 'failed';
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;
 

@@ -72,7 +72,8 @@ export function usePinnedCommand(slots: readonly string[], entry: string, store?
       if (isLocked(held)) return held!;
       owner.pin(scoped, own);
       const result = await owner.submit(own, input);
-      if (result.status !== 'unknown') owner.unpin(scoped, own);
+      // 同一条目被别页抢先登记时，条目已换成别页的恢复态、槽也钉到它上面（第 2 轮 P2-3）：不能按本次拒绝放开。
+      if (result.status !== 'unknown' && owner.get(own) === result) owner.unpin(scoped, own);
       return result;
     },
     /** 用户显式按原命令重发结果未知的命令（钉住它的条目）；结果确定后放开恢复槽。 */
