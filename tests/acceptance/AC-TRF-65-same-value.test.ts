@@ -3,12 +3,15 @@
  * 设计：docs/08_设计/F-036_字段来源记录与迟到后重建_设计.md §4.6、§5.2、§7.1、§10.1。
  * 夹具：甲＝DEC-950 原例；乙＝继承四字段；乙′＝原任职没有职位；丙＝HR 改当前任职后向后更新传播。
  */
+import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
+import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import type * as Commands from '../../apps/api/src/commands.js';
 import { appendFieldOrigins } from '../../apps/api/src/modules/employment/field-origin-store.js';
 import { resultRows } from './AC-ORG-people-support.js';
+import { createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 import { waitForLockWaiters } from './AC-TRF-F181a-support.js';
 import { BASE, FOUR, LATER, ok, selfWorld, type Fields, type Four, type SelfWorld } from './AC-TRF-F036S4-support.js';
 
@@ -466,13 +469,14 @@ describe('AC-TRF-65 ⑤ 重放按重放当刻比', () => {
 });
 
 /**
- * ⑦ 保存值来源不可信时，同值也是 403（J2 单独判拒，DEC-556 方案 A，待用户追认）。
- * 目前没有真实入口能给员工单据的职级写入“人工来源”：这里在测试里直接给草稿的职级插一条 hr-input 来源行。
+ * ⑦ 保存值来源不可信时，同值也是 403（J2 单独判拒，DEC-987 方案 A，用户已确认）。
+ * 产品没有真实入口能给员工单据的职级写入“人工来源”：夹具在测试里直接给草稿的职级追加一条来源行，产品写入口保持原样。
  * 同单据其余字段（职位、职务、序列）的来源仍是可信的 inherit，所以“任一字段可信即放行”的错误实现也会被这条用例打红。
+ * 可信与不可信用同一个夹具函数、只换来源种类，对照里保存与提交都真实走入口（不用内存对照）。
  */
 describe('AC-TRF-65 ⑦ 保存值来源不可信：员工提交同值仍 403，单据不变', () => {
-  /** 临时夹具：#99 阶段 ② 有真实入口后换成真实入口构造。 */
-  async function untrustedLevel(b: Awaited<ReturnType<typeof beta>>) {
+  /** 给草稿的职级追加一条来源行：`hr-input` 是不可信的人工来源，`system-input` 是可信的系统来源。 */
+  async function levelOrigin(b: Awaited<ReturnType<typeof beta>>, originKind: 'hr-input' | 'system-input') {
     const { db } = database();
     await withTenant(db, b.s.w.tenant.id, async (tx) => {
       const [version] = resultRows<{ id: string; employeeId: string }>(
@@ -490,7 +494,7 @@ describe('AC-TRF-65 ⑦ 保存值来源不可信：员工提交同值仍 403，�
             payloadVersionId: version!.id,
             employeeId: version!.employeeId,
             fieldCode: 'preset:levelId',
-            originKind: 'hr-input',
+            originKind,
             value: b.base.level,
           },
         ],
@@ -498,14 +502,17 @@ describe('AC-TRF-65 ⑦ 保存值来源不可信：员工提交同值仍 403，�
     });
   }
 
-  it('对照：来源可信（继承）时，同一份带同值职级的保存是 200', async () => {
+  it('对照：职级保存值来源是可信的系统来源时，同一份带同值职级的保存与提交都是 200', async () => {
     const b = await beta('f036s4-65-7-control');
+    await levelOrigin(b, 'system-input');
     await ok(await b.s.patch(b.person, b.draft.id, { fields: { levelId: b.base.level }, effectiveDate: LATER }));
+    await ok(await b.s.submit(b.person, b.draft.id));
+    expect((await b.s.show(b.draft.id)).status).not.toBe('draft');
   });
 
   it('职级保存值来源是 hr-input：带同值职级保存与提交都 403，载荷版本与来源行都不变', async () => {
     const b = await beta('f036s4-65-7-untrusted');
-    await untrustedLevel(b);
+    await levelOrigin(b, 'hr-input');
     const before = await snapshot(b.s, b.draft.id);
     await forbidden(await b.s.patch(b.person, b.draft.id, { fields: { levelId: b.base.level }, effectiveDate: LATER }));
     await forbidden(await b.s.submit(b.person, b.draft.id));
@@ -653,3 +660,90 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
     });
   },
 );
+
+/**
+ * 部门范围 HR：Employment 对象编辑权、全部非系统字段编辑权与 Employment 按钮（含 Transfer.Hr 入口），数据范围只有原部门（org_range，不含下级）。
+ * `revokeScope` 由租户管理员把这份范围收空，对象、按钮、字段权限原样保留（第 4 轮 P2：只收范围，别的授权都还在）。
+ */
+async function scopedHr(s: SelfWorld) {
+  const { admin, w } = s;
+  const person = await w.person('合成部门HR', s.source);
+  const profile = await createProfile(admin, `s4-hr-${randomUUID()}`);
+  const def = MODULE_OBJECTS.employmentRecord;
+  await ok(
+    await setObjectPermission(
+      admin,
+      profile,
+      {
+        dataOperations: { create: true, update: true, delete: false },
+        fields: def.fields.map((field) => ({ fieldCode: field.code, view: true, edit: !field.system })),
+        buttons: def.buttons
+          .filter((button) => !button.code.startsWith('Transfer.') || button.code === 'Transfer.Hr')
+          .map((button) => ({ buttonCode: button.code, level: button.level })),
+      },
+      def.code,
+    ),
+  );
+  await makeGrantable(admin, [profile.id]);
+  await ok(await grant(admin, person.userId, profile.id), 201);
+  const scope = (orgRanges: readonly object[], ifMatch: number) =>
+    admin.api.request('PUT', `/api/tenant/permission/scopes/${person.userId}/TenantBase`, {
+      ...admin.asAdmin,
+      ifMatch,
+      body: { kind: 'org_range', orgRanges },
+    });
+  await ok(await scope([{ orgId: s.source, includeDescendants: false }], 0));
+  return { ...person, revokeScope: async () => ok(await scope([], 1)) };
+}
+
+/**
+ * 范围收回屏障（第 4 轮 P2）：部门范围 HR 首次合法 PATCH（命令 K0）成功 → 同键重放进入守卫、排在员工行锁上等待
+ * → 等锁期间管理员收回该部门范围（对象、按钮、字段权限仍在）→ 放锁。重放的数据范围必须在锁内解析：
+ * 收回后要被拒（范围外与不存在同一个 404），不得拿等锁前的旧范围返回 200 与原回执。
+ * `kind = 'recheck'`：重放的命令主事务先“并发冲突”失败，走失败后回查出口，同样不得沿用旧范围。
+ * `revoke = false` 是“范围没变”的对照：同一夹具、同一屏障，只是不收回。
+ */
+async function scopeRevokeRace(label: string, kind: 'direct' | 'recheck', revoke: boolean) {
+  const b = await beta(label);
+  const { w } = b.s;
+  const hr = await scopedHr(b.s);
+  const k0 = { revision: (await b.s.show(b.draft.id)).revision, key: `k0-${label}` };
+  const body = { effectiveDate: LATER };
+  const first = await ok(await b.s.patch(hr, b.draft.id, body, k0));
+  const firstBody = await first.json();
+  const before = await snapshot(b.s, b.draft.id);
+  let replayDone = false;
+  const replay = await withTenant(w.db, w.tenant.id, async (barrier) => {
+    await barrier.execute(sql`SELECT id FROM employment_employees
+      WHERE tenant_id=${w.tenant.id} AND id=${b.person.employeeId}::uuid FOR UPDATE`);
+    if (kind === 'recheck') hooks.failMainTransaction = true;
+    const response = b.s.patch(hr, b.draft.id, body, k0);
+    void response.finally(() => (replayDone = true));
+    // 未修复时重放在等锁前就解析了范围，已修复时它排到锁上；任何一种都在它还没返回时收回范围。
+    await waitForLockWaiters(w.db, 1, () => replayDone);
+    if (revoke) await hr.revokeScope();
+    // 返回数组而不是 Promise 本身：异步函数会等 Promise 落定，那样放锁的事务提交要等重放，重放要等锁，就死锁了。
+    return [response] as const;
+  });
+  hooks.failMainTransaction = false;
+  return { b, hr, firstBody, before, replay: await replay[0] };
+}
+
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TRF-65 ⑩ 同单重放的数据范围在员工锁内解析（真 PG）', () => {
+  describe.each(['direct', 'recheck'] as const)('缓存命中的同键重放（%s）', (kind) => {
+    it('部门范围 HR 的重放等锁期间范围被收回（对象、按钮、字段权限仍在）：404，零写入，不返回原回执', async () => {
+      const r = await scopeRevokeRace(`f036s4-65-10-${kind}`, kind, true);
+      expect(r.replay.status, await r.replay.clone().text()).toBe(404);
+      expect(JSON.stringify(await r.replay.json())).not.toContain(String(r.firstBody.id));
+      // 被拒的重放没有写任何东西：载荷版本、来源行、字段值与四个字段的来源都与首次执行之后一致。
+      expect(await snapshot(r.b.s, r.b.draft.id)).toEqual(r.before);
+    });
+
+    it('对照：范围没变时合法重放仍是 200，返回首次回执，单据与行数不变', async () => {
+      const r = await scopeRevokeRace(`f036s4-65-10-${kind}-ok`, kind, false);
+      expect(r.replay.status, await r.replay.clone().text()).toBe(200);
+      expect(await r.replay.json()).toEqual(r.firstBody);
+      expect(await snapshot(r.b.s, r.b.draft.id)).toEqual(r.before);
+    });
+  });
+});
