@@ -567,18 +567,16 @@ async function routesToCancel(deps: TenantRouteDeps, ctx: EmploymentContext, id:
   });
 }
 
-/** 首次执行与同键重放共用：员工单据校验、提交前复判字段适用性（J5），再校验权限。 */
+/** 首次执行与同键重放共用：先校验员工单据与写权限，再在提交时复判已保存字段的适用性（J5，只读）。 */
 async function authorizeTransition(
   tx: Tx,
   scoped: EmploymentContext,
   id: string,
   action: Parameters<typeof requireEmploymentTransitionWrite>[1],
 ) {
-  if (action === 'submit') {
-    await requireEmployeeTransferBusiness(tx, scoped, id);
-    await requireSavedValuesApplicable(tx, scoped, id);
-  }
+  if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
   await requireEmploymentTransitionWrite(scoped, action);
+  if (action === 'submit') await requireSavedValuesApplicable(tx, scoped, id);
 }
 
 function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
