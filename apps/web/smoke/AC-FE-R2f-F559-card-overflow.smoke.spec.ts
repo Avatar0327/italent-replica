@@ -218,6 +218,18 @@ test.describe('F-559 1280px 显示与修前一致', () => {
           lines: 1,
           fontSize: '26px',
         });
+      // 与 375px 同口径：总数 / 指标块在卡片内容区与指标块内容区内、两者都不横向滚动
+      for (const card of await page.locator('article.hr-structure-stat').all()) {
+        const name = await card.getAttribute('aria-label');
+        expect
+          .soft(
+            await overflow(card, '.hr-process-metrics, .board-chart-item, .board-chart-item > *'),
+            `1280px S4b ${total} ${name}`,
+          )
+          .toEqual([]);
+        for (const item of await card.locator('.hr-process-metrics .board-chart-item').all())
+          expect.soft(await overflow(item, 'strong'), `1280px S4b ${total} ${name} 指标块`).toEqual([]);
+      }
     }
   });
 });
