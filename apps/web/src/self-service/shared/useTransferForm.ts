@@ -96,14 +96,18 @@ export function useTransferForm(
     adapter,
     runCommand,
   );
-  const hr = useHrTransferCommand(tenantId, model, loadingPreview, setModel);
+  // 表单原提示区显示最近一次操作（清除暂存 / 暂存、保存、提交）的失败，不固定谁优先（F-110 第 4 轮 P2-3）。
+  const [operation, setOperation] = useState<Operation>('save');
+  const hr = useHrTransferCommand(tenantId, model, loadingPreview, setModel, () => setOperation('save'));
   const commands = hrScope ? hr : legacy;
   useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator, !adapter);
   useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator, !adapter);
   usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice, adapter);
   // R1-T10 的联动仅接入 HR；经理自助本轮仍不提供跨对象联动。
   useContractChoices(tenantId, initiator === 'hr' ? model.employeeId : '', initiator, setModel);
-  const draft = useDraftRestore(tenantId, restoreDrafts ? hrScope : undefined, model.employeeId, setModel);
+  const draft = useDraftRestore(tenantId, restoreDrafts ? hrScope : undefined, model.employeeId, setModel, () =>
+    setOperation('clear'),
+  );
   const selection = selectField(setModel, setError);
   const field = editField(setModel);
   const reread = (update: (current: TransferFormModel) => TransferFormModel) => {
@@ -123,7 +127,7 @@ export function useTransferForm(
     notice,
     ...commands,
     processing: !!hrScope && hr.processing,
-    ...draftCommandState(draft, hr, commands, hrScope),
+    ...draftCommandState(draft, hr, commands, operation, hrScope),
     commandNotice: hrScope ? hr.commandNotice : '',
     loadingPreview,
     draft,
@@ -315,6 +319,8 @@ function executeTransfer(
 }
 
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;
+/** 表单原提示区归属的最近一次操作：清除暂存，或暂存 / 保存 / 提交。 */
+type Operation = 'clear' | 'save';
 type SetText = React.Dispatch<React.SetStateAction<string>>;
 function useCatalog(
   tenantId: string,
@@ -480,13 +486,14 @@ function draftCommandState(
   draft: ReturnType<typeof useDraftRestore>,
   hr: ReturnType<typeof useHrTransferCommand>,
   commands: ReturnType<typeof useHrTransferCommand> | ReturnType<typeof useTransferCommand>,
+  operation: Operation,
   scope?: string,
 ) {
   const locked = !!scope && (draft.command.locked || draft.status === 'loading');
   return {
     busy: commands.busy || locked,
     conflict: scope ? (draft.command.locked ? draft.command : hr.conflict) : undefined,
-    commandError: scope ? draft.error || hr.commandError : '',
+    commandError: scope ? (operation === 'clear' ? draft.error : hr.commandError) : '',
     /** 处理中只显示与当前恢复命令关联的本次竞争原因；清除、保存的旧错误留在表单原位置（第 3 轮 P2-3）。 */
     processingError: scope ? hr.processingError : '',
     submit: (action: TransferAction) => (locked ? Promise.resolve() : commands.submit(action)),

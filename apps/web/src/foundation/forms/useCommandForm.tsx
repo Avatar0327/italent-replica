@@ -1,14 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useSession } from '../Session.js';
-import {
-  createFormStore,
-  isLocked,
-  type FormStore,
-  type Latest,
-  type SubmitInput,
-  type Submission,
-  type Values,
-} from './store.js';
+import { createFormStore, isLocked, type FormStore, type Latest, type SubmitInput, type Values } from './store.js';
 import { slotKey } from './slot.js';
 import { refillDraft } from './values.js';
 
@@ -39,8 +31,9 @@ export function useBatchCommand(collection: string, ids: readonly string[], stor
 }
 /**
  * slots 是本命令涉及的恢复槽（稳定原单路径），entry 是本命令的条目：单对象就是槽本身，批量、带版本的冲突恢复另起名。
- * 提交前先把各槽钉到本条目，结果未知就一直钉着（claude_fe_rules e、g）：同对象的其他入口读到的是这条命令，
- * 关闭重开、换入口、换版本也仍锁定，不另起命令；已确认的结果（完成、被拒、冲突）放开。
+ * 提交时把各槽交给内核声明（claim），由内核核对占用、钉住，结果未知就一直钉着（claude_fe_rules e、g）：
+ * 同对象的其他入口读到的是这条命令，关闭重开、换入口、换版本也仍锁定，不另起命令；已确认的结果（完成、被拒、冲突）
+ * 由内核放开，并交给共用记录里仍未确认的命令（F-110 第 4 轮）。本层不钉也不放开。
  */
 export function usePinnedCommand(slots: readonly string[], entry: string, store?: FormStore) {
   const provided = useContext(Context);
@@ -52,44 +45,25 @@ export function usePinnedCommand(slots: readonly string[], entry: string, store?
   const own = scope(entry);
   const key = useSyncExternalStore(owner.subscribe, () => owner.holder(scoped) ?? own);
   const state = useSyncExternalStore(owner.subscribe, () => owner.get(key));
-  const recovered = async (run: (holder: string) => Promise<Submission | undefined>) => {
-    const holder = owner.holder(scoped) ?? own;
-    const result = await run(holder);
-    if (result && owner.get(holder) === result && ['done', 'rejected'].includes(result.status))
-      owner.unpin(scoped, holder);
-    return result;
-  };
+  /** 动作作用在当前占槽的命令上（存储里的，不是渲染时的快照）。 */
+  const holding = () => owner.holder(scoped) ?? own;
   return {
     state,
     status: state?.status ?? 'idle',
     locked: isLocked(state),
     busy: state?.status === 'submitting',
-    async submit(input: SubmitInput) {
-      // 先对齐别的标签页的未确认命令（F-110 第 2 轮 P2-2）：槽被别页占着时锁在那条命令上，不另起命令。
-      owner.sync();
-      const holder = owner.holder(scoped);
-      const held = holder === undefined || holder === own ? undefined : owner.get(holder);
-      if (isLocked(held)) return held!;
-      owner.pin(scoped, own);
-      const result = await owner.submit(own, input);
-      // 同一条目被别页抢先登记时，条目已换成别页的恢复态、槽也钉到它上面（第 2 轮 P2-3）：不能按本次拒绝放开。
-      if (result.status !== 'unknown' && owner.get(own) === result) owner.unpin(scoped, own);
-      return result;
-    },
-    /** 用户显式按原命令重发结果未知的命令（钉住它的条目）；结果确定后放开恢复槽。 */
-    async replay(send: SubmitInput['send']) {
-      const holder = owner.holder(scoped) ?? own;
-      const result = await owner.replay(holder, send);
-      if (result && result.status !== 'unknown') owner.unpin(scoped, holder);
-      return result;
-    },
-    recoverDeletion: (read: Parameters<FormStore['recoverDeletion']>[1]) =>
-      recovered((holder) => owner.recoverDeletion(holder, read)),
-    /** F-110：按原命令 ID 查询结果；成功或确定失败后放开恢复槽，查不到 / 查询失败仍钉住。 */
-    recoverResult: (read: Parameters<FormStore['recoverResult']>[1]) =>
-      recovered((holder) => owner.recoverResult(holder, read)),
-    /** 存储里的当前状态（不是渲染时的快照）：异步流程中途据此核对恢复槽上有没有新的未确认命令。 */
-    peek: () => owner.get(owner.holder(scoped) ?? own),
+    /**
+     * 内核先对齐别的标签页的未确认命令（F-110 第 2 轮 P2-2），槽被占着时锁在那条命令上、不另起命令；
+     * 本次是否“竞争”只看结果里的 race（第 4 轮），页面不再自己猜。
+     */
+    submit: (input: SubmitInput) => owner.submit(own, input, scoped),
+    /** 用户显式按原命令重发结果未知的命令（钉住它的条目）；结果确定后由内核放开恢复槽。 */
+    replay: (send: SubmitInput['send']) => owner.replay(holding(), send),
+    recoverDeletion: (read: Parameters<FormStore['recoverDeletion']>[1]) => owner.recoverDeletion(holding(), read),
+    /** F-110：按原命令 ID 查询结果；成功或确定失败后由内核放开恢复槽，查不到 / 查询失败仍钉住。 */
+    recoverResult: (read: Parameters<FormStore['recoverResult']>[1]) => owner.recoverResult(holding(), read),
+    /** 存储里的当前状态（不是渲染时的快照）：异步流程中途据此读当前占槽命令的上下文。 */
+    peek: () => owner.get(holding()),
     reread: (read: (id?: string) => Promise<Latest>) => owner.reread(key, read),
     settle: (submittable: readonly string[]) => owner.settle(key, submittable),
     confirm: () => owner.confirm(key),

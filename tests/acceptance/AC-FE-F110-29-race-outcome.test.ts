@@ -49,7 +49,7 @@ function setup() {
   const registerA = (key = keyA) =>
     localStorage.setItem(records, JSON.stringify([{ key, slots: [slot], commandId: 'cmd-a', revision: 3 }]));
   const storageEvent = () => window.dispatchEvent(new StorageEvent('storage', { key: records }));
-  return { records, slot, keyA, keyB, store, sent, send, submitB, registerA, storageEvent };
+  return { records, slot, keyA, keyB, store, sent, send, input, submitB, registerA, storageEvent };
 }
 type Setup = ReturnType<typeof setup>;
 const raceOf = (state: unknown) => (state as { race?: unknown }).race;
@@ -153,6 +153,29 @@ describe('AC-FE-F110-29 正例：修前合法路径仍成功', () => {
     expect(outcome.status).toBe('done');
     expect(raceOf(outcome)).toBeUndefined();
     expect(localStorage.getItem(t.records)).toBeNull();
+  });
+
+  it('落定时再同步不吞掉本页自己的结果：在途期间别页登记了同一条目，B 的提交结果仍是自己的完成', async () => {
+    const t = setup();
+    let late!: (value: { id: string }) => void;
+    const pending = (t.store.submit as Submit)(
+      t.keyB,
+      { ...t.input, businessId: 'synthetic-employee-b', send: () => new Promise((resolve) => (late = resolve)) },
+      [t.slot],
+    );
+    await vi.waitFor(() => expect(late).toBeDefined());
+    // 别页查到 B 的命令“确定失败”、删了 B 的记录并重提（同 F110-07）：共用记录里只剩别页的 cmd-a。
+    t.registerA(t.keyB);
+    late({ id: 'synthetic-employee-b' });
+    const outcome = await pending;
+    expect(outcome.status).toBe('done');
+    expect(outcome.restored).toBeFalsy();
+    expect(raceOf(outcome)).toBeUndefined();
+    expect(t.store.get(t.keyB)?.status).toBe('done');
+    // 下一次同步（storage 事件）才锁到别页的命令上。
+    t.storageEvent();
+    expect(t.store.get(t.keyB)).toMatchObject({ status: 'unknown', restored: true, command: { id: 'cmd-a' } });
+    expect(t.store.holder([t.slot])).toBe(t.keyB);
   });
 
   it('A 落定（记录删掉 + storage 事件）后：槽放开，B 照常发出一次', async () => {

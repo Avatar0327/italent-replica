@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react';
-import { isLocked, type Submission } from '../foundation/forms/store.js';
 import { usePinnedCommand, type CommandForm } from '../foundation/forms/useCommandForm.js';
 import { loadPreview, savedNotice } from '../self-service/shared/transfer-loading.js';
 import { text } from './messages.js';
@@ -30,6 +29,8 @@ export function useHrTransferCommand(
   model: TransferFormModel,
   loadingPreview: boolean,
   setModel: SetModel,
+  /** 表单原提示区按最近一次操作显示失败（第 4 轮 P2-3）：每次暂存 / 保存 / 提交开始时登记。 */
+  onAttempt?: () => void,
 ) {
   const write = useHrWrite();
   const confirmTerminate = useTerminateConfirm();
@@ -42,10 +43,7 @@ export function useHrTransferCommand(
   const action = (command.state?.context?.action as TransferAction | undefined) ?? chosen;
   const processing = awaitingEstablishment || command.status === 'submitting' || command.status === 'unknown';
   const reread = useRef<{ employeeId: string; loaded: Reread }>(undefined);
-  let commandNotice = '';
-  if (write.result) {
-    commandNotice = write.result.status === 'draft' ? text.hrDraftSaved : savedNotice(write.result, action);
-  }
+  const commandNotice = noticeOf(write.result, action);
   const read = async () => {
     const loaded = await loadPreview(tenantId, model, new AbortController().signal);
     reread.current = { employeeId: model.employeeId, loaded };
@@ -57,6 +55,7 @@ export function useHrTransferCommand(
     command.clear();
     reread.current = undefined;
     write.refuse('');
+    onAttempt?.();
   };
   const conflict: CommandForm = {
     ...command,
@@ -113,6 +112,11 @@ export function useHrTransferCommand(
   };
 }
 
+function noticeOf(result: ReturnType<typeof useHrWrite>['result'], action: TransferAction) {
+  if (!result) return '';
+  return result.status === 'draft' ? text.hrDraftSaved : savedNotice(result, action);
+}
+
 function submitHrTransfer(
   command: CommandForm,
   write: Pick<ReturnType<typeof useHrWrite>, 'run' | 'refuse' | 'raced'>,
@@ -149,24 +153,11 @@ function submitHrTransfer(
     });
     // A 已落定。确认重提之前保留这条状态，避免持久记录排队删除时被同步重新当作未知命令。
     if (outcome.status === 'rejected' && needsEstablishmentConfirm(outcome.error)) throw outcome.error;
-    if (outcome.status === 'rejected' && !sent) refuseUnsent(command, outcome, write);
+    // 竞争只看内核结果（第 4 轮 P2-2）：原因随占槽命令显示在“处理中”。其余未发出的拒绝（DEC-954 / DEC-955、
+    // 存储不可用）useHrWrite 没机会提示，用内核的文案、留在表单原位置。
+    if (outcome.race) write.raced(outcome.race.reason, outcome.race.commandId);
+    else if (outcome.status === 'rejected' && !sent) write.refuse((outcome.error as Error | undefined)?.message ?? '');
     // 普通拒绝由 useHrWrite 给出提示，下次提交按当时的预览起算。
     if (outcome.status === 'done' || outcome.status === 'rejected') command.clear();
   }, ask);
-}
-
-/**
- * 登记就被拒（锁被他页占用、不支持锁、别页已登记、存储不可用）时命令未发出，useHrWrite 没机会提示，用内核的文案。
- * 别页抢先登记、本页已锁到那条命令上：原因只随那条命令显示在“处理中”（第 3 轮 P2-3）；其余留在表单原位置。
- */
-function refuseUnsent(
-  command: CommandForm,
-  outcome: Submission,
-  write: Pick<ReturnType<typeof useHrWrite>, 'refuse' | 'raced'>,
-) {
-  const message = (outcome.error as Error | undefined)?.message ?? '';
-  const holding = command.peek();
-  const commandId = holding?.command?.id;
-  if (isLocked(holding) && commandId && commandId !== outcome.command?.id) write.raced(message, commandId);
-  else write.refuse(message);
 }
