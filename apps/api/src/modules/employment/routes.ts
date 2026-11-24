@@ -567,7 +567,7 @@ async function routesToCancel(deps: TenantRouteDeps, ctx: EmploymentContext, id:
   });
 }
 
-/** 首次执行与同键重放共用：先校验员工单据与写权限，再在提交时复判已保存字段的适用性（J5，只读）。 */
+/** 首次执行与同键重放共用：校验员工单据与写权限。J5 不在这里：它必须排在业务写范围复核之后（见 afterScope）。 */
 async function authorizeTransition(
   tx: Tx,
   scoped: EmploymentContext,
@@ -576,7 +576,30 @@ async function authorizeTransition(
 ) {
   if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
   await requireEmploymentTransitionWrite(scoped, action);
-  if (action === 'submit') await requireSavedValuesApplicable(tx, scoped, id);
+}
+
+/**
+ * 通用状态动作的同单写入口。提交时的 J5（已保存字段适用性复判）是 afterScope：排在授权与业务写范围复核之后，
+ * 首次执行、同键重放与失败回查都先经这里，再返回台账缓存或执行（DEC-431①：J5 只有这一个入口）。
+ */
+function transitionWriteGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  id: string,
+  employeeId: string,
+  action: Parameters<typeof requireEmploymentTransitionWrite>[1],
+) {
+  return sameOrderWriteGuard(deps, ctx, {
+    businessId: id,
+    employeeId,
+    ...(action === 'submit'
+      ? {
+          referenceChange: {},
+          afterScope: (tx: Tx, scoped: EmploymentContext) => requireSavedValuesApplicable(tx, scoped, id),
+        }
+      : {}),
+    authorize: (tx, scoped) => authorizeTransition(tx, scoped, id, action),
+  });
 }
 
 function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -616,12 +639,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
                 { employeeId: current.employeeId, kind: current.kind, deleting: action === 'delete' },
                 { businessId: id },
               )
-            : sameOrderWriteGuard(deps, ctx, {
-                businessId: id,
-                employeeId: current.employeeId,
-                ...(action === 'submit' ? { referenceChange: {} } : {}),
-                authorize: (tx, scoped) => authorizeTransition(tx, scoped, id, action),
-              }),
+            : transitionWriteGuard(deps, ctx, id, current.employeeId, action),
         };
         const write = runWrite(
           c,

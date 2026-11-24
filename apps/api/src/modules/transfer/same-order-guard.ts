@@ -42,6 +42,12 @@ export interface SameOrderSpec {
   readonly referenceChange?: EmploymentBusinessPatch;
   /** 命令事务内按新上下文重过的授权（对象 / 按钮 / 字段 / 业务特有来源），在同单来源之后、写入口径范围之前。 */
   readonly authorize: (tx: Tx, scoped: EmploymentContext) => Promise<void>;
+  /**
+   * 业务写范围复核通过之后才跑的状态复判（如提交时 J5 字段适用性）。它会披露单据的当前状态（409 与否），
+   * 所以必须排在授权与范围之后：范围已收空的人只会得到与对照请求一致的 404。首次执行、同键重放与失败回查
+   * 都经 CommandGuard.before，先于台账缓存回执，所以这里是该复判唯一的入口。
+   */
+  readonly afterScope?: (tx: Tx, scoped: EmploymentContext) => Promise<void>;
 }
 
 /** 经调动同单来源（transferBusinessContext）的入口：通用编辑 / 提交 / 撤回 / 撤销 / 删除、暂存清除。 */
@@ -69,6 +75,7 @@ export function sameOrderWriteGuard(
     async (tx, scoped) => {
       await spec.authorize(tx, scoped);
       await requireBusinessWriteScope(tx, scoped.authorize!, scoped, spec.businessId, spec.employeeId);
+      await spec.afterScope?.(tx, scoped);
     },
   );
 }

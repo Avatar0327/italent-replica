@@ -251,7 +251,7 @@ export interface SettledFields {
 /** 设计 §5.3：职位与有效部门不匹配时的判定与落地空值共用的原因码。 */
 export const FIELD_NOT_APPLICABLE = 'cross-department';
 
-const sameValue = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+export const sameValue = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const policyKinds: ReadonlySet<string> = new Set(FIELD_ORIGIN_POLICIES);
 /** 本次请求自己输入的值与落地已定的解析值不再判：前者由校验把关，后者在写入前已按谓词定稿。 */
 const exemptKinds: ReadonlySet<string> = new Set([

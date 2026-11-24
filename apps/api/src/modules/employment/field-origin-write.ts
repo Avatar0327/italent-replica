@@ -6,6 +6,7 @@ import { derivationFields } from './field-derivations.js';
 import {
   appendFieldOrigins,
   loadFieldOrigins,
+  sameValue,
   settleFieldValues,
   type FieldOriginDraft,
   type SettledFields,
@@ -214,7 +215,10 @@ export function applySettledFields<Prepared extends PreparedFormInheritance>(
 
 /**
  * F-036 §4.6 J5：提交前（含同键命令重放，返回台账缓存之前）只读地复判已保存字段值的适用性。
- * 判定会写判定行（回落 / 恢复）说明保存值已过期：不追加来源行，直接 409，让客户端刷新后重新保存。
+ * 判定出现回落 / 恢复只说明某一层候选值的适用性变了；保存值是否过期要看 §5.3 折叠后的有效值与待定状态
+ * 是否还和保存的一致：下层继承值失效而同部门覆盖值仍适用时，保存值依旧有效，放行；
+ * 有效保存值确实失效（或失效的层原本在生效）才 409，让客户端刷新后重新保存。只读，不追加来源行。
+ * 调用顺序见 sameOrderWriteGuard 的 afterScope：授权与业务写范围复核都通过之后。
  */
 export async function requireSavedValuesApplicable(
   tx: Tx,
@@ -230,10 +234,24 @@ export async function requireSavedValuesApplicable(
   );
   if (!row) return;
   const payload = camelRow(row);
+  const savedDeferred = new Set(payload.deferredFieldCodes as string[]);
   const settled = await settleFieldValues(tx, ctx, businessId, {
     fields: snapshotFields(payload),
-    deferredFieldCodes: payload.deferredFieldCodes as string[],
+    deferredFieldCodes: [...savedDeferred],
   });
-  if (settled.origins.some(({ originKind }) => originKind === 'fallback' || originKind === 'restore'))
+  const decided = new Set(
+    settled.origins
+      .filter(({ originKind }) => originKind === 'fallback' || originKind === 'restore')
+      .map(({ fieldCode }) => fieldCode),
+  );
+  const saved = (code: string) =>
+    code.startsWith('preset:')
+      ? (snapshotFields(payload) as unknown as Record<string, unknown>)[code.slice('preset:'.length)]
+      : (payload.customFields as Record<string, unknown> | undefined)?.[code.slice('custom:'.length)];
+  const stale = [...decided].some(
+    (code) =>
+      !sameValue(saved(code), settled.values.get(code)) || savedDeferred.has(code) !== settled.deferred.has(code),
+  );
+  if (stale)
     throw new AppError('CONFLICT', '已保存的字段值不再适用，请刷新后重新保存', { reason: 'FIELD_NOT_APPLICABLE' });
 }
