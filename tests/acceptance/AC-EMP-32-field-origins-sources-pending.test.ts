@@ -432,6 +432,18 @@ describe('AC-EMP-32 pending：曾落地的业务被摘出时间轴后仍是已�
     expect(placeOf(await originsOn(transfer.id, '2026-10-19')), '前一天').toMatchObject({ pending: true });
     expect(placeOf(await originsOn(transfer.id, '2026-10-20')), '生效日').toMatchObject({ pending: false });
   });
+
+  it('已落地（当天生效）的调动被 HR 删除：此前实际生效过，工作地不再 pending', async () => {
+    const { x, transferOn, originsOn } = await retiringWorld('delete-landed');
+    const transfer = await transferOn('2026-10-06');
+    expect(placeOf(await originsOn(transfer.id, '2026-10-06')), '前提：删除前已落地').toMatchObject({ pending: false });
+    x.session.setNow('2026-10-06T02:00:00Z');
+    const current = await x.business(transfer.id);
+    const deleted = await x.session.request('DELETE', `/businesses/${transfer.id}`, { ifMatch: current.revision });
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    expect(await x.timeline(), '前提：调动已不在时间轴上').toHaveLength(1);
+    expect(placeOf(await originsOn(transfer.id, '2026-10-07')), '删除后').toMatchObject({ pending: false });
+  });
 });
 
 describe('AC-EMP-32 pending：摘下后挂回 / 删除（第 5 轮路径矩阵）', () => {
