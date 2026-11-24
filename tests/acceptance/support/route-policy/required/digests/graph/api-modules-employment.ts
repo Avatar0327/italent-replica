@@ -1308,6 +1308,8 @@ export const GRAPH: Graph = {
     '#isScopedGuard',
     '#trimEmploymentResponse',
     '#withReplayRecheck',
+    'apps/api/src/modules/employment/receipt-names.ts#takeReceiptNames',
+    'apps/api/src/modules/employment/receipt-names.ts#withReceiptNames',
     'apps/api/src/modules/permission/employment-replay.ts#authorizeEmploymentResult',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
   ],
@@ -6621,6 +6623,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/read-model.ts#snapshotFields': [
     '#columnName',
     'apps/api/src/modules/employment/types.ts#PRESET_FIELD_NAMES',
+  ],
+  'apps/api/src/modules/employment/receipt-names.ts#namesOf': ['#isPlainObject', '#namesOf'],
+  'apps/api/src/modules/employment/receipt-names.ts#takeReceiptNames': ['#RECEIPT_NAMES_KEY', '#isPlainObject'],
+  'apps/api/src/modules/employment/receipt-names.ts#withReceiptNames': [
+    'apps/api/src/modules/employment/employment-forms.ts#employmentFormNames',
+    'apps/api/src/modules/employment/employment-types.ts#employmentTypeNames',
+    '#RECEIPT_NAMES_KEY',
+    '#isPlainObject',
+    '#namesOf',
   ],
   'apps/api/src/modules/employment/record-edit.ts#bumpAndNotifyEntry': [
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
