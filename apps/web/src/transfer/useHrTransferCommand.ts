@@ -147,7 +147,7 @@ function submitHrTransfer(
     // A 已落定。确认重提之前保留这条状态，避免持久记录排队删除时被同步重新当作未知命令。
     if (outcome.status === 'rejected' && needsEstablishmentConfirm(outcome.error)) throw outcome.error;
     // 登记就被拒（锁被他页占用、不支持锁、别页已登记、存储不可用）时命令未发出，useHrWrite 没机会提示，用内核的文案。
-    if (outcome.status === 'rejected' && !sent) write.refuse((outcome.error as Error).message);
+    if (outcome.status === 'rejected' && !sent) write.refuse((outcome.error as Error | undefined)?.message ?? '');
     // 普通拒绝由 useHrWrite 给出提示，下次提交按当时的预览起算。
     if (outcome.status === 'done' || outcome.status === 'rejected') command.clear();
   }, ask);
