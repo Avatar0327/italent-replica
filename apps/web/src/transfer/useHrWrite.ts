@@ -25,6 +25,7 @@ function validReceipt(receipt: TransferBusiness, sent: number) {
 export function useHrWrite() {
   const [error, setError] = useState('');
   const [result, setResult] = useState<TransferBusiness | null>(null);
+  const [race, setRace] = useState<{ message: string; commandId: string }>();
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
@@ -55,5 +56,17 @@ export function useHrWrite() {
       throw cause;
     }
   };
-  return { error, result, run, setResult };
+  /** 内核登记恢复记录时就拒绝（未发出，DEC-954 / DEC-955 等）：run 没跑，提示由这里给出；传空串清掉上次的（含竞争原因）。 */
+  const refuse = (message: string) => {
+    setError(message);
+    setRace(undefined);
+  };
+  /** 别页抢先登记、本页锁到它的命令 commandId 上：原因只随这条命令显示在“处理中”，不进表单错误（第 3 轮 P2-3）。 */
+  const raced = (message: string, commandId: string) => {
+    setError('');
+    setRace({ message, commandId });
+  };
+  /** 当前锁定命令的竞争原因：锁到别的命令、或已不在处理中（传 undefined）时为空。 */
+  const raceFor = (commandId: string | undefined) => (commandId && race?.commandId === commandId ? race.message : '');
+  return { error, result, run, refuse, raced, raceFor, setResult };
 }
