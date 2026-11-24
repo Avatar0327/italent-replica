@@ -279,7 +279,7 @@ const layouts = [
   ['不支持 subgrid', dropSubgrid],
 ] as const;
 
-// 本 PR 内全部横条（同类位置清单）：都走 hr-process.css 里同一条两行布局规则
+// 本 PR 内全部横条（同类位置清单）：都走 board-charts.css 里同一条两行横条规则（F-556 下沉）
 const BARS = [
   'inFlightAbnormal',
   'lateSubmitByInitiator',
