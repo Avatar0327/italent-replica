@@ -43,9 +43,11 @@ button.board-chart-item:focus-visible {
  * 横条（S2 结构、S4b 流程含差值图、S5 合同共用；F-556 由 S4b 下沉）：每个条目分两行，
  * 第一行标签与数值（数值靠右、可换行），第二行轨道占满条目宽度。轨道宽度只取决于图容器宽度，
  * 与数值位数无关，同图各行共用同一刻度；不依赖 subgrid（Vite 默认构建目标含 Chrome 111，subgrid 从 117 起才支持）。
+ * 第一行两列：标签至少留 6em、最多到文字全宽，数值列从 0 起；空间不足时两列同步增长，标签先补足、
+ * 数值在剩余空间换行，长数值不会把标签挤到零宽（审查 P2-1）；空间富余时数值列吸收余量、靠右对齐。
  */
 .board-chart-bar .board-chart-item {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(6em, max-content) minmax(0, auto);
   grid-template-areas: 'label number' 'mark mark';
   gap: 4px 8px;
 }
