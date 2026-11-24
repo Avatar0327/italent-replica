@@ -490,10 +490,12 @@ function draftCommandState(
   scope?: string,
 ) {
   const locked = !!scope && (draft.command.locked || draft.status === 'loading');
+  // 表单原提示区只有一个来源：最近一次操作是清除暂存就显示清除的失败，否则显示暂存 / 保存 / 提交的失败（第 4 轮 P2-3）。
+  const formError = operation === 'clear' ? draft.error : hr.commandError;
   return {
     busy: commands.busy || locked,
     conflict: scope ? (draft.command.locked ? draft.command : hr.conflict) : undefined,
-    commandError: scope ? (operation === 'clear' ? draft.error : hr.commandError) : '',
+    commandError: scope ? formError : '',
     /** 处理中只显示与当前恢复命令关联的本次竞争原因；清除、保存的旧错误留在表单原位置（第 3 轮 P2-3）。 */
     processingError: scope ? hr.processingError : '',
     submit: (action: TransferAction) => (locked ? Promise.resolve() : commands.submit(action)),
