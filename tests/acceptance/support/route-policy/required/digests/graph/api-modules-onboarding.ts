@@ -443,6 +443,11 @@ export const GRAPH: Graph = {
     '#preparationConfigMissing',
   ],
   'apps/api/src/modules/onboarding/preparation-config.ts#detail': ['#preparationRuleChildren'],
+  'apps/api/src/modules/onboarding/preparation-config.ts#lockPreparationConfig': ['#preparationGate'],
+  'apps/api/src/modules/onboarding/preparation-config.ts#preparationGate': [
+    'apps/api/src/advisory-lock.ts#asUuid',
+    'apps/api/src/advisory-lock.ts#lockKey',
+  ],
   'apps/api/src/modules/onboarding/preparation-config.ts#readPreparationConfig': [
     'apps/api/src/modules/onboarding/preparation-config-scope.ts#preparationConfigMissing',
     '#detail',

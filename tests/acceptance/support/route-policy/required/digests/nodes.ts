@@ -5573,7 +5573,8 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   ],
   'apps/api/src/modules/onboarding/preparation-config.ts#detail': ['e95c7be194da', '30e19f95dd1b'],
   'apps/api/src/modules/onboarding/preparation-config.ts#identity': ['cd65ee99e0f4', 'e1c3a28ff70a'],
-  'apps/api/src/modules/onboarding/preparation-config.ts#lockPreparationConfig': ['e0ad3bb046dd', '11f326016f03'],
+  'apps/api/src/modules/onboarding/preparation-config.ts#lockPreparationConfig': ['24b436a439de', '3acf6648c2d8'],
+  'apps/api/src/modules/onboarding/preparation-config.ts#preparationGate': ['840f53e57fd8', '0f32b19775b8'],
   'apps/api/src/modules/onboarding/preparation-config.ts#preparationRuleChildren': ['f3a6ad401487', '0d6875866d9a'],
   'apps/api/src/modules/onboarding/preparation-config.ts#readPreparationConfig': ['c1ff7948f8e7', '5b8f94defa41'],
   'apps/api/src/modules/onboarding/preparation-config.ts#recordPreparationConfigChange': [
