@@ -1,6 +1,6 @@
 import { requireManagerBusinessReferences } from './manager-business-references.js';
 import { requireManagerReferenceValues } from './manager-references.js';
-import { lockTransferParticipants } from '../employment/transfer-locks.js';
+import { lockTransferParticipants, sealTransferLocks, transferLocksCover } from '../employment/transfer-locks.js';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { tenantLocalDate } from '@italent/domain';
@@ -231,17 +231,33 @@ async function transferRequestEmployee(tx: Tx, ctx: EmploymentContext, businessI
   return request?.employeeId;
 }
 
+/** 取锁—复核—再取锁的上限：参与集合每轮都在涨说明有人持续改关系，放弃本次交还调用方刷新重试。 */
+const LOCK_PLAN_ATTEMPTS = 4;
+
 /**
- * 同单写入口先取锁、后解析授权输入（第 4 轮 P2，DEC-431①）：只按单据找到发起员工，取参与人锁，再取员工行锁，
- * 锁序与 transferBusinessContext 'command' 阶段完全相同（参与员工 → 业务头 → 审批实例，本函数不碰审批实例）。
- * 这里不读任何授权输入（数据范围、权限、例外）：调用方要在本函数返回之后才解析，等锁期间被收回的授权才会被看到。
- * 'command' 阶段再取一次是幂等的（持锁集合记在事务里）。单据不是调动单时什么都不取。
+ * 同单写入口的“取锁阶段”（DEC-993 单入口，第 5 轮）：只按单据找到发起员工，把会阻塞的锁一次取齐——
+ * 参与员工（含 extra 里请求新带入的下属）→ 员工行 →（lockTransferParticipants 内）各参与者业务头——锁序与
+ * transferBusinessContext 'command' 阶段完全相同；审批实例只在首次执行体里锁，重放 / 回查不到那一步，不在此预锁
+ * （预锁会在组织锁之前取实例，逆序）。取齐后重新规划，若参与集合在取锁期间又变大（如别人把某员工的虚线经理改成发起员工），
+ * 在授权还没读之前继续按序补锁；补不齐（UUID 顺序冲突 / 连续变大）由 acquire / 本函数抛 409 TRANSFER_LOCK_PLAN_CHANGED，
+ * 放弃本事务，由重入（失败回查 / 客户端显式重提）先取齐锁再读授权。
+ * 全部取齐后封口：本函数返回后事务里不会再因新参与者等锁。本函数不读任何授权输入，调用方在其返回之后才读且只读一次。
+ * 单据不是调动单时什么都不取。
  */
-export async function lockTransferBusinessEmployee(tx: Tx, ctx: EmploymentContext, businessId: string) {
+export async function lockTransferBusinessEmployee(
+  tx: Tx,
+  ctx: EmploymentContext,
+  businessId: string,
+  extra: readonly string[] = [],
+) {
   const employeeId = await transferRequestEmployee(tx, ctx, businessId);
   if (!employeeId) return;
-  await lockTransferParticipants(tx, ctx, employeeId);
-  await lockEmploymentEmployee(tx, ctx, employeeId);
+  for (let attempt = 0; attempt < LOCK_PLAN_ATTEMPTS; attempt += 1) {
+    await lockTransferParticipants(tx, ctx, employeeId, extra);
+    await lockEmploymentEmployee(tx, ctx, employeeId);
+    if (await transferLocksCover(tx, ctx, employeeId, extra)) return sealTransferLocks(tx, ctx);
+  }
+  throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
 }
 
 /** 同单操作按当前调用人的权限判断；原发起人类型仅是业务事实，不决定后续操作者的身份。 */

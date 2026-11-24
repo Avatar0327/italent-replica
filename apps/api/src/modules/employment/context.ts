@@ -603,18 +603,34 @@ export async function runWrite(
    * 带 `scopedGuard` 标记的 guard 还让执行与结果校验改用事务内重新解析的数据范围（commandContext），重放命中台账后
    * 同一事务内再校验原响应，这类出口不再跑事务外、用入口旧范围的那次结果复核；
    * project：固定形状回执（不是任职对象）的显式投影，替代通用任职字段裁剪，可异步（按当前权限再裁剪，首次与重放同一出口）；
+   * 第二个参数 current 是命令事务采用的当前上下文（scopedGuard 时的事务内范围，否则就是入口 ctx）——需要按范围裁剪的投影用它，
+   * 不要用入口 ctx：重放等锁期间被收回的范围只体现在 current 里（DEC-993）。
    * 缺省两项与之前完全相同。
    */
   options: {
     readonly guard?: CommandGuard;
-    readonly project?: (body: unknown) => unknown | Promise<unknown>;
+    readonly project?: (body: unknown, current: EmploymentContext) => unknown | Promise<unknown>;
     /** 请求指纹用的规范化路径；缺省取原始请求路径（F-469：删除结果查询需与写入口同口径）。 */
     readonly fingerprintPath?: string;
   } = {},
 ) {
   const key = c.req.header('idempotency-key');
   const scoped = isScopedGuard(options.guard) ? options.guard : undefined;
-  const guard = scoped ? withReplayRecheck(deps, ctx, key!, scoped) : options.guard;
+  // 命令事务（首次 / 重放 / 失败回查，以最后一次成功的 guard.before 为准）采用的数据范围：回执裁剪必须用它，
+  // 不能用入口 ctx 的旧范围——重放等锁期间只收回部分范围时，单据仍可见，但范围外员工的标识要按当前范围裁掉（DEC-993）。
+  let adopted: EmploymentContext['scope'];
+  let adoptedScope = false;
+  const rechecked = scoped ? withReplayRecheck(deps, ctx, key!, scoped) : undefined;
+  const guard: CommandGuard | undefined = rechecked
+    ? {
+        ...rechecked,
+        before: async (tx) => {
+          await rechecked.before(tx);
+          adopted = (await commandContext(tx, deps, ctx)).scope;
+          adoptedScope = true;
+        },
+      }
+    : options.guard;
   const result = await runCommand(deps.db, ctx, {
     id: key,
     fingerprint: {
@@ -641,8 +657,12 @@ export async function runWrite(
     );
   const payload = result.body as { revision?: number } | null;
   if (payload?.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
-  const disclosed = await discloseAssessmentConflictReceipt(deps, ctx, result.body);
-  const body = options.project ? await options.project(disclosed) : await trimEmploymentResponse(deps, ctx, disclosed);
+  // 只换范围：事务内的 authorize 已随事务结束，不能带出事务外使用。
+  const current = adoptedScope ? { ...ctx, scope: adopted } : ctx;
+  const disclosed = await discloseAssessmentConflictReceipt(deps, current, result.body);
+  const body = options.project
+    ? await options.project(disclosed, current)
+    : await trimEmploymentResponse(deps, current, disclosed);
   return c.json(body, result.status);
 }
 

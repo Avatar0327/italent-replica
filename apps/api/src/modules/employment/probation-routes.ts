@@ -243,7 +243,7 @@ function registerRegularizationDraft(router: Hono<TenantEnv>, deps: TenantRouteD
       async (tx, context) => ({ status: 200, body: await saveRegularizationDraft(tx, context, id, input) }),
       {
         guard: probationWriteGuard(deps, ctx, 'create', controls, [id]),
-        project: (body) => trimRegularizationDraft(deps, ctx, body),
+        project: (body, current) => trimRegularizationDraft(deps, current, body),
       },
     );
   });

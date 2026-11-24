@@ -12,6 +12,8 @@ import type { EmploymentContext } from './types.js';
 
 // DEC-142：全局账号命令会依次进入多个租户，持锁记录也必须按租户隔离。
 const settingKey = (tenantId: string) => `italent.transfer_employee_locks_${tenantId.replaceAll('-', '')}`;
+// DEC-993：同单写入口把所有会阻塞的取锁做完、读完授权后封口——封口后本事务再需要新锁一律 409，不再等锁。
+const sealKey = (tenantId: string) => `italent.transfer_locks_sealed_${tenantId.replaceAll('-', '')}`;
 const array = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
 
 async function participants(
@@ -58,6 +60,45 @@ async function participants(
   }
 }
 
+async function isSealed(tx: Tx, ctx: EmploymentContext) {
+  const [row] = rowsOf<{ value: string | null }>(
+    await tx.execute(sql`SELECT current_setting(${sealKey(ctx.tenantId)}, true) AS value`),
+  );
+  return row?.value === 'on';
+}
+
+async function heldIds(tx: Tx, ctx: EmploymentContext): Promise<string[]> {
+  const [setting] = rowsOf<{ value: string | null }>(
+    await tx.execute(sql`SELECT current_setting(${settingKey(ctx.tenantId)}, true) AS value`),
+  );
+  return setting?.value ? (JSON.parse(setting.value) as string[]) : [];
+}
+
+/** 现在重新规划出的参与员工是否都已在本事务的持锁集合内（只读、不取锁）：取锁之后集合又变大则为 false。 */
+export async function transferLocksCover(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  extra: readonly string[] = [],
+): Promise<boolean> {
+  const held = new Set(await heldIds(tx, ctx));
+  const planned = await participants(
+    tx,
+    ctx,
+    employeeId.toLowerCase(),
+    extra.map((id) => id.toLowerCase()),
+  );
+  return planned.every((id) => held.has(id));
+}
+
+/**
+ * 封口（DEC-993 单入口）：调用方已取齐全部会阻塞的锁、且 transferLocksCover 为真之后、读授权输入之前调用。
+ * 事务本地设置，跟随事务 / 保存点回滚；封口后 acquire 遇到未持有的参与员工直接 409，不再等锁。
+ */
+export async function sealTransferLocks(tx: Tx, ctx: EmploymentContext): Promise<void> {
+  await tx.execute(sql`SELECT set_config(${sealKey(ctx.tenantId)},'on',true)`);
+}
+
 /** 取锁结果：busy = 有参与者行被他人持锁（SKIP LOCKED 跳过）；missing = 员工主档本身不存在（F-238，两者不能混为一谈）。 */
 export type SweepLockOutcome = 'acquired' | 'busy' | 'missing';
 
@@ -73,12 +114,13 @@ async function acquire(
   employeeId = employeeId.toLowerCase();
   extra = [...new Set(extra.map((id) => id.toLowerCase()))];
   const planned = await participants(tx, ctx, employeeId, extra, rescheduledExitId);
-  const [setting] = rowsOf<{ value: string | null }>(
-    await tx.execute(sql`SELECT current_setting(${settingKey(ctx.tenantId)}, true) AS value`),
-  );
-  const held: string[] = setting?.value ? (JSON.parse(setting.value) as string[]) : [];
+  const held = await heldIds(tx, ctx);
   const needed = planned.filter((id) => !held.includes(id));
   if (!needed.length) return 'acquired';
+  // 已封口：授权输入在封口前一次读完，之后不得再因新进参与者阻塞等锁（等锁期间收回的授权会被漏掉）；放弃本事务，
+  // 由调用方按既有 TRANSFER_LOCK_PLAN_CHANGED 约定刷新后重入，重入时先取齐锁再读授权。
+  if (await isSealed(tx, ctx))
+    throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
   if (held.length && needed[0]! < held.at(-1)!)
     throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
   // F-519 的双退让源于 SKIP LOCKED 整组扫描越过忙行抢后续行，两个实例各持半组。
