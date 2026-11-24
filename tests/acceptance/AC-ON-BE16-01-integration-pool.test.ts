@@ -1,12 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import { auditEvents, commandLedger, eq, grantMembership, pgErrorCode, sql, withTenant } from '@italent/db';
 import { testDbMode, useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { lockIntegrationPoolTaskForAttachment } from '../../apps/api/src/modules/onboarding/integration-pool.js';
 import { grantStandardProfile } from '../../apps/api/src/modules/permission/standard-profiles.js';
 import { provisionTenant } from '../../apps/api/src/modules/platform/provisioning.js';
 import { newUser, seedOperator } from './support/platform-api.js';
 import { cmd, tenantApi, type RequestOptions } from './support/tenant-api.js';
+
+/**
+ * F-555：本文件的用例与钩子超时放宽到 120 秒（只作用于本文件；vitest.config.ts 的全局 30 秒与 CI 的 --testTimeout 不动，断言与用例不动）。
+ * 为什么：每个用例都要 provisionTenant 建完整租户并授标准档案（约 1.7～3.6 秒），双连接用例还要等锁；共享 PG16 被其它会话抢占时 DDL / 建租户的耗时会被成倍拖长。
+ * 单条用时本机实测最长 3.6 秒；共享 PG16 冒烟（app_owner）里同 sha 单条 2.6～30 秒以上、超时的用例两轮不同、与负载无单调关系，
+ * 120 秒在那一轮全过、断言失败 0。
+ */
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 const testDb = useTestDb();
 const path = '/api/tenant/onboarding/integration/task-pool';

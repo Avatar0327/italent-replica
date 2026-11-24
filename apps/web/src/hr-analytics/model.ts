@@ -117,6 +117,9 @@ export function detailTable(data: DashboardDetail): DisplayTable {
 }
 
 export const readStatus = (error: unknown) => (error instanceof ApiError ? error.status : undefined);
+// 组织候选 ID 校验放在纯模型里，供不含 JSX 的流程模型与验收测试共用
+export const candidateUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function canRetryRead(error: unknown) {
   const status = readStatus(error);
   return status === 429 || status === 0 || (status !== undefined && status >= 500);

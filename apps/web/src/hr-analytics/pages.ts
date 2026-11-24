@@ -3,6 +3,7 @@ import {
   HR_DASHBOARD_OBJECT,
   HR_MOVEMENT_OBJECT,
   HR_MOVEMENT_REPORT_OBJECT,
+  HR_PROCESS_DASHBOARD_OBJECT,
   HR_STRUCTURE_OBJECT,
 } from '@italent/domain';
 import { lazyPage, type ModulePages } from '../foundation/page-registry.js';
@@ -14,6 +15,7 @@ export const deliveredTabs = [
   { path: 'management', label: m.management, objectCode: HR_DASHBOARD_OBJECT },
   { path: 'structure', label: m.structure, objectCode: HR_STRUCTURE_OBJECT },
   { path: 'movement', label: m.movement, objectCode: HR_MOVEMENT_OBJECT },
+  { path: 'process', label: m.process, objectCode: HR_PROCESS_DASHBOARD_OBJECT },
 ] as const;
 
 export const pages: ModulePages = {

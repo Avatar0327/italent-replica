@@ -21,6 +21,14 @@ import { entryLifecyclePort } from '../../apps/api/src/modules/employment/onboar
 import { addPending, entryWorld, portContext } from './AC-EN-BE2a-support.js';
 import { seedTenantWithMember } from './support/tenant-api.js';
 
+/**
+ * F-555：本文件的用例与钩子超时放宽到 120 秒（只作用于本文件；vitest.config.ts 的全局 30 秒与 CI 的 --testTimeout 不动，断言与用例不动）。
+ * 为什么：migrateBefore 用例要先建库并迁移到“前一结构”（约 1.5 秒，228 条迁移同一事务的 DDL），再造数据、补跑余下迁移；共享 PG16 被其它会话抢占时 DDL 与建库 / 删库（FORCE）会拖长。
+ * 单条用时本机实测最长 2.0 秒；共享 PG16 冒烟（app_owner）里同 sha 单条 2.6～30 秒以上、超时的用例两轮不同、与负载无单调关系，
+ * 120 秒在那一轮全过、断言失败 0。
+ */
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
+
 const testDb = useTestDb();
 const now = new Date('2026-10-20T08:00:00Z');
 const pendingDate = '2026-10-22';

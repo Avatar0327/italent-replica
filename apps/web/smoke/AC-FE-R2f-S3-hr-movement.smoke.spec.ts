@@ -13,6 +13,7 @@ const capacity = '10000000-0000-4000-8000-000000000092';
 const type = '["leave","甲 & / +"]';
 const reason = '["leave","甲 & / +",null]';
 const months = movementMonths(today)!;
+const monthHeaders = ['统计期间', ...months.map(({ key }) => key)];
 
 function snapshot(page: Page, objects: string[]) {
   return page.route('**/permission/me/snapshot', (route) =>
@@ -160,6 +161,10 @@ test('AC-FE-R2f-04 部门、月份、双环、独立编制和实习生占位', a
   expect(
     await page.getByRole('article').evaluateAll((items) => items.map((item) => item.getAttribute('aria-label'))),
   ).toEqual(HR_MOVEMENT_COMPONENTS.map(({ name }) => name));
+  for (const code of ['6.25', '6.26', '6.28'] as const)
+    await expect(card(page, code).getByRole('columnheader'), `${code} 应继续按月份显示统计期间`).toHaveText(
+      monthHeaders,
+    );
   await select(page, '部门', prefix + '部门');
   await query(page).click();
   await expect(page.getByText(/部门 ZZ_FER2F_S3_部门（包含下级）/)).toBeVisible();
