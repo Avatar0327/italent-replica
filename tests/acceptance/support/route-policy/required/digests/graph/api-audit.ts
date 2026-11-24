@@ -43,6 +43,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/audit/establishment-capacity.ts#capacityAuditChanges': ['#PART_FIELDS'],
   'apps/api/src/audit/establishment-capacity.ts#visibleCapacityParts': ['#PART_FIELDS'],
+  'apps/api/src/audit/failures.ts#CommandFailureError': ['#storageFailureMessage'],
   'apps/api/src/audit/failures.ts#failureResponse': ['#CommandFailureError'],
   'apps/api/src/audit/failures.ts#isDefiniteFailure': ['#CommandFailureError'],
   'apps/api/src/audit/failures.ts#recordCommandFailure': [

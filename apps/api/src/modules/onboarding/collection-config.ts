@@ -15,6 +15,7 @@ import {
 } from '@italent/db';
 import { not, type SQL } from 'drizzle-orm';
 import { recordAudit } from '../../audit/record.js';
+import { asUuid, lockKey } from '../../advisory-lock.js';
 import { assertRevision } from '../employment/context.js';
 import { type BusinessContext } from '../job/context.js';
 import type { ModuleScope } from '../permission/module-access.js';
@@ -41,10 +42,16 @@ const headOf = (kind: CollectionConfigKind) => (kind === 'collectionTemplates' ?
 const identity = (tenantId: string, id: string, table: typeof templates | typeof rules) =>
   and(eq(table.tenantId, tenantId), eq(table.id, id));
 
+/** 租户采集配置锁键：租户 UUID 走公共函数转规范文本，大小写变体取同一把锁（F-491，DEC-374）。 */
+const collectionGate = (tenantId: string) => lockKey('onboarding:collection:', asUuid(tenantId));
+
 /** 规则范围及其模板都在同一租户配置锁下检查和保存。人员匹配可按同序取得共享锁。 */
 export async function lockCollectionConfig(tx: Tx, tenantId: string, mode: 'write' | 'read') {
-  const lock = mode === 'write' ? sql`pg_advisory_xact_lock` : sql`pg_advisory_xact_lock_shared`;
-  await tx.execute(sql`SELECT ${lock}(hashtextextended(${`onboarding:collection:${tenantId}`}, 0))`);
+  if (mode === 'write') {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${collectionGate(tenantId)})`);
+    return;
+  }
+  await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(${collectionGate(tenantId)})`);
 }
 
 export async function templateFields(tx: Tx, tenantId: string, templateId: string) {

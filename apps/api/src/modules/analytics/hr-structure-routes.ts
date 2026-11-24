@@ -4,12 +4,12 @@
  *   看板筛选 = institutionId / institutionIncludeChildren、departmentId / departmentIncludeChildren、sequenceId、
  *   employmentForm、employmentType（两个“包含下级”缺省 true）；
  * - GET …/hr-structure/components/:code?group=&page=&pageSize=：构成数字（或某个分组）的人员明细，分页；
+ * - GET …/hr-structure/components/:code/export：授权明细全量 CSV，成功交付前写操作日志（F-547）；
  * - GET …/hr-structure/reports/:report?asOf=&employType=&departmentId=&departmentIncludeChildren=：
  *   一级组织 × 列的报表（字典维度按字典展开）。
  * - GET …/hr-structure/reports/quality/export?<页面当前筛选>&mode=data|formula：员工素质结构的 xlsx 下载
  *   （F-482，DEC-803②、DEC-809；岗位结构页签不导出）。
- * 看板对象 TenantBase.HrStructure、报表对象 TenantBase.HrStructureReport，各自的查看权与数据范围。看板、明细和报表查询只读，
- * 不写台账 / 审计；导出沿用报表对象的查看权与数据范围（能看就能导出），每次成功导出写一条对象操作日志（原站未测，复刻口径）。
+ * 看板对象 TenantBase.HrStructure、报表对象 TenantBase.HrStructureReport，各自的查看权与数据范围。
  */
 import { isUuid, withTenant, type Tx } from '@italent/db';
 import {
@@ -26,8 +26,9 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery } from '../job/context.js';
 import { objectContext } from '../permission/module-route-access.js';
 import { registerPersonScopedObject } from '../permission/scope-resolver.js';
+import { COMPONENT_EXPORT_PAGE, exportComponent, validateComponentExportQuery } from './component-export.js';
 import { analyticsScope } from './hr-dashboard-routes.js';
-import { jobDictionary, orgTree, structurePeople } from './hr-structure.js';
+import { jobDictionary, orgTree, structurePeople, type StructurePerson } from './hr-structure.js';
 import { exportMode, exportStatReport } from './stat-report-export.js';
 import { qualitySheet } from './stat-report-layout.js';
 import {
@@ -120,6 +121,56 @@ function loadPeople(deps: TenantRouteDeps, ctx: Analytics, types: readonly strin
   });
 }
 
+function componentQuery(c: Context) {
+  const component = HR_STRUCTURE_COMPONENTS.find((item) => item.code === c.req.param('code'));
+  if (!component || component.kind === 'unavailable') throw new AppError('NOT_FOUND', '组件不存在或没有数据源');
+  const group = groupQuery(c);
+  if (group !== undefined && !isGrouped(component.code)) throw new AppError('VALIDATION_FAILED', '该组件没有分组');
+  return { component, group, filter: boardFilter(c) };
+}
+
+function projectMember(p: StructurePerson) {
+  return { id: p.id, employeeId: p.id, organizationId: p.departmentId };
+}
+
+function registerComponentExportRoute(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get(`${HR_STRUCTURE_BASE}/components/:code/export`, async (c) => {
+    const ctx = await boardContext(c, deps);
+    validateComponentExportQuery(c, [
+      'asOf',
+      'institutionId',
+      'institutionIncludeChildren',
+      'departmentId',
+      'departmentIncludeChildren',
+      'sequenceId',
+      'employmentForm',
+      'employmentType',
+      'group',
+    ]);
+    const { component, group, filter } = componentQuery(c);
+    const { lookup, people } = await loadPeople(deps, ctx, BOARD_EMPLOY_TYPES, filter);
+    const members = componentMembers(component.code, people, lookup, group)!;
+    const total = members.length;
+    return exportComponent(
+      c,
+      deps,
+      ctx.base,
+      {
+        board: 'hr-structure',
+        object: HR_STRUCTURE_OBJECT,
+        component,
+        asOf: ctx.asOf,
+        columns: [
+          { key: 'id', label: '明细行 ID' },
+          { key: 'employeeId', label: '员工 ID' },
+          { key: 'organizationId', label: '组织 ID' },
+        ],
+      },
+      { total, items: total > COMPONENT_EXPORT_PAGE.limit ? [] : members.map(projectMember) },
+    );
+  });
+}
+
 export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(HR_STRUCTURE_BASE, async (c) => {
     const ctx = await boardContext(c, deps);
@@ -133,11 +184,7 @@ export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantR
 
   router.get(`${HR_STRUCTURE_BASE}/components/:code`, async (c) => {
     const ctx = await boardContext(c, deps);
-    const component = HR_STRUCTURE_COMPONENTS.find((item) => item.code === c.req.param('code'));
-    if (!component || component.kind === 'unavailable') throw new AppError('NOT_FOUND', '组件不存在或没有数据源');
-    const group = groupQuery(c);
-    if (group !== undefined && !isGrouped(component.code)) throw new AppError('VALIDATION_FAILED', '该组件没有分组');
-    const filter = boardFilter(c);
+    const { component, group, filter } = componentQuery(c);
     const page = pageQuery(c);
     const { lookup, people } = await loadPeople(deps, ctx, BOARD_EMPLOY_TYPES, filter);
     const members = componentMembers(component.code, people, lookup, group)!;
@@ -146,14 +193,14 @@ export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantR
       ...component,
       group: group ?? null,
       total: members.length,
-      items: members
-        .slice(page.offset, page.offset + page.limit)
-        .map((p) => ({ id: p.id, employeeId: p.id, organizationId: p.departmentId })),
+      items: members.slice(page.offset, page.offset + page.limit).map(projectMember),
       page: page.page,
       pageSize: page.pageSize,
       hasDataPermission: ctx.scope.hasDataPermission,
     });
   });
+
+  registerComponentExportRoute(router, deps);
 
   router.get(`${HR_STRUCTURE_BASE}/reports/:report`, async (c) => {
     const ctx = await reportContext(c, deps);

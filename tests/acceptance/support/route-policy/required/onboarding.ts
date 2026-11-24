@@ -1,112 +1,130 @@
+/** BE-16 16b-0。任务池为租户级任职设置，配置字段与管理员能力在命令内再次复核。 */
+import { ONBOARDING_COLLECTION } from './onboarding-collection.js';
 import { PREPARATION_REQUIRED } from './onboarding-preparation.js';
-import type { Evidence, Need, Obligation, RequiredTable } from './types.js';
+import type { Evidence, Obligation, RequiredTable } from './types.js';
 
-const BASE = '/api/tenant/onboarding';
-const ROUTES = 'apps/api/src/modules/onboarding/collection-config-routes.ts';
-const CONFIG = 'apps/api/src/modules/onboarding/collection-config.ts';
-const SCOPE = 'apps/api/src/modules/onboarding/collection-config-scope.ts';
-const OBJECT = 'TenantBase.EmploymentSettings';
+const BASE = '/api/tenant/onboarding/integration/task-pool';
+const ROUTES = 'apps/api/src/modules/onboarding/integration-pool-routes.ts';
+const ACCESS = 'apps/api/src/modules/onboarding/integration-pool-access.ts';
+const SETTINGS = 'TenantBase.EmploymentSettings';
+const NONE = { scope: 'none' } as const;
+const SETTINGS_CONST: Evidence = {
+  role: 'const',
+  unit: `${ACCESS}#POOL_SETTINGS`,
+  anchor: 'MODULE_OBJECTS.employmentSettings.code',
+};
+const ALIAS_CONST: Evidence = {
+  role: 'const',
+  unit: `${ACCESS}#POOL_WRITE_ALIAS`,
+  anchor: "'tenant.employment.configuration.write'",
+};
+const FIELD_CONST: Evidence = {
+  role: 'const',
+  unit: `${ACCESS}#POOL_FIELDS`,
+  anchor: "['integrationTaskPool']",
+};
+const call = (route: string, anchor: string): Evidence => ({ role: 'call', unit: `${ROUTES}#route:${route}`, anchor });
 
-const apiCall = (method: string, path: string, anchor: string): Evidence => ({
-  role: 'call',
-  unit: `${ROUTES}#route:${method} ${path}`,
-  anchor,
-});
-const inFn = (role: Evidence['role'], file: string, name: string, anchor: string): Evidence => ({
-  role,
-  unit: `${file}#${name}`,
-  anchor,
-});
-
-const ruleRead = inFn('scope', ROUTES, 'readRule', 'ruleScopeSql(ctx, await collectionScope(deps, tx, ctx),');
-const bindOrg = inFn('impl', ROUTES, 'bindCollectionWriteScope', 'requireCollectionOrgScope(tx, ctx, scope, orgIds)');
-const bindTarget = inFn(
-  'impl',
-  ROUTES,
-  'bindCollectionWriteScope',
-  'requireCollectionTarget(tx, { ctx, scope }, kind, id)',
-);
-const scopes = {
-  ruleList: { need: { scope: 'list', predicate: 'onboarding.ruleScopeSql' }, at: [ruleRead] },
-  ruleDetail: { need: { scope: 'guard', guard: 'onboarding.ruleScopeSql' }, at: [ruleRead] },
-  createRule: {
-    need: { scope: 'guard', guard: 'onboarding.collectionConfigScope' },
-    at: [inFn('scope', CONFIG, 'writeCollectionResource', 'await scope!.orgs(input.orgIds)'), bindOrg],
-  },
-  scopedTarget: {
-    need: { scope: 'guard', guard: 'onboarding.collectionConfigScope' },
-    at: [inFn('scope', ROUTES, 'writeConfig', 'if (id) await scope!.target(id)'), bindTarget],
-  },
-} satisfies Record<string, { need: Need; at: Evidence[] }>;
-
-function obligations(
-  method: string,
-  path: string,
-  operation: 'view' | 'create' | 'update',
-  scope?: keyof typeof scopes,
-): Obligation[] {
-  const read = operation === 'view';
-  const entry = apiCall(method, path, read ? (scope ? 'readRule(c, deps' : 'readConfig(c, deps,') : 'writeConfig(');
-  const scoped = scope ? scopes[scope] : undefined;
-  const admin = inFn(
-    'impl',
-    ROUTES,
-    read ? 'requireConfigView' : 'requireConfigWrite',
-    read ? "action: 'admin.other_settings'" : "action: 'tenant.employment.configuration.write'",
-  );
-  const object = read
-    ? inFn('impl', ROUTES, 'requireConfigView', "action: 'object.view', resource: SETTINGS, fields: [kind]")
-    : inFn(
-        'impl',
-        ROUTES,
-        'requireConfigWrite',
-        'await requireObjectWrite(authorize, ctx, { objectCode: SETTINGS, operation, payload: { [kind]: true } })',
-      );
-  const entries: Obligation[] = [
+function read(route: string, anchor: string): Obligation[] {
+  const endpoint = call(route, anchor);
+  const unit = `${ACCESS}#requirePoolView`;
+  return [
     {
       perm: 'admin:other_settings',
-      facts: read ? ['admin:admin.*'] : ['admin:tenant.employment.configuration'],
-      need: { scope: 'none' },
-      at: [entry, admin],
+      need: NONE,
+      facts: ['admin:admin.*'],
+      at: [
+        endpoint,
+        {
+          role: 'impl',
+          unit,
+          anchor: "await requirePermission(authorize, { ...ctx, action: 'admin.other_settings' })",
+        },
+      ],
     },
     {
-      perm: `obj:${OBJECT}:${operation}`,
-      facts: read ? ['object:object.* 动作', `objectOp:${OBJECT}:view`] : ['object:requireObjectWrite（对象写操作权）'],
-      need: scoped?.need ?? { scope: 'none' },
+      perm: `obj:${SETTINGS}:view`,
+      need: NONE,
+      facts: ['object:object.* 动作', `objectOp:${SETTINGS}:view`],
       at: [
-        entry,
-        object,
-        inFn('const', SCOPE, 'SETTINGS', 'MODULE_OBJECTS.employmentSettings.code'),
-        ...(scoped?.at ?? []),
+        endpoint,
+        { role: 'impl', unit, anchor: "action: 'object.view', resource: POOL_SETTINGS, fields: POOL_FIELDS" },
+        SETTINGS_CONST,
+        FIELD_CONST,
       ],
     },
   ];
-  if (scoped && 'guard' in scoped.need) entries.push({ perm: `guard:${scoped.need.guard}`, at: [entry, ...scoped.at] });
-  return entries;
+}
+
+function actions(route: string, operation: 'create' | 'update'): Obligation {
+  return {
+    perm: `obj:${SETTINGS}:${operation}`,
+    purpose: 'disclosure:availableActions',
+    need: NONE,
+    at: [
+      call(route, `await poolAvailableActions(authorize, tenant, '${operation}')`),
+      {
+        role: 'impl',
+        unit: `${ACCESS}#poolAvailableActions`,
+        anchor: 'resource: POOL_SETTINGS, fields: POOL_FIELDS',
+      },
+      SETTINGS_CONST,
+      FIELD_CONST,
+    ],
+  };
+}
+
+function write(route: string, operation: 'create' | 'update'): Obligation[] {
+  const endpoint = call(route, `poolWrite(c, deps, '${operation}'`);
+  const guard: Evidence = {
+    role: 'call',
+    unit: `${ROUTES}#poolWrite`,
+    anchor: 'before: (tx) => requirePoolWrite(authorizeInTransaction(deps.authorize, tx), tenant, operation)',
+  };
+  return [
+    {
+      perm: 'admin:other_settings',
+      need: NONE,
+      facts: ['admin:tenant.employment.configuration'],
+      at: [
+        endpoint,
+        guard,
+        {
+          role: 'impl',
+          unit: `${ACCESS}#requirePoolWrite`,
+          anchor: 'await requirePermission(authorize, { ...ctx, action: POOL_WRITE_ALIAS, resource: POOL_SETTINGS })',
+        },
+        ALIAS_CONST,
+      ],
+    },
+    {
+      perm: `obj:${SETTINGS}:${operation}`,
+      need: NONE,
+      facts: ['object:requireObjectWrite（对象写操作权）'],
+      at: [
+        endpoint,
+        guard,
+        {
+          role: 'impl',
+          unit: `${ACCESS}#requirePoolWrite`,
+          anchor: 'objectCode: POOL_SETTINGS, operation, payload: { integrationTaskPool: true }',
+        },
+        SETTINGS_CONST,
+      ],
+    },
+  ];
 }
 
 export const ONBOARDING: RequiredTable = {
+  ...ONBOARDING_COLLECTION,
   ...PREPARATION_REQUIRED,
-  [`GET ${BASE}/collection-templates`]: obligations('GET', '/collection-templates', 'view'),
-  [`GET ${BASE}/collection-templates/:id`]: obligations('GET', '/collection-templates/:id', 'view'),
-  [`POST ${BASE}/collection-templates`]: obligations('POST', '/collection-templates', 'create'),
-  [`PATCH ${BASE}/collection-templates/:id`]: obligations(
-    'PATCH',
-    '/collection-templates/:id',
-    'update',
-    'scopedTarget',
+  [`GET ${BASE}/categories`]: read(
+    'GET /categories',
+    'await requirePoolView(authorizeInTransaction(deps.authorize, tx), tenantOf(c))',
   ),
-  [`DELETE ${BASE}/collection-templates/:id`]: obligations(
-    'DELETE',
-    '/collection-templates/:id',
-    'update',
-    'scopedTarget',
-  ),
-  [`GET ${BASE}/collection-rules`]: obligations('GET', '/collection-rules', 'view', 'ruleList'),
-  [`GET ${BASE}/collection-rules/:id`]: obligations('GET', '/collection-rules/:id', 'view', 'ruleDetail'),
-  [`POST ${BASE}/collection-rules`]: obligations('POST', '/collection-rules', 'create', 'createRule'),
-  [`PATCH ${BASE}/collection-rules/:id`]: obligations('PATCH', '/collection-rules/:id', 'update', 'scopedTarget'),
-  [`DELETE ${BASE}/collection-rules/:id`]: obligations('DELETE', '/collection-rules/:id', 'update', 'scopedTarget'),
-  [`GET ${BASE}/collection-settings`]: obligations('GET', '/collection-settings', 'view'),
-  [`PUT ${BASE}/collection-settings`]: obligations('PUT', '/collection-settings', 'update'),
+  [`GET ${BASE}`]: [...read('GET /', 'await requirePoolView(authorize, tenant)'), actions('GET /', 'create')],
+  [`GET ${BASE}/:id`]: [...read('GET /:id', 'await requirePoolView(authorize, tenant)'), actions('GET /:id', 'update')],
+  [`POST ${BASE}`]: write('POST /', 'create'),
+  [`PATCH ${BASE}/:id`]: write('PATCH /:id', 'update'),
+  [`DELETE ${BASE}/:id`]: write('DELETE /:id', 'update'),
 };

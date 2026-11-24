@@ -86,6 +86,32 @@ async function recover(f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe('AC-DM-09 / F-317 P2-1 原始批次键的统一故障出口（PG / PGlite）', () => {
+  it('DEC-956 已提交批量子项后总回执写入回滚，原键仍可恢复整批', async () => {
+    const f = await fixture('aggregate');
+    const { x, exits, init } = f;
+    await x.db.execute(
+      sql.raw(`
+      CREATE FUNCTION f537_batch_receipt_fault() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'synthetic batch receipt failure' USING ERRCODE = '53100'; END $$`),
+    );
+    await x.db.execute(
+      sql.raw(`
+      CREATE TRIGGER f537_batch_receipt_fault BEFORE INSERT ON command_ledger FOR EACH ROW
+      WHEN (NEW.command_id = '${init.idempotencyKey}' AND NEW.response_status < 400)
+      EXECUTE FUNCTION f537_batch_receipt_fault()`),
+    );
+    try {
+      const interrupted = await x.session.request('POST', path, init);
+      expect(interrupted.status).toBe(503);
+      for (const exit of exits) expect(await x.requestRows(exit.id)).toHaveLength(1);
+      expect((await lookup(x, init.idempotencyKey)).status, '子项已提交时整个批次仍未知').toBe(404);
+    } finally {
+      await x.db.execute(sql`DROP TRIGGER f537_batch_receipt_fault ON command_ledger`);
+      await x.db.execute(sql`DROP FUNCTION f537_batch_receipt_fault()`);
+    }
+    await recover(f);
+  });
+
   it.each<Stage>(['manifest', 'child', 'aggregate', 'aggregate-read', 'visibility-read'])(
     '%s：故障分类、原键回查与恢复均不受内部子命令影响',
     async (stage) => {

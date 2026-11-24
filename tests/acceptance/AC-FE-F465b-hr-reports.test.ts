@@ -257,6 +257,47 @@ describe('AC-FE-F465b / DEC-763/802/803 组织员工报表', () => {
     expect(url).not.toContain('page=');
     expect(url).not.toContain('pageSize=');
   });
+  it('AC-FE-R2f-11 旧名册 1.01 导出限流禁用查询和导出，到期后可手动重试', async () => {
+    await render('1.01');
+    const queryButton = button('查询')!;
+    const exportButton = button('导出')!;
+    expect(queryButton.disabled).toBe(false);
+    expect(exportButton.disabled).toBe(false);
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    const limited = vi.fn((_path: string) =>
+      Promise.resolve(
+        Response.json({ error: { code: 'REQUEST_RATE_LIMITED' } }, { status: 429, headers: { 'Retry-After': '60' } }),
+      ),
+    );
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const path = String(input);
+      return path.startsWith('/api/tenant/hr-analysis/reports/1.01/export?') ? limited(path) : original(input, init);
+    });
+
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    try {
+      await act(async () => exportButton.click());
+      expect(limited).toHaveBeenCalledTimes(1);
+      expect(text()).toContain('请求过于频繁，请稍后重试');
+      expect.soft(queryButton.disabled, '限流期间查询按钮禁用').toBe(true);
+      expect.soft(exportButton.disabled, '限流期间导出按钮禁用').toBe(true);
+      await act(async () => exportButton.click());
+      expect(limited, '限流期间重复点击不发额外导出请求').toHaveBeenCalledTimes(1);
+
+      await act(() => vi.advanceTimersByTimeAsync(59_999));
+      expect(queryButton.disabled).toBe(true);
+      expect(exportButton.disabled).toBe(true);
+      await act(() => vi.advanceTimersByTimeAsync(1));
+      expect(queryButton.disabled).toBe(false);
+      expect(exportButton.disabled).toBe(false);
+      expect(limited, '到期后仍需人工点击').toHaveBeenCalledTimes(1);
+      await act(async () => exportButton.click());
+      expect(limited).toHaveBeenCalledTimes(2);
+      expect(limited.mock.calls[1]).toEqual(limited.mock.calls[0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('离开再返回、后退再前进时丢弃旧查询回调，重新读取当前报表', async () => {
     await render('1.01');
     let finish: ((response: Response) => void) | undefined;
