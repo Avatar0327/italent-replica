@@ -17,8 +17,15 @@ import {
 } from '@italent/domain';
 import { approvalError, canonicalId, rowsOf, type ApprovalContext } from './context.js';
 import type { ProcessView, VersionView } from './definitions.js';
-import { findSourceUsages, referencingProcessCounts } from './source-usages.js';
-import { auditVariable, loadVariable, variableSelection as selection, type VariableRow } from './variables.js';
+import { referencingProcessCounts } from './source-usages.js';
+import {
+  auditVariable,
+  loadVariable,
+  lockVariableBatch,
+  recordCreatedVariable,
+  variableSelection as selection,
+  type VariableRow,
+} from './variables.js';
 
 export type Slot = 'approver' | 'empty_approver';
 const AUTO_DESCRIPTION = '通过指定人员自动生成的公共变量';
@@ -185,6 +192,7 @@ async function createAuto(
       .onConflictDoNothing({ target: [table.tenantId, table.code] })
       .returning(selection);
     if (!row) continue;
+    recordCreatedVariable(tx, row.id);
     await auditVariable(tx, ctx, 'auto_create', null, row);
     return row;
   }
@@ -198,14 +206,27 @@ async function changeAuto(
   change: { defaultValue: unknown } | { status: 'disabled' },
   action: 'auto_update' | 'auto_disable',
   extra: Record<string, unknown>,
-): Promise<VariableRow> {
+  systemRetirement = false,
+): Promise<void> {
   const [after] = await tx
     .update(table)
-    .set({ ...change, revision: before.revision + 1, updatedBy: ctx.userId, updatedAt: ctx.now })
-    .where(and(eq(table.tenantId, ctx.tenantId), eq(table.id, before.id)))
+    // S1 的 updated_by 非空，系统停用保留原值，操作者以同事务审计为准（F-326-L §2.4）。
+    .set({
+      ...change,
+      revision: before.revision + 1,
+      updatedBy: systemRetirement ? before.updatedBy : ctx.userId,
+      updatedAt: ctx.now,
+    })
+    .where(
+      and(
+        eq(table.tenantId, ctx.tenantId),
+        eq(table.id, before.id),
+        // 生命周期与保存收尾只传 enabled；保留设计器为改类型而替换未停用占位变量的既有行为。
+        action === 'auto_disable' ? eq(table.status, before.status) : undefined,
+      ),
+    )
     .returning(selection);
-  await auditVariable(tx, ctx, action, before, after!, extra);
-  return after!;
+  if (after) await auditVariable(tx, ctx, action, before, after, extra, systemRetirement);
 }
 
 // ───────── 保存：指定人员 → 公共变量 ─────────
@@ -344,7 +365,7 @@ export function assertNoMergedDuplicate(node: ApprovalNode) {
 
 // ───────── 保存收尾：不再被引用的自动变量停用 ─────────
 
-const variableIdsOf = (nodes: Iterable<ApprovalNode>): string[] => {
+export const variableIdsOf = (nodes: Iterable<ApprovalNode>): string[] => {
   const ids = new Set<string>();
   for (const node of nodes) {
     for (const slot of ['approver', 'empty_approver'] as const)
@@ -359,7 +380,7 @@ const variableIdsOf = (nodes: Iterable<ApprovalNode>): string[] => {
  * 不按变量当前状态筛：状态会被并发的停用 / 重新启用翻转，按它筛出的集合就不是上界，
  * 保存开始时看到“已停用”的变量，到收尾时可能已被重新启用（审查 rf326s7a_2 P2-1）；是否真停用由收尾在锁内重读状态决定。
  */
-async function retireCandidates(tx: Tx, ctx: ApprovalContext, scope: MaterializeScope): Promise<string[]> {
+export async function retireCandidates(tx: Tx, ctx: ApprovalContext, scope: MaterializeScope): Promise<string[]> {
   const referenced = variableIdsOf(scope.previous?.values() ?? []);
   const rows = await tx
     .select({ id: table.id })
@@ -405,27 +426,41 @@ export async function lockSaveBatch(
           modes.set(source.value, 'share');
   const update = await retireCandidates(tx, ctx, scope);
   for (const id of update) modes.set(id, 'update');
-  for (const [id, mode] of [...modes].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
-    await tx.execute(
-      mode === 'update'
-        ? sql`SELECT id FROM approval_variables WHERE tenant_id=${ctx.tenantId}::uuid AND id=${id}::uuid FOR UPDATE`
-        : sql`SELECT id FROM approval_variables WHERE tenant_id=${ctx.tenantId}::uuid AND id=${id}::uuid FOR SHARE`,
-    );
-  }
+  await lockVariableBatch(
+    tx,
+    ctx,
+    [...modes].map(([id, mode]) => ({ id, mode })),
+  );
   return { update };
 }
 
-/**
- * 全部在用版本（草稿 / 当前 / 仍有可恢复实例的旧版本）都不再引用才停用（DEC-859）。
- * 只处理 lockSaveBatch 已锁住的候选，且只读不加锁地重读状态：不重新筛候选（状态可能在取锁等待期间翻转），
- * 也不再 FOR UPDATE（对只持 SHARE 的行就是升级）。本次保存新建的自动变量必被自己的节点引用，不在候选里。
- */
-export async function retireUnreferencedAutoVariables(tx: Tx, ctx: ApprovalContext, locks: SaveLocks): Promise<void> {
+interface RetirementOptions {
+  usage: 'lifecycle';
+  after: (id: string) => Record<string, unknown>;
+  context: (id: string) => ApprovalContext;
+}
+
+/** 只处理已持 UPDATE 的候选，锁后按对应口径扫描。状态守卫与审计共用（F-326-L §2.4、§8）。 */
+export async function retireUnreferencedAutoVariables(
+  tx: Tx,
+  ctx: ApprovalContext,
+  locks: SaveLocks,
+  options?: RetirementOptions,
+): Promise<void> {
+  const used = await referencingProcessCounts(tx, ctx.tenantId, locks.update, options?.usage);
   for (const id of locks.update) {
+    if (used.has(id)) continue;
     const current = await loadVariable(tx, ctx.tenantId, id);
     if (current.status !== 'enabled') continue;
-    if ((await findSourceUsages(tx, ctx.tenantId, { kind: 'variable', id })).length) continue;
-    await changeAuto(tx, ctx, current, { status: 'disabled' }, 'auto_disable', { reason: RETIRE_REASON });
+    await changeAuto(
+      tx,
+      options?.context(id) ?? ctx,
+      current,
+      { status: 'disabled' },
+      'auto_disable',
+      options?.after(id) ?? { reason: RETIRE_REASON },
+      options?.usage === 'lifecycle',
+    );
   }
 }
 
@@ -486,6 +521,34 @@ function pendingNeedsChoice(
 }
 
 /**
+ * 发布中段的变量取锁（F-326-L §3.1 / §3.3 / §5.4）：被替换版本引用的全部自动变量 ∪ 草稿待生效变量，
+ * 按 id 升序一批 FOR UPDATE（事务中段至多这一批）；集合为空则不取。
+ * 只锁待生效项时，旧版独有的变量（新版不再引用）发布期间没有与保存收尾 / 管理员停用互斥；之后逐个读取都是重入。
+ */
+async function lockPublishBatch(
+  tx: Tx,
+  ctx: ApprovalContext,
+  replaced: VersionView | null,
+  entries: readonly PendingEntry[],
+): Promise<void> {
+  const referenced = replaced ? variableIdsOf(replaced.nodes) : [];
+  const autoIds = referenced.length
+    ? (
+        await tx
+          .select({ id: table.id })
+          .from(table)
+          .where(and(eq(table.tenantId, ctx.tenantId), eq(table.origin, 'auto'), inArray(table.id, referenced)))
+      ).map((row) => row.id)
+    : [];
+  const ids = new Set([...autoIds, ...entries.map((entry) => entry.source.value)]);
+  await lockVariableBatch(
+    tx,
+    ctx,
+    [...ids].map((id) => ({ id, mode: 'update' as const })),
+  );
+}
+
+/**
  * 发布草稿时把节点上的待生效人员写进继承变量（同一事务，操作人为发布人）；没有待生效值返回 null，否则返回清理后的节点：
  * 变量在草稿期间被管理员改过（版本号与记录时不同）→ 409，由发布人逐个选择“采用设计器值 / 保留变量页值”后重提。
  */
@@ -495,9 +558,11 @@ export async function applyPendingAutoVariables(
   scope: MaterializeScope,
   draft: VersionView,
   resolutions: readonly PendingResolution[],
+  previous: VersionView | null,
 ): Promise<ApprovalNode[] | null> {
   const entries = pendingEntries(draft);
   assertResolutions(entries, resolutions);
+  await lockPublishBatch(tx, ctx, previous, entries);
   if (!entries.length) return null;
   const replaced = new Map<string, string>();
   const conflicts: Record<string, unknown>[] = [];

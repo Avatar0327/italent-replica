@@ -270,6 +270,10 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       56: '2ceb5a8b5a976b7e',
       // F-481-S3b：签署记录 HR 对象、只读字段与三个按钮（占位 main + 1）。
       57: '2f79070a2978cfe5',
+      // F-535：按既有任职字段预置增加返聘计划两项试用期查看权（占位 main + 1）。
+      58: 'e7c1b997f9c70f86',
+      // BE-16 16a-0（DEC-967 / DEC-415）：五类 HR 按钮及入职域对象与字段（占位 main + 1）。
+      59: 'bebebc15f976c1d9',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

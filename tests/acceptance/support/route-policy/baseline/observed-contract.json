@@ -3,6 +3,7 @@
     "approval.businessType": [
       "contract",
       "employment",
+      "entry_info_collection",
       "exit_handover",
       "idp",
       "offer",
@@ -81,6 +82,16 @@
       "add",
       "end",
       "extend"
+    ],
+    "hrAnalysis.organizationCandidateObject": [
+      "ContractBoard",
+      "HrDashboard",
+      "HrMovement",
+      "HrMovementReport",
+      "HrProcessDashboard",
+      "HrRoster",
+      "HrStructure",
+      "HrStructureReport"
     ],
     "import.rowOperation": [
       "create",
@@ -1330,6 +1341,38 @@
         "scope": [
           "creator scope",
           "requestScope"
+        ]
+      }
+    },
+    "DELETE /api/tenant/onboarding/integration/task-pool/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
         ]
       }
     },
@@ -3361,6 +3404,37 @@
         ]
       }
     },
+    "GET /api/tenant/analytics/contract-board/components/:code/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "contract-board",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ContractBoard:view"
+        ],
+        "scope": [
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/analytics/hr-dashboard": {
       "edge": {
         "anonymous": {
@@ -3423,6 +3497,37 @@
         ]
       }
     },
+    "GET /api/tenant/analytics/hr-dashboard/indicators/:code/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-dashboard",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.HrDashboard:view"
+        ],
+        "scope": [
+          "employment visibility",
+          "requestScope",
+          "scopeSql",
+          "visible()"
+        ]
+      }
+    },
     "GET /api/tenant/analytics/hr-movement": {
       "edge": {
         "anonymous": {
@@ -3455,6 +3560,37 @@
       }
     },
     "GET /api/tenant/analytics/hr-movement/components/:code": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-movement",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.HrMovement:view"
+        ],
+        "scope": [
+          "creator scope",
+          "employment visibility",
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/analytics/hr-movement/components/:code/export": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
@@ -3617,6 +3753,41 @@
         ]
       }
     },
+    "GET /api/tenant/analytics/hr-process-dashboard/components/:code/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-process-dashboard",
+      "primitives": {
+        "button": [
+          "adminScope(buttons)"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.HrProcessDashboard:view"
+        ],
+        "scope": [
+          "adminScope",
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/analytics/hr-structure": {
       "edge": {
         "anonymous": {
@@ -3649,6 +3820,37 @@
       }
     },
     "GET /api/tenant/analytics/hr-structure/components/:code": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-structure",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.HrStructure:view"
+        ],
+        "scope": [
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/analytics/hr-structure/components/:code/export": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
@@ -3738,6 +3940,31 @@
           "requestScope",
           "scope.all",
           "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/analytics/organization-candidates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-analysis",
+      "primitives": {
+        "domain": [
+          "hrAnalysis.organizationCandidateObject"
+        ],
+        "object": [
+          "objectContext"
         ]
       }
     },
@@ -4421,7 +4648,11 @@
         }
       },
       "module": "command-result",
-      "primitives": {}
+      "primitives": {
+        "guard": [
+          "command.result.registered"
+        ]
+      }
     },
     "GET /api/tenant/contracts": {
       "edge": {
@@ -6002,6 +6233,65 @@
         ]
       }
     },
+    "GET /api/tenant/employment/pending-entries/:id/esign-context": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
+        "scope": [
+          "employment visibility",
+          "scope.all"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/pending-entries/:id/esign-records": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "domain": [
+          "transfer.initiator"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ],
+        "scope": [
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/employment/probation-assessments": {
       "edge": {
         "anonymous": {
@@ -6322,6 +6612,7 @@
           "transfer.initiator"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
@@ -6965,6 +7256,62 @@
       "primitives": {
         "scope": [
           "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/esign/scenes/entry": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "fieldsOut": [
+          "trim()"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ESignSettings:view"
+        ]
+      }
+    },
+    "GET /api/tenant/esign/scenes/offer": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "fieldsOut": [
+          "trim()"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ESignSettings:view"
         ]
       }
     },
@@ -8869,6 +9216,64 @@
         ]
       }
     },
+    "GET /api/tenant/offers/:id/esign-context": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.Offer:update"
+        ],
+        "scope": [
+          "creator scope"
+        ]
+      }
+    },
+    "GET /api/tenant/offers/:id/esign-records": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ESignRecord:view",
+          "TenantBase.Offer:view"
+        ],
+        "scope": [
+          "creator scope",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/offers/:id/mail": {
       "edge": {
         "anonymous": {
@@ -9000,6 +9405,90 @@
         ],
         "objectOp": [
           "TenantBase.Offer:view"
+        ]
+      }
+    },
+    "GET /api/tenant/onboarding/integration/task-pool": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
+    "GET /api/tenant/onboarding/integration/task-pool/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
+    "GET /api/tenant/onboarding/integration/task-pool/categories": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
         ]
       }
     },
@@ -15052,7 +15541,10 @@
           "transfer.initiator"
         ],
         "fieldsIn": [
-          "requireEmploymentWrite"
+          "checkFields",
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite"
         ],
         "fieldsOut": [
           "disclose*",
@@ -15064,16 +15556,16 @@
         ],
         "object": [
           "object.* 动作",
-          "readContext(object.*)"
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
+          "checkScope",
           "employment scope",
-          "employment visibility",
-          "scope.all",
-          "scopeSql"
+          "employment visibility"
         ],
         "scopePoint": [
           "employment point"
@@ -15865,6 +16357,38 @@
         "scopePoint": [
           "employment point",
           "visibleJob"
+        ]
+      }
+    },
+    "PATCH /api/tenant/onboarding/integration/task-pool/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
         ]
       }
     },
@@ -22078,6 +22602,46 @@
         ]
       }
     },
+    "POST /api/tenant/employment/pending-entries/:id/esign-tasks": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.Employee:view"
+        ],
+        "scope": [
+          "employment visibility",
+          "scope.all"
+        ]
+      }
+    },
     "POST /api/tenant/employment/pending-entries/:id/generate-email": {
       "edge": {
         "anonymous": {
@@ -24993,6 +25557,40 @@
         ]
       }
     },
+    "POST /api/tenant/offers/:id/esign-tasks": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "object": [
+          "object.* 动作",
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.Offer:update"
+        ],
+        "scope": [
+          "creator scope"
+        ]
+      }
+    },
     "POST /api/tenant/offers/:id/invalidate": {
       "edge": {
         "anonymous": {
@@ -25268,6 +25866,38 @@
         }
       },
       "module": "offers",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "POST /api/tenant/onboarding/integration/task-pool": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
       "primitives": {
         "admin": [
           "tenant.employment.configuration"
@@ -31062,6 +31692,78 @@
         ],
         "objectOp": [
           "TenantBase.EmploymentSettings:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/esign/scenes/entry": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trim()"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ESignSettings:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/esign/scenes/offer": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "esign",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trim()"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.ESignSettings:update"
         ]
       }
     },

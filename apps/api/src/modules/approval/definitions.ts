@@ -1,3 +1,4 @@
+import { registerRetirement, registerSaveClose } from './auto-variable-lifecycle.js';
 import { assertSourceReferences } from './source-reference.js';
 import {
   applyPendingAutoVariables,
@@ -6,6 +7,7 @@ import {
   enrichProcessView,
   unselectedSpecifiedSlots,
   materializeNode,
+  retireCandidates,
   retireUnreferencedAutoVariables,
   type MaterializeScope,
   type PendingResolution,
@@ -665,12 +667,15 @@ export async function publishProcess(
     await materializeScope(tx, ctx.tenantId, id, draft.id, draft, {}),
     draft,
     resolutions,
+    before.currentVersion,
   );
   if (cleaned) await rewriteNodes(tx, ctx.tenantId, draft.id, cleaned);
   await tx.execute(sql`UPDATE approval_process_versions SET status='published',published_by=${ctx.userId},
       published_at=${ctx.now.toISOString()}
     WHERE tenant_id=${ctx.tenantId} AND id=${draft.id}::uuid`);
   await bump(tx, ctx, id, sql`,current_version_id=${draft.id}::uuid`);
+  if (before.currentVersion)
+    registerRetirement(tx, ctx, [before.currentVersion.id], { kind: 'publish', newVersionId: draft.id });
   return audited(tx, ctx, 'publish', before, id);
 }
 
@@ -718,6 +723,12 @@ export async function republishWithExceptionAdmin(tx: Tx, ctx: ApprovalContext, 
   await tx.execute(sql`UPDATE approval_process_versions SET status='published',published_by=${ctx.userId},
       published_at=${ctx.now.toISOString()}
     WHERE tenant_id=${ctx.tenantId} AND id=${versionId}::uuid`);
+  // 收尾推迟到提交前（F-326-L §3.4）：重发照抄当前版本、不对已有变量取锁；候选取“被替换版本引用的 ∪ 手工重新启用过的”，
+  // 不加锁读，上界与变量状态无关，由提交前任务在一批 FOR UPDATE 之后执行，操作者与口径与中段执行相同
+  const scope = await materializeScope(tx, ctx.tenantId, id, versionId, before.currentVersion, {
+    previous: before.currentVersion.nodes,
+  });
+  registerSaveClose(tx, ctx, await retireCandidates(tx, ctx, scope));
   await bump(tx, ctx, id, sql`,latest_version_no=${next},current_version_id=${versionId}::uuid`);
   return audited(tx, ctx, 'exception_admin.handover', before, id);
 }
@@ -732,6 +743,16 @@ export async function assertExceptionAdminMember(tx: Tx, tenantId: string, userI
 export async function discardProcess(tx: Tx, ctx: ApprovalContext, id: string) {
   const { before } = await lockedForChange(tx, ctx, id);
   await bump(tx, ctx, id, sql`,status='discarded'`);
+  const versions = rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT id FROM approval_process_versions
+      WHERE tenant_id=${ctx.tenantId} AND process_id=${id}::uuid`),
+  );
+  registerRetirement(
+    tx,
+    ctx,
+    versions.map((version) => version.id),
+    { kind: 'discard' },
+  );
   return audited(tx, ctx, 'discard', before, id);
 }
 

@@ -194,7 +194,8 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
 
   it('标准流程覆盖全部审批类型、已发布、带发起条件（或显式兜底），异常管理员为开通时指定的人', async () => {
     // R2-T08 BE-10a（DEC-644 A-2）：组织调整的预置取人口径是推断，只装草稿、不随开通发布，租户自行确认后发布
-    const unpublished = ['org_adjustment'];
+    // BE-16 16a-0：入职前信息采集仅装草稿，运行时适配器随 16a-2b 交付。
+    const unpublished = ['org_adjustment', 'entry_info_collection'];
     expect(result.processes.map((p) => p.approvalType).sort()).toEqual(
       Object.keys(APPROVAL_TYPES)
         .filter((type) => !unpublished.includes(type))

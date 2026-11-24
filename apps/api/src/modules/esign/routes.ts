@@ -1,10 +1,11 @@
 import { registerESignTaskRoutes } from './task-routes.js';
 import { registerESignDeletion } from './deletion.js';
+import { registerESignSourceLifecycle } from './source-lifecycle.js';
 import { registerESignRecordRoutes } from './record-routes.js';
 /**
  * 调动电子签署配置路由（F-481 设计 §3.2、§5.4、§10；S1 契约片）。对象 TenantBase.ESignSettings（配置对象，无数据范围）。
  * - GET/POST /templates、PATCH /templates/:id：签署模板库（没有删除，停用即从下拉消失）；
- * - GET/PUT /scenes/transfer：调动签署场景设置（有效期 2～30 天、到期前提醒）；
+ * - GET/PUT /scenes/{transfer,offer,entry}：签署场景设置（有效期 2～30 天、到期前提醒）；
  * - GET /template-options/transfer-form：调动表单“电子签模板”下拉，授权同发起调动（Transfer.Hr 按钮），不要求模板维护权。
  * 写入口都走命令台账（runCommand），守卫在命令事务内按当前权限复核；revision 经 If-Match 携带（AGENTS.md §10）。
  */
@@ -21,6 +22,7 @@ import { parseBody, revision, uuidParam } from '../job/context.js';
 import { authorizeInTransaction, getModuleViewableFields } from '../permission/module-access.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { button, objectContext, writeFields } from '../permission/module-route-access.js';
+import type { SignScene } from './task-source.js';
 import { createTemplateSchema, patchTemplateSchema, sceneSettingsSchema } from './input.js';
 import {
   assertKnownVariables,
@@ -93,6 +95,7 @@ async function write(
 
 export function registerESignRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerESignDeletion();
+  registerESignSourceLifecycle();
   registerESignRecordRoutes(router, deps);
   registerESignTaskRoutes(router, deps);
   router.get(`${ESIGN_BASE}/templates`, async (c) => {
@@ -125,22 +128,12 @@ export function registerESignRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
     }));
   });
 
-  router.get(`${ESIGN_BASE}/scenes/transfer`, async (c) => {
-    const ctx = await objectContext(c, deps, OBJECT, 'view');
-    const settings = await withTenant(deps.db, ctx.tenantId, (tx) => getSceneSettings(tx, ctx.tenantId));
-    return c.json(await trim(deps, c, settings));
-  });
-
-  router.put(`${ESIGN_BASE}/scenes/transfer`, async (c) => {
-    const base = await objectContext(c, deps, OBJECT, 'update');
-    const ctx = { ...base, expectedRevision: revision(c) };
-    const input = await parseBody(c, sceneSettingsSchema);
-    await writeFields(deps, ctx, OBJECT, 'update', input);
-    return write(c, deps, ctx, 'update', input, async (tx, commandId) => ({
-      status: 200,
-      body: await saveSceneSettings(tx, { ...ctx, commandId }, input),
-    }));
-  });
+  router.get(`${ESIGN_BASE}/scenes/transfer`, (c) => readScene(c, deps, 'transfer'));
+  router.put(`${ESIGN_BASE}/scenes/transfer`, (c) => writeScene(c, deps, 'transfer'));
+  router.get(`${ESIGN_BASE}/scenes/offer`, (c) => readScene(c, deps, 'offer'));
+  router.put(`${ESIGN_BASE}/scenes/offer`, (c) => writeScene(c, deps, 'offer'));
+  router.get(`${ESIGN_BASE}/scenes/entry`, (c) => readScene(c, deps, 'entry'));
+  router.put(`${ESIGN_BASE}/scenes/entry`, (c) => writeScene(c, deps, 'entry'));
 
   // 授权与 POST /transfers/employees/:id 的 HR 入口同一：任职对象新增权 + Transfer.Hr 按钮（detail）
   router.get(`${ESIGN_BASE}/template-options/transfer-form`, async (c) => {
@@ -148,4 +141,21 @@ export function registerESignRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
     await button(deps, ctx, EMPLOYMENT_OBJECT, TRANSFER_HR_BUTTON, 'detail');
     return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => templateOptions(tx, ctx.tenantId)));
   });
+}
+
+async function readScene(c: C, deps: TenantRouteDeps, scene: SignScene) {
+  const ctx = await objectContext(c, deps, OBJECT, 'view');
+  const settings = await withTenant(deps.db, ctx.tenantId, (tx) => getSceneSettings(tx, ctx.tenantId, scene));
+  return c.json(await trim(deps, c, settings));
+}
+
+async function writeScene(c: C, deps: TenantRouteDeps, scene: SignScene) {
+  const base = await objectContext(c, deps, OBJECT, 'update');
+  const ctx = { ...base, expectedRevision: revision(c) };
+  const input = await parseBody(c, sceneSettingsSchema);
+  await writeFields(deps, ctx, OBJECT, 'update', input);
+  return write(c, deps, ctx, 'update', input, async (tx, commandId) => ({
+    status: 200,
+    body: await saveSceneSettings(tx, { ...ctx, commandId }, scene, input),
+  }));
 }

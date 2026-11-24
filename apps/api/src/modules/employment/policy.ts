@@ -119,6 +119,7 @@ const ASSESSMENT = MODULE_OBJECTS.probationAssessment.code;
 const NF_EMPLOYEE = denied(404, 'NOT_FOUND', '员工不存在');
 const NF_DATA = denied(404, 'NOT_FOUND', '任职数据不存在');
 const NF_BUSINESS = denied(404, 'NOT_FOUND', '任职业务不存在');
+const NF_ENTRY_SIGN_SOURCE = denied(404, 'NOT_FOUND', '入职记录不存在');
 const NF_RECORD = denied(404, 'NOT_FOUND', '任职记录不存在');
 const NF_TRANSFER = denied(404, 'NOT_FOUND', '调动不存在');
 const NF_PART_TIME = denied(404, 'NOT_FOUND', '兼职记录不存在');
@@ -179,6 +180,20 @@ const byId = { invalidId: BAD_REQUEST };
 const EMPLOYMENT_RESULT = 'employment.result';
 /** authorizeBusinessWrite：loadEmploymentBusiness 写入口径（transferTarget 例外时不带范围）+ trustedScopeBypass 的写别名。 */
 const BUSINESS_WRITE = guardScope('employment.businessWrite', NF_BUSINESS);
+const RETIREMENT_RESTORE_DISCLOSURE = object({
+  object: EMPLOYMENT,
+  operation: 'update',
+  button: button(RETIREMENT_BUTTONS.cancel, 'detail'),
+  scope: noScope('仅决定动作披露，由 retirementRestoreActions 逐单复用恢复入口的写范围'),
+  fields: noFields('只决定已撤销记录的 actions 是否披露 restore'),
+});
+const RETIREMENT_REHIRE_CONTRACT_DISCLOSURE = object({
+  object: CONTRACT_OBJECT,
+  operation: 'view',
+  button: noButton('返聘计划的合同分部只读'),
+  scope: noScope('仅披露计划合同，由 retirementRehireDetail 以合同数据范围校验员工'),
+  fields: projector('employment.response', 'employment.retirementRehireContract'),
+});
 /** managerContext：managerIdentity 不活跃 → 403 FORBIDDEN「需要经理自助身份」。 */
 const MANAGER_IDENTITY = 'transfer.managerIdentity';
 /** requireTransferSource：发起按钮 + 绑定规则（403）+ 源员工范围（404「员工不存在」）+ 经理团队（403）。 */
@@ -1771,6 +1786,57 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     auditedConfigWrite('employment_custom_field'),
     { ...byId, guards: ['employment.customFieldWrite'] },
   ),
+
+  'GET /pending-entries/:id/esign-context': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_ENTRY_SIGN_SOURCE),
+    fields: fixed(['sourceId', 'revision', 'canInitiate', 'reason', 'items'], 'F-505 §8 入职选项固定形状'),
+    ...byId,
+  }),
+  'POST /pending-entries/:id/esign-tasks': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_ENTRY_SIGN_SOURCE),
+    fields: fixed(['sourceId', 'taskId'], 'F-505 §5 固定来源和任务回执'),
+    guards: ['esign.sourceVariables'],
+    write: {
+      ...commandWrite(
+        'esign.task.audited',
+        { generic: { targets: 'sourceId', locator: 'employment.business' } },
+        {
+          controls: ['templateIds'],
+          preconditions: ['esign.entryEligibility', 'esign.revision', 'esign.templates', 'esign.noSigning'],
+        },
+      ),
+      // 模板 ID 是命令参数；剔除后正好是服务端送授权器的空业务字段集合。
+      fields: 'body',
+    },
+    ...byId,
+  }),
+  'GET /pending-entries/:id/esign-records': all(
+    [
+      object({
+        object: EMPLOYMENT,
+        operation: 'view',
+        button: noButton('只读当前入职来源'),
+        scope: pointScope({ param: 'id' }, 'employment.record', NF_ENTRY_SIGN_SOURCE, `${EMPLOYMENT}.detail`),
+        fields: noFields('只定位来源，不返回任职字段'),
+      }),
+      object({
+        object: MODULE_OBJECTS.eSignRecord.code,
+        operation: 'view',
+        button: noButton('签署历史复用记录查看权'),
+        scope: listScope('esign.recordOwner', `${MODULE_OBJECTS.eSignRecord.code}.list`),
+        fields: shape('esign.record'),
+      }),
+    ],
+    shape('esign.record'),
+    byId,
+  ),
+
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（34 EN-R8 / R9 / R10 / R14）---------------------------------
   // 办理入职：If-Match = 业务 revision；body 严格 { probation, contract? }（400；contract = 合同字段白名单，BE-2b，同事务调
   // generateContractForBusiness，合同权限 / 范围按合同对象重验，失败整笔回滚；
@@ -2084,7 +2150,12 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     RESPONSE,
     {
-      write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireExitGate']),
+      write: employmentWrite('body', [
+        'lockEmploymentBusiness',
+        'assertRevision',
+        'requireExitGate',
+        'requirePendingRetirementDutyPlan',
+      ]),
       ...byId,
     },
   ),
@@ -2266,6 +2337,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     button: noButton('列表无按钮'),
     scope: listScope('employment.visibility'),
     fields: projector('employment.response', 'employment.retirementViews'),
+    optional: { restore: RETIREMENT_RESTORE_DISCLOSURE },
   }),
   // F-410：员工在途退休单（草稿 / 审批中 / 已批准 / 已驳回）；readContext(object.view) 按员工范围先行，范围外 / 不存在同一个 404，
   // 没有在途退休单 → { item: null }；有则走详情同一字段裁剪
@@ -2275,15 +2347,21 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     button: noButton('在途查询无按钮'),
     scope: pointScope({ param: 'id' }, 'employment.employee', NF_DATA),
     fields: projector('employment.response', 'employment.retirementDetail'),
+    optional: { rehireContract: RETIREMENT_REHIRE_CONTRACT_DISCLOSURE },
     ...byId,
   }),
-  // 详情：readPageContext(detail)；loadEmploymentBusiness（DEC-177）看不见 / 不存在 / 非退休单同一个 404「任职业务不存在」
+  // F-535 详情：已撤销记录按按钮与写范围披露 restore；现值详情按当前范围和字段权读本单 rehire，已办冻结份不回填现值。
+  // F-538：现值详情的职责转交计划另按 dutyTransfer 字段及引用范围整块裁剪。
   'GET /retirements/:id': object({
     object: EMPLOYMENT,
     operation: 'view',
     button: noButton('详情无按钮'),
     scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
-    fields: projector('employment.response', 'employment.retirementDetail'),
+    fields: projector('employment.response', 'employment.retirementDetailActions'),
+    optional: {
+      restore: RETIREMENT_RESTORE_DISCLOSURE,
+      rehireContract: RETIREMENT_REHIRE_CONTRACT_DISCLOSURE,
+    },
     ...byId,
   }),
   // ---- employment/exit-routes.ts：R2-T03 离职三个字典（设计 §2.1 / §4 / §9.1）-----------------------------------------

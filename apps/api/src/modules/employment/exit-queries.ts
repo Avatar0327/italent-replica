@@ -93,8 +93,8 @@ export interface ExitRow {
   total?: unknown;
 }
 
-/** F-352①：逐单动作编码（exit-actions.ts 判定；路由并入后随状态字段权一起裁剪）。 */
-export type ExitActionCode = 'submit' | 'edit' | 'cancel' | 'handle';
+/** 离退逐单动作编码（F-352① / F-535）：路由并入后随状态字段权一起裁剪。 */
+export type ExitActionCode = 'submit' | 'edit' | 'cancel' | 'handle' | 'restore';
 
 export interface ExitItem {
   readonly id: string;
@@ -522,16 +522,17 @@ export async function loadExitDetail(
 // 字段依赖表（响应路径 / 排序）见 exit-dependencies.ts（叶子模块，原因见该文件头）；这里原样转出，调用方不变。
 export { EXIT_RESPONSE_DEPENDENCIES, EXIT_SORT_DEPENDENCIES, on, type Dependency } from './exit-dependencies.js';
 
-/** 姓名 / 工号属人员对象，其余按任职记录对象的字段权限；无权限的键缺席（不是 null）。 */
+/** 姓名 / 工号属人员对象，返聘计划的合同字段属合同对象，其余按任职记录字段权限裁剪。 */
 export interface ExitViewable {
   readonly employee: (field: string) => boolean;
   readonly employment: (field: string) => boolean;
+  readonly contract?: (field: string) => boolean;
 }
 
 const DROPPED = Symbol('dropped');
 
 const allows = (rule: Dependency, show: ExitViewable) =>
-  rule.field === null || (rule.object === 'employee' ? show.employee : show.employment)(rule.field);
+  rule.field === null || (show[rule.object ?? 'employment']?.(rule.field) ?? false);
 
 /**
  * 按路径规则递归裁剪，默认拒绝（#409 第 6 轮）：

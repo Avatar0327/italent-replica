@@ -37,8 +37,13 @@ export const GRAPH: Graph = {
     '#CONTENT_KEYS',
     '#ControlledAuditFields',
   ],
+  'apps/api/src/audit/controlled-fields.ts#approvalPublicVariableFields': [
+    '#PUBLIC_VARIABLE_RETIREMENT_KEYS',
+    '#approvalContentFields',
+  ],
   'apps/api/src/audit/establishment-capacity.ts#capacityAuditChanges': ['#PART_FIELDS'],
   'apps/api/src/audit/establishment-capacity.ts#visibleCapacityParts': ['#PART_FIELDS'],
+  'apps/api/src/audit/failures.ts#CommandFailureError': ['#storageFailureMessage'],
   'apps/api/src/audit/failures.ts#failureResponse': ['#CommandFailureError'],
   'apps/api/src/audit/failures.ts#isDefiniteFailure': ['#CommandFailureError'],
   'apps/api/src/audit/failures.ts#recordCommandFailure': [
@@ -335,6 +340,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/audit/visibility.ts#CONFIG_FIELDS_BY_TYPE': [
     'apps/api/src/audit/controlled-fields.ts#approvalContentFields',
+    'apps/api/src/audit/controlled-fields.ts#approvalPublicVariableFields',
     '#EMPLOYMENT',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],

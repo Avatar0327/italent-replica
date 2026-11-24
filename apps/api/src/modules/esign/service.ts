@@ -13,6 +13,7 @@ import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
+import type { SignScene } from './task-source.js';
 import type { CreateTemplateInput, PatchTemplateInput, SceneSettingsInput } from './input.js';
 
 export const ESIGN_TEMPLATE_AUDIT_TYPE = 'esign-template';
@@ -30,7 +31,7 @@ export interface TemplateView {
   readonly updatedAt: string;
 }
 export interface SceneView {
-  readonly scene: 'transfer';
+  readonly scene: SignScene;
   readonly validityDays: number;
   readonly remindBeforeExpiry: boolean;
   readonly revision: number;
@@ -186,20 +187,20 @@ export async function patchTemplate(tx: Tx, ctx: ScopeBusinessContext, id: strin
   return after;
 }
 
-export async function getSceneSettings(tx: Tx, tenantId: string): Promise<SceneView> {
+export async function getSceneSettings(tx: Tx, tenantId: string, scene: SignScene): Promise<SceneView> {
   const [row] = await tx
     .select()
     .from(esignSceneSettings)
-    .where(and(eq(esignSceneSettings.tenantId, tenantId), eq(esignSceneSettings.scene, 'transfer')));
+    .where(and(eq(esignSceneSettings.tenantId, tenantId), eq(esignSceneSettings.scene, scene)));
   return row
     ? {
-        scene: 'transfer',
+        scene,
         validityDays: row.validityDays,
         remindBeforeExpiry: row.remindBeforeExpiry,
         revision: row.revision,
       }
     : {
-        scene: 'transfer',
+        scene,
         validityDays: ESIGN_DEFAULT_VALIDITY_DAYS,
         remindBeforeExpiry: ESIGN_DEFAULT_REMIND_BEFORE_EXPIRY,
         revision: 0,
@@ -207,15 +208,20 @@ export async function getSceneSettings(tx: Tx, tenantId: string): Promise<SceneV
 }
 
 /** 没有行时 If-Match: 0 建第一版（revision 1）；之后按行 revision 乐观锁。 */
-export async function saveSceneSettings(tx: Tx, ctx: ScopeBusinessContext, input: SceneSettingsInput) {
+export async function saveSceneSettings(
+  tx: Tx,
+  ctx: ScopeBusinessContext,
+  scene: SignScene,
+  input: SceneSettingsInput,
+) {
   await lockConfig(tx, ctx.tenantId);
-  const before = await getSceneSettings(tx, ctx.tenantId);
+  const before = await getSceneSettings(tx, ctx.tenantId, scene);
   if (before.revision !== ctx.expectedRevision)
     throw new AppError('REVISION_CONFLICT', '签署场景设置已被修改，请刷新后重试', { expected: before.revision });
-  const after: SceneView = { scene: 'transfer', ...input, revision: before.revision + 1 };
+  const after: SceneView = { scene, ...input, revision: before.revision + 1 };
   const values = {
     tenantId: ctx.tenantId,
-    scene: 'transfer',
+    scene,
     validityDays: input.validityDays,
     remindBeforeExpiry: input.remindBeforeExpiry,
     revision: after.revision,

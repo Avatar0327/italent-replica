@@ -1,5 +1,5 @@
 import { CapacityAuditFields, capacityAuditChanges, visibleCapacityParts } from './establishment-capacity.js';
-import { approvalContentFields } from './controlled-fields.js';
+import { approvalContentFields, approvalPublicVariableFields } from './controlled-fields.js';
 import { NestedAuditFields, type NestedChildren, visibleNested, visibleNestedChanges } from './nested-fields.js';
 /**
  * DEC-197 / DEC-203（PR #75 第二、三轮）：审计查询按查看人**当前**的数据范围与字段权限裁剪，不设全量读取特权。
@@ -887,6 +887,12 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   employment_type: { code: MODULE_OBJECTS.employmentType.code },
   exit_dictionary: { code: 'TenantBase.EmploymentSettings' },
   offer_dictionary: { code: 'TenantBase.EmploymentSettings' },
+  'onboarding-integration-task-pool': {
+    code: MODULE_OBJECTS.employmentSettings.code,
+    // 任务池表单和考核动作属于同一设置字段，审计以完整路径投影它们。
+    derive: (viewable) =>
+      viewable?.has('integrationTaskPool') ? new Set([...viewable, 'integrationTaskPool.action']) : viewable,
+  },
   blacklist_rule: { code: 'TenantBase.EmploymentSettings' },
   exit_handover_item: { code: 'TenantBase.EmploymentSettings' },
   retirement_rule: { code: 'TenantBase.EmploymentSettings' },
@@ -897,7 +903,7 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   'approval-process': { code: 'TenantBase.ApprovalProcess' },
   // F-326：变量与矩阵的审计键（dataType / defaultValue、动态的 row:<id> / column:<id>、删除快照）不在审批流程字段目录
   // 里，由审批流程权限推出精确键与受控动态路径（controlled-fields.ts），没有权限时 fail-closed
-  'approval-public-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
+  'approval-public-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalPublicVariableFields },
   'approval-application-variable': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
   'approval-matrix': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },
   'approval-matrix-row': { code: 'TenantBase.ApprovalProcess', derive: approvalContentFields },

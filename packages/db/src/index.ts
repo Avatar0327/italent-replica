@@ -1,5 +1,10 @@
 export { pgErrorCode } from './pg-error.js';
-export { afterTransactionCommit, beforeTransactionCommit } from './after-commit.js';
+export {
+  afterTransactionCommit,
+  beforeTransactionCommit,
+  transactionLockLedger,
+  type HeldLockMode,
+} from './after-commit.js';
 export {
   type AuditEventInput,
   type AuditSource,

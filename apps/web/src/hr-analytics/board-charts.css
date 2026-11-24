@@ -1,0 +1,217 @@
+.board-chart {
+  min-width: 0;
+}
+.board-chart ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.board-chart-item {
+  display: grid;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+button.board-chart-item {
+  cursor: pointer;
+}
+button.board-chart-item:hover {
+  background: var(--shell-background);
+}
+button.board-chart-item:focus-visible {
+  outline: 2px solid var(--shell-primary);
+  outline-offset: -2px;
+}
+.board-chart-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-chart-number {
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  white-space: nowrap;
+}
+.board-chart-bar .board-chart-item {
+  grid-template-columns: minmax(6em, 1fr) minmax(30px, 2fr) auto;
+}
+.board-chart-mark {
+  display: flex;
+  align-items: end;
+  background: var(--shell-border);
+  border-radius: 3px;
+  height: 8px;
+}
+.board-chart-mark > span {
+  display: block;
+  width: var(--point-size);
+  height: 100%;
+  background: var(--point-color);
+  border-radius: inherit;
+}
+.board-chart-column ul {
+  display: flex;
+  padding-bottom: 4px;
+  overflow-x: auto;
+}
+.board-chart-column li {
+  flex: 1 0 70px;
+  min-width: 0;
+}
+.board-chart-column .board-chart-item {
+  grid-template-rows: auto 112px 2.8em;
+  grid-template-areas: 'number' 'mark' 'label';
+  gap: 4px;
+  align-items: start;
+  justify-items: center;
+  text-align: center;
+}
+.board-chart-column .board-chart-label {
+  grid-area: label;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.board-chart-column .board-chart-mark {
+  grid-area: mark;
+  width: min(60%, 34px);
+  height: 100%;
+}
+.board-chart-column .board-chart-mark > span {
+  width: 100%;
+  height: var(--point-size);
+}
+.board-chart-column .board-chart-number {
+  grid-area: number;
+}
+.board-chart-pie {
+  display: grid;
+  grid-template-columns: minmax(70px, 1fr) minmax(135px, 1.5fr);
+  align-items: center;
+  gap: 12px;
+}
+.board-chart-disc {
+  width: min(100%, 130px);
+  aspect-ratio: 1;
+  justify-self: center;
+  border-radius: 50%;
+  background: var(--shell-border);
+}
+.board-chart-pie .board-chart-item {
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  grid-template-areas: 'mark label number';
+}
+.board-chart-pie .board-chart-label {
+  grid-area: label;
+}
+.board-chart-pie .board-chart-mark {
+  grid-area: mark;
+}
+.board-chart-pie .board-chart-mark > span {
+  width: 100%;
+}
+.board-chart-pie .board-chart-number {
+  grid-area: number;
+}
+.board-chart-empty {
+  display: grid;
+  min-height: 104px;
+  margin: 0;
+  place-items: center;
+  color: var(--shell-text);
+}
+.board-chart-map {
+  min-height: 156px;
+  border: 1px dashed var(--shell-border);
+  border-radius: 6px;
+}
+
+.board-trend {
+  min-width: 0;
+  overflow-x: auto;
+}
+.board-trend svg {
+  display: block;
+  width: 100%;
+  height: 146px;
+}
+.board-trend svg line {
+  stroke: var(--shell-border);
+}
+.board-trend svg text {
+  fill: var(--shell-text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.board-trend svg polygon {
+  fill-opacity: 0.2;
+}
+.board-trend svg polyline {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.board-chart-clickable {
+  cursor: pointer;
+}
+.board-trend table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.board-trend th {
+  font-size: 12px;
+  font-weight: 500;
+}
+.board-trend th:first-child {
+  width: 7%;
+}
+.board-trend .board-chart-item {
+  justify-items: center;
+  padding-inline: 0;
+  white-space: nowrap;
+}
+.board-chart-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-inline-end: 4px;
+  border-radius: 2px;
+}
+.board-chart-nested {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) minmax(0, 1.5fr);
+  align-items: center;
+  gap: 12px;
+}
+.board-chart-nested svg {
+  width: min(100%, 168px);
+  justify-self: center;
+}
+.board-chart-nested svg circle {
+  fill: none;
+  stroke-width: 21;
+}
+.board-chart-ring-background {
+  stroke: var(--shell-border);
+}
+.board-chart-nested .board-chart-item {
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+}
+.board-chart-nested .board-chart-pie-legend {
+  max-height: 230px;
+  overflow: auto;
+}
+.board-chart-pie-legend ul {
+  margin-inline-start: 12px;
+  border-inline-start: 1px solid var(--shell-border);
+}

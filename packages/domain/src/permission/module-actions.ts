@@ -30,6 +30,11 @@ import {
 } from '../employment/retirement-intention.js';
 import { PART_TIME_BUTTONS, PART_TIME_FIELDS, PART_TIME_SYSTEM_FIELDS } from '../employment/part-time-constants.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
+import {
+  ONBOARDING_BUTTONS,
+  ONBOARDING_ENTRY_STATUS_FIELDS,
+  ONBOARDING_FORM_FIELDS,
+} from '../onboarding/permission.js';
 import type { ButtonDefinition, DataOperation, ObjectDefinition } from './object-permission.js';
 
 export const ORG_EMPLOYEE_APP = 'TenantBase';
@@ -61,7 +66,12 @@ const crud = [
   button('update', 'detail', 'update'),
   button('delete', 'detail', 'delete'),
 ];
-function object(code: string, fields: readonly string[], buttons = crud, system: readonly string[] = []) {
+function object(
+  code: string,
+  fields: readonly string[],
+  buttons: readonly ButtonDefinition[] = crud,
+  system: readonly string[] = [],
+) {
   const systems = new Set([...systemFields, ...system]);
   return {
     code: `TenantBase.${code}`,
@@ -423,6 +433,14 @@ export const MODULE_OBJECTS = {
       // R2 BE-15b2 自动发起试用期考核规则（B58）也挂在这里：考核类型、入职后天数（考核名称 = name，其余沿用上面的）
       'assessmentType',
       'daysAfterEntry',
+      // F-536：退休规则整份保存校验用途、规则类型、固定年龄与内置函数（R2-T04 设计 §9.1 / §9.1A）。
+      'purpose',
+      'ruleType',
+      'retirementAgeYears',
+      'retirementAgeMonths',
+      'expectedFunction',
+      'earliestFunction',
+      'latestFunction',
       // R2 BE-8b1 离职交接事项（B64，DEC-266③）也挂在这里：事项类别、序号、待办类别、待办事项、办理表单、备注（没有适用人群与负责人）
       'category',
       'sequenceNo',
@@ -430,8 +448,9 @@ export const MODULE_OBJECTS = {
       'title',
       'formRef',
       'remark',
+      ...ONBOARDING_FORM_FIELDS.settings,
     ],
-    crud,
+    [...crud, ...ONBOARDING_BUTTONS.settings],
     ['operatorUserId'],
   ),
   // R2 BE-12b 人事分析 - 人事看板（规格 35 §2.1）：只读聚合查询，无业务字段、无按钮；数据范围按人员 / 组织裁剪，
@@ -518,6 +537,51 @@ export const MODULE_OBJECTS = {
     [button('Employee.Create', 'list', 'create')],
     ['status', 'employeeStatus', 'entryStatus'],
   ),
+  onboardingCollection: object(
+    'OnboardingCollection',
+    ONBOARDING_FORM_FIELDS.collection,
+    [button('detail', 'list_row')],
+    [
+      'status',
+      'taskId',
+      'templateId',
+      'ruleId',
+      'approvalInstanceId',
+      'submittedAt',
+      'completedAt',
+      ...ONBOARDING_FORM_FIELDS.collectionApproval,
+    ],
+  ),
+  onboardingQrCode: object('OnboardingQrCode', [], ONBOARDING_BUTTONS.qrCode, [
+    'purpose',
+    'schemeId',
+    'status',
+    'expiresAt',
+    'issuedAt',
+    'revokedAt',
+    'version',
+  ]),
+  onboardingPreparation: object('OnboardingPreparation', ['result'], ONBOARDING_BUTTONS.preparation, [
+    'status',
+    'itemId',
+    'ruleId',
+    'assignees',
+    'dueOn',
+    'completedAt',
+    'completedBy',
+  ]),
+  onboardingMaterial: object(
+    'OnboardingMaterial',
+    ['attachmentId'],
+    [button('detail', 'list_row')],
+    ['status', 'definitionId', 'required', 'allowSupplement', 'submittedAt', 'receivedAt'],
+  ),
+  onboardingIntegration: object(
+    'OnboardingIntegration',
+    ['name', 'description', 'formValues'],
+    ONBOARDING_BUTTONS.integration,
+    ['status', 'schemeId', 'cycleId', 'assignees', 'startOn', 'dueOn', 'completedAt'],
+  ),
   employmentRecord: object(
     'EmploymentRecord',
     [
@@ -570,6 +634,7 @@ export const MODULE_OBJECTS = {
       ...RETIREMENT_INTENTION_EDITABLE_FIELDS,
     ],
     [
+      ...ONBOARDING_BUTTONS.employmentRecord,
       button('Employment.Create', 'detail', 'create'),
       button('Transfer.Hr', 'detail', 'create'),
       // F-481 §10：批量补发，只随 HR 类身份的完整任职功能预置。
@@ -634,9 +699,13 @@ export const MODULE_OBJECTS = {
       // 待入职列表带出的 Offer 同步值（BE-14b2）：合同公司、试用期月数，只读
       'contractCompanyId',
       'probationMonths',
+      // F-535：同时返聘计划的试用期字段可查看，计划创建后不可编辑。
+      'probation',
+      'probationEndDate',
       // 人员状态 / 入职状态只经业务流转写入（F-022，15 §9.3）：可授查看，不可授编辑。
       'employeeStatus',
       'entryStatus',
+      ...ONBOARDING_ENTRY_STATUS_FIELDS,
       'activation',
       ...EXIT_REQUEST_SYSTEM_FIELDS,
       // R2-T04 退休扩展字段：类型由 L 与快照 P 派生，P 快照与是否返聘不可手改
