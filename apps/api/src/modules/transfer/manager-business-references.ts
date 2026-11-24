@@ -22,6 +22,6 @@ export async function requireManagerBusinessReferences(
   if (!raw) throw new AppError('NOT_FOUND', '任职业务不存在');
   const row = camelRow(raw);
   const payload = { ...row, fields: snapshotFields(row) } as unknown as EmploymentPayloadRow;
-  const input = normalizePatchedInput(ctx, payload, patch);
-  await requireManagerReferenceValues(tx, ctx, input.effectiveDate, input.fields);
+  const { normalized } = normalizePatchedInput(ctx, payload, patch);
+  await requireManagerReferenceValues(tx, ctx, normalized.effectiveDate, normalized.fields);
 }

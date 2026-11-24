@@ -43,3 +43,4 @@ export * from './social-insurance.js';
 export * from './onboarding.js';
 export * from './onboarding-collection.js';
 export * from './onboarding-material.js';
+export * from './onboarding-integration-pool.js';

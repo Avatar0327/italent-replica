@@ -233,7 +233,7 @@ async function recheckRegister(api: AttachmentApi, commandId: string, signal: Ab
     // 命令 ID 不符、形状不对由 readCommandResult 抛错，按下面的 uncertain 处理
     const result = await api.commandResult(commandId, signal);
     // 结果摘要不带错误码；登记不带 If-Match，业务 409 只有临时文件上限一种（attachments/service.ts）
-    if (result.status === 'failed')
+    if (result.status !== 'succeeded')
       return { kind: 'failed', message: failureText(result.httpStatus ?? 0, registerCode(result.httpStatus)) };
     const id = result.businessId;
     const revision = result.revision;

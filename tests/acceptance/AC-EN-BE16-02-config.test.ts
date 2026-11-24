@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { bootstrapTenantAdmin } from '@italent/api';
-import { auditEvents, commandLedger, contractCompanies, eq, onboardingEntryCases, withTenant } from '@italent/db';
+import { auditEvents, commandLedger, contractCompanies, eq, onboardingEntryCases, sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
@@ -8,6 +8,7 @@ import type { Authorizer } from '../../apps/api/src/authorization.js';
 import { savePendingContract } from '../../apps/api/src/modules/employment/entry-pending-contract.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { matchEntryCollection } from '../../apps/api/src/modules/onboarding/collection-config-match.js';
+import { lockCollectionConfig } from '../../apps/api/src/modules/onboarding/collection-config.js';
 import { addPending, entryWorld, portContext } from './AC-EN-BE2a-support.js';
 import { cmd, seedTenantWithMember, tenantApi, type RequestOptions } from './support/tenant-api.js';
 
@@ -334,4 +335,29 @@ it('AC-EN-BE16-02 真实租户管理员具备字段更新权，可归档租户�
   const responseArchive = await api.request('DELETE', target, { ...asAdmin, ifMatch: renamed.revision });
   expect(responseArchive.status, await responseArchive.clone().text()).toBe(204);
   expect(await response(await api.request('GET', path, asAdmin), 200)).toMatchObject({ items: [] });
+});
+
+it('AC-EN-BE16-02 F-491 租户配置锁键对租户 UUID 大小写不敏感，写锁与共享锁落在同一把键上', async () => {
+  const w = await world('ZZ_BE16_LOCK_KEY');
+  // 固定含 a–f 的合法 UUID：随机租户 ID 可能全是数字，大写与小写相同，用例会空转
+  const lower = 'abcdef12-3456-4abc-8def-0123456789ab';
+  const upper = lower.toUpperCase();
+  expect(upper).not.toBe(lower);
+  const heldFor = (tx: Parameters<Parameters<typeof withTenant>[2]>[0], mode: string) =>
+    tx.execute(sql`
+      SELECT count(*)::int AS n FROM pg_locks
+      WHERE locktype = 'advisory' AND pid = pg_backend_pid() AND mode = ${mode}
+        AND ((classid::bigint << 32) | objid::bigint) = hashtextextended(${`onboarding:collection:${lower}`}, 0)`);
+  const count = (result: unknown) =>
+    ((Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { n: number }[])[0]!.n;
+  for (const [mode, lockMode] of [
+    ['write', 'ExclusiveLock'],
+    ['read', 'ShareLock'],
+  ] as const) {
+    const held = await withTenant(w.db, w.tenant, async (tx) => {
+      await lockCollectionConfig(tx, upper, mode);
+      return count(await heldFor(tx, lockMode));
+    });
+    expect(held, `${mode} 锁应取在规范小写 UUID 的键上`).toBe(1);
+  }
 });

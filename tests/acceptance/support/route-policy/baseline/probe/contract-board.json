@@ -24,5 +24,19 @@
     "trace": [
       "obj:TenantBase.ContractBoard:view"
     ]
+  },
+  "GET /api/tenant/analytics/contract-board/components/:code/export": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4f8e39cb5adf",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractBoard/TenantBase.ContractBoard.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractBoard:view"
+    ]
   }
 }

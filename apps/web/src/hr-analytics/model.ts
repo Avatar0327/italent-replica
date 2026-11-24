@@ -4,6 +4,56 @@ import { m as report } from '../hr-reports/messages.js';
 import { pageSize, type DisplayTable } from '../hr-reports/model.js';
 import { m } from './messages.js';
 
+export const organizationCandidatesUrl = (object: string, asOf: string) =>
+  `/api/tenant/analytics/organization-candidates?${new URLSearchParams({ object, asOf })}`;
+
+export interface MemberDetail {
+  asOf: string;
+  hasDataPermission: boolean;
+  group: string | null;
+  total: number;
+  page: number;
+  pageSize: number;
+  items: { id: string; employeeId: string; organizationId: string | null }[];
+}
+
+export function memberDetailTable(data: MemberDetail & { code: string }): DisplayTable {
+  return {
+    key: data.code,
+    columns: [
+      { key: 'employeeId', label: m.id.employee },
+      { key: 'organizationId', label: m.id.org },
+    ],
+    rows: data.items,
+    total: data.total,
+  };
+}
+
+export type GroupChartKind = 'column' | 'bar' | 'pie';
+export interface ChartPoint {
+  key: string;
+  label: string;
+  value: number | null;
+  text: string;
+  hint?: string;
+}
+
+export interface TrendAxisItem {
+  key: string;
+  label: string;
+}
+export interface TrendPoint extends ChartPoint {
+  category: string;
+}
+export interface TrendSeries {
+  key: string;
+  label?: string;
+  points: TrendPoint[];
+}
+export interface NestedChartPoint extends ChartPoint {
+  parent: string | null;
+}
+
 const base = '/api/tenant/analytics/hr-dashboard';
 export const asOfBounds = { min: '0001-01-02', max: '9999-12-01' };
 
@@ -67,18 +117,21 @@ export function detailTable(data: DashboardDetail): DisplayTable {
 }
 
 export const readStatus = (error: unknown) => (error instanceof ApiError ? error.status : undefined);
+// 组织候选 ID 校验放在纯模型里，供不含 JSX 的流程模型与验收测试共用
+export const candidateUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function canRetryRead(error: unknown) {
   const status = readStatus(error);
   return status === 429 || status === 0 || (status !== undefined && status >= 500);
 }
 
-export function boardErrorText(error: unknown, detail: boolean) {
+export function boardErrorText(error: unknown, detail: boolean, missing: string = m.indicatorMissing) {
   if (error instanceof ApiError && error.status === 413 && error.code === 'PAYLOAD_TOO_LARGE') return m.limit;
   switch (readStatus(error)) {
     case 403:
       return detail ? m.detailDenied : m.boardDenied;
     case 404:
-      return detail ? m.indicatorMissing : m.boardMissing;
+      return detail ? missing : m.boardMissing;
     case 400:
       return report.invalid;
     case 429:
