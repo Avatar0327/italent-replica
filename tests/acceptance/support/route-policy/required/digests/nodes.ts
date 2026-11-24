@@ -2854,7 +2854,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/field-origin-write.ts#originActorKind': ['3d73d864bb64', 'b0ca422058dc'],
   'apps/api/src/modules/employment/field-origins-read.ts#ORIGIN_LABELS': ['0132beb169e9', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/field-origins-read.ts#frozenOriginRows': ['7a94303caab3', '2882f9524c15'],
-  'apps/api/src/modules/employment/field-origins-read.ts#isBusinessLanded': ['da22fee419e4', '6ac73dc6141c'],
+  'apps/api/src/modules/employment/field-origins-read.ts#isBusinessLanded': ['c845ecf6cef0', '6ac73dc6141c'],
   'apps/api/src/modules/employment/field-origins-read.ts#liveOriginRows': ['2e936e132a71', '887dee6e13eb'],
   'apps/api/src/modules/employment/field-origins-read.ts#loadOriginFacts': ['0ede54b0ce04', '65008f76ad6c'],
   'apps/api/src/modules/employment/field-origins-read.ts#readableSources': ['5970d468bf2f', '39aec6174d2a'],
