@@ -139,7 +139,12 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/onboarding/collection-config.ts#auditConfig': ['apps/api/src/audit/record.ts#recordAudit'],
+  'apps/api/src/modules/onboarding/collection-config.ts#collectionGate': [
+    'apps/api/src/advisory-lock.ts#asUuid',
+    'apps/api/src/advisory-lock.ts#lockKey',
+  ],
   'apps/api/src/modules/onboarding/collection-config.ts#detail': ['#ruleSubsets', '#templateFields'],
+  'apps/api/src/modules/onboarding/collection-config.ts#lockCollectionConfig': ['#collectionGate'],
   'apps/api/src/modules/onboarding/collection-config.ts#readCollectionConfig': [
     'apps/api/src/modules/onboarding/collection-config-scope.ts#configMissing',
     '#detail',

@@ -1,7 +1,8 @@
 import { HR_STRUCTURE_COMPONENTS, type BoardComponentKind, type HrStructureCode } from '@italent/domain';
 import { pageQuery } from '../foundation/client.js';
-import { cellText, pageSize, type DisplayTable, type Filters } from '../hr-reports/model.js';
-import type { ChartPoint, GroupChartKind } from './model.js';
+import { cellText, pageSize, type Filters } from '../hr-reports/model.js';
+import { organizationCandidatesUrl, type ChartPoint, type GroupChartKind, type MemberDetail } from './model.js';
+export { memberDetailTable as structureDetailTable } from './model.js';
 import { m } from './messages.js';
 
 const base = '/api/tenant/analytics/hr-structure';
@@ -14,7 +15,7 @@ export const dictionaryFilters = ['sequenceId', 'employmentForm', 'employmentTyp
 export const includeChildrenDefaults = { institutionIncludeChildren: 'true', departmentIncludeChildren: 'true' };
 
 export function structureOrgUrl(asOf: string) {
-  return `/api/tenant/analytics/organization-candidates?${new URLSearchParams({ object: 'HrStructure', asOf })}`;
+  return organizationCandidatesUrl('HrStructure', asOf);
 }
 
 function queryOf(filters: Filters) {
@@ -62,15 +63,7 @@ export interface StructureOverview {
   hasDataPermission: boolean;
   components: StructureComponent[];
 }
-export interface StructureDetail extends Pick<StructureComponent, 'code' | 'name' | 'kind'> {
-  asOf: string;
-  hasDataPermission: boolean;
-  group: string | null;
-  total: number;
-  page: number;
-  pageSize: number;
-  items: { id: string; employeeId: string; organizationId: string | null }[];
-}
+export type StructureDetail = MemberDetail & Pick<StructureComponent, 'code' | 'name' | 'kind'>;
 
 const charts: Partial<Record<HrStructureCode, GroupChartKind>> = {
   '6.04': 'column',
@@ -114,15 +107,3 @@ export function structureCards(data: StructureOverview) {
   });
 }
 export type StructureCard = ReturnType<typeof structureCards>[number];
-
-export function structureDetailTable(data: StructureDetail): DisplayTable {
-  return {
-    key: data.code,
-    columns: [
-      { key: 'employeeId', label: m.id.employee },
-      { key: 'organizationId', label: m.id.org },
-    ],
-    rows: data.items,
-    total: data.total,
-  };
-}

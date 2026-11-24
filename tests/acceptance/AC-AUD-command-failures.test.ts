@@ -5,7 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { type AuditFallbackRecord, setAuditFallbackSink } from '@italent/api';
-import { sql, withTenant } from '@italent/db';
+import { commandLedger, eq, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { employmentSession, EMP_TODAY, withLoginEmail } from './AC-EMP-support.js';
@@ -136,5 +136,15 @@ describe('失败命令三类审计', () => {
     ]);
     const as = { user: session.user.id, tenant: session.tenant.id };
     expect((await auditApi(db, NOW).commandFailures(as, { commandId })).items).toEqual([]);
+    await withTenant(db, session.tenant.id, async (tx) => {
+      expect(await tx.select().from(commandLedger).where(eq(commandLedger.commandId, commandId))).toEqual([]);
+    });
+    // 故障在业务 outbox 阶段，失败审计也不可写时仍保留原键重试语义。
+    const retried = await session.request('POST', `/employees/${employee.id}/businesses`, {
+      ifMatch: employee.revision,
+      idempotencyKey: commandId,
+      body: withLoginEmail(employee.id, { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01' }),
+    });
+    expect(retried.status).toBe(201);
   });
 });
