@@ -321,3 +321,53 @@ describe('AC-FE-F558-1 第 2 轮：回查期间错过别页落定通知', () => 
     expect(executeB).not.toHaveBeenCalled();
   });
 });
+
+// 第 2 轮 P2-3：B 按 A 的原命令 ID 查到成功，是“查到他页结果”，不是“本页保存成功”：不记成本页已保存，B 的输入另行保留。
+describe('AC-FE-F558-1 第 2 轮：查到他页结果不当作本页保存成功', () => {
+  it('B 竞争失败后查询 A 的命令：服务端已成功、A 的回执未到；B 得到 A 的结果但 saved 仍为空，零写请求', async () => {
+    const tenant = randomUUID();
+    const scope = JSON.stringify([tenant, 'synthetic-user', 'manager']);
+    const b = await openTab();
+    const a = await openTab();
+    const first = commandOf();
+    const holderA = pendingExecute();
+    enter(a);
+    void a.app.runApplicationCommand(scope, first, holderA.execute).catch(() => {});
+    await vi.waitFor(() => expect(holderA.execute).toHaveBeenCalledTimes(1));
+
+    enter(b);
+    const executeB = vi.fn(async () => business());
+    await refusal(b, b.app.runApplicationCommand(scope, { ...commandOf(), effectiveDate: '2026-11-09' }, executeB));
+    const found = business();
+    const fetch = vi.fn(async (path: string) => {
+      if (path === `/api/tenant/commands/${first.commandId}/result`)
+        return Response.json({
+          commandId: first.commandId,
+          status: 'succeeded',
+          // 真实投影（AC-TRF-F120 ②）：commandType 用路由模板 :id，新建调动单 201。
+          commandType: 'POST /api/tenant/employment/transfers/employees/:id',
+          businessType: 'transfer',
+          businessId: found.id,
+          revision: 1,
+          httpStatus: 201,
+          completedAt: '2026-11-20T01:02:03.000Z',
+        });
+      if (path === `/api/tenant/employment/businesses/${found.id}`) return Response.json(found);
+      return Response.json({}, { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetch);
+    await b.app.queryApplicationResult(scope, tenant);
+
+    expect(b.app.readApplicationSession(scope)).toMatchObject({
+      pending: null,
+      saved: null,
+      found: { id: found.id, status: 'in_review' },
+      error: '',
+    });
+    expect(executeB).not.toHaveBeenCalled();
+    expect(fetch.mock.calls.map(([path]) => path)).toEqual([
+      `/api/tenant/commands/${first.commandId}/result`,
+      `/api/tenant/employment/businesses/${found.id}`,
+    ]);
+  });
+});
