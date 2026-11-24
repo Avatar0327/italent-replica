@@ -84,6 +84,8 @@ export function ReadOnlyReportTable({
   rowId,
   showEmptySummary,
   paginationDisabled,
+  scrollY,
+  renderCell,
   renderLabel,
 }: {
   table: DisplayTable;
@@ -95,6 +97,8 @@ export function ReadOnlyReportTable({
   rowId?: string;
   showEmptySummary?: boolean;
   paginationDisabled?: boolean;
+  scrollY?: number;
+  renderCell?(key: string, value: unknown, row: Row): ReactNode;
   renderLabel?(row: Row): ReactNode;
 }) {
   const summary = table.summary;
@@ -108,11 +112,13 @@ export function ReadOnlyReportTable({
           title: column.label,
           dataIndex: column.key,
           render: (value: unknown, row) =>
-            column.key === '_label' && renderLabel ? renderLabel(row) : cellText(column.key, value),
+            column.key === '_label' && renderLabel
+              ? renderLabel(row)
+              : (renderCell?.(column.key, value, row) ?? cellText(column.key, value)),
         }))}
         dataSource={rows.map((row, index) => ({ ...row, _rowKey: String(index) }))}
         rowKey={(row) => String((rowId && row[rowId]) || row._rowKey)}
-        scroll={{ x: 'max-content' }}
+        scroll={{ x: 'max-content', y: scrollY }}
         locale={{ emptyText: <Empty description={emptyText} /> }}
         pagination={{
           current: page,
