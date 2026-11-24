@@ -836,6 +836,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard': [
     'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
     '#refreshGuard',
+    'apps/api/src/modules/transfer/service.ts#lockTransferBusinessEmployee',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
   'apps/api/src/modules/transfer/service.ts#createTransfer': [
@@ -858,6 +859,11 @@ export const GRAPH: Graph = {
     '#requireDirectTransfer',
     '#requireTransferWrite',
     '#transferTargetContext',
+  ],
+  'apps/api/src/modules/transfer/service.ts#lockTransferBusinessEmployee': [
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
+    '#transferRequestEmployee',
   ],
   'apps/api/src/modules/transfer/service.ts#normalizeTransferInput': [
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
@@ -890,6 +896,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
     'apps/api/src/modules/transfer/manager-business-references.ts#requireManagerBusinessReferences',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/transfer/service.ts#transferRequestEmployee': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/transfer/service.ts#transferTargetContext': [
     'apps/api/src/modules/transfer/access.ts#requireTransferSource',
