@@ -527,6 +527,7 @@ export interface RouteModule {
 const SUB_APPS = new Set([
   'onboarding',
   'employment',
+  'onboarding',
   'approval',
   'contracts',
   'offers',
@@ -542,6 +543,7 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['onboarding', '/api/tenant/onboarding/integration/task-pool', [path.join(modules, 'onboarding')]],
     ['onboarding', '/api/tenant/onboarding/integration', [path.join(modules, 'onboarding')]],
     ['employment', '/api/tenant/employment', ['employment', 'transfer'].map((d) => path.join(modules, d))],
+    ['onboarding', '/api/tenant/onboarding', [path.join(modules, 'onboarding')]],
     ['approval', '/api/tenant/approval', [path.join(modules, 'approval')]],
     ['contracts', '/api/tenant/contracts', [path.join(modules, 'contracts')]],
     ['offers', '/api/tenant/offers', [path.join(modules, 'offer')]],

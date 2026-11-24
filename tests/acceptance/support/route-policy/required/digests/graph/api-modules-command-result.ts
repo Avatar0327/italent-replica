@@ -17,9 +17,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/onboarding/integration-schemes-result.ts#INTEGRATION_SCHEME_COMMAND_RESULTS',
   ],
   'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': [
+    'apps/api/src/advisory-lock.ts#tryAdvisoryLock',
     'apps/api/src/command-type.ts#commandTypeOf',
     '#commandResultRegistry',
     '#latestFailureGroup',
+    '#ledgerStatus',
     '#readRegisteredCommandResult',
     '#summaryOf',
   ],

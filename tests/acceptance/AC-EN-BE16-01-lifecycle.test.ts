@@ -21,6 +21,14 @@ import { entryLifecyclePort } from '../../apps/api/src/modules/employment/onboar
 import { addPending, entryWorld, portContext } from './AC-EN-BE2a-support.js';
 import { seedTenantWithMember } from './support/tenant-api.js';
 
+/**
+ * F-555：本文件的用例与钩子超时放宽到 120 秒（只作用于本文件；vitest.config.ts 的全局 30 秒与 CI 的 --testTimeout 不动，断言与用例不动）。
+ * 为什么：migrateBefore 用例要先建库并迁移到“前一结构”（约 1.5 秒，228 条迁移同一事务的 DDL），再造数据、补跑余下迁移；共享 PG16 被其它会话抢占时 DDL 与建库 / 删库（FORCE）会拖长。
+ * 单条用时本机实测最长 2.0 秒；共享 PG16 冒烟（app_owner）里同 sha 单条 2.6～30 秒以上、超时的用例两轮不同、与负载无单调关系，
+ * 120 秒在那一轮全过、断言失败 0。
+ */
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
+
 const testDb = useTestDb();
 const now = new Date('2026-10-20T08:00:00Z');
 const pendingDate = '2026-10-22';
@@ -65,8 +73,10 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
     const f = await fixture('ZZ_BE16_LIFECYCLE');
     const { entry, run, context, replacements } = f;
     const { port, app } = install(f.db);
+    // 采集配置（16a-1）路由不在本断言范围；其余入职路由只允许融入任务池（16b-0）
+    const COLLECTION = /^\/api\/tenant\/onboarding\/(?:collection-(?:templates|rules)(?:\/:id)?|collection-settings)$/;
     const onboardingRoutes = app.routes
-      .filter(({ path }) => path.startsWith(ONBOARDING))
+      .filter(({ path }) => path.startsWith(ONBOARDING) && !COLLECTION.test(path))
       .map(({ method, path }) => `${method} ${path}`)
       .sort();
     expect(onboardingRoutes).toEqual([
@@ -226,8 +236,8 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
       const created = await port.create(tx, ctx, { ...entry, pendingDate: business.record.effectiveDate });
       const hire = { ...entry, kind: 'hire' as const, hiredRecordId: recordId };
       await expect(port.apply(tx, ctx, { ...hire, hiredOn: '2026-10-30' })).rejects.toMatchObject(NOT_CURRENT);
-      const completed = await completePendingEntry(tx, ctx, recordId, { probation: false });
-      const hired = await port.apply(tx, ctx, { ...hire, hiredOn: completed.effectiveDate });
+      await completePendingEntry(tx, ctx, recordId, { probation: false });
+      const [hired] = await tx.select().from(cases).where(eq(cases.id, created.id));
       expect(hired).toMatchObject({ id: created.id, state: 'hired', hiredRecordId: recordId, hiredOn: '2026-10-19' });
     });
   });

@@ -15,13 +15,13 @@
     "hr-analysis": 6,
     "hr-dashboard": 3,
     "hr-movement": 5,
-    "hr-process-dashboard": 2,
+    "hr-process-dashboard": 3,
     "hr-structure": 5,
     "idp": 58,
     "insurance": 4,
     "job": 20,
     "offers": 24,
-    "onboarding": 11,
+    "onboarding": 18,
     "org": 17,
     "org-adjustment": 16,
     "permission": 52,
@@ -42,5 +42,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 963
+  "total": 971
 }

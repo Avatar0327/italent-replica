@@ -4,7 +4,7 @@ import type { ChartPoint, GroupChartKind } from './model.js';
 import './board-charts.css';
 
 const colors = ['var(--shell-primary)', '#087e8b', '#5b5caf', '#b15d26', '#327e55', '#a24e76', '#446b98', '#81702b'];
-const colorAt = (index: number) => colors[index % colors.length]!;
+export const colorAt = (index: number) => colors[index % colors.length]!;
 
 function pieFill(points: readonly ChartPoint[]) {
   const total = points.reduce((sum, { value }) => sum + (value ?? 0), 0);
@@ -20,13 +20,19 @@ function pieFill(points: readonly ChartPoint[]) {
   return `conic-gradient(${stops.join(', ')})`;
 }
 
-function ChartItem({ point, children, open }: { point: ChartPoint; children: ReactNode; open?: () => void }) {
-  if (!open) return <div className="board-chart-item">{children}</div>;
+export function ChartItem({ point, children, open }: { point: ChartPoint; children: ReactNode; open?: () => void }) {
+  if (!open)
+    return (
+      <div className="board-chart-item" title={point.hint}>
+        {children}
+      </div>
+    );
   return (
     <button
       type="button"
       className="board-chart-item"
-      aria-label={`${m.viewDetails}：${point.label}，${point.text}`}
+      aria-label={`${m.viewDetails}：${point.label}，${point.text}${point.hint ? `，${point.hint}` : ''}`}
+      title={point.hint}
       onClick={open}
     >
       {children}
