@@ -1,3 +1,4 @@
+import { dueEntryCaseEmployees, finishDueEntryCases } from './entry-case.js';
 import { dueHandoverCandidates, readDueHandoverEnabled, runDueHandovers } from './exit-handover-launch.js';
 import { plannedEffectiveDate } from './timeline.js';
 import { lockTransferParticipants } from './transfer-locks.js';
@@ -172,6 +173,7 @@ async function sweepTenant(
         // 交接与离职生效彼此独立：生效失败也不推迟已到期交接（DM-R12）。
         await runDueHandovers(tx, ctx, employeeId);
         const outcome = await activateDueBusinesses(tx, ctx, employeeId, 'scheduler');
+        await finishDueEntryCases(tx, ctx, employeeId, businessDate);
         await remindCompletion(tx, ctx, employeeId);
         // PT-7（兼职设计 §4.8）：开始日已到的兼职“是否部门负责人 / 新增下属”联动，与调动联动同一员工事务、同一闭包锁
         await runDuePartTimeLinkage(tx, ctx, employeeId);
@@ -238,6 +240,7 @@ async function dueEmployees(
       WHERE (${cursor}::uuid IS NULL OR l."employeeId"::uuid>${cursor}::uuid)
     UNION SELECT "employeeId" FROM (${dueHandoverCandidates(tenantId, businessDate)}) h
       WHERE ${handoverEnabled} AND (${cursor}::uuid IS NULL OR h."employeeId"::uuid>${cursor}::uuid)
+    UNION ${dueEntryCaseEmployees(tenantId, businessDate, cursor)}
     ORDER BY 1 LIMIT ${limit}
   `),
   );

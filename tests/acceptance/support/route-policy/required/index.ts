@@ -24,6 +24,7 @@ import { INSURANCE } from './insurance.js';
 import { HR_ANALYSIS } from './hr-analysis.js';
 import { IDP } from './idp.js';
 import { JOB } from './job.js';
+import { ONBOARDING } from './onboarding.js';
 import { OFFERS } from './offers.js';
 import { ORG } from './org.js';
 import { ORG_ADJUSTMENT } from './org-adjustment.js';
@@ -54,6 +55,7 @@ export const REQUIRED_BY_MODULE: Readonly<Record<string, RequiredTable>> = {
   personnel: PERSONNEL,
   'hr-analysis': HR_ANALYSIS,
   contracts: CONTRACTS,
+  onboarding: ONBOARDING,
   offers: OFFERS,
   permission: PERMISSION,
   employment: EMPLOYMENT,

@@ -37,6 +37,7 @@ export const ERROR_STATUS = {
   JOB_FUTURE_VERSION_EXISTS: 409,
   EST_FUTURE_VERSION_EXISTS: 409,
   IDEMPOTENCY_CONFLICT: 409,
+  COMMAND_VOIDED: 409,
   // F-061：保存对象权限时带的对象目录指纹与服务端当前不一致（目录或租户扩展字段变了），刷新后重提
   CATALOG_CHANGED: 409,
   // F-479：同一所有人未绑定的临时附件已达上限（删除或等待过期后再登记）
