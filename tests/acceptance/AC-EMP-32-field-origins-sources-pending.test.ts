@@ -218,6 +218,40 @@ describe('AC-EMP-32 pending 取落地与物化的事实', () => {
     expect(pendingOf(after)).toEqual([]);
   });
 
+  // 第 6 轮路径矩阵行 5：同日移位（timeline.ts shiftSameDay 先删后插）只改 sort_order，start_date 原样写回
+  it('迟到落地插到已有直接调动的同一天之前：同日移位后两单生效日不变，工作地都不 pending', async () => {
+    const x = await pendingWorld('2026-10-01');
+    const employee = await x.w.hired('同日移位员工');
+    const current = await x.w.session.getEmployee(employee.employee.id);
+    const direct = await x.w.session.business(
+      employee.employee.id,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-06', fields: { departmentId: x.w.to.id } },
+      current.revision,
+    );
+    const application = await x.w.apply(employee.employee.id, '2026-10-05', { departmentId: x.w.to.id });
+    await x.w.approve(application, '2026-10-02T01:00:00Z');
+    const run = await x.w.runScheduler('2026-10-06T01:00:00Z');
+    expect(run).toMatchObject({ failed: [], errors: [] });
+    const sameDay = await withTenant(x.w.db, x.w.session.tenant.id, async (tx) =>
+      resultRows<{ id: string; order: number }>(
+        await tx.execute(sql`SELECT record_id::text AS id, sort_order AS order FROM employment_timeline
+          WHERE tenant_id = ${x.w.session.tenant.id} AND start_date = '2026-10-06' ORDER BY sort_order`),
+      ),
+    );
+    expect(sameDay, '前提：迟到的申请排到直接调动之前，直接调动被同日移位').toEqual([
+      { id: application.id, order: 0 },
+      { id: direct.id, order: 1 },
+    ]);
+    for (const day of ['2026-10-06', '2026-10-09']) {
+      x.w.session.setNow(`${day}T01:00:00Z`);
+      for (const id of [application.id, direct.id]) {
+        const rows = await x.origins(id);
+        expect(deferredCount(rows), `${day} ${id}`).toBeGreaterThan(0);
+        expect(pendingOf(rows), `${day} ${id}`).toEqual([]);
+      }
+    }
+  });
+
   it('生效日前补录前驱的工作地：给调动追加记录快照，被触碰的工作地有来源，没碰的延迟字段仍待解析', async () => {
     const x = await pendingWorld('2026-10-01');
     const transfer = await x.directOn('2026-10-05');
