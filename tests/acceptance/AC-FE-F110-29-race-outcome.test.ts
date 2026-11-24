@@ -75,8 +75,9 @@ describe('AC-FE-F110-29 不同员工竞争：拒绝落定后槽对齐到 A（P2-
     expect(t.store.get(t.keyB)?.status).toBe('submitting');
     t.registerA();
     t.storageEvent();
-    // 事件先到：A 的条目已载入，B 仍在提交中，槽暂不改钉。
+    // 事件先到：A 的条目已载入，B 仍在提交中，槽暂不改钉（问 2 正例：交接不从本页处理中的命令手里抢槽）。
     expect(t.store.get(t.keyA)).toMatchObject({ status: 'unknown', restored: true });
+    expect(t.store.holder([t.slot])).toBe(t.keyB);
     release();
     const outcome = await pending;
     expect(t.send).not.toHaveBeenCalled();
