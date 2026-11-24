@@ -36,6 +36,17 @@ export async function advisoryLock(tx: Tx, ...parts: readonly KeyPart[]): Promis
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${lockKey(...parts)})`);
 }
 
+/** 在同一条 SQL 中取得两把事务级共享咨询锁。 */
+export async function advisoryLockSharedPair(
+  tx: Tx,
+  first: readonly KeyPart[],
+  second: readonly KeyPart[],
+): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock_shared(${lockKey(...first)}), pg_advisory_xact_lock_shared(${lockKey(...second)})`,
+  );
+}
+
 /** 同 advisoryLock，但用 32 位 hashtext（见 lockKey32）。 */
 export async function advisoryLock32(tx: Tx, ...parts: readonly KeyPart[]): Promise<void> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${lockKey32(...parts)})`);

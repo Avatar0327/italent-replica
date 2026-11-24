@@ -3,8 +3,13 @@
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
 }
+/*
+ * 卡片内只有一列且显式限定为卡片内容宽：隐式列是 auto，会被卡头 nowrap 按钮、大号指标等撑宽，
+ * 横条随列一起越出卡片（审查 F-556 P2-2）；限定后子项都以卡片内容区为宽。
+ */
 .hr-structure-card {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 8px;
   grid-column: span 3;

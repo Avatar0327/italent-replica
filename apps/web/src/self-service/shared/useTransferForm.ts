@@ -3,7 +3,7 @@ import { sendWithEstablishmentConfirm, useEstablishmentConfirm } from '../../tra
 import { useHrTransferCommand } from '../../transfer/useHrTransferCommand.js';
 import { ApplicationCommandHandled, applicationCommand, type ApplicationCommandRunner } from './application-command.js';
 import type { TransferFormAdapter } from './transfer-adapter.js';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { missingTransferRequiredFields } from '@italent/domain';
 import {
   EMPLOYMENT_API,
@@ -44,6 +44,29 @@ const initial: TransferFormModel = {
   customFields: {},
   preview: null,
 };
+export type TransferDraftState = [
+  TransferFormModel | undefined,
+  React.Dispatch<React.SetStateAction<TransferFormModel | undefined>>,
+];
+
+function useTransferModel(
+  initiator: NonNullable<TransferFormModel['initiator']>,
+  adapter?: TransferFormAdapter,
+  pageDraft?: TransferDraftState,
+) {
+  const [local, setLocal] = useState<TransferFormModel>({
+    ...(adapter?.initialModel ?? initial),
+    initiator,
+    ...(initiator === 'hr' ? { linkage: emptyLinkage } : {}),
+  });
+  const [draft, setDraft] = pageDraft ?? [];
+  const setPageModel = useCallback<SetModel>(
+    (change) => setDraft?.((previous) => (typeof change === 'function' ? change(previous ?? local) : change)),
+    [local, setDraft],
+  );
+  return [draft ?? local, setDraft ? setPageModel : setLocal] as const;
+}
+
 export function useTransferForm(
   tenantId: string,
   initiator: 'hr' | 'employee' | 'manager' = 'hr',
@@ -52,12 +75,9 @@ export function useTransferForm(
   hrScope?: string,
   /** F-153：他人调动申请（有暂存）选人后按人带出暂存；“调动”入口没有暂存，不带出。 */
   restoreDrafts = false,
+  pageDraft?: TransferDraftState,
 ) {
-  const [model, setModel] = useState<TransferFormModel>({
-    ...(adapter?.initialModel ?? initial),
-    initiator,
-    ...(initiator === 'hr' ? { linkage: emptyLinkage } : {}),
-  });
+  const [model, setModel] = useTransferModel(initiator, adapter, pageDraft);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -130,7 +150,7 @@ export function useTransferForm(
  * 重新读取表单不丢草稿（#350 第 1 轮 P2-2）：尚未回填的带出草稿原样保留，否则把当前改动作为待回填草稿，
  * 等新预览到达后按当时可编辑的字段回填。
  */
-function keptForm(model: TransferFormModel): TransferFormModel {
+export function keptForm(model: TransferFormModel): TransferFormModel {
   const { employeeId, fields, customFields } = model;
   const kept =
     model.pendingDraft || !employeeId ? model : { ...model, pendingDraft: { employeeId, fields, customFields } };

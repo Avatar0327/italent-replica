@@ -1344,6 +1344,110 @@
         ]
       }
     },
+    "DELETE /api/tenant/onboarding/collection-rules/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "DELETE /api/tenant/onboarding/collection-templates/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "DELETE /api/tenant/onboarding/integration/schemes/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "scope": [
+          "creator scope",
+          "scopeSql",
+          "visible()"
+        ]
+      }
+    },
     "DELETE /api/tenant/onboarding/integration/task-pool/:id": {
       "edge": {
         "anonymous": {
@@ -9451,6 +9555,219 @@
         ]
       }
     },
+    "GET /api/tenant/onboarding/collection-rules": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ],
+        "scope": [
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/onboarding/collection-rules/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ],
+        "scope": [
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/onboarding/collection-settings": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
+    "GET /api/tenant/onboarding/collection-templates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
+    "GET /api/tenant/onboarding/collection-templates/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
+    "GET /api/tenant/onboarding/integration/schemes": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ],
+        "scope": [
+          "scope.all",
+          "scopeSql",
+          "visible()"
+        ]
+      }
+    },
+    "GET /api/tenant/onboarding/integration/schemes/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ],
+        "scope": [
+          "scopeSql",
+          "visible()"
+        ]
+      }
+    },
     "GET /api/tenant/onboarding/integration/task-pool": {
       "edge": {
         "anonymous": {
@@ -16400,6 +16717,110 @@
         "scopePoint": [
           "employment point",
           "visibleJob"
+        ]
+      }
+    },
+    "PATCH /api/tenant/onboarding/collection-rules/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "PATCH /api/tenant/onboarding/collection-templates/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "PATCH /api/tenant/onboarding/integration/schemes/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "scope": [
+          "creator scope",
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -25925,6 +26346,110 @@
         ]
       }
     },
+    "POST /api/tenant/onboarding/collection-rules": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "POST /api/tenant/onboarding/collection-templates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "POST /api/tenant/onboarding/integration/schemes": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "scope": [
+          "creator scope",
+          "scopeSql",
+          "visible()"
+        ]
+      }
+    },
     "POST /api/tenant/onboarding/integration/task-pool": {
       "edge": {
         "anonymous": {
@@ -32042,6 +32567,39 @@
           "tenant.employment.configuration"
         ],
         "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "PUT /api/tenant/onboarding/collection-settings": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
         ],

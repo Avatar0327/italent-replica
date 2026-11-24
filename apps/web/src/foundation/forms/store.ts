@@ -310,7 +310,7 @@ async function deletionOutcome(state: Submission, read: DeletionReader): Promise
   if (result.status === 'not_deleted') return { status: 'rejected', error: new Error(messages.notDeleted) };
   return {};
 }
-/** F-120 三分支：成功放开锁；确定失败保留输入，允许改正后以新命令重提；查不到仍只读。 */
+/** 结果确定后解除锁定并清理恢复记录，失败或未执行保留本页原输入。 */
 function resultOutcome(verdict: ResultVerdict): Partial<Submission> {
   if (verdict.status === 'succeeded')
     return {
@@ -320,6 +320,8 @@ function resultOutcome(verdict: ResultVerdict): Partial<Submission> {
     };
   if (verdict.status === 'failed')
     return { status: 'rejected', resultPending: undefined, error: new Error(messages.resultFailed) };
+  if (verdict.status === 'not_executed')
+    return { status: 'rejected', resultPending: undefined, error: new Error(messages.resultNotExecuted) };
   return { resultPending: true };
 }
 /** 从恢复记录载入的未确认命令（刷新前或别的标签页）：只有命令 ID 与上下文，没有请求体和草稿。 */
