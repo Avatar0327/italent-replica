@@ -107,7 +107,7 @@ describe('AC-FE-F110-17 登记恢复记录跨标签页原子互斥', () => {
     sent.length = 0;
   });
 
-  it('同一条目：A、B 同时提交，只发出 A 的命令，记录只有 A；B 不发出并锁在 A 的命令上', async () => {
+  it('同一条目：A、B 同时提交，只发出 A 的命令，记录只有 A；B 不发出，返回其他标签页并锁在 A 的命令上', async () => {
     const key = scoped(randomUUID(), '/api/tenant/employment/transfers/employees/synthetic-e1');
     const [idA, idB] = ['synthetic-command-a', 'synthetic-command-b'];
     const b = await openTab();
@@ -120,7 +120,14 @@ describe('AC-FE-F110-17 登记恢复记录跨标签页原子互斥', () => {
     expect(sent).toEqual(['synthetic-command-a']);
     expect(recorded()).toEqual(['synthetic-command-a']);
     expect(stateA).toMatchObject({ status: 'unknown', command: { id: 'synthetic-command-a' } });
-    expect(stateB).toMatchObject({ status: 'unknown', restored: true, command: { id: 'synthetic-command-a' } });
+    // F-110 第 2 轮 P2-3：B 本次的结果是“其他标签页”拒绝，条目本身锁到 A 的恢复态上。
+    expect(stateB.status).toBe('rejected');
+    expect((stateB.error as Error).message).toBe(OTHER_TAB);
+    expect(b.commands.get(key)).toMatchObject({
+      status: 'unknown',
+      restored: true,
+      command: { id: 'synthetic-command-a' },
+    });
   });
 
   it('钉在同一恢复槽的两个条目：A、B 同时提交，只发出 A 的命令；B 被拒（其他标签页），记录只有 A', async () => {
