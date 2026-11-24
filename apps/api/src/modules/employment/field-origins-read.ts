@@ -88,14 +88,17 @@ export interface OriginFacts {
 
 /**
  * 业务是否已落地（唯一事实函数，设计 §4.9 “尚未落地解析”）。“已落地” = 该业务曾在某个租户日期实际生效过：
- * 它的生效结果进入过时间轴，且那条条目的生效日已到。事后被摘下 / 重排不改变“曾落地”这个事实；
+ * 它的生效结果进入过时间轴，且那条条目的生效日已到。事后被摘下 / 重排 / 删除不改变“曾落地”这个事实；
  * 从未实际生效的（作废的未来调动、离职提前摘下的未来调动、撤回 / 驳回 / 未到点的申请）仍是“未落地”。
- * 同一只读快照里按三个事实判（不读载荷版本，也不新增任何表或列）：
+ * 同一只读快照里按三个只追加或可变投影上的事实判（不读载荷版本），任一成立即已落地（DEC-991 方案 B）：
  * 1. 时间轴上现有该业务的条目，且条目生效日 ≤ 租户今天；
  * 2. 摘除台账（exit_effects future_transfer_detached，只追加）记下的被摘窗口起点 ≤ 摘除当天的租户日期——
  *    摘下时它已经生效过（如同日落地、随后被退休顺延重排摘出）；窗口起点晚于摘除当天的是提前摘出，从未生效；
- * 3. 删除墓碑（employment_record_tombstones）+ 记录行的生效日 ≤ 删除当天的租户日期，且该业务从未进过摘除台账——
- *    已生效的记录被 HR 删除后条目随之消失，但删除时它已经生效过（台账里有过的由第 2 条按摘下时的事实判）。
+ * 3. 删除墓碑（只追加）记下的删除前时间轴生效日 ≤ 删除当天的租户日期——删除前它在轴上且已到期。
+ *    被摘下后才删除的墓碑此列为空，不据此判，只看第 2 条；旧墓碑不回填（DEC-402）。
+ * 已知限制（F-557）：挂回不留回执，`repositionExit` 同事务挂回再重摘会写新的摘除行。第 2 条可信的前提是
+ * 离职摘除台账里未作废的目标摘下时都已生效，退休日期不可改（守卫见 AC-EMP-32 “离职改期先挂回再重摘”）。
+ * 放开退休改期、或挂回目标可能是未生效调动之前，须按 F-557 升级到在场台账。
  */
 export async function isBusinessLanded(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<boolean> {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
@@ -108,11 +111,8 @@ export async function isBusinessLanded(tx: Tx, ctx: EmploymentContext, businessI
           AND x.kind = 'future_transfer_detached' AND x.phase = 'effective' AND x.target_type = 'employment-record'
           AND (x.detail -> 'window' ->> 'from')::date <= (x.created_at AT TIME ZONE ${ctx.timezone})::date)
       OR EXISTS (SELECT 1 FROM employment_record_tombstones t
-        JOIN employment_records r ON r.tenant_id = t.tenant_id AND r.id = t.record_id
         WHERE t.tenant_id = ${ctx.tenantId}::uuid AND t.record_id = ${businessId}::uuid
-          AND r.start_date <= (t.created_at AT TIME ZONE ${ctx.timezone})::date
-          AND NOT EXISTS (SELECT 1 FROM exit_effects x
-            WHERE x.tenant_id = t.tenant_id AND x.target_id = t.record_id AND x.kind = 'future_transfer_detached'))
+          AND t.timeline_start_date <= (t.created_at AT TIME ZONE ${ctx.timezone})::date)
     ) AS landed`),
   );
   return row?.landed === true;
@@ -166,7 +166,7 @@ export async function liveOriginRows(
         reason: writer.reason,
       },
       policy: state?.policy ?? null,
-      // 业务已落地的延迟字段不再待解析（以时间轴上的有效条目为准）；resolved 写入归 S6，本片不写
+      // 业务已落地（曾实际生效，见 isBusinessLanded）的延迟字段不再待解析；resolved 写入归 S6，本片不写
       pending: state?.policy === 'deferred' && writer === null && !facts.landed,
       suspended: (state?.suspended.size ?? 0) > 0,
     };

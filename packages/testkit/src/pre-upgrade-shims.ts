@@ -61,6 +61,13 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
     type: 'numeric',
     migration: 'f432_seniority_correction',
   },
+  // F-036 S5（DEC-991）：删除已生效业务时墓碑记下删除前在时间轴上的生效日。
+  {
+    table: 'employment_record_tombstones',
+    column: 'timeline_start_date',
+    type: 'date',
+    migration: 'f036_tombstone_timeline_start',
+  },
 ];
 
 export interface PreUpgradeTableShim {

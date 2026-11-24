@@ -413,6 +413,18 @@ function assertTransition(business: LockedEmploymentBusiness, action: Employment
     throw new AppError('CONFLICT', '当前状态不允许此动作', { state: business.state, action });
 }
 
+/**
+ * DEC-991：删除前记录在时间轴上的生效日，写进墓碑，供字段来源判断“删除前是否已实际生效”。
+ * 时间轴是可变投影，删除会摘掉这一行，所以要在 removeEmploymentTimeline 之前取。
+ */
+async function timelineStartDate(tx: Tx, ctx: EmploymentContext, recordId: string): Promise<string | undefined> {
+  const [row] = rowsOf<{ start_date: string }>(
+    await tx.execute(sql`SELECT start_date::text AS start_date FROM employment_timeline
+      WHERE tenant_id = ${ctx.tenantId}::uuid AND record_id = ${recordId}::uuid LIMIT 1`),
+  );
+  return row?.start_date;
+}
+
 /** 返回时间轴上的前一条（已生效记录被删时），供调用方同步其投影。 */
 async function deleteEmploymentBusiness(
   tx: Tx,
@@ -456,6 +468,7 @@ async function deleteEmploymentBusiness(
       employeeId: business.employeeId,
       recordId: business.id,
       commandId: ctx.commandId,
+      timelineStartDate: record ? await timelineStartDate(tx, ctx, business.id) : undefined,
       createdAt: ctx.now.toISOString(),
     });
     if (record) {
