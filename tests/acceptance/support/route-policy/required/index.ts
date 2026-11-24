@@ -24,13 +24,13 @@ import { INSURANCE } from './insurance.js';
 import { HR_ANALYSIS } from './hr-analysis.js';
 import { IDP } from './idp.js';
 import { JOB } from './job.js';
+import { ONBOARDING } from './onboarding.js';
 import { OFFERS } from './offers.js';
 import { ORG } from './org.js';
 import { ORG_ADJUSTMENT } from './org-adjustment.js';
 import { PERMISSION } from './permission.js';
 import { PERSONNEL } from './personnel.js';
 import { QUALIFICATION } from './qualification.js';
-import { ONBOARDING } from './onboarding.js';
 import { ROOT } from './root.js';
 import { SELF_SERVICE } from './self-service.js';
 import { SURVEY360 } from './survey360.js';
@@ -55,9 +55,9 @@ export const REQUIRED_BY_MODULE: Readonly<Record<string, RequiredTable>> = {
   personnel: PERSONNEL,
   'hr-analysis': HR_ANALYSIS,
   contracts: CONTRACTS,
+  onboarding: ONBOARDING,
   offers: OFFERS,
   permission: PERMISSION,
-  onboarding: ONBOARDING,
   employment: EMPLOYMENT,
   approval: APPROVAL,
   talent: TALENT,

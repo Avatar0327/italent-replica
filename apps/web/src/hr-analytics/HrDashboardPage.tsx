@@ -10,6 +10,7 @@ import { QueryFilters } from '../hr-reports/ReportFilters.js';
 import { m as report } from '../hr-reports/messages.js';
 import { cellText } from '../hr-reports/model.js';
 import { MovementBoard } from './MovementBoard.js';
+import { ProcessBoard } from './ProcessBoard.js';
 import { StructureBoard } from './StructureBoard.js';
 import { useBoardRead } from './useBoardRead.js';
 import { BoardDetailDrawer } from './BoardDetailDrawer.js';
@@ -137,7 +138,12 @@ function ManagementBoard({ today, refresh }: { today: string; refresh(): void })
   );
 }
 
-const boards = { management: ManagementBoard, structure: StructureBoard, movement: MovementBoard };
+const boards = {
+  management: ManagementBoard,
+  structure: StructureBoard,
+  movement: MovementBoard,
+  process: ProcessBoard,
+};
 
 export function HrDashboardPage() {
   const session = useSession();

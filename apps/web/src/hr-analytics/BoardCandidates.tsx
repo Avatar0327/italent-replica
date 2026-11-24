@@ -6,7 +6,7 @@ import { useReportRetryWait } from '../hr-reports/ReportReadState.js';
 import { m as report } from '../hr-reports/messages.js';
 import { useReportRead } from '../hr-reports/useReportRead.js';
 import { m } from './messages.js';
-import { canRetryRead } from './model.js';
+import { candidateUuid, canRetryRead } from './model.js';
 
 export interface OrgCandidate {
   id: string;
@@ -53,13 +53,13 @@ export function CandidateHint({ label, state }: { label: string; state: Candidat
   );
 }
 
-export const candidateUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export { candidateUuid };
 
 export function organizationField(
   state: CandidateState<OrgCandidate>,
   key: string,
   label: string,
-  includeChildren?: string,
+  includeChildren?: string | null,
 ): QueryField {
   const treeData = state.items.map(({ id, name, parentId, enabled }) => ({
     id,
@@ -90,6 +90,7 @@ export function organizationField(
     ),
     appliedText: (value, filters) => {
       const name = treeData.find((node) => node.value === value)?.title ?? value;
+      if (includeChildren === null) return `${label} ${name}`;
       const descendants =
         includeChildren && filters[includeChildren] === 'false' ? m.withoutDescendants : m.descendants;
       return `${label} ${name}（${descendants}）`;
