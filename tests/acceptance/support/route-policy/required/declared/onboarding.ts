@@ -15,6 +15,11 @@ export const ONBOARDING_DECLARED: ModuleDeclared = {
     'DELETE /api/tenant/onboarding/collection-rules/:id',
     'GET /api/tenant/onboarding/collection-settings',
     'PUT /api/tenant/onboarding/collection-settings',
+    'GET /api/tenant/onboarding/integration/schemes',
+    'GET /api/tenant/onboarding/integration/schemes/:id',
+    'POST /api/tenant/onboarding/integration/schemes',
+    'PATCH /api/tenant/onboarding/integration/schemes/:id',
+    'DELETE /api/tenant/onboarding/integration/schemes/:id',
     'GET /api/tenant/onboarding/integration/task-pool',
     'GET /api/tenant/onboarding/integration/task-pool/categories',
     'GET /api/tenant/onboarding/integration/task-pool/:id',
@@ -22,5 +27,8 @@ export const ONBOARDING_DECLARED: ModuleDeclared = {
     'PATCH /api/tenant/onboarding/integration/task-pool/:id',
     'DELETE /api/tenant/onboarding/integration/task-pool/:id',
   ],
-  sameStatusInvalidId: ['PATCH /api/tenant/onboarding/integration/task-pool/:id'],
+  sameStatusInvalidId: [
+    'PATCH /api/tenant/onboarding/integration/task-pool/:id',
+    'PATCH /api/tenant/onboarding/integration/schemes/:id',
+  ],
 };

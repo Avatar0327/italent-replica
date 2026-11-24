@@ -239,8 +239,8 @@ async function runRequest(
     }
     throw result.error ?? new Error(kernel.unknown);
   }
+  // 新单 ID 的槽随本命令落定由内核放开（F-110 第 4 轮：放开只在内核）。
   command.clear();
-  if (action === 'create' && context.createdId) store.unpin([scoped(slotKey(requests, context.createdId))], key);
   void message.success(r.saved);
   return context.createdId;
 }

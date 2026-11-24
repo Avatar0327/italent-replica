@@ -115,3 +115,13 @@ export async function seedDemoUser(page: Page) {
     { name: 'italent_demo_user', value: user, url },
   ]);
 }
+
+/**
+ * F-110 DEC-955：模拟 http 非安全上下文。浏览器在这类页面上既不提供 navigator.locks，也不提供 crypto.randomUUID
+ * （Web Cryptography 规范把 randomUUID 标为 SecureContext，getRandomValues 仍可用）；只去掉锁覆盖不到后者。
+ */
+export const insecureContext = (page: Page) =>
+  page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, 'locks', { configurable: true, get: () => undefined });
+    delete (Crypto.prototype as { randomUUID?: unknown }).randomUUID;
+  });

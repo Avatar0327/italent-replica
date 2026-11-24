@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { webLocksRefusal } from '../foundation/forms/recovery.js';
 import { createFormStore, type SubmitInput } from '../foundation/forms/store.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { useCommandForm, type CommandForm } from '../foundation/forms/useCommandForm.js';
@@ -9,12 +10,20 @@ import { needsEstablishmentConfirm, useEstablishmentConfirm } from './establishm
 import type { TransferFormModel } from './types.js';
 
 // 页面层共用一份内核存储，关闭表单、切换视图或入口不销毁未确认命令（同合同模块）；刷新恢复归 F-110。
-const store = createFormStore();
+// 清除暂存是调动写入（DELETE）：浏览器没有 Web Locks 时同样按 DEC-955 拒绝、不发出（F-110 第 2 轮 P2-2）。
+const store = createFormStore({ precheck: webLocksRefusal });
 export type DraftRestoreStatus = 'idle' | 'loading' | 'restored' | 'failed';
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;
 
 /** F-181b：元数据只从服务端读取；清除按员工暂存资源钉住，替换单号也不能绕过未知锁。 */
-export function useDraftRestore(tenantId: string, scope: string | undefined, employeeId: string, setModel: SetModel) {
+export function useDraftRestore(
+  tenantId: string,
+  scope: string | undefined,
+  employeeId: string,
+  setModel: SetModel,
+  /** 表单原提示区按最近一次操作显示失败（第 4 轮 P2-3）：真正发起清除时登记。 */
+  onAttempt?: () => void,
+) {
   const [status, setStatus] = useState<DraftRestoreStatus>('idle');
   const [draft, setDraft] = useState<ServerDraft | null>(null);
   const command = useCommandForm(slotKey(`${TRANSFER_API}/employees`, employeeId || undefined), store);
@@ -53,20 +62,14 @@ export function useDraftRestore(tenantId: string, scope: string | undefined, emp
       // 恢复对象是该员工的暂存资源，单号只是它的值；替换后仍在原资源核对差异。
       return { id: employeeId, revision: latest?.revision ?? 0, values: latest ? { ...latest } : { id: null } };
     });
-  const form: CommandForm = {
-    ...command,
-    reload,
-    confirm: () => {
-      command.confirm();
-      command.clear();
-    },
-  };
+  const form = draftCommand(command, reload);
   return {
     status,
     command: form,
     error: command.status === 'rejected' && command.state?.error instanceof Error ? command.state.error.message : '',
     clear: async () => {
       if (!scope || !draft || command.locked || status === 'loading') return;
+      onAttempt?.();
       command.clear();
       const signal = active.current?.signal;
       const submit = (confirmed: boolean) =>
@@ -93,6 +96,18 @@ export function useDraftRestore(tenantId: string, scope: string | undefined, emp
           setStatus('failed');
         }
       }
+    },
+  };
+}
+
+/** 清除暂存的命令表单：冲突确认后即清掉条目，命令只为这一次删除。 */
+function draftCommand(command: CommandForm, reload: () => Promise<void>): CommandForm {
+  return {
+    ...command,
+    reload,
+    confirm: () => {
+      command.confirm();
+      command.clear();
     },
   };
 }

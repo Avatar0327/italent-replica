@@ -1,4 +1,4 @@
-import { test, expect, user, employee } from './fixtures.js';
+import { test, expect, user, employee, insecureContext } from './fixtures.js';
 import type { Page } from '@playwright/test';
 
 // F-153（DEC-511，W-870）：他人调动申请暂存按人一份——重选同一人自动带出、横幅可“点击清除”；我的申请不再列暂存单。
@@ -186,6 +186,22 @@ test('AC-FE-F153-08 点击清除回到空白表单并保留所选人员；再选
   await pick(page);
   await expect(banner(page)).toHaveCount(0);
   expect(state.reads).toBe(1);
+});
+
+// F-110 第 2 轮 P2-2：清除暂存是调动写入（DELETE），浏览器没有 Web Locks 时同样按 DEC-955 拒绝、不发出。
+test('AC-FE-F110-25 DEC-955 非安全上下文：点击清除提示需 https、零 DELETE，暂存保留', async ({ page }) => {
+  await insecureContext(page);
+  const state = await backend(page, (route) => route.fulfill({ json: business }));
+  state.draft = { id: draftId, revision: 1, transferTypeCode: 'transfer' };
+  await openTransfer(page);
+  await pick(page);
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  await page.getByRole('button', { name: '点击清除', exact: true }).click();
+  await expect(page.getByText('当前浏览器环境不支持安全保存（需 https 访问），命令未发出。')).toBeVisible();
+  expect(state.deletes).toEqual([]);
+  await expect(banner(page)).toBeVisible();
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  expect(state.draft).not.toBeNull();
 });
 
 test('AC-FE-F153-09 我的申请不再列出本会话暂存单', async ({ page }) => {
