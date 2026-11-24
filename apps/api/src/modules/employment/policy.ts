@@ -1200,12 +1200,22 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 控制项显式投影，权限沿用待入职列表本身的对象与字段权限，不另要求合同对象权限）；
   // cancelRemark（F-206，DEC-560）：最近一次取消动作的说明，无则 null，行可见即可见；
   // 记录字段按任职记录可见字段裁剪，姓名 / 工号按人员对象可见字段另行裁剪；hasDataPermission 协议键
+  // 采集列另按采集对象状态字段与行范围披露，筛选和排序复用相同判定（BE-16 16a-2a）。
   'GET /pending-entries': object({
     object: EMPLOYMENT,
     operation: 'view',
     button: noButton('列表无按钮'),
     scope: listScope('module.scopeSql'),
     fields: projector('employment.response', 'employment.entryViews'),
+    optional: {
+      collectionStatus: object({
+        object: 'TenantBase.OnboardingCollection',
+        operation: 'view',
+        button: noButton('采集状态列查看'),
+        scope: listScope('onboarding.collectionEntryScope'),
+        fields: projector('employment.response', 'employment.entryCollectionStatus'),
+      }),
+    },
   }),
   // ---- employment/intern-routes.ts：R2 BE-6a 实习生（B34～B38、B41、A48）-------------------------------------------------
   // 实习四视图：view / departmentId / keyword 不合法 400；按部门筛选须 departmentId 可见、按关键字须 name / code 可见（否则 403
