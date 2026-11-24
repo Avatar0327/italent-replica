@@ -4,6 +4,7 @@
  * 测试里各“标签页”共用同一个全局，装一份即覆盖所有页。happy-dom 的 navigator.locks 为 null，Node 22 / 24 也不一致，
  * 凡经 sharedRecovery 登记命令（审批、调动）的测试统一在文件顶层装这份；不装时内核按“不支持锁”拒绝提交（DEC-955）。
  * DEC-954：支持 options.signal，等锁期间中止即以 AbortError 拒绝、不再执行回调，与浏览器一致；已授予后中止不影响。
+ * query() 同浏览器，列出已授予（held）与排队中（pending）的请求，用来断言超时后没有残留的排队请求。
  */
 type LockCallback = (lock: { name: string; mode: 'exclusive' }) => unknown;
 
@@ -11,16 +12,30 @@ const abortError = () => new DOMException('lock request aborted', 'AbortError');
 
 export function installWebLocks() {
   const tails = new Map<string, Promise<unknown>>();
+  const held: { name: string }[] = [];
+  const pending: { name: string }[] = [];
+  const drop = (list: { name: string }[], item: { name: string }) =>
+    list.includes(item) && list.splice(list.indexOf(item), 1);
   const locks = {
+    query: () => Promise.resolve({ held: [...held], pending: [...pending] }),
     request(name: string, ...rest: unknown[]) {
       const callback = rest.at(-1) as LockCallback;
       const signal = rest.length > 1 ? (rest[0] as { signal?: AbortSignal }).signal : undefined;
       if (signal?.aborted) return Promise.reject(abortError());
       let started = false;
-      const granted = (tails.get(name) ?? Promise.resolve()).then(() => {
+      const request = { name };
+      pending.push(request);
+      signal?.addEventListener('abort', () => !started && drop(pending, request), { once: true });
+      const granted = (tails.get(name) ?? Promise.resolve()).then(async () => {
         if (signal?.aborted) throw abortError();
         started = true;
-        return callback({ name, mode: 'exclusive' });
+        drop(pending, request);
+        held.push(request);
+        try {
+          return await callback({ name, mode: 'exclusive' });
+        } finally {
+          drop(held, request);
+        }
       });
       tails.set(
         name,

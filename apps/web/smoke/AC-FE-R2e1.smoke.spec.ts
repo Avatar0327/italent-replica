@@ -394,28 +394,40 @@ test('AC-FE-R2e1 新建回执丢失后重开仍锁定，查询原命令确认草
 });
 
 // DEC-955 只禁调动 / 审批写入；组织调整不在范围内，浏览器没有 Web Locks 时照常登记并保存。
-test('AC-FE-F110-23 组织调整不在 DEC-955 范围：无 navigator.locks 时新建草稿照常保存', async ({ page, baseURL }) => {
-  await page.addInitScript(() =>
-    Object.defineProperty(Navigator.prototype, 'locks', { configurable: true, get: () => undefined }),
-  );
-  await signIn(page, baseURL!, 'writer');
-  await page.goto(PATH);
-  await page.getByRole('button', { name: intake, exact: true }).click();
-  const form = page.getByRole('dialog', { name: intake, exact: true });
-  const name = 'ZZ_FER2E1_无锁环境';
-  await form.getByRole('textbox', { name: '调整主题' }).fill(name);
-  const date = form.getByRole('textbox', { name: '选择日期' });
-  await date.fill(EFFECTIVE);
-  await date.press('Enter');
-  await pickOrg(page, form.getByRole('combobox', { name: '审批主体组织' }), ROOT);
-  await pickOrg(page, form.getByRole('combobox', { name: '调整范围' }), candidate(1));
-  await form.getByRole('textbox', { name: '调整主题' }).click();
-  const saved = responseFor(page, API, 'POST');
-  await form.getByRole('button', { name: /^保\s*存$/ }).click();
-  expect((await saved).status()).toBe(201);
-  await expect(detail(page)).toContainText(name);
-  expect(await page.evaluate(() => localStorage.getItem('italent.commands.pending:org-adjustment'))).toBeNull();
-});
+// F-110 第 2 轮 P2-1：真实 http 非安全上下文还没有 crypto.randomUUID，组织调整按 requireLocks:false 仍须照常保存。
+for (const variant of [
+  { title: '无 navigator.locks 时', suffix: '', uuid: true },
+  { title: '非安全上下文（无 locks、无 randomUUID）时', suffix: '_非安全', uuid: false },
+]) {
+  test(`AC-FE-F110-23 组织调整不在 DEC-955 范围：${variant.title}新建草稿照常保存`, async ({ page, baseURL }) => {
+    await page.addInitScript((uuid) => {
+      Object.defineProperty(Navigator.prototype, 'locks', { configurable: true, get: () => undefined });
+      if (!uuid) delete (Crypto.prototype as { randomUUID?: unknown }).randomUUID;
+    }, variant.uuid);
+    await signIn(page, baseURL!, 'writer');
+    await page.goto(PATH);
+    await page.getByRole('button', { name: intake, exact: true }).click();
+    const form = page.getByRole('dialog', { name: intake, exact: true });
+    const name = `ZZ_FER2E1_无锁环境${variant.suffix}`;
+    await form.getByRole('textbox', { name: '调整主题' }).fill(name);
+    const date = form.getByRole('textbox', { name: '选择日期' });
+    await date.fill(EFFECTIVE);
+    await date.press('Enter');
+    await pickOrg(page, form.getByRole('combobox', { name: '审批主体组织' }), ROOT);
+    await pickOrg(page, form.getByRole('combobox', { name: '调整范围' }), candidate(1));
+    await form.getByRole('textbox', { name: '调整主题' }).click();
+    // 按断言判定（不用 waitForResponse 超时）：页面若在生成命令 ID 时抛错，POST 根本不会发出。
+    const saved: number[] = [];
+    page.on('response', (response) => {
+      const request = response.request();
+      if (new URL(response.url()).pathname === API && request.method() === 'POST') saved.push(response.status());
+    });
+    await form.getByRole('button', { name: /^保\s*存$/ }).click();
+    await expect.poll(() => saved).toEqual([201]);
+    await expect(detail(page)).toContainText(name);
+    expect(await page.evaluate(() => localStorage.getItem('italent.commands.pending:org-adjustment'))).toBeNull();
+  });
+}
 
 function writerHeaders(revision?: number) {
   return {

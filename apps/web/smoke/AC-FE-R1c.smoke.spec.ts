@@ -1,5 +1,14 @@
 import { actionButton } from './action-button.js';
-import { test, expect, user, employee, demoRoutes, seedDemoUser, snapshotFixture } from './fixtures.js';
+import {
+  test,
+  expect,
+  user,
+  employee,
+  demoRoutes,
+  insecureContext,
+  seedDemoUser,
+  snapshotFixture,
+} from './fixtures.js';
 import type { Page } from '@playwright/test';
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -1205,6 +1214,123 @@ test('AC-FE-F110-22 DEC-955 浏览器无 Web Locks：审批同意提示需 https
   await expect(page.getByText(LOCKS_UNSUPPORTED)).toBeVisible();
   expect(writes).toBe(0);
   expect(await page.evaluate(() => localStorage.getItem('italent.commands.pending:approval'))).toBeNull();
+});
+
+const OTHER_TAB = '其他标签页有该对象未确认的命令，本次命令未发出；请等待结果或先查询结果。';
+const pendingLocks = (page: Page) =>
+  page.evaluate(async (key) => {
+    const { pending } = await navigator.locks.query();
+    return pending?.filter((lock) => lock.name === key).length;
+  }, transferRecoveryKey);
+
+// 第 2 轮 P2-1：http 非安全上下文同时没有 navigator.locks 与 crypto.randomUUID，须在生成命令 ID 之前拒绝。
+for (const action of ['暂存', '提交']) {
+  test(`AC-FE-F110-24 DEC-955 非安全上下文：HR 调动${action}提示需 https、零请求、输入保留`, async ({ page }) => {
+    await insecureContext(page);
+    let writes = 0;
+    await page.route('**/transfers/employees/' + employee, (route) => {
+      writes++;
+      return route.fulfill({ json: draftResult });
+    });
+    await switchIdentity(page, '/transfer');
+    await openHr(page);
+    await page.locator('select[name="employeeId"]').selectOption(employee);
+    // 读调动预览本身不受 DEC-955 限制（非写入），非安全上下文里也必须读得出来。
+    await expect(page.locator('input[name="place"]')).toBeEditable();
+    await page.locator('input[name="place"]').fill('合成新工作地');
+    await page.getByRole('button', { name: action, exact: true }).click();
+    await expect(page.getByText(LOCKS_UNSUPPORTED)).toBeVisible();
+    await expect(page.getByRole('button', { name: action, exact: true })).toBeEnabled();
+    await expect(page.locator('input[name="place"]')).toHaveValue('合成新工作地');
+    expect(writes).toBe(0);
+    expect(await pendingTransferIds(page)).toEqual([]);
+  });
+}
+
+for (const decision of [
+  { label: '同意', path: 'approve', status: 'approved' },
+  { label: '驳回', path: 'reject', status: 'returned' },
+]) {
+  test(`AC-FE-F110-24 DEC-955 非安全上下文：审批${decision.label}提示需 https、零请求`, async ({ page }) => {
+    await insecureContext(page);
+    let writes = 0;
+    await page.route(`**/api/tenant/approval/tasks/*/${decision.path}`, (route) => {
+      writes++;
+      return route.fulfill({ json: detail(5, decision.status) });
+    });
+    await switchIdentity(page, '/approval');
+    await openTodo(page);
+    await page.getByRole('button', { name: button(decision.label) }).click();
+    await actionButton(page, '保存').click();
+    await expect(page.getByText(LOCKS_UNSUPPORTED)).toBeVisible();
+    expect(writes).toBe(0);
+    expect(await page.evaluate(() => localStorage.getItem('italent.commands.pending:approval'))).toBeNull();
+  });
+}
+
+// 第 2 轮 P2-3：两页同时暂存同一员工，A 先拿到锁登记；B 排在后面，读到 A 的记录被拒。
+test('AC-FE-F110-26 同一员工两页同时登记：后登记的一页提示其他标签页、零请求，并锁到先登记那页的命令', async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(60_000);
+  const writes: string[] = [];
+  let respond = () => {};
+  const answered = new Promise<void>((resolve) => (respond = resolve));
+  const pageB = await context.newPage();
+  await demoRoutes(pageB);
+  await approvalFixtures(pageB);
+  for (const target of [page, pageB]) {
+    await target.route('**/transfers/employees/' + employee, async (route) => {
+      writes.push(route.request().headers()['idempotency-key']!);
+      await answered;
+      return route.fulfill({ json: draftResult }).catch(() => {});
+    });
+    await switchIdentity(target, '/transfer');
+    await openHr(target);
+    await target.locator('select[name="employeeId"]').selectOption(employee);
+  }
+  const holder = await holdLockInOtherTab(page, transferRecoveryKey);
+  try {
+    await page.getByRole('button', { name: '暂存', exact: true }).click();
+    await pageB.getByRole('button', { name: '暂存', exact: true }).click();
+  } finally {
+    await holder.close();
+  }
+  await expect.poll(() => writes).toHaveLength(1);
+  await expect(pageB.getByText(OTHER_TAB)).toBeVisible();
+  await expect(pageB.getByText(processing)).toBeVisible();
+  expect(await pendingTransferIds(pageB)).toEqual([writes[0]]);
+  expect(writes).toHaveLength(1);
+  respond();
+  await pageB.close();
+});
+
+// 第 2 轮 P3：登记等锁超时被拒的命令没有登记过，不再为它排一个无超时的清理锁请求。
+test('AC-FE-F110-28 他页持锁时暂存超时被拒：不残留本次尝试的排队锁请求，他页关闭后照常暂存', async ({ page }) => {
+  test.setTimeout(60_000);
+  let writes = 0;
+  await page.route('**/transfers/employees/' + employee, (route) => {
+    writes++;
+    return route.fulfill({ json: draftResult });
+  });
+  await switchIdentity(page, '/transfer');
+  await openHr(page);
+  await page.locator('select[name="employeeId"]').selectOption(employee);
+  const other = await holdLockInOtherTab(page, transferRecoveryKey);
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await page.getByRole('button', { name: '暂存', exact: true }).click();
+      await expect(page.getByText(LOCK_BUSY)).toBeVisible({ timeout: 10_000 });
+      expect(await pendingLocks(page), `第 ${attempt + 1} 次被拒后`).toBe(0);
+    }
+    expect(writes).toBe(0);
+  } finally {
+    await other.close();
+  }
+  await page.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect(page.getByText('信息暂存成功，下次选择此人可自动带出')).toBeVisible();
+  expect(writes).toBe(1);
 });
 
 for (const status of [400, 422]) {
