@@ -30,28 +30,7 @@
 .hr-process-section .board-trend th:first-child {
   width: 84px;
 }
-/*
- * 同图共用刻度（审查 P2-1 / P2-2 第 3 轮）：B51 的横向条形（BoardChart 条形、差值图）每个条目分两行，
- * 第一行标签与数值（数值靠右、可换行），第二行轨道占满条目宽度。轨道宽度只取决于图容器宽度，
- * 与数值位数无关，也不依赖 subgrid（Vite 默认构建目标含 Chrome 111，subgrid 从 117 起才支持）。
- */
-.hr-process-section .board-chart-bar .board-chart-item {
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: 'label number' 'mark mark';
-  gap: 4px 8px;
-}
-.hr-process-section .board-chart-bar .board-chart-label {
-  grid-area: label;
-}
-.hr-process-section .board-chart-bar .board-chart-number {
-  grid-area: number;
-  min-width: 0;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.hr-process-section .board-chart-bar .board-chart-mark {
-  grid-area: mark;
-}
+/* 差值图的两行横条布局走 board-charts.css 的共用横条规则（F-556），这里只定零轴与正负条的位置。 */
 .hr-process-diverging .board-chart-mark {
   position: relative;
   display: block;
