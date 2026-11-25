@@ -20,14 +20,17 @@ interface Clearable extends Peekable {
  * 第 2 轮：标记放在模块级、按恢复槽的命令区分，同一存储上的各个挂载实例共用（P2-2：处理中关闭重开详情也隐去）；
  * 过期竞争只隐去提示、不清条目，已核对的版本、基线和草稿留给下一次提交（P2-1）；
  * 内核 refused 直接作为本次拒绝抛出，槽已被别页命令接管时另挂在接管条目上给详情显示（P2-3）。
- * 第 3 轮：过期竞争按命令 ID 记，内核裁剪字段复制条目（settledState）后仍隐去（P2-5）；
+ * 第 3 轮：过期竞争按命令记（第 4 轮改按命令对象、随命令回收），内核裁剪字段复制条目（settledState）后仍隐去（P2-5）；
  * 新读回的记录版本高于过期条目时清掉它，提交以新记录为基线、版本（P2-4）。
  */
 export function createRefusalMarks() {
   /** 本页处理中的命令 ID：它的 rejected 条目在分类完成前一律隐去。 */
   const settling = new Set<string>();
-  /** 已判定为过期竞争的命令 ID：同一命令的 rejected 条目被内核复制（字段裁剪）后仍隐去；重提会换新命令 ID。 */
-  const stale = new Set<string>();
+  /**
+   * 已判定为过期竞争的命令（按命令对象）：内核复制条目（字段裁剪 settledState、同 ID 同步）时沿用同一命令对象，
+   * 标记仍生效；重提会换新命令。命令离槽（清槽、成功重提）后随旧命令回收，不留到页面刷新（第 4 轮 P3）。
+   */
+  const stale = new WeakSet<NonNullable<Submission['command']>>();
   /** 等锁超时等 refused 时接管本槽的别页命令条目 → 本次未发出的原因；条目换掉（如查询结果落定）即失效。 */
   const notices = new WeakMap<Submission, string>();
   const listeners = new Set<() => void>();
@@ -37,7 +40,7 @@ export function createRefusalMarks() {
     return () => void listeners.delete(listener);
   };
   const hidden = (state: Submission) =>
-    state.status === 'rejected' && !!state.command && (settling.has(state.command.id) || stale.has(state.command.id));
+    state.status === 'rejected' && !!state.command && (settling.has(state.command.id) || stale.has(state.command));
 
   /** 内核返回后、同一同步步骤里按当前条目分类，再解除处理中标记（避免中间渲染出旧告警）。 */
   function classify(command: Peekable, id: string | undefined, result: Outcome, issued: boolean) {
@@ -45,7 +48,8 @@ export function createRefusalMarks() {
     const current = command.peek();
     const own = !!id && current?.command?.id === id;
     if (unsent && result.refused && current && !own && current.command) notices.set(current, result.refused);
-    if (unsent && !result.refused && own && current.status === 'rejected') stale.add(id);
+    const sent = own && current.status === 'rejected' ? current.command : undefined;
+    if (unsent && !result.refused && sent) stale.add(sent);
     if (id) settling.delete(id);
     changed();
     return unsent;
@@ -65,10 +69,10 @@ export function createRefusalMarks() {
      */
     supersede(command: Clearable, revision: number | undefined) {
       const state = command.peek();
-      const id = state?.command?.id;
-      if (!state || !id || state.status !== 'rejected' || !stale.has(id)) return;
+      const sent = state?.command;
+      if (!state || !sent || state.status !== 'rejected' || !stale.has(sent)) return;
       if (revision === undefined || revision <= state.revision) return;
-      stale.delete(id);
+      stale.delete(sent);
       command.clear();
     },
     /**
