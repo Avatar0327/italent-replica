@@ -22,6 +22,12 @@ export const only = (...orgIds: string[]): ModuleScope => ({
   terms: [{ dimension: 'management', orgIds, personIds: [] }],
 });
 
+/** 范围只含指定员工：组织维度按部门 ID 判不中在职员工（部门列为 NULL），按人判才命中。 */
+export const onlyPeople = (orgId: string, ...personIds: string[]): ModuleScope => ({
+  ...only(orgId),
+  terms: [{ dimension: 'management', orgIds: [orgId], personIds }],
+});
+
 export interface AdjustmentView {
   id: string;
   code: string;

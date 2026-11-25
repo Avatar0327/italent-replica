@@ -8,7 +8,9 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { oaNodes } from './AC-OA-approval-support.js';
 import { transferWorld } from './AC-OA-11cb-support.js';
-import { bodyOf, only } from './AC-OA-head-support.js';
+import { newOrg } from './AC-OA-items-support.js';
+import { uniqueSuffix } from './support/unique.js';
+import { bodyOf, expectError, onlyPeople } from './AC-OA-head-support.js';
 
 const testDb = useTestDb();
 
@@ -34,12 +36,8 @@ describe('P1-5 办理后授予合同查看权不得重新展开已排除的合�
     }
     await w.submitted(view.id);
     // 提交后审批人的合同范围收窄：B 下员工的合同不可见 → 盲审，只能转交
-    // 合同范围只含 A 下那名员工（按人，org 维度单靠部门 ID 不会命中在职员工）
-    const scopeA = {
-      ...only(w.a),
-      terms: [{ dimension: 'management' as const, orgIds: [w.a], personIds: [movers[0]!] }],
-    };
-    w.access.contractByUser = new Map([[w.hrbp.userId, scopeA]]);
+    // 合同范围只含 A 下那名员工
+    w.access.contractByUser = new Map([[w.hrbp.userId, onlyPeople(w.a, movers[0]!)]]);
     const target = await w.member('转交目标');
     const task = (await w.instance(view.id)).tasks.find((t) => t.status === 'pending')!;
     const moved = await w.call(
@@ -83,5 +81,42 @@ describe('P1-5 办理后授予合同查看权不得重新展开已排除的合�
     expect(centerCodes.every((code) => code.startsWith(`transferItems.${itemIds[0]}.`))).toBe(true);
     expect(centerCodes.length).toBeGreaterThan(0);
     expect(items.items.find((item) => item.id === itemIds[1])!.contractChange).toBeNull();
+  });
+});
+
+describe('P2-1 删除组织行被调动行引用的 409 不泄露看不到的调动行', () => {
+  async function referenced(label: string) {
+    const w = await transferWorld(testDb().db, label);
+    const view = await w.created(w.headBody({ adjustmentRange: [w.a, w.b] }));
+    const orgItemId = (await w.item(view.id, newOrg(w.a, { name: `ZZ_被引用组织${uniqueSuffix()}` }))).items[0]!.id;
+    const [visible, hidden] = [await w.staff(w.a), await w.staff(w.b)];
+    const visibleRow = await w.seed(view.id, visible, { departmentId: null, departmentItemId: orgItemId });
+    const hiddenRow = await w.seed(view.id, hidden, { departmentId: null, departmentItemId: orgItemId });
+    return { w, view, orgItemId, visible, hidden, visibleRow, hiddenRow };
+  }
+
+  it('引用行里既有看得见的也有看不到的：只给看得见那行的 ID', async () => {
+    const { w, view, orgItemId, visible, visibleRow, hiddenRow } = await referenced('r2-delete-409-mixed');
+    w.access.employment = onlyPeople(w.a, visible);
+
+    const res = await w.deleteItem(view.id, orgItemId);
+
+    await expectError(res, 409, 'CONFLICT', 'ORG_ADJUSTMENT_ITEM_REFERENCED');
+    const text = await res.clone().text();
+    expect(text).toContain(visibleRow);
+    expect(text).not.toContain(hiddenRow);
+  });
+
+  it('引用行全是看不到的：只给原因，不带行 ID 与分区', async () => {
+    const { w, view, orgItemId, visibleRow, hiddenRow } = await referenced('r2-delete-409-hidden');
+    w.access.employment = onlyPeople(w.a, await w.staff(w.a)); // 两个引用行的员工都不在范围内
+
+    const res = await w.deleteItem(view.id, orgItemId);
+
+    await expectError(res, 409, 'CONFLICT', 'ORG_ADJUSTMENT_ITEM_REFERENCED');
+    const text = await res.clone().text();
+    expect(text).not.toContain(hiddenRow);
+    expect(text).not.toContain(visibleRow);
+    expect(text).not.toContain('"section"');
   });
 });
