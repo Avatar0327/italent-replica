@@ -12,7 +12,7 @@ import { readFrozenContract } from './support/route-policy/baseline.js';
 import { compareRoute } from './support/route-policy/compare.js';
 import type { ObservedContract, ObservedRoute } from './support/route-policy/contract.js';
 import { declaredPerms } from './support/route-policy/perms.js';
-import { checkRoute } from './support/route-policy/required.js';
+import { branchOnlyGuards, checkRoute } from './support/route-policy/required.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation } from './support/route-policy/required/types.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -26,6 +26,7 @@ let handle: Awaited<ReturnType<typeof createTestDb>>;
 let real: ManifestRoute;
 let observed: ObservedRoute | undefined;
 let contract: ObservedContract;
+let routes: readonly ManifestRoute[];
 
 beforeAll(async () => {
   handle = await createTestDb();
@@ -33,6 +34,7 @@ beforeAll(async () => {
   const found = manifest.declared.find((r) => `${r.method} ${r.path}` === KEY);
   if (!found) throw new Error(`没有声明 ${KEY}`);
   real = found;
+  routes = manifest.declared;
   const frozen = readFrozenContract();
   if (!frozen) throw new Error('冻结基准不存在：先跑 AC-PRM-FW-02.test.ts 生成');
   contract = frozen;
@@ -93,10 +95,11 @@ describe('AC-PRM-FW-02 BE-11c-b 第 5 轮 P2-3：rebase 单行按 section 分支
     expect(findings.join('\n')).toMatch(/guard:transfer\.source|guard:employment\.linkage|section:transfer/);
   });
 
-  it('第 6 轮 P2-2：删掉调动备选的联动守卫与义务，把原探测事实 / 证据挂到同分支调动按钮上 → 不得零发现（WEAKER:guard）', () => {
+  /** 第 5 轮错挂变异：删掉调动备选的联动守卫与它的义务，把原探测事实 / 证据挂到同分支调动按钮上。 */
+  function misattached() {
     const [org, transfer] = anyNode().of!;
     const LINKAGE = 'employment.linkage';
-    const mutated = withBranch({
+    const policy = withBranch({
       ...anyNode(),
       of: [
         org!,
@@ -113,13 +116,43 @@ describe('AC-PRM-FW-02 BE-11c-b 第 5 轮 P2-3：rebase 单行按 section 分支
       at: [...button.at, ...dropped.at],
     };
     const forged = table.filter((o) => o !== dropped).map((o) => (o === button ? moved : o));
+    return { route: { ...real, policy }, forged };
+  }
 
-    const required = checkRoute(KEY, forged, { ...real, policy: mutated }, observed).map((f) => f.code);
-    const compared = compareRoute(contract, { ...real, policy: mutated }, { ...REQUIRED, [KEY]: forged });
+  it('第 7 轮 P2②：错挂变异由 checkRoute 独立拒绝（不靠第二道比较）', () => {
+    const { route, forged } = misattached();
+    const found = checkRoute(KEY, forged, route, observed);
+    expect(found.length, found.map((f) => `${f.code}: ${f.detail}`).join('\n')).toBeGreaterThan(0);
+  });
 
-    expect(
-      [...required, ...compared.map((f) => f.code)],
-      compared.map((f) => `${f.code}: ${f.detail}`).join('\n'),
-    ).toContain('WEAKER:guard');
+  it('第 7 轮 P2②：错挂变异由 compareRoute 独立拒绝（WEAKER:guard）', () => {
+    const { route, forged } = misattached();
+    const compared = compareRoute(contract, route, { ...REQUIRED, [KEY]: forged });
+    expect(compared.map((f) => f.code)).toContain('WEAKER:guard');
+  });
+});
+
+/** 审定过的分支专属守卫命中：整仓真实路由里只有 rebase 单行刷新的这两个（路由 × 守卫）。 */
+const REVIEWED_HITS = [`${KEY} employment.linkage`, `${KEY} transfer.source`];
+
+describe('AC-PRM-FW-02 BE-11c-b 第 7 轮 P2②：分支豁免只认审定的（端点，守卫，分支）', () => {
+  it('整仓真实路由命中豁免的组合恰为审定名单（0 个未登记命中）', () => {
+    const hits = routes.flatMap((route) => {
+      const key = `${route.method} ${route.path}`;
+      const seen = contract.routes[key];
+      return seen ? branchOnlyGuards(seen, REQUIRED[key] ?? []).map((guard) => `${key} ${guard}`) : [];
+    });
+    expect(hits.sort(), `命中 ${hits.length} 个：${hits.slice(0, 5).join('；')}`).toEqual(REVIEWED_HITS);
+  });
+
+  it('未登记的守卫即使义务同名且没有 or 也不豁免（查值缺失不得当作匹配）', () => {
+    const name = 'unregistered.guard';
+    const unregistered: ObservedRoute = {
+      module: 'x',
+      edge: {} as ObservedRoute['edge'],
+      primitives: { guard: [name] },
+    };
+    const plain = { perm: `guard:${name}`, facts: [`guard:${name}`], at: [] } as unknown as Obligation;
+    expect(branchOnlyGuards(unregistered, [plain])).toEqual([]);
   });
 });
