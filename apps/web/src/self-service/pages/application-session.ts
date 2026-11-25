@@ -53,8 +53,8 @@ const cache = new Map<
   { state?: Submission; saved?: TransferBusiness; note?: Note; value: ApplicationSession }
 >();
 // F-558 第 2 轮 P2-3：本标签页发起过的命令 ID（会话存储随整页刷新保留；只存 ID，不存内容）。第 3 轮起只在没有
-// 内存证据时（整页刷新后）兜底判归属，保住 F110-08 / F110-11 刷新后查回成功的正例；复制标签页会克隆会话存储，
-// 这条兜底是否保留待总编排决定（见 PR 未决）。
+// 内存证据时（整页刷新后）兜底判归属，保住 F110-08 / F110-11 刷新后查回成功的正例；复制标签页会克隆会话存储、
+// 把原页成功当作本页保存，是已知残留（DEC-1002 接受）。
 const ISSUED = 'italent.self-service.issued-commands';
 const ISSUED_LIMIT = 20;
 function issuedHere(): string[] {

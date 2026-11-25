@@ -49,13 +49,9 @@ function enter(tab: { storage: MemoryStorage }) {
   vi.stubGlobal('sessionStorage', tab.storage);
   vi.stubGlobal('localStorage', shared);
 }
-/** from：复制标签页（Chromium 复制标签页会克隆会话存储）；storage：自定义会话存储（如写入失败）。 */
-async function openTab(options: { from?: MemoryStorage; storage?: MemoryStorage } = {}) {
+/** storage：自定义会话存储（如写入失败）。 */
+async function openTab(options: { storage?: MemoryStorage } = {}) {
   const tab = { storage: options.storage ?? new MemoryStorage() };
-  for (let index = 0; index < (options.from?.length ?? 0); index++) {
-    const key = options.from!.key(index)!;
-    tab.storage.setItem(key, options.from!.getItem(key)!);
-  }
   enter(tab);
   vi.resetModules();
   const app = await import('../../apps/web/src/self-service/pages/application-session.js');
@@ -377,8 +373,9 @@ describe('AC-FE-F558-1 第 2 轮：查到他页结果不当作本页保存成功
   });
 });
 
-// 第 3 轮 P2-3：回查出口判定命令归属只认本页内存里的已发出证据。会话存储可被复制标签页克隆、也可能写不进，
-// 不能凭它判成本页保存或判成别页命令。
+// 第 3 轮 P2-3：回查出口判定命令归属先认本页内存里的已发出证据，会话存储写不进时不把本页命令判成别页命令。
+// 没有内存证据（整页刷新后）仍按会话存储兜底（F110-08 / F110-11）；复制标签页会克隆会话存储、把原页成功当作
+// 本页保存，是已知残留，按 DEC-1002 接受，不设回归。
 /** 会话存储写不进（隐私模式、配额满等）：读正常，写一律抛错。 */
 class FailingStorage extends MemoryStorage {
   override setItem(): void {
@@ -403,37 +400,7 @@ function succeeded(commandId: string, found: ReturnType<typeof business>) {
     return Response.json({}, { status: 500 });
   });
 }
-describe('AC-FE-F558-1 第 3 轮：回查归属只认本页内存里的已发出证据', () => {
-  it('复制标签页：B 克隆了 A 的会话存储，按 A 的原命令 ID 查到成功，不算 B 保存成功；零写请求', async () => {
-    const tenant = randomUUID();
-    const scope = JSON.stringify([tenant, 'synthetic-user', 'manager']);
-    const a = await openTab();
-    const first = commandOf();
-    await expect(a.app.runApplicationCommand(scope, first, offline)).rejects.toThrow(PROCESSING);
-
-    // A 的命令结果未知时复制出 B：会话存储随之克隆，B 是新的页面实例，没有发出过任何命令。
-    const b = await openTab({ from: a.storage });
-    expect(b.app.readApplicationSession(scope)).toMatchObject({
-      restored: true,
-      pending: { commandId: first.commandId },
-    });
-    const found = business();
-    const fetch = succeeded(first.commandId, found);
-    vi.stubGlobal('fetch', fetch);
-    await b.app.queryApplicationResult(scope, tenant);
-
-    expect(b.app.readApplicationSession(scope)).toMatchObject({
-      pending: null,
-      saved: null,
-      found: { id: found.id, status: 'in_review' },
-    });
-    expect(shared.getItem(RECORDS)).toBeNull();
-    expect(fetch.mock.calls.map(([path]) => path)).toEqual([
-      `/api/tenant/commands/${first.commandId}/result`,
-      `/api/tenant/employment/businesses/${found.id}`,
-    ]);
-  });
-
+describe('AC-FE-F558-1 第 3 轮：回查归属先认本页内存里的已发出证据', () => {
   it('会话存储写失败：A 已发出写请求、结果未知，不刷新按原 ID 查到自己的成功，算 A 保存成功，不当作别页结果', async () => {
     const tenant = randomUUID();
     const scope = JSON.stringify([tenant, 'synthetic-user', 'manager']);
