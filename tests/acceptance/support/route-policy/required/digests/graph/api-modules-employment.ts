@@ -8151,6 +8151,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/retirement-views.ts#withoutLeaveOnly': ['#LEAVE_ONLY_KEYS'],
   'apps/api/src/modules/employment/routes.ts#authorizeBusinessWrite': [
     'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
+    'apps/api/src/modules/transfer/service.ts#requirePendingManagerReferences',
   ],
   'apps/api/src/modules/employment/routes.ts#authorizeImport': [
     'apps/api/src/authorization.ts#requirePermission',
@@ -8251,12 +8252,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
-    'apps/api/src/modules/transfer/service.ts#requirePendingManagerReferences',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
-  'apps/api/src/modules/employment/routes.ts#requireDraftEditWrite': [
+  'apps/api/src/modules/employment/routes.ts#requireDraftEditPermission': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     '#writeIsCommandOnly',
+  ],
+  'apps/api/src/modules/employment/routes.ts#requireDraftEditWrite': [
+    '#requireDraftEditPermission',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
   ],
   'apps/api/src/modules/employment/routes.ts#requireImportTransferAccess': [
@@ -8370,17 +8373,17 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard',
     'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
     '#authorizeBusinessWrite',
-    '#inTenant',
     '#patchContext',
     '#readBusinessPatch',
+    '#requireDraftEditPermission',
     '#requireDraftEditWrite',
     '#requireResultApplicable',
     '#sameOrderTarget',
     'apps/api/src/modules/employment/write-service.ts#updateEmploymentBusiness',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard',
-    'apps/api/src/modules/transfer/service.ts#requirePendingManagerReferences',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
   'apps/api/src/modules/employment/routes.ts#route:PATCH /records/:id': [
