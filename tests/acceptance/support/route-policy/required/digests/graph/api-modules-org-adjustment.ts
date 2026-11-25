@@ -303,10 +303,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
   ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems': ['#orgInScope'],
-  'apps/api/src/modules/org-adjustment/envelope.ts#foldForApprover': [
-    '#foldHiddenError',
-    'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenEnvelopeIdsForViewer',
-  ],
   'apps/api/src/modules/org-adjustment/envelope.ts#foldHiddenError': ['#foldHiddenRowIssues'],
   'apps/api/src/modules/org-adjustment/envelope.ts#foldHiddenRowIssues': ['#HIDDEN_ROW_INVALID'],
   'apps/api/src/modules/org-adjustment/envelope.ts#hideUsedCode': [
@@ -318,8 +314,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/envelope.ts#trimError': ['#hideUsedCode', '#sees', '#trimIssues', '#without'],
   'apps/api/src/modules/org-adjustment/envelope.ts#trimIssues': ['#hideUsedCode', '#sees', '#without'],
   'apps/api/src/modules/org-adjustment/envelope.ts#trimmedForViewer': [
-    '#foldForApprover',
+    '#foldHiddenError',
     '#trimError',
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#envelopeViewForViewer',
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
   ],
   'apps/api/src/modules/org-adjustment/execution-groups.ts#adminParentsAt': [
@@ -428,15 +425,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/org-adjustment/hidden-rows.ts#assertRefsReachable': ['#ROW_NOT_FOUND'],
   'apps/api/src/modules/org-adjustment/hidden-rows.ts#assertRowReachable': ['#ROW_NOT_FOUND'],
-  'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenAmong': [
-    'apps/api/src/modules/org-adjustment/disclosure.ts#loadOrgCreators',
-    'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
-    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
-    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
-    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
-  ],
-  'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenEnvelopeIds': ['#hiddenItemIds', '#hiddenTransferRows'],
-  'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenEnvelopeIdsForViewer': [
+  'apps/api/src/modules/org-adjustment/hidden-rows.ts#envelopeViewForViewer': [
     'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure',
     'apps/api/src/modules/org-adjustment/disclosure.ts#orgSectionDisclosed',
     'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
@@ -444,6 +433,21 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/transfer-items-store.ts#loadTransfers',
     'apps/api/src/modules/org-adjustment/transfer-read.ts#transferSectionDisclosed',
     'apps/api/src/modules/org-adjustment/transfer-read.ts#visibleTransfers',
+  ],
+  'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenAmong': [
+    'apps/api/src/modules/org-adjustment/disclosure.ts#loadOrgCreators',
+    'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenEnvelopeIds': [
+    'apps/api/src/modules/org-adjustment/disclosure.ts#orgSectionDisclosed',
+    '#hiddenItemIds',
+    '#hiddenTransferRows',
+    'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
   ],
   'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenItemIds': [
     '#hiddenAmong',
