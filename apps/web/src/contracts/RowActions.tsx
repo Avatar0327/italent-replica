@@ -21,15 +21,29 @@ type Api = ReturnType<typeof useApiClient>;
 type Approval = { instance: ApprovalRow; detail: Detail };
 const approval = '/api/tenant/approval/instances';
 const order: Action[] = ['urge', 'transfer', 'withdraw'];
-/** 先按本人发起、再按本人参与查找该申请的流程实例；都找不到时视为无可用操作。 */
+/**
+ * 先按本人发起、再按本人参与查找该申请的流程实例；都找不到时视为无可用操作。
+ * 详情缺 actions 按读取失败处理（fail-closed），不当作“无可用操作”，也不让渲染、点击时取 actions 出错。
+ */
 async function findApproval(api: Api, businessId: string, signal?: AbortSignal): Promise<Approval | undefined> {
   for (const role of ['initiated', 'participated']) {
     const query = new URLSearchParams({ role, businessId, page: '1', pageSize: '1' });
     const instance = (await api.request<{ items: ApprovalRow[] }>(`${approval}?${query}`, { signal })).items[0];
-    if (instance) return { instance, detail: await readApproval(api, instance.id, signal) };
+    if (!instance) continue;
+    const detail = await readApproval(api, instance.id, signal);
+    if (!Array.isArray(detail.actions)) throw new Error(m.approvalReadFailed);
+    return { instance, detail };
   }
   return undefined;
 }
+/**
+ * 点击时重读失败：命令还没发出（F-568 第 2 轮 P2-1）。登录、权限、不存在保留接口提示；
+ * 其余（5xx、断网、响应不符）一律“审批操作读取失败”，不借用结果未知 / 回执无法核对的文案。
+ */
+const readFailure = (error: unknown) =>
+  error instanceof ApiError && ['login', 'forbidden', 'not-found'].includes(error.kind)
+    ? error.message
+    : m.approvalReadFailed;
 /**
  * 合同列表行不带审批 actions（后端缺口），按行读取流程详情；读取中或读取失败不显示按钮（fail-closed），
  * 失败时给出提示与重试，不静默隐藏。
@@ -57,8 +71,9 @@ function useRowApproval(api: Api, businessId?: string) {
 /**
  * F-568：按内核 outcome 提示本次催办（同 F-562 / F-566 口径，store.ts Outcome）。
  * 未发出：竞争提示 race 原因；等锁超时、不支持锁、存储不可用提示 refused 原文；登记冲突而占槽命令已落定时两者都没有，
- * error 是过期的“其他标签页”文案，不提示，可再催办。已发出：被拒显示服务端原文，回执无法核对或结果未知才提示结果未知。
- * 槽内状态（锁定、查询入口）仍由 CommandStatus 显示。
+ * error 是过期的“其他标签页”文案，不提示，可再催办。已发出：被拒显示服务端原文；结果未知按命令结果提示——
+ * 回执无法核对（实例不符）与响应无法解析（客户端 INVALID_RESPONSE，自带的是读取失败文案）提示“回执无法核对，
+ * 结果未知”（第 2 轮 P2-3），断网、5xx 用客户端的结果未确认原文。槽内锁定与查询入口仍由 CommandStatus 显示。
  */
 function notifyUrge(result: Outcome, sent: boolean) {
   if (result.status === 'done') return void message.success(m.urged);
@@ -67,9 +82,10 @@ function notifyUrge(result: Outcome, sent: boolean) {
     if (result.status === 'rejected' && result.refused) void message.error(result.refused);
     return;
   }
-  const text = result.error instanceof ApiError ? result.error.message : m.invalidReceipt;
-  if (result.status === 'rejected') void message.error(text);
-  else if (result.status === 'unknown') void message.warning(text);
+  const { error } = result;
+  const server = error instanceof ApiError && error.code !== 'INVALID_RESPONSE' ? error.message : m.invalidReceipt;
+  if (result.status === 'rejected') void message.error(server);
+  else if (result.status === 'unknown') void message.warning(server);
 }
 /**
  * 催办走表单内核，与审批详情的转交、撤销共用流程实例的恢复槽（审批模块级存储，F-147），动作记在槽上下文：
@@ -77,7 +93,8 @@ function notifyUrge(result: Outcome, sent: boolean) {
  * 流程实例未读到时没有催办按钮，槽暂挂在集合路径上，不会提交。
  */
 function useUrge(api: Api, instanceId?: string) {
-  const urge = forAction(useApprovalCommand(slotKey(approval, instanceId)), { action: 'urge' });
+  const command = useApprovalCommand(slotKey(approval, instanceId));
+  const urge = forAction(command, { action: 'urge' });
   const send = async (target: Approval) => {
     // 点击时重读到的流程实例换了（极少见），本行的槽不对应它，按不可用处理。
     if (target.instance.id !== instanceId) return void message.warning(m.approvalUnavailable.urge);
@@ -99,7 +116,10 @@ function useUrge(api: Api, instanceId?: string) {
         );
       },
     });
-    if (result.status === 'done' || result.status === 'rejected') urge.clear();
+    // 用原始句柄清本次已落定的结果（第 2 轮 P2-2）：提交前槽里是别的动作（如审批详情里撤销被拒）时，
+    // forAction 包装的 clear 是空操作，本次拒绝会留在槽里，下次重提沿用它的旧版本（store.ts submitTo prior）。
+    // 锁定的条目 clear 不动（store.ts clear），别页接管后的有效锁保留。
+    if (result.status === 'done' || result.status === 'rejected') command.clear();
     notifyUrge(result, sent);
   };
   const reload = () =>
@@ -107,7 +127,10 @@ function useUrge(api: Api, instanceId?: string) {
       const detail = await readApproval(api, String(id));
       return { id: detail.id, revision: detail.revision, values: {} };
     });
-  return { form: { ...urge, reload }, send };
+  // 被拒只由 notifyUrge 按 outcome 提示一次，状态区不显示被拒条目：内核落定时先发布 rejected 再返回 outcome，
+  // 过期竞争的“其他标签页”文案会在分类、清槽前渲染出来（第 2 轮 P2-2）。锁定（blocked）不受影响。
+  const status = urge.state?.status === 'rejected' ? { ...urge, state: undefined } : urge;
+  return { form: { ...urge, reload }, status, send };
 }
 
 export function RowActions({ row, onChanged }: { row: Row; onChanged(): void }) {
@@ -123,8 +146,12 @@ export function RowActions({ row, onChanged }: { row: Row; onChanged(): void }) 
     if (busy || !businessId) return;
     setBusy(action);
     try {
-      // 点击时重读，按最新 actions 与版本发起，避免用列表加载时的旧状态。
-      const target = await findApproval(api, businessId);
+      // 点击时重读，按最新 actions 与版本发起，避免用列表加载时的旧状态；读取失败时命令还没发出。
+      const target = await findApproval(api, businessId).catch((error: unknown) => {
+        void message.error(readFailure(error));
+        return null;
+      });
+      if (target === null) return;
       if (!target?.detail.actions.includes(action)) {
         void message.warning(m.approvalUnavailable[action]);
         return;
@@ -134,8 +161,6 @@ export function RowActions({ row, onChanged }: { row: Row; onChanged(): void }) 
       if (action === 'transfer' && !taskId) void message.warning(m.approvalUnavailable.transfer);
       else
         setOpen({ ...target.instance, title: target.detail.title, approvalType: target.detail.approvalType, taskId });
-    } catch (error) {
-      void message.error(error instanceof ApiError ? error.message : m.invalidReceipt);
     } finally {
       setBusy(undefined);
     }
@@ -166,7 +191,7 @@ export function RowActions({ row, onChanged }: { row: Row; onChanged(): void }) 
           </Button>
         </>
       )}
-      <CommandStatus submission={urge.form} />
+      <CommandStatus submission={urge.status} />
       {open && (
         <ApprovalDetail
           row={open}
