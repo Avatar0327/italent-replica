@@ -457,7 +457,8 @@ describe('AC-FE-F566 组织调整登记冲突后占槽命令已落定', () => {
     expect(commits.length).toBeGreaterThan(before);
     expect(commits.slice(before).filter((page) => page.includes(OTHER_TAB))).toEqual([]);
     expect(document.body.textContent).not.toContain(OTHER_TAB);
-    expect(writes).toEqual([]);
+    // 过期竞争之后没有再发写请求（只有开头那次 409 的保存）。
+    expect(ifMatches).toEqual(['4']);
   });
 });
 
