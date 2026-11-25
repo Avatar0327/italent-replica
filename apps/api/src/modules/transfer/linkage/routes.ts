@@ -27,9 +27,10 @@ import {
   authorizeOrgRole,
   authorizeSubordinateField,
   resolveLinkageAccess,
+  resolveLinkageAccessInTransaction,
   type LinkageAccess,
 } from './access.js';
-import { normalizeLinkage, type DutyRelation, type LinkageOptions, type OrgRole } from './input.js';
+import { dutySubordinateIds, normalizeLinkage, type DutyRelation, type LinkageOptions, type OrgRole } from './input.js';
 import { loadLinkageItem, retryLinkageItem } from './items.js';
 import { requireLinkageSource, updateTransferLinkage } from './service.js';
 import { linkageBeforeCommand } from './store.js';
@@ -67,6 +68,32 @@ export async function preauthorizeLinkage(
   return access;
 }
 
+/**
+ * 命令事务内、封口之后重判联动授权（F-560 第 2 轮 P1-1）。命令外的 preauthorizeLinkage 解析的合同范围是请求内快照，
+ * 命令里不能再沿用：这里按本事务当前授权重新解析合同范围（与入口同一数据来源），再对本次新增 / 删除 / 变更涉及的新旧合同
+ * 整体重过 authorizeLinkageWrite。首次执行、同键重放、失败回查都经 CommandGuard.before，所以都走这里；返回的 access
+ * 交给执行体，执行体里的合同判定与这里同一份范围。
+ */
+export async function recheckLinkage(
+  deps: Pick<Deps, 'authorize' | 'clock'>,
+  tx: Tx,
+  scoped: EmploymentContext,
+  input: {
+    employeeId: string;
+    operation: 'create' | 'update';
+    options: LinkageOptions | null;
+    businessId?: string;
+    commandId?: string;
+  },
+): Promise<LinkageAccess | undefined> {
+  const { businessId, commandId, ...write } = input;
+  if (!write.options) return undefined;
+  const before = businessId ? await linkageBeforeCommand(tx, scoped.tenantId, businessId, commandId) : null;
+  const access = await resolveLinkageAccessInTransaction(deps, scoped, tx, write.options, before);
+  await authorizeLinkageWrite(tx, scoped, access, { ...write, options: write.options, before });
+  return access;
+}
+
 export function registerTransferLinkageRoutes(router: Hono<TenantEnv>, deps: Deps) {
   registerTransferDeletionProbes();
   router.get('/transfers/:id/linkage', async (c) => {
@@ -96,7 +123,9 @@ export function registerTransferLinkageRoutes(router: Hono<TenantEnv>, deps: Dep
     // DEC-194：本人护栏与调动入口同一判定（F-017）；命令外先判，幂等重放同样经过。
     await withTenant(deps.db, ctx.tenantId, (tx) => requireLinkageSource(tx, ctx, id, business.employeeId));
     const input = { employeeId: business.employeeId, operation: 'update' as const, options, businessId: id };
-    const access = await preauthorizeLinkage(c, deps, ctx, input);
+    await preauthorizeLinkage(c, deps, ctx, input);
+    // 执行体用守卫在封口后重新解析的范围（recheckLinkage），不沿用上面命令外解析的快照。
+    let access: LinkageAccess | undefined;
     return runWrite(
       c,
       deps,
@@ -104,17 +133,20 @@ export function registerTransferLinkageRoutes(router: Hono<TenantEnv>, deps: Dep
       raw,
       async (tx, context) => ({
         status: 200,
-        body: await updateTransferLinkage(tx, context, id, options, access),
+        body: await updateTransferLinkage(tx, context, id, options, access ?? {}),
       }),
       {
         // 命令事务内按当前范围重验（统一 guard）：重放 / 失败回查不沿用入口的旧范围
         guard: sameOrderScopeGuard(deps, ctx, {
           receiptNames: true, // 调动专用入口，恒为调动单（DEC-1000）
+          // 先取员工闭包（含职责转交新带入的下属）与本单业务头，再读授权（F-560）
+          lock: { businessId: id, extra: dutySubordinateIds(options) },
           authorize: async (tx, scoped) => {
             const today = tenantLocalDate(scoped.now, scoped.timezone);
             const current = await loadEmploymentBusiness(tx, scoped.tenantId, id, today, scoped.scope);
             if (!current || current.kind !== 'transfer') throw new AppError('NOT_FOUND', '调动不存在');
             await requireLinkageSource(tx, scoped, id, business.employeeId);
+            access = await recheckLinkage(deps, tx, scoped, { ...input, commandId: c.req.header('idempotency-key') });
           },
         }),
       },
@@ -146,6 +178,8 @@ function registerRetry(router: Hono<TenantEnv>, deps: Deps) {
         guard: sameOrderScopeGuard(deps, ctx, {
           // 子项表也承载离职职责转交：按父单类型表态，只有调动单随命令保存回执名称（DEC-1000，第 8 轮 P3）
           ...transferReceiptNames(parentKind),
+          // 子项行解析出所属单据、发起员工与被转交下属，先取锁再读授权（F-560）
+          lock: { linkageItemId: id },
           authorize: async (tx, scoped) => {
             await requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation');
             await authorizeRetry(tx, deps, scoped, id, {});

@@ -1954,7 +1954,7 @@ export const EMPLOYMENT: RequiredTable = {
           TRF,
           'POST',
           '/transfers/employees/:id',
-          'const linkageAccess = await preauthorizeLinkage(c, deps, prepared.context, {',
+          'await preauthorizeLinkage(c, deps, prepared.context, linkageInput);',
         ),
         {
           role: 'impl',
@@ -1964,14 +1964,7 @@ export const EMPLOYMENT: RequiredTable = {
         },
       ],
     ),
-    linkage(
-      at(
-        TRF,
-        'POST',
-        '/transfers/employees/:id',
-        'body: await createTransfer(tx, context, id, { ...prepared.input, linkageAccess })',
-      ),
-    ),
+    linkage(at(TRF, 'POST', '/transfers/employees/:id', 'body: await createTransfer(tx, context, id, {')),
   ],
   // F-181a：他人调动申请暂存的元数据读口与清除（槽位按用户 × 员工，draft-slot.ts）
   'GET /api/tenant/employment/transfers/employees/:id/draft': [
@@ -2141,7 +2134,7 @@ export const EMPLOYMENT: RequiredTable = {
       'guard:linkage.preauthorize',
       ['guard:linkage.preauthorize'],
       [
-        at(LNK, 'PUT', '/transfers/:id/linkage', 'const access = await preauthorizeLinkage(c, deps, ctx, input)'),
+        at(LNK, 'PUT', '/transfers/:id/linkage', 'await preauthorizeLinkage(c, deps, ctx, input);'),
         {
           role: 'impl',
           unit: `${LNK}#preauthorizeLinkage`,
@@ -2151,7 +2144,12 @@ export const EMPLOYMENT: RequiredTable = {
       ],
     ),
     linkage(
-      at(LNK, 'PUT', '/transfers/:id/linkage', 'body: await updateTransferLinkage(tx, context, id, options, access)'),
+      at(
+        LNK,
+        'PUT',
+        '/transfers/:id/linkage',
+        'body: await updateTransferLinkage(tx, context, id, options, access ?? {}),',
+      ),
     ),
   ],
   'POST /api/tenant/employment/transfers/linkage-items/:id/retry': [
@@ -2609,6 +2607,25 @@ export const EMPLOYMENT: RequiredTable = {
   'GET /api/tenant/employment/pending-entries': [
     recordView(at(ENTRY, 'GET', '/pending-entries', "const ctx = await readPageContext(c, deps, 'list')")),
     {
+      perm: 'obj:TenantBase.OnboardingMaterial:view',
+      purpose: 'disclosure:materialStatus',
+      need: { scope: 'list', predicate: 'onboarding.materialEntryScope' },
+      facts: ['object:object.* 动作'],
+      at: [
+        at(ENTRY, 'GET', '/pending-entries', 'const material = await entryMaterialProjection(c, deps, tx, ctx)'),
+        fn(
+          'apps/api/src/modules/onboarding/material-list.ts',
+          'materialStatusScope',
+          "action: 'object.view', resource: MATERIAL",
+        ),
+        {
+          role: 'scope',
+          unit: 'apps/api/src/modules/onboarding/material-list.ts#materialStatusJoin',
+          anchor: 'materialEntryScope(tenantId, scope, department)',
+        },
+      ],
+    },
+    {
       perm: 'obj:TenantBase.OnboardingCollection:view',
       purpose: 'disclosure:collectionStatus',
       facts: ['object:object.* 动作'],
@@ -2628,6 +2645,18 @@ export const EMPLOYMENT: RequiredTable = {
         },
       ],
     },
+    ob(
+      'guard:onboarding.entryMaterialProjection',
+      [],
+      [
+        at(ENTRY, 'GET', '/pending-entries', 'const material = await entryMaterialProjection(c, deps, tx, ctx)'),
+        fn(
+          'apps/api/src/modules/onboarding/material-list-routes.ts',
+          'entryMaterialProjection',
+          "throw new AppError('FORBIDDEN', '筛选或排序字段不可查看')",
+        ),
+      ],
+    ),
   ],
   // ---- employment/intern-routes.ts：R2 BE-6a 实习四视图 / 直接实习转正 / 重聘判定 ------------------------------------------
   'GET /api/tenant/employment/interns': [

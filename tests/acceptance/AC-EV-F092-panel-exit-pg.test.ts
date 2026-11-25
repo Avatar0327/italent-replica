@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { exitWorld, rowsOf, type ExitWorld } from './AC-EV-F092-support.js';
 import { errorOf } from './AC-EV-support.js';
 import type * as EmploymentStore from '../../apps/api/src/modules/employment/record-store.js';
+import type * as TransferLocks from '../../apps/api/src/modules/employment/transfer-locks.js';
 import { withRelease } from './support/pg-interleave.js';
 
 const barrier = vi.hoisted(() => ({
@@ -16,7 +17,24 @@ const barrier = vi.hoisted(() => ({
   beforeKey: '',
   beforeReached: undefined as undefined | (() => void),
   beforeRelease: undefined as undefined | Promise<void>,
+  // F-560：同单写入口的员工行锁在取锁阶段（CommandGuard.before）里取，此时入口上下文还没有命令 ID，只能按员工点名、单次触发
+  guardEmployeeId: '',
 }));
+vi.mock('../../apps/api/src/modules/employment/transfer-locks.js', async (load) => {
+  const original = await load<typeof TransferLocks>();
+  return {
+    ...original,
+    lockTransferParticipants: async (...args: Parameters<typeof original.lockTransferParticipants>) => {
+      // 屏障停在“取得任何员工行锁之前”：先放行的并发请求能合法入组，之后本请求取得员工锁仍须补退。
+      if (args[1].commandId === '' && args[2] === barrier.guardEmployeeId) {
+        barrier.guardEmployeeId = '';
+        barrier.beforeReached?.();
+        await barrier.beforeRelease;
+      }
+      return original.lockTransferParticipants(...args);
+    },
+  };
+});
 vi.mock('../../apps/api/src/modules/employment/record-store.js', async (load) => {
   const original = await load<typeof EmploymentStore>();
   return {
@@ -75,6 +93,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
     barrier.beforeKey = '';
     barrier.beforeReached = undefined;
     barrier.beforeRelease = undefined;
+    barrier.guardEmployeeId = '';
   });
 
   it('AC-EV-F092 离职先持员工锁：编辑真实等待，离职提交后旧 revision 返回 409、不能加回', async () => {
@@ -334,6 +353,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 第三轮锁后日�
     const allowLock = signal();
     barrier.beforeKey = randomUUID();
     barrier.employeeId = person.id;
+    barrier.guardEmployeeId = person.id;
     barrier.beforeReached = reached.resolve;
     barrier.beforeRelease = allowLock.promise;
     const deleting = w.request('DELETE', `/api/tenant/employment/businesses/${rehire.id}`, {

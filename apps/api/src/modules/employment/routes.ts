@@ -363,6 +363,11 @@ function genericCapacityCreateGuard(
   if (!checksEmploymentCapacity(input.kind)) return undefined;
   return sameOrderScopeGuard(deps, ctx, {
     ...transferReceiptNames(input.kind),
+    // 员工行（调动再加新带入的下属）先于授权读取取齐并封口；执行体里的取锁此后都是重入（F-560）
+    lock: {
+      employeeId,
+      extra: input.kind === 'transfer' ? (input.fields.addedSubordinateIds ?? []) : [],
+    },
     authorize: async (tx, scoped) => {
       await requirePermission(scoped.authorize!, {
         ...scoped,
@@ -838,6 +843,7 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
             )
           : sameOrderScopeGuard(deps, ctx, {
               ...transferReceiptNames(current.kind),
+              lock: { businessId: id }, // 员工行 → 业务头 → 封口 → 读授权（F-560）
               writeScope: { businessId: id, employeeId: current.employeeId },
               authorize: (_tx, scoped) => requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation'),
             }),
