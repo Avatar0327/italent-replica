@@ -3921,7 +3921,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/retirement-views.ts#withoutLeaveOnly': ['e242e71820f5', '5aaeca9b3559'],
   'apps/api/src/modules/employment/routes.ts#authorizeBusinessWrite': ['9cd4b1d55a33', 'fd6829e031d2'],
   'apps/api/src/modules/employment/routes.ts#authorizeImport': ['763e69540af4', '43cc051bf35f'],
-  'apps/api/src/modules/employment/routes.ts#authorizeTransition': ['96aaa46fc211', '81701a1bc76d'],
+  'apps/api/src/modules/employment/routes.ts#authorizeTransition': ['33a27ce5dc07', '2026f186c086'],
   'apps/api/src/modules/employment/routes.ts#discloseDeletionBlock': ['5968abdc0415', 'cb9d933aeb33'],
   'apps/api/src/modules/employment/routes.ts#emptySubmitBody': ['e48dff3b541a', 'e7ff592e7f1a'],
   'apps/api/src/modules/employment/routes.ts#ensureHiredAccount': ['754727cbeaaf', '12820a393dc8'],
