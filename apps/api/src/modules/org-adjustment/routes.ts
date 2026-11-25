@@ -65,8 +65,9 @@ import {
 } from './service.js';
 import { rowOrgIds, submitAdjustment, withdrawAdjustment } from './submission.js';
 import { createSchema, normalizeHead, patchSchema } from './validation.js';
-import { authorizeTransferRows } from './transfer-access.js';
-import { registerTransferRoutes } from './transfer-routes.js';
+import { authorizeTransferRows, transferGate } from './transfer-access.js';
+import { rebaseAllTransfers } from './transfer-rebase.js';
+import { rebaseTransferRoute, registerTransferRoutes } from './transfer-routes.js';
 import { pauseDisclosureHandler } from './pause-disclosure.js';
 
 const BASE = '/api/tenant/org-adjustment/adjustments';
@@ -303,8 +304,9 @@ function registerItemRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 }
 
 function registerRebaseRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  // 路由 8：单行刷新基线；本片只有组织明细，其它 section 一律 404
+  // 路由 8：单行刷新基线；组织与调动明细，其它 section 一律 404
   router.post(`${BASE}/:id/items/:section/:itemId/rebase`, async (c) => {
+    if (c.req.param('section') === 'transfer') return rebaseTransferRoute(c, deps);
     const ctx = await objectContext(c, deps, OBJECT, 'update', revision(c));
     const id = uuidParam(c);
     if (c.req.param('section') !== 'org') throw new AppError('NOT_FOUND', '组织调整明细不存在');
@@ -328,11 +330,22 @@ function registerRebaseRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const input = await parseBody(c, z.strictObject({}));
     const [code, level] = HEAD_BUTTONS.update;
     await button(deps, ctx, OBJECT, code, level);
+    const gate = transferGate(deps, ctx);
     return itemCommand(c, deps, ctx, id, input, {
       button: [OBJECT, code, level],
       orgIds: ({ items }) => rowOrgs(items),
       whole: true,
-      execute: async (tx, commandCtx) => ({ status: 200, result: await rebaseAll(tx, commandCtx, id) }),
+      // 调动行：有看不到的行与申请单不存在同一 404；其余按申请人当前权限逐行重判（与提交同一条链，首次与重放都经过）
+      authorizeTransfers: async (tx, view, rows) => {
+        if ((await hiddenTransferIds(tx, deps, ctx, id, rows.hidden)).size > 0) {
+          throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
+        }
+        await authorizeTransferRows(tx, deps, ctx, view);
+      },
+      execute: async (tx, commandCtx) => {
+        await rebaseAllTransfers(tx, commandCtx, id, gate);
+        return { status: 200, result: await rebaseAll(tx, commandCtx, id) };
+      },
     });
   });
 }
@@ -448,6 +461,8 @@ interface ItemCommand {
   readonly whole?: true;
   /** 组织对象字段编辑权的复核（F-343 ③）：只有写组织字段的新增 / 改行入口给，在守卫里与行按钮、范围同处判。 */
   readonly authorizeFields?: (tx: Tx, rows: StoredRows) => Promise<void>;
+  /** 整单刷新：调动分区按申请人当前权限的复核（P2-3），首次与重放都经过。 */
+  readonly authorizeTransfers?: (tx: Tx, view: AdjustmentView, rows: StoredRows) => Promise<void>;
   execute(tx: Tx, ctx: ScopeBusinessContext): Promise<ItemWrite>;
 }
 
@@ -480,8 +495,15 @@ async function itemCommand(
         };
         await authorizeItem(tx, deps, ctx, input);
         await command.authorizeFields?.(tx, { items, hidden });
+        await command.authorizeTransfers?.(tx, stored, { items, hidden });
       },
       replayed: async (tx, stored) => {
+        if (command.authorizeTransfers) {
+          const view = await loadAdjustment(tx, ctx.tenantId, id);
+          if (!view) throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
+          const items = await loadItems(tx, ctx.tenantId, id);
+          await command.authorizeTransfers(tx, view, { items, hidden: await hiddenAmong(tx, deps, ctx, items) });
+        }
         const orgIds = rowOrgs((stored.body as ItemsResult).items).filter((orgId): orgId is string => Boolean(orgId));
         await orgScopeAuthorizer(deps, ctx)(tx, [...new Set(orgIds)]);
       },

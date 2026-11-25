@@ -9,6 +9,7 @@
 import type { Tx } from '@italent/db';
 import { ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import type { Context, Hono } from 'hono';
+import { z } from 'zod';
 import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -18,7 +19,8 @@ import { getModuleViewableFields } from '../permission/module-access.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { button, objectContext, writeFields } from '../permission/module-route-access.js';
 import { ADJUSTMENT_NOT_FOUND, HEAD_BUTTONS } from './access.js';
-import { hiddenItemIds } from './hidden-rows.js';
+import { hiddenItemIds, hiddenTransferIds, ROW_NOT_FOUND } from './hidden-rows.js';
+import { rebaseTransferItem } from './transfer-rebase.js';
 import { loadAdjustment, type AdjustmentView } from './service.js';
 import { LINKAGE_CODE, transferGate } from './transfer-access.js';
 import {
@@ -195,4 +197,25 @@ function publicRow(row: TransferItem) {
     ...rest
   } = row;
   return rest;
+}
+
+/** 路由 8（section = transfer）：单行刷新调动明细基线。按钮同其它调动写路由；隐藏行 / 不存在同一 404，再按当前权限重判。 */
+export async function rebaseTransferRoute(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  const ctx = await objectContext(c, deps, OBJECT, 'update', revision(c));
+  const id = uuidParam(c);
+  const itemId = uuidParam(c, 'itemId');
+  const input = await parseBody(c, z.strictObject({}));
+  await button(deps, ctx, OBJECT, ...HEAD_BUTTONS.update);
+  const gate = transferGate(deps, ctx);
+  const hiddenOf = async (tx: Tx) => hiddenTransferIds(tx, deps, ctx, id, await hiddenItemIds(tx, deps, ctx, id));
+  return transferCommand(c, deps, ctx, id, input, {
+    kind: 'save',
+    gate,
+    check: async (tx, view) => {
+      const row = (await loadTransfers(tx, ctx.tenantId, id)).find((item) => item.id === itemId);
+      if (row && (await hiddenOf(tx)).has(row.id)) throw new AppError('NOT_FOUND', ROW_NOT_FOUND);
+      if (row) await gate.rejudge(tx, view, [row]);
+    },
+    execute: async (tx, commandCtx) => rebaseTransferItem(tx, commandCtx, id, itemId, gate, await hiddenOf(tx)),
+  });
 }

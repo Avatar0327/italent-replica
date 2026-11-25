@@ -288,7 +288,7 @@ const duplicate = (employeeId: string) =>
   new AppError('CONFLICT', '本单已有该员工的调动明细', { reason: 'ORG_ADJUSTMENT_ITEM_DUPLICATE', employeeId });
 
 /** 生效日现行任职 + 员工 revision；没有现行任职的员工不能调动；同日入职走 11c2 才开放。 */
-async function captureBaseline(tx: Tx, tenantId: string, employeeId: string, effectiveDate: string) {
+export async function captureBaseline(tx: Tx, tenantId: string, employeeId: string, effectiveDate: string) {
   const record = await findCurrentRecord(tx, tenantId, employeeId, effectiveDate);
   if (!record) throw invalid('employeeId', '员工在生效日没有现行任职');
   if (record.effectiveDate === effectiveDate && ENTRY_KINDS.includes(record.kind)) {
