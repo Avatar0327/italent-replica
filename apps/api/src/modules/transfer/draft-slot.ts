@@ -97,6 +97,21 @@ export async function releaseTransferDraft(
   return deleted;
 }
 
+/**
+ * 覆盖暂存会删掉调用人对该员工的旧草稿（releaseTransferDraft → 删除内核，要锁旧草稿业务头）：把这把锁提前到守卫封口之前（F-560 第 2 轮 P2-1）。
+ * 单人闭包没有 businessId 可锁，旧草稿头此前要到执行体里才等，那时授权已读完，等锁期间收回的范围会被漏掉。
+ * 调用方已持有员工行锁：槽位只在员工行锁内改写，读到的槽位在本事务内稳定；指针已过期（单据已提交 / 已删）也锁，多锁一把无害。
+ */
+export async function lockTransferDraftHead(tx: Tx, ctx: EmploymentContext, employeeId: string): Promise<void> {
+  await tx.execute(sql`
+    SELECT b.id FROM transfer_draft_slots sl
+    JOIN employment_business_objects b
+      ON b.tenant_id=sl.tenant_id AND b.employee_id=sl.employee_id AND b.id=sl.business_id
+    WHERE sl.tenant_id=${ctx.tenantId} AND sl.user_id=${ctx.userId}::uuid AND sl.employee_id=${employeeId}::uuid
+    FOR UPDATE OF b
+  `);
+}
+
 /** 暂存成功后占槽（调用方已在员工行锁内、并已释放旧暂存）。 */
 export async function holdTransferDraft(
   tx: Tx,

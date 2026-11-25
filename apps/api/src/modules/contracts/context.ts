@@ -20,10 +20,15 @@ export function revision(expected: number, actual: number) {
   if (expected !== actual)
     throw new AppError('REVISION_CONFLICT', '合同数据已变更，请刷新后显式重提', { expected, actual });
 }
+/**
+ * 与任职写入口同强度（FOR NO KEY UPDATE，record-store.lockEmploymentEmployee）：调动生效时联动调合同写入口，同一事务里
+ * 先持任职写锁再取这把；若这里是 FOR UPDATE 就是锁升级，会与外键子行插入持有的 KEY SHARE 互等，PostgreSQL 报 40P01（F-560）。
+ * 员工主档的键列从不更新，写写互斥靠 NO KEY UPDATE 之间互斥已足够。
+ */
 export async function lockEmployee(tx: Tx, ctx: ContractContext, id: string) {
   const [employee] = rowsOf(
     await tx.execute(sql`SELECT id FROM employment_employees
-    WHERE tenant_id=${ctx.tenantId} AND id=${id}::uuid FOR UPDATE`),
+    WHERE tenant_id=${ctx.tenantId} AND id=${id}::uuid FOR NO KEY UPDATE`),
   );
   if (!employee) throw new AppError('NOT_FOUND', '员工不存在');
 }
