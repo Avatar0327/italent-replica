@@ -251,7 +251,7 @@ function contentOf(input: Partial<AddTransferInput>): Partial<TransferContent> {
 }
 
 /** gate 规范化后的值落库：表单 ID（缺省取类型默认表单）与联动选项以规范化结果为准。 */
-function resolved(input: TransferInput) {
+export function resolved(input: TransferInput) {
   return { formId: input.employment.formId, linkage: input.linkage, reasonCode: input.reasonCode ?? null };
 }
 
@@ -266,7 +266,7 @@ export function draftOf(base: TransferContent, input: Partial<AddTransferInput>)
 }
 
 /** 目标引用本单新增组织行时：行须存在且是新增（隐藏行与不存在同一 404）。 */
-function assertOrgItemTarget(world: ItemWorld, draft: TransferContent, hidden: ReadonlySet<string>) {
+export function assertOrgItemTarget(world: ItemWorld, draft: TransferContent, hidden: ReadonlySet<string>) {
   if (!draft.departmentItemId) return;
   const item = world.items.find((row) => row.id === draft.departmentItemId);
   if (!item || hidden.has(item.id)) throw new AppError('NOT_FOUND', ROW_NOT_FOUND);
@@ -341,6 +341,23 @@ async function finish(
   const scope = { adjustmentId, subjectOrgId: world.view.approvalSubjectOrgId };
   for (const [before, after] of changes) await auditTransfer(tx, ctx, action, scope, before, after);
   return { adjustmentId, revision, items: changes.map(([before, after]) => (after ?? before)!) };
+}
+
+/**
+ * 审批中编辑（BE-11c-b 第 2 轮 P2-1）：已授权、已按候选状态校验过的改动一次落库（不 bump revision，由编辑入口统一 + 1）。
+ * 每行一条明细审计，与申请人改行同一动作名。
+ */
+export async function persistTransferEdits(
+  tx: Tx,
+  ctx: WriteContext,
+  view: Pick<AdjustmentView, 'id' | 'approvalSubjectOrgId'>,
+  edits: readonly (readonly [before: TransferItem, after: TransferItem])[],
+): Promise<void> {
+  const scope = { adjustmentId: view.id, subjectOrgId: view.approvalSubjectOrgId };
+  for (const [before, after] of edits) {
+    await updateTransfer(tx, after);
+    await auditTransfer(tx, ctx, 'org-adjustment.transfer-item.update', scope, before, after);
+  }
 }
 
 /** 改头收窄范围 / 改生效日时，已有调动明细仍须在范围内（§5.6）；列出不在范围的行（只带行 ID）。 */

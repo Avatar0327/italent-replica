@@ -87,9 +87,13 @@ export function changedTransferFields(before: TransferContent | null, after: Tra
   return Object.fromEntries([...codes].map((code) => [code, null]));
 }
 
+/** 谁在写：申请人 / 提交走编辑明细按钮；当前审批人（审批中编辑）只取 `EditApprovalIngApply@detail`（§6.3 不再逐入口判）。 */
+export type TransferActor = 'applicant' | 'current_approver';
+
 interface Env {
   readonly deps: TransferAuthorityDeps;
   readonly base: TenantContext;
+  readonly button: typeof HEAD_BUTTONS.update | typeof HEAD_BUTTONS.approve;
 }
 type View = Pick<AdjustmentView, 'approvalSubjectOrgId' | 'effectiveDate'>;
 
@@ -194,7 +198,7 @@ async function authorizeChange(
   after: TransferContent | null,
 ) {
   await authorizeItem(tx, env.deps, env.base, {
-    button: [OBJECT, ...HEAD_BUTTONS.update],
+    button: [OBJECT, ...env.button],
     subjectOrgId: view.approvalSubjectOrgId,
     orgIds: [before?.departmentId, after?.departmentId],
   });
@@ -274,8 +278,12 @@ async function removeRow(tx: Tx, env: Env, view: View, row: TransferItem) {
   });
 }
 
-export function transferGate(deps: TransferAuthorityDeps, base: TenantContext): TransferGate {
-  const env = { deps, base };
+export function transferGate(
+  deps: TransferAuthorityDeps,
+  base: TenantContext,
+  actor: TransferActor = 'applicant',
+): TransferGate {
+  const env: Env = { deps, base, button: actor === 'applicant' ? HEAD_BUTTONS.update : HEAD_BUTTONS.approve };
   return {
     save: (tx, view, employeeId, draft, before) => saveRow(tx, env, view, employeeId, draft, before),
     remove: (tx, view, row) => removeRow(tx, env, view, row),
