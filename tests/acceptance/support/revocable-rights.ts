@@ -34,6 +34,8 @@ export function revocable() {
     deny?: (request: Request) => boolean;
     emptyScope?: boolean;
     scope?: ModuleScope;
+    /** 只收回某个对象的范围（带事务的解析才生效），其余对象不受影响：F-560 的“只撤合同范围”。键是对象编码。 */
+    objectScopes?: Record<string, ModuleScope>;
     /** 入口（不带事务）解析到的范围；缺省入口放行全部。用于“入口按收窄范围放行（含 Switch 31 目标例外）、命令内再撤权”。 */
     entryScope?: ModuleScope;
     /** 带事务与不带事务的字段查看权都收窄到这组（F-181a 读口按字段投影）。 */
@@ -41,8 +43,10 @@ export function revocable() {
   } = {};
   const authorize: Authorizer = () => true;
   registerScopeProvider(authorize, {
-    scope: async (_query, tx) => {
+    scope: async (query, tx) => {
       if (!tx && rights.entryScope) return rights.entryScope;
+      const byObject = tx && query.objectCode ? rights.objectScopes?.[query.objectCode] : undefined;
+      if (byObject) return byObject;
       if (tx && rights.scope) return rights.scope;
       return tx && rights.emptyScope ? EMPTY_SCOPE : { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
     },

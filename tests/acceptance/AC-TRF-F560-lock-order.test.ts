@@ -11,6 +11,7 @@
  */
 import { sql, withTenant, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
+import { CONTRACT_OBJECT } from '@italent/domain';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { lockEmployee } from '../../apps/api/src/modules/contracts/context.js';
@@ -20,6 +21,7 @@ import type { EmploymentContext } from '../../apps/api/src/modules/employment/ty
 import { employmentSession } from './AC-EMP-support.js';
 import { linkageWorld, type LinkageWorld } from './AC-LNK-support.js';
 import { waitForLockWaiters } from './AC-TRF-F181a-support.js';
+import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { revocable } from './support/revocable-rights.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -111,7 +113,18 @@ interface Scenario {
  * 屏障：持锁 → 发请求 → 等它排到锁上 → （revoke 时）收回范围 → 放锁。
  * `waited` 为假说明请求没有排到锁上就已返回（夹具没走到窗口），断言里单独判，避免用例空过。
  */
-async function race(s: Scenario, revoke: boolean) {
+type Revoke = (rights: Scenario['rights']) => void;
+/** 收回整份数据范围（事务内解析到空范围）。 */
+const emptyRange: Revoke = (rights) => {
+  rights.scope = undefined;
+  rights.emptyScope = true;
+};
+/** 只收回合同对象的范围，任职等其他对象的范围不动。 */
+const emptyContractRange: Revoke = (rights) => {
+  rights.objectScopes = { [CONTRACT_OBJECT]: EMPTY_SCOPE };
+};
+
+async function race(s: Scenario, revoke: Revoke | false) {
   const held = holdRow(s.w.db, s.w.session.tenant.id, s.hold.table, s.hold.id);
   await held.ready;
   let done = false;
@@ -120,10 +133,7 @@ async function race(s: Scenario, revoke: boolean) {
   if (s.hold.table === 'employees') await waitForLockWaiters(s.w.db, 1, () => done);
   else await waitForHeadWaiter(s.w.db, () => done);
   const waited = !done;
-  if (revoke) {
-    s.rights.scope = undefined;
-    s.rights.emptyScope = true;
-  }
+  if (revoke) revoke(s.rights);
   await held.release();
   return { waited, response: await response };
 }
@@ -137,7 +147,7 @@ function entryCases(name: string, build: (label: string) => Promise<Scenario>, s
     it('等锁期间数据范围被收回：放锁后按收回后的授权拒绝，零写入', async () => {
       const s = await build(`f560-${uniqueSuffix()}`);
       const before = await state(s.w);
-      const r = await race(s, true);
+      const r = await race(s, emptyRange);
       expect(r.waited, '请求没有排到锁上，屏障没有生效').toBe(true);
       const text = await r.response.clone().text();
       expect(refused(r.response.status), `等锁期间撤权后应 403 / 404，实际 ${r.response.status}：${text}`).toBe(true);
@@ -237,7 +247,7 @@ entryCases(
 );
 
 // 入口 1 / 3 的反向对照：封口后才进来的不存在人员仍按原口径 400，不得因先封口改报 409
-describe.runIf(pg)('F-560 封口后新增下属不存在：发起与通用新建仍报 400 TRANSFER_PERSON_NOT_ELIGIBLE', () => {
+describe('F-560 封口后新增下属不存在：发起与通用新建仍报 400 TRANSFER_PERSON_NOT_ELIGIBLE', () => {
   const ghost = () => randomUUID();
   const expectEligibility = async (response: Response) => {
     expect(response.status, await response.clone().text()).toBe(400);
@@ -435,5 +445,148 @@ describe.runIf(pg)('F-560 员工行锁升级：任职写锁之后取合同员工
   it('甲（任职写锁 → 合同员工锁）与乙（附件外键子行 → 员工写锁）交错：都提交，没有 40P01', async () => {
     const result = await schedule(`f560-up-${uniqueSuffix()}`);
     expect(result, '不得出现死锁（40P01）；旧实现下其中一个事务被回滚').toEqual({ a: 'committed', b: 'committed' });
+  });
+});
+
+/**
+ * 第 2 轮 P1-1：合同范围是授权输入，也要在封口之后、锁内重新解析。入口（事务外）解析的 contractScope 只是请求内快照，
+ * 命令事务里照旧拿它判合同变更，等锁期间只撤合同范围（任职范围不动）后，HR 仍能保存合同变更。
+ * 撤权只收合同对象的范围（objectScopes），任职对象与其他授权不变，所以 404 只能来自合同范围的重判。
+ */
+describe('F-560 第 2 轮 P1-1：合同范围封口后在锁内重新解析', () => {
+  async function contractWorld(label: string, at = DRAFT_AT) {
+    const world = await transferWorld(label, at);
+    const target = await world.w.contract(world.person.employee.id);
+    return { ...world, linkage: { contract: { targetId: target.id } } };
+  }
+
+  /** 发起：新建带合同变更的调动（sameOrderCreateGuard，持有员工行）。 */
+  const initiate = async (label: string): Promise<Scenario> => {
+    const { w, person, rights, request, linkage } = await contractWorld(label);
+    const revision = (await w.session.getEmployee(person.employee.id)).revision;
+    return {
+      w,
+      rights,
+      hold: { table: 'employees', id: person.employee.id },
+      send: () =>
+        request('POST', `/transfers/employees/${person.employee.id}`, {
+          ifMatch: revision,
+          body: transferBody(w, { linkage }),
+        }),
+    };
+  };
+
+  /** 联动保存：给已有草稿加合同变更（sameOrderScopeGuard，持有员工行）。 */
+  const save = async (label: string): Promise<Scenario> => {
+    const { w, person, rights, request, linkage } = await contractWorld(label);
+    const draft = await w.saved(await w.transfer(person, { submit: false }));
+    return {
+      w,
+      rights,
+      hold: { table: 'employees', id: person.employee.id },
+      send: () => request('PUT', `/transfers/${draft.id}/linkage`, { ifMatch: draft.revision, body: linkage }),
+    };
+  };
+
+  for (const [name, build, success] of [
+    ['发起调动 POST /transfers/employees/:id', initiate, 201],
+    ['联动保存 PUT /transfers/:id/linkage', save, 200],
+  ] as const) {
+    describe.runIf(pg)(name, () => {
+      it('等锁期间只撤合同范围：放锁后 404，零写入', async () => {
+        const s = await build(`f560-c-${uniqueSuffix()}`);
+        const before = await state(s.w);
+        const r = await race(s, emptyContractRange);
+        expect(r.waited, '请求没有排到锁上，屏障没有生效').toBe(true);
+        expect(r.response.status, await r.response.clone().text()).toBe(404);
+        expect(await state(s.w)).toEqual(before);
+      });
+
+      it('对照：合同范围没被撤：等完锁后照常保存合同变更', async () => {
+        const s = await build(`f560-c-${uniqueSuffix()}-ok`);
+        const before = await state(s.w);
+        const r = await race(s, false);
+        expect(r.waited, '请求没有排到锁上，屏障没有生效').toBe(true);
+        expect(r.response.status, await r.response.clone().text()).toBe(success);
+        expect(await state(s.w)).not.toEqual(before);
+      });
+    });
+  }
+
+  it('同键重放：首次保存成功后只撤合同范围，重放 404，不返回缓存回执', async () => {
+    const { w, person, rights, request, linkage } = await contractWorld(`f560-cr-${uniqueSuffix()}`);
+    const draft = await w.saved(await w.transfer(person, { submit: false }));
+    const key = `f560-replay-${uniqueSuffix()}`;
+    const first = await request('PUT', `/transfers/${draft.id}/linkage`, {
+      ifMatch: draft.revision,
+      body: linkage,
+      idempotencyKey: key,
+    });
+    expect(first.status, await first.clone().text()).toBe(200);
+    const before = await state(w);
+    rights.objectScopes = { [CONTRACT_OBJECT]: EMPTY_SCOPE };
+    const replay = await request('PUT', `/transfers/${draft.id}/linkage`, {
+      ifMatch: draft.revision,
+      body: linkage,
+      idempotencyKey: key,
+    });
+    expect(replay.status, await replay.clone().text()).toBe(404);
+    expect(await state(w)).toEqual(before);
+  });
+});
+
+/**
+ * 第 2 轮 P2-1：覆盖暂存时被替换的旧草稿头，也要在封口前取锁。单人闭包的 lockTransferHeads 没有 businessId 什么都不锁，
+ * 执行体里 releaseTransferDraft → transitionEmployment 才在旧草稿头上等锁——那时授权已经读完。
+ */
+describe.runIf(pg)('F-560 第 2 轮 P2-1：覆盖暂存的旧草稿头在封口前取锁', () => {
+  async function overwrite(label: string): Promise<Scenario & { readonly employeeId: string }> {
+    const { w, person, rights, request } = await transferWorld(label);
+    const first = await request('POST', `/transfers/employees/${person.employee.id}`, {
+      ifMatch: (await w.session.getEmployee(person.employee.id)).revision,
+      body: transferBody(w),
+    });
+    const old = await w.saved(first);
+    const employeeId = person.employee.id;
+    const revision = (await w.session.getEmployee(person.employee.id)).revision;
+    return {
+      w,
+      rights,
+      employeeId,
+      hold: { table: 'heads', id: old.id },
+      send: () =>
+        request('POST', `/transfers/employees/${person.employee.id}`, {
+          ifMatch: revision,
+          body: transferBody(w, { effectiveDate: '2026-10-12' }),
+        }),
+    };
+  }
+
+  const slotOf = async (w: LinkageWorld, employeeId: string) =>
+    withTenant(w.db, w.session.tenant.id, async (tx) =>
+      rows(
+        await tx.execute(sql`SELECT business_id AS "businessId" FROM transfer_draft_slots
+          WHERE tenant_id=${w.session.tenant.id} AND employee_id=${employeeId}::uuid`),
+      ),
+    );
+
+  it('等旧草稿头期间数据范围被收回：放锁后 404，旧草稿与槽位原样保留，零写入', async () => {
+    const s = await overwrite(`f560-ow-${uniqueSuffix()}`);
+    const before = await state(s.w);
+    const slot = await slotOf(s.w, s.employeeId);
+    const r = await race(s, emptyRange);
+    expect(r.waited, '请求没有排到旧草稿头的锁上，屏障没有生效').toBe(true);
+    expect(refused(r.response.status), await r.response.clone().text()).toBe(true);
+    expect(await state(s.w)).toEqual(before);
+    expect(await slotOf(s.w, s.employeeId)).toEqual(slot);
+  });
+
+  it('对照：范围没被收回：等完旧草稿头后覆盖成功，旧草稿被替换', async () => {
+    const s = await overwrite(`f560-ow-${uniqueSuffix()}-ok`);
+    const r = await race(s, false);
+    expect(r.waited, '请求没有排到旧草稿头的锁上，屏障没有生效').toBe(true);
+    expect(r.response.status, await r.response.clone().text()).toBe(201);
+    const created = (await r.response.json()) as { id: string };
+    expect(await slotOf(s.w, s.employeeId)).toEqual([{ businessId: created.id }]);
   });
 });
