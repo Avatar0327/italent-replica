@@ -47,9 +47,19 @@ function isPolicy(kind: FieldOriginKind): kind is FieldOriginPolicy {
   return policyKinds.has(kind);
 }
 
+/**
+ * 落地解析值（resolved）只在它之后没有新的继承策略行时才有取值效力：转正改期等重算继承字段会追加新的 inherit 行
+ * （设计 §4.4.2 #14），它按新前驱取值，已取代旧前驱留下的解析值；台账里的 resolved 行本身保留作历史。
+ * 延迟策略的后续行不取代：解析值仍是落地时定下的值。
+ */
+function liveResolved<Row extends OriginRow>(state: FieldOriginState<Row>) {
+  const { resolved, policy, policyRow } = state;
+  return resolved && policy === 'inherit' && policyRow && policyRow.seq > resolved.seq ? null : resolved;
+}
+
 function valueRows<Row extends OriginRow>(state: FieldOriginState<Row>) {
   const policy = state.policy === 'inherit' || state.policy === 'copy' ? state.policyRow : null;
-  return [state.override, state.resolved, policy];
+  return [state.override, liveResolved(state), policy];
 }
 
 export function effectiveOrigin<Row extends OriginRow>(state: FieldOriginState<Row> | undefined) {
@@ -170,6 +180,49 @@ export function isTrustedSavedValue(state: FieldOriginState | undefined, rule: R
   return lastWriter !== null && rule.has(lastWriter.originKind);
 }
 
+/** DEC-950：员工自助单据上带同值不算本次输入的四个字段（职位另受编辑权限制，其余三个受只读上限）。 */
+export const EMPLOYEE_SAME_VALUE_FIELDS = ['positionId', 'postId', 'levelId', 'sequenceId'] as const;
+export type EmployeeSameValueField = (typeof EMPLOYEE_SAME_VALUE_FIELDS)[number];
+
+/**
+ * 请求值是否等于当前保存值（F-036 §5.2）：UUID 按小写比；`null` 与“没有保存值”都算空，空只等于空。
+ * 不读来源行：比的是保存值本身，与它由谁写入无关。
+ */
+export function sameAsSavedValue(savedValue: unknown, requestValue: unknown): boolean {
+  const saved = savedValue ?? null;
+  const request = requestValue ?? null;
+  if (saved === null || request === null) return saved === request;
+  if (typeof saved === 'string' && typeof request === 'string') return saved.toLowerCase() === request.toLowerCase();
+  return saved === request;
+}
+
+const KINDS_TRUSTED_ON_JOB_FIELDS: readonly FieldOriginKind[] = [
+  'inherit',
+  'resolved',
+  'copy',
+  'forward-update',
+  'system-input',
+  'retain',
+];
+
+/**
+ * F-036 §5.2 可信来源集合（传给 `isTrustedSavedValue`）。职位另允许人工写入的各类来源与已保存的员工输入
+ * （DEC-945 U7 甲）；职务、职级、序列基线上任何操作者都不能为员工业务写，所以人工来源一律不可信。
+ * `derive` / `derive-edit` 是否可信取决于它依据的字段，由调用方单独判断，不在集合里。
+ */
+export const TRUSTED_ORIGIN_KINDS: Readonly<Record<EmployeeSameValueField, ReadonlySet<FieldOriginKind>>> = {
+  positionId: new Set<FieldOriginKind>([
+    ...KINDS_TRUSTED_ON_JOB_FIELDS,
+    'hr-input',
+    'approval-edit',
+    'hr-record',
+    'employee-input',
+  ]),
+  postId: new Set(KINDS_TRUSTED_ON_JOB_FIELDS),
+  levelId: new Set(KINDS_TRUSTED_ON_JOB_FIELDS),
+  sequenceId: new Set<FieldOriginKind>([...KINDS_TRUSTED_ON_JOB_FIELDS, 'sequence-sync']),
+};
+
 const BUSINESS_DATES = new Set(['preset:effectiveDate', 'preset:lastWorkDate', 'preset:plannedEffectiveDate']);
 
 const markerField = (code: string) => !code.startsWith('status:') && !BUSINESS_DATES.has(code);
@@ -191,6 +244,7 @@ export function projectOriginMarkers(
       if (recordEdit && legacy ? previousExplicit.has(code) : lastWriter.reason !== SAME_VALUE_CONFIRMATION)
         explicit.add(code);
     }
+    // F-036 §4.5：延迟字段一旦有了有效的值（人工覆盖或落地解析值）就不再待定；解析值被退回后重新待定。
     if (!lastWriter && state.policy === 'deferred') deferred.add(code);
   }
   for (const code of previousExplicit) if (markerField(code) && !states.has(code)) explicit.add(code);

@@ -11,18 +11,27 @@
   gap: 8px;
   margin-block: 6px;
 }
+/*
+ * 指标块纵向排列标签与大号总数（靠左），总数以指标块内容宽为上限、只在放不下时断行（F-559）：原来单列网格的
+ * 列下限是 9 位数总数的不可断宽度，窄卡片里总数越出指标块和卡片；网格里给总数设 min-width: 0 或百分比上限，
+ * Chromium 按内容定宽时会连带压低指标块的最小内容宽度，宽屏下也折行。纵向 flex 的最小内容宽度仍取总数的
+ * 完整宽度（break-word 不降低最小内容宽度），宽屏下指标块的排列、尺寸与单行显示照旧。
+ */
 .hr-process-metrics .board-chart-item {
+  display: flex;
   flex: 1 1 90px;
-  grid-template-columns: 1fr;
-  justify-items: start;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 6px;
   padding: 8px 12px;
   border: 1px solid var(--shell-border);
   border-radius: 6px;
 }
 .hr-process-metrics strong {
+  max-width: 100%;
   font-size: 24px;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
 }
 .hr-process-section .board-trend th {
   overflow-wrap: anywhere;

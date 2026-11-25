@@ -22,7 +22,7 @@ async function project(db: Db, tenantId: string, businessId: string) {
   );
 }
 
-it('AC-EMP-26 DEC-972：人员状态传播的 v2 快照保留 21 项延迟来源', async () => {
+it('AC-EMP-26 DEC-972：人员状态传播的 v2 快照不再把已有落地解析值的字段标为延迟（§4.5）', async () => {
   const { db } = database();
   const w = await entryWorld(db, 'f036s3-propagated-projection');
   const { session } = w;
@@ -43,7 +43,8 @@ it('AC-EMP-26 DEC-972：人员状态传播的 v2 快照保留 21 项延迟来源
   const deferred = transferDeferredExcept();
   expect(await project(db, session.tenant.id, transfer.id)).toEqual([
     { version: 1, snapshot: false, explicit, deferred },
-    { version: 2, snapshot: true, explicit, deferred },
+    // §4.5：直接调动落地时每个延迟字段都已写入 resolved 行，v2 快照里它们是有效值，不再列入 deferred_field_codes。
+    { version: 2, snapshot: true, explicit, deferred: [] },
   ]);
 });
 
@@ -84,7 +85,8 @@ it('AC-EMP-26 DEC-972：序列同步的 v2 快照只消去已写入的延迟字�
   const deferred = transferDeferredExcept('preset:postId', 'preset:sequenceId');
   expect(await project(db, session.tenant.id, transfer.id)).toEqual([
     { version: 1, snapshot: false, explicit, deferred },
-    { version: 2, snapshot: true, explicit: [...explicit, 'preset:sequenceId'], deferred },
+    // §4.5：同上，v2 快照里已有解析值的延迟字段不再标为待定；新写入的序列在 explicit 里。
+    { version: 2, snapshot: true, explicit: [...explicit, 'preset:sequenceId'], deferred: [] },
   ]);
   expect((await session.record(transfer.id, '2026-11-01')).fields.sequenceId).toBe(replacement.id);
 });

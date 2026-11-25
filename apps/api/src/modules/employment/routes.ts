@@ -66,6 +66,7 @@ import {
 } from './exit-gate.js';
 import { splitExitOptions } from './exit-initiation.js';
 import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentImport } from './forward-import.js';
+import { requireSavedValuesApplicable } from './field-origin-write.js';
 import { editEmploymentRecord } from './record-edit.js';
 import {
   exitCommandGuard,
@@ -95,12 +96,14 @@ import {
   ReportingCycleDeletionError,
 } from './deletion-guards.js';
 import { visibleEmploymentRecords } from './visibility.js';
+import { frozenOriginRows, liveOriginRows, loadOriginFacts } from './field-origins-read.js';
+import { decideEmploymentRead } from './read-decision.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import type { EmploymentBusiness, EmploymentBusinessPatch, EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
 import { requireTransferSource } from '../transfer/access.js';
 import { requireDirectTransfer, transferBusinessContext } from '../transfer/service.js';
-import { sameOrderScopeGuard, sameOrderWriteGuard } from '../transfer/same-order-guard.js';
+import { sameOrderScopeGuard, sameOrderWriteGuard, transferReceiptNames } from '../transfer/same-order-guard.js';
 import { batchEditEmploymentRecords, normalizeBatchEdit } from './batch-edit.js';
 import { recordOperationLog } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
@@ -162,6 +165,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerAllPeople(module, deps);
   registerInheritancePreview(module, deps);
   registerBusinesses(module, deps);
+  registerFieldOrigins(module, deps);
   registerActivation(module, deps);
   registerForwardUpdates(module, deps);
   registerBatchEdit(module, deps);
@@ -354,6 +358,7 @@ function genericCapacityCreateGuard(
 ) {
   if (!checksEmploymentCapacity(input.kind)) return undefined;
   return sameOrderScopeGuard(deps, ctx, {
+    ...transferReceiptNames(input.kind),
     authorize: async (tx, scoped) => {
       await requirePermission(scoped.authorize!, {
         ...scoped,
@@ -470,20 +475,52 @@ async function shownBusiness(
   return { ...(body as object), contentView: read.contentView };
 }
 
+/** 定位业务三步的 NOT_FOUND / FORBIDDEN 归一为 404 “任职业务不存在”（无 details）；其它错误码原样抛出。 */
+async function withUnifiedNotFound<T>(locate: () => Promise<T>): Promise<T> {
+  try {
+    return await locate();
+  } catch (error) {
+    if (error instanceof AppError && (error.code === 'NOT_FOUND' || error.code === 'FORBIDDEN'))
+      throw new AppError('NOT_FOUND', '任职业务不存在');
+    throw error;
+  }
+}
+
+function registerFieldOrigins(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  // F-036-S5（设计 §4.9）：字段来源只读接口。第 1～3、7 步与详情路由逐步同调；第 4～6 步（定位业务并确认可看）
+  // 的“不存在 / 无权”一律归一为同一个 404，不让状态码或文案区分“存在但不可见”。只读：不写审计、不带命令 ID。
+  // asOf 在入口鉴权后、任何资源守卫之前解析：非法日期对可见与不可见的业务一律同一个 400。
+  router.get('/businesses/:id/field-origins', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readPageContext(c, deps, 'detail');
+    const asOf = queryDate(c, ctx);
+    const read = await selectEmploymentRead(deps, ctx, id);
+    const decision = await withUnifiedNotFound(() =>
+      decideEmploymentRead(
+        deps,
+        ctx,
+        id,
+        () => asOf,
+        read,
+        (tx, gated, value) => loadOriginFacts(tx, gated, value, !!read.frozen),
+      ),
+    );
+    const { contentView, ...shown } = (await shownBusiness(deps, decision.ctx, read, decision.value)) as {
+      contentView: unknown;
+    };
+    const fields = read.frozen ? frozenOriginRows(shown) : await liveOriginRows(deps, ctx, decision.extra, asOf, shown);
+    return c.json({ businessId: id, contentView, fields });
+  });
+}
+
 // F-476 P4：GET /businesses/:id 先判内容来源——已办审批人读本人冻结内容（流程事实取现值），不套用其当前数据范围（DEC-834④），
 // 字段仍叠当前字段权；其余读现值，范围照旧。
 function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/businesses/:id', async (c) => {
     const id = uuidParam(c);
-    let ctx = await readPageContext(c, deps, 'detail');
-    const read = await selectEmploymentRead(deps, ctx, id);
-    if (!read.frozen) ctx = await withTenant(deps.db, ctx.tenantId, (tx) => transferBusinessContext(tx, ctx, id));
-    const scope = read.frozen || ctx.transferTarget ? undefined : ctx.scope;
-    const value = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      loadEmploymentBusiness(tx, ctx.tenantId, id, queryDate(c, ctx), scope),
-    );
-    if (!value) throw new AppError('NOT_FOUND', '任职业务不存在');
-    await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: value.employeeId });
+    const entry = await readPageContext(c, deps, 'detail');
+    const read = await selectEmploymentRead(deps, entry, id);
+    const { ctx, value } = await decideEmploymentRead(deps, entry, id, () => queryDate(c, entry), read);
     return c.json(await shownBusiness(deps, ctx, read, value));
   });
   router.get('/records/:id', async (c) => {
@@ -508,8 +545,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const current = await authorizeBusinessWrite(deps, ctx, id);
     requireResultApplicable(result, current.kind);
     const exitTarget = { employeeId: current.employeeId, kind: current.kind };
-    await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id, input));
-    await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit', undefined, options);
+    await requireDraftEditWrite(inTenant(deps, ctx), ctx, id, input, options);
     const departmentId = input.fields?.departmentId;
     if (departmentId !== undefined && ctx.transferTarget)
       ctx = { ...ctx, transferTarget: { ...ctx.transferTarget, departmentId } };
@@ -524,6 +560,9 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       result === undefined ? input : { ...input, probationResult: result },
       async (tx, context) => {
         const checked = await patchContext(tx, context, id, input);
+        // 员工行锁已取（patchContext 'command'）：同值判定、保存值可信度与字段写权在锁内同一份载荷上重做。
+        // 入口与 guard 在锁外读到的载荷可能已被并发提交改写（HR 传播 / 改单），不能拿旧结论放行（F-036 §5.2）。
+        await requireDraftEditWrite((run) => run(tx), checked, id, input, options);
         // 带试用结果的转正申请走 updateRegularizationApplication（F-347 c）
         if (result !== undefined)
           return {
@@ -537,13 +576,11 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         guard: isExitKind(current.kind)
           ? exitCommandGuard(deps, ctx, 'update', { ...exitTarget, patch: input }, { businessId: id })
           : sameOrderWriteGuard(deps, ctx, {
-              businessId: id,
-              employeeId: current.employeeId,
+              ...sameOrderTarget(id, current),
               targetDepartmentId: departmentId,
               referenceChange: input,
               authorize: async (tx, scoped) => {
-                await requireEmployeeTransferBusiness(tx, scoped, id, input);
-                await requireEmploymentWrite(scoped, 'update', input, 'Employment.Edit', undefined, options);
+                await requireDraftEditWrite((run) => run(tx), scoped, id, input, options);
                 if (departmentId !== undefined)
                   await requireScopedEmploymentObject(tx, scoped, current.employeeId, departmentId, id);
               },
@@ -554,6 +591,13 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerBusinessTransitions(router, deps);
 }
 
+/** 通用同单写入口的目标单据：回执名称只对调动单随命令保存（DEC-1000，转正等非调动单据照旧现查字典名）。 */
+const sameOrderTarget = (businessId: string, current: { readonly kind: string; readonly employeeId: string }) => ({
+  ...transferReceiptNames(current.kind),
+  businessId,
+  employeeId: current.employeeId,
+});
+
 /**
  * 通用 DELETE 对离职单是否按“撤销”处理：有离职扩展行，且（处于可撤销状态，或这个幂等键已是本业务的撤销命令——重放）。
  * 已作废 / 未通过 / 已删除且不是撤销重放的，仍是通用清理删除。
@@ -563,6 +607,40 @@ async function routesToCancel(deps: TenantRouteDeps, ctx: EmploymentContext, id:
     if (!(await loadExitRequest(tx, ctx.tenantId, id))) return false;
     const state = await businessState(tx, ctx.tenantId, id);
     return (!!state && isCancellableState(state)) || (await isCancelReplay(tx, ctx.tenantId, key, id));
+  });
+}
+
+/** 首次执行与同键重放共用：校验员工单据与写权限。J5 不在这里：它必须排在业务写范围复核之后（见 afterScope）。 */
+async function authorizeTransition(
+  tx: Tx,
+  scoped: EmploymentContext,
+  id: string,
+  action: Parameters<typeof requireEmploymentTransitionWrite>[1],
+) {
+  if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
+  await requireEmploymentTransitionWrite(scoped, action);
+}
+
+/**
+ * 通用状态动作的同单写入口。提交时的 J5（已保存字段适用性复判）是 afterScope：排在授权与业务写范围复核之后，
+ * 首次执行、同键重放与失败回查都先经这里，再返回台账缓存或执行（DEC-431①：J5 只有这一个入口）。
+ */
+function transitionWriteGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  id: string,
+  current: { readonly kind: string; readonly employeeId: string },
+  action: Parameters<typeof requireEmploymentTransitionWrite>[1],
+) {
+  return sameOrderWriteGuard(deps, ctx, {
+    ...sameOrderTarget(id, current),
+    ...(action === 'submit'
+      ? {
+          referenceChange: {},
+          afterScope: (tx: Tx, scoped: EmploymentContext) => requireSavedValuesApplicable(tx, scoped, id),
+        }
+      : {}),
+    authorize: (tx, scoped) => authorizeTransition(tx, scoped, id, action),
   });
 }
 
@@ -603,15 +681,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
                 { employeeId: current.employeeId, kind: current.kind, deleting: action === 'delete' },
                 { businessId: id },
               )
-            : sameOrderWriteGuard(deps, ctx, {
-                businessId: id,
-                employeeId: current.employeeId,
-                ...(action === 'submit' ? { referenceChange: {} } : {}),
-                authorize: async (tx, scoped) => {
-                  if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
-                  await requireEmploymentTransitionWrite(scoped, action);
-                },
-              }),
+            : transitionWriteGuard(deps, ctx, id, current, action),
         };
         const write = runWrite(
           c,
@@ -743,6 +813,7 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
               { businessId: id },
             )
           : sameOrderScopeGuard(deps, ctx, {
+              ...transferReceiptNames(current.kind),
               writeScope: { businessId: id, employeeId: current.employeeId },
               authorize: (_tx, scoped) => requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation'),
             }),
@@ -1046,6 +1117,44 @@ function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
   router.post('/employees/:id/import', (c) => importEmployment(c, deps));
 }
 
+/**
+ * 员工自助单据上同值的职位、职务、职级、序列不算本次输入（DEC-950）：先定本次输入，字段写权校验只问扣完之后的这份。
+ * 修改、其同键重放与导入编辑行都走这一个函数。
+ */
+async function requireDraftEditWrite(
+  inTx: <T>(run: (tx: Tx) => Promise<T>) => Promise<T>,
+  ctx: EmploymentContext,
+  id: string,
+  input: EmploymentBusinessPatch,
+  options: { readonly commandOnly?: boolean },
+) {
+  const current = await inTx((tx) => requireEmployeeTransferBusiness(tx, ctx, id, input));
+  // 写权校验要走授权器自己的连接，不能放在事务里等：调用方已在事务里时 inTx 直接复用它。
+  await requireEmploymentWrite(ctx, 'update', current ?? input, 'Employment.Edit', undefined, {
+    commandOnly: writeIsCommandOnly(options, input, current),
+  });
+}
+
+const inTenant =
+  (deps: TenantRouteDeps, ctx: EmploymentContext) =>
+  <T>(run: (tx: Tx) => Promise<T>) =>
+    withTenant(deps.db, ctx.tenantId, run);
+
+/**
+ * 扣掉同值字段之后一个业务字段都不剩（请求体只带了同值字段）：按没有变化的整版重提处理，
+ * 不报“必须提供要写入的业务字段”（F-036 §5.2）。请求体本来就是空的，仍是 400。
+ */
+function writeIsCommandOnly(
+  options: { readonly commandOnly?: boolean },
+  original: EmploymentBusinessPatch,
+  current: EmploymentBusinessPatch | undefined,
+): boolean {
+  if (options.commandOnly) return true;
+  if (!current || current === original || !Object.keys(original.fields ?? {}).length) return false;
+  const { fields, customFields, pendingTransferAck: _ack, confirmed: _confirmed, ...rest } = current;
+  return !Object.keys({ ...rest, ...fields, ...customFields }).length;
+}
+
 async function importEmployment(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   const id = uuidParam(c);
   const ctx = await readContext(c, deps, 'object.view', revision(c), id);
@@ -1111,8 +1220,12 @@ async function authorizeImport(
       const patch = normalizeBusinessPatch(item.patch);
       const current = await authorizeBusinessWrite(deps, ctx, item.id, employeeId);
       targets.push({ id: item.id, employeeId, kind: current.kind, patch });
-      await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, item.id, patch));
-      if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit');
+      // 导入编辑的对象是已生效的任职记录，按生效记录契约校验对象、范围与本次字段写权（同 PATCH /records/:id）；
+      // 员工草稿的只读上限与保存值可信度只约束未生效的草稿，生效后员工的旧命令不能再卡 HR 的编辑（F-036 S4 P2-3）。
+      if (current.status === 'effective') {
+        if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit');
+      } else if (preview) await inTenant(deps, ctx)((tx) => requireEmployeeTransferBusiness(tx, ctx, item.id, patch));
+      else await requireDraftEditWrite(inTenant(deps, ctx), ctx, item.id, patch, {});
       const departmentId = patch.fields?.departmentId;
       if (departmentId !== undefined)
         await withTenant(deps.db, ctx.tenantId, (tx) =>

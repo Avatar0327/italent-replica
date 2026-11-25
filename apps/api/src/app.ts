@@ -2,6 +2,7 @@ import { registerContractRoutes } from './modules/contracts/routes.js';
 import { ESIGN_BODY_LIMITS, registerESignRoutes } from './modules/esign/routes.js';
 import { registerInsuranceRoutes } from './modules/insurance/routes.js';
 import { registerHrAnalysisRoutes } from './modules/hr-analysis/routes.js';
+import { registerCollectionTasks } from './modules/onboarding/collection-task-routes.js';
 import { registerCollectionConfig } from './modules/onboarding/collection-config-routes.js';
 import { registerIntegrationPoolRoutes } from './modules/onboarding/integration-pool-routes.js';
 import { registerIntegrationSchemeRoutes } from './modules/onboarding/integration-schemes-routes.js';
@@ -65,6 +66,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerJobEstablishmentRoutes, // R1-T04 职务体系与编制
   registerOnboardingContract, // BE-16 事务端口装配
   registerCollectionConfig, // BE-16 采集配置
+  registerCollectionTasks, // BE-16 采集任务
   registerIntegrationPoolRoutes, // BE-16 16b-0 融入任务池
   registerIntegrationSchemeRoutes, // BE-16 16b-1 融入方案
   registerEmploymentRoutes, // R1-T05 任职记录版本链

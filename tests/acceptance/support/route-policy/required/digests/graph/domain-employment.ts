@@ -144,6 +144,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/exit.ts#EXIT_FORM_DUTY_TRANSFER_TIMINGS': ['#EXIT_DUTY_TRANSFER_TIMINGS'],
   'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS': ['#EXIT_BLACKLIST_DETAIL_FIELDS', '#EXIT_REQUEST_FIELDS'],
   'packages/domain/src/employment/exit.ts#buttonsOf': ['#EXIT_BUTTONS', '#RETIREMENT_BUTTONS'],
+  'packages/domain/src/employment/field-origins.ts#TRUSTED_ORIGIN_KINDS': ['#KINDS_TRUSTED_ON_JOB_FIELDS'],
   'packages/domain/src/employment/field-origins.ts#changedInputFields': ['#equalInputValue', '#inputEntries'],
   'packages/domain/src/employment/field-origins.ts#effectiveOrigin': ['#valueRows'],
   'packages/domain/src/employment/field-origins.ts#equalInputValue': ['#UUID_FIELDS'],
@@ -153,6 +154,7 @@ export const GRAPH: Graph = {
     '#isPolicy',
   ],
   'packages/domain/src/employment/field-origins.ts#isPolicy': ['#policyKinds'],
+  'packages/domain/src/employment/field-origins.ts#isTrustedSavedValue': ['#effectiveOrigin'],
   'packages/domain/src/employment/field-origins.ts#markerField': ['#BUSINESS_DATES'],
   'packages/domain/src/employment/field-origins.ts#policyKinds': ['#FIELD_ORIGIN_POLICIES'],
   'packages/domain/src/employment/field-origins.ts#projectOriginMarkers': [
@@ -162,6 +164,8 @@ export const GRAPH: Graph = {
     '#orderedMarkers',
   ],
   'packages/domain/src/employment/field-origins.ts#requestInputFields': ['#inputEntries'],
+  'packages/domain/src/employment/field-origins.ts#settleValueRows': ['#valueRows'],
+  'packages/domain/src/employment/field-origins.ts#valueRows': ['#liveResolved'],
   'packages/domain/src/employment/late-execution.ts#resolveLateLeave': [
     'packages/domain/src/contracts/rules.ts#addDays',
     '#resolveLateExecution',

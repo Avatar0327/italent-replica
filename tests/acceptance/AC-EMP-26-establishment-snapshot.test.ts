@@ -77,14 +77,16 @@ it('AC-EMP-26 DEC-973：编制投影对已摘下的记录快照应保留原工�
       isRecordSnapshot: true,
       fields: { place: '原地点' },
     });
-    expect([...payload.deferredFieldCodes].sort()).toEqual(transferDeferredExcept('preset:remarks'));
+    // §4.5：快照里每个延迟字段都已有落地解析值，不再列入 deferred_field_codes；DEC-972 的工作地沿用由下面的断言保证。
+    expect([...payload.deferredFieldCodes]).toEqual([]);
     expect(payload.explicitFieldCodes).toEqual(['preset:departmentId', 'preset:remarks']);
     const read = (input: EmploymentPayloadRow) =>
       resolveProjectedTransfer(tx, ctx, input, row!.state, new Map(), new Map());
     const baseline = await read({ ...payload, deferredFieldCodes: [] });
     expect(baseline.predecessor).toMatchObject({ kind: 'retirement', fields: { place: '退休前新地点' } });
     expect(baseline.fields.place).toBe('原地点');
-    const withDec972 = await read(payload);
+    // DEC-972 的守卫仍要有效：即使载荷带着延迟标记（旧快照），已物化的快照也不再按前驱重新解析。
+    const withDec972 = await read({ ...payload, deferredFieldCodes: transferDeferredExcept('preset:remarks') });
     expect(withDec972.fields.place, 'DEC-972：编制投影应沿用已物化快照的工作地').toBe('原地点');
   });
 });
