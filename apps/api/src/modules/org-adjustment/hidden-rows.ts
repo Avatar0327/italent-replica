@@ -8,8 +8,11 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import { AppError } from '../../errors.js';
+import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { loadOrgCreators, visibleItems } from './disclosure.js';
 import { loadItems, type OrgItem } from './items-store.js';
+import { visibleTransfers } from './transfer-read.js';
+import { loadTransfers } from './transfer-items-store.js';
 
 export const ROW_NOT_FOUND = '组织调整明细不存在';
 
@@ -60,4 +63,33 @@ export async function hiddenAmong(
   const orgCreators = await loadOrgCreators(tx, ctx.tenantId, orgScope);
   const shown = new Set(visibleItems({ orgScope, orgCreators }, items).items.map((item) => item.id));
   return new Set(items.filter((item) => !shown.has(item.id)).map((item) => item.id));
+}
+
+/**
+ * 本单调动行里本人看不到的行 ID（任职对象范围、目标部门组织范围、引用的新增组织行可见性，与读接口 `visibleTransfers` 同一判定）。
+ * 写路径的冲突信封只能带本人看得见的调动行 ID，免得借“被引用”探测范围外员工的调动（P2-1）。
+ */
+export async function hiddenTransferIds(
+  tx: Tx,
+  deps: Deps,
+  ctx: TenantContext,
+  adjustmentId: string,
+  hiddenOrg: ReadonlySet<string>,
+): Promise<ReadonlySet<string>> {
+  const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+  const orgScope = await resolveModuleScopeInTransaction(bound, ctx, tx, MODULE_OBJECTS.organization.code);
+  const orgCreators = await loadOrgCreators(tx, ctx.tenantId, orgScope);
+  const employmentScope = await resolveModuleScopeInTransaction(bound, ctx, tx, EMPLOYMENT_OBJECT);
+  const transfers = await loadTransfers(tx, ctx.tenantId, adjustmentId);
+  const orgItems = await loadItems(tx, ctx.tenantId, adjustmentId);
+  const visibleOrg = new Set(orgItems.filter((item) => !hiddenOrg.has(item.id)).map((item) => item.id));
+  const { rows } = await visibleTransfers(
+    tx,
+    ctx.tenantId,
+    { orgScope, orgCreators, employmentScope },
+    { transfers },
+    visibleOrg,
+  );
+  const shown = new Set(rows.map((row) => row.id));
+  return new Set(transfers.filter((row) => !shown.has(row.id)).map((row) => row.id));
 }

@@ -24,10 +24,12 @@ export function transferSectionDisclosed(disclosure: Disclosure): boolean {
   return fields === undefined || [...fields].some((field) => field.startsWith('transferItems.'));
 }
 
-export const transfersOf = (source: OrgContent): readonly TransferItem[] => source.transfers ?? [];
+export const transfersOf = (source: Pick<OrgContent, 'transfers'>): readonly TransferItem[] => source.transfers ?? [];
 
 /** 本人任职对象范围内的员工行（一次查询，不逐人调用）。 */
-async function employmentAllowed(tx: Tx, tenantId: string, disclosure: Disclosure, rows: readonly TransferItem[]) {
+type RowScope = Pick<Disclosure, 'orgScope' | 'orgCreators' | 'employmentScope'>;
+
+async function employmentAllowed(tx: Tx, tenantId: string, disclosure: RowScope, rows: readonly TransferItem[]) {
   const scope = disclosure.employmentScope;
   if (!scope) return new Set(rows.map((row) => row.id));
   if (!rows.length) return new Set<string>();
@@ -45,8 +47,8 @@ async function employmentAllowed(tx: Tx, tenantId: string, disclosure: Disclosur
 export async function visibleTransfers(
   tx: Tx,
   tenantId: string,
-  disclosure: Disclosure,
-  source: OrgContent,
+  disclosure: RowScope,
+  source: Pick<OrgContent, 'transfers'>,
   visibleOrgItemIds: ReadonlySet<string>,
 ) {
   const all = transfersOf(source);

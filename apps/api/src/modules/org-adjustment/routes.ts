@@ -43,7 +43,7 @@ import {
 } from './access.js';
 import { rebaseAll, rebaseItem } from './baseline.js';
 import { foldHiddenError, foldHiddenRowIssues, trimIssues, trimError } from './envelope.js';
-import { hiddenAmong, hiddenItemIds } from './hidden-rows.js';
+import { hiddenAmong, hiddenItemIds, hiddenTransferIds } from './hidden-rows.js';
 import {
   addItemSchema,
   assertEntryType,
@@ -289,10 +289,11 @@ function registerItemRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       {
         button: rowDelete,
         orgIds: (rows) => storedRowOrgs(rows, itemId),
-        execute: async (tx, commandCtx) => ({
-          status: 200,
-          result: await deleteOrgItem(tx, commandCtx, id, itemId, await hiddenItemIds(tx, deps, ctx, id)),
-        }),
+        execute: async (tx, commandCtx) => {
+          const hidden = await hiddenItemIds(tx, deps, ctx, id);
+          const hiddenTransfers = await hiddenTransferIds(tx, deps, ctx, id, hidden);
+          return { status: 200, result: await deleteOrgItem(tx, commandCtx, id, itemId, hidden, hiddenTransfers) };
+        },
       },
     );
   });
