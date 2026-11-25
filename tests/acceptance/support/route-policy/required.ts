@@ -48,6 +48,17 @@ export function rawFacts(observed: ObservedRoute): string[] {
   return Object.entries(observed.primitives).flatMap(([dim, names]) => names.map((name) => `${dim}:${name}`));
 }
 
+/** 事实只由“或”分支的准入义务承接（分支专属守卫，第 5 轮 P2-3）。 */
+const isBranchOnly = (claimers: readonly Obligation[]) =>
+  claimers.length > 0 && claimers.every((o) => isAdmission(o) && o.or);
+
+/** 观测到、但只属于某个“或”分支的守卫名：不进“每个备选都要有”，也不算声明过度。 */
+export function branchOnlyGuards(observed: ObservedRoute, obligations: readonly Obligation[]): string[] {
+  return (observed.primitives['guard'] ?? []).filter((name) =>
+    isBranchOnly(obligations.filter((o) => o.facts?.includes(`guard:${name}`))),
+  );
+}
+
 /** 第二道比较的输入：去掉只由非准入义务承接的事实（披露 / 守卫内部 / 条件准入）。 */
 export function admissionPrimitives(
   observed: ObservedRoute,
@@ -62,7 +73,7 @@ export function admissionPrimitives(
       if (registeredOnly && !claimers.length && PERMISSION_DIMENSIONS.has(dim)) return false;
       // 守卫事实只由“或”分支的准入义务承接时，按分支的归属由 R1 逐备选核对（第 5 轮 P2-3：来源员工 / 联动守卫只在
       // section:transfer 备选）；第二道比较“每个备选都要有该守卫”对这类分支专属守卫不成立，不进准入比较。
-      if (dim === 'guard' && claimers.length && claimers.every((o) => isAdmission(o) && o.or)) return false;
+      if (dim === 'guard' && isBranchOnly(claimers)) return false;
       return !claimers.length || claimers.some(isAdmission);
     });
     if (kept.length) out[dim] = kept;
