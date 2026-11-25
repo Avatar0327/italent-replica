@@ -303,6 +303,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
   ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems': ['#orgInScope'],
+  'apps/api/src/modules/org-adjustment/envelope.ts#PARENT_INACTIVE_FIELD': ['#PARENT_ORG_FIELD', '#TARGET_ORG_FIELD'],
   'apps/api/src/modules/org-adjustment/envelope.ts#foldHiddenError': ['#foldHiddenRowIssues'],
   'apps/api/src/modules/org-adjustment/envelope.ts#foldHiddenRowIssues': ['#HIDDEN_ROW_INVALID'],
   'apps/api/src/modules/org-adjustment/envelope.ts#hideUsedCode': [
@@ -311,12 +312,12 @@ export const GRAPH: Graph = {
     '#sees',
     '#without',
   ],
-  'apps/api/src/modules/org-adjustment/envelope.ts#sourceField': ['#FIELD_KEY', '#TARGET_ORG_FIELD'],
+  'apps/api/src/modules/org-adjustment/envelope.ts#sourceFields': ['#FIELD_KEY', '#TARGET_ORG_FIELD'],
   'apps/api/src/modules/org-adjustment/envelope.ts#trimError': [
     '#FIELD_KEY',
     '#hideUsedCode',
     '#sees',
-    '#sourceField',
+    '#sourceFields',
     '#trimIssues',
     '#without',
   ],
@@ -324,7 +325,7 @@ export const GRAPH: Graph = {
     '#FIELD_KEY',
     '#hideUsedCode',
     '#sees',
-    '#sourceField',
+    '#sourceFields',
     '#without',
   ],
   'apps/api/src/modules/org-adjustment/envelope.ts#trimmedForViewer': [
@@ -552,7 +553,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/people.ts#assertOrgPeopleEligible',
   ],
   'apps/api/src/modules/org-adjustment/item-rules.ts#assertRefs': [
-    'apps/api/src/modules/org-adjustment/envelope.ts#PARENT_ORG_FIELD',
+    'apps/api/src/modules/org-adjustment/envelope.ts#PARENT_INACTIVE_FIELD',
     '#activeOrg',
     '#createdRow',
   ],
