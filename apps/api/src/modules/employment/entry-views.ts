@@ -94,6 +94,29 @@ function collectionStatusSql(visible: SQL): SQL {
     CASE ct.status WHEN 'ready' THEN 'not_sent' ELSE COALESCE(ct.status, 'not_started') END END`;
 }
 
+/** 采集任务列：取每个入职案例当前活跃的最新采集任务（无活跃任务时取最近一条）。 */
+function collectionJoin(): SQL {
+  const active = sql.join(
+    ACTIVE_COLLECTION_TASK_STATES.map((state) => sql`${state}`),
+    sql`,`,
+  );
+  return sql`LEFT JOIN onboarding_entry_cases ec ON ec.tenant_id=r.tenant_id
+      AND ec.employee_id=r.employee_id AND ec.current_business_id=r.id
+    LEFT JOIN LATERAL (SELECT task.status FROM onboarding_collection_tasks task
+      WHERE task.tenant_id=ec.tenant_id AND task.case_id=ec.id
+      ORDER BY (task.status IN (${active})) DESC,
+        task.created_at DESC, task.id DESC LIMIT 1) ct ON true`;
+}
+
+/** 采集 / 材料列的可选排序键（空值垫底），采集在前、材料在后，最后落到入职日与记录 ID。 */
+function entryOrderKeys(collection: EntryCollectionQuery | undefined, material: EntryMaterialQuery | undefined): SQL {
+  const dir = (order: 'asc' | 'desc') => (order === 'desc' ? sql`DESC` : sql`ASC`);
+  const keys: SQL[] = [];
+  if (collection?.order) keys.push(sql`"collectionStatus" ${dir(collection.order)} NULLS LAST,`);
+  if (material?.order) keys.push(sql`material_summary.status ${dir(material.order)} NULLS LAST,`);
+  return sql.join(keys, sql` `);
+}
+
 export async function listEntryView(
   tx: Tx,
   tenantId: string,
@@ -147,19 +170,7 @@ export async function listEntryView(
     LEFT JOIN LATERAL (SELECT p.department_id FROM employment_payload_versions p
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1) snap ON true
-    ${
-      collection
-        ? sql`LEFT JOIN onboarding_entry_cases ec ON ec.tenant_id=r.tenant_id
-      AND ec.employee_id=r.employee_id AND ec.current_business_id=r.id
-    LEFT JOIN LATERAL (SELECT task.status FROM onboarding_collection_tasks task
-      WHERE task.tenant_id=ec.tenant_id AND task.case_id=ec.id
-      ORDER BY (task.status IN (${sql.join(
-        ACTIVE_COLLECTION_TASK_STATES.map((state) => sql`${state}`),
-        sql`,`,
-      )})) DESC,
-        task.created_at DESC, task.id DESC LIMIT 1) ct ON true`
-        : sql``
-    }
+    ${collection ? collectionJoin() : sql``}
     ${material ? materialStatusJoin(material.scope, tenantId, department) : sql``}
     WHERE r.tenant_id=${tenantId} AND r.kind IN (${sql.join(
       ENTRY_KINDS.map((kind) => sql`${kind}`),
@@ -168,14 +179,8 @@ export async function listEntryView(
       AND ${entryViewPredicate(input.view, input.today)} AND ${visible}
       ${collection?.status ? sql`AND ${status} = ${collection.status}` : sql``}
       ${material?.filter ? sql`AND ${materialStatus} = ${material.filter}` : sql``}
-    ORDER BY ${
-      collection?.order
-        ? sql`"collectionStatus" ${collection.order === 'asc' ? sql`ASC` : sql`DESC`}
-      NULLS LAST,`
-        : sql``
-    } ${
-      material?.order ? sql`${materialStatus} ${material.order === 'desc' ? sql`DESC` : sql`ASC`} NULLS LAST,` : sql``
-    } t.start_date, r.id LIMIT ${input.page.limit} OFFSET ${input.page.offset}
+    ORDER BY ${entryOrderKeys(collection, material)} t.start_date, r.id
+    LIMIT ${input.page.limit} OFFSET ${input.page.offset}
   `),
   );
 }
