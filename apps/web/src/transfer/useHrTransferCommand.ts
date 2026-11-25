@@ -37,7 +37,8 @@ export function useHrTransferCommand(
   const confirmEstablishment = useEstablishmentConfirm();
   const [chosen, setAction] = useState<TransferAction>('draft');
   const [awaitingEstablishment, setAwaitingEstablishment] = useState(false);
-  const submitting = useRef(false);
+  // 本次提交的阶段：confirming 防重复点击（含终止合同确认框），settling 从交给内核到处理完结果为止（见 statusState）。
+  const phase = useRef<'idle' | 'confirming' | 'settling'>('idle');
   const command = usePinnedCommand([transferSlot], transferEntry(model.employeeId), transferCommands);
   // 刷新后恢复的命令按它当初的动作给提示（动作存在命令上下文里，不进请求体）。
   const action = (command.state?.context?.action as TransferAction | undefined) ?? chosen;
@@ -59,7 +60,7 @@ export function useHrTransferCommand(
   };
   const conflict: CommandForm = {
     ...command,
-    state: command.status === 'rejected' && needsEstablishmentConfirm(command.state?.error) ? undefined : command.state,
+    state: statusState(command, phase.current === 'settling'),
     // 处理中整页只读，原单回查没有可对的表单；只给按原命令 ID 查询结果（F-120）。
     reload: processing ? undefined : () => command.reread(read),
     queryResult: async () => {
@@ -86,15 +87,16 @@ export function useHrTransferCommand(
     reloadSaved: async () => {},
     submit: async (action: TransferAction) => {
       const { preview } = model;
-      if (submitting.current) return;
+      if (phase.current !== 'idle') return;
       if (write.result || command.locked || loadingPreview || !preview || preview.requiredFieldsUnavailable) return;
       if (model.typeConfirmation) return;
       if (missingTransferRequiredFields(preview.form, { ...preview.fields, ...model.fields }).length) return;
-      submitting.current = true;
+      phase.current = 'confirming';
       try {
         // F-504：暂存不生效、不终止原合同，不问；提交 / 保存每次都先确认，取消即不发请求、表单不动。
         if (action !== 'draft' && terminatesOriginalContract(model) && !(await confirmTerminate())) return;
         setAction(action);
+        phase.current = 'settling';
         restart();
         await submitHrTransfer(command, write, { tenantId, model, preview, action }, () => {
           setAwaitingEstablishment(true);
@@ -105,11 +107,21 @@ export function useHrTransferCommand(
         if (!needsEstablishmentConfirm(error)) throw error;
         command.clear();
       } finally {
-        submitting.current = false;
+        phase.current = 'idle';
         setAwaitingEstablishment(false);
       }
     },
   };
+}
+
+/**
+ * CommandStatus 读的条目。超编确认由确认框处理，不显示。本次提交处理中（F-562 第 2 轮 P2-1）内核在返回前就发布
+ * rejected 条目、本页随后清掉；登记冲突后占槽命令已落定时它的 error 是旧的“其他标签页”文案，不能读。本次拒绝的
+ * 提示只走表单原位置（refused）或“处理中”（race）；处理完之后的 rejected（主动查询结果确认失败）照常显示。
+ */
+function statusState(command: Pick<CommandForm, 'status' | 'state'>, settling: boolean) {
+  if (command.status !== 'rejected') return command.state;
+  return settling || needsEstablishmentConfirm(command.state?.error) ? undefined : command.state;
 }
 
 function noticeOf(result: ReturnType<typeof useHrWrite>['result'], action: TransferAction) {
