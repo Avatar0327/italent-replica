@@ -14,6 +14,7 @@ import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as Commands from '../../apps/api/src/commands.js';
+import type * as ReplayGuard from '../../apps/api/src/modules/employment/replay-guard.js';
 import { approvalWorld, permissionAdmin } from './AC-APV-support.js';
 import { createProfile, setObjectPermission } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -24,9 +25,24 @@ const hooks = vi.hoisted(() => ({
   beforeCommand: undefined as undefined | (() => Promise<void>),
   /** 让主事务在守卫通过后失败（执行体抛错），并在回查事务开始前执行一次。 */
   beforeRecheck: undefined as undefined | (() => Promise<void>),
+  /** 入口的业务写范围复核通过、且承载它的事务结束后执行一次：入口里“范围复核”与“参照检查”两步之间的窗口（第 3 轮）。 */
+  afterEntryScope: undefined as undefined | (() => Promise<void>),
+  entryScopeSeen: false,
   fired: 0,
   rechecked: 0,
 }));
+vi.mock('../../apps/api/src/modules/employment/replay-guard.js', async (importOriginal) => {
+  const original = await importOriginal<typeof ReplayGuard>();
+  return {
+    ...original,
+    requireBusinessWriteScope: async (...args: Parameters<typeof original.requireBusinessWriteScope>) => {
+      const value = await original.requireBusinessWriteScope(...args);
+      // 只记请求里第一次写范围复核（入口的）；钩子里 HR 的请求与命令内守卫不再触发。
+      if (hooks.afterEntryScope && !hooks.entryScopeSeen) hooks.entryScopeSeen = true;
+      return value;
+    },
+  };
+});
 vi.mock('../../apps/api/src/commands.js', async (importOriginal) => {
   const original = await importOriginal<typeof Commands>();
   return {
@@ -71,6 +87,8 @@ const database = useTestDb();
 afterEach(() => {
   hooks.beforeCommand = undefined;
   hooks.beforeRecheck = undefined;
+  hooks.afterEntryScope = undefined;
+  hooks.entryScopeSeen = false;
   hooks.fired = 0;
   hooks.rechecked = 0;
 });
@@ -83,9 +101,27 @@ const LATER = '2026-11-05';
 async function fixture(label: string) {
   const w = await approvalWorld(database().db, `f564-${label}-${uniqueSuffix()}`);
   w.setNow('2026-10-01T01:00:00Z');
-  const api = tenantApi(w.db, { authorize: undefined, clock: w.clock });
+  // 经理侧的请求走计数代理：承载入口范围复核的事务一结束，就执行 hooks.afterEntryScope（范围复核与参照检查之间）。
+  const stepped = new Proxy(w.db, {
+    get(target, prop) {
+      if (prop !== 'transaction') return Reflect.get(target, prop, target);
+      return async (...a: Parameters<typeof target.transaction>) => {
+        const result = await target.transaction(...a);
+        const hook = hooks.afterEntryScope;
+        if (hook && hooks.entryScopeSeen) {
+          hooks.afterEntryScope = undefined;
+          hooks.entryScopeSeen = false;
+          hooks.fired += 1;
+          await hook();
+        }
+        return result;
+      };
+    },
+  });
+  const api = tenantApi(stepped, { authorize: undefined, clock: w.clock });
   const a = await w.org('负责组织 A');
   const b = await w.org('负责组织 B');
+  const c = await w.org('经理范围外组织 C');
   const manager = await w.person('纯经理', a);
   const employee = await w.person('申请员工', a);
   await w.setOrgRoles(a, { head: manager.employeeId });
@@ -180,10 +216,21 @@ async function fixture(label: string) {
       idempotencyKey: key,
     });
   const missing = '00000000-0000-4000-8000-0000000f5640';
+  /** HR 把草稿的目标部门改到经理范围外的 C（同一张草稿产生新版本载荷）。 */
+  const hrRetarget = async (id: string) => {
+    const shown = await w.business(id);
+    const response = await w.request(w.hr.id, 'PATCH', `${BASE}/businesses/${id}`, {
+      ifMatch: shown.revision,
+      body: { fields: { departmentId: c } },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+  };
   return {
     ...w,
     a,
     b,
+    c,
+    hrRetarget,
     setScope,
     draftByManager,
     draftByHr,
@@ -337,5 +384,47 @@ describe.each([
     expect(hooks.fired).toBe(1);
     await expectNotFoundLikeMissing(first, inCommand, (id, key) => first.submit(id, savedFirst.revision, key));
     expect(await first.stable(savedFirst.id)).toEqual(beforeFirst);
+  });
+
+  it('⑩第 3 轮 PATCH：入口范围复核与参照检查之间 HR 把目标改到范围外 → 404，与不存在的单据逐项一致，不是 403', async () => {
+    const w = await fixture('between-patch');
+    const saved = await makeDraft(w);
+    hooks.afterEntryScope = () => w.hrRetarget(saved.id);
+    const response = await w.patch(saved.id, saved.revision, `k10-${uniqueSuffix()}`);
+    expect(hooks.fired, '钩子没有在入口范围复核之后触发，夹具没有走到目标窗口').toBe(1);
+    const after = await w.stable(saved.id);
+    await expectNotFoundLikeMissing(w, response, (id, key) => w.patch(id, saved.revision, key));
+    expect(await w.stable(saved.id)).toEqual(after);
+  });
+
+  it('⑪第 3 轮 提交：入口范围复核与参照检查之间 HR 把目标改到范围外 → 404，与不存在的单据逐项一致，不是 403', async () => {
+    const w = await fixture('between-submit');
+    const saved = await makeDraft(w);
+    hooks.afterEntryScope = () => w.hrRetarget(saved.id);
+    const response = await w.submit(saved.id, saved.revision, `k11-${uniqueSuffix()}`);
+    expect(hooks.fired, '钩子没有在入口范围复核之后触发，夹具没有走到目标窗口').toBe(1);
+    const after = await w.stable(saved.id);
+    await expectNotFoundLikeMissing(w, response, (id, key) => w.submit(id, saved.revision, key));
+    expect(await w.stable(saved.id)).toEqual(after);
+    expect(after.status).not.toBe('pending');
+  });
+
+  it('⑫对照：两步之间钩子不改任何东西 → 夹具走到窗口，合法 PATCH 仍 200；B 的负责关系被撤仍是范围内 403', async () => {
+    const ok = await fixture('between-control');
+    const savedOk = await makeDraft(ok);
+    hooks.afterEntryScope = async () => undefined;
+    const legal = await ok.patch(savedOk.id, savedOk.revision, `k12a-${uniqueSuffix()}`);
+    expect(hooks.fired).toBe(1);
+    expect(legal.status, await legal.clone().text()).toBe(200);
+
+    const bad = await fixture('between-in-scope');
+    const savedBad = await makeDraft(bad);
+    hooks.afterEntryScope = () => bad.setOrgRoles(bad.b, { head: null });
+    const response = await bad.patch(savedBad.id, savedBad.revision, `k12b-${uniqueSuffix()}`);
+    expect(hooks.fired).toBe(2);
+    expect(response.status, await response.clone().text()).toBe(403);
+    expect(await shape(response)).toMatchObject({
+      body: { error: { code: 'FORBIDDEN', message: '调动参照不在可选范围' } },
+    });
   });
 });
