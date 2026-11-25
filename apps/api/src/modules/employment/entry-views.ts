@@ -80,19 +80,8 @@ interface EntryViewQuery {
   readonly collection?: EntryCollectionQuery;
 }
 
-/** 采集状态列：采集范围外的行为 NULL（未启用采集的租户 / 调用方不传 collection 时整列不出）。 */
-function collectionStatusSql(
-  tenantId: string,
-  collection: EntryViewQuery['collection'],
-  department: SQL,
-): SQL | undefined {
-  if (!collection) return undefined;
-  const visible = employmentScopePredicate(
-    collection.scope,
-    sql`r.employee_id`,
-    department,
-    employmentCreator(tenantId, sql`r.id`, true),
-  );
+/** 采集状态列表达式：范围谓词由调用方（listEntryView）传入，授权证据留在 listEntryView 内（F-039 锚点）。 */
+function collectionStatusSql(visible: SQL): SQL {
   return sql`CASE WHEN ${visible} THEN
     CASE ct.status WHEN 'ready' THEN 'not_sent' ELSE COALESCE(ct.status, 'not_started') END END`;
 }
@@ -112,7 +101,15 @@ export async function listEntryView(
     employmentCreator(tenantId, sql`r.id`, true),
   );
   const collection = input.collection;
-  const status = collectionStatusSql(tenantId, collection, department);
+  const collectionVisible =
+    collection &&
+    employmentScopePredicate(
+      collection.scope,
+      sql`r.employee_id`,
+      department,
+      employmentCreator(tenantId, sql`r.id`, true),
+    );
+  const status = collectionVisible && collectionStatusSql(collectionVisible);
   return rowsOf<EntryViewItem>(
     await tx.execute(sql`
     SELECT r.id, r.employee_id AS "employeeId", e.code,
