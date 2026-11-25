@@ -168,12 +168,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/validation.ts#invalid',
   ],
   'apps/api/src/modules/org-adjustment/approval-edit.ts#replayApproverEdit': [
-    '#TRANSFER_PREFIX',
     '#approverDeps',
     '#authorizeApprover',
-    '#parseTransfers',
     'apps/api/src/modules/org-adjustment/envelope.ts#trimmedForViewer',
-    'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
     'apps/api/src/modules/org-adjustment/transfer-access.ts#rejudgeApproverEdits',
   ],
@@ -308,7 +305,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems': ['#orgInScope'],
   'apps/api/src/modules/org-adjustment/envelope.ts#foldForApprover': [
     '#foldHiddenError',
-    'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenEnvelopeIds',
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenEnvelopeIdsForViewer',
   ],
   'apps/api/src/modules/org-adjustment/envelope.ts#foldHiddenError': ['#foldHiddenRowIssues'],
   'apps/api/src/modules/org-adjustment/envelope.ts#foldHiddenRowIssues': ['#HIDDEN_ROW_INVALID'],
@@ -439,6 +436,15 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenEnvelopeIds': ['#hiddenItemIds', '#hiddenTransferRows'],
+  'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenEnvelopeIdsForViewer': [
+    'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure',
+    'apps/api/src/modules/org-adjustment/disclosure.ts#orgSectionDisclosed',
+    'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
+    'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
+    'apps/api/src/modules/org-adjustment/transfer-items-store.ts#loadTransfers',
+    'apps/api/src/modules/org-adjustment/transfer-read.ts#transferSectionDisclosed',
+    'apps/api/src/modules/org-adjustment/transfer-read.ts#visibleTransfers',
+  ],
   'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenItemIds': [
     '#hiddenAmong',
     'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
@@ -1264,6 +1270,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/transfer-access.ts#authorizeDutySubordinates': [
     'apps/api/src/modules/employment/context.ts#requireLinkedEmploymentRecord',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'apps/api/src/modules/transfer/linkage/validation.ts#notEligible',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/org-adjustment/transfer-access.ts#authorizeEstablishment': [
