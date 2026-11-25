@@ -127,10 +127,12 @@ function useUrge(api: Api, instanceId?: string) {
       const detail = await readApproval(api, String(id));
       return { id: detail.id, revision: detail.revision, values: {} };
     });
+  const form = { ...urge, reload };
   // 被拒只由 notifyUrge 按 outcome 提示一次，状态区不显示被拒条目：内核落定时先发布 rejected 再返回 outcome，
   // 过期竞争的“其他标签页”文案会在分类、清槽前渲染出来（第 2 轮 P2-2）。锁定（blocked）不受影响。
-  const status = urge.state?.status === 'rejected' ? { ...urge, state: undefined } : urge;
-  return { form: { ...urge, reload }, status, send };
+  // 从带 reload 的句柄派生，结果未知的「回查原单」、版本冲突的「重读最新版本」才有入口（第 3 轮，CommandStatus）。
+  const status = form.state?.status === 'rejected' ? { ...form, state: undefined } : form;
+  return { form, status, send };
 }
 
 export function RowActions({ row, onChanged }: { row: Row; onChanged(): void }) {
