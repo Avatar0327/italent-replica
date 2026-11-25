@@ -13,6 +13,8 @@
  *   登录、权限、不存在保留接口提示；
  * - P2-2 过期竞争：每次 DOM 提交都不渲染旧告警；撤销被拒留下的槽、过期竞争之后再点催办按最新版本发出并成功；
  * - P2-3 催办 POST 回执无法解析（200 非 JSON）：按命令结果提示结果未知，保持原命令锁定，只发出一次。
+ * 第 3 轮（Sol r2）：状态区保留恢复入口——两类未知回执可点「回查原单」、版本冲突可点「重读最新版本」，
+ *   点击后读取审批详情，不增加 POST。
  */
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -187,6 +189,24 @@ async function render(ready = true) {
 }
 const clickUrge = () => act(async () => urgeButton()!.click());
 const urges = () => posts.filter((post) => post.path === URGE_PATH);
+/** 审批详情 GET 次数（首载、点击时重读、状态区回查 / 重读都算）。 */
+const detailReads = () =>
+  vi
+    .mocked(fetch)
+    .mock.calls.filter(
+      ([input, init]) =>
+        (init?.method ?? 'GET') === 'GET' && new URL(String(input), 'http://local').pathname === DETAIL_PATH,
+    ).length;
+/** 点状态区的恢复按钮：读取审批详情、不增加 POST。 */
+async function recoverWith(label: string) {
+  await until(() => !!buttonIn(host, label));
+  const reads = detailReads();
+  const sent = posts.length;
+  await act(async () => buttonIn(host, label)!.click());
+  await until(() => detailReads() > reads);
+  await act(() => new Promise<void>((resolve) => setTimeout(resolve, 50)));
+  expect(posts).toHaveLength(sent);
+}
 /** 别页 A 的登记读到后、本页处理冲突前 A 已落定删记录（同 AC-FE-F566）；返回锁请求探针与“放开 A 的锁”。 */
 async function staleConflict() {
   const release = await holdLock(RECORDS); // A 持锁登记
@@ -446,5 +466,37 @@ describe('AC-FE-F568 合同行内催办：已发出后的结果', () => {
     expect(text()).not.toContain(RESULT_UNKNOWN);
     expect(localStorage.getItem(RECORDS)).toBeNull();
     expect(urgeButton()!.disabled).toBe(false);
+  });
+});
+
+describe('AC-FE-F568 第 3 轮：状态区保留恢复入口', () => {
+  it.each([
+    ['实例不符', () => Response.json(detail(6, '5680d000-0000-4000-8000-000000000004'))],
+    [
+      '200 非 JSON',
+      () => new Response('<html>合成网关页</html>', { status: 200, headers: { 'content-type': 'text/html' } }),
+    ],
+  ])('回执无法核对（%s）：状态区有「回查原单」，点击读取详情，不增加 POST，仍锁定', async (_case, reply) => {
+    urgeReply = reply;
+    await render();
+    await clickUrge();
+    await until(() => text().includes(RESULT_UNKNOWN));
+    expect(posts).toHaveLength(1);
+    await recoverWith('回查原单');
+    expect(posts).toHaveLength(1);
+    expect(urgeButton()!.disabled).toBe(true);
+  });
+
+  it('POST 409 REVISION_CONFLICT：状态区有「重读最新版本」，点击读取详情，不增加 POST', async () => {
+    await render();
+    // 点击时重读到 6，提交前流程已被别的操作推进到 7：服务端按 If-Match 返回版本冲突。
+    revision = 7;
+    detailReply = () => Response.json(detail(6));
+    await clickUrge();
+    await until(() => !!buttonIn(host, '重读最新版本'));
+    expect(urges().map((post) => post.ifMatch)).toEqual(['6']);
+    detailReply = () => Response.json(detail(revision));
+    await recoverWith('重读最新版本');
+    expect(posts).toHaveLength(1);
   });
 });
