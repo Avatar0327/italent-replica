@@ -56,8 +56,13 @@ describe('AC-OA-32 跨对象写授权', () => {
     const linkage = { contract: { targetId: contractId, fields: { endDate: '2029-10-09' } } };
     w.access.deniedButtons.add('change');
 
-    const denied = await w.addTransfer(view.id, w.transferBody(mover, { orgId: w.b }, { linkage }));
-    expect([403, 404], await denied.clone().text()).toContain(denied.status);
+    // 按钮是功能权：缺“变更”按钮一律 403 FORBIDDEN（范围外才是 404），不接受二选一
+    await expectError(
+      await w.addTransfer(view.id, w.transferBody(mover, { orgId: w.b }, { linkage })),
+      403,
+      'FORBIDDEN',
+    );
+    expect(await w.transferRows(view.id)).toEqual([]);
     w.access.deniedButtons.clear();
     w.access.employment = only(w.b); // 员工在 A 下 → 范围外
     await expectError(

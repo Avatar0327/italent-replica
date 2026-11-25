@@ -52,8 +52,14 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-OA-25-pg ⑤ 执行�
       [executed, left],
       `恰一方成功：执行 ${row!.execution_result}/${row!.execution_reason}，离职 ${text}`,
     ).toSatisfy(([a, b]: boolean[]) => a !== b);
-    if (order === '执行先') expect(executed).toBe(true);
-    else expect(left).toBe(true);
     expect(text).not.toContain('CONCURRENT_CONFLICT');
+    // 失败方必须是具体业务拒绝，不能把别的失败（超时、500、其它原因）算作“恰一方成功”
+    if (order === '执行先') {
+      expect(executed).toBe(true);
+      expect(response.status, `离职应因员工 revision 已变 409：${text}`).toBe(409);
+    } else {
+      expect(left).toBe(true);
+      expect(row).toMatchObject({ execution_result: 2, execution_reason: 'BASELINE_CHANGED' });
+    }
   });
 });
