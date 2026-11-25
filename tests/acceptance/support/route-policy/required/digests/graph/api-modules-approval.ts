@@ -15,6 +15,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/idp/plan-mentor.ts#mentorSourcesOf',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
   ],
+  'apps/api/src/modules/approval/access.ts#approvalEditGuard': [
+    'apps/api/src/modules/approval/store.ts#instanceOfTask',
+    'apps/api/src/modules/approval/store.ts#loadInstance',
+    'apps/api/src/modules/org-adjustment/approval-edit.ts#replayApproverEdit',
+  ],
   'apps/api/src/modules/approval/access.ts#businessScopes': [
     '#IDP_PLAN_OBJECT',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
@@ -2361,6 +2366,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#parseBody',
   ],
   'apps/api/src/modules/approval/routes.ts#registerTaskRoutes': [
+    'apps/api/src/modules/approval/access.ts#approvalEditGuard',
     'apps/api/src/modules/approval/actions.ts#addSign',
     'apps/api/src/modules/approval/actions.ts#approveTask',
     'apps/api/src/modules/approval/actions.ts#disagreeTask',
@@ -2572,6 +2578,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#parseBody',
   ],
   'apps/api/src/modules/approval/routes.ts#route:POST /tasks/:id/edit': [
+    'apps/api/src/modules/approval/access.ts#approvalEditGuard',
     'apps/api/src/modules/approval/actions.ts#editTask',
     '#command',
     '#exitReschedule',

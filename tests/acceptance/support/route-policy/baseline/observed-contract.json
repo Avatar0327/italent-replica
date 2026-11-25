@@ -1559,6 +1559,7 @@
           "transfer write"
         ],
         "guard": [
+          "employment.linkage",
           "orgAdjustment.item",
           "transfer.source"
         ],
@@ -17094,6 +17095,7 @@
           "writeFields"
         ],
         "guard": [
+          "employment.linkage",
           "orgAdjustment.item",
           "transfer.source"
         ],
@@ -26940,6 +26942,7 @@
           "transfer write"
         ],
         "guard": [
+          "employment.linkage",
           "orgAdjustment.item",
           "transfer.source"
         ],
@@ -27050,6 +27053,7 @@
           "transfer write"
         ],
         "guard": [
+          "employment.linkage",
           "orgAdjustment.item",
           "transfer.source"
         ],
@@ -27115,6 +27119,7 @@
           "trimModuleResponse"
         ],
         "guard": [
+          "employment.linkage",
           "orgAdjustment.head",
           "orgAdjustment.item",
           "transfer.source"
@@ -27178,6 +27183,7 @@
           "writeFields"
         ],
         "guard": [
+          "employment.linkage",
           "orgAdjustment.item",
           "transfer.source"
         ],
