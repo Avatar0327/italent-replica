@@ -14,6 +14,7 @@ const SRC = 'apps/api/src/modules';
 const EMP = `${SRC}/employment/routes.ts`;
 const CTX = `${SRC}/employment/context.ts`;
 const REPLAY = `${SRC}/employment/replay-guard.ts`;
+const EXIT_GUARDS = `${SRC}/employment/exit-guards.ts`; // F-565：离职类命令内复核迁到同单守卫之上
 const TRANSITION_ACCESS = `${SRC}/employment/transition-access.ts`;
 const TRF = `${SRC}/transfer/routes.ts`;
 const MGR = `${SRC}/transfer/manager-routes.ts`;
@@ -683,7 +684,7 @@ const EXIT_PERMISSION: Evidence = {
   unit: `${SRC}/employment/exit-gate.ts#requireExitPermission`,
   anchor: 'await requireEmploymentWrite(ctx, spec.op, spec.payload, button, undefined, options)',
 };
-const EXIT_GUARD = fn(REPLAY, 'exitCommandGuard', 'await requireExitPermission(scoped, operation, target)');
+const EXIT_GUARD = fn(EXIT_GUARDS, 'exitCommandGuard', 'await requireExitPermission(scoped, operation, target)');
 const exitCall = (name: string, anchor: string) => fn(EXIT, name, anchor);
 function exitPreview(button: string, file = EXIT, path = '/exits/employees/:id/preview', pass = ''): Obligation[] {
   const group = `exitPreview:${button}`;
@@ -3980,7 +3981,7 @@ export const EMPLOYMENT: RequiredTable = {
       [],
       [
         at(EXIT, 'POST', '/exits/batch', 'const guard = exitBatchGuard(deps, ctx, items)'),
-        fn(REPLAY, 'exitBatchGuard', "await requireExitPermission(scoped, 'create', target)"),
+        fn(EXIT_GUARDS, 'exitBatchGuard', "await requireExitPermission(scoped, 'create', target)"),
         EXIT_PERMISSION,
         WRITE_BUTTON,
       ],
@@ -3989,7 +3990,7 @@ export const EMPLOYMENT: RequiredTable = {
     ob(
       'guard:employment.scope',
       [],
-      [fn(REPLAY, 'exitBatchGuard', 'await requireExitScope(tx, scoped, target, {})'), EMPLOYMENT_SCOPE],
+      [fn(EXIT_GUARDS, 'exitBatchGuard', 'await requireExitScope(tx, scoped, target, {})'), EMPLOYMENT_SCOPE],
     ),
     linkage(at(EXIT, 'POST', '/exits/batch', 'body: await createExitBatch(tx, context, items, guard.failures())')),
   ],
@@ -4062,7 +4063,7 @@ export const EMPLOYMENT: RequiredTable = {
       ['button:object.button', 'button:buttonResource'],
       [
         at(EXIT, 'PATCH', '/exits/:id', 'guard: exitEditGuard(deps, ctx, gate, id)'),
-        fn(REPLAY, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
+        fn(EXIT_GUARDS, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
         fn(
           REPLAY,
           'requireExitEditRights',
@@ -4200,7 +4201,7 @@ export const EMPLOYMENT: RequiredTable = {
       ['button:object.button', 'button:buttonResource'],
       [
         at(RETIRE, 'PATCH', '/retirements/:id', 'const guard = exitEditGuard('),
-        fn(REPLAY, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
+        fn(EXIT_GUARDS, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
         fn(
           REPLAY,
           'requireExitEditRights',
