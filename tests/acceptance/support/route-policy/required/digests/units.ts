@@ -1304,7 +1304,11 @@ export const DIGESTS: Digests = {
     'route:POST /api/tenant/org-adjustment/adjustments/:id/void': 'cdd608c01542',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw': '02aa646a57ac',
   },
+  'apps/api/src/modules/org-adjustment/transfer-access.ts': {
+    transferGate: 'c56b751ea47d',
+  },
   'apps/api/src/modules/org-adjustment/transfer-routes.ts': {
+    prepareTransferSubmitCheck: 'b36676e1a061',
     'route:DELETE /api/tenant/org-adjustment/adjustments/:id/transfer-items/:itemId': 'df5d824a77c2',
     'route:PATCH /api/tenant/org-adjustment/adjustments/:id/transfer-items/:itemId': '1ffcc431747c',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/transfer-items': '7a8ee82b628b',
@@ -2067,6 +2071,9 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/transfer/employee-policy.ts': {
     requireEmployeeTransferBusiness: '7fbf5e8e0ca8',
+  },
+  'apps/api/src/modules/transfer/linkage/access.ts': {
+    authorizeLinkageWrite: 'b7185fcbea0d',
   },
   'apps/api/src/modules/transfer/linkage/approval.ts': {
     linkageFieldValues: '5f92b834c5f8',
@@ -3222,6 +3229,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     'b17c3833a45e',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw':
     '6ff7710d5889',
+  'apps/api/src/modules/org-adjustment/transfer-access.ts#transferGate': 'ff74432fdeb0',
+  'apps/api/src/modules/org-adjustment/transfer-routes.ts#prepareTransferSubmitCheck': '709846d869e3',
   'apps/api/src/modules/org-adjustment/transfer-routes.ts#route:DELETE /api/tenant/org-adjustment/adjustments/:id/transfer-items/:itemId':
     'c476669badcb',
   'apps/api/src/modules/org-adjustment/transfer-routes.ts#route:PATCH /api/tenant/org-adjustment/adjustments/:id/transfer-items/:itemId':
@@ -3791,6 +3800,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/transfer/access.ts#requireTransferSource': 'c189085fadf2',
   'apps/api/src/modules/transfer/access.ts#transferDirectActions': '8183cc7a4028',
   'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness': '6ede70723623',
+  'apps/api/src/modules/transfer/linkage/access.ts#authorizeLinkageWrite': '7e52d6f0cc12',
   'apps/api/src/modules/transfer/linkage/approval.ts#linkageFieldValues': 'e3b0c44298fc',
   'apps/api/src/modules/transfer/linkage/routes.ts#authorizeRetry': 'c17b2b6e9b2f',
   'apps/api/src/modules/transfer/linkage/routes.ts#preauthorizeLinkage': '969182fa72d8',
