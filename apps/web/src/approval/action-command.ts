@@ -9,6 +9,7 @@ import { actionTask, editFields, editValues } from './edit-model.js';
 import { ApiError, type ApiClient } from '../foundation/client.js';
 import { messages as m } from './messages.js';
 import { useApprovalCommand } from './commands.js';
+import { createRefusalMarks, useRefusalMarks } from './refusal-marks.js';
 import type { ApprovalAction, ApprovalDetail, ApprovalRow } from './types.js';
 
 /**
@@ -40,6 +41,8 @@ async function confirmResult(
   if (detail.id !== instanceId || !advanced(detail.revision)) throw new Error(kernel.invalidReceipt);
   return detail;
 }
+/** F-566：与审批存储（commands.ts）同为模块级，同一实例的各挂载共用（关闭重开详情也认得处理中的命令）。 */
+const marks = createRefusalMarks();
 /** 各动作可编辑的字段：意见、转交对象；撤销不带字段（后端 strictObject 只收这些键）。 */
 export const actionFields: Record<ApprovalAction, readonly string[]> = {
   approve: ['comment'],
@@ -58,6 +61,7 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
   const api = useApiClient();
   const command = useApprovalCommand(`/api/tenant/approval/instances/${row.id}`);
   const [chosen, setChosen] = useState<ActionContext>();
+  useRefusalMarks(marks);
   // 槽里还有未确认的命令（处理中、结果未知、冲突）时以槽里的动作为准，换按钮重开不另起命令。
   const pending = lockedContext<ActionContext>(command.state);
   const context = pending ?? chosen;
@@ -103,29 +107,33 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
     await confirmNotice(
       approvalNotice({ ...detail, form: { values: { ...detail.form.values, ...businessValues } } }, action),
     );
-    const result = await command.submit({
-      values,
-      baseline: editValues(detail, action),
-      editableFields: [...actionFields[action], ...fields.map(({ key }) => key)],
-      revision: detail.revision,
-      businessId: detail.id,
-      send: async (sent) => {
-        // 重读后出口已不在最新 exits 里时 approvalRequest 直接拒绝，不发请求（不自动改投其他出口）。
-        const request = approvalRequest(detail, action, taskId, sent.body, exit);
-        const receipt = await api
-          .request<unknown>(request.path, { method: 'POST', command: { ...sent, body: request.body } })
-          .catch((error: unknown) => {
-            throw approvalFailure(error);
-          });
-        return acceptReceipt(receipt, detail.id, sent.revision ?? detail.revision);
-      },
-      context: { action, ...(taskId ? { taskId } : {}), ...(exit === undefined ? {} : { exit }) },
-    });
+    const submitting = (issue: () => void) =>
+      command.submit({
+        values,
+        baseline: editValues(detail, action),
+        editableFields: [...actionFields[action], ...fields.map(({ key }) => key)],
+        revision: detail.revision,
+        businessId: detail.id,
+        send: async (sent) => {
+          issue();
+          // 重读后出口已不在最新 exits 里时 approvalRequest 直接拒绝，不发请求（不自动改投其他出口）。
+          const request = approvalRequest(detail, action, taskId, sent.body, exit);
+          const receipt = await api
+            .request<unknown>(request.path, { method: 'POST', command: { ...sent, body: request.body } })
+            .catch((error: unknown) => {
+              throw approvalFailure(error);
+            });
+          return acceptReceipt(receipt, detail.id, sent.revision ?? detail.revision);
+        },
+        context: { action, ...(taskId ? { taskId } : {}), ...(exit === undefined ? {} : { exit }) },
+      });
+    const result = await marks.settle(command, submitting);
     if (result.status !== 'done') throw result.error ?? new Error(kernel.unknown);
     command.clear();
   }
   return {
-    command: { ...command, reload, queryResult },
+    command: { ...command, state: marks.view(command.state), reload, queryResult },
+    notice: marks.notice(command.state),
     /** 弹窗只在用户点了按钮后打开；锁定时标题与提交仍按槽里的动作。 */
     action: chosen && context?.action !== 'urge' ? context?.action : undefined,
     exit: chosen && context?.action !== 'urge' ? context?.exit : undefined,
