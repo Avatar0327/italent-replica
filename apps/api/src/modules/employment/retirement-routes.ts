@@ -38,7 +38,7 @@ import type { BusinessWriteGuard } from './entry-routes.js';
 import { requireRetirementRestorePermission } from './retirement-actions.js';
 import { assertRetirementFields, assertRetirementImmutableKeys } from './retirement-application.js';
 import { rehireGuard, requireRehireWrite, resolveRehirePlan, splitRehireOptions } from './retirement-rehire.js';
-import { exitCommandGuard, exitEditGuard } from './replay-guard.js';
+import { exitCommandGuard, exitEditGuard } from './exit-guards.js';
 import { registerRetirementViews } from './retirement-view-routes.js';
 import { transitionEmployment } from './transitions.js';
 

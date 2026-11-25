@@ -83,7 +83,8 @@ import { previewExit } from './exit-preview.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import { businessDate, normalizeEmploymentInput, normalizedUuid } from './fields.js';
 import type { BusinessWriteGuard } from './entry-routes.js';
-import { exitBatchGuard, exitCommandGuard, exitEditGuard, exitImportGuard } from './replay-guard.js';
+import { exitBatchGuard, exitCommandGuard, exitEditGuard } from './exit-guards.js';
+import { exitImportGuard } from './replay-guard.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import { transitionEmployment } from './transitions.js';
 import {

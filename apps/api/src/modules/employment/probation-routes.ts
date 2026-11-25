@@ -42,6 +42,7 @@ import {
 import { parseRegularizationBusinessInput } from './fields.js';
 import { rescheduleRegularization } from './regularization-reschedule.js';
 import { pendingActionGuard } from './replay-guard.js';
+import { sameOrderScopeGuard, transferReceiptNames } from '../transfer/same-order-guard.js';
 import type { EmploymentContext } from './types.js';
 
 const date = z.iso.date();
@@ -133,10 +134,32 @@ export async function createRegularizationViaBusinesses(
     ...(input.effectiveDate ? { effectiveDate: input.effectiveDate } : {}),
     ...(result ? { probationResult: result } : {}),
   };
-  return runWrite(c, deps, ctx, request, async (tx, context) => ({
-    status: 201,
-    body: await createRegularizationBusiness(tx, context, id, request),
-  }));
+  // F-565①：与通用新建其余类型同一个同单守卫——员工行 → 业务头 → 封口 → 锁内读授权；此前无守卫，授权在入口读完，
+  // 等员工行锁期间被收回的范围仍被沿用。入口检查（对象新增 / 按钮 / 员工范围）在命令事务里按当前授权重过一遍。
+  const guard = sameOrderScopeGuard(deps, ctx, {
+    ...transferReceiptNames('regularization'),
+    lock: { employeeId: id },
+    authorize: async (tx, scoped) => {
+      await requirePermission(scoped.authorize!, {
+        ...scoped,
+        action: 'object.create',
+        resource: scoped.objectCode!,
+        fields: [],
+      });
+      await requireEmploymentWrite(scoped, 'create', body as object, 'Employment.Create');
+      const creator = await requireEmployeeInScope(tx, scoped, id);
+      if (input.fields.departmentId !== undefined)
+        requireEmploymentScope(scoped, id, input.fields.departmentId, creator);
+    },
+  });
+  return runWrite(
+    c,
+    deps,
+    ctx,
+    request,
+    async (tx, context) => ({ status: 201, body: await createRegularizationBusiness(tx, context, id, request) }),
+    { guard },
+  );
 }
 
 export function registerProbationRoutes(

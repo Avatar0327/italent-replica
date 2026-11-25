@@ -48,11 +48,11 @@ function refreshGuard(
   receiptNames: boolean,
   derive: (tx: Tx, fresh: EmploymentContext) => Promise<EmploymentContext>,
   check: (tx: Tx, scoped: EmploymentContext) => Promise<void>,
-  lock: SameOrderLockTarget,
+  lock: SameOrderLockTarget | ((tx: Tx) => Promise<SameOrderLockTarget>),
 ): ScopedCommandGuard {
   const guard = scopedGuard({
     before: async (tx) => {
-      await lockSameOrderTarget(tx, entry, lock);
+      await lockSameOrderTarget(tx, entry, typeof lock === 'function' ? await lock(tx) : lock);
       const resolved = await commandContext(tx, deps, { ...entry, transferTarget: undefined });
       // 入口旗标是入口时读的 data.scope.all：它决定写入口径范围之外还要不要追加 tenant.employment.write，也属于授权输入，
       // 在取完锁的任职写入口里按本事务当前授权重判（入口未带旗标的上下文原样不动）。
@@ -150,7 +150,7 @@ export function sameOrderScopeGuard(
   entry: EmploymentContext,
   spec: ReceiptNamesSpec & {
     /** 取锁目标（必填，F-560）：每个入口都得说清“锁谁”，没法漏掉取锁直接读授权。 */
-    readonly lock: SameOrderLockTarget;
+    readonly lock: SameOrderLockTarget | ((tx: Tx) => Promise<SameOrderLockTarget>);
     readonly authorize: (tx: Tx, scoped: EmploymentContext) => Promise<void>;
     readonly writeScope?: { readonly businessId: string; readonly employeeId?: string };
   },
