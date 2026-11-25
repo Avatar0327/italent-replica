@@ -11,7 +11,7 @@ import { oaNodes } from './AC-OA-approval-support.js';
 import { transferWorld } from './AC-OA-11cb-support.js';
 import { newOrg } from './AC-OA-items-support.js';
 import { uniqueSuffix } from './support/unique.js';
-import { bodyOf, expectError, onlyPeople } from './AC-OA-head-support.js';
+import { ALL, bodyOf, expectError, onlyPeople } from './AC-OA-head-support.js';
 
 const testDb = useTestDb();
 const CONTAINER = 'transferItems.contractChange';
@@ -125,7 +125,7 @@ describe('P2-2 错误信封里的调动行 ID 按看得到的调动行折叠', (
     expect(scopeText).toContain(visibleRow);
     expect(scopeText).not.toContain(hiddenRow);
 
-    w.access.employment = undefined;
+    w.access.employment = ALL;
     for (const field of TRANSFER_FIELDS) w.access.hiddenFields.add(field);
     const fieldText = JSON.stringify((await w.checked(view.id)).errors);
     expect(fieldText).not.toContain(visibleRow);
