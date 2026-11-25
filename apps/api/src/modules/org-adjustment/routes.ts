@@ -43,7 +43,7 @@ import {
 } from './access.js';
 import { rebaseAll, rebaseItem } from './baseline.js';
 import { foldHiddenError, foldHiddenRowIssues, trimIssues, trimError } from './envelope.js';
-import { hiddenAmong, hiddenItemIds, hiddenTransferIds } from './hidden-rows.js';
+import { hiddenAmong, hiddenEnvelopeIds, hiddenItemIds, hiddenTransferIds, hiddenTransferRows } from './hidden-rows.js';
 import {
   addItemSchema,
   assertEntryType,
@@ -168,7 +168,7 @@ function registerCheckRoute(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         authorizeHeadAction(tx, deps, ctx, { actor: 'applicant', operation: 'update', subjectOrgId, rangeOrgIds }),
       );
       const checked = await checkAdjustment(tx, ctx.tenantId, stored, deps.clock());
-      return { result: checked, hidden: await hiddenItemIds(tx, deps, ctx, id) };
+      return { result: checked, hidden: await hiddenEnvelopeIds(tx, deps, ctx, id) };
     });
     return c.json(await trimCheck(deps, ctx, result, hidden), 200);
   });
@@ -206,7 +206,8 @@ function registerSubmitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         try {
           return await submitAdjustment(tx, commandCtx, id, approvalFields(deps, ctx));
         } catch (error) {
-          throw trimError(error, await getModuleViewableFieldsInTransaction(deps, ctx, OBJECT, tx));
+          const folded = foldHiddenError(error, await hiddenEnvelopeIds(tx, deps, ctx, id));
+          throw trimError(folded, await getModuleViewableFieldsInTransaction(deps, ctx, OBJECT, tx));
         }
       },
     });
@@ -292,7 +293,7 @@ function registerItemRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         orgIds: (rows) => storedRowOrgs(rows, itemId),
         execute: async (tx, commandCtx) => {
           const hidden = await hiddenItemIds(tx, deps, ctx, id);
-          const hiddenTransfers = await hiddenTransferIds(tx, deps, ctx, id, hidden);
+          const hiddenTransfers = await hiddenTransferRows(tx, deps, ctx, id, hidden);
           return { status: 200, result: await deleteOrgItem(tx, commandCtx, id, itemId, hidden, hiddenTransfers) };
         },
       },
@@ -428,7 +429,7 @@ async function updateHead(
 
 /** 头 PATCH 失败的错误：已有明细不在新范围内的 400 把隐藏行折叠，再按查看权裁剪（F-343 ⑤）。 */
 async function trimHeadError(tx: Tx, deps: TenantRouteDeps, ctx: ScopeBusinessContext, id: string, error: unknown) {
-  const folded = foldHiddenError(error, await hiddenItemIds(tx, deps, ctx, id));
+  const folded = foldHiddenError(error, await hiddenEnvelopeIds(tx, deps, ctx, id));
   return trimError(folded, await getModuleViewableFieldsInTransaction(deps, ctx, OBJECT, tx));
 }
 

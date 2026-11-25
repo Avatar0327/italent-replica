@@ -89,13 +89,21 @@ async function headIssues(tx: Tx, world: ItemWorld, live: readonly OrgItem[]) {
   const pairs = changed
     .filter((item) => item.targetOrgId)
     .map((item) => ({ employeeId: item.personInChargeId!, orgId: item.targetOrgId! }));
-  const inOrg = await employeesInOrgs(tx, world.tenantId, pairs, world.view.effectiveDate);
+  const { effectiveDate } = world.view;
+  const inOrg = await employeesInOrgs(tx, world.tenantId, pairs, effectiveDate);
+  // 本单把主职调出时只替换“主职归属”，生效日仍有效的兼职要保留（第 3 轮 P2-3）
+  const partTime = await employeesInOrgs(tx, world.tenantId, pairs, effectiveDate, 'partTime');
   return changed
-    .filter((item) => !headInOrg(world, item, inOrg))
+    .filter((item) => !headInOrg(world, item, inOrg, partTime))
     .map((item) => issue(item, 'ORG_ADJUSTMENT_HEAD_NOT_IN_ORG', '请在本单为新负责人添加调动或兼职明细'));
 }
 
-function headInOrg(world: ItemWorld, item: OrgItem, inOrg: ReadonlySet<string>): boolean {
+function headInOrg(
+  world: ItemWorld,
+  item: OrgItem,
+  inOrg: ReadonlySet<string>,
+  partTime: ReadonlySet<string>,
+): boolean {
   const employeeId = item.personInChargeId!;
   const mine = world.transfers.filter((row) => row.employeeId === employeeId);
   const movesIn = mine.some((row) =>
@@ -104,7 +112,8 @@ function headInOrg(world: ItemWorld, item: OrgItem, inOrg: ReadonlySet<string>):
   if (movesIn) return true;
   const movesOut =
     item.targetOrgId !== null && mine.some((row) => world.transferSources.get(row.id) === item.targetOrgId);
-  return !movesOut && item.targetOrgId !== null && inOrg.has(`${employeeId}:${item.targetOrgId}`);
+  if (item.targetOrgId === null) return false;
+  return (movesOut ? partTime : inOrg).has(`${employeeId}:${item.targetOrgId}`);
 }
 
 /** 逐行跑保存时的同一套规则（连带行只剩调整范围可判，见 assertItemRules）；规则抛的业务错误转为该行的问题。 */

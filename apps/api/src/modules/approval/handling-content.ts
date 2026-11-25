@@ -188,8 +188,11 @@ async function visibleForeignCodes(tx: Tx, ctx: ApprovalContext, snapshot: Busin
   const userId = actorOf(ctx);
   const fields = ctx.fields;
   if (!userId || !fields?.foreignVisible) return [];
+  // 第 3 轮 P1-4：办理时容器（调动明细的“合同变更”）本身看不到，其下逐行合同字段一个都不收；之后补授容器权也不补露
+  const own = await fields.viewable(tx, userId, snapshot.fieldObjectCode);
   const codes: string[] = [];
   for (const field of snapshot.foreignFields ?? []) {
+    if (own !== undefined && !own.has(field.container)) continue;
     if (await fields.foreignVisible(tx, userId, field)) codes.push(field.code);
   }
   return codes.sort();

@@ -149,9 +149,9 @@ async function transferCommand(
       replayed: async (tx, stored) => {
         const view = await loadAdjustment(tx, ctx.tenantId, id);
         if (!view) throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
-        const rows = (stored.body as TransferResult).items;
+        const { items: rows, previous } = stored.body as TransferResult;
         await (command.kind === 'save'
-          ? command.gate.rejudge(tx, view, rows)
+          ? command.gate.rejudge(tx, view, rows, previous)
           : command.gate.rejudgeRemoved(tx, view, rows));
       },
     },
@@ -174,7 +174,8 @@ const FOLLOWS: Readonly<Record<string, string>> = {
   dottedManagerSpecified: 'directManagerId',
 };
 
-async function trimTransfers(deps: TenantRouteDeps, ctx: ScopeBusinessContext, result: TransferResult) {
+async function trimTransfers(deps: TenantRouteDeps, ctx: ScopeBusinessContext, full: TransferResult) {
+  const { previous: _previous, ...result } = full; // 变更前的行只供重放重判，不属于响应
   const fields = await getModuleViewableFields(deps, ctx, OBJECT);
   if (!fields) return { ...result, items: result.items.map(publicRow) };
   const keep = (key: string) => IDENTITY.has(key) || fields.has(`transferItems.${FOLLOWS[key] ?? key}`);

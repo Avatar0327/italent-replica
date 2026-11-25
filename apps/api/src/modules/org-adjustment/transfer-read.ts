@@ -19,7 +19,7 @@ import { contractEntries } from './transfer-snapshot.js';
 export const TRANSFER_SECTION = 'transfer';
 
 /** 调动分区是否对查看人披露：至少一个 `transferItems.*` 字段可见（逐行合同编码也算）。 */
-export function transferSectionDisclosed(disclosure: Disclosure): boolean {
+export function transferSectionDisclosed(disclosure: Pick<Disclosure, 'fields'>): boolean {
   const { fields } = disclosure;
   return fields === undefined || [...fields].some((field) => field.startsWith('transferItems.'));
 }

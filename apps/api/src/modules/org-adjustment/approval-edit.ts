@@ -23,7 +23,7 @@ import { bumpRevision, type OrgItem } from './items-store.js';
 import { persistRevisions, planRevisions } from './org-items.js';
 import { assertHeadPatch, loadAdjustment, persistHead, type AdjustmentView } from './service.js';
 import { rowOrgIds } from './submission.js';
-import { transferGate } from './transfer-access.js';
+import { rejudgeApproverEdits, transferGate } from './transfer-access.js';
 import {
   assertOrgItemTarget,
   draftOf,
@@ -258,7 +258,7 @@ function toRefs(patch: ItemPatch) {
 }
 
 export async function editFromApproval(tx: Tx, ctx: ApprovalContext, id: string, fields: Row): Promise<void> {
-  await trimmedForViewer(tx, ctx, () => edit(tx, ctx, id, fields));
+  await trimmedForViewer(tx, ctx, () => edit(tx, ctx, id, fields), id);
 }
 
 /**
@@ -266,9 +266,41 @@ export async function editFromApproval(tx: Tx, ctx: ApprovalContext, id: string,
  * 再调本函数（approval/actions.ts approveTask），库里即编辑后的最终候选态。
  */
 export async function assertApprovable(tx: Tx, ctx: ApprovalContext, id: string): Promise<void> {
-  await trimmedForViewer(tx, ctx, async () => {
-    const view = await loadAdjustment(tx, ctx.tenantId, id);
-    if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
-    await assertWhole(tx, await loadWorld(tx, ctx.tenantId, view), ctx.now);
-  });
+  await trimmedForViewer(
+    tx,
+    ctx,
+    async () => {
+      const view = await loadAdjustment(tx, ctx.tenantId, id);
+      if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
+      await assertWhole(tx, await loadWorld(tx, ctx.tenantId, view), ctx.now);
+    },
+    id,
+  );
+}
+
+/**
+ * 审批中编辑 / 编辑并同意的同键重放（第 3 轮 P2-1）：首次成功后撤了编辑按钮、字段权或范围，原键重放也要拒绝。
+ * 头与明细按审批人当前授权（authorizeApprover）判，调动行再按“当前行 + 本次碰过的字段”走保存同一条授权链。
+ */
+export async function replayApproverEdit(tx: Tx, ctx: ApprovalContext, id: string, fields: Row): Promise<void> {
+  await trimmedForViewer(
+    tx,
+    ctx,
+    async () => {
+      const view = await loadAdjustment(tx, ctx.tenantId, id);
+      if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
+      await authorizeApprover(tx, ctx, view, fields);
+      const patches = parseTransfers(fields);
+      if (!patches.size) return;
+      const world = await loadWorld(tx, ctx.tenantId, view);
+      const codes = Object.keys(fields).filter((code) => code.startsWith(TRANSFER_PREFIX));
+      const edits = [...patches.keys()].flatMap((rowId) => {
+        const row = world.transfers.find((item) => item.id === rowId);
+        return row ? [{ row, codes }] : [];
+      });
+      const base = { tenantId: ctx.tenantId, userId: ctx.userId, timezone: ctx.timezone };
+      await rejudgeApproverEdits(tx, approverDeps(ctx), base, view, edits);
+    },
+    id,
+  );
 }

@@ -8,9 +8,7 @@
  */
 import type { Tx } from '@italent/db';
 import {
-  buttonResource,
   CONTRACT_OBJECT,
-  contractAction,
   ORG_ADJUSTMENT_CONTRACT_CONTAINER,
   ORG_ADJUSTMENT_OBJECT_CODE,
   tenantLocalDate,
@@ -20,13 +18,15 @@ import { AppError } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { employmentCapacityContext } from '../permission/module-capacity-authorization.js';
 import { carriedCandidates } from '../establishment/carried-candidates.js';
-import { EMPLOYMENT_OBJECT } from '../employment/context.js';
+import { authorizeCarriedWrites } from '../establishment/carried-transfer.js';
+import { EMPLOYMENT_OBJECT, requireLinkedEmploymentRecord } from '../employment/context.js';
 import { findCurrentRecord } from '../employment/read-model.js';
 import type { EmploymentContext } from '../employment/types.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { requireTransferSource } from '../transfer/access.js';
 import {
+  authorizeContractChange,
   authorizeLinkageWrite,
   authorizeOrgRole,
   authorizeSubordinateField,
@@ -72,6 +72,9 @@ export const LINKAGE_CODE: Readonly<Record<string, string>> = {
 const emptyValue = (value: unknown) => value === null || value === undefined || value === '' || value === false;
 const same = (a: unknown, b: unknown) => (emptyValue(a) && emptyValue(b)) || JSON.stringify(a) === JSON.stringify(b);
 
+const dottedToken = (row: TransferContent | null) =>
+  row?.dottedManagerSpecified ? (row.dottedManagerId ?? null) : undefined;
+
 /** 新旧内容里值不同的调动明细字段编码；新建时旧侧为空、删除时新侧为空，置空 / 置 false 同样算改动。 */
 export function changedTransferFields(before: TransferContent | null, after: TransferContent | null) {
   const codes = new Set<string>();
@@ -79,6 +82,8 @@ export function changedTransferFields(before: TransferContent | null, after: Tra
   for (const [key, code] of Object.entries(FIELD_CODE)) {
     if (!same(old?.[key], next?.[key])) codes.add(code);
   }
+  // 虚线经理“显式给 null（清空）”与“未给（继承表单）”是两种意图：清空也是在改写下属经理，不能按空值等同
+  if (dottedToken(before) !== dottedToken(after)) codes.add(FIELD_CODE.dottedManagerId!);
   for (const [key, code] of Object.entries(LINKAGE_CODE)) {
     if (!same(before?.linkage?.[key as keyof LinkageOptions], after?.linkage?.[key as keyof LinkageOptions])) {
       codes.add(code);
@@ -150,19 +155,33 @@ async function authorizeOldDuty(tx: Tx, ctx: EmploymentContext, access: LinkageA
   for (const item of duty.orgRoles) await authorizeOrgRole(tx, ctx, access, item.orgId, item.role);
 }
 
-/** 删掉 / 清空合同联动同样是在改写对该合同的变更计划：要合同“变更”按钮（authorizeLinkageWrite 只在新值有合同时判）。 */
-async function authorizeContractClear(
+/**
+ * 合同联动（第 3 轮 P1-2a）：新旧任一侧有合同，就独立复核新旧目标合同的范围、变动字段与“变更”按钮——
+ * 不论联动内容有没有差异（保留合同只改部门，也要在“变更”按钮、合同范围收窄后拒绝）。
+ */
+async function authorizeContractSides(
+  tx: Tx,
   ctx: EmploymentContext,
+  access: LinkageAccess,
+  employeeId: string,
   before: LinkageOptions | null,
   after: LinkageOptions | null,
 ) {
-  if (!before?.contract || after?.contract) return;
-  await requirePermission(ctx.authorize!, {
-    tenantId: ctx.tenantId,
-    userId: ctx.userId,
-    action: 'object.button',
-    resource: buttonResource(CONTRACT_OBJECT, contractAction('change', 'direct'), 'detail'),
-  });
+  if (!before?.contract && !after?.contract) return;
+  await authorizeContractChange(tx, ctx, access, employeeId, before?.contract ?? null, after?.contract ?? null);
+}
+
+/**
+ * 职责转交下属（第 3 轮 P1-2b）：新旧选项里出现的每个下属，当前任职都要在操作人任职范围内
+ * （与人工转交同一个 requireLinkedEmploymentRecord；范围外 404 LINKED_RECORD_OUT_OF_SCOPE，不探测原因）。
+ */
+async function authorizeDutySubordinates(tx: Tx, ctx: EmploymentContext, ...sides: (LinkageOptions | null)[]) {
+  const ids = new Set(sides.flatMap((side) => side?.dutyTransfer?.subordinates.map((item) => item.employeeId) ?? []));
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  for (const id of ids) {
+    const record = await findCurrentRecord(tx, ctx.tenantId, id, today);
+    if (record) await requireLinkedEmploymentRecord(tx, ctx, id, record.fields.departmentId, record.id);
+  }
 }
 
 /**
@@ -184,7 +203,9 @@ async function authorizeEstablishment(
   );
   if (!orgIds.length) return;
   const capacity = await employmentCapacityContext(tx, ctx);
-  await carriedCandidates(tx, capacity, orgIds, view.effectiveDate, tenantLocalDate(ctx.now, ctx.timezone));
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const candidates = await carriedCandidates(tx, capacity, orgIds, view.effectiveDate, today);
+  await authorizeCarriedWrites(tx, capacity, candidates, today);
 }
 
 /** 新旧两侧共用的前置：写按钮 + 主体组织在主对象范围 + 新旧目标部门在组织对象范围 + 字段写权 + 旧值一侧联动与带编。 */
@@ -196,6 +217,7 @@ async function authorizeChange(
   employeeId: string,
   before: TransferItem | null,
   after: TransferContent | null,
+  touched: Readonly<Record<string, null>> = {},
 ) {
   await authorizeItem(tx, env.deps, env.base, {
     button: [OBJECT, ...env.button],
@@ -205,11 +227,12 @@ async function authorizeChange(
   await requireObjectWrite(ctx.authorize!, env.base, {
     objectCode: OBJECT,
     operation: 'update',
-    payload: changedTransferFields(before, after),
+    payload: { ...changedTransferFields(before, after), ...touched },
   });
   const access = await linkageAccess(tx, env, ctx, before?.linkage, after?.linkage);
   await authorizeOldDuty(tx, ctx, access, before?.linkage ?? null);
-  await authorizeContractClear(ctx, before?.linkage ?? null, after?.linkage ?? null);
+  await authorizeContractSides(tx, ctx, access, employeeId, before?.linkage ?? null, after?.linkage ?? null);
+  await authorizeDutySubordinates(tx, ctx, before?.linkage ?? null, after?.linkage ?? null);
   await authorizeEstablishment(tx, ctx, view, employeeId, before, after);
   return access;
 }
@@ -247,10 +270,11 @@ async function saveRow(
   employeeId: string,
   draft: TransferContent,
   before: TransferItem | null,
+  touched?: Readonly<Record<string, null>>,
 ) {
   assertLinkageSupported(draft.linkage);
   const ctx = await employment(tx, env);
-  const access = await authorizeChange(tx, env, view, ctx, employeeId, before, draft);
+  const access = await authorizeChange(tx, env, view, ctx, employeeId, before, draft, touched);
   const input = await normalizeTransferInput(tx, ctx, transferRaw(view.effectiveDate, draft));
   await requireTransferSource(tx, ctx, employeeId, INITIATOR);
   await requireTransferWrite(ctx, input);
@@ -287,9 +311,11 @@ export function transferGate(
   return {
     save: (tx, view, employeeId, draft, before) => saveRow(tx, env, view, employeeId, draft, before),
     remove: (tx, view, row) => removeRow(tx, env, view, row),
-    /** 提交 / 重提 / 保存类重放：库里（或台账结果里）的行全部按新建口径（before = null）再判一遍当前权限。 */
-    async rejudge(tx, view, rows) {
-      for (const row of rows) await saveRow(tx, env, view, row.employeeId, row, null);
+    /** 提交 / 重提：库里的行按新建口径（before = null）再判；保存类重放带上台账里的变更前的行，新旧两侧都判。 */
+    async rejudge(tx, view, rows, previous) {
+      for (const [index, row] of rows.entries()) {
+        await saveRow(tx, env, view, row.employeeId, row, previous?.[index] ?? null);
+      }
     },
     /** 删除类重放：被删的行是旧值，按删除口径再判（不重写）。 */
     async rejudgeRemoved(tx, view, rows) {
@@ -310,4 +336,22 @@ export async function authorizeTransferRows(
 ): Promise<void> {
   const rows = await loadTransfers(tx, ctx.tenantId, view.id);
   if (rows.length) await transferGate(deps, ctx).rejudge(tx, view, rows);
+}
+
+/**
+ * 审批中编辑的同键重放（第 3 轮 P2-1）：行已按首次编辑落库，旧值不再保留，所以按“当前行 = 新旧两侧 + 本次请求碰过的字段编码”
+ * 用审批人当前权限（`EditApprovalIngApply`、字段写权、范围、联动与带编）再判一遍，不重写。
+ */
+export async function rejudgeApproverEdits(
+  tx: Tx,
+  deps: TransferAuthorityDeps,
+  base: TenantContext,
+  view: AdjustmentView,
+  edits: readonly { readonly row: TransferItem; readonly codes: readonly string[] }[],
+): Promise<void> {
+  const env: Env = { deps, base, button: HEAD_BUTTONS.approve };
+  for (const { row, codes } of edits) {
+    const touched = Object.fromEntries(codes.map((code) => [code, null]));
+    await saveRow(tx, env, view, row.employeeId, row, row, touched);
+  }
 }

@@ -3,15 +3,19 @@
  * 判定本身在 disclosure.ts 的 `visibleItems`（目标 / 新上级 / 转移目标逐个在组织范围，引用的行也须可见），这里只取它的补集。
  */
 import type { Tx } from '@italent/db';
-import { MODULE_OBJECTS } from '@italent/domain';
+import { MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
-import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
+import {
+  authorizeInTransaction,
+  getModuleViewableFieldsInTransaction,
+  resolveModuleScopeInTransaction,
+} from '../permission/module-access.js';
 import { AppError } from '../../errors.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { loadOrgCreators, visibleItems } from './disclosure.js';
 import { loadItems, type OrgItem } from './items-store.js';
-import { visibleTransfers } from './transfer-read.js';
+import { transferSectionDisclosed, visibleTransfers } from './transfer-read.js';
 import { loadTransfers } from './transfer-items-store.js';
 
 export const ROW_NOT_FOUND = '组织调整明细不存在';
@@ -92,4 +96,31 @@ export async function hiddenTransferIds(
   );
   const shown = new Set(rows.map((row) => row.id));
   return new Set(transfers.filter((row) => !shown.has(row.id)).map((row) => row.id));
+}
+
+/**
+ * 错误信封里调动行的隐藏集合 = 读接口看不到的行 ∪（调动分区字段全被遮蔽时的全部行）（第 3 轮 P2-2）。
+ * 读接口在分区字段全遮蔽时整个分区不披露，信封也不能带任何调动行 ID。写路径的“行不可达”判定仍用 `hiddenTransferIds`。
+ */
+export async function hiddenTransferRows(
+  tx: Tx,
+  deps: Deps,
+  ctx: TenantContext,
+  adjustmentId: string,
+  hiddenOrg: ReadonlySet<string>,
+): Promise<ReadonlySet<string>> {
+  const fields = await getModuleViewableFieldsInTransaction(deps, ctx, ORG_ADJUSTMENT_OBJECT_CODE, tx);
+  if (transferSectionDisclosed({ fields })) return hiddenTransferIds(tx, deps, ctx, adjustmentId, hiddenOrg);
+  return new Set((await loadTransfers(tx, ctx.tenantId, adjustmentId)).map((row) => row.id));
+}
+
+/** 信封折叠用：组织行隐藏集合 ∪ 调动行隐藏集合（两种行的 ID 互不相同，可并在一个集合里）。 */
+export async function hiddenEnvelopeIds(
+  tx: Tx,
+  deps: Deps,
+  ctx: TenantContext,
+  adjustmentId: string,
+): Promise<ReadonlySet<string>> {
+  const org = await hiddenItemIds(tx, deps, ctx, adjustmentId);
+  return new Set([...org, ...(await hiddenTransferRows(tx, deps, ctx, adjustmentId, org))]);
 }

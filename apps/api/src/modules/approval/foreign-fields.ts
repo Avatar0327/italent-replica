@@ -47,7 +47,11 @@ export async function viewableWithForeign(
   const codes = new Set(foreign.map((field) => field.code));
   const own = [...(base ?? Object.keys(snapshot.values))].filter((code) => !codes.has(code));
   const allowed: string[] = [];
-  for (const field of foreign) if (visible && (await visible(field))) allowed.push(field.code);
+  // 第 3 轮 P1-4：容器字段（如 transferItems.contractChange）本身不可见时，其下逐行字段一并不可见（容器 ∩ 逐行对象权限）
+  for (const field of foreign) {
+    if (base !== undefined && !base.has(field.container)) continue;
+    if (visible && (await visible(field))) allowed.push(field.code);
+  }
   return new Set([...own, ...allowed]);
 }
 

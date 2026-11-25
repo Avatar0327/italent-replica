@@ -74,8 +74,13 @@ export interface TransferGate {
     view: Pick<AdjustmentView, 'approvalSubjectOrgId' | 'effectiveDate'>,
     row: TransferItem,
   ): Promise<void>;
-  /** 幂等重放（保存类）：结果行按新建口径（before = null）按当前权限再判，不重写。 */
-  rejudge(tx: Tx, view: AdjustmentView, rows: readonly TransferItem[]): Promise<void>;
+  /** 幂等重放（保存类）：结果行与（有则）变更前的行，按新旧两侧用当前权限再判，不重写。 */
+  rejudge(
+    tx: Tx,
+    view: AdjustmentView,
+    rows: readonly TransferItem[],
+    previous?: readonly (TransferItem | null)[],
+  ): Promise<void>;
   /** 幂等重放（删除类）：被删的行是旧值，按删除口径再判。 */
   rejudgeRemoved(tx: Tx, view: AdjustmentView, rows: readonly TransferItem[]): Promise<void>;
 }
@@ -122,6 +127,11 @@ export interface TransferResult {
   readonly adjustmentId: string;
   readonly revision: number;
   readonly items: TransferItem[];
+  /**
+   * 内部列（响应前由 trimTransfers 剥掉）：与 items 同序的“变更前的行”（新建为 null），台账里随结果保存，
+   * 同键重放按新旧两侧重判（第 3 轮 P2-1：清空合同联动这类只在旧侧才有的授权不能在重放时丢掉）。
+   */
+  readonly previous?: readonly (TransferItem | null)[];
 }
 
 export interface TransferWrite {
@@ -340,7 +350,12 @@ async function finish(
   const revision = await bumpRevision(tx, ctx, adjustmentId);
   const scope = { adjustmentId, subjectOrgId: world.view.approvalSubjectOrgId };
   for (const [before, after] of changes) await auditTransfer(tx, ctx, action, scope, before, after);
-  return { adjustmentId, revision, items: changes.map(([before, after]) => (after ?? before)!) };
+  return {
+    adjustmentId,
+    revision,
+    items: changes.map(([before, after]) => (after ?? before)!),
+    previous: changes.map(([before]) => before),
+  };
 }
 
 /**

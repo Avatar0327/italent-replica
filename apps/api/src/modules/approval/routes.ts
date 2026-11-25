@@ -53,6 +53,7 @@ import {
   requireWithdrawRight,
   resubmitGuard,
   withdrawGuard,
+  approvalEditGuard,
 } from './access.js';
 import {
   addSign,
@@ -723,8 +724,13 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         ...(input.exitReschedule ? { exitReschedule: input.exitReschedule } : {}),
         ...(input.exit ? { exit: input.exit } : {}),
       };
-      const result = await command(c, deps, ctx, decisionLedger(path, request), (tx, context) =>
-        act(tx, context, request, viewable),
+      const result = await command(
+        c,
+        deps,
+        ctx,
+        decisionLedger(path, request),
+        (tx, context) => act(tx, context, request, viewable),
+        approvalEditGuard(ctx, taskId, input.fields),
       );
       return respondOutcome(c, deps, result);
     });
@@ -763,7 +769,14 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       fields: input.fields,
       ...(input.exitReschedule ? { exitReschedule: input.exitReschedule } : {}),
     };
-    const result = await command(c, deps, ctx, request, (tx, context) => editTask(tx, context, request, viewable));
+    const result = await command(
+      c,
+      deps,
+      ctx,
+      request,
+      (tx, context) => editTask(tx, context, request, viewable),
+      approvalEditGuard(ctx, taskId, input.fields),
+    );
     return respondOutcome(c, deps, result);
   });
   registerRelayRoutes(router, deps);

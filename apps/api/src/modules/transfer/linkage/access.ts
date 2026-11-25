@@ -144,7 +144,7 @@ export async function authorizeOrgRole(
  * P1-2：按目标合同的真实创建人判定合同范围（“我创建的”），新旧目标都要判；变动（含删掉）的合同字段按合同字段编辑权，
  * 仍保留合同变更时校验“变更”按钮。
  */
-async function authorizeContractChange(
+export async function authorizeContractChange(
   tx: Tx,
   ctx: EmploymentContext,
   access: LinkageAccess,
@@ -165,7 +165,8 @@ async function authorizeContractChange(
   }
   const changed = changedContractFields(before, after);
   if (Object.keys(changed).length) await checkFields(contractCtx, 'update', changed);
-  if (after)
+  // 保留 / 改 / 清空合同联动都是在改写对该合同的变更计划，“变更”按钮与新旧目标范围各自独立判（第 3 轮 P1-2a）
+  if (before || after)
     await requirePermission(authorize, {
       tenantId: ctx.tenantId,
       userId: ctx.userId,

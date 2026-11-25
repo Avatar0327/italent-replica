@@ -159,6 +159,8 @@ export async function employeesInOrgs(
   tenantId: string,
   pairs: readonly { readonly employeeId: string; readonly orgId: string }[],
   asOf: string,
+  /** `partTime`：只取兼职命中（组织调整的“主职调出后兼职仍有效”判定，第 3 轮 P2-3）；默认主职 ∪ 兼职。 */
+  scope: 'all' | 'partTime' = 'all',
 ): Promise<Set<string>> {
   if (!pairs.length) return new Set();
   businessDate(asOf);
@@ -166,10 +168,14 @@ export async function employeesInOrgs(
   const orgs = uuidArray([...new Set(pairs.map((pair) => pair.orgId))]);
   const rows = rowsOf<{ employeeId: string; orgId: string }>(
     await tx.execute(sql`
-      SELECT c.id AS "employeeId", c.department_id AS "orgId" FROM (${activeEmployees(tenantId, asOf)}) c
+      ${
+        scope === 'all'
+          ? sql`SELECT c.id AS "employeeId", c.department_id AS "orgId" FROM (${activeEmployees(tenantId, asOf)}) c
       WHERE c.id = ANY(${employees}) AND c.department_id = ANY(${orgs})
-      UNION
-      SELECT p.employee_id, p.department_id FROM (
+      UNION`
+          : sql``
+      }
+      SELECT p.employee_id AS "employeeId", p.department_id AS "orgId" FROM (
         SELECT r.employee_id, ${currentDepartment} AS department_id, r.start_date,
           ${partTimeCurrentEndSql(tenantId, sql`r.id`)} AS end_date
         FROM employment_records r ${latestSnapshot}

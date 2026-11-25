@@ -99,7 +99,7 @@ async function lockStored(tx: Tx, ctx: WriteContext, id: string) {
 /** 审批侧重提（openOwn 已判发起人与实例 revision）：只接受已驳回单，按提交口径重判后 → 1；不带修正。 */
 export async function resubmitFromApproval(tx: Tx, ctx: ApprovalContext, id: string, corrections: object) {
   // 校验类错误按重提人的字段查看权裁剪（与路由 10 同口径，F-427）
-  await trimmedForViewer(tx, ctx, () => resubmit(tx, ctx, id, corrections));
+  await trimmedForViewer(tx, ctx, () => resubmit(tx, ctx, id, corrections), id);
 }
 
 async function resubmit(tx: Tx, ctx: ApprovalContext, id: string, corrections: object) {

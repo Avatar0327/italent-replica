@@ -87,13 +87,27 @@ export function trimError(error: unknown, viewable: Viewable): unknown {
  * 审批引擎回调（审批人编辑 / 同意兜底、发起人重提）里的错误信封按当前操作人的字段查看权裁剪（F-339 ②、F-427）；
  * 未注入字段访问按看不到处理（context.ts 同口径，fail-closed）。
  */
-export async function trimmedForViewer(tx: Tx, ctx: ApprovalContext, work: () => Promise<void>): Promise<void> {
+export async function trimmedForViewer(
+  tx: Tx,
+  ctx: ApprovalContext,
+  work: () => Promise<void>,
+  adjustmentId?: string,
+): Promise<void> {
   try {
     await work();
   } catch (error) {
     const viewable = ctx.fields
       ? await ctx.fields.viewable(tx, ctx.userId, ORG_ADJUSTMENT_OBJECT_CODE)
       : new Set<string>();
-    throw trimError(error, viewable);
+    // 第 3 轮 P2-2：看不到的明细行（组织范围外、调动行范围外 / 分区字段全遮蔽）的问题折叠成一条汇总，信封不带行 ID
+    const folded = adjustmentId ? await foldForApprover(tx, ctx, adjustmentId, error) : error;
+    throw trimError(folded, viewable);
   }
+}
+
+async function foldForApprover(tx: Tx, ctx: ApprovalContext, adjustmentId: string, error: unknown) {
+  if (!ctx.exitEditAuthorize) return error;
+  const deps = { authorize: ctx.exitEditAuthorize, clock: () => ctx.now };
+  const { hiddenEnvelopeIds } = await import('./hidden-rows.js');
+  return foldHiddenError(error, await hiddenEnvelopeIds(tx, deps, ctx, adjustmentId));
 }
