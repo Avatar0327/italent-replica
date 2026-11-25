@@ -87,17 +87,10 @@ export async function bindSubsetAttachments(tx: Tx, ctx: BindingContext, input: 
       expiresAt: null,
     });
   }
-  await releaseFiles(tx, ctx, files, removed, input.recordId);
-}
-
-type LockedFiles = Awaited<ReturnType<typeof lockFiles>>;
-async function releaseFiles(tx: Tx, ctx: BindingContext, files: LockedFiles, ids: readonly string[], recordId: string) {
-  for (const id of ids) {
+  for (const id of removed) {
     const row = files.get(id);
     const owned =
-      row?.status === 'bound' &&
-      row.businessType === SUBSET_BUSINESS_TYPE &&
-      row.businessId?.toLowerCase() === recordId.toLowerCase();
+      row?.status === 'bound' && row.businessType === SUBSET_BUSINESS_TYPE && same(row.businessId, input.recordId);
     if (owned) await move(tx, ctx, row, 'unbind', { status: 'pending_cleanup', cleanupAt: ctx.now });
   }
 }
@@ -115,5 +108,13 @@ export async function unbindSubsetAttachments(
 ): Promise<void> {
   const ids = [...refsOf(kind, previous).keys()].filter((id) => UUID.test(id));
   if (!ids.length) return;
-  await releaseFiles(tx, ctx, await lockFiles(tx, ctx.tenantId, ids), ids, recordId);
+  const files = await lockFiles(tx, ctx.tenantId, ids);
+  for (const id of ids) {
+    const row = files.get(id);
+    const owned =
+      row?.status === 'bound' &&
+      row.businessType === SUBSET_BUSINESS_TYPE &&
+      row.businessId?.toLowerCase() === recordId.toLowerCase();
+    if (owned) await move(tx, ctx, row, 'unbind', { status: 'pending_cleanup', cleanupAt: ctx.now });
+  }
 }
