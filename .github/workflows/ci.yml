@@ -88,6 +88,7 @@ jobs:
     timeout-minutes: 2
     outputs:
       mode: ${{ steps.classify.outputs.mode }}
+      evidence_check: ${{ steps.classify.outputs.evidence_check }}
       generated_strict: ${{ steps.generated.outputs.strict }}
     steps:
       # 取 PR 合并提交及其两个父提交：HEAD^1 是 base，diff 即本 PR 相对 base 的完整改动
@@ -114,10 +115,14 @@ jobs:
             result=mode=full
           fi
           mode=${result##*=}
+          # F-573：脚本先输出 evidence_check=true|false，再输出 mode；缺省按 false（非 pull_request 都是完整模式）
+          evidence_check=$(printf '%s\n' "$result" | sed -n 's/^evidence_check=//p' | tail -n 1)
+          evidence_check=${evidence_check:-false}
           echo "mode=$mode" | tee -a "$GITHUB_OUTPUT"
+          echo "evidence_check=$evidence_check" | tee -a "$GITHUB_OUTPUT"
           case "$mode" in
             docs) note="纯文档：必需检查快速通过" ;;
-            light) note="在途 PR：只跑轻量检查，必需检查保持等待，排到队首（打 queue-head 标签触发）后跑完整测试" ;;
+            light) note="在途 PR：只跑轻量检查，必需检查保持等待，排到队首（打 queue-head 标签触发）后跑完整测试；F090b 证据快检=$evidence_check" ;;
             full) note="完整测试" ;;
           esac
           echo "::notice title=CI 模式::$mode（$note）"
@@ -183,6 +188,17 @@ jobs:
           pnpm test packages/domain/ tests/merge-main.test.ts tests/ci-classify.test.ts
           tests/acceptance/AC-CI-F330-labeled.test.ts
         if: needs.changes.outputs.mode == 'light'
+      # F-573：F090b 证据快检。F090b-entries 锚点（DEC-431①）要求逐字命中强制调用点，登记差异此前要到队首完整 CI
+      # 才暴露（#783 / #790 / #794 / #796）。light 模式下改了 apps/api/src 或 tests/acceptance/support/route-policy
+      # 时，在 PR 轻量检查里 strict 跑这两个测试（PGlite，不碰真 PG）；红了本 job 即红。
+      # 只在 light 跑：full 模式的 PGlite 分片本来就含这两个测试，重复跑只多耗分钟。
+      # GENERATED_STRICT 与分片一致（PR 头未含最新 main 时只警告，合并队列 pnpm merge:main 后严格）。
+      - name: F090b 证据快检（F-573）
+        if: needs.changes.outputs.mode == 'light' && needs.changes.outputs.evidence_check == 'true'
+        env:
+          ROUTE_POLICY_EVIDENCE_STRICT: '1'
+          GENERATED_STRICT: ${{ needs.changes.outputs.generated_strict }}
+        run: pnpm test tests/acceptance/AC-PRM-FW-F090b-entries.test.ts tests/acceptance/AC-PRM-FW-02-evidence.test.ts
 
   check-shards:
     name: >-

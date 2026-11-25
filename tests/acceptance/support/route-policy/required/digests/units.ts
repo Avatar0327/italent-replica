@@ -112,7 +112,7 @@ export const DIGESTS: Digests = {
     openTask: '6f9c0c04e106',
   },
   'apps/api/src/modules/approval/adapters.ts': {
-    ADAPTERS: '9f2e55c95c68',
+    ADAPTERS: 'ed96dbe1ef08',
     personnelAdapter: '17d568ef5ca5',
   },
   'apps/api/src/modules/approval/disclosure.ts': {
@@ -1171,9 +1171,9 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/onboarding/collection-access.ts': {
     COLLECTION: '202b0e8fdbae',
-    COLLECTION_BUTTONS: '707d9f9241e7',
-    requireCollectionTarget: 'a3c8b45276f5',
-    requireCollectionWrite: 'cc743b361aad',
+    COLLECTION_BUTTONS: 'a7354cc6cc61',
+    requireCollectionTarget: 'c205d12e0be7',
+    requireCollectionWrite: '73b807590f81',
   },
   'apps/api/src/modules/onboarding/collection-config-routes.ts': {
     bindCollectionWriteScope: '883abd28ae0b',
@@ -2389,7 +2389,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/actions.ts#assertTargetInScope': '1fe41485709d',
   'apps/api/src/modules/approval/actions.ts#openOwn': '1977a0826369',
   'apps/api/src/modules/approval/actions.ts#openTask': 'b572a86c10cb',
-  'apps/api/src/modules/approval/adapters.ts#ADAPTERS': '098962fbf987',
+  'apps/api/src/modules/approval/adapters.ts#ADAPTERS': '3bf327c68440',
   'apps/api/src/modules/approval/adapters.ts#personnelAdapter': '34083b87e52d',
   'apps/api/src/modules/approval/disclosure.ts#assertCanOpen': '457412422a98',
   'apps/api/src/modules/approval/disclosure.ts#readDetail': '244f4715cee7',
