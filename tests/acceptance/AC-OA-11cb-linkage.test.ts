@@ -6,11 +6,13 @@
  * 以及提交时按当前权限复核已存明细。
  */
 import { runEmploymentActivations } from '@italent/api';
+import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { transferWorld } from './AC-OA-11cb-support.js';
 import { bodyOf, expectError, only } from './AC-OA-head-support.js';
 import { oaNodes } from './AC-OA-approval-support.js';
+import { resultRows } from './AC-ORG-people-support.js';
 import { cmd } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -113,6 +115,25 @@ describe('AC-OA-09 变更合同', () => {
     expect(changes).toHaveLength(1);
     expect(changes[0]!.before).toBe(contractId);
     expect(changes[0]!.after).not.toBe(contractId);
+    // 新合同版本值：终止日改为联动值、版本号 + 1、指向原合同；类型与法人公司沿用原合同；原合同行保持原值
+    const versions = await w.inTenant(async (tx) =>
+      resultRows<Record<string, unknown>>(
+        await tx.execute(sql`SELECT id, version_no, previous_contract_id, root_contract_id, end_date::text AS end_date,
+          type_id, company_id FROM contract_records WHERE employee_id = ${mover} AND NOT deleted ORDER BY version_no`),
+      ),
+    );
+    expect(versions).toHaveLength(2);
+    const [origin, next] = versions;
+    expect(origin).toMatchObject({ id: contractId, version_no: 1, end_date: '2028-08-31' });
+    expect(next).toMatchObject({
+      id: changes[0]!.after,
+      version_no: 2,
+      previous_contract_id: contractId,
+      root_contract_id: origin!.root_contract_id,
+      end_date: '2029-10-09',
+      type_id: origin!.type_id,
+      company_id: origin!.company_id,
+    });
   });
 });
 
