@@ -24,29 +24,34 @@ export const reportPage = (code = '1.01') => ({
   pageSize: 20,
   hasDataPermission: true,
 });
-export const movementPage = (code = 'monthly') => ({
-  asOf: '2026-10-06',
-  report: code,
-  name: '各月入离职统计',
-  kind: 'table',
-  year: 2026,
-  month: code === 'institution' ? 10 : null,
-  hasDataPermission: true,
-  tables: [
-    {
-      key: code,
-      name: '入离职统计',
-      columns: [
-        { key: 'opening', label: '期初人数' },
-        { key: 'exits', label: '离职人数' },
-      ],
-      rows: [
-        { key: 'synthetic', label: code === 'monthly' ? '2026-01' : '合成机构', cells: { opening: 10, exits: 2 } },
-      ],
-      summary: { cells: { opening: 10, exits: 2 } },
-    },
-  ],
-});
+export function movementPage(code = 'monthly', query = new URLSearchParams()) {
+  const asOf = query.get('asOf') ?? '2026-10-06';
+  const year = Number(query.get('year') ?? asOf.slice(0, 4));
+  const lastMonth = year === Number(asOf.slice(0, 4)) ? Number(asOf.slice(5, 7)) : 12;
+  return {
+    asOf,
+    report: code,
+    name: '各月入离职统计',
+    kind: 'table',
+    year,
+    month: code === 'institution' ? Number(query.get('month') ?? lastMonth) : null,
+    hasDataPermission: true,
+    tables: [
+      {
+        key: code,
+        name: '入离职统计',
+        columns: [
+          { key: 'opening', label: '期初人数' },
+          { key: 'exits', label: '离职人数' },
+        ],
+        rows: [
+          { key: 'synthetic', label: code === 'monthly' ? `${year}-01` : '合成机构', cells: { opening: 10, exits: 2 } },
+        ],
+        summary: { cells: { opening: 10, exits: 2 } },
+      },
+    ],
+  };
+}
 export const qualityPage = () => ({
   asOf: '2026-10-06',
   report: 'quality',

@@ -75,6 +75,48 @@ describe('AC-DM-17 business_effective：生效时（步骤 6）', () => {
     expect((await dutyEffects(x, leave.id)).map((row) => row.kind)).toEqual(['duty_failed']);
   });
 
+  // DEC-1000（F-036-S4 第 9 轮）：联动子项重试按父单类型选回执名称开关；离职职责转交子项不随命令保存名称，行为与修前一致
+  it('DEC-1000 B-16 失败子项由 HR 重试：仍失败回 200，回执无字典名称，同键重放与首次逐字节一致且不重复执行', async () => {
+    const x = await world('b16-retry');
+    const subordinate = await x.subordinateOf(x.employee.id, '下属');
+    const receiver = await x.peer('已离职接收人');
+    const leave = await x.directLeave(
+      '2026-10-05',
+      x.dutyPlan([{ employeeId: subordinate.id, receiverId: receiver.id }]),
+    );
+    await x.effectiveExit(receiver.id, '2026-10-01');
+    expect(await x.activate(leave.id, TODAY)).toMatchObject({ outcome: 'effective' });
+    const [item] = await x.sqlRows<{ id: string; revision: number }>(sql`SELECT id, revision
+      FROM transfer_linkage_items WHERE tenant_id=${x.session.tenant.id} AND business_id=${leave.id}::uuid`);
+    const retry = () =>
+      x.session.request('POST', `/transfers/linkage-items/${item!.id}/retry`, {
+        ifMatch: item!.revision,
+        body: {},
+        idempotencyKey: `dm17-retry-${leave.id}`,
+      });
+
+    const first = await retry();
+    const firstText = await first.text();
+    expect(first.status, firstText).toBe(200);
+    expect(JSON.parse(firstText)).toMatchObject({
+      id: item!.id,
+      revision: item!.revision + 1,
+      status: 'failed',
+      attemptCount: 2,
+      failure: expect.objectContaining({ rule: 'TRANSFER_PERSON_NOT_ELIGIBLE' }),
+    });
+    expect(firstText).not.toMatch(/receiptNames|employmentFormName|employmentTypeName/);
+
+    const replayed = await retry();
+    expect(replayed.status).toBe(200);
+    expect(await replayed.text()).toBe(firstText);
+    const [after] = await x.sqlRows<{ revision: number; attempts: number }>(sql`SELECT revision,
+      attempt_count AS attempts FROM transfer_linkage_items
+      WHERE tenant_id=${x.session.tenant.id} AND id=${item!.id}::uuid`);
+    expect(after).toEqual({ revision: item!.revision + 1, attempts: 2 });
+    expect(await x.managerOf(subordinate.id)).toBe(x.employee.id);
+  });
+
   it('没有转交计划的离职不产生转交台账与联动执行行', async () => {
     const x = await world('duty-none');
     const leave = await x.directLeave('2026-10-05');

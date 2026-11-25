@@ -1,10 +1,17 @@
 import { requireManagerBusinessReferences } from './manager-business-references.js';
 import { requireManagerReferenceValues } from './manager-references.js';
-import { lockTransferParticipants } from '../employment/transfer-locks.js';
+import {
+  existingTransferEmployees,
+  lockTransferHeads,
+  lockTransferParticipants,
+  sealTransferLocks,
+  transferLocksCover,
+} from '../employment/transfer-locks.js';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { employmentApprovalHooks } from '../employment/approval-hooks.js';
 import { withEstablishmentConfirmation } from '../employment/activation-checks.js';
 import { auditEmployment, requireEmploymentWrite } from '../employment/context.js';
@@ -26,7 +33,7 @@ import {
 import { readTransferCatalog, readTransferSettings, resolveTransferForm } from './configuration.js';
 import { requireEmployeeTransferFields } from './employee-policy.js';
 import { dutySubordinateIds, normalizeLinkage, type LinkageOptions } from './linkage/input.js';
-import { saveNewTransferLinkage } from './linkage/service.js';
+import { saveNewTransferLinkage, type LinkageTarget } from './linkage/service.js';
 import type { LinkageAccess } from './linkage/access.js';
 import { hasLinkage } from './linkage/store.js';
 import { holdTransferDraft, occupiesDraftSlot, releaseTransferDraft } from './draft-slot.js';
@@ -127,6 +134,15 @@ export async function requireTransferWrite(ctx: EmploymentContext, input: Transf
   await requireEmploymentWrite(ctx, 'create', input.writable);
 }
 
+/**
+ * 预览只判请求里真正编辑的业务字段（生效日、原因、任职字段、自定义字段）。initiator / transferTypeCode / formId / mode
+ * 是路由参数，由服务端固定或另行校验（表单与入口匹配、按钮），不是员工编辑的字段，不能拿它们判字段写权（第 3 轮 P2-3）。
+ */
+export async function requireTransferEditedWrite(ctx: EmploymentContext, input: TransferInput): Promise<void> {
+  const { initiator: _initiator, transferTypeCode: _type, formId: _form, mode: _mode, ...edited } = input.writable;
+  await requireEmploymentWrite(ctx, 'create', edited);
+}
+
 export async function transferTargetContext(
   tx: Tx,
   ctx: EmploymentContext,
@@ -169,15 +185,66 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
   const slot = occupiesDraftSlot({ initiator: input.initiator, mode: input.employment.mode });
   if (slot && (await releaseTransferDraft(tx, ctx, employeeId)))
     ctx = { ...ctx, expectedRevision: (await lockEmploymentEmployee(tx, ctx, employeeId)).revision };
+  const { business: created, metadata } = await createTransferCore(
+    tx,
+    ctx,
+    employeeId,
+    { ...input, withEstablishment: input.writable.withEstablishment === true },
+    {
+      processCode: form.processCode,
+      holdDraft: slot && !input.submit,
+      // F-039 从人工入口追踪联动授权；联动参数在入口绑定，核心在同一事务内调用。
+      saveLinkage: (target) => saveNewTransferLinkage(tx, ctx, target, linkage, linkageAccess),
+    },
+  );
+  if (input.employment.mode === 'application' && input.submit) {
+    const context = { ...ctx, expectedRevision: created.revision };
+    await transitionEmployment(tx, context, { id: created.id, action: 'submit' });
+    await employmentApprovalHooks.submitted(tx, context, created.id);
+    const saved = await requireSavedBusiness(tx, context, created.id);
+    return { ...saved, ...metadata };
+  }
+  return { ...created, ...metadata };
+}
+
+type TransferCoreInput = Pick<TransferInput, 'initiator' | 'transferTypeCode' | 'reasonCode' | 'employment'> & {
+  readonly withEstablishment: boolean;
+};
+
+/** 受信持久化入口（R2-T08 §8.3）。调用方先锁员工闭包，再完成各自的入口授权与规范化。 */
+export async function createTransferCore(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: TransferCoreInput,
+  options: {
+    readonly processCode: string;
+    readonly holdDraft?: boolean;
+    readonly orgAdjustment?: true;
+    readonly saveLinkage: (target: LinkageTarget) => Promise<void>;
+  },
+) {
+  const { processCode, holdDraft, orgAdjustment, saveLinkage } = options;
+  if (
+    orgAdjustment &&
+    (!ctx.orgAdjustmentId ||
+      ctx.userId !== SYSTEM_USER_ID ||
+      input.initiator !== 'hr' ||
+      input.employment.kind !== 'transfer' ||
+      input.employment.mode !== 'direct')
+  )
+    throw new AppError('FORBIDDEN', '组织调整调动须经系统执行器创建');
+  const { withEstablishment } = input;
   const created = await createEmploymentBusiness(tx, ctx, employeeId, input.employment, {
-    withEstablishment: input.writable.withEstablishment === true,
+    withEstablishment,
+    ...(orgAdjustment ? ({ changeType: 'org_adjustment', fromOrgAdjustment: true } as const) : {}),
   });
   const metadata = {
     initiator: input.initiator,
     transferTypeCode: input.transferTypeCode,
     reasonCode: input.reasonCode ?? null,
-    processCode: form.processCode,
-    withEstablishment: input.writable.withEstablishment === true,
+    processCode,
+    withEstablishment,
   };
   await tx.execute(sql`
     INSERT INTO transfer_requests(
@@ -185,22 +252,23 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
     VALUES (${ctx.tenantId},${created.id}::uuid,${employeeId}::uuid,${metadata.initiator},
       ${metadata.transferTypeCode},${metadata.reasonCode},${metadata.processCode},${metadata.withEstablishment})
   `);
-  await auditEmployment(tx, ctx, 'transfer.request.create', 'transfer-request', created.id, null, metadata);
-  if (slot && !input.submit) await holdTransferDraft(tx, ctx, employeeId, created.id);
-  await saveNewTransferLinkage(
+  await auditEmployment(
     tx,
     ctx,
-    { businessId: created.id, employeeId, effectiveDate: created.effectiveDate, mode: input.employment.mode },
-    linkage,
-    linkageAccess,
+    'transfer.request.create',
+    'transfer-request',
+    created.id,
+    null,
+    orgAdjustment ? { ...metadata, trigger: `org-adjustment:${ctx.orgAdjustmentId}` } : metadata,
   );
-  if (input.employment.mode === 'application' && input.submit) {
-    const context = { ...ctx, expectedRevision: created.revision };
-    await transitionEmployment(tx, context, { id: created.id, action: 'submit' });
-    await employmentApprovalHooks.submitted(tx, context, created.id);
-    return { ...(await requireSavedBusiness(tx, context, created.id)), ...metadata };
-  }
-  return { ...created, ...metadata };
+  if (holdDraft) await holdTransferDraft(tx, ctx, employeeId, created.id);
+  await saveLinkage({
+    businessId: created.id,
+    employeeId,
+    effectiveDate: created.effectiveDate,
+    mode: input.employment.mode,
+  });
+  return { business: created, metadata };
 }
 
 export async function requireDirectTransfer(tx: Tx, ctx: EmploymentContext) {
@@ -210,6 +278,55 @@ export async function requireDirectTransfer(tx: Tx, ctx: EmploymentContext) {
     throw new AppError('CONFLICT', '本租户调动须走审批', { reason: 'DIRECT_TRANSFER_DISABLED' });
   const actions = await transferDirectActions(ctx, true);
   if (!actions.directList && !actions.directRow) throw new AppError('FORBIDDEN', '无权发起直接调动');
+}
+
+async function transferRequestEmployee(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  const [request] = rowsOf<{ employeeId: string }>(
+    await tx.execute(sql`
+    SELECT employee_id AS "employeeId" FROM transfer_requests
+    WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid
+  `),
+  );
+  return request?.employeeId;
+}
+
+/** 取锁—复核—再取锁的上限：参与集合每轮都在涨说明有人持续改关系，放弃本次交还调用方刷新重试。 */
+const LOCK_PLAN_ATTEMPTS = 4;
+
+const planChanged = () =>
+  new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
+
+/**
+ * 同单写入口的“取锁阶段”（DEC-993 单入口；第 6 轮拆段，DEC-996）：只按单据找到发起员工，按锁序分两段取齐会阻塞的锁。
+ * ① 员工段：参与员工闭包（含 extra 里请求新带入、且现存的下属）→ 发起员工行，取完重新规划；集合在取锁期间变大
+ *   （如别人把某员工的虚线经理改成发起员工）就继续按 UUID 序补员工锁——这一段手上只有员工锁，不持任何业务头；
+ * ② 业务头段：员工闭包取齐后统一锁各参与者的业务头（单人闭包也锁本单业务头，第 7 轮 P2-1），再规划一次；此时集合若又变大，
+ *   不再回头等员工锁（那会在持业务头时等员工锁，逆序），直接 409 TRANSFER_LOCK_PLAN_CHANGED 放弃本事务，
+ *   由重入（失败回查 / 客户端显式重提）重新规划。
+ * 审批实例只在首次执行体里锁（重放 / 回查不到那一步），不在此预锁。两段取齐后封口：本函数返回后事务里不会再因新参与者等锁；
+ * transferBusinessContext 'command' 阶段的取锁都是重入。本函数不读任何授权输入。
+ * 请求点名但查无此人的新增下属不取锁、不在这里报错（第 5 轮 P2-3）：报错会抢在台账指纹比对之前，把同键异内容的 409 遮成 400；
+ * 留给首次执行的业务校验（validateTransferSubordinates → 400 TRANSFER_PERSON_NOT_ELIGIBLE），那时授权与指纹都已判过。
+ * 单据不是调动单时什么都不取。
+ */
+export async function lockTransferBusinessEmployee(
+  tx: Tx,
+  ctx: EmploymentContext,
+  businessId: string,
+  extra: readonly string[] = [],
+) {
+  const employeeId = await transferRequestEmployee(tx, ctx, businessId);
+  if (!employeeId) return;
+  const present = await existingTransferEmployees(tx, ctx, extra);
+  for (let attempt = 0; ; attempt += 1) {
+    if (attempt === LOCK_PLAN_ATTEMPTS) throw planChanged();
+    await lockTransferParticipants(tx, ctx, employeeId, present, { deferHeads: true });
+    await lockEmploymentEmployee(tx, ctx, employeeId);
+    if (await transferLocksCover(tx, ctx, employeeId, present)) break;
+  }
+  await lockTransferHeads(tx, ctx, businessId);
+  if (!(await transferLocksCover(tx, ctx, employeeId, present))) throw planChanged();
+  await sealTransferLocks(tx, ctx);
 }
 
 /** 同单操作按当前调用人的权限判断；原发起人类型仅是业务事实，不决定后续操作者的身份。 */

@@ -5,7 +5,7 @@
  * 字段级数据变更日志仍是 tenancy.ts 的 audit_events。
  */
 import { sql } from 'drizzle-orm';
-import { check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { auditSourceColumns, tenants, users } from './tenancy.js';
 
 const id = () =>
@@ -77,6 +77,8 @@ export const auditCommandFailures = pgTable(
     reason: text('reason'),
     // F-120：写接口对该失败实际返回的状态；错误本身不带状态时为空
     httpStatus: integer('http_status'),
+    // F-537：由事务执行器证实回滚；一般失败审计和结果未知没有此证据。
+    confirmedRollback: boolean('confirmed_rollback'),
     method: text('method'),
     path: text('path'),
     occurredAt: utc('occurred_at'),

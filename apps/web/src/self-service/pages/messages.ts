@@ -14,6 +14,8 @@ export const messages = {
   refreshAfterConfirm: '查询确认原命令未执行成功后，可核对原输入重新提交。',
   restoredSummary: '刷新前或其他标签页的提交内容未在本页保存',
   queryFailed: '查询结果失败，命令仍待确认，请稍后重新查询。',
+  foundResult:
+    '已查到原命令执行成功，但无法确认是否由本页发出；本页输入仍保留在下方，请先在“我的申请”核对，避免重复提交。',
   readDoesNotConfirm: '这里只读取原单当前状态；仍为草稿不代表原提交已失败，不能据此重新提交。',
 
   manager,

@@ -25,7 +25,8 @@ import {
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
-import { clearedTransferFields, tenantLocalDate } from '@italent/domain';
+import { changedInputFields, clearedTransferFields, tenantLocalDate } from '@italent/domain';
+import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
@@ -41,11 +42,12 @@ import { assertInternRegularizationEligible, resolveInFlightRegularization } fro
 import { forwardUpdateEmployment } from './forward-update.js';
 import type { ForwardValues } from './forward-rules.js';
 import { emptyPresetFields } from './types.js';
-import { normalizeBusinessPatch, normalizeEmploymentInput } from './fields.js';
+import { INHERITED_FIELDS, normalizeBusinessPatch, normalizeEmploymentInput } from './fields.js';
 import {
   prepareInheritance,
   prepareEmploymentPatch,
   resolveEffectiveInheritance,
+  resolveReopenedFields,
   type PreparedFormInheritance,
   type PreparedInheritance,
 } from './inheritance.js';
@@ -82,8 +84,21 @@ import {
   type PresetFields,
 } from './types.js';
 import { queueExitAccount } from './exit-account-store.js';
-import { fieldOriginEditor, formFieldOrigins, originActorKind } from './field-origin-write.js';
-import { appendFieldOrigins, type FieldOriginDraft } from './field-origin-store.js';
+import {
+  applySettledFields,
+  appendPayloadFieldOrigins,
+  discardedFormFields,
+  endDiscardedFormOverrides,
+  fieldOriginEditor,
+  formFieldOrigins,
+  originActorKind,
+} from './field-origin-write.js';
+import {
+  FIELD_NOT_APPLICABLE,
+  applicabilityOf,
+  settleFieldValues,
+  type FieldOriginDraft,
+} from './field-origin-store.js';
 
 export const NEW_CYCLE_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 
@@ -108,6 +123,8 @@ export interface CreateEmploymentOptions {
   readonly forwardUpdate?: boolean;
   /** 变动类型只由可信的系统联动传入（如职位变更同步直线经理，F-006），不开放给请求体。 */
   readonly changeType?: ChangeType;
+  /** R2-T08 §8.3：已审批的组织调整产物只豁免人工直接调动开关。 */
+  readonly fromOrgAdjustment?: true;
   /** F-006 系统派生，不能由请求体指定。 */
   readonly positionManagerDerivation?: boolean;
   readonly establishmentWarnings?: EstablishmentWarning[];
@@ -153,7 +170,7 @@ export async function createEmploymentBusiness(
   await assertBusinessSequence(tx, ctx, employee.id, normalized);
   await resolveInFlightRegularization(tx, ctx, employee, normalized);
   assertEmployTypeUsage(normalized);
-  await assertDirectTransferAllowed(tx, ctx, employee.id, normalized);
+  await assertDirectTransferAllowed(tx, ctx, employee.id, normalized, options.fromOrgAdjustment);
   await assertDirectRegularizationIdle(tx, ctx, employee.id, normalized, options);
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
     ? undefined
@@ -381,6 +398,47 @@ async function requireUnchangedExitDates(
     });
 }
 
+interface EditedPayloadInput {
+  readonly business: LockedEmploymentBusiness;
+  readonly normalized: NormalizedEmploymentInput;
+  readonly patch: EmploymentBusinessPatch;
+  readonly selected: Awaited<ReturnType<typeof selectEmploymentCycle>> | undefined;
+  readonly options: RescheduleOptions;
+  readonly requestFields: ReadonlySet<string>;
+}
+
+/**
+ * 修改草稿的候选态：先重推继承、写来源草稿，再按适用性判定已有值（F-036 §4.6），最后解析有效值供校验。
+ * 判定必须在校验之前：职位不再属于新部门时，要先退成空值，校验才不会拿旧职位去比新部门。
+ */
+async function prepareEditedPayload(tx: Tx, ctx: EmploymentContext, input: EditedPayloadInput) {
+  const { business, normalized, patch, selected, options, requestFields } = input;
+  const before = business.payload;
+  const patched = await prepareEmploymentPatch(
+    tx,
+    ctx,
+    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id, requestFieldCodes: requestFields },
+    before,
+  );
+  const actor = await fieldOriginEditor(tx, ctx, before, options);
+  const drafts = formFieldOrigins(patched, normalized, { request: patch, businessId: business.id, before, actor });
+  await endDiscardedFormOverrides(tx, ctx, before, patched, discardedFormFields(patch.fields), drafts);
+  // 本次请求自己输入的新值不判（由校验把关）；同值回传不算新输入，照常按适用性判（DEC-977）。
+  const settled = await settleFieldValues(
+    tx,
+    ctx,
+    business.id,
+    { fields: patched.fields, deferredFieldCodes: patched.deferredFieldCodes },
+    { pending: drafts },
+  );
+  const prepared = applySettledFields(patched, settled);
+  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
+    staffId: selected?.cycle.id ?? '',
+    predecessor: selected?.predecessor ?? null,
+  });
+  return { prepared, effective, settled };
+}
+
 export async function updateEmploymentBusiness(
   tx: Tx,
   ctx: EmploymentContext,
@@ -389,13 +447,16 @@ export async function updateEmploymentBusiness(
   options: RescheduleOptions = {},
 ): Promise<EmploymentBusiness> {
   const { pendingTransferAck, confirmed, ...businessPatch } = normalizeBusinessPatch(input);
-  let patch = businessPatch;
   const business = await lockExitForEdit(tx, ctx, id);
-  await requireEmployeeTransferBusiness(tx, ctx, id, patch);
-  const remaining = await replanEditableExit(tx, ctx, business, patch, { pendingTransferAck, confirmed, ...options });
+  // 员工自助单据上同值的职位、职务、职级、序列不算本次输入（DEC-950），其后一律用扣完之后的这份。
+  const current = (await requireEmployeeTransferBusiness(tx, ctx, id, businessPatch)) ?? businessPatch;
+  const remaining = await replanEditableExit(tx, ctx, business, current, {
+    pendingTransferAck,
+    confirmed,
+    ...options,
+  });
   if (remaining === null) return requireSavedBusiness(tx, ctx, id);
-  patch = remaining;
-  await requireUnchangedExitDates(tx, ctx, business, patch, options);
+  await requireUnchangedExitDates(tx, ctx, business, remaining, options);
   // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。
   if (business.payload.mode !== 'application' || !['draft', 'in_review', 'rejected'].includes(business.state))
     throw new AppError('CONFLICT', '只有草稿、审批中或被驳回的申请可以修改', { reason: 'PAYLOAD_IMMUTABLE' });
@@ -404,7 +465,7 @@ export async function updateEmploymentBusiness(
     throw new AppError('CONFLICT', '审批中的申请只能由当前审批节点修改', { reason: 'APPROVAL_IN_PROGRESS' });
   }
   const before = business.payload;
-  const normalized = normalizePatchedInput(ctx, before, patch);
+  const { normalized, patch, requestFields } = normalizePatchedInput(ctx, before, remaining);
   await assertRegularizationApplication(tx, ctx, business, normalized);
   await assertNotBeforeCurrentCycle(tx, ctx, business.employeeId, normalized);
   await assertBusinessSequence(tx, ctx, business.employeeId, normalized);
@@ -416,15 +477,13 @@ export async function updateEmploymentBusiness(
         effectiveDate: normalized.effectiveDate,
         expectedStaffId: before.selectedStaffId,
       });
-  const prepared = await prepareEmploymentPatch(
-    tx,
-    ctx,
-    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
-    before,
-  );
-  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
-    staffId: selected?.cycle.id ?? '',
-    predecessor: selected?.predecessor ?? null,
+  const { prepared, effective, settled } = await prepareEditedPayload(tx, ctx, {
+    business,
+    normalized,
+    patch,
+    selected,
+    options,
+    requestFields,
   });
   await validatePreparedEmployment(tx, ctx, business.employeeId, normalized.kind, prepared, effective.fields, business);
   await assertEstablishmentCapacity(tx, ctx, {
@@ -437,15 +496,13 @@ export async function updateEmploymentBusiness(
     positionId: effective.fields.positionId,
   });
   await bumpEmploymentBusiness(tx, ctx, business);
-  const actor = await fieldOriginEditor(tx, ctx, before, options);
-  const origins = formFieldOrigins(prepared, normalized, { request: patch, businessId: id, before, actor });
   business.payload = await appendEmploymentPayload(tx, ctx, business.employeeId, id, normalized, prepared, {
     previous: before,
     selectedStaffId: selected?.cycle.id,
     changeType: before.changeType ?? undefined,
     // 改期后按新生效日的前一条重新确定继承的人员状态（PR #93 首审 P2-1），不沿用原日期下的值
     status: inheritedStatus(normalized.kind, selected?.predecessor ?? null),
-    origins,
+    origins: settled.origins,
   });
   await bindRehireRetirement(tx, ctx, business);
   // 申请修改是人工意图：事件绑定新载荷版本，迟到重建据此把它当作新的初始输入（R6-P2-01）。
@@ -462,11 +519,33 @@ export async function updateEmploymentBusiness(
   return requireSavedBusiness(tx, ctx, id);
 }
 
+function omitUnchangedInheritedFields(
+  before: EmploymentPayloadRow,
+  patch: EmploymentBusinessPatch,
+): EmploymentBusinessPatch {
+  const { startsNewCycle, fieldModes, excludedAutofillFields, customInheritance } = before.formSnapshot;
+  if (startsNewCycle) return patch;
+  // DEC-977：同值重提不构成覆盖，改期时由 DEC-041 重新取前驱。
+  const entered = new Set([...before.explicitFieldCodes, ...changedInputFields(before, patch)]);
+  const unchangedEditable = (code: string) => fieldModes[code] === 'editable' && !entered.has(code);
+  const fields = { ...patch.fields };
+  for (const field of INHERITED_FIELDS) {
+    if (!excludedAutofillFields?.includes(field) && unchangedEditable(`preset:${field}`)) delete fields[field];
+  }
+  const customFields = { ...patch.customFields };
+  for (const id of Object.keys(customFields)) {
+    if (customInheritance[id] && Object.hasOwn(before.customFields, id) && unchangedEditable(`custom:${id}`))
+      delete customFields[id];
+  }
+  return { ...patch, fields, customFields };
+}
+
 export function normalizePatchedInput(
   ctx: EmploymentContext,
   before: EmploymentPayloadRow,
-  patch: EmploymentBusinessPatch,
-): NormalizedEmploymentInput {
+  input: EmploymentBusinessPatch,
+) {
+  const patch = omitUnchangedInheritedFields(before, input);
   const fields: Partial<Record<keyof typeof before.fields, unknown>> = Object.fromEntries(
     before.explicitFieldCodes
       .filter((code) => code.startsWith('preset:'))
@@ -475,12 +554,7 @@ export function normalizePatchedInput(
         return [field, before.fields[field]];
       }),
   );
-  if (patch.fields && Object.hasOwn(patch.fields, 'departmentId') && !Object.hasOwn(patch.fields, 'directManagerId'))
-    delete fields.directManagerId;
-  // DEC-107：本次改选了职务而未传序列时，丢弃按旧职务带出（或旧填写）的序列，交由新职务重新带出。
-  if (patch.fields && Object.hasOwn(patch.fields, 'postId') && !Object.hasOwn(patch.fields, 'sequenceId')) {
-    delete fields.sequenceId;
-  }
+  for (const field of discardedFormFields(patch.fields)) delete fields[field];
   const customFields = Object.fromEntries(
     before.explicitFieldCodes
       .filter((code) => code.startsWith('custom:'))
@@ -489,7 +563,7 @@ export function normalizePatchedInput(
   const lastWorkDate = patch.lastWorkDate === undefined ? before.lastWorkDate : patch.lastWorkDate;
   // 修改最后工作日时重新推导 D+1；客户端另填生效日仍由统一校验拒绝矛盾值。
   const effectiveDate = patch.effectiveDate ?? (patch.lastWorkDate === undefined ? before.effectiveDate : undefined);
-  return normalizeEmploymentInput(ctx, {
+  const normalized = normalizeEmploymentInput(ctx, {
     kind: before.kind,
     mode: before.mode,
     formId: before.formId,
@@ -498,6 +572,14 @@ export function normalizePatchedInput(
     fields: { ...fields, ...patch.fields },
     customFields: { ...customFields, ...patch.customFields },
   });
+  // F-036 S4：候选态（normalized）= 沿用的覆盖值 + 本次请求。requestFields 是“本次输入”的唯一来源（DEC-431①）：
+  // 沿用的值当时已校验过，也可能由向后更新、序列同步这类系统写入而来，不能再受“当前表单是否允许编辑”约束，
+  // 也不能触发派生；这两处都改读它，不再各自从候选的键集合里猜。
+  const requestFields = new Set([
+    ...Object.keys(patch.fields ?? {}).map((field) => `preset:${field}`),
+    ...Object.keys(patch.customFields ?? {}).map((id) => `custom:${id}`),
+  ]);
+  return { normalized, patch, requestFields };
 }
 
 function assertEmployTypeUsage(input: Pick<NormalizedEmploymentInput, 'kind' | 'fields'>): void {
@@ -597,11 +679,13 @@ async function assertDirectTransferAllowed(
   ctx: EmploymentContext,
   employeeId: string,
   input: NormalizedEmploymentInput,
+  fromOrgAdjustment?: true,
 ) {
   if (input.mode !== 'direct' || input.kind !== 'transfer') return;
-  const settings = await readEmploymentSettings(tx, ctx.tenantId);
-  if (!settings.allowDirectTransfer) {
-    throw new AppError('CONFLICT', '本租户调动须走审批', { reason: 'DIRECT_TRANSFER_DISABLED' });
+  if (!fromOrgAdjustment || !ctx.orgAdjustmentId || ctx.userId !== SYSTEM_USER_ID) {
+    const settings = await readEmploymentSettings(tx, ctx.tenantId);
+    if (!settings.allowDirectTransfer)
+      throw new AppError('CONFLICT', '本租户调动须走审批', { reason: 'DIRECT_TRANSFER_DISABLED' });
   }
   // DEC-154：调用方已锁员工，提交申请 / 审批 / 直接调动均在同一员工锁下复核最新状态（F-008）。
   const [pending] = rowsOf<{ state: string; effectiveDate: string }>(
@@ -690,25 +774,14 @@ export async function appendEmploymentPayload(
     selectedStaffId: options.selectedStaffId ?? null,
   };
   const { fields, ...metadata } = payload;
-  await insertEmploymentRow(
+  const markers = await insertEmploymentRow(
     tx,
     'employment_payload_versions',
     { ...fields, ...metadata, createdAt: ctx.now.toISOString() },
-    options.status,
-  );
-  await appendFieldOrigins(
-    tx,
-    ctx,
-    options.origins.map((row) => ({
-      ...row,
-      employeeId,
-      businessId,
-      payloadVersionId: payload.id,
-      recordId: options.recordId,
-    })),
+    { ctx, origins: options.origins, recordId: options.recordId, status: options.status },
   );
   // 未显式给出时由插入触发器继承（迁移 0062），以库中的值为准
-  return { ...payload, ...(await storedStatus(tx, ctx, payload.id)) };
+  return { ...payload, ...markers, ...(await storedStatus(tx, ctx, payload.id)) };
 }
 
 async function storedStatus(tx: Tx, ctx: EmploymentContext, payloadId: string) {
@@ -878,6 +951,82 @@ function cycleIdentity(payload: LockedEmploymentBusiness['payload'], selected: S
   };
 }
 
+/**
+ * F-036 §4.4.2 写点 #16、§5.3：落地先定有效部门，再判已有覆盖值，最后解析仍待定的字段，
+ * 并登记最终的解析结果（值、取值的前驱、原因）；不追加载荷版本。
+ */
+async function resolveLanding(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  effective: { staffId: string; predecessor: EmploymentRecord | null },
+) {
+  const resolved = await resolveEffectiveInheritance(tx, ctx, business.payload, effective);
+  return recordLandingResolutions(tx, ctx, business, resolved, effective);
+}
+
+type LandingResolved = Awaited<ReturnType<typeof resolveEffectiveInheritance>>;
+
+async function recordLandingResolutions(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  resolved: LandingResolved,
+  effective: { staffId: string; predecessor: EmploymentRecord | null },
+) {
+  // 落地时延迟字段都已解析，谓词看到的是已确定的部门。
+  const candidate = { fields: resolved.fields, deferredFieldCodes: [] };
+  // 先只读判一遍：覆盖值被退回后重新待定的字段，要在部门之后补解析。
+  const preview = await settleFieldValues(tx, ctx, business.id, candidate);
+  const resolvedCodes = new Set(resolved.resolutions.map(({ fieldCode }) => fieldCode));
+  const reopened = [...preview.deferred].filter((code) => !resolvedCodes.has(code));
+  const reopenedBase = reopened.length
+    ? resolveReopenedFields(
+        reopened,
+        { fields: resolved.fields, customFields: resolved.customFields, formSnapshot: business.payload.formSnapshot },
+        effective,
+      )
+    : resolved;
+  const resolutions = [...resolved.resolutions, ...(reopened.length ? reopenedBase.resolutions : [])];
+  const final = { ...reopenedBase, resolutions };
+  const rows = landingRows(final);
+  const settled = await settleFieldValues(
+    tx,
+    ctx,
+    business.id,
+    { fields: final.fields, deferredFieldCodes: [] },
+    { pending: rows },
+  );
+  await appendPayloadFieldOrigins(tx, ctx, business.payload, business.id, settled.origins);
+  const fields: Record<string, unknown> = { ...final.fields };
+  const customFields: Record<string, unknown> = { ...final.customFields };
+  for (const [code, value] of settled.values) {
+    if (code.startsWith('preset:')) fields[code.slice('preset:'.length)] = value;
+    else customFields[code.slice('custom:'.length)] = value;
+  }
+  return {
+    ...final,
+    fields: fields as unknown as typeof final.fields,
+    customFields: customFields as typeof final.customFields,
+  };
+}
+
+/** 解析结果记成 resolved 行；受适用性约束的字段，解析值不适用有效部门时落空值并写明原因。 */
+function landingRows(resolved: LandingResolved): FieldOriginDraft[] {
+  const candidate = { fields: resolved.fields, deferredFieldCodes: [] };
+  return resolved.resolutions.map(({ fieldCode, value, sourceRecordId }) => {
+    const inapplicable = applicabilityOf(fieldCode)?.({ value }, candidate) === false;
+    return {
+      fieldCode,
+      originKind: 'resolved',
+      value: inapplicable ? null : value,
+      ...(inapplicable ? { reason: FIELD_NOT_APPLICABLE } : {}),
+      sourceRecordId,
+      sourceBusinessId: sourceRecordId,
+    };
+  });
+}
+
 export async function materializeEmploymentRecord(
   tx: Tx,
   ctx: EmploymentContext,
@@ -893,7 +1042,7 @@ export async function materializeEmploymentRecord(
   const newCycle = NEW_CYCLE_KINDS.includes(payload.kind);
   const selected = await cycleForMaterialization(tx, ctx, business, newCycle, position);
   const { staffId, entryDate, traineeStartDate, sourceStaffId } = cycleIdentity(payload, selected);
-  const inherited = await resolveEffectiveInheritance(tx, ctx, payload, {
+  const inherited = await resolveLanding(tx, ctx, business, {
     staffId: sourceStaffId,
     predecessor: selected?.predecessor ?? null,
   });

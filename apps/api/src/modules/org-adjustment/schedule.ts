@@ -9,7 +9,7 @@ import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import { rowsOf } from '../approval/context.js';
 import { countOrgEmploymentTargets } from '../org/employment-linkage.js';
-import { groupScope, loadExecutionGroups, loadExecutionItems } from './execution-groups.js';
+import { executionGroupsOf, groupScope, loadExecutionItems, type ExecutionSections } from './execution-groups.js';
 
 export const NEXT_DAY_VOLUME = 5000;
 const NEXT_DAY_HOUR = 3;
@@ -22,7 +22,12 @@ export interface ScheduleContext {
   readonly commandId: string;
 }
 
-export async function scheduleOrgAdjustmentExecution(tx: Tx, ctx: ScheduleContext, adjustmentId: string) {
+export async function scheduleOrgAdjustmentExecution(
+  tx: Tx,
+  ctx: ScheduleContext,
+  adjustmentId: string,
+  sections: ExecutionSections = {},
+) {
   const [head] = rowsOf<{ effective_date: string; approval_status: number; scheduled: boolean }>(
     await tx.execute(sql`SELECT a.effective_date::text, a.approval_status,
         EXISTS (SELECT 1 FROM org_adjustment_executions x
@@ -33,7 +38,7 @@ export async function scheduleOrgAdjustmentExecution(tx: Tx, ctx: ScheduleContex
   if (head.approval_status !== 2 || head.scheduled)
     throw new AppError('CONFLICT', '组织调整不在可排期状态', { reason: 'ORG_ADJUSTMENT_NOT_SCHEDULABLE' });
   const date = head.effective_date;
-  const items = await loadExecutionItems(tx, ctx.tenantId, adjustmentId);
+  const items = await loadExecutionItems(tx, ctx.tenantId, adjustmentId, sections);
   let dataVolume = items.length;
   for (const item of items)
     if (item.adjustType === 2 && item.addEmployment)
@@ -43,7 +48,7 @@ export async function scheduleOrgAdjustmentExecution(tx: Tx, ctx: ScheduleContex
   const run = { runOnDate: late ? addDays(today, 1) : today, runFromHour: late ? NEXT_DAY_HOUR : 0 };
   const keys = { tenantId: ctx.tenantId, adjustmentId };
   await tx.insert(orgAdjustmentExecutions).values({ ...keys, ...run });
-  for (const group of await loadExecutionGroups(tx, ctx.tenantId, adjustmentId, date)) {
+  for (const group of await executionGroupsOf(tx, ctx.tenantId, items, date)) {
     const orgIds = await groupScope(tx, ctx.tenantId, group, items, date);
     if (orgIds.length)
       await tx

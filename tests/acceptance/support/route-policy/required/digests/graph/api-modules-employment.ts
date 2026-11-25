@@ -1303,10 +1303,13 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/context.ts#runWrite': [
     'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#discloseAssessmentConflictReceipt',
+    '#canonicalReceipt',
     '#commandContext',
     '#isScopedGuard',
     '#trimEmploymentResponse',
     '#withReplayRecheck',
+    'apps/api/src/modules/employment/receipt-names.ts#takeReceiptNames',
+    'apps/api/src/modules/employment/receipt-names.ts#withReceiptNames',
     'apps/api/src/modules/permission/employment-replay.ts#authorizeEmploymentResult',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
   ],
@@ -1404,7 +1407,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
   ],
   'apps/api/src/modules/employment/employee-status.ts#appendStatusVersion': [
-    'apps/api/src/modules/employment/field-origin-write.ts#appendPayloadFieldOrigins',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
   ],
   'apps/api/src/modules/employment/employee-status.ts#assertRegularizationNotPropagated': [
@@ -1845,6 +1847,73 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/entry-email.ts#EMAIL_PREFIX_FIELD_CODES',
     'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain',
   ],
+  'apps/api/src/modules/employment/entry-esign-history.ts#entrySignHistory': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
+    'apps/api/src/modules/employment/entry-esign-source.ts#missingEntrySignSource',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
+    'apps/api/src/modules/esign/record-access.ts#RECORD_OBJECT',
+    'apps/api/src/modules/esign/record-access.ts#presentRecord',
+    'apps/api/src/modules/esign/record-access.ts#recordScope',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/entry-esign-routes.ts#requestContext': ['apps/api/src/tenant-context.ts#tenantOf'],
+  'apps/api/src/modules/employment/entry-esign-routes.ts#route:GET /pending-entries/:id/esign-context': [
+    '#requestContext',
+    'apps/api/src/modules/employment/entry-esign-source.ts#entrySignContext',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/entry-esign-routes.ts#route:GET /pending-entries/:id/esign-records': [
+    'apps/api/src/modules/employment/entry-esign-history.ts#entrySignHistory',
+    '#pageInput',
+    '#requestContext',
+    'apps/api/src/modules/employment/entry-routes.ts#parse',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/entry-esign-routes.ts#route:POST /pending-entries/:id/esign-tasks': [
+    '#requestContext',
+    '#signReceipt',
+    '#startBody',
+    'apps/api/src/modules/employment/entry-esign-source.ts#authorizeEntrySignSource',
+    'apps/api/src/modules/employment/entry-esign-source.ts#lockEntrySignSource',
+    'apps/api/src/modules/employment/entry-esign-source.ts#missingEntrySignSource',
+    'apps/api/src/modules/esign/source-initiation.ts#runSourceSignCommand',
+    'apps/api/src/modules/job/context.ts#parseBody',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/entry-esign-source.ts#authorizeEntrySignSource': [
+    '#missingEntrySignSource',
+    'apps/api/src/modules/esign/source-command-result.ts#requireEntrySignSource',
+  ],
+  'apps/api/src/modules/employment/entry-esign-source.ts#entrySignContext': [
+    '#authorizeEntrySignSource',
+    '#entrySignReason',
+    '#loadSourceRecord',
+    'apps/api/src/modules/esign/source-templates.ts#sourceTemplateOptions',
+  ],
+  'apps/api/src/modules/employment/entry-esign-source.ts#entrySignReason': [
+    'apps/api/src/modules/employment/employee-status.ts#isPendingEntryRecord',
+    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
+  ],
+  'apps/api/src/modules/employment/entry-esign-source.ts#loadSourceRecord': [
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
+    '#missingEntrySignSource',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/entry-esign-source.ts#lockEntrySignSource': [
+    '#authorizeEntrySignSource',
+    '#entrySignReason',
+    '#loadSourceRecord',
+    'apps/api/src/modules/employment/entry-offer-hooks.ts#entryOfferHooks',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+  ],
   'apps/api/src/modules/employment/entry-offer-hooks.ts#entryOfferHooks': ['#hooks', '#narrow'],
   'apps/api/src/modules/employment/entry-offer-hooks.ts#hooks': ['#noop'],
   'apps/api/src/modules/employment/entry-options.ts#assertEntryOptionsAllowed': [
@@ -1958,6 +2027,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-views.ts#ENTRY_VIEWS',
     'apps/api/src/modules/employment/entry-views.ts#listEntryView',
     'apps/api/src/modules/job/context.ts#pageQuery',
+    'apps/api/src/modules/onboarding/material-list-routes.ts#entryMaterialProjection',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
@@ -1995,10 +2065,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
+    '#collectionJoin',
+    '#collectionStatusSql',
+    '#entryOrderKeys',
     '#entryViewPredicate',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'apps/api/src/modules/onboarding/material-list.ts#materialStatusJoin',
+    'apps/api/src/modules/onboarding/preparation-launch-read.ts#preparationStatusSql',
   ],
   'apps/api/src/modules/employment/errors.ts#EmploymentError': ['#EMPLOYMENT_STATUS'],
   'apps/api/src/modules/employment/establishment-confirmation.ts#deleteConfirmed': ['#splitConfirmed'],
@@ -3854,6 +3929,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/exit-activation.ts#detachAndRecord',
     '#validateRestoredWindow',
+    'apps/api/src/modules/employment/field-origin-write.ts#exitPlanOrigins',
     'apps/api/src/modules/employment/late-transfer.ts#repositionEffectiveRecord',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
@@ -3927,6 +4003,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-reschedule.ts#writeManualExitPlan': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/field-origin-write.ts#exitPlanOrigins',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
   ],
@@ -4294,7 +4371,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/field-derivations.ts#changedDerivationKeys': ['#rules'],
   'apps/api/src/modules/employment/field-derivations.ts#derivationFields': ['#rules'],
-  'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields': ['#resolveDerivation', '#rules'],
+  'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields': [
+    '#resolveDerivation',
+    '#rules',
+    '#triggers',
+  ],
   'apps/api/src/modules/employment/field-derivations.ts#resolveDerivation': [
     '#sequenceForNewPost',
     '#soleOtherPositionManager',
@@ -4305,21 +4386,54 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost': [
     'apps/api/src/modules/job/read-model.ts#loadJobObject',
   ],
-  'apps/api/src/modules/employment/field-origin-store.ts#appendFieldOrigins': ['#jsonValue'],
+  'apps/api/src/modules/employment/field-origin-store.ts#appendFieldOrigins': [
+    '#allocateSeqs',
+    '#jsonValue',
+    '#requireKey',
+  ],
+  'apps/api/src/modules/employment/field-origin-store.ts#applicabilityOf': ['#applicability'],
   'apps/api/src/modules/employment/field-origin-store.ts#loadDerivationAnchors': [
     '#selectOrigins',
     '#textList',
     'packages/domain/src/employment/field-origins.ts#FIELD_ORIGIN_ANCHORS',
   ],
-  'apps/api/src/modules/employment/field-origin-store.ts#loadFieldOrigins': [
+  'apps/api/src/modules/employment/field-origin-store.ts#loadFieldOriginRows': [
     '#selectOrigins',
     '#textList',
     'packages/domain/src/employment/field-origins.ts#FIELD_ORIGIN_OVERRIDES',
     'packages/domain/src/employment/field-origins.ts#FIELD_ORIGIN_POLICIES',
+    'packages/domain/src/employment/field-origins.ts#FORM_DEPENDENCY_RESET',
+  ],
+  'apps/api/src/modules/employment/field-origin-store.ts#loadFieldOrigins': [
+    '#loadFieldOriginRows',
     'packages/domain/src/employment/field-origins.ts#foldFieldOrigins',
+  ],
+  'apps/api/src/modules/employment/field-origin-store.ts#policyKinds': [
+    'packages/domain/src/employment/field-origins.ts#FIELD_ORIGIN_POLICIES',
+  ],
+  'apps/api/src/modules/employment/field-origin-store.ts#projectPayloadMarkers': [
+    '#loadFieldOriginRows',
+    'packages/domain/src/employment/field-origins.ts#foldFieldOrigins',
+    'packages/domain/src/employment/field-origins.ts#projectOriginMarkers',
+  ],
+  'apps/api/src/modules/employment/field-origin-store.ts#repeatsPolicy': ['#policyKinds', '#sameValue'],
+  'apps/api/src/modules/employment/field-origin-store.ts#settleFieldValues': [
+    '#FIELD_NOT_APPLICABLE',
+    '#applicability',
+    '#exemptKinds',
+    '#loadFieldOriginRows',
+    '#repeatsPolicy',
+    'packages/domain/src/employment/field-origins.ts#effectiveOrigin',
+    'packages/domain/src/employment/field-origins.ts#foldFieldOrigins',
+    'packages/domain/src/employment/field-origins.ts#settleValueRows',
   ],
   'apps/api/src/modules/employment/field-origin-write.ts#appendPayloadFieldOrigins': [
     'apps/api/src/modules/employment/field-origin-store.ts#appendFieldOrigins',
+  ],
+  'apps/api/src/modules/employment/field-origin-write.ts#endDiscardedFormOverrides': [
+    'apps/api/src/modules/employment/field-origin-store.ts#loadFieldOrigins',
+    'packages/domain/src/employment/field-origins.ts#FORM_DEPENDENCY_RESET',
+    'packages/domain/src/employment/field-origins.ts#changedInputFields',
   ],
   'apps/api/src/modules/employment/field-origin-write.ts#fieldOriginEditor': [
     '#originActorKind',
@@ -4332,6 +4446,34 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/field-origin-write.ts#originActorKind': [
     'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
+  ],
+  'apps/api/src/modules/employment/field-origin-write.ts#requireSavedValuesApplicable': [
+    'apps/api/src/modules/employment/field-origin-store.ts#sameValue',
+    'apps/api/src/modules/employment/field-origin-store.ts#settleFieldValues',
+    'apps/api/src/modules/employment/record-store.ts#camelRow',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/record-store.ts#snapshotFields',
+  ],
+  'apps/api/src/modules/employment/field-origins-read.ts#frozenOriginRows': ['#shownEntries'],
+  'apps/api/src/modules/employment/field-origins-read.ts#isBusinessLanded': [
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/field-origins-read.ts#liveOriginRows': [
+    '#ORIGIN_LABELS',
+    '#readableSources',
+    '#shownEntries',
+    '#shownWriter',
+  ],
+  'apps/api/src/modules/employment/field-origins-read.ts#loadOriginFacts': [
+    'apps/api/src/modules/employment/field-origin-store.ts#loadFieldOrigins',
+    '#isBusinessLanded',
+  ],
+  'apps/api/src/modules/employment/field-origins-read.ts#readableSources': [
+    'apps/api/src/modules/employment/read-decision.ts#sourceReadable',
+  ],
+  'apps/api/src/modules/employment/field-origins-read.ts#shownWriter': [
+    'packages/domain/src/employment/field-origins.ts#effectiveOrigin',
   ],
   'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS': ['#PRESET_FIELDS'],
   'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS': [
@@ -4459,7 +4601,6 @@ export const GRAPH: Graph = {
     '#valueMatches',
   ],
   'apps/api/src/modules/employment/forward-store.ts#appendForwardPayload': [
-    'apps/api/src/modules/employment/field-origin-write.ts#appendPayloadFieldOrigins',
     '#forwardFieldCode',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
   ],
@@ -4559,10 +4700,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/inheritance.ts#applyCustomInheritance': [
     'apps/api/src/modules/employment/fields.ts#validateCustomValue',
     '#inheritanceOrigin',
+    '#isRequestInput',
     '#owns',
   ],
   'apps/api/src/modules/employment/inheritance.ts#applyExplicitPresetFields': [
     'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields',
+    '#isRequestInput',
     '#owns',
     '#setField',
   ],
@@ -4571,12 +4714,18 @@ export const GRAPH: Graph = {
     '#inheritanceOrigin',
     '#setField',
   ],
+  'apps/api/src/modules/employment/inheritance.ts#byResolutionOrder': ['#RESOLUTION_FIRST'],
   'apps/api/src/modules/employment/inheritance.ts#employeeCode': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/inheritance.ts#frozenDerivations': [
+    'apps/api/src/modules/employment/field-derivations.ts#derivationFields',
   ],
   'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch': [
     'apps/api/src/modules/employment/employment-forms.ts#validateSelectedEmploymentForm',
     'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
+    'apps/api/src/modules/employment/field-origin-store.ts#loadFieldOrigins',
+    '#ledgerDeferred',
     '#prepareInheritance',
     '#restoreFrozenDefaults',
   ],
@@ -4602,11 +4751,16 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance': [
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+    '#resolveFromPredecessor',
     '#setField',
   ],
+  'apps/api/src/modules/employment/inheritance.ts#resolveFromPredecessor': ['#byResolutionOrder', '#setField'],
+  'apps/api/src/modules/employment/inheritance.ts#resolveReopenedFields': ['#resolveFromPredecessor'],
   'apps/api/src/modules/employment/inheritance.ts#restoreFrozenDefaults': [
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+    '#frozenDerivations',
     '#inheritanceOrigin',
+    '#isRequestInput',
     '#owns',
     '#setField',
   ],
@@ -6164,11 +6318,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/store.ts#insertPartTimeRecord': [
     'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution',
     '#insertTerm',
+    '#partTimeFieldOrigins',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
   ],
   'apps/api/src/modules/employment/part-time/store.ts#lockPartTimeRecords': ['#partTimeRows'],
   'apps/api/src/modules/employment/part-time/store.ts#lockPartTimeRecordsById': ['#partTimeRows'],
+  'apps/api/src/modules/employment/part-time/store.ts#partTimeFieldOrigins': [
+    'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
+    'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+  ],
   'apps/api/src/modules/employment/part-time/store.ts#partTimeRows': [
     '#currentDepartment',
     '#latestSnapshot',
@@ -6521,6 +6680,16 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/probation.ts#normalizeProbationInfo',
     'packages/domain/src/employment/probation.ts#resolveDeferredProbation',
   ],
+  'apps/api/src/modules/employment/read-decision.ts#decideEmploymentRead': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
+    'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
+  ],
+  'apps/api/src/modules/employment/read-decision.ts#sourceReadable': [
+    'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead',
+    '#decideEmploymentRead',
+    '#isUnreadable',
+  ],
   'apps/api/src/modules/employment/read-model.ts#findCurrentRecord': ['#record', '#recordsQuery', '#rowsOf'],
   'apps/api/src/modules/employment/read-model.ts#findPredecessor': ['#loadEmploymentRecord', '#rowsOf'],
   'apps/api/src/modules/employment/read-model.ts#listEmploymentRecords': [
@@ -6554,6 +6723,15 @@ export const GRAPH: Graph = {
     '#columnName',
     'apps/api/src/modules/employment/types.ts#PRESET_FIELD_NAMES',
   ],
+  'apps/api/src/modules/employment/receipt-names.ts#namesOf': ['#isPlainObject', '#namesOf'],
+  'apps/api/src/modules/employment/receipt-names.ts#takeReceiptNames': ['#RECEIPT_NAMES_KEY', '#isPlainObject'],
+  'apps/api/src/modules/employment/receipt-names.ts#withReceiptNames': [
+    'apps/api/src/modules/employment/employment-forms.ts#employmentFormNames',
+    'apps/api/src/modules/employment/employment-types.ts#employmentTypeNames',
+    '#RECEIPT_NAMES_KEY',
+    '#isPlainObject',
+    '#namesOf',
+  ],
   'apps/api/src/modules/employment/record-edit.ts#bumpAndNotifyEntry': [
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
     'apps/api/src/modules/employment/entry-source-events.ts#entrySourceEvents',
@@ -6563,6 +6741,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/field-origin-store.ts#loadFieldOrigins',
     'apps/api/src/modules/employment/forward-store.ts#forwardFieldCode',
     '#MANUAL_ORIGINS',
+    'packages/domain/src/employment/field-origins.ts#SAME_VALUE_CONFIRMATION',
   ],
   'apps/api/src/modules/employment/record-edit.ts#editEmploymentRecord': [
     'apps/api/src/modules/employment/activation-checks.ts#assertEstablishmentCapacity',
@@ -6681,6 +6860,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/record-store.ts#camelRow': ['#camelCase'],
   'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow': [
+    'apps/api/src/modules/employment/field-origin-store.ts#appendFieldOrigins',
+    'apps/api/src/modules/employment/field-origin-store.ts#projectPayloadMarkers',
+    '#insertVersionRow',
+  ],
+  'apps/api/src/modules/employment/record-store.ts#insertVersionRow': [
     'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm',
     'apps/api/src/modules/employment/employment-types.ts#validateEmploymentType',
     '#ARRAY_COLUMNS',
@@ -7982,7 +8166,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#normalizeBusinessPatch',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     '#authorizeBusinessWrite',
+    '#inTenant',
+    '#requireDraftEditWrite',
     '#requireImportTransferAccess',
+    'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
+  ],
+  'apps/api/src/modules/employment/routes.ts#authorizeTransition': [
+    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
+    'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
   ],
   'apps/api/src/modules/employment/routes.ts#discloseDeletionBlock': [
@@ -8009,6 +8200,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/establishment/employment-check.ts#checksEmploymentCapacity',
     'apps/api/src/modules/transfer/access.ts#requireTransferSource',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
+    'apps/api/src/modules/transfer/same-order-guard.ts#transferReceiptNames',
     'apps/api/src/modules/transfer/service.ts#requireDirectTransfer',
   ],
   'apps/api/src/modules/employment/routes.ts#importEmployment': [
@@ -8058,14 +8250,19 @@ export const GRAPH: Graph = {
     '#routesToCancel',
     '#transitionConfirmation',
     '#transitionControls',
+    '#transitionWriteGuard',
     'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
-    'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
+  ],
+  'apps/api/src/modules/employment/routes.ts#requireDraftEditWrite': [
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    '#writeIsCommandOnly',
+    'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
   ],
   'apps/api/src/modules/employment/routes.ts#requireImportTransferAccess': [
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
@@ -8084,14 +8281,24 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#pageQuery',
   ],
   'apps/api/src/modules/employment/routes.ts#route:GET /businesses/:id': [
-    'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead',
     'apps/api/src/modules/employment/context.ts#queryDate',
     'apps/api/src/modules/employment/context.ts#readPageContext',
-    'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
+    'apps/api/src/modules/employment/read-decision.ts#decideEmploymentRead',
     '#shownBusiness',
     'apps/api/src/modules/job/context.ts#uuidParam',
-    'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
+  ],
+  'apps/api/src/modules/employment/routes.ts#route:GET /businesses/:id/field-origins': [
+    'apps/api/src/modules/employment/approval-content.ts#selectEmploymentRead',
+    'apps/api/src/modules/employment/context.ts#queryDate',
+    'apps/api/src/modules/employment/context.ts#readPageContext',
+    'apps/api/src/modules/employment/field-origins-read.ts#frozenOriginRows',
+    'apps/api/src/modules/employment/field-origins-read.ts#liveOriginRows',
+    'apps/api/src/modules/employment/field-origins-read.ts#loadOriginFacts',
+    'apps/api/src/modules/employment/read-decision.ts#decideEmploymentRead',
+    '#shownBusiness',
+    '#withUnifiedNotFound',
+    'apps/api/src/modules/job/context.ts#uuidParam',
   ],
   'apps/api/src/modules/employment/routes.ts#route:GET /completion-todos': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
@@ -8161,20 +8368,21 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/routes.ts#route:PATCH /businesses/:id': [
     'apps/api/src/modules/employment/activation-checks.ts#withEstablishmentConfirmation',
     'apps/api/src/modules/employment/context.ts#readContext',
-    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/regularization.ts#updateRegularizationApplication',
     'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard',
     '#authorizeBusinessWrite',
+    '#inTenant',
     '#patchContext',
     '#readBusinessPatch',
+    '#requireDraftEditWrite',
     '#requireResultApplicable',
+    '#sameOrderTarget',
     'apps/api/src/modules/employment/write-service.ts#updateEmploymentBusiness',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
-    'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
@@ -8207,6 +8415,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
+    'apps/api/src/modules/transfer/same-order-guard.ts#transferReceiptNames',
   ],
   'apps/api/src/modules/employment/routes.ts#route:POST /custom-fields': [
     'apps/api/src/modules/employment/configuration.ts#createCustomField',
@@ -8356,6 +8565,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#businessState',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
   ],
+  'apps/api/src/modules/employment/routes.ts#sameOrderTarget': [
+    'apps/api/src/modules/transfer/same-order-guard.ts#transferReceiptNames',
+  ],
   'apps/api/src/modules/employment/routes.ts#shownBusiness': [
     'apps/api/src/modules/employment/approval-content.ts#composeBusiness',
     'apps/api/src/modules/employment/approval-content.ts#disclosedBy',
@@ -8370,6 +8582,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/establishment-confirmation.ts#deleteConfirmed',
     '#parse',
     '#submitControlSchema',
+  ],
+  'apps/api/src/modules/employment/routes.ts#transitionWriteGuard': [
+    'apps/api/src/modules/employment/field-origin-write.ts#requireSavedValuesApplicable',
+    '#authorizeTransition',
+    '#sameOrderTarget',
+    'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard',
   ],
   'apps/api/src/modules/employment/status-hooks.ts#employeeStatusHooks': ['#hookContext', '#subscribers'],
   'apps/api/src/modules/employment/status-hooks.ts#registerEmployeeStatusHooks': ['#registry'],
@@ -8450,6 +8668,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',
     '#employeeExists',
+    '#heldIds',
+    '#isSealed',
+    '#lockHeads',
     '#participants',
     '#settingKey',
   ],
@@ -8459,10 +8680,24 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/transfer-locks.ts#employeeExists': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#existingTransferEmployees': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#array',
+  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#heldIds': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#settingKey',
+  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#isSealed': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#sealKey',
+  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#lockHeads': ['#array'],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferBusiness': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#lockTransferParticipants',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#lockTransferHeads': ['#heldIds', '#lockHeads'],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants': ['#acquire'],
   'apps/api/src/modules/employment/transfer-locks.ts#participants': [
     'apps/api/src/modules/employment/exit-duty-participants.ts#pendingClearSubordinates',
@@ -8471,6 +8706,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#sealTransferLocks': ['#sealKey'],
+  'apps/api/src/modules/employment/transfer-locks.ts#transferLocksCover': ['#heldIds', '#participants'],
   'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
   ],
@@ -8538,6 +8775,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/timeline.ts#removeEmploymentTimeline',
     '#assertDeletionNotPaused',
     '#auditDeletedRecord',
+    '#timelineStartDate',
     'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -8563,6 +8801,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/transitions.ts#snapshotRecord': [
     'apps/api/src/modules/employment/read-model.ts#snapshotFields',
+  ],
+  'apps/api/src/modules/employment/transitions.ts#timelineStartDate': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/transitions.ts#transitionEmployment': [
     'apps/api/src/modules/employment/activation-checks.ts#assertEstablishmentCapacity',
@@ -8616,7 +8857,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/transitions.ts#transitionPermitted',
   ],
   'apps/api/src/modules/employment/write-service.ts#appendEmploymentPayload': [
-    'apps/api/src/modules/employment/field-origin-store.ts#appendFieldOrigins',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     '#storedStatus',
   ],
@@ -8641,6 +8881,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/write-service.ts#assertDirectTransferAllowed': [
     'apps/api/src/modules/employment/configuration.ts#readEmploymentSettings',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
   ],
   'apps/api/src/modules/employment/write-service.ts#assertEmployTypeUsage': ['#NEW_CYCLE_KINDS'],
   'apps/api/src/modules/employment/write-service.ts#assertNoInternCycleSuccessor': [
@@ -8715,13 +8956,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/write-service.ts#insertNewEmploymentCycle': [
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
   ],
+  'apps/api/src/modules/employment/write-service.ts#landingRows': [
+    'apps/api/src/modules/employment/field-origin-store.ts#FIELD_NOT_APPLICABLE',
+    'apps/api/src/modules/employment/field-origin-store.ts#applicabilityOf',
+  ],
   'apps/api/src/modules/employment/write-service.ts#latestTimelineRecord': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': [
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
     'apps/api/src/modules/employment/cycles.ts#assertNotBeforeCurrentCycle',
-    'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'apps/api/src/modules/employment/reporting-cycle.ts#windowBefore',
     'apps/api/src/modules/employment/timeline.ts#employmentTimelineNeighbors',
@@ -8742,6 +8986,7 @@ export const GRAPH: Graph = {
     '#notifyMaterialized',
     '#propagateMaterializedStatus',
     '#registerCompletion',
+    '#resolveLanding',
     '#validateMaterializedReferences',
     'apps/api/src/modules/transfer/required-fields.ts#assertRequiredTransferFields',
   ],
@@ -8750,16 +8995,38 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/rehire-seniority.ts#applyRehireSeniority',
   ],
   'apps/api/src/modules/employment/write-service.ts#normalizePatchedInput': [
+    'apps/api/src/modules/employment/field-origin-write.ts#discardedFormFields',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
+    '#omitUnchangedInheritedFields',
   ],
   'apps/api/src/modules/employment/write-service.ts#notifyMaterialized': [
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     'apps/api/src/modules/employment/status-hooks.ts#employeeStatusHooks',
   ],
+  'apps/api/src/modules/employment/write-service.ts#omitUnchangedInheritedFields': [
+    'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+    'packages/domain/src/employment/field-origins.ts#changedInputFields',
+  ],
   'apps/api/src/modules/employment/write-service.ts#payloadAudit': ['#customAudit'],
+  'apps/api/src/modules/employment/write-service.ts#prepareEditedPayload': [
+    'apps/api/src/modules/employment/field-origin-store.ts#settleFieldValues',
+    'apps/api/src/modules/employment/field-origin-write.ts#applySettledFields',
+    'apps/api/src/modules/employment/field-origin-write.ts#discardedFormFields',
+    'apps/api/src/modules/employment/field-origin-write.ts#endDiscardedFormOverrides',
+    'apps/api/src/modules/employment/field-origin-write.ts#fieldOriginEditor',
+    'apps/api/src/modules/employment/field-origin-write.ts#formFieldOrigins',
+    'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch',
+    'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
+  ],
   'apps/api/src/modules/employment/write-service.ts#propagateMaterializedStatus': [
     'apps/api/src/modules/employment/employee-status.ts#propagateEmployeeStatus',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/write-service.ts#recordLandingResolutions': [
+    'apps/api/src/modules/employment/field-origin-store.ts#settleFieldValues',
+    'apps/api/src/modules/employment/field-origin-write.ts#appendPayloadFieldOrigins',
+    'apps/api/src/modules/employment/inheritance.ts#resolveReopenedFields',
+    '#landingRows',
   ],
   'apps/api/src/modules/employment/write-service.ts#registerCompletion': [
     'apps/api/src/modules/transfer/completion.ts#openCompletion',
@@ -8777,6 +9044,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/write-service.ts#requireUnchangedExitDates': [
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitGate',
+  ],
+  'apps/api/src/modules/employment/write-service.ts#resolveLanding': [
+    'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
+    '#recordLandingResolutions',
   ],
   'apps/api/src/modules/employment/write-service.ts#saveEntryExtras': [
     'apps/api/src/modules/employment/entry-pending-contract.ts#saveAddedPendingEntryData',
@@ -8799,11 +9070,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/cycles.ts#assertNotBeforeCurrentCycle',
     'apps/api/src/modules/employment/employee-status.ts#inheritedStatus',
     'apps/api/src/modules/employment/exit-reschedule.ts#lockExitForEdit',
-    'apps/api/src/modules/employment/field-origin-write.ts#fieldOriginEditor',
-    'apps/api/src/modules/employment/field-origin-write.ts#formFieldOrigins',
     'apps/api/src/modules/employment/fields.ts#normalizeBusinessPatch',
-    'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch',
-    'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/regularization-eligibility.ts#assertRegularizationApplication',
     'apps/api/src/modules/employment/retire-rehire-waiting.ts#bindRehireRetirement',
@@ -8813,6 +9080,7 @@ export const GRAPH: Graph = {
     '#assertEmployTypeUsage',
     '#normalizePatchedInput',
     '#payloadAudit',
+    '#prepareEditedPayload',
     '#replanEditableExit',
     '#requireSavedBusiness',
     '#requireUnchangedExitDates',

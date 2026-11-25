@@ -1,6 +1,7 @@
 import type { ApplicationCommandRunner } from '../self-service/shared/application-command.js';
 import { useEffect, useMemo } from 'react';
 import { TransferForm, useTransferForm } from '../self-service/shared/index.js';
+import type { TransferDraftState } from '../self-service/shared/useTransferForm.js';
 import { employeeTransferAdapter } from './transfer-adapter.js';
 import type { Profile } from './types.js';
 import { text } from './messages.js';
@@ -10,14 +11,16 @@ export function EmployeeTransfer({
   profile,
   onSaved,
   runCommand,
+  pageDraft,
 }: {
   tenantId: string;
   profile: Profile;
   onSaved: () => void;
   runCommand?: ApplicationCommandRunner;
+  pageDraft?: TransferDraftState;
 }) {
   const adapter = useMemo(() => employeeTransferAdapter(profile), [profile]);
-  const state = useTransferForm(tenantId, 'employee', adapter, runCommand);
+  const state = useTransferForm(tenantId, 'employee', adapter, runCommand, undefined, false, pageDraft);
   useEffect(() => {
     if (state.saved) onSaved();
   }, [state.saved, onSaved]);

@@ -18,6 +18,8 @@ import {
 
 import { enqueueCollectionCreation, retireCollectionCreation } from './collection-jobs.js';
 import { retireCollectionSubmission } from './collection-approval.js';
+import { generateMaterialList } from './material-list.js';
+import { rebaseEntryPreparations } from './preparation-launch-state.js';
 
 const cases = onboardingEntryCases;
 const businesses = employmentBusinessObjects;
@@ -118,6 +120,7 @@ const lifecycle: EntryLifecyclePort = {
     if (created) {
       await auditCase(tx, ctx, 'create', null, created);
       await enqueueCollectionCreation(tx, ctx, created);
+      await generateMaterialList(tx, ctx, created);
       return created;
     }
     const current = await currentForUpdate(tx, ctx, entry);
@@ -140,6 +143,7 @@ const lifecycle: EntryLifecyclePort = {
       .where(and(eq(cases.tenantId, ctx.tenantId), eq(cases.id, current.id)))
       .returning();
     if (!updated) return unavailable();
+    await rebaseEntryPreparations(tx, ctx, updated);
     if (updated.state !== 'pending') {
       await retireCollectionCreation(tx, ctx, updated);
     }

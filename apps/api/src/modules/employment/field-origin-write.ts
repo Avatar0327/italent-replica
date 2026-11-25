@@ -1,11 +1,19 @@
 import { sql, type Tx } from '@italent/db';
-import { changedInputFields, requestInputFields, type FieldOriginInput } from '@italent/domain';
+import { FORM_DEPENDENCY_RESET, changedInputFields, requestInputFields, type FieldOriginInput } from '@italent/domain';
+import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { derivationFields } from './field-derivations.js';
-import { appendFieldOrigins, type FieldOriginDraft } from './field-origin-store.js';
+import {
+  appendFieldOrigins,
+  loadFieldOrigins,
+  sameValue,
+  settleFieldValues,
+  type FieldOriginDraft,
+  type SettledFields,
+} from './field-origin-store.js';
 import type { PreparedFormInheritance } from './inheritance.js';
-import { rowsOf, type EmploymentPayloadRow } from './record-store.js';
-import type { EmploymentContext, EmploymentRecord, NormalizedEmploymentInput } from './types.js';
+import { camelRow, rowsOf, snapshotFields, type EmploymentPayloadRow } from './record-store.js';
+import type { EmploymentContext, EmploymentRecord, NormalizedEmploymentInput, PresetFields } from './types.js';
 
 interface OriginActorOptions {
   readonly approvalEdit?: boolean;
@@ -57,6 +65,7 @@ export function formFieldOrigins(
 ): FieldOriginDraft[] {
   const { request = normalized, before, actor, businessId } = options;
   const changed = before ? changedInputFields(before, prepared) : new Set<string>();
+  // F-036 §4.4.1、DEC-977：整版重提带上的同值字段沿用已有来源。
   const entered = before ? changedInputFields(before, request) : requestInputFields(request);
   const byField = new Map<string, FieldOriginDraft>();
   for (const origin of prepared.formSnapshot.fieldDerivations ?? []) {
@@ -96,6 +105,61 @@ export function formFieldOrigins(
   return [...policies, ...byField.values()];
 }
 
+export function discardedFormFields(fields: Partial<PresetFields> | undefined) {
+  const discarded: ('directManagerId' | 'sequenceId')[] = [];
+  if (!fields) return discarded;
+  if (Object.hasOwn(fields, 'departmentId') && !Object.hasOwn(fields, 'directManagerId'))
+    discarded.push('directManagerId');
+  // DEC-107：交由新职务重新带出序列。
+  if (Object.hasOwn(fields, 'postId') && !Object.hasOwn(fields, 'sequenceId')) discarded.push('sequenceId');
+  return discarded;
+}
+
+export async function endDiscardedFormOverrides(
+  tx: Tx,
+  ctx: EmploymentContext,
+  before: EmploymentPayloadRow,
+  prepared: PreparedFormInheritance,
+  discarded: ReturnType<typeof discardedFormFields>,
+  origins: FieldOriginDraft[],
+) {
+  const fields = new Map(discarded.map((field) => [`preset:${field}`, field]));
+  for (const { fieldCode, originKind } of origins) if (originKind === 'derive') fields.delete(fieldCode);
+  for (const fieldCode of prepared.explicitFieldCodes) fields.delete(fieldCode);
+  if (!fields.size) return;
+  const states = await loadFieldOrigins(tx, ctx, before.businessId, [...fields.keys()]);
+  const changed = changedInputFields(before, prepared);
+  for (const [fieldCode, field] of fields) {
+    const override = states.get(fieldCode)?.override;
+    if (!override && !before.explicitFieldCodes.includes(fieldCode)) continue;
+    const dependency = field === 'sequenceId' ? 'postId' : 'departmentId';
+    // 同一引用带出的值沿用原派生来源；整版重提时可能再次带上引用。
+    if (override?.originKind === 'derive' && !changed.has(`preset:${dependency}`)) continue;
+    const policy = prepared.originPolicies.find((row) => row.fieldCode === fieldCode);
+    const index = origins.findIndex((row) => row.fieldCode === fieldCode);
+    if (index >= 0) origins.splice(index, 1);
+    // DEC-976：放弃旧依赖时，旧填写结束；此处的空值不同于仍会到期解析的延迟字段。
+    origins.push(
+      prepared.fields[field] == null && policy?.originKind !== 'deferred'
+        ? { fieldCode, originKind: 'none', value: null }
+        : (policy ?? { fieldCode, originKind: 'none', value: null }),
+    );
+    if (override)
+      origins.push({ fieldCode, originKind: 'fallback', refSeq: override.seq, reason: FORM_DEPENDENCY_RESET });
+  }
+}
+
+export function exitPlanOrigins(
+  before: Pick<EmploymentPayloadRow, 'effectiveDate' | 'lastWorkDate'>,
+  after: Pick<EmploymentPayloadRow, 'effectiveDate' | 'lastWorkDate'>,
+): FieldOriginDraft[] {
+  return (['effectiveDate', 'lastWorkDate'] as const).flatMap((field) =>
+    before[field] === after[field]
+      ? []
+      : [{ fieldCode: `preset:${field}`, originKind: 'hr-input', value: after[field] }],
+  );
+}
+
 export function copyFieldOrigins(previous: EmploymentRecord): FieldOriginDraft[] {
   return [
     ...Object.entries(previous.fields).map(([field, value]) => [`preset:${field}`, value] as const),
@@ -122,4 +186,72 @@ export function appendPayloadFieldOrigins(
     ctx,
     origins.map((row) => ({ ...row, payloadVersionId, employeeId, businessId, recordId })),
   );
+}
+
+/** 把 settleFieldValues 的判定结果并入候选态：字段值回到判定后的有效值，退回延迟的字段重新待定。 */
+export function applySettledFields<Prepared extends PreparedFormInheritance>(
+  prepared: Prepared,
+  settled: Pick<SettledFields, 'values' | 'deferred' | 'explicit'>,
+): Prepared {
+  if (!settled.values.size) return prepared;
+  const fields = { ...prepared.fields } as Record<string, unknown>;
+  const customFields = { ...prepared.customFields };
+  for (const [code, value] of settled.values) {
+    if (code.startsWith('preset:')) fields[code.slice('preset:'.length)] = value;
+    else customFields[code.slice('custom:'.length)] = value as never;
+  }
+  // 台账接管的字段，显式 / 待定标记都以折叠结果为准，不再沿用候选态里的旧标记。
+  const taken = new Set(settled.values.keys());
+  return {
+    ...prepared,
+    fields: fields as unknown as PresetFields,
+    customFields,
+    explicitFieldCodes: [...prepared.explicitFieldCodes.filter((code) => !taken.has(code)), ...settled.explicit],
+    deferredFieldCodes: [
+      ...new Set([...prepared.deferredFieldCodes.filter((code) => !taken.has(code)), ...settled.deferred]),
+    ],
+  };
+}
+
+/**
+ * F-036 §4.6 J5：提交前（含同键命令重放，返回台账缓存之前）只读地复判已保存字段值的适用性。
+ * 判定出现回落 / 恢复只说明某一层候选值的适用性变了；保存值是否过期要看 §5.3 折叠后的有效值与待定状态
+ * 是否还和保存的一致：下层继承值失效而同部门覆盖值仍适用时，保存值依旧有效，放行；
+ * 有效保存值确实失效（或失效的层原本在生效）才 409，让客户端刷新后重新保存。只读，不追加来源行。
+ * 调用顺序见 sameOrderWriteGuard 的 afterScope：授权与业务写范围复核都通过之后。
+ */
+export async function requireSavedValuesApplicable(
+  tx: Tx,
+  ctx: Pick<EmploymentContext, 'tenantId'>,
+  businessId: string,
+) {
+  const [row] = rowsOf<Record<string, unknown>>(
+    await tx.execute(sql`
+      SELECT * FROM employment_payload_versions
+      WHERE tenant_id = ${ctx.tenantId} AND business_id = ${businessId}::uuid
+      ORDER BY version_no DESC LIMIT 1
+    `),
+  );
+  if (!row) return;
+  const payload = camelRow(row);
+  const savedDeferred = new Set(payload.deferredFieldCodes as string[]);
+  const settled = await settleFieldValues(tx, ctx, businessId, {
+    fields: snapshotFields(payload),
+    deferredFieldCodes: [...savedDeferred],
+  });
+  const decided = new Set(
+    settled.origins
+      .filter(({ originKind }) => originKind === 'fallback' || originKind === 'restore')
+      .map(({ fieldCode }) => fieldCode),
+  );
+  const saved = (code: string) =>
+    code.startsWith('preset:')
+      ? (snapshotFields(payload) as unknown as Record<string, unknown>)[code.slice('preset:'.length)]
+      : (payload.customFields as Record<string, unknown> | undefined)?.[code.slice('custom:'.length)];
+  const stale = [...decided].some(
+    (code) =>
+      !sameValue(saved(code), settled.values.get(code)) || savedDeferred.has(code) !== settled.deferred.has(code),
+  );
+  if (stale)
+    throw new AppError('CONFLICT', '已保存的字段值不再适用，请刷新后重新保存', { reason: 'FIELD_NOT_APPLICABLE' });
 }

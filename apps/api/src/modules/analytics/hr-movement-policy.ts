@@ -30,6 +30,9 @@ export const HR_MOVEMENT_POLICIES = defineTable('hr-movement', {
       'hr-movement-routes.ts 明细：固定键，items 只含范围内的 ID',
     ),
   ),
+  [`GET ${HR_MOVEMENT_BASE}/components/:code/export`]: board(
+    fixed(['file'], 'hr-movement-routes.ts 下载：CSV 固定为范围内明细的 id、employeeId、organizationId'),
+  ),
   [`GET ${HR_MOVEMENT_BASE}/reports/:report`]: report(
     fixed(
       ['asOf', 'report', 'name', 'kind', 'year', 'month', 'hasDataPermission', 'tables'],

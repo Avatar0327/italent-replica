@@ -7,7 +7,13 @@ import { queueTransferLinkage, validateTransferSubordinates } from './transfer-l
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { type Tx } from '@italent/db';
-import { changedInputFields, requestInputFields, tenantLocalDate, type FieldOriginKind } from '@italent/domain';
+import {
+  changedInputFields,
+  requestInputFields,
+  SAME_VALUE_CONFIRMATION,
+  tenantLocalDate,
+  type FieldOriginKind,
+} from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { getCustomFieldsForInheritance } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
@@ -258,7 +264,7 @@ async function confirmedRecordOrigins(
     const writer = states.get(fieldCode)?.lastWriter;
     if (writer && MANUAL_ORIGINS.has(writer.originKind) && JSON.stringify(writer.value) === JSON.stringify(value))
       continue;
-    rows.push({ fieldCode, originKind: 'hr-record', value });
+    rows.push({ fieldCode, originKind: 'hr-record', value, reason: SAME_VALUE_CONFIRMATION });
   }
   return rows;
 }

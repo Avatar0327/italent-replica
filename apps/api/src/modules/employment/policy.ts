@@ -119,6 +119,7 @@ const ASSESSMENT = MODULE_OBJECTS.probationAssessment.code;
 const NF_EMPLOYEE = denied(404, 'NOT_FOUND', '员工不存在');
 const NF_DATA = denied(404, 'NOT_FOUND', '任职数据不存在');
 const NF_BUSINESS = denied(404, 'NOT_FOUND', '任职业务不存在');
+const NF_ENTRY_SIGN_SOURCE = denied(404, 'NOT_FOUND', '入职记录不存在');
 const NF_RECORD = denied(404, 'NOT_FOUND', '任职记录不存在');
 const NF_TRANSFER = denied(404, 'NOT_FOUND', '调动不存在');
 const NF_PART_TIME = denied(404, 'NOT_FOUND', '兼职记录不存在');
@@ -751,13 +752,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   ),
   // ---- transfer/routes.ts：调动预览与发起 ----------------------------------------------------------------------------
   // 只读预览：normalizeTransferInput（transfer.previewInput：结构 400、本人入口只读字段 403、入口 / 表单不匹配 400）；
-  // previewTransfer → requireTransferSource(initiator)（按钮 + 绑定 + 源范围）→ 有目标部门时 requireScopedEmploymentObject；
+  // previewTransfer → requireTransferSource(initiator)（按钮 + 绑定 + 源范围）→ 员工发起时按字段写权判定（employeePreviewWrite，
+  // DEC-205，先于表单校验）→ 有目标部门时 requireScopedEmploymentObject；
   // 响应：trimEmploymentResponse + visibleTransferForm（fieldModes 按可见 / 可编辑降级）+ allowedActions 布尔披露
   'POST /transfers/employees/:id/preview': object({
     object: EMPLOYMENT,
     operation: 'view',
     button: INITIATOR_BUTTON,
-    guards: ['transfer.direct', 'transfer.previewInput', TRANSFER_SOURCE],
+    guards: ['transfer.direct', 'transfer.previewInput', 'employment.employeePreviewWrite', TRANSFER_SOURCE],
     scope: guardScope('transfer.previewScope', NF_EMPLOYEE),
     fields: projector('transfer.preview', 'transfer.preview'),
     write: previewWrite,
@@ -1049,6 +1051,17 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: RESPONSE,
     ...byId,
   }),
+  // 字段来源（F-036-S5，设计 §4.9）：与业务详情同一批读上下文 / 守卫，字段与值只取详情会返回的那份内容；
+  // 定位业务三步的 404 / 403 归一为 404「任职业务不存在」（只读，不写审计、不带命令 ID）
+  'GET /businesses/:id/field-origins': object({
+    guards: ['transfer.source'],
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: INITIATOR_BUTTON,
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
+    fields: RESPONSE,
+    ...byId,
+  }),
   // 记录详情：loadEmploymentRecord（DEC-177 可见）→ 404「任职记录不存在」→ requirePermission(tenant.employment.read, employeeId)
   'GET /records/:id': object({
     object: EMPLOYMENT,
@@ -1185,6 +1198,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 每项带 probation（F-188，待入职试用期，没填过 null）、probationMonths / contractCompanyId（BE-14b2，Offer 同步带来，
   // 其他为 null）与 contractStartDate / contractEndDate（F-194，待入职合同起止日，存量 / 已办理入职为 null；
   // 控制项显式投影，权限沿用待入职列表本身的对象与字段权限，不另要求合同对象权限）；
+  // preparationStatus（BE-16 16a-3a）由当前阶段与准备任务投影，按任职字段查看权裁剪。
   // cancelRemark（F-206，DEC-560）：最近一次取消动作的说明，无则 null，行可见即可见；
   // 记录字段按任职记录可见字段裁剪，姓名 / 工号按人员对象可见字段另行裁剪；hasDataPermission 协议键
   // 采集列另按采集对象状态字段与行范围披露，筛选和排序复用相同判定（BE-16 16a-2a）。
@@ -1193,8 +1207,16 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     operation: 'view',
     button: noButton('列表无按钮'),
     scope: listScope('module.scopeSql'),
+    guards: ['onboarding.entryMaterialProjection'],
     fields: projector('employment.response', 'employment.entryViews'),
     optional: {
+      materialStatus: object({
+        object: 'TenantBase.OnboardingMaterial',
+        operation: 'view',
+        button: noButton('材料状态列可选披露'),
+        scope: listScope('onboarding.materialEntryScope'),
+        fields: projector('onboarding.materialStatusScope', 'materialStatus'),
+      }),
       collectionStatus: object({
         object: 'TenantBase.OnboardingCollection',
         operation: 'view',
@@ -1795,6 +1817,57 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     auditedConfigWrite('employment_custom_field'),
     { ...byId, guards: ['employment.customFieldWrite'] },
   ),
+
+  'GET /pending-entries/:id/esign-context': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_ENTRY_SIGN_SOURCE),
+    fields: fixed(['sourceId', 'revision', 'canInitiate', 'reason', 'items'], 'F-505 §8 入职选项固定形状'),
+    ...byId,
+  }),
+  'POST /pending-entries/:id/esign-tasks': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_ENTRY_SIGN_SOURCE),
+    fields: fixed(['sourceId', 'taskId'], 'F-505 §5 固定来源和任务回执'),
+    guards: ['esign.sourceVariables'],
+    write: {
+      ...commandWrite(
+        'esign.task.audited',
+        { generic: { targets: 'sourceId', locator: 'employment.business' } },
+        {
+          controls: ['templateIds'],
+          preconditions: ['esign.entryEligibility', 'esign.revision', 'esign.templates', 'esign.noSigning'],
+        },
+      ),
+      // 模板 ID 是命令参数；剔除后正好是服务端送授权器的空业务字段集合。
+      fields: 'body',
+    },
+    ...byId,
+  }),
+  'GET /pending-entries/:id/esign-records': all(
+    [
+      object({
+        object: EMPLOYMENT,
+        operation: 'view',
+        button: noButton('只读当前入职来源'),
+        scope: pointScope({ param: 'id' }, 'employment.record', NF_ENTRY_SIGN_SOURCE, `${EMPLOYMENT}.detail`),
+        fields: noFields('只定位来源，不返回任职字段'),
+      }),
+      object({
+        object: MODULE_OBJECTS.eSignRecord.code,
+        operation: 'view',
+        button: noButton('签署历史复用记录查看权'),
+        scope: listScope('esign.recordOwner', `${MODULE_OBJECTS.eSignRecord.code}.list`),
+        fields: shape('esign.record'),
+      }),
+    ],
+    shape('esign.record'),
+    byId,
+  ),
+
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（34 EN-R8 / R9 / R10 / R14）---------------------------------
   // 办理入职：If-Match = 业务 revision；body 严格 { probation, contract? }（400；contract = 合同字段白名单，BE-2b，同事务调
   // generateContractForBusiness，合同权限 / 范围按合同对象重验，失败整笔回滚；

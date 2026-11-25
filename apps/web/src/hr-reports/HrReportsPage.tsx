@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { m } from './messages.js';
-import { base, reportOf, type CatalogItem } from './model.js';
+import { base, catalogReportOf, type CatalogItem } from './model.js';
 import { ReportReadState } from './ReportReadState.js';
 import { ReportView } from './ReportView.js';
 import { useReportRead } from './useReportRead.js';
@@ -51,7 +51,7 @@ export function HrReportsPage() {
   const navigate = useNavigate();
   const path = location.pathname.replace(/\/$/, '').split('/').slice(2);
   const code = path.length === 1 ? decodeURIComponent(path[0]!) : '';
-  const report = reportOf(code);
+  const report = catalogReportOf(code);
   let content = <Alert type="error" message={m.missing} />;
   if (path.length === 0) content = <Catalog />;
   else if (report) content = <ReportView key={code} report={report} back={() => navigate('/hr-reports')} />;

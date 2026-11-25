@@ -60,12 +60,24 @@ async function shiftRehireDate(
     commandId: ctx.commandId,
   };
   const { fields, ...metadata } = next;
-  await insertEmploymentRow(tx, 'employment_payload_versions', {
-    ...metadata,
-    ...fields,
-    createdAt: ctx.now.toISOString(),
-  });
-  business.payload = next;
+  const markers = await insertEmploymentRow(
+    tx,
+    'employment_payload_versions',
+    { ...metadata, ...fields, createdAt: ctx.now.toISOString() },
+    {
+      ctx,
+      origins: [
+        {
+          fieldCode: 'preset:effectiveDate',
+          originKind: 'system-input',
+          value: date,
+          sourceBusinessId: retirementId,
+          reason: 'RETIRE_REHIRE_AFTER_RETIREMENT',
+        },
+      ],
+    },
+  );
+  business.payload = { ...next, ...markers };
   await refreshApprovedDashboardDate(tx, ctx, 'employment', business.id, date);
   if (bumpRevision)
     await tx.execute(sql`UPDATE employment_business_objects SET revision=revision+1
