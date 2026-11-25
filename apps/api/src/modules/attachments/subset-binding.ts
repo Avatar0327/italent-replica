@@ -87,10 +87,33 @@ export async function bindSubsetAttachments(tx: Tx, ctx: BindingContext, input: 
       expiresAt: null,
     });
   }
-  for (const id of removed) {
+  await releaseFiles(tx, ctx, files, removed, input.recordId);
+}
+
+type LockedFiles = Awaited<ReturnType<typeof lockFiles>>;
+async function releaseFiles(tx: Tx, ctx: BindingContext, files: LockedFiles, ids: readonly string[], recordId: string) {
+  for (const id of ids) {
     const row = files.get(id);
     const owned =
-      row?.status === 'bound' && row.businessType === SUBSET_BUSINESS_TYPE && same(row.businessId, input.recordId);
+      row?.status === 'bound' &&
+      row.businessType === SUBSET_BUSINESS_TYPE &&
+      row.businessId?.toLowerCase() === recordId.toLowerCase();
     if (owned) await move(tx, ctx, row, 'unbind', { status: 'pending_cleanup', cleanupAt: ctx.now });
   }
+}
+
+/**
+ * 16a-2c 受信撤回契约（设计 §4.1 第 7 条）：撤回删行时解除该记录的全部附件绑定，转 pending_cleanup。
+ * 只解绑，不新增 / 更换引用，所以不走 DEC-937 的来源校验；候选人侧仍不能直接写附件引用。
+ */
+export async function unbindSubsetAttachments(
+  tx: Tx,
+  ctx: BindingContext,
+  kind: SubsetKind,
+  recordId: string,
+  previous: Values | null,
+): Promise<void> {
+  const ids = [...refsOf(kind, previous).keys()].filter((id) => UUID.test(id));
+  if (!ids.length) return;
+  await releaseFiles(tx, ctx, await lockFiles(tx, ctx.tenantId, ids), ids, recordId);
 }

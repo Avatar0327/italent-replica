@@ -259,7 +259,7 @@ it('AC-EN-04 新增入职取消后撤回：保留姓名与邮箱，清空资料�
   const versions = await x.query(sql`SELECT mobile_phone FROM personnel_employee_versions
     WHERE tenant_id=${x.ctx.tenantId} AND employee_id=${x.employee.id}::uuid ORDER BY revision`);
   expect(versions.map((row) => row.mobile_phone)).toContain('ZZ_BE16_SUBMITTED_PHONE');
-  const audits = await x.query(sql`SELECT action FROM audit_logs WHERE tenant_id=${x.ctx.tenantId}
+  const audits = await x.query(sql`SELECT action FROM audit_events WHERE tenant_id=${x.ctx.tenantId}
     AND action LIKE 'onboarding.collection_task.withdraw%'`);
   expect(audits).toHaveLength(1);
 });
