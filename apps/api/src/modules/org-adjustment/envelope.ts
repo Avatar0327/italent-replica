@@ -17,6 +17,16 @@ type Issue = Readonly<Record<string, unknown>>;
 const sees = (viewable: Viewable, ...codes: string[]) => !viewable || codes.every((code) => viewable.has(code));
 const without = (issue: Issue, key: string) => Object.fromEntries(Object.entries(issue).filter(([k]) => k !== key));
 
+/**
+ * 越界 / 停用等错误里的组织 ID 来自哪个对象字段（第 6 轮 P2-1）：问题或错误 details 可带 `field`（内部标记，输出前一律去掉），
+ * 组织 ID 随该字段的查看权；缺省 = 目标组织。命中新上级时按 `orgItems.parentOrgId` 判，不拿目标组织的权限代判。
+ */
+export const TARGET_ORG_FIELD = 'orgItems.targetOrgId';
+export const PARENT_ORG_FIELD = 'orgItems.parentOrgId';
+export const TRANSFER_DEPARTMENT_FIELD = 'transferItems.departmentId';
+const FIELD_KEY = 'field';
+const sourceField = (issue: Issue) => (typeof issue[FIELD_KEY] === 'string' ? issue[FIELD_KEY] : TARGET_ORG_FIELD);
+
 export const ORG_CODE_DUPLICATE = 'ORG_CODE_DUPLICATE';
 /** 编码重复的文案；看不到 `orgItems.code` 时不带编码（保存的 409 与整单校验问题共用）。 */
 export const codeUsedMessage = (code?: string) =>
@@ -34,11 +44,12 @@ function hideUsedCode(issue: Issue, viewable: Viewable): Issue {
 
 /** 逐条裁剪问题；看得见时原样返回。 */
 export function trimIssues<T extends object>(issues: readonly T[], viewable: Viewable): T[] {
-  const itemOrg = sees(viewable, 'orgItems.targetOrgId');
   const headOrgs = sees(viewable, 'approvalSubjectOrgId', 'adjustmentRange');
   return issues.map((issue) => {
     if ('section' in issue) {
-      return hideUsedCode(itemOrg ? issue : without(issue as Issue, 'orgId'), viewable) as T;
+      const row = issue as Issue;
+      const shown = sees(viewable, sourceField(row)) ? row : without(row, 'orgId');
+      return hideUsedCode(without(shown, FIELD_KEY), viewable) as T;
     }
     return (headOrgs ? issue : without(issue as Issue, 'orgIds')) as T;
   });
@@ -73,14 +84,17 @@ export function foldHiddenError(error: unknown, hiddenItemIds: ReadonlySet<strin
 
 /** 校验类错误的 details：`items` 逐条裁剪；顶层 `orgIds` / `orgId` 与头 / 明细问题同口径。其它错误原样返回。 */
 export function trimError(error: unknown, viewable: Viewable): unknown {
-  if (!(error instanceof AppError) || !viewable || !error.details || typeof error.details !== 'object') return error;
+  if (!(error instanceof AppError) || !error.details || typeof error.details !== 'object') return error;
   const hidden = hideUsedCode({ message: error.message, details: error.details }, viewable);
   const message = hidden.message as string;
   let details = hidden.details as Issue;
   if (Array.isArray(details.items)) details = { ...details, items: trimIssues(details.items as Issue[], viewable) };
-  if (!sees(viewable, 'orgItems.targetOrgId')) details = without(details, 'orgId');
-  if (!sees(viewable, 'approvalSubjectOrgId', 'adjustmentRange')) details = without(details, 'orgIds');
-  return new AppError(error.code, message, details);
+  // 顶层组织 ID 随命中的字段（缺省目标组织）；带 field 的 `orgIds` 同样按该字段判，不带 field 的是头问题。
+  const field = sourceField(details);
+  if (!sees(viewable, field)) details = without(details, 'orgId');
+  const headIds = FIELD_KEY in details ? [field] : ['approvalSubjectOrgId', 'adjustmentRange'];
+  if (!sees(viewable, ...headIds)) details = without(details, 'orgIds');
+  return new AppError(error.code, message, without(details, FIELD_KEY));
 }
 
 /**

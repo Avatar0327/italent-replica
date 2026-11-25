@@ -48,14 +48,32 @@ export function rawFacts(observed: ObservedRoute): string[] {
   return Object.entries(observed.primitives).flatMap(([dim, names]) => names.map((name) => `${dim}:${name}`));
 }
 
-/** 事实只由“或”分支的准入义务承接（分支专属守卫，第 5 轮 P2-3）。 */
-const isBranchOnly = (claimers: readonly Obligation[]) =>
-  claimers.length > 0 && claimers.every((o) => isAdmission(o) && o.or);
+/**
+ * 审定过的分支专属守卫（第 5 轮 P2-3，第 6 轮 P2-2 收紧）：守卫名 → 它只属于的“或”分支（组:备选）。
+ * 这两个守卫（来源员工、联动授权）只在单行刷新的 section = transfer 分支里判（rebaseTransferRoute → gate.rejudge → saveRow），
+ * 第二道比较“每个备选都要有该守卫”对它们不成立。新增条目属于共享口径变更，须随审查确认。
+ */
+export const BRANCH_OWNED_GUARDS: Readonly<Record<string, string>> = {
+  'transfer.source': 'section:transfer',
+  'employment.linkage': 'section:transfer',
+};
+
+/**
+ * 守卫事实只由“同名守卫义务 + 审定过的分支归属”承接时才豁免：承接者必须全是准入义务、权限键正是 `guard:<该名>`、
+ * 且 `or` 恰为登记的分支。按钮等其它义务带 `or` 去认领守卫事实不算（那样删掉守卫义务、把事实挂到同分支按钮上，
+ * 声明少了守卫也零发现，第 6 轮 P2-2）；缺登记的守卫名一律不豁免，照常逐备选比较。
+ */
+const isBranchOnly = (name: string, claimers: readonly Obligation[]) =>
+  claimers.length > 0 &&
+  claimers.every((o) => isAdmission(o) && o.perm === `guard:${name}` && o.or === BRANCH_OWNED_GUARDS[name]);
 
 /** 观测到、但只属于某个“或”分支的守卫名：不进“每个备选都要有”，也不算声明过度。 */
 export function branchOnlyGuards(observed: ObservedRoute, obligations: readonly Obligation[]): string[] {
   return (observed.primitives['guard'] ?? []).filter((name) =>
-    isBranchOnly(obligations.filter((o) => o.facts?.includes(`guard:${name}`))),
+    isBranchOnly(
+      name,
+      obligations.filter((o) => o.facts?.includes(`guard:${name}`)),
+    ),
   );
 }
 
@@ -73,7 +91,7 @@ export function admissionPrimitives(
       if (registeredOnly && !claimers.length && PERMISSION_DIMENSIONS.has(dim)) return false;
       // 守卫事实只由“或”分支的准入义务承接时，按分支的归属由 R1 逐备选核对（第 5 轮 P2-3：来源员工 / 联动守卫只在
       // section:transfer 备选）；第二道比较“每个备选都要有该守卫”对这类分支专属守卫不成立，不进准入比较。
-      if (dim === 'guard' && isBranchOnly(claimers)) return false;
+      if (dim === 'guard' && isBranchOnly(name, claimers)) return false;
       return !claimers.length || claimers.some(isAdmission);
     });
     if (kept.length) out[dim] = kept;

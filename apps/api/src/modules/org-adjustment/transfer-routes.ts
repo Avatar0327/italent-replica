@@ -15,7 +15,8 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { parseBody, revision, uuidParam } from '../job/context.js';
-import { getModuleViewableFields } from '../permission/module-access.js';
+import { getModuleViewableFields, getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
+import { trimError } from './envelope.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { button, objectContext, writeFields } from '../permission/module-route-access.js';
 import { ADJUSTMENT_NOT_FOUND, HEAD_BUTTONS } from './access.js';
@@ -156,8 +157,13 @@ async function transferCommand(
       },
     },
     execute: async (tx, commandId) => {
-      const written = await command.execute(tx, { ...ctx, commandId });
-      return { status: written.status, body: written.result };
+      try {
+        const written = await command.execute(tx, { ...ctx, commandId });
+        return { status: written.status, body: written.result };
+      } catch (error) {
+        // 越界等错误带出的组织 ID 随命中字段的查看权（来源 / 目标部门随 transferItems.departmentId，第 6 轮 P2-1）
+        throw trimError(error, await getModuleViewableFieldsInTransaction(deps, ctx, OBJECT, tx));
+      }
     },
   });
   const written = result.body as TransferResult;

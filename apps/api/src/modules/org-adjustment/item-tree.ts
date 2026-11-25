@@ -15,6 +15,7 @@ import {
 import { AppError } from '../../errors.js';
 import { loadOrgSnapshot, type OrgRecord } from '../org/read-model.js';
 import type { OrgWriteContext } from '../org/validation.js';
+import { PARENT_ORG_FIELD, TARGET_ORG_FIELD } from './envelope.js';
 import { loadItems, type OrgItem } from './items-store.js';
 import type { AdjustmentView } from './service.js';
 import { loadTransfers, sourceDepartments, type TransferItem } from './transfer-items-store.js';
@@ -72,13 +73,16 @@ export function rangeNodes(world: ItemWorld, items: readonly OrgItem[]): Adjustm
  */
 export function outOfRange(world: ItemWorld, items: readonly OrgItem[], range: readonly string[]) {
   const nodes = rangeNodes(world, items);
-  const misses: { itemId: string; orgId: string }[] = [];
+  const misses: { itemId: string; orgId: string; field: string }[] = [];
   for (const item of items) {
-    const refs = item.adjustType === 1 ? [itemRef(item.id)] : [orgRef(item.targetOrgId!)];
+    // 每个待判的组织带上它的字段来源：信封里的 orgId 随命中字段的查看权，不一律按目标组织（第 6 轮 P2-1）。
+    const refs = [
+      { ref: item.adjustType === 1 ? itemRef(item.id) : orgRef(item.targetOrgId!), field: TARGET_ORG_FIELD },
+    ];
     const parent = item.adjustType === 2 ? parentRef(item) : null;
-    if (parent) refs.push(parent);
-    const miss = refs.find((ref) => !isInAdjustmentRange(ref, range, nodes));
-    if (miss) misses.push({ itemId: item.id, orgId: miss.id });
+    if (parent) refs.push({ ref: parent, field: PARENT_ORG_FIELD });
+    const miss = refs.find(({ ref }) => !isInAdjustmentRange(ref, range, nodes));
+    if (miss) misses.push({ itemId: item.id, orgId: miss.ref.id, field: miss.field });
   }
   return misses;
 }
@@ -86,7 +90,11 @@ export function outOfRange(world: ItemWorld, items: readonly OrgItem[], range: r
 export function assertInRange(world: ItemWorld, items: readonly OrgItem[], item: OrgItem) {
   const [miss] = outOfRange(world, items, world.view.adjustmentRange).filter((m) => m.itemId === item.id);
   if (miss) {
-    throw new AppError('VALIDATION_FAILED', '组织不在本单调整范围内', { reason: OUT_OF_RANGE, orgId: miss.orgId });
+    throw new AppError('VALIDATION_FAILED', '组织不在本单调整范围内', {
+      reason: OUT_OF_RANGE,
+      orgId: miss.orgId,
+      field: miss.field,
+    });
   }
 }
 

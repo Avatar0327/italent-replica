@@ -14,6 +14,7 @@ import { findCurrentRecord } from '../employment/read-model.js';
 import { rowsOf } from '../employment/record-store.js';
 import { invalid } from '../org/validation.js';
 import type { TransferInput } from '../transfer/service.js';
+import { TRANSFER_DEPARTMENT_FIELD } from './envelope.js';
 import { ROW_NOT_FOUND } from './hidden-rows.js';
 import { bumpRevision } from './items-store.js';
 import { itemRef, loadWorld, orgRef, OUT_OF_RANGE, rangeNodes, type ItemWorld } from './item-tree.js';
@@ -323,6 +324,7 @@ export function assertTransferInRange(world: ItemWorld, row: TransferItem, sourc
       reason: OUT_OF_RANGE,
       section: 'transfer',
       orgId: miss,
+      field: TRANSFER_DEPARTMENT_FIELD,
     });
   }
 }

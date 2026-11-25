@@ -21,18 +21,21 @@ export interface ItemIssue {
   readonly reason: string;
   readonly message: string;
   readonly orgId?: string;
+  /** 组织 ID 的字段来源（内部标记，envelope.ts 按它裁剪后去掉）；缺省 = 目标组织。 */
+  readonly field?: string;
   /** 编码重复时被占用的编码；随 `orgItems.code` 查看权（envelope.ts）。 */
   readonly code?: string;
 }
 
 export const BASELINE_CHANGED = 'ORG_ADJUSTMENT_BASELINE_CHANGED';
 const idsSql = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
-const issue = (item: OrgItem, reason: string, message: string, orgId?: string): ItemIssue => ({
+const issue = (item: OrgItem, reason: string, message: string, orgId?: string, field?: string): ItemIssue => ({
   section: 'org',
   itemId: item.id,
   reason,
   message,
   ...(orgId && { orgId }),
+  ...(orgId && field && { field }),
 });
 
 export async function checkOrgItems(tx: Tx, world: ItemWorld, now: Date): Promise<ItemIssue[]> {
@@ -150,12 +153,19 @@ async function stopIssues(tx: Tx, world: ItemWorld, live: readonly OrgItem[]) {
 function fromError(item: OrgItem, error: unknown): ItemIssue {
   const codes = ['VALIDATION_FAILED', 'CONFLICT', 'NOT_FOUND'];
   if (!(error instanceof AppError) || !codes.includes(error.code)) throw error;
-  const details = (error.details ?? {}) as { reason?: string; orgId?: string; orgIds?: string[]; code?: string };
+  const details = (error.details ?? {}) as {
+    reason?: string;
+    orgId?: string;
+    orgIds?: string[];
+    code?: string;
+    field?: string;
+  };
   const found = issue(
     item,
     details.reason ?? 'ORG_ADJUSTMENT_ITEM_INVALID',
     error.message,
     details.orgId ?? details.orgIds?.[0],
+    details.field,
   );
   return details.reason === ORG_CODE_DUPLICATE && details.code ? { ...found, code: details.code } : found;
 }
