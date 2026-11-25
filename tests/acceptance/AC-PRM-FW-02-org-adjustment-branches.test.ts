@@ -45,10 +45,11 @@ const anyNode = (): Node => {
   return found;
 };
 /** 把 any 节点换成给定的备选（单个备选直接替换）。 */
-const withBranch = (replacement: RoutePolicy): RoutePolicy => ({
-  ...root(real),
-  of: root(real).of!.map((n) => ((n as Node).kind === 'any' ? replacement : n)),
-});
+const withBranch = (replacement: RoutePolicy): RoutePolicy =>
+  ({
+    ...root(real),
+    of: root(real).of!.map((n) => ((n as Node).kind === 'any' ? replacement : n)),
+  }) as RoutePolicy;
 const check = (policy: RoutePolicy) =>
   checkRoute(KEY, REQUIRED[KEY]!, { ...real, policy }, observed).map((f) => `${f.code}: ${f.detail}`);
 const permsOf = (policy: RoutePolicy) => declaredPerms(policy).alternatives.map((alt) => [...alt.keys()]);
