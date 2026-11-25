@@ -15,8 +15,9 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { disclosedFields } from '../approval/disclosure.js';
-import { foreignVisibility, type ForeignVisible } from '../approval/foreign-fields.js';
+import { capForeign, foreignVisibility, type ForeignVisible } from '../approval/foreign-fields.js';
 import { contentViewFor, openApprovalDetail, type ContentView } from '../approval/frozen-read.js';
+import { foreignCeilingOf } from '../approval/handling-content.js';
 import { latestInstanceOf } from '../approval/store.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import {
@@ -92,7 +93,8 @@ export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantCon
       instanceId: instance.id,
       source,
       contentView: contentViewFor(instance, data),
-      foreign,
+      // 办理后才授予的合同权限不补露办理时看不到的行（P1-5）：逐行编码 ∩ 办理时上限 ∩ 当前权限
+      foreign: capForeign(foreign, foreignCeilingOf(data.content)),
     } satisfies Disclosure;
   }
   const contentView = contentViewFor(instance, data);

@@ -57,6 +57,15 @@ export function formFieldsWithForeign(formFields: readonly string[], snapshot: F
   return [...formFields, ...nested.map((field) => field.code)];
 }
 
+/**
+ * 已办读（冻结办理份）下嵌套字段的可见性再套一道办理时上限（P1-5，设计 §5.2「办理时不可见，后来授权也不补露」）：
+ * 逐行编码 ∩ 办理时该办理人看得见的编码 ∩ 当前权限。ceiling 为 null = 现值读，不设限。
+ */
+export function capForeign(visible: ForeignVisible, ceiling: ReadonlySet<string> | null): ForeignVisible {
+  if (!ceiling) return visible;
+  return async (field) => ceiling.has(field.code) && (await visible(field));
+}
+
 /** 按某用户在事务内解析嵌套字段可见性；按对象记忆授权、范围与字段集合。 */
 export function foreignVisibility(
   deps: Pick<TenantRouteDeps, 'authorize' | 'db' | 'clock'>,

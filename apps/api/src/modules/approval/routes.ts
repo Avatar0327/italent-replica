@@ -9,7 +9,7 @@ import { todoForm, todoSummary } from './todo-summary.js';
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
  */
 import { designerSourcesQuery, listDesignerSources } from './designer-sources.js';
-import { foreignVisibility, viewableWithForeign } from './foreign-fields.js';
+import { capForeign, foreignVisibility, viewableWithForeign } from './foreign-fields.js';
 import {
   pgErrorCode,
   registerMembershipPrelockHook,
@@ -98,7 +98,7 @@ import {
   type DetailData,
   type Viewer,
 } from './disclosure.js';
-import { capViewable, profileCeilingOf } from './handling-content.js';
+import { capViewable, foreignCeilingOf, profileCeilingOf } from './handling-content.js';
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
 import {
@@ -205,7 +205,11 @@ async function detailViewable(deps: TenantRouteDeps, ctx: TenantContext, data: D
   // R1-T10：嵌套的合同字段按合同对象、范围与字段判断（PR #74 第三轮 P1-1）。
   const viewable = await ownViewable(deps, ctx, data);
   return withTenant(deps.db, ctx.tenantId, (tx) =>
-    viewableWithForeign(data.snapshot, viewable, foreignVisibility(deps, ctx, tx)),
+    viewableWithForeign(
+      data.snapshot,
+      viewable,
+      capForeign(foreignVisibility(deps, ctx, tx), foreignCeilingOf(data.content)),
+    ),
   );
 }
 
