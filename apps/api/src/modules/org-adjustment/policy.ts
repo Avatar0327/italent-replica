@@ -255,11 +255,13 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: itemRoute(
     any([
       buttonOnly(DETAIL, button('EditOrgApprovalDetail', 'list_row'), FORBIDDEN),
-      buttonOnly(OBJECT, button('EditAdjustOrgDetailBtn', 'detail'), FORBIDDEN),
+      // 调动行重判经保存链：来源员工范围同人工调动（transfer.source）、联动写权（employment.linkage）只挂调动备选，
+      // 组织分支只走明细按钮与组织行授权（第 5 轮 P2-3：守卫不挂两分支共用的对象节点）
+      buttonOnly(OBJECT, button('EditAdjustOrgDetailBtn', 'detail'), FORBIDDEN, {
+        guards: ['transfer.source', 'employment.linkage'],
+      }),
     ]),
     { guard: 'orgAdjustment.item' },
-    // 调动行重判经保存链：来源员工范围同人工调动（transfer.source）
-    ['transfer.source', 'employment.linkage'],
   ),
   // 路由 9：整单刷新基线；按钮同改头
   [`POST ${BASE}/:id/rebase`]: object({

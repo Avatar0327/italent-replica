@@ -60,6 +60,9 @@ export function admissionPrimitives(
       const claimers = obligations.filter((o) => o.facts?.includes(`${dim}:${name}`));
       // 缺登记时只排除用途未知的权限事实，范围 / 字段 / 前提等独立元数据仍须硬比较（#248 P2-1）。
       if (registeredOnly && !claimers.length && PERMISSION_DIMENSIONS.has(dim)) return false;
+      // 守卫事实只由“或”分支的准入义务承接时，按分支的归属由 R1 逐备选核对（第 5 轮 P2-3：来源员工 / 联动守卫只在
+      // section:transfer 备选）；第二道比较“每个备选都要有该守卫”对这类分支专属守卫不成立，不进准入比较。
+      if (dim === 'guard' && claimers.length && claimers.every((o) => isAdmission(o) && o.or)) return false;
       return !claimers.length || claimers.some(isAdmission);
     });
     if (kept.length) out[dim] = kept;
@@ -149,6 +152,16 @@ export function checkRoute(
       report('REQUIRED_MISSING', `${label(i)}不满足“或”组 ${group}（${want}）${why}`);
     }
   });
+  // R1d：“或”组里每个组内备选至少被一个准入备选满足：删掉整条分支（备选）时，其余分支满足组内别的备选也不能掩盖
+  for (const [group, alts] of groups) {
+    for (const [name, os] of alts) {
+      if (decl.alternatives.some((alt) => os.every((o) => holds(alt, o)))) continue;
+      report(
+        'REQUIRED_OR_UNCOVERED',
+        `“或”组 ${group} 的组内备选 ${name}（${os.map((o) => o.perm).join('+')}）没有任何准入备选满足`,
+      );
+    }
+  }
   // R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务必须写 need
   const unbound = new Set<string>();
   for (const alt of decl.alternatives) {
