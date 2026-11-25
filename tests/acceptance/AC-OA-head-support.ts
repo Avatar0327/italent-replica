@@ -56,6 +56,8 @@ export interface HeadAccess {
   contract?: ModuleScope;
   /** 只对某个用户生效的合同范围（审批人盲审用例按人区分），优先于 contract。 */
   contractByUser?: Map<string, ModuleScope>;
+  /** 编制对象的组织范围（带编调动按它判，F-039 编制写权）；缺省看全部。 */
+  establishment?: ModuleScope;
   deniedButtons: Set<string>;
   deniedFields: Set<string>;
   /** 看不到的字段编码（查看权）。 */
@@ -101,6 +103,7 @@ export async function headWorld(db: Db, label: string) {
       if (q.objectCode === MAIN) return access.main;
       if (q.objectCode === ORG) return access.org;
       if (q.objectCode === CONTRACT_OBJECT) return access.contractByUser?.get(q.userId) ?? access.contract ?? ALL;
+      if (q.objectCode === MODULE_OBJECTS.establishment.code) return access.establishment ?? ALL;
       return q.objectCode === EMPLOYMENT_OBJECT ? access.employment : ALL;
     },
     authorize: async (req) => decide(req),
