@@ -247,10 +247,11 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
   [`PATCH ${TRANSFERS}/:itemId`]: transferRoute('body'),
   // 删行无请求体，但命令内仍按旧联动判合同 / 职责转交等写权（gate.remove），字段写权由守卫 orgAdjustment.item 判
   [`DELETE ${TRANSFERS}/:itemId`]: transferRoute({ guard: 'orgAdjustment.item' }),
-  // 路由 8：单行刷新基线；section 只认 org，其它 404
+  // 路由 8：单行刷新基线；section = org 按组织行，= transfer 按调动行（隐藏 / 不存在同一 404，再按当前权限重判）
+  // 无请求体；调动行重判经保存链复核任职 / 联动写权，字段写权由守卫 orgAdjustment.item 判
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: itemRoute(
     buttonOnly(DETAIL, button('EditOrgApprovalDetail', 'list_row'), FORBIDDEN),
-    none('刷新基线无请求体，不提取字段'),
+    { guard: 'orgAdjustment.item' },
   ),
   // 路由 9：整单刷新基线；按钮同改头
   [`POST ${BASE}/:id/rebase`]: object({
@@ -259,7 +260,8 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     button: button('EditAdjustOrgDetailBtn', 'detail'),
     scope: itemScope,
     fields: itemsShape,
-    write: itemWrite(none('刷新基线无请求体，不提取字段')),
+    // 无请求体；调动行按当前权限重判（保存链的任职 / 联动写权），字段写权由守卫 orgAdjustment.item 判
+    write: itemWrite({ guard: 'orgAdjustment.item' }),
     ...byId,
   }),
 });
