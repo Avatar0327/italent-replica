@@ -311,8 +311,22 @@ export const GRAPH: Graph = {
     '#sees',
     '#without',
   ],
-  'apps/api/src/modules/org-adjustment/envelope.ts#trimError': ['#hideUsedCode', '#sees', '#trimIssues', '#without'],
-  'apps/api/src/modules/org-adjustment/envelope.ts#trimIssues': ['#hideUsedCode', '#sees', '#without'],
+  'apps/api/src/modules/org-adjustment/envelope.ts#sourceField': ['#FIELD_KEY', '#TARGET_ORG_FIELD'],
+  'apps/api/src/modules/org-adjustment/envelope.ts#trimError': [
+    '#FIELD_KEY',
+    '#hideUsedCode',
+    '#sees',
+    '#sourceField',
+    '#trimIssues',
+    '#without',
+  ],
+  'apps/api/src/modules/org-adjustment/envelope.ts#trimIssues': [
+    '#FIELD_KEY',
+    '#hideUsedCode',
+    '#sees',
+    '#sourceField',
+    '#without',
+  ],
   'apps/api/src/modules/org-adjustment/envelope.ts#trimmedForViewer': [
     '#foldHiddenError',
     '#trimError',
@@ -518,6 +532,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/deactivation.ts#assertDeactivationVacant',
   ],
   'apps/api/src/modules/org-adjustment/item-rules.ts#activeOrg': [
+    'apps/api/src/modules/org-adjustment/envelope.ts#TARGET_ORG_FIELD',
     '#existingOrg',
     'apps/api/src/modules/org-adjustment/range.ts#ORG_INACTIVE',
   ],
@@ -536,7 +551,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/item-tree.ts#orgContext',
     'apps/api/src/modules/org/people.ts#assertOrgPeopleEligible',
   ],
-  'apps/api/src/modules/org-adjustment/item-rules.ts#assertRefs': ['#activeOrg', '#createdRow'],
+  'apps/api/src/modules/org-adjustment/item-rules.ts#assertRefs': [
+    'apps/api/src/modules/org-adjustment/envelope.ts#PARENT_ORG_FIELD',
+    '#activeOrg',
+    '#createdRow',
+  ],
   'apps/api/src/modules/org-adjustment/item-rules.ts#planStop': [
     'apps/api/src/modules/org-adjustment/item-tree.ts#orgContext',
     'apps/api/src/modules/org/deactivation.ts#assertDeactivationAfterEstablished',
@@ -556,6 +575,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
   ],
   'apps/api/src/modules/org-adjustment/item-tree.ts#outOfRange': [
+    'apps/api/src/modules/org-adjustment/envelope.ts#PARENT_ORG_FIELD',
+    'apps/api/src/modules/org-adjustment/envelope.ts#TARGET_ORG_FIELD',
     '#itemRef',
     '#orgRef',
     '#parentRef',
@@ -1394,6 +1415,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/validation.ts#invalid',
   ],
   'apps/api/src/modules/org-adjustment/transfer-items.ts#assertTransferInRange': [
+    'apps/api/src/modules/org-adjustment/envelope.ts#TRANSFER_DEPARTMENT_FIELD',
     'apps/api/src/modules/org-adjustment/item-tree.ts#OUT_OF_RANGE',
     '#transferMiss',
   ],
@@ -1561,8 +1583,11 @@ export const GRAPH: Graph = {
     ],
   'apps/api/src/modules/org-adjustment/transfer-routes.ts#transferCommand': [
     'apps/api/src/modules/org-adjustment/access.ts#ADJUSTMENT_NOT_FOUND',
+    'apps/api/src/modules/org-adjustment/envelope.ts#trimError',
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
+    '#OBJECT',
     '#trimTransfers',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],
   'apps/api/src/modules/org-adjustment/transfer-routes.ts#transferFieldCodes': [
     'apps/api/src/modules/org-adjustment/transfer-access.ts#LINKAGE_CODE',

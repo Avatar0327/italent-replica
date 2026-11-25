@@ -1318,7 +1318,7 @@ export const DIGESTS: Digests = {
     'route:DELETE /api/tenant/org-adjustment/adjustments/:id/transfer-items/:itemId': 'd4d2d0f3e1a0',
     'route:PATCH /api/tenant/org-adjustment/adjustments/:id/transfer-items/:itemId': 'f99669110b34',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/transfer-items': '68aefce48e12',
-    transferCommand: '226251963352',
+    transferCommand: '3e7a5d2be204',
   },
   'apps/api/src/modules/org/employment-linkage.ts': {
     authorizeOrgEmploymentReplay: 'fc158c7c64c2',
@@ -3247,7 +3247,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     '783b570abe0b',
   'apps/api/src/modules/org-adjustment/transfer-routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/transfer-items':
     '6e5b3e98e5e5',
-  'apps/api/src/modules/org-adjustment/transfer-routes.ts#transferCommand': '1667f70096f7',
+  'apps/api/src/modules/org-adjustment/transfer-routes.ts#transferCommand': '6c52ffda9315',
   'apps/api/src/modules/org/employment-linkage.ts#authorizeOrgEmploymentReplay': 'e8222d212587',
   'apps/api/src/modules/org/routes.ts#OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/org/routes.ts#anyPersonFieldEditable': '7c428d724e80',
