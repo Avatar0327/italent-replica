@@ -136,6 +136,16 @@ async function readableSources(deps: TenantRouteDeps, entry: EmploymentContext, 
   return readable;
 }
 
+/**
+ * 对外可见的最后写入者。直接办理的未来调动在办理时就已物化，F-036 S6 在物化时写 `resolved` 行；
+ * 但业务还没实际生效前，延迟字段对外仍是“待解析、没有来源”（S5 契约，AC-EMP-30 / AC-EMP-32），
+ * 所以未落地业务上的 `resolved` 行不作为可见来源。生效后（`landed`）它才是来源。
+ */
+function shownWriter(state: ReturnType<OriginStates['get']>, landed: boolean) {
+  // 未落地时把 resolved 从候选里去掉再选：仍有效的继承来源（如转正改期重算写入的 inherit）照常展示，只有延迟字段变空
+  return effectiveOrigin(state && !landed ? { ...state, resolved: null } : state).lastWriter;
+}
+
 /** 现值分支：`entry` 是入口授权上下文（不是过了调动门禁的那份）；用快照里折叠好的台账状态给 `shown` 的每个字段附来源。只读，不写任何表。 */
 export async function liveOriginRows(
   deps: TenantRouteDeps,
@@ -146,7 +156,7 @@ export async function liveOriginRows(
 ): Promise<FieldOriginRowView[]> {
   const entries = shownEntries(shown);
   const writers = new Map(
-    entries.map((entry) => [entry.fieldCode, effectiveOrigin(facts.states.get(entry.fieldCode)).lastWriter]),
+    entries.map((entry) => [entry.fieldCode, shownWriter(facts.states.get(entry.fieldCode), facts.landed)]),
   );
   const sourceIds = [
     ...new Set([...writers.values()].flatMap((row) => (row?.sourceBusinessId ? [row.sourceBusinessId] : []))),

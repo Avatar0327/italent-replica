@@ -66,6 +66,7 @@ import {
 } from './exit-gate.js';
 import { splitExitOptions } from './exit-initiation.js';
 import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentImport } from './forward-import.js';
+import { requireSavedValuesApplicable } from './field-origin-write.js';
 import { editEmploymentRecord } from './record-edit.js';
 import {
   exitCommandGuard,
@@ -609,6 +610,40 @@ async function routesToCancel(deps: TenantRouteDeps, ctx: EmploymentContext, id:
   });
 }
 
+/** 首次执行与同键重放共用：校验员工单据与写权限。J5 不在这里：它必须排在业务写范围复核之后（见 afterScope）。 */
+async function authorizeTransition(
+  tx: Tx,
+  scoped: EmploymentContext,
+  id: string,
+  action: Parameters<typeof requireEmploymentTransitionWrite>[1],
+) {
+  if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
+  await requireEmploymentTransitionWrite(scoped, action);
+}
+
+/**
+ * 通用状态动作的同单写入口。提交时的 J5（已保存字段适用性复判）是 afterScope：排在授权与业务写范围复核之后，
+ * 首次执行、同键重放与失败回查都先经这里，再返回台账缓存或执行（DEC-431①：J5 只有这一个入口）。
+ */
+function transitionWriteGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  id: string,
+  current: { readonly kind: string; readonly employeeId: string },
+  action: Parameters<typeof requireEmploymentTransitionWrite>[1],
+) {
+  return sameOrderWriteGuard(deps, ctx, {
+    ...sameOrderTarget(id, current),
+    ...(action === 'submit'
+      ? {
+          referenceChange: {},
+          afterScope: (tx: Tx, scoped: EmploymentContext) => requireSavedValuesApplicable(tx, scoped, id),
+        }
+      : {}),
+    authorize: (tx, scoped) => authorizeTransition(tx, scoped, id, action),
+  });
+}
+
 function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // R1-T11：revoke = HR 撤销未审批完成的申请（置作废、作废流程，AC-TRF-07）；withdraw 是发起人撤回到草稿（AC-TRF-28）。
   for (const action of ['submit', 'withdraw', 'revoke', 'delete'] as const) {
@@ -646,14 +681,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
                 { employeeId: current.employeeId, kind: current.kind, deleting: action === 'delete' },
                 { businessId: id },
               )
-            : sameOrderWriteGuard(deps, ctx, {
-                ...sameOrderTarget(id, current),
-                ...(action === 'submit' ? { referenceChange: {} } : {}),
-                authorize: async (tx, scoped) => {
-                  if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
-                  await requireEmploymentTransitionWrite(scoped, action);
-                },
-              }),
+            : transitionWriteGuard(deps, ctx, id, current, action),
         };
         const write = runWrite(
           c,
