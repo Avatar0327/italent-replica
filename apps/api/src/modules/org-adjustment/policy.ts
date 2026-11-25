@@ -242,7 +242,8 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
   // 路由 16～18：调动明细新增 / 修改 / 删除
   [`POST ${TRANSFERS}`]: transferRoute('body'),
   [`PATCH ${TRANSFERS}/:itemId`]: transferRoute('body'),
-  [`DELETE ${TRANSFERS}/:itemId`]: transferRoute(none('删行无请求体，不提取字段')),
+  // 删行无请求体，但命令内仍按旧联动判合同 / 职责转交等写权（gate.remove），字段写权随调动明细形状
+  [`DELETE ${TRANSFERS}/:itemId`]: transferRoute(transferShape),
   // 路由 8：单行刷新基线；section 只认 org，其它 404
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: itemRoute(
     buttonOnly(DETAIL, button('EditOrgApprovalDetail', 'list_row'), FORBIDDEN),

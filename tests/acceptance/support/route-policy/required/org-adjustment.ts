@@ -215,6 +215,50 @@ const ENTRIES = [
   ['detail.stop', DETAIL_OBJ, 'orgAdjustDetailStop', 'list'],
 ] as const;
 
+// ---- 调动明细（BE-11c-b，路由 16～18）--------------------------------------------------------------------------
+const TRANSFER_ROUTES = 'apps/api/src/modules/org-adjustment/transfer-routes.ts';
+const TRANSFERS = `${BASE}/:id/transfer-items`;
+const transferCall = (method: string, path: string, anchor: string): Evidence => ({
+  role: 'call',
+  unit: `${TRANSFER_ROUTES}#route:${method} ${path}`,
+  anchor,
+});
+/** 命令守卫（首次与重放都经过）：先 authorizeItem 判按钮与主体组织范围，再 check 走调动表单与联动授权链。 */
+const TRANSFER_GUARD: Evidence = {
+  role: 'impl',
+  unit: `${TRANSFER_ROUTES}#transferCommand`,
+  anchor: 'await authorizeItem(tx, deps, ctx, {',
+};
+const transferOp = (method: string, path: string): Obligation => ({
+  perm: `obj:${OBJ}:update`,
+  facts: ['object:objectContext', `objectOp:${OBJ}:update`],
+  at: [
+    transferCall(method, path, "const ctx = await objectContext(c, deps, OBJECT, 'update', revision(c))"),
+    CONTEXT,
+    ...OBJECT_CONST,
+  ],
+});
+const transferBtn = (method: string, path: string): Obligation => ({
+  perm: `btn:${OBJ}#EditAdjustOrgDetailBtn@detail`,
+  facts: ['button:button()', 'button:buttonResource', 'button:object.button'],
+  at: [
+    transferCall(method, path, 'await button(deps, ctx, OBJECT, ...HEAD_BUTTONS.update)'),
+    BUTTON,
+    TRANSFER_GUARD,
+    ITEM_BUTTON,
+  ],
+});
+const transferScope = (method: string, path: string, anchor = 'return transferCommand('): Obligation => ({
+  perm: 'guard:orgAdjustment.transferItem',
+  facts: ['guard:orgAdjustment.transferItem'],
+  at: [
+    transferCall(method, path, anchor),
+    TRANSFER_GUARD,
+    { role: 'impl', unit: `${AUTH}#authorizeItem`, anchor: 'await requireScopes(tx, bound, ctx, {' },
+    SCOPES,
+  ],
+});
+
 // ---- 读取（BE-10d，路由 12～15）---------------------------------------------------------------------------------
 const READ = 'apps/api/src/modules/org-adjustment/read-routes.ts';
 const DISC = 'apps/api/src/modules/org-adjustment/disclosure.ts';
@@ -442,6 +486,21 @@ export const ORG_ADJUSTMENT: RequiredTable = {
     ITEM_OP('DELETE', `${ITEMS}/:itemId`),
     ROW('DelteOrgApprovalDetail')('DELETE', `${ITEMS}/:itemId`, 'await button(deps, ctx, ...rowDelete)'),
     itemScope('DELETE', `${ITEMS}/:itemId`, 'return itemCommand('),
+  ],
+  [`POST ${TRANSFERS}`]: [
+    transferOp('POST', TRANSFERS),
+    transferBtn('POST', TRANSFERS),
+    transferScope('POST', TRANSFERS),
+  ],
+  [`PATCH ${TRANSFERS}/:itemId`]: [
+    transferOp('PATCH', `${TRANSFERS}/:itemId`),
+    transferBtn('PATCH', `${TRANSFERS}/:itemId`),
+    transferScope('PATCH', `${TRANSFERS}/:itemId`),
+  ],
+  [`DELETE ${TRANSFERS}/:itemId`]: [
+    transferOp('DELETE', `${TRANSFERS}/:itemId`),
+    transferBtn('DELETE', `${TRANSFERS}/:itemId`),
+    transferScope('DELETE', `${TRANSFERS}/:itemId`),
   ],
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: [
     ITEM_OP('POST', `${BASE}/:id/items/:section/:itemId/rebase`),
