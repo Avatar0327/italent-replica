@@ -39,6 +39,7 @@ import {
 } from './configuration.js';
 import { previewTransfer, visiblePartTimes } from './preview.js';
 import { preauthorizeLinkage, registerTransferLinkageRoutes } from './linkage/routes.js';
+import { dutySubordinateIds } from './linkage/input.js';
 import { readTransferDraft, releaseTransferDraft } from './draft-slot.js';
 import { sameOrderCreateGuard, sameOrderWriteGuard } from './same-order-guard.js';
 import {
@@ -124,6 +125,11 @@ function registerTransferCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
           employeeId: id,
           input: prepared.input,
           targetDepartmentId: prepared.targetDepartmentId,
+          // 与 createTransfer 取的参与者一致：新带入下属 + 职责转交下属（F-560，先取锁再读授权）。
+          extraParticipants: [
+            ...(prepared.input.employment.fields.addedSubordinateIds ?? []),
+            ...dutySubordinateIds(prepared.input.linkage),
+          ],
           authorize: async (tx, scoped) => {
             await requirePermission(scoped.authorize!, {
               ...scoped,

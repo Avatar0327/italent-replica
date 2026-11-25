@@ -9,9 +9,15 @@
  * 授权用 support/revocable-rights.ts 的可撤权授权器：入口（事务外）放行，事务内才应用 rights，等价于“入口之后被撤权”。
  * 入口清单与改前改后次序见 PR 描述；本文件每个 describe 对应清单里的一个入口。
  */
-import { sql, withTenant } from '@italent/db';
+import { sql, withTenant, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { lockEmployee } from '../../apps/api/src/modules/contracts/context.js';
+import type { ContractContext } from '../../apps/api/src/modules/contracts/context.js';
+import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
+import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
+import { employmentSession } from './AC-EMP-support.js';
 import { linkageWorld, type LinkageWorld } from './AC-LNK-support.js';
 import { waitForLockWaiters } from './AC-TRF-F181a-support.js';
 import { revocable } from './support/revocable-rights.js';
@@ -230,6 +236,46 @@ entryCases(
   201,
 );
 
+// 入口 1 / 3 的反向对照：封口后才进来的不存在人员仍按原口径 400，不得因先封口改报 409
+describe.runIf(pg)('F-560 封口后新增下属不存在：发起与通用新建仍报 400 TRANSFER_PERSON_NOT_ELIGIBLE', () => {
+  const ghost = () => randomUUID();
+  const expectEligibility = async (response: Response) => {
+    expect(response.status, await response.clone().text()).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { details: { reason: 'TRANSFER_PERSON_NOT_ELIGIBLE' } } });
+  };
+
+  it('发起调动：新增下属不存在 → 400，业务表不留写入', async () => {
+    const { w, person, request } = await transferWorld(`f560-ghost-${uniqueSuffix()}`);
+    const revision = (await w.session.getEmployee(person.employee.id)).revision;
+    const before = await state(w);
+    await expectEligibility(
+      await request('POST', `/transfers/employees/${person.employee.id}`, {
+        ifMatch: revision,
+        body: transferBody(w, { fields: { departmentId: w.to.id, addedSubordinateIds: [ghost()] } }),
+      }),
+    );
+    expect(await state(w)).toEqual(before);
+  });
+
+  it('通用新建调动：新增下属不存在 → 400，业务表不留写入', async () => {
+    const { w, person, request } = await transferWorld(`f560-ghost-${uniqueSuffix()}`);
+    const revision = (await w.session.getEmployee(person.employee.id)).revision;
+    const before = await state(w);
+    await expectEligibility(
+      await request('POST', `/employees/${person.employee.id}/businesses`, {
+        ifMatch: revision,
+        body: {
+          kind: 'transfer',
+          mode: 'application',
+          effectiveDate: D,
+          fields: { departmentId: w.to.id, addedSubordinateIds: [ghost()] },
+        },
+      }),
+    );
+    expect(await state(w)).toEqual(before);
+  });
+});
+
 /** AC-LNK-04 / DEC-052：接收人汇报给待转交下属，转交将形成环，主调动生效而子项失败。 */
 async function failedLinkage(w: LinkageWorld, person: Person) {
   const subordinate = await w.hire('合成下属', { directManagerId: person.employee.id });
@@ -336,3 +382,58 @@ entryCases(
   },
   200,
 );
+
+/**
+ * 锁升级（F-560 卡片 §4）：生效落地时调动联动调合同写入口，员工行锁从 FOR NO KEY UPDATE（任职写入口）升级成
+ * FOR UPDATE（合同的 lockEmployee）。FOR UPDATE 与外键子行插入持有的 FOR KEY SHARE 冲突：
+ * 甲（调动生效）持 NO KEY UPDATE，升级时要等乙的 KEY SHARE 放掉；乙先插入带员工外键的子行（附件登记，KEY SHARE），
+ * 再要员工行写锁——排在甲后面等甲。甲等乙、乙等甲，PostgreSQL 以 40P01 回滚其中一个。
+ * 修复：合同的员工行锁与任职写入口同强度（FOR NO KEY UPDATE），升级不存在；员工主档的键列从不更新，不需要 FOR UPDATE。
+ */
+describe.runIf(pg)('F-560 员工行锁升级：任职写锁之后取合同员工锁不得升级成 FOR UPDATE', () => {
+  async function schedule(label: string) {
+    const db = database().db;
+    const session = await employmentSession(db, label);
+    const employee = await session.employee('合成锁升级员工');
+    const tenantId = session.tenant.id;
+    const ctx = { tenantId } as EmploymentContext;
+    let aLocked!: () => void;
+    const aHolds = new Promise<void>((resolve) => (aLocked = resolve));
+    let bQueued = false;
+    const settle = (promise: Promise<unknown>) =>
+      promise.then(
+        () => 'committed',
+        (error: { code?: string; cause?: { code?: string } }) => `error:${error.code ?? error.cause?.code}`,
+      );
+    // 乙：先登记附件（外键子行，持员工行 KEY SHARE），甲持锁之后再要员工行写锁。
+    // 附件表的写权限只给迁移 owner（同 AC-EMP-F058 的证件照夹具）：按租户设上下文后直接用 owner 事务插入。
+    const b = settle(
+      db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+        await tx.execute(sql`INSERT INTO personnel_attachments
+          (tenant_id, employee_id, purpose, filename, content_type, byte_size, sha256, created_by)
+          VALUES (${tenantId}, ${employee.id}::uuid, 'photo', 'a.png', 'image/png', 1, ${uniqueSuffix()},
+            ${session.user.id}::uuid)`);
+        await aHolds;
+        bQueued = true;
+        await lockEmploymentEmployee(tx as unknown as Tx, ctx, employee.id);
+      }),
+    );
+    // 甲：任职写入口取员工行（NO KEY UPDATE），乙排上来之后再取合同的员工锁——旧实现在这里升级成 FOR UPDATE。
+    const a = settle(
+      withTenant(db, tenantId, async (tx) => {
+        await lockEmploymentEmployee(tx, ctx, employee.id);
+        aLocked();
+        await waitForLockWaiters(db, 1, () => false);
+        expect(bQueued).toBe(true);
+        await lockEmployee(tx, ctx as unknown as ContractContext, employee.id);
+      }),
+    );
+    return { a: await a, b: await b };
+  }
+
+  it('甲（任职写锁 → 合同员工锁）与乙（附件外键子行 → 员工写锁）交错：都提交，没有 40P01', async () => {
+    const result = await schedule(`f560-up-${uniqueSuffix()}`);
+    expect(result, '不得出现死锁（40P01）；旧实现下其中一个事务被回滚').toEqual({ a: 'committed', b: 'committed' });
+  });
+});

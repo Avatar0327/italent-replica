@@ -29,7 +29,7 @@ import {
   resolveLinkageAccess,
   type LinkageAccess,
 } from './access.js';
-import { normalizeLinkage, type DutyRelation, type LinkageOptions, type OrgRole } from './input.js';
+import { dutySubordinateIds, normalizeLinkage, type DutyRelation, type LinkageOptions, type OrgRole } from './input.js';
 import { loadLinkageItem, retryLinkageItem } from './items.js';
 import { requireLinkageSource, updateTransferLinkage } from './service.js';
 import { linkageBeforeCommand } from './store.js';
@@ -110,6 +110,8 @@ export function registerTransferLinkageRoutes(router: Hono<TenantEnv>, deps: Dep
         // 命令事务内按当前范围重验（统一 guard）：重放 / 失败回查不沿用入口的旧范围
         guard: sameOrderScopeGuard(deps, ctx, {
           receiptNames: true, // 调动专用入口，恒为调动单（DEC-1000）
+          // 先取员工闭包（含职责转交新带入的下属）与本单业务头，再读授权（F-560）
+          lock: { businessId: id, extra: dutySubordinateIds(options) },
           authorize: async (tx, scoped) => {
             const today = tenantLocalDate(scoped.now, scoped.timezone);
             const current = await loadEmploymentBusiness(tx, scoped.tenantId, id, today, scoped.scope);
@@ -146,6 +148,8 @@ function registerRetry(router: Hono<TenantEnv>, deps: Deps) {
         guard: sameOrderScopeGuard(deps, ctx, {
           // 子项表也承载离职职责转交：按父单类型表态，只有调动单随命令保存回执名称（DEC-1000，第 8 轮 P3）
           ...transferReceiptNames(parentKind),
+          // 子项行解析出所属单据、发起员工与被转交下属，先取锁再读授权（F-560）
+          lock: { linkageItemId: id },
           authorize: async (tx, scoped) => {
             await requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation');
             await authorizeRetry(tx, deps, scoped, id, {});

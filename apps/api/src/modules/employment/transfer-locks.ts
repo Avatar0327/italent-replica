@@ -128,8 +128,14 @@ async function acquire(
   if (!needed.length) return 'acquired';
   // 已封口：授权输入在封口前一次读完，之后不得再因新进参与者阻塞等锁（等锁期间收回的授权会被漏掉）；放弃本事务，
   // 由调用方按既有 TRANSFER_LOCK_PLAN_CHANGED 约定刷新后重入，重入时先取齐锁再读授权。
-  if (await isSealed(tx, ctx))
+  if (await isSealed(tx, ctx)) {
+    // 封口后才进来的不存在 / 跨租户 / 非本租户人员不是“计划变了”，而是本来就不合格：与未封口路径同为 400，
+    // 不得因同单写入口先封口而改报 409（F-560）。已存在的新参与者才按计划变化放弃本事务。
+    const present = new Set((await existingTransferEmployees(tx, ctx, needed)).map((id) => id.toLowerCase()));
+    if (needed.some((id) => !present.has(id)))
+      throw new AppError('VALIDATION_FAILED', '联动人员不可用', { reason: 'TRANSFER_PERSON_NOT_ELIGIBLE' });
     throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
+  }
   if (held.length && needed[0]! < held.at(-1)!)
     throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
   // F-519 的双退让源于 SKIP LOCKED 整组扫描越过忙行抢后续行，两个实例各持半组。
@@ -180,9 +186,11 @@ async function lockHeads(tx: Tx, ctx: EmploymentContext, ids: readonly string[],
  * 读完授权后，首次执行（lockEmploymentBusiness）才在本单业务头上等锁，等锁期间收回的范围会被漏掉。
  * 这把锁就是首次执行本来要取的那一把（发起员工行已持有，同一顺序），只是提前到读授权之前；执行体里再取是重入。
  */
-export async function lockTransferHeads(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<void> {
+export async function lockTransferHeads(tx: Tx, ctx: EmploymentContext, businessId?: string): Promise<void> {
   const held = await heldIds(tx, ctx);
   if (held.length > 1) return lockHeads(tx, ctx, held);
+  // 还没有本单业务头的入口（发起调动）单人闭包没有头可锁：员工行已锁，覆盖暂存的旧草稿头也只经员工行写（F-560）。
+  if (!businessId) return;
   await tx.execute(sql`
     SELECT id FROM employment_business_objects WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE
   `);
