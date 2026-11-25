@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { uniqueSuffix } from './support/unique.js';
 import { installWebLocks } from './support/web-locks.js';
 
 installWebLocks();
@@ -38,6 +39,7 @@ const OTHER_TAB = '其他标签页有该对象未确认的命令，本次命令�
 const UNCERTAIN = '结果尚未确认，请先回查记录，勿重复提交';
 const UNKNOWN = '处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。';
 const RESULT_FAILED = '已确认原命令未执行成功，输入已保留，请核对后重新提交。';
+const RESULT_PENDING = '暂未查到本次命令的结果，可能仍在处理中，请稍后再查询。';
 const SUBJECT = '合成调整主题（改）';
 
 // 与 GET /api/tenant/org-adjustment/adjustments/:id 同形（detail.ts readDetail）：本人暂存的申请单。
@@ -78,6 +80,8 @@ let root: ReturnType<typeof createRoot>;
 let writes: { method: string; path: string }[];
 /** 写请求断网（client.ts 映射为 NETWORK_ERROR，内核判为结果未知、不带 race）。 */
 let offline: boolean;
+/** A 的命令结果查不到（F-120 结果接口 404：仍在处理中，内核保持结果未知）。 */
+let resultMissing: boolean;
 let tenantId: string;
 const updated = vi.fn();
 const closed = vi.fn();
@@ -87,6 +91,7 @@ beforeEach(() => {
   vi.stubGlobal('matchMedia', () => ({ matches: false, addListener() {}, removeListener() {} }));
   writes = [];
   offline = false;
+  resultMissing = false;
   tenantId = randomUUID();
   updated.mockClear();
   closed.mockClear();
@@ -95,6 +100,11 @@ beforeEach(() => {
     vi.fn(async (input: string, init: RequestInit = {}) => {
       const path = new URL(String(input), 'http://local').pathname;
       const method = init.method ?? 'GET';
+      if (method === 'POST' && path === COLLECTION) {
+        writes.push({ method, path });
+        // 新建回执（routes.ts headCommand → AdjustmentView）：新申请单，版本 1。
+        return Response.json({ id: ID, code: 'OA-570', subject: SUBJECT, revision: 1 });
+      }
       if ((method === 'PATCH' && path === DETAIL_PATH) || (method === 'POST' && path === SUBMIT_PATH)) {
         writes.push({ method, path });
         if (offline) throw new TypeError('Failed to fetch');
@@ -107,7 +117,7 @@ beforeEach(() => {
         return Response.json({ session: serverSession(), apps: [], scope: [], adminMenus: [] });
       if (path === `/api/tenant/permission/me/objects/${OBJECT}`) return Response.json(objectPermission);
       // GET /api/tenant/commands/:commandId/result（F-120 返回结构）：A 的命令已确认执行失败。
-      if (path === `/api/tenant/commands/${COMMAND_A}/result`)
+      if (path === `/api/tenant/commands/${COMMAND_A}/result` && !resultMissing)
         return Response.json({
           commandId: COMMAND_A,
           status: 'failed',
@@ -144,11 +154,11 @@ const serverSession = () => ({
 });
 const session = () => ({ tenantId, identityKey: 'synthetic-user', displayName: '合成用户', source: 'server' });
 const scoped = (name: string) => JSON.stringify([tenantId, 'synthetic-user', name]);
-/** 别的标签页 A 已登记同一申请单的命令（结果未知，占着本条目）。 */
-const registerA = () =>
+/** 别的标签页 A 已登记同一申请单（新建时是集合路径）的命令（结果未知，占着本条目）。 */
+const registerA = (path = DETAIL_PATH) =>
   localStorage.setItem(
     RECORDS,
-    JSON.stringify([{ key: scoped(DETAIL_PATH), slots: [scoped(DETAIL_PATH)], commandId: COMMAND_A, revision: 4 }]),
+    JSON.stringify([{ key: scoped(path), slots: [scoped(path)], commandId: COMMAND_A, revision: 4 }]),
   );
 /** A 收到回执、删掉记录，B 收到 storage 事件。 */
 function settleA() {
@@ -163,6 +173,16 @@ function Editor() {
 }
 async function renderEditor() {
   await act(async () => root.render(h(SessionProvider, { session: session() }, h(Editor))));
+}
+// 新建弹窗的必填项：日期、组织选择器在 happy-dom 里难以逐项操作，只作初始值放进表单，好过前端必填校验。
+const CREATE_VALUES = { subject: '合成新建主题', effectiveDate: '2026-12-01', approvalSubjectOrgId: ORG };
+/** 新建弹窗：真实 ApplicationForm（不传 row，走 create、集合路径的槽，同 AdjustmentPage 的 created）。 */
+function Creator() {
+  const command = useAdjustmentCommand(undefined, updated, access);
+  return h(ApplicationForm, { command: { ...command, baseline: CREATE_VALUES }, onClose: closed });
+}
+async function renderCreator() {
+  await act(async () => root.render(h(SessionProvider, { session: session() }, h(Creator))));
 }
 /** 挂真实列表页（AdjustmentPage → AdjustmentDetail 抽屉）并直接打开本单详情，等“提交审批”可点。 */
 async function renderPage() {
@@ -206,7 +226,7 @@ const saveSettled = () => until(() => !save().classList.contains('ant-btn-loadin
 
 describe('AC-FE-F570 组织调整：恢复态 race 随结果未知返回', () => {
   it('前提（内核恢复态出口）：A 已登记时 B 提交，结果是“结果未知 + race”，error 为空、零发出', async () => {
-    const name = `f570-${randomUUID()}`;
+    const name = `f570-${uniqueSuffix()}`;
     const key = scoped(DETAIL_PATH);
     localStorage.setItem(
       `italent.commands.pending:${name}`,
@@ -287,5 +307,58 @@ describe('AC-FE-F570 组织调整：恢复态 race 随结果未知返回', () =>
     expect(writes).toEqual([{ method: 'POST', path: SUBMIT_PATH }]);
     expect(document.body.textContent).not.toContain(OTHER_TAB);
     expect(detailSubmit()!.disabled).toBe(true);
+  });
+  it('编辑弹窗（第 2 轮 P2-1）：A 落定后弹窗解锁、竞争提示清除，输入保留，全程零写请求', async () => {
+    await renderEditor();
+    await editSubject();
+    registerA();
+    await act(async () => save().click());
+    await saveSettled();
+    expect(modal()!.textContent).toContain(OTHER_TAB);
+    expect(save().disabled).toBe(true);
+    await act(async () => settleA());
+    await until(() => !save().disabled);
+    expect(modal()!.textContent).not.toContain(OTHER_TAB);
+    expect(modal()!.textContent).not.toContain(UNCERTAIN);
+    expect(subject()?.value).toBe(SUBJECT);
+    expect(writes).toEqual([]);
+    expect(closed).not.toHaveBeenCalled();
+  });
+
+  it('新建弹窗（第 2 轮 P2-1）：锁到 A 的新建命令时零写请求、提示其他标签页、锁定、输入保留；A 落定后解锁并清除提示', async () => {
+    await renderCreator();
+    await editSubject();
+    registerA(COLLECTION);
+    await act(async () => save().click());
+    await saveSettled();
+    expect(writes).toEqual([]);
+    expect(modal()!.textContent).toContain(OTHER_TAB);
+    expect(modal()!.textContent).not.toContain(UNCERTAIN);
+    expect(save().disabled).toBe(true);
+    expect(buttonIn(modal()!, '查询结果')).toBeTruthy();
+    expect(subject()?.value).toBe(SUBJECT);
+    await act(async () => settleA());
+    await until(() => !save().disabled);
+    expect(modal()!.textContent).not.toContain(OTHER_TAB);
+    expect(subject()?.value).toBe(SUBJECT);
+    expect(writes).toEqual([]);
+    expect(closed).not.toHaveBeenCalled();
+  });
+
+  it('真实详情（第 2 轮 P2-2）：按 A 的命令查询返回 404，仍锁在 A 的命令上，竞争原文继续显示、零写请求', async () => {
+    resultMissing = true;
+    await renderPage();
+    registerA();
+    await act(async () => detailSubmit()!.click());
+    await until(() => !!detail()?.textContent?.includes(OTHER_TAB));
+    await act(async () => buttonIn(detail()!, '查询结果')!.click());
+    await until(() => !!detail()?.textContent?.includes(RESULT_PENDING));
+    expect(detail()!.textContent).toContain(OTHER_TAB);
+    expect(detailSubmit()!.disabled).toBe(true);
+    expect(writes).toEqual([]);
+    // 占槽命令随后落定：提示随条目一起消失。
+    await act(async () => settleA());
+    await until(() => !detailSubmit()!.disabled);
+    expect(detail()!.textContent).not.toContain(OTHER_TAB);
   });
 });
