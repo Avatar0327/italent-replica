@@ -7784,6 +7784,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
   ],
   'apps/api/src/modules/employment/retirement-routes.ts#route:PATCH /retirements/:id': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -7797,6 +7798,7 @@ export const GRAPH: Graph = {
     '#parseRetirementPatch',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
   ],
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/:id/cancel': [
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -8208,11 +8210,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/user-provisioning.ts#provisionEmployeeUser',
   ],
   'apps/api/src/modules/employment/routes.ts#genericCreateGuard': [
-    'apps/api/src/authorization.ts#requirePermission',
-    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
     'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
-    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    '#requireGenericCreateRights',
     'apps/api/src/modules/transfer/access.ts#requireTransferSource',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
     'apps/api/src/modules/transfer/same-order-guard.ts#transferReceiptNames',
@@ -8278,6 +8278,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     '#writeIsCommandOnly',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
+  ],
+  'apps/api/src/modules/employment/routes.ts#requireGenericCreateRights': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
   ],
   'apps/api/src/modules/employment/routes.ts#requireImportTransferAccess': [
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
@@ -8478,6 +8483,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/retirement-rehire.ts#assertNoRehireKeys',
     '#ensureHiredAccount',
     '#genericCreateGuard',
+    '#requireGenericCreateRights',
     '#splitLoginEmail',
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
     'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS',
@@ -8708,6 +8714,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#sealKey',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#lockAllParticipantHeads': ['#heldIds', '#lockHeads'],
   'apps/api/src/modules/employment/transfer-locks.ts#lockHeads': ['#array'],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferBusiness': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
