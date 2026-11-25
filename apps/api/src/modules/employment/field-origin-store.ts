@@ -4,12 +4,14 @@ import {
   FIELD_ORIGIN_OVERRIDES,
   FIELD_ORIGIN_POLICIES,
   FORM_DEPENDENCY_RESET,
+  effectiveOrigin,
   foldFieldOrigins,
   projectOriginMarkers,
+  settleValueRows,
   type FieldOriginKind,
   type OriginDerivationRule,
 } from '@italent/domain';
-import type { EmploymentContext } from './types.js';
+import type { EmploymentContext, PresetFields } from './types.js';
 
 type StoredOrigin = Omit<typeof employmentFieldOrigins.$inferSelect, 'originKind' | 'derivationRule'> & {
   readonly originKind: FieldOriginKind;
@@ -30,7 +32,11 @@ export type FieldOriginDraft = Pick<StoredOrigin, 'fieldCode' | 'originKind'> &
       | 'refSeq'
       | 'reason'
     >
-  >;
+  > & {
+    /** 本批内的引用名：同批后写的判定行用 refKey 指向它，真实 seq 在写入时分配。 */
+    readonly key?: string;
+    readonly refKey?: string;
+  };
 
 type OriginTarget = Pick<StoredOrigin, 'businessId' | 'payloadVersionId' | 'employeeId'> & { recordId?: string };
 
@@ -43,9 +49,14 @@ export async function appendFieldOrigins(
   rows: readonly (FieldOriginDraft & OriginTarget)[],
 ) {
   if (!rows.length) return;
+  // 带引用名的批次先取好 seq：判定行要在同一批里指向刚写的行。
+  const seqs = rows.some((row) => row.key || row.refKey) ? await allocateSeqs(tx, rows.length) : [];
+  const byKey = new Map(rows.flatMap((row, index) => (row.key ? [[row.key, seqs[index]!] as const] : [])));
   await tx.insert(employmentFieldOrigins).values(
-    rows.map((row) => ({
+    rows.map(({ key: _key, refKey, ...row }, index) => ({
       ...row,
+      ...(seqs.length ? { seq: seqs[index]! } : {}),
+      ...(refKey ? { refSeq: requireKey(byKey, refKey) } : {}),
       tenantId: ctx.tenantId,
       actorUserId: ctx.userId,
       commandId: ctx.commandId ?? null,
@@ -54,6 +65,20 @@ export async function appendFieldOrigins(
       matchBefore: jsonValue(row.matchBefore),
     })),
   );
+}
+
+function requireKey(byKey: ReadonlyMap<string, bigint>, key: string) {
+  const seq = byKey.get(key);
+  if (seq === undefined) throw new Error(`来源行引用了本批不存在的引用名：${key}`);
+  return seq;
+}
+
+async function allocateSeqs(tx: Tx, count: number) {
+  const result = await tx.execute(
+    sql`SELECT nextval('employment_origin_seq')::text AS seq FROM generate_series(1, ${count})`,
+  );
+  const rows = (Array.isArray(result) ? result : (result as { rows: { seq: string }[] }).rows) as { seq: string }[];
+  return rows.map((row) => BigInt(row.seq)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 const textList = (values: readonly string[]) =>
@@ -132,7 +157,14 @@ export async function projectPayloadMarkers(
   const stored = payload.previousVersionId ? await loadFieldOriginRows(tx, ctx, payload.businessId) : [];
   const head = stored.reduce((max, row) => (row.seq > max ? row.seq : max), 0n);
   // 外键要求先写载荷。这里只按本事务内的相对顺序折叠拟写行，实际 seq 仍由数据库分配。
-  const pending = origins.map((row, index) => ({ ...row, seq: head + BigInt(index + 1), value: row.value }));
+  const virtual = (index: number) => head + BigInt(index + 1);
+  const byKey = new Map(origins.flatMap((row, index) => (row.key ? [[row.key, virtual(index)] as const] : [])));
+  const pending = origins.map((row, index) => ({
+    ...row,
+    seq: virtual(index),
+    value: row.value,
+    refSeq: row.refKey ? byKey.get(row.refKey) : row.refSeq,
+  }));
   return projectOriginMarkers(foldFieldOrigins([...stored, ...pending]), payload);
 }
 
@@ -177,4 +209,139 @@ async function selectOrigins(tx: Tx, tenantId: string, businessId: string, ids: 
     .where(
       and(eq(table.tenantId, tenantId), eq(table.businessId, businessId), sql`${table.id} IN (${ids})`),
     )) as StoredOrigin[];
+}
+
+/** 适用性判定的候选态：字段值与仍待定的延迟字段。返回 undefined 表示暂时无法判断，不写判定行。 */
+export interface SettleCandidate {
+  readonly fields: PresetFields;
+  readonly deferredFieldCodes: readonly string[];
+}
+export type FieldApplicability = (row: { readonly value?: unknown }, candidate: SettleCandidate) => boolean | undefined;
+
+// F-036 §4.6：谓词由业务规则注册（DEC-232 的“职位属于任职部门”由 #99 重做提供）；S6 只交付机制，产品代码不注册。
+const applicability = new Map<string, FieldApplicability>();
+
+/** 为字段注册适用性谓词，返回注销函数。 */
+export function registerFieldApplicability(fieldCode: string, predicate: FieldApplicability): () => void {
+  applicability.set(fieldCode, predicate);
+  return () => {
+    if (applicability.get(fieldCode) === predicate) applicability.delete(fieldCode);
+  };
+}
+
+/** 取字段已注册的适用性谓词（落地登记解析值前先判一次）。 */
+export const applicabilityOf = (fieldCode: string) => applicability.get(fieldCode);
+
+interface SettleOptions {
+  /** 本次保存拟写的来源行：与台账现有行一起折叠，判定行可以直接指向其中尚未落库的行。 */
+  readonly pending?: readonly FieldOriginDraft[];
+}
+
+export interface SettledFields {
+  /** 被台账接管的字段 → 判定之后的有效值。 */
+  readonly values: ReadonlyMap<string, unknown>;
+  /** 判定之后仍待落地解析的延迟字段。 */
+  readonly deferred: ReadonlySet<string>;
+  /** 判定之后有效值仍来自人工覆盖的字段。 */
+  readonly explicit: ReadonlySet<string>;
+  /** 本次保存应写的全部来源行（含判定行）。 */
+  readonly origins: FieldOriginDraft[];
+}
+
+/** 设计 §5.3：职位与有效部门不匹配时的判定与落地空值共用的原因码。 */
+export const FIELD_NOT_APPLICABLE = 'cross-department';
+
+export const sameValue = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+const policyKinds: ReadonlySet<string> = new Set(FIELD_ORIGIN_POLICIES);
+/** 本次请求自己输入的值与落地已定的解析值不再判：前者由校验把关，后者在写入前已按谓词定稿。 */
+const exemptKinds: ReadonlySet<string> = new Set([
+  'employee-input',
+  'hr-input',
+  'system-input',
+  'approval-edit',
+  'resolved',
+]);
+
+/** 台账里当前的策略行与草稿完全一致（种类、值、取值的前驱）时无需重复登记。 */
+function repeatsPolicy(draft: FieldOriginDraft, saved: StoredOrigin | null | undefined) {
+  return (
+    policyKinds.has(draft.originKind) &&
+    !!saved &&
+    saved.originKind === draft.originKind &&
+    sameValue(saved.value, draft.value) &&
+    (saved.sourceRecordId ?? null) === (draft.sourceRecordId ?? null)
+  );
+}
+
+/**
+ * F-036 §4.6：把台账现有行与本次拟写行折叠成一份，覆盖值、继承值、落地解析值各自判适用性，
+ * 判定行写在同一批里；保存值、标记与来源行出自这同一份结果。草稿修改、落地、提交复判共用这一个入口。
+ */
+export async function settleFieldValues(
+  tx: Tx,
+  ctx: Pick<EmploymentContext, 'tenantId'>,
+  businessId: string,
+  candidate: SettleCandidate,
+  options: SettleOptions = {},
+): Promise<SettledFields> {
+  const values = new Map<string, unknown>();
+  const deferred = new Set<string>();
+  const explicit = new Set<string>();
+  const codes = [...applicability.keys()];
+  if (!codes.length) return { values, deferred, explicit, origins: [...(options.pending ?? [])] };
+  const stored = await loadFieldOriginRows(tx, ctx, businessId, codes);
+  const storedStates = foldFieldOrigins(stored);
+  const head = stored.reduce((max, row) => (row.seq > max ? row.seq : max), 0n);
+  const governed = new Set(codes);
+  const origins = (options.pending ?? [])
+    .filter(
+      (draft) => !(governed.has(draft.fieldCode) && repeatsPolicy(draft, storedStates.get(draft.fieldCode)?.policyRow)),
+    )
+    .map((draft, index) =>
+      governed.has(draft.fieldCode) && !draft.key ? { ...draft, key: `pending-${index}` } : draft,
+    );
+  const virtual = new Map<string, bigint>();
+  origins.forEach((draft, index) => draft.key && virtual.set(draft.key, head + BigInt(index + 1)));
+  const pendingRows = origins.flatMap((draft) =>
+    draft.key
+      ? [
+          {
+            seq: virtual.get(draft.key)!,
+            fieldCode: draft.fieldCode,
+            originKind: draft.originKind,
+            value: draft.value,
+            refSeq: draft.refKey ? virtual.get(draft.refKey) : draft.refSeq,
+            reason: draft.reason,
+          },
+        ]
+      : [],
+  );
+  const exempt = new Set(pendingRows.filter((row) => exemptKinds.has(row.originKind)).map((row) => row.seq));
+  const keyOf = new Map([...virtual].map(([key, seq]) => [seq, key]));
+  const decisions: FieldOriginDraft[] = [];
+  for (const fieldCode of codes) {
+    const rows = [...stored, ...pendingRows].filter((row) => row.fieldCode === fieldCode);
+    const state = foldFieldOrigins(rows).get(fieldCode);
+    if (!state) continue;
+    const applies = applicability.get(fieldCode)!;
+    const settled = settleValueRows(state, (row) => (exempt.has(row.seq) ? undefined : applies(row, candidate)));
+    const suspended = new Set(state.suspended);
+    for (const { originKind, refSeq } of settled) {
+      if (originKind === 'fallback') suspended.add(refSeq);
+      else suspended.delete(refSeq);
+      const refKey = keyOf.get(refSeq);
+      decisions.push({
+        fieldCode,
+        originKind,
+        ...(refKey ? { refKey } : { refSeq }),
+        ...(originKind === 'fallback' ? { reason: FIELD_NOT_APPLICABLE } : {}),
+      });
+    }
+    const next = effectiveOrigin({ ...state, suspended });
+    values.set(fieldCode, next.value);
+    if (next.lastWriter && next.lastWriter === state.override) explicit.add(fieldCode);
+    // 覆盖值与解析值都退回后，延迟策略的字段重新回到“待定”，由落地时的前驱解析。
+    if (state.policy === 'deferred' && !next.lastWriter) deferred.add(fieldCode);
+  }
+  return { values, deferred, explicit, origins: [...origins, ...decisions] };
 }

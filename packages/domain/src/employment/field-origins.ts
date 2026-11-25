@@ -47,9 +47,19 @@ function isPolicy(kind: FieldOriginKind): kind is FieldOriginPolicy {
   return policyKinds.has(kind);
 }
 
+/**
+ * 落地解析值（resolved）只在它之后没有新的继承策略行时才有取值效力：转正改期等重算继承字段会追加新的 inherit 行
+ * （设计 §4.4.2 #14），它按新前驱取值，已取代旧前驱留下的解析值；台账里的 resolved 行本身保留作历史。
+ * 延迟策略的后续行不取代：解析值仍是落地时定下的值。
+ */
+function liveResolved<Row extends OriginRow>(state: FieldOriginState<Row>) {
+  const { resolved, policy, policyRow } = state;
+  return resolved && policy === 'inherit' && policyRow && policyRow.seq > resolved.seq ? null : resolved;
+}
+
 function valueRows<Row extends OriginRow>(state: FieldOriginState<Row>) {
   const policy = state.policy === 'inherit' || state.policy === 'copy' ? state.policyRow : null;
-  return [state.override, state.resolved, policy];
+  return [state.override, liveResolved(state), policy];
 }
 
 export function effectiveOrigin<Row extends OriginRow>(state: FieldOriginState<Row> | undefined) {
@@ -234,6 +244,7 @@ export function projectOriginMarkers(
       if (recordEdit && legacy ? previousExplicit.has(code) : lastWriter.reason !== SAME_VALUE_CONFIRMATION)
         explicit.add(code);
     }
+    // F-036 §4.5：延迟字段一旦有了有效的值（人工覆盖或落地解析值）就不再待定；解析值被退回后重新待定。
     if (!lastWriter && state.policy === 'deferred') deferred.add(code);
   }
   for (const code of previousExplicit) if (markerField(code) && !states.has(code)) explicit.add(code);
