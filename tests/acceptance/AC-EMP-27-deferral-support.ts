@@ -7,6 +7,7 @@ import { activationWorld, type ActivationWorld } from './AC-TRF-activation-suppo
 import type { EmploymentBusiness } from './AC-EMP-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export type Shape = 'department' | 'position' | 'both';
 /** inherit / open：职位可编辑且不被排除（职级调整表单），自动带出开则职位按继承带出，关则部门、职位都延迟。 */
@@ -63,7 +64,7 @@ async function deferralWorldFor(w: ActivationWorld, shape: WorldShape) {
       user: w.session.user.id,
       tenant: w.session.tenant.id,
       ifMatch: 0,
-      body: { name: `合成引用${randomUUID().slice(0, 8)}`, code: randomUUID(), startDate: '2026-01-01', ...body },
+      body: { name: `合成引用${uniqueSuffix()}`, code: randomUUID(), startDate: '2026-01-01', ...body },
     });
     expect(response.status, await response.clone().text()).toBe(201);
     return (await response.json()) as { id: string };
