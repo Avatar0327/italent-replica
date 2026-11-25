@@ -1519,7 +1519,8 @@
           "org result"
         ],
         "scope": [
-          "creator scope"
+          "creator scope",
+          "scopeSql"
         ]
       }
     },
@@ -1559,7 +1560,6 @@
         ],
         "guard": [
           "orgAdjustment.item",
-          "transfer.direct",
           "transfer.source"
         ],
         "object": [
@@ -1568,16 +1568,13 @@
           "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:create",
           "TenantBase.OrganizationApproval:update"
-        ],
-        "postcheck": [
-          "org result"
         ],
         "scope": [
           "checkScope",
-          "creator scope",
           "employment scope",
-          "resolveModuleScope",
+          "scope.all",
           "visible()"
         ],
         "scopePoint": [
@@ -10013,7 +10010,8 @@
           "employment visibility",
           "instanceScopeSql",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -10049,7 +10047,8 @@
           "checkScope",
           "creator scope",
           "instanceScopeSql",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -10084,7 +10083,8 @@
           "adminScope",
           "checkScope",
           "creator scope",
-          "instanceScopeSql"
+          "instanceScopeSql",
+          "visible()"
         ]
       }
     },
@@ -10119,7 +10119,8 @@
           "adminScope",
           "checkScope",
           "creator scope",
-          "instanceScopeSql"
+          "instanceScopeSql",
+          "visible()"
         ]
       }
     },
@@ -17094,7 +17095,6 @@
         ],
         "guard": [
           "orgAdjustment.item",
-          "transfer.direct",
           "transfer.source"
         ],
         "object": [
@@ -17103,16 +17103,14 @@
           "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:create",
           "TenantBase.OrganizationApproval:update"
-        ],
-        "postcheck": [
-          "org result"
         ],
         "scope": [
           "checkScope",
           "creator scope",
           "employment scope",
-          "resolveModuleScope",
+          "scope.all",
           "visible()"
         ],
         "scopePoint": [
@@ -24339,7 +24337,6 @@
         ],
         "scope": [
           "employment scope",
-          "employment visibility",
           "visible()"
         ],
         "scopePoint": [
@@ -26929,26 +26926,44 @@
         "button": [
           "button()",
           "buttonResource",
-          "object.button"
+          "object.button",
+          "requireTransferButton"
         ],
         "command": [
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "fieldsIn": [
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite",
+          "transfer write"
+        ],
         "guard": [
-          "orgAdjustment.item"
+          "orgAdjustment.item",
+          "transfer.source"
         ],
         "object": [
-          "objectContext"
+          "object.* 动作",
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:create",
           "TenantBase.OrganizationApproval:update"
         ],
         "postcheck": [
           "org result"
         ],
         "scope": [
-          "creator scope"
+          "creator scope",
+          "employment scope",
+          "scope.all",
+          "scopeSql",
+          "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -27020,26 +27035,46 @@
         "button": [
           "button()",
           "buttonResource",
-          "object.button"
+          "object.button",
+          "requireTransferButton"
         ],
         "command": [
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "fieldsIn": [
+          "checkFields",
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite",
+          "transfer write"
+        ],
         "guard": [
-          "orgAdjustment.item"
+          "orgAdjustment.item",
+          "transfer.source"
         ],
         "object": [
-          "objectContext"
+          "object.* 动作",
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:create",
           "TenantBase.OrganizationApproval:update"
         ],
         "postcheck": [
           "org result"
         ],
         "scope": [
-          "creator scope"
+          "checkScope",
+          "creator scope",
+          "employment scope",
+          "scope.all",
+          "scopeSql",
+          "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -27082,7 +27117,6 @@
         "guard": [
           "orgAdjustment.head",
           "orgAdjustment.item",
-          "transfer.direct",
           "transfer.source"
         ],
         "object": [
@@ -27091,6 +27125,7 @@
           "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:create",
           "TenantBase.OrganizationApproval:update"
         ],
         "postcheck": [
@@ -27099,7 +27134,7 @@
         "scope": [
           "creator scope",
           "employment scope",
-          "resolveModuleScope",
+          "scope.all",
           "visible()"
         ],
         "scopePoint": [
@@ -27144,7 +27179,6 @@
         ],
         "guard": [
           "orgAdjustment.item",
-          "transfer.direct",
           "transfer.source"
         ],
         "object": [
@@ -27153,17 +27187,15 @@
           "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:create",
           "TenantBase.OrganizationApproval:update"
-        ],
-        "postcheck": [
-          "org result"
         ],
         "scope": [
           "checkScope",
           "creator scope",
           "employment scope",
           "employment visibility",
-          "resolveModuleScope",
+          "scope.all",
           "visible()"
         ],
         "scopePoint": [

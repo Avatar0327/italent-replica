@@ -29,13 +29,9 @@
       "error": "17147722c2a8",
       "status": 400
     },
-    "scopeQueries": [
-      "scope:TenantBase/TenantBase.EmploymentRecord/-",
-      "scope:data.scope.all:"
-    ],
+    "scopeQueries": [],
     "trace": [
       "btn:TenantBase.OrganizationApproval#EditAdjustOrgDetailBtn@detail",
-      "obj:TenantBase.EmploymentRecord:create",
       "obj:TenantBase.OrganizationApproval:update"
     ]
   },
@@ -280,7 +276,7 @@
   "POST /api/tenant/org-adjustment/adjustments/:id/transfer-items": {
     "all": {
       "code": "VALIDATION_FAILED",
-      "error": "a8bf87aa5bf6",
+      "error": "441b42e3c07a",
       "status": 400
     },
     "fieldQueries": [],

@@ -1727,6 +1727,7 @@ export const GRAPH: Graph = {
     '#CONTENT_PROVIDERS',
     '#MAX_PAYLOAD_BYTES',
     '#handlerFacts',
+    '#visibleForeignCodes',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
   ],
   'apps/api/src/modules/approval/handling-content.ts#profileCeilingOf': [
@@ -1739,6 +1740,9 @@ export const GRAPH: Graph = {
     '#latestHandlingCopy',
   ],
   'apps/api/src/modules/approval/handling-content.ts#selectContent': ['#hasPendingTask', '#latestHandlingCopy'],
+  'apps/api/src/modules/approval/handling-content.ts#visibleForeignCodes': [
+    'apps/api/src/modules/approval/context.ts#actorOf',
+  ],
   'apps/api/src/modules/approval/handling-context.ts#contentViewOfRead': [
     'apps/api/src/modules/approval/handling-content.ts#contentViewOf',
   ],
@@ -2285,8 +2289,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
   ],
   'apps/api/src/modules/approval/routes.ts#detailViewable': [
+    'apps/api/src/modules/approval/foreign-fields.ts#capForeign',
     'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
     'apps/api/src/modules/approval/foreign-fields.ts#viewableWithForeign',
+    'apps/api/src/modules/approval/handling-content.ts#foreignCeilingOf',
     '#ownViewable',
   ],
   'apps/api/src/modules/approval/routes.ts#fieldAccess': [
