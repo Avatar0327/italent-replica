@@ -1,7 +1,6 @@
 import { useEffect, useReducer } from 'react';
 import { ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import { usePermissions } from '../foundation/Permissions.js';
-import { ApiError } from '../foundation/client.js';
 import { useApiClient } from '../foundation/Session.js';
 import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import { queryCommandResult } from '../foundation/forms/command-result.js';
@@ -10,7 +9,7 @@ import { sharedRecovery } from '../foundation/forms/recovery.js';
 import { createFormStore, isLocked, type Submission } from '../foundation/forms/store.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { changedFields, type Values } from '../foundation/forms/values.js';
-import { COMMAND_NOT_SENT, createRefusalMarks, useRefusalMarks } from '../approval/refusal-marks.js';
+import { createRefusalMarks, useRefusalMarks } from '../approval/refusal-marks.js';
 import { collection, detailPath, type Detail } from './model.js';
 
 // DEC-955 只禁调动 / 审批写入：组织调整在浏览器不支持 Web Locks 时退回无锁登记，照常保存。
@@ -19,10 +18,12 @@ const store = createFormStore({ recovery: sharedRecovery('org-adjustment', { req
 const marks = createRefusalMarks();
 /**
  * F-570：提交前同步就锁到别页未确认命令时，内核按恢复态返回“结果未知 + race”，error 为空（store.ts submitTo）。
- * 原因按占槽条目记，只在当前锁定的正是 race 里的那条命令时显示（同 F-558 / F-562）；条目换掉（查询落定、别页落定）即失效。
+ * 原因按槽记下占槽命令 ID，只在该槽仍是结果未知、且占着的正是这条命令时显示（同 F-558 / F-562）：
+ * 回查中、回查 404（内核复制条目、命令不变）照旧显示；查询确认结果、别页落定（条目删掉）或占槽命令换掉即不再显示。
+ * 槽键不含租户：靠命令 ID（客户端生成的 UUID）核对，换租户 / 身份后同名槽上的命令不同，不会串显。
  * 只处理结果未知：登记冲突、同步发现占槽两条 rejected + race 的条目本身带“其他标签页”error，照旧由状态区显示。
  */
-const races = new WeakMap<Submission, string>();
+const races = new Map<string, { commandId: string; reason: string }>();
 const raceListeners = new Set<() => void>();
 
 /** 与 F-566 的拒绝标记相同：内核此时不发布新条目，记下原因后让各挂载实例重绘（只订阅本模块，AC-FE-F142）。 */
@@ -35,14 +36,34 @@ function useMarks() {
   }, []);
 }
 
-async function settle(command: { peek(): Submission | undefined }, submit: Parameters<typeof marks.settle>[1]) {
+/** 槽上记下的竞争原因：仍是结果未知、占槽的仍是那条命令才算数（F-570 第 2 轮 P2-2）。 */
+function raceOf(slot: string, state: Submission | undefined) {
+  const race = races.get(slot);
+  return state?.status === 'unknown' && race && state.command?.id === race.commandId ? race.reason : undefined;
+}
+
+/**
+ * notice：槽已交给别页命令时本次未发出的原因（等锁超时 DEC-954；F-570 竞争），详情状态区另行显示；
+ * race：F-570 锁到别页命令的原因，弹窗按当前占槽命令显示（不留在弹窗本地错误里）。
+ */
+function notices(slot: string, state: Submission | undefined) {
+  const race = raceOf(slot, state);
+  return { notice: marks.notice(state) ?? race, race };
+}
+
+async function settle(
+  slot: string,
+  command: { peek(): Submission | undefined },
+  submit: Parameters<typeof marks.settle>[1],
+) {
+  races.delete(slot);
   const result = await marks.settle(command, submit);
   if (result.status !== 'unknown' || !result.race) return result;
-  const current = command.peek();
-  if (current?.command?.id === result.race.commandId) races.set(current, result.race.reason);
+  races.set(slot, { commandId: result.race.commandId, reason: result.race.reason });
   raceListeners.forEach((listener) => listener());
-  // 本次未发出：同 refused 抛出原因，编辑弹窗照原文显示，不退成通用“结果尚未确认”。
-  throw new ApiError(409, COMMAND_NOT_SENT, 'conflict', result.race.reason);
+  // 本次未发出、已由提示区按占槽命令显示原因（详情 notice、弹窗 race）：同 refusal-marks 抛 undefined，
+  // 弹窗不留本地错误，别页落定、条目删掉后随之解锁并清掉提示（第 2 轮 P2-1）。
+  throw undefined;
 }
 type Action = 'create' | 'edit' | 'submit' | 'void';
 const required = ['subject', 'effectiveDate', 'adjustmentRange', 'approvalSubjectOrgId'] as const;
@@ -168,7 +189,7 @@ export function useAdjustmentCommand(row: Detail | undefined, updated: (id: stri
           return acceptReceipt(receipt, id, sent.revision);
         },
       });
-    const result = await settle(command, submit);
+    const result = await settle(slotKey(collection, id), command, submit);
     if (result.status !== 'done' || !result.businessId) throw result.error ?? new Error(messages.unknown);
     updated(result.businessId);
     command.clear();
@@ -176,8 +197,7 @@ export function useAdjustmentCommand(row: Detail | undefined, updated: (id: stri
 
   return {
     form: { ...command, state: marks.view(command.state), reload, queryResult },
-    /** 槽已交给别页命令时本次未发出的原因（等锁超时 DEC-954；F-570 竞争），详情状态区另行显示。 */
-    notice: marks.notice(command.state) ?? (command.state && races.get(command.state)),
+    ...notices(slotKey(collection, id), command.state),
     access: { ...access, field: recoveryField(access, row, command.state?.latest?.values) },
     baseline,
     send,
