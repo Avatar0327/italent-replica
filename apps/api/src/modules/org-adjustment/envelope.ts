@@ -25,7 +25,10 @@ export const TARGET_ORG_FIELD = 'orgItems.targetOrgId';
 export const PARENT_ORG_FIELD = 'orgItems.parentOrgId';
 export const TRANSFER_DEPARTMENT_FIELD = 'transferItems.departmentId';
 const FIELD_KEY = 'field';
-const sourceField = (issue: Issue) => (typeof issue[FIELD_KEY] === 'string' ? issue[FIELD_KEY] : TARGET_ORG_FIELD);
+/** 停用的新上级：沿用 F-427（随目标组织查看权）且新上级自己的字段也须可见，两个都看得到才带出（fail-closed）。 */
+export const PARENT_INACTIVE_FIELD = `${PARENT_ORG_FIELD},${TARGET_ORG_FIELD}`;
+const sourceFields = (issue: Issue): string[] =>
+  typeof issue[FIELD_KEY] === 'string' ? issue[FIELD_KEY].split(',') : [TARGET_ORG_FIELD];
 
 export const ORG_CODE_DUPLICATE = 'ORG_CODE_DUPLICATE';
 /** 编码重复的文案；看不到 `orgItems.code` 时不带编码（保存的 409 与整单校验问题共用）。 */
@@ -48,7 +51,7 @@ export function trimIssues<T extends object>(issues: readonly T[], viewable: Vie
   return issues.map((issue) => {
     if ('section' in issue) {
       const row = issue as Issue;
-      const shown = sees(viewable, sourceField(row)) ? row : without(row, 'orgId');
+      const shown = sees(viewable, ...sourceFields(row)) ? row : without(row, 'orgId');
       return hideUsedCode(without(shown, FIELD_KEY), viewable) as T;
     }
     return (headOrgs ? issue : without(issue as Issue, 'orgIds')) as T;
@@ -90,9 +93,9 @@ export function trimError(error: unknown, viewable: Viewable): unknown {
   let details = hidden.details as Issue;
   if (Array.isArray(details.items)) details = { ...details, items: trimIssues(details.items as Issue[], viewable) };
   // 顶层组织 ID 随命中的字段（缺省目标组织）；带 field 的 `orgIds` 同样按该字段判，不带 field 的是头问题。
-  const field = sourceField(details);
-  if (!sees(viewable, field)) details = without(details, 'orgId');
-  const headIds = FIELD_KEY in details ? [field] : ['approvalSubjectOrgId', 'adjustmentRange'];
+  const fields = sourceFields(details);
+  if (!sees(viewable, ...fields)) details = without(details, 'orgId');
+  const headIds = FIELD_KEY in details ? fields : ['approvalSubjectOrgId', 'adjustmentRange'];
   if (!sees(viewable, ...headIds)) details = without(details, 'orgIds');
   return new AppError(error.code, message, without(details, FIELD_KEY));
 }

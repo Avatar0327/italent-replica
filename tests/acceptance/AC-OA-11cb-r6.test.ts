@@ -11,10 +11,11 @@
 import { useTestDb } from '@italent/testkit';
 import { ORG_ADJUSTMENT_FORM_FIELDS } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
-import { oaNodes } from './AC-OA-approval-support.js';
+import { flowWorld, oaNodes } from './AC-OA-approval-support.js';
 import { transferWorld, type TransferWorld } from './AC-OA-11cb-support.js';
 import { bodyOf, expectError } from './AC-OA-head-support.js';
-import { rename } from './AC-OA-items-support.js';
+import { newOrg, rename } from './AC-OA-items-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const OUT_OF_RANGE = 'ORG_ADJUSTMENT_OUT_OF_RANGE';
@@ -110,5 +111,26 @@ describe('同根因：调动行越界值的字段来源是 transferItems.departm
 
     await expectError(res, 400, 'VALIDATION_FAILED', OUT_OF_RANGE);
     expect((await bodyOf(res)).error?.details?.orgId, '部门字段可见，不过度裁剪').toBe(w.b);
+  });
+});
+
+describe('同根因：停用的新上级（ORG_INACTIVE）同样不能带出被遮蔽的新上级', () => {
+  async function rejectedWithInactiveParent(label: string, hide: string) {
+    const w = await flowWorld(testDb().db, label);
+    const parent = await w.org(`上级${uniqueSuffix()}`, w.a);
+    const view = await w.created();
+    await w.item(view.id, newOrg(parent));
+    await w.submitted(view.id);
+    await w.acted(view.id, w.hrbp, 'reject');
+    await w.disable(parent);
+    w.access.hiddenFields.add(hide);
+    return { parent, res: await w.instanceAction(view.id, 'resubmit') };
+  }
+
+  it('隐藏 orgItems.parentOrgId（目标组织可见）→ 400 不带停用的新上级 ID', async () => {
+    const { parent, res } = await rejectedWithInactiveParent('r6-inactive-parent', 'orgItems.parentOrgId');
+
+    await expectError(res, 400, 'VALIDATION_FAILED', 'ORG_ADJUSTMENT_ORG_INACTIVE');
+    expect(await res.clone().text(), '新上级被遮蔽，不带出').not.toContain(parent);
   });
 });

@@ -14,7 +14,7 @@ import {
 import { validateEmploymentChoice } from '../org/employment-linkage.js';
 import { assertOrgPeopleEligible } from '../org/people.js';
 import type { OrgRecord } from '../org/read-model.js';
-import { codeUsedMessage, ORG_CODE_DUPLICATE, PARENT_ORG_FIELD, TARGET_ORG_FIELD } from './envelope.js';
+import { codeUsedMessage, ORG_CODE_DUPLICATE, PARENT_INACTIVE_FIELD, TARGET_ORG_FIELD } from './envelope.js';
 import { invalid, type OrganizationPatch } from '../org/validation.js';
 import { assertInRange, orgContext, type ItemWorld } from './item-tree.js';
 import type { OrgItem, OrgItemContent } from './items-store.js';
@@ -96,7 +96,7 @@ async function assertItemCode(
 
 /** 引用的既有上级须在生效日存在且启用；引用本单行须是本单的新增行。 */
 function assertRefs(world: ItemWorld, items: readonly OrgItem[], item: OrgItem) {
-  if (item.parentOrgId) activeOrg(world, item.parentOrgId, PARENT_ORG_FIELD);
+  if (item.parentOrgId) activeOrg(world, item.parentOrgId, PARENT_INACTIVE_FIELD);
   if (item.parentItemId) createdRow(items, item.parentItemId);
 }
 
