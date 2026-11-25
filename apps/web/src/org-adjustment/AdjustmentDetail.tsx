@@ -1,4 +1,4 @@
-import { Button, Descriptions, Modal, Space } from 'antd';
+import { Alert, Button, Descriptions, Modal, Space } from 'antd';
 import { labels, text } from './messages.js';
 import { useState } from 'react';
 import { ApiError } from '../foundation/client.js';
@@ -77,6 +77,8 @@ function DetailBody({ row, voiding, refresh }: Props & { row: Detail; refresh():
           labels={Object.fromEntries(Object.entries(labels).filter(([name]) => command.access.field(name).visible))}
         />
       )}
+      {/* act 吞掉了本次拒绝；槽已交给别页命令时状态区显示的是那条命令，本次未发出的原因另行给出（F-566 P2-3）。 */}
+      {!editing && command.notice && <Alert type="error" showIcon message={command.notice} />}
       <section aria-label={text.application}>
         <div className="oa-section-heading">
           <h2>{text.application}</h2>
