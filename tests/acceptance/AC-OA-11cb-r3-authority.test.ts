@@ -115,9 +115,10 @@ describe('P1-2a 保留合同联动只改目标部门：新旧合同目标范围�
 describe('P1-2b 职责转交下属要在申请人任职范围内（新旧两侧）', () => {
   async function dutyWorld(label: string) {
     const ctx = await setup(label);
-    const { w, mover } = ctx;
+    const { w, c, mover } = ctx;
     const subordinate = await w.employee(`ZZ_下属${uniqueSuffix()}`);
-    await w.hire(subordinate.id, { departmentId: w.a, directManagerId: mover });
+    // 下属在范围外的部门丙（范围只含部门 a 与指定的人）：按部门与按人都判不中
+    await w.hire(subordinate.id, { departmentId: c, directManagerId: mover });
     const receiver = await w.staff(w.b);
     const linkage = {
       dutyTransfer: {
