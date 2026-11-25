@@ -42,3 +42,56 @@ it('AC-PER-F576 附件登记在应用角色下返回 200 且落库，他租户�
   expect(await find(s.tenant.id)).toEqual([{ id: created.id, filename, status: 'registered' }]);
   expect(await find(other.tenant.id)).toEqual([]);
 });
+
+// DEC-067 / AGENTS.md §10：同键同内容视为幂等，同键异内容报冲突。附件登记入口的命令指纹必须带解析后的请求体，
+// 否则同员工、同 revision、同 Idempotency-Key 下改文件名 / 摘要仍返回首次回执（误报成功）。
+it('AC-PER-F576 附件登记同键同体重放、同键异体 409 且零新增、新键正常登记', async () => {
+  const s = await personnelSession(database().db, 'att-idem');
+  const make = (name: string) => ({
+    purpose: 'idPhoto',
+    filename: `${name}-${uniqueSuffix()}.pdf`,
+    contentType: 'application/pdf',
+    byteSize: 2048,
+    sha256: uniqueSuffix(32) + uniqueSuffix(32),
+  });
+  const register = (body: object, idempotencyKey: string) =>
+    s.request('POST', `/employees/${s.employee.id}/attachments`, {
+      ifMatch: s.employee.revision,
+      idempotencyKey,
+      body,
+    });
+  const count = async () =>
+    (
+      await withTenant(database().db, s.tenant.id, (tx) =>
+        tx
+          .select({ id: personnelAttachments.id })
+          .from(personnelAttachments)
+          .where(eq(personnelAttachments.employeeId, s.employee.id)),
+      )
+    ).length;
+  const key = `att-${uniqueSuffix()}`;
+  const first = make('first');
+  const created = await register(first, key);
+  expect(created.status, await created.clone().text()).toBe(200);
+  const firstReceipt = (await created.json()) as { id: string; filename: string };
+  expect(await count()).toBe(1);
+
+  const replay = await register(first, key);
+  expect(replay.status, await replay.clone().text()).toBe(200);
+  expect(await replay.json()).toMatchObject({ id: firstReceipt.id, filename: first.filename });
+  expect(await count()).toBe(1);
+
+  const changed = await register(make('second'), key);
+  const changedText = await changed.clone().text();
+  expect(changed.status, changedText).toBe(409);
+  expect(changedText).toContain('IDEMPOTENCY_CONFLICT');
+  expect(await count()).toBe(1);
+
+  const second = make('third');
+  const fresh = await register(second, `att-${uniqueSuffix()}`);
+  expect(fresh.status, await fresh.clone().text()).toBe(200);
+  const freshReceipt = (await fresh.json()) as { id: string; filename: string };
+  expect(freshReceipt.id).not.toBe(firstReceipt.id);
+  expect(freshReceipt.filename).toBe(second.filename);
+  expect(await count()).toBe(2);
+});
