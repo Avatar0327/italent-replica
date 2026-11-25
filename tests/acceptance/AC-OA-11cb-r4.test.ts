@@ -15,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { oaNodes } from './AC-OA-approval-support.js';
 import { transferWorld, type TransferWorld } from './AC-OA-11cb-support.js';
 import { bodyOf, expectError } from './AC-OA-head-support.js';
+import { newOrg } from './AC-OA-items-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
@@ -162,9 +163,11 @@ describe('P2-3 审批人编辑错误信封按审批节点字段投影折叠', ()
     });
     const view = await w.created(w.headBody({ adjustmentRange: [w.a, w.b] }));
     const rowId = await w.seed(view.id, await w.staff(w.a));
+    // 组织行挂在将被缩出范围的部门 B 下：缩小范围后它出现在 400 的 items 里
+    const orgRow = (await w.item(view.id, newOrg(w.b, { name: `ZZ_组织行${uniqueSuffix()}` }))).items[0]!.id;
     await w.submitted(view.id);
     w.access.viewDenied = true;
-    return { w, view, rowId };
+    return { w, view, rowId, orgRow };
   }
   const section = (w: TransferWorld, id: string, name: 'org' | 'transfer') =>
     w.call('GET', `/api/tenant/org-adjustment/adjustments/${id}/items/${name}`, {}, w.hrbp.userId);
@@ -179,5 +182,15 @@ describe('P2-3 审批人编辑错误信封按审批节点字段投影折叠', ()
     const text = await res.clone().text();
     expect(text, '调动行 ID 不能出现在信封里').not.toContain(rowId);
     expect((await bodyOf(res)).error?.details?.reason).toBeTruthy();
+  });
+
+  it('节点表单不含组织明细分区：读组织分区 404；缩小范围的 400 同样不带组织行 ID', async () => {
+    const { w, view, orgRow } = await blindWorld('r4-envelope-org', 'orgItems.');
+    await expectError(await section(w, view.id, 'org'), 404, 'NOT_FOUND');
+
+    const res = await w.act(view.id, w.hrbp, 'edit', { fields: { adjustmentRange: [w.a] } });
+
+    await expectError(res, 400, 'VALIDATION_FAILED');
+    expect(await res.clone().text(), '组织行 ID 不能出现在信封里').not.toContain(orgRow);
   });
 });

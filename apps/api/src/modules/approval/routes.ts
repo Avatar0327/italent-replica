@@ -189,6 +189,23 @@ async function command(
   }
 }
 
+/**
+ * 带编辑字段的办理命令：给适配器一个授权记录收集口，成功后把首次编辑的新旧两侧并进命令台账的结果体
+ * （第 4 轮 P2-2）；响应只取 `instanceId`，多出的字段不外露，同键重放按它重判。
+ */
+function recordingEdits(
+  fields: Readonly<Record<string, unknown>> | undefined,
+  run: (tx: Tx, ctx: ApprovalContext) => Promise<CommandResult>,
+): (tx: Tx, ctx: ApprovalContext) => Promise<CommandResult> {
+  if (!fields || !Object.keys(fields).length) return run;
+  return async (tx, ctx) => {
+    const editRecords: unknown[] = [];
+    const result = await run(tx, { ...ctx, editRecords });
+    if (result.status !== 200 || !editRecords.length) return result;
+    return { ...result, body: { ...(result.body as object), editRecords } };
+  };
+}
+
 /** 查看人的两个管理员按钮各自的实例范围（第四轮 N8：详情逐按钮公布动作）。 */
 async function viewerOf(deps: TenantRouteDeps, ctx: TenantContext): Promise<Viewer> {
   return {
@@ -729,7 +746,7 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         deps,
         ctx,
         decisionLedger(path, request),
-        (tx, context) => act(tx, context, request, viewable),
+        recordingEdits(input.fields, (tx, context) => act(tx, context, request, viewable)),
         approvalEditGuard(ctx, taskId, input.fields),
       );
       return respondOutcome(c, deps, result);
@@ -774,7 +791,7 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       deps,
       ctx,
       request,
-      (tx, context) => editTask(tx, context, request, viewable),
+      recordingEdits(input.fields, (tx, context) => editTask(tx, context, request, viewable)),
       approvalEditGuard(ctx, taskId, input.fields),
     );
     return respondOutcome(c, deps, result);

@@ -13,7 +13,7 @@ import {
 } from '../permission/module-access.js';
 import { AppError } from '../../errors.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
-import { loadOrgCreators, visibleItems } from './disclosure.js';
+import { loadOrgCreators, orgAdjustmentDisclosure, orgSectionDisclosed, visibleItems } from './disclosure.js';
 import { loadItems, type OrgItem } from './items-store.js';
 import { transferSectionDisclosed, visibleTransfers } from './transfer-read.js';
 import { loadTransfers } from './transfer-items-store.js';
@@ -123,4 +123,43 @@ export async function hiddenEnvelopeIds(
 ): Promise<ReadonlySet<string>> {
   const org = await hiddenItemIds(tx, deps, ctx, adjustmentId);
   return new Set([...org, ...(await hiddenTransferRows(tx, deps, ctx, adjustmentId, org))]);
+}
+
+/**
+ * 审批人回调（审批中编辑 / 同意兜底 / 重提）的信封折叠集合（第 4 轮 P2-3）：与读接口同一份披露
+ * （`orgAdjustmentDisclosure`：HR 对象查看权走范围裁剪，否则走审批人路径——节点表单 ∩ 字段查看权，不按范围裁剪）。
+ * 分区没披露（节点表单 / 字段权限里没有该分区字段）整区折叠，披露了再按行可见性折叠；读不到本单（404）一律全折叠，fail-closed。
+ */
+export async function hiddenEnvelopeIdsForViewer(
+  tx: Tx,
+  deps: Pick<TenantRouteDeps, 'authorize' | 'clock'>,
+  ctx: TenantContext,
+  adjustmentId: string,
+): Promise<ReadonlySet<string>> {
+  const [items, transfers] = [
+    await loadItems(tx, ctx.tenantId, adjustmentId),
+    await loadTransfers(tx, ctx.tenantId, adjustmentId),
+  ];
+  const disclosure = await orgAdjustmentDisclosure(
+    tx,
+    deps as Parameters<typeof orgAdjustmentDisclosure>[1],
+    ctx,
+    adjustmentId,
+  ).catch((error: unknown) => {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
+    throw error;
+  });
+  const shownOrg = new Set(
+    disclosure && orgSectionDisclosed(disclosure) ? visibleItems(disclosure, items).items.map((item) => item.id) : [],
+  );
+  const shownTransfer = new Set(
+    disclosure && transferSectionDisclosed(disclosure)
+      ? (await visibleTransfers(tx, ctx.tenantId, disclosure, { transfers }, shownOrg)).rows.map((row) => row.id)
+      : [],
+  );
+  const hidden = [
+    ...items.filter((item) => !shownOrg.has(item.id)),
+    ...transfers.filter((row) => !shownTransfer.has(row.id)),
+  ];
+  return new Set(hidden.map((row) => row.id));
 }

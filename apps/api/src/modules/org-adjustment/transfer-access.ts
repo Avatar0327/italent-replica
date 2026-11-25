@@ -34,6 +34,7 @@ import {
 } from '../transfer/linkage/access.js';
 import type { LinkageOptions } from '../transfer/linkage/input.js';
 import { normalizeLinkage } from '../transfer/linkage/input.js';
+import { notEligible } from '../transfer/linkage/validation.js';
 import { previewTransferChecked } from '../transfer/preview.js';
 import { normalizeTransferInput, requireTransferWrite } from '../transfer/service.js';
 import { authorizeItem, HEAD_BUTTONS } from './access.js';
@@ -172,15 +173,18 @@ async function authorizeContractSides(
 }
 
 /**
- * 职责转交下属（第 3 轮 P1-2b）：新旧选项里出现的每个下属，当前任职都要在操作人任职范围内
+ * 职责转交下属（第 3 轮 P1-2b、第 4 轮 P2-1）：新旧选项里出现的每个下属，当前任职都要在操作人任职范围内
  * （与人工转交同一个 requireLinkedEmploymentRecord；范围外 404 LINKED_RECORD_OUT_OF_SCOPE，不探测原因）。
+ * 查不到现行任职不能跳过：与直接调动（transfer/linkage/validation requireReportingSubordinate）同口径，
+ * 没有任职 / 已离职一律 400 TRANSFER_PERSON_NOT_ELIGIBLE，否则无任职下属能绕过范围复核落进执行器。
  */
 async function authorizeDutySubordinates(tx: Tx, ctx: EmploymentContext, ...sides: (LinkageOptions | null)[]) {
   const ids = new Set(sides.flatMap((side) => side?.dutyTransfer?.subordinates.map((item) => item.employeeId) ?? []));
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   for (const id of ids) {
     const record = await findCurrentRecord(tx, ctx.tenantId, id, today);
-    if (record) await requireLinkedEmploymentRecord(tx, ctx, id, record.fields.departmentId, record.id);
+    if (!record) throw notEligible();
+    await requireLinkedEmploymentRecord(tx, ctx, id, record.fields.departmentId, record.id);
   }
 }
 
@@ -338,20 +342,24 @@ export async function authorizeTransferRows(
   if (rows.length) await transferGate(deps, ctx).rejudge(tx, view, rows);
 }
 
+/** 审批人编辑一行时用于授权的新旧两侧（首次编辑时的整行，存在命令台账里供重放重判）。 */
+export interface ApproverEditRecord {
+  readonly before: TransferItem;
+  readonly after: TransferItem;
+}
+
 /**
- * 审批中编辑的同键重放（第 3 轮 P2-1）：行已按首次编辑落库，旧值不再保留，所以按“当前行 = 新旧两侧 + 本次请求碰过的字段编码”
- * 用审批人当前权限（`EditApprovalIngApply`、字段写权、范围、联动与带编）再判一遍，不重写。
+ * 审批中编辑的同键重放（第 3 轮 P2-1、第 4 轮 P2-2）：行已按首次编辑落库，所以按命令台账里记下的首次新旧两侧，
+ * 用审批人当前权限（`EditApprovalIngApply`、字段写权、范围、联动与带编）逐侧再判一遍，不重写。
+ * 不能拿当前行同时当新旧两侧：首次取消带编后，旧侧的带编编制权会在重放里被漏判。
  */
 export async function rejudgeApproverEdits(
   tx: Tx,
   deps: TransferAuthorityDeps,
   base: TenantContext,
   view: AdjustmentView,
-  edits: readonly { readonly row: TransferItem; readonly codes: readonly string[] }[],
+  edits: readonly ApproverEditRecord[],
 ): Promise<void> {
   const env: Env = { deps, base, button: HEAD_BUTTONS.approve };
-  for (const { row, codes } of edits) {
-    const touched = Object.fromEntries(codes.map((code) => [code, null]));
-    await saveRow(tx, env, view, row.employeeId, row, row, touched);
-  }
+  for (const { before, after } of edits) await saveRow(tx, env, view, after.employeeId, after, before);
 }

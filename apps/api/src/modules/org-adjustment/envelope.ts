@@ -99,7 +99,7 @@ export async function trimmedForViewer(
     const viewable = ctx.fields
       ? await ctx.fields.viewable(tx, ctx.userId, ORG_ADJUSTMENT_OBJECT_CODE)
       : new Set<string>();
-    // 第 3 轮 P2-2：看不到的明细行（组织范围外、调动行范围外 / 分区字段全遮蔽）的问题折叠成一条汇总，信封不带行 ID
+    // 第 3 轮 P2-2、第 4 轮 P2-3：按读接口同一份披露（审批人看节点表单投影）折叠看不到的行，信封不带行 ID
     const folded = adjustmentId ? await foldForApprover(tx, ctx, adjustmentId, error) : error;
     throw trimError(folded, viewable);
   }
@@ -108,6 +108,6 @@ export async function trimmedForViewer(
 async function foldForApprover(tx: Tx, ctx: ApprovalContext, adjustmentId: string, error: unknown) {
   if (!ctx.exitEditAuthorize) return error;
   const deps = { authorize: ctx.exitEditAuthorize, clock: () => ctx.now };
-  const { hiddenEnvelopeIds } = await import('./hidden-rows.js');
-  return foldHiddenError(error, await hiddenEnvelopeIds(tx, deps, ctx, adjustmentId));
+  const { hiddenEnvelopeIdsForViewer } = await import('./hidden-rows.js');
+  return foldHiddenError(error, await hiddenEnvelopeIdsForViewer(tx, deps, ctx, adjustmentId));
 }

@@ -23,7 +23,7 @@ import { bumpRevision, type OrgItem } from './items-store.js';
 import { persistRevisions, planRevisions } from './org-items.js';
 import { assertHeadPatch, loadAdjustment, persistHead, type AdjustmentView } from './service.js';
 import { rowOrgIds } from './submission.js';
-import { rejudgeApproverEdits, transferGate } from './transfer-access.js';
+import { rejudgeApproverEdits, transferGate, type ApproverEditRecord } from './transfer-access.js';
 import {
   assertOrgItemTarget,
   draftOf,
@@ -219,7 +219,9 @@ async function authorizeTransferEdits(
       assertOrgItemTarget(world, draft, hiddenOrg);
       return gate.save(tx, view, row.employeeId, draft, row);
     });
-    edits.push([row, { ...row, ...draft, ...resolved(prepared) }]);
+    const after = { ...row, ...draft, ...resolved(prepared) };
+    edits.push([row, after]);
+    ctx.editRecords?.push({ before: row, after } satisfies ApproverEditRecord);
   }
   return edits;
 }
@@ -279,10 +281,16 @@ export async function assertApprovable(tx: Tx, ctx: ApprovalContext, id: string)
 }
 
 /**
- * 审批中编辑 / 编辑并同意的同键重放（第 3 轮 P2-1）：首次成功后撤了编辑按钮、字段权或范围，原键重放也要拒绝。
- * 头与明细按审批人当前授权（authorizeApprover）判，调动行再按“当前行 + 本次碰过的字段”走保存同一条授权链。
+ * 审批中编辑 / 编辑并同意的同键重放（第 3 轮 P2-1、第 4 轮 P2-2）：首次成功后撤了编辑按钮、字段权或范围，原键重放也要拒绝。
+ * 头与明细按审批人当前授权（authorizeApprover）判；调动行按命令台账里记下的首次新旧两侧，走保存同一条授权链重判。
  */
-export async function replayApproverEdit(tx: Tx, ctx: ApprovalContext, id: string, fields: Row): Promise<void> {
+export async function replayApproverEdit(
+  tx: Tx,
+  ctx: ApprovalContext,
+  id: string,
+  fields: Row,
+  records: readonly ApproverEditRecord[],
+): Promise<void> {
   await trimmedForViewer(
     tx,
     ctx,
@@ -290,16 +298,8 @@ export async function replayApproverEdit(tx: Tx, ctx: ApprovalContext, id: strin
       const view = await loadAdjustment(tx, ctx.tenantId, id);
       if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
       await authorizeApprover(tx, ctx, view, fields);
-      const patches = parseTransfers(fields);
-      if (!patches.size) return;
-      const world = await loadWorld(tx, ctx.tenantId, view);
-      const codes = Object.keys(fields).filter((code) => code.startsWith(TRANSFER_PREFIX));
-      const edits = [...patches.keys()].flatMap((rowId) => {
-        const row = world.transfers.find((item) => item.id === rowId);
-        return row ? [{ row, codes }] : [];
-      });
       const base = { tenantId: ctx.tenantId, userId: ctx.userId, timezone: ctx.timezone };
-      await rejudgeApproverEdits(tx, approverDeps(ctx), base, view, edits);
+      await rejudgeApproverEdits(tx, approverDeps(ctx), base, view, records);
     },
     id,
   );

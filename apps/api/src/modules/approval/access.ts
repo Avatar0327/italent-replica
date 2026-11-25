@@ -28,6 +28,7 @@ import type { TenantContext } from '../../tenant-context.js';
 import { requireAssessmentResubmitRight } from '../employment/assessment-access.js';
 import { employmentCreator } from '../employment/context.js';
 import { authorizeIntentionApproval } from '../employment/retirement-intention-access.js';
+import type { ApproverEditRecord } from '../org-adjustment/transfer-access.js';
 import { isStageMentor, mentorSourcesOf } from '../idp/plan-mentor.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
 import {
@@ -199,11 +200,12 @@ export function approvalEditGuard(
   if (!fields || !Object.keys(fields).length) return undefined;
   return {
     before: async () => undefined,
-    replayed: async (tx) => {
+    replayed: async (tx, result) => {
       const instance = await loadInstance(tx, ctx.tenantId, await instanceOfTask(tx, ctx.tenantId, taskId));
       if (instance.businessType !== 'org_adjustment') return;
       const { replayApproverEdit } = await import('../org-adjustment/approval-edit.js');
-      await replayApproverEdit(tx, ctx, instance.businessId, fields);
+      const records = (result.body as { editRecords?: unknown[] }).editRecords ?? [];
+      await replayApproverEdit(tx, ctx, instance.businessId, fields, records as ApproverEditRecord[]);
     },
   };
 }
