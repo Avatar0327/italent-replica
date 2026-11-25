@@ -142,6 +142,8 @@ describe('AC-FE-F562 HR 调动页登记冲突后占槽命令已落定', () => {
     expect(alert()).not.toContain(OTHER_TAB);
     expect(hr.processingError).toBe('');
     expect(hr.processing).toBe(false);
+    // 被拒条目随即清掉：CommandStatus（读 conflict.state.error）同样不留其他标签页文案。
+    expect(hr.conflict.state).toBeUndefined();
     expect(hr.busy).toBe(false);
 
     // 没有锁定的命令：再提交照常发出一次。

@@ -154,9 +154,10 @@ function submitHrTransfer(
     // A 已落定。确认重提之前保留这条状态，避免持久记录排队删除时被同步重新当作未知命令。
     if (outcome.status === 'rejected' && needsEstablishmentConfirm(outcome.error)) throw outcome.error;
     // 竞争只看内核结果（第 4 轮 P2-2）：原因随占槽命令显示在“处理中”。其余未发出的拒绝（DEC-954 / DEC-955、
-    // 存储不可用）useHrWrite 没机会提示，用内核的文案、留在表单原位置。
+    // 存储不可用）useHrWrite 没机会提示，只取内核 refused 的文案、留在表单原位置。登记冲突但占槽命令已在本页
+    // 处理拒绝前落定时内核两者都不带，error 仍是“其他标签页”文案，不能拿来提示（F-562，同 F-558 第 2 轮 P2-1）。
     if (outcome.race) write.raced(outcome.race.reason, outcome.race.commandId);
-    else if (outcome.status === 'rejected' && !sent) write.refuse((outcome.error as Error | undefined)?.message ?? '');
+    else if (outcome.status === 'rejected' && !sent) write.refuse(outcome.refused ?? '');
     // 普通拒绝由 useHrWrite 给出提示，下次提交按当时的预览起算。
     if (outcome.status === 'done' || outcome.status === 'rejected') command.clear();
   }, ask);
