@@ -460,7 +460,7 @@ const LIST: Obligation[] = [
 const DISCLOSURE_ENTRY: Evidence = {
   role: 'impl',
   unit: `${DISC}#orgAdjustmentDisclosure`,
-  anchor: 'const hr = await hrDisclosure(tx, bound, ctx, view)',
+  anchor: 'await hrDisclosure(tx, bound, ctx, view)',
 };
 // F-476 P5：openDetail 提到审批共用的 frozen-read.ts（改名 openApprovalDetail），实现不变
 const OPEN_DETAIL = 'apps/api/src/modules/approval/frozen-read.ts#openApprovalDetail';
