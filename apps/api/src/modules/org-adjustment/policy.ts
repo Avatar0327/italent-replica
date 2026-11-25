@@ -250,8 +250,13 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
   [`DELETE ${TRANSFERS}/:itemId`]: transferRoute({ guard: 'orgAdjustment.item' }),
   // 路由 8：单行刷新基线；section = org 按组织行，= transfer 按调动行（隐藏 / 不存在同一 404，再按当前权限重判）
   // 无请求体；调动行重判经保存链复核任职 / 联动写权，字段写权由守卫 orgAdjustment.item 判
+  // 按钮按 section 分两条链（第 3 轮 P2-4，与路由 4 的入口九选一同形，用 any 逐支登记证据）：
+  // section = org 为明细对象 EditOrgApprovalDetail@list_row；section = transfer 为主对象 EditAdjustOrgDetailBtn@detail
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: itemRoute(
-    buttonOnly(DETAIL, button('EditOrgApprovalDetail', 'list_row'), FORBIDDEN),
+    any([
+      buttonOnly(DETAIL, button('EditOrgApprovalDetail', 'list_row'), FORBIDDEN),
+      buttonOnly(OBJECT, button('EditAdjustOrgDetailBtn', 'detail'), FORBIDDEN),
+    ]),
     { guard: 'orgAdjustment.item' },
     // 调动行重判经保存链：来源员工范围同人工调动（transfer.source）
     ['transfer.source'],

@@ -659,6 +659,23 @@ export const ORG_ADJUSTMENT: RequiredTable = {
       ['button:requireTransferButton'],
       [...REBASE_ITEM_CHAIN, ...TRANSFER_SOURCE_BUTTON('saveRow')],
     ),
+    // section = transfer 的按钮链：rebaseTransferRoute 先判主对象 EditAdjustOrgDetailBtn@detail（第 3 轮 P2-4）
+    {
+      perm: `btn:${OBJ}#EditAdjustOrgDetailBtn@detail`,
+      facts: ['button:button()', 'button:buttonResource', 'button:object.button', 'button:requireTransferButton'],
+      at: [
+        REBASE_ITEM_CHAIN[0]!,
+        {
+          role: 'impl',
+          unit: `${TRANSFER_ROUTES}#rebaseTransferRoute`,
+          anchor: 'await button(deps, ctx, OBJECT, ...HEAD_BUTTONS.update)',
+        },
+        BUTTON,
+        ...REBASE_ITEM_CHAIN.slice(1),
+        ITEM_BUTTON,
+        ...TRANSFER_SOURCE_BUTTON('saveRow'),
+      ],
+    },
     itemScope('POST', REBASE_ITEM),
     transferSourceGuard('saveRow', ...REBASE_ITEM_CHAIN),
     saveRecordCreate(...REBASE_ITEM_CHAIN),
