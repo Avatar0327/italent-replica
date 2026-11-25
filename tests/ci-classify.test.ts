@@ -80,12 +80,6 @@ function quickCheck(yml: string): { lightJob: string; step: string } {
   return { lightJob, step: (QUICK_STEP.exec(lightJob)?.[1] ?? '').trimEnd() };
 }
 
-/** 整个快检步骤（含 `- name:` 行，以换行结尾），用来在内存里改写 ci.yml 构造变体。 */
-function quickStepText(yml: string): string {
-  const start = yml.indexOf('      - name: F090b 证据快检（F-573）\n');
-  return yml.slice(start, yml.indexOf('\n\n', start) + 1);
-}
-
 let main = '';
 let feature = '';
 let docsOffFeature = '';
@@ -305,60 +299,93 @@ describe('scripts/ci-classify.sh', () => {
     expect(step).toContain('tests/acceptance/AC-PRM-FW-02-evidence.test.ts');
   });
 
-  describe('F-573：light 块截取对 ci.yml 变体的健壮性（内存改写，不写文件）', () => {
-    const yml = readFileSync(CI_YML, 'utf8');
-    const baseStep = quickCheck(yml).step;
-    // 把快检步骤从 light 挪到 targetHeader 所在 job 的 steps 开头
-    const moveStepInto = (text: string, targetHeader: string): string => {
-      const step = quickStepText(text);
-      const rest = text.replace(step, '');
-      const at = rest.indexOf(targetHeader);
-      expect(at).toBeGreaterThan(-1);
-      const steps = rest.indexOf('    steps:\n', at) + '    steps:\n'.length;
-      return rest.slice(0, steps) + step + rest.slice(steps);
+  // 变体用测试内固定的最小工作流样本，不读真实 ci.yml：真实文件只受上面的主门禁约束，
+  // 合法的 ci.yml 改动（给 job 键加注释、调序、挪 light）不会让这些用例误报。
+  describe('F-573：light 块截取对工作流变体的健壮性（固定样本，内存字符串）', () => {
+    const STEP = [
+      '      - name: F090b 证据快检（F-573）',
+      "        if: needs.changes.outputs.mode == 'light' && needs.changes.outputs.evidence_check == 'true'",
+      '        run: pnpm test tests/acceptance/AC-PRM-FW-F090b-entries.test.ts',
+    ].join('\n');
+    const OTHER = '      - name: 其他步骤\n        run: echo other';
+    type Job = { key: string; step: boolean };
+    /** 一个 job 块：键行 + steps；step=true 时在其它步骤后放快检步骤。 */
+    const job = ({ key, step }: Job): string =>
+      `  ${key}\n    runs-on: ubuntu-latest\n    steps:\n${OTHER}${step ? `\n${STEP}` : ''}`;
+    const sample = (jobs: Job[], opts: { tail?: string } = {}): string =>
+      `name: sample\njobs:\n${jobs.map(job).join('\n\n')}${opts.tail ?? '\n'}`;
+    const LIGHT: Job = { key: 'light:', step: true };
+    const SHARDS: Job = { key: 'check-shards:', step: false };
+    /** 前置断言：快检步骤在整份样本里恰好出现一次，且位于键行为 key 的 job 内。 */
+    const expectStepOnlyIn = (yml: string, key: string): void => {
+      expect(yml.split('F090b 证据快检（F-573）').length - 1).toBe(1);
+      const at = yml.indexOf('F090b 证据快检（F-573）');
+      const header = yml.lastIndexOf(`\n  ${key}\n`, at);
+      expect(header).toBeGreaterThan(-1);
+      // 键行与快检步骤之间不能再有别的 job 键行
+      expect(/\n {2}[A-Za-z0-9_-]+:/.test(yml.slice(header + 1 + key.length + 3, at))).toBe(false);
     };
+    const baseStep = quickCheck(sample([LIGHT, SHARDS])).step;
 
-    it('基线：当前 ci.yml 能在 light 块里找到快检步骤', () => {
-      expect(baseStep).toContain('ROUTE_POLICY_EVIDENCE_STRICT');
+    it('基线：样本里 light 块能找到快检步骤', () => {
+      expectStepOnlyIn(sample([LIGHT, SHARDS]), 'light:');
+      expect(baseStep).toContain('AC-PRM-FW-F090b-entries');
     });
 
     it('变体①：job 键带行尾注释时，快检移出 light 仍判失败（check-shards / 插入的 decoy）', () => {
-      const commented = yml.replace('\n  check-shards:\n', '\n  check-shards: # 完整分片\n');
-      expect(commented).not.toBe(yml);
-      expect(quickCheck(moveStepInto(commented, '\n  check-shards: # 完整分片\n')).step).toBe('');
-      const step = quickStepText(commented);
-      const decoy = commented
-        .replace(step, '')
-        .replace('\n  check-shards:', `\n  decoy: # x\n    steps:\n${step}\n  check-shards:`);
-      expect(decoy).toContain('  decoy: # x\n');
-      expect(quickCheck(decoy).step).toBe('');
-      // 对照：快检仍在 light 里，注释边界不影响判定
-      expect(quickCheck(commented).step).toBe(baseStep);
-      expect(quickCheck(commented.replace('\n  light:\n', '\n  light: # 轻量\n')).step).toBe(baseStep);
+      const shards: Job = { key: 'check-shards: # 完整分片', step: true };
+      const moved = sample([{ ...LIGHT, step: false }, shards]);
+      expect(moved).toContain('\n  check-shards: # 完整分片\n');
+      expectStepOnlyIn(moved, 'check-shards: # 完整分片');
+      expect(quickCheck(moved).step).toBe('');
+
+      const decoy: Job = { key: 'decoy: # x', step: true };
+      const withDecoy = sample([{ ...LIGHT, step: false }, decoy, { ...SHARDS, key: 'check-shards: # 完整分片' }]);
+      expect(withDecoy).toContain('\n  decoy: # x\n');
+      expectStepOnlyIn(withDecoy, 'decoy: # x');
+      expect(quickCheck(withDecoy).step).toBe('');
+
+      // 对照：快检留在 light，注释边界（含 light 自己带注释）不影响判定
+      const kept = sample([
+        { ...LIGHT, key: 'light: # 轻量' },
+        { ...SHARDS, key: 'check-shards: # 完整分片' },
+      ]);
+      expect(kept).toContain('\n  light: # 轻量\n');
+      expect(kept).toContain('\n  check-shards: # 完整分片\n');
+      expectStepOnlyIn(kept, 'light: # 轻量');
+      expect(quickCheck(kept).step).toBe(baseStep);
     });
 
     it('变体②：仅把 check-shards 调到 light 前面，仍通过', () => {
-      const lightAt = yml.indexOf('  # 轻量检查：在途 PR');
-      const shardsAt = yml.indexOf('  check-shards:\n');
-      const shardsEnd = yml.indexOf('  # 必需检查 1');
-      expect(lightAt).toBeGreaterThan(-1);
-      expect(lightAt).toBeLessThan(shardsAt);
-      expect(shardsAt).toBeLessThan(shardsEnd);
-      const reordered =
-        yml.slice(0, lightAt) + yml.slice(shardsAt, shardsEnd) + yml.slice(lightAt, shardsAt) + yml.slice(shardsEnd);
+      const reordered = sample([SHARDS, LIGHT]);
       expect(reordered.indexOf('\n  check-shards:')).toBeLessThan(reordered.indexOf('\n  light:'));
+      expectStepOnlyIn(reordered, 'light:');
       expect(quickCheck(reordered).step).toBe(baseStep);
     });
 
     it('变体③：light 放文件末尾（有 / 无末尾换行）仍通过', () => {
-      const lightAt = yml.indexOf('  # 轻量检查：在途 PR');
-      const lightEnd = yml.indexOf('  check-shards:\n');
-      const moved =
-        yml.slice(0, lightAt) + yml.slice(lightEnd).trimEnd() + '\n\n' + yml.slice(lightAt, lightEnd).trimEnd();
-      expect(moved.lastIndexOf('\n  light:')).toBeGreaterThan(moved.lastIndexOf('\n  test-pg:'));
-      expect(quickCheck(`${moved}\n`).step).toBe(baseStep);
-      expect(moved.endsWith('\n')).toBe(false);
-      expect(quickCheck(moved).step).toBe(baseStep);
+      const withNewline = sample([SHARDS, LIGHT]);
+      const withoutNewline = sample([SHARDS, LIGHT], { tail: '' });
+      expect(withNewline.endsWith('\n')).toBe(true);
+      expect(withoutNewline.endsWith('\n')).toBe(false);
+      expect(withoutNewline.lastIndexOf('\n  light:')).toBeGreaterThan(withoutNewline.lastIndexOf('\n  check-shards:'));
+      for (const yml of [withNewline, withoutNewline]) {
+        expectStepOnlyIn(yml, 'light:');
+        expect(quickCheck(yml).step).toBe(baseStep);
+      }
+    });
+
+    it('前置断言自身有效：只删快检不插入、或注释没写入，都会被前置断言拦下', () => {
+      const deleted = sample([{ ...LIGHT, step: false }, SHARDS]);
+      expect(() => expectStepOnlyIn(deleted, 'check-shards: # 完整分片')).toThrow();
+      const noComment = sample([
+        { ...LIGHT, step: false },
+        { ...SHARDS, step: true },
+      ]);
+      expect(noComment).not.toContain('check-shards: # 完整分片');
+      expect(() => expectStepOnlyIn(noComment, 'check-shards: # 完整分片')).toThrow();
+      const twice = sample([LIGHT, { ...SHARDS, step: true }]);
+      expect(() => expectStepOnlyIn(twice, 'light:')).toThrow();
     });
   });
 });
