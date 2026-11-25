@@ -9,6 +9,9 @@ interface Peekable {
   /** 存储里当前占槽命令的状态（useCommandForm peek）。 */
   peek(): Submission | undefined;
 }
+interface Clearable extends Peekable {
+  clear(): void;
+}
 
 /**
  * F-566（同 F-562 第 2 轮 P2-1）：提交处理中内核在返回前就发布 rejected 条目。登记冲突、而占槽命令在本页处理拒绝前
@@ -17,12 +20,14 @@ interface Peekable {
  * 第 2 轮：标记放在模块级、按恢复槽的命令区分，同一存储上的各个挂载实例共用（P2-2：处理中关闭重开详情也隐去）；
  * 过期竞争只隐去提示、不清条目，已核对的版本、基线和草稿留给下一次提交（P2-1）；
  * 内核 refused 直接作为本次拒绝抛出，槽已被别页命令接管时另挂在接管条目上给详情显示（P2-3）。
+ * 第 3 轮：过期竞争按命令 ID 记，内核裁剪字段复制条目（settledState）后仍隐去（P2-5）；
+ * 新读回的记录版本高于过期条目时清掉它，提交以新记录为基线、版本（P2-4）。
  */
 export function createRefusalMarks() {
   /** 本页处理中的命令 ID：它的 rejected 条目在分类完成前一律隐去。 */
   const settling = new Set<string>();
-  /** 已判定为过期竞争的 rejected 条目（按对象）：条目换掉即失效。 */
-  const stale = new WeakSet<Submission>();
+  /** 已判定为过期竞争的命令 ID：同一命令的 rejected 条目被内核复制（字段裁剪）后仍隐去；重提会换新命令 ID。 */
+  const stale = new Set<string>();
   /** 等锁超时等 refused 时接管本槽的别页命令条目 → 本次未发出的原因；条目换掉（如查询结果落定）即失效。 */
   const notices = new WeakMap<Submission, string>();
   const listeners = new Set<() => void>();
@@ -32,7 +37,7 @@ export function createRefusalMarks() {
     return () => void listeners.delete(listener);
   };
   const hidden = (state: Submission) =>
-    state.status === 'rejected' && ((!!state.command && settling.has(state.command.id)) || stale.has(state));
+    state.status === 'rejected' && !!state.command && (settling.has(state.command.id) || stale.has(state.command.id));
 
   /** 内核返回后、同一同步步骤里按当前条目分类，再解除处理中标记（避免中间渲染出旧告警）。 */
   function classify(command: Peekable, id: string | undefined, result: Outcome, issued: boolean) {
@@ -40,7 +45,7 @@ export function createRefusalMarks() {
     const current = command.peek();
     const own = !!id && current?.command?.id === id;
     if (unsent && result.refused && current && !own && current.command) notices.set(current, result.refused);
-    if (unsent && !result.refused && own && current.status === 'rejected') stale.add(current);
+    if (unsent && !result.refused && own && current.status === 'rejected') stale.add(id);
     if (id) settling.delete(id);
     changed();
     return unsent;
@@ -54,6 +59,18 @@ export function createRefusalMarks() {
     },
     /** 槽被别页命令接管时本次未发出的原因（只在接管条目仍是当前条目时有值）。 */
     notice: (state: Submission | undefined) => (state ? notices.get(state) : undefined),
+    /**
+     * 新读回的记录（详情重开、刷新）版本高于过期竞争条目时清掉它：过期条目的版本、基线和草稿都已被取代，
+     * 不能再带进提交（P2-4）。同一弹窗里重读核对过的条目版本不低于记录，照旧保留（P2-1）；其他条目不动。
+     */
+    supersede(command: Clearable, revision: number | undefined) {
+      const state = command.peek();
+      const id = state?.command?.id;
+      if (!state || !id || state.status !== 'rejected' || !stale.has(id)) return;
+      if (revision === undefined || revision <= state.revision) return;
+      stale.delete(id);
+      command.clear();
+    },
     /**
      * 包住一次 command.submit：调用前后各取一次槽内状态，新起的处理中命令才登记为本页处理中。
      * submit 的 send 回调发请求前调用 issue()，据此区分“已发出被拒”与“未发出”。

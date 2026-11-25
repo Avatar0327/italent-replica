@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
@@ -73,6 +74,8 @@ export function useAdjustmentCommand(row: Detail | undefined, updated: (id: stri
   const id = row?.id;
   const command = useCommandForm(slotKey(collection, id), store);
   useRefusalMarks(marks);
+  // 详情读回更新的版本后，过期竞争条目不再回填编辑草稿（F-566 第 3 轮 P2-4）。
+  useEffect(() => marks.supersede(command, row?.revision), [command, row?.revision]);
   const baseline = formValues(row);
   const reload = id
     ? () =>
@@ -107,6 +110,7 @@ export function useAdjustmentCommand(row: Detail | undefined, updated: (id: stri
   }
 
   async function send(action: Action, values: Values = {}, editableFields: readonly string[] = []) {
+    marks.supersede(command, row?.revision);
     const state = command.peek();
     const latest = state?.latest?.values ?? baseline;
     if (action === 'edit' && row && !changedFields(values, latest, editableFields).length) {
