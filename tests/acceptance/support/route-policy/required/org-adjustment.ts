@@ -223,29 +223,25 @@ const transferCall = (method: string, path: string, anchor: string): Evidence =>
   unit: `${TRANSFER_ROUTES}#route:${method} ${path}`,
   anchor,
 });
-/** 命令守卫（首次与重放都经过）：先 authorizeItem 判按钮与主体组织范围，再 check 走调动表单与联动授权链。 */
-const TRANSFER_GUARD: Evidence = {
+/** 命令守卫（首次与重放都经过）：transferCommand 的 check 走保存 / 删行链，链内 authorizeChange 先判按钮与主体组织范围。 */
+const TRANSFER_CHECK: Evidence = {
   role: 'impl',
   unit: `${TRANSFER_ROUTES}#transferCommand`,
-  anchor: 'await authorizeItem(tx, deps, ctx, {',
+  anchor: 'await command.check(tx, stored)',
 };
 const TA = 'apps/api/src/modules/org-adjustment/transfer-access.ts';
 const TRF = 'apps/api/src/modules/transfer';
-const gateAt = (anchor: string): Evidence => ({ role: 'impl', unit: `${TA}#transferGate`, anchor });
-/** 调动写权：保存链先判任职字段写权（requireEmploymentWrite → requireObjectWrite），再按联动判合同 / 职责转交的写权。 */
-const TRANSFER_WRITE: Evidence[] = [
-  gateAt('await requireTransferWrite(ctx, input)'),
-  {
-    role: 'impl',
-    unit: `${TRF}/service.ts#requireTransferWrite`,
-    anchor: "await requireEmploymentWrite(ctx, 'create', input.writable)",
-  },
-  gateAt('await authorizeLinkageWrite(tx, ctx, access, {'),
-  {
-    role: 'impl',
-    unit: `${TRF}/linkage/access.ts#authorizeLinkageWrite`,
-    anchor: 'await requireObjectWrite(ctx.authorize, ctx, {',
-  },
+const rowAt = (fn: string, anchor: string): Evidence => ({ role: 'impl', unit: `${TA}#${fn}`, anchor });
+/** 增 / 改走 saveRow，删行走 removeRow；两条链都先 authorizeChange（新旧两侧共用的前置），提交重判走 saveRow。 */
+const rowFn = (method: string) => (method === 'DELETE' ? 'removeRow' : 'saveRow');
+const TRANSFER_GUARD = (fn: string): Evidence[] => [
+  TRANSFER_CHECK,
+  rowAt(fn, 'const access = await authorizeChange(tx, env, view,'),
+  rowAt('authorizeChange', 'await authorizeItem(tx, env.deps, env.base, {'),
+];
+/** 调动写权：authorizeChange 判组织调整对象的更新写权与字段写权；保存链再判任职字段写权与联动写权。 */
+const OBJECT_WRITE: Evidence[] = [
+  rowAt('authorizeChange', 'await requireObjectWrite(ctx.authorize!, env.base, {'),
   HEAD_WRITE[1]!,
 ];
 const transferOp = (method: string, path: string): Obligation => ({
@@ -260,30 +256,33 @@ const transferOp = (method: string, path: string): Obligation => ({
     transferCall(method, path, "const ctx = await objectContext(c, deps, OBJECT, 'update', revision(c))"),
     CONTEXT,
     ...OBJECT_CONST,
-    ...TRANSFER_WRITE,
+    ...TRANSFER_GUARD(rowFn(method)),
+    ...OBJECT_WRITE,
   ],
 });
-/** 删行无请求体，不走保存链的任职字段写权；只在联动写权里问任职对象的创建（authorizeLinkageWrite → requireObjectWrite）。 */
+/**
+ * 删行的任职对象创建权：removeRow 先取 employment(tx, env)（requirePermission object.create 任职对象），
+ * 再按旧联动判合同 / 职责转交的写权；归在来源员工守卫之下（同一个任职上下文）。
+ */
 const transferDeleteRecord = (path: string): Obligation => ({
   perm: 'obj:TenantBase.EmploymentRecord:create',
-  purpose: 'guard:transfer.direct',
+  purpose: 'guard:transfer.source',
   inner: { role: 'required' },
   facts: ['object:object.* 动作'],
   at: [
     transferCall('DELETE', path, 'return transferCommand('),
-    TRANSFER_GUARD,
-    gateAt('await authorizeLinkageWrite(tx, ctx, access, {'),
-    {
-      role: 'impl',
-      unit: `${TRF}/linkage/access.ts#authorizeLinkageWrite`,
-      anchor: 'await requireObjectWrite(ctx.authorize, ctx, {',
-    },
-    HEAD_WRITE[1]!,
+    TRANSFER_CHECK,
+    rowAt('removeRow', 'const ctx = await employment(tx, env)'),
+    rowAt('employment', "action: 'object.create', resource: EMPLOYMENT_OBJECT, fields: []"),
   ],
 });
 /** 来源员工入口按钮（HR 发起人）：与人工调动同一条 requireTransferSource → requireTransferButton。 */
-const TRANSFER_SOURCE_BUTTON: Evidence[] = [
-  gateAt('await requireTransferSource(tx, ctx, employeeId, INITIATOR)'),
+const sourceAnchor = (fn: string) =>
+  fn === 'removeRow'
+    ? 'await requireTransferSource(tx, ctx, row.employeeId, INITIATOR)'
+    : 'await requireTransferSource(tx, ctx, employeeId, INITIATOR)';
+const TRANSFER_SOURCE_BUTTON = (fn: string): Evidence[] => [
+  rowAt(fn, sourceAnchor(fn)),
   {
     role: 'impl',
     unit: `${TRF}/access.ts#requireTransferSource`,
@@ -301,29 +300,29 @@ const transferBtn = (method: string, path: string): Obligation => ({
   at: [
     transferCall(method, path, 'await button(deps, ctx, OBJECT, ...HEAD_BUTTONS.update)'),
     BUTTON,
-    TRANSFER_GUARD,
+    ...TRANSFER_GUARD(rowFn(method)),
     ITEM_BUTTON,
-    ...TRANSFER_SOURCE_BUTTON,
+    ...TRANSFER_SOURCE_BUTTON(rowFn(method)),
   ],
 });
-/** 主体组织范围（authorizeItem）+ 来源员工范围（requireTransferSource）+ 目标部门预览里的直接调动动作。 */
+/** 主体组织范围（authorizeItem，含新旧目标部门）。 */
 const transferScope = (method: string, path: string, anchor = 'return transferCommand('): Obligation => ({
   perm: 'guard:orgAdjustment.item',
   facts: ['guard:orgAdjustment.item'],
   at: [
     transferCall(method, path, anchor),
-    TRANSFER_GUARD,
+    ...TRANSFER_GUARD(rowFn(method)),
     { role: 'impl', unit: `${AUTH}#authorizeItem`, anchor: 'await requireScopes(tx, bound, ctx, {' },
     SCOPES,
   ],
 });
-/** 来源员工范围（transfer.source）：保存链 / 删行 / 重放都先 requireTransferSource。 */
-const transferSourceGuard = (...entries: Evidence[]): Obligation => ({
+/** 来源员工范围（transfer.source）：保存链 / 删行 / 提交重判 / 重放都先 requireTransferSource。 */
+const transferSourceGuard = (fn: string, ...entries: Evidence[]): Obligation => ({
   perm: 'guard:transfer.source',
   facts: ['guard:transfer.source'],
   at: [
     ...entries,
-    gateAt('await requireTransferSource(tx, ctx, employeeId, INITIATOR)'),
+    rowAt(fn, sourceAnchor(fn)),
     {
       role: 'impl',
       unit: `${TRF}/access.ts#requireTransferSource`,
@@ -331,45 +330,29 @@ const transferSourceGuard = (...entries: Evidence[]): Obligation => ({
     },
   ],
 });
-/** 直接调动动作（transfer.direct）：保存链预览里按 HR 发起人 + 租户设置求值，只影响 allowedActions 之外的联动写权。 */
-const transferDirectGuard = (...entries: Evidence[]): Obligation => ({
-  perm: 'guard:transfer.direct',
-  facts: ['guard:transfer.direct'],
-  at: [
-    ...entries,
-    gateAt('const preview = await previewTransfer(tx, ctx, employeeId, input)'),
-    {
-      role: 'impl',
-      unit: `${TRF}/preview.ts#previewTransfer`,
-      anchor: "transferDirectActions(accessContext, input.initiator === 'hr' && settings.allowDirectTransfer)",
-    },
-    { role: 'impl', unit: `${TRF}/access.ts#transferDirectActions`, anchor: "action: 'object.button'" },
-  ],
-});
-const transferGuards = (method: string, path: string, anchor = 'return transferCommand('): Obligation[] => {
-  const entry = transferCall(method, path, anchor);
-  return [transferSourceGuard(entry), transferDirectGuard(entry)];
-};
+/**
+ * 不登记 transfer.direct：组织调整调动行由审批后的受信执行端口落地（§8.3），保存链不消费“直接调动”开关；
+ * 真实授权是 authorizeChange 的对象 / 字段写权、保存链的任职字段写权与联动写权。
+ */
+const transferGuards = (method: string, path: string, anchor = 'return transferCommand('): Obligation[] => [
+  transferSourceGuard(rowFn(method), transferCall(method, path, anchor), ...TRANSFER_GUARD(rowFn(method))),
+];
 const withFacts = (obligation: Obligation, extra: readonly string[], at: readonly Evidence[]): Obligation => ({
   ...obligation,
   facts: [...(obligation.facts ?? []), ...extra],
   at: [...obligation.at, ...at],
 });
-/** 提交按新建口径逐行重判调动行：prepareTransferSubmitCheck 返回的函数走保存链（来源员工、写权、联动授权）。 */
-const TRANSFER_SUBMIT: Evidence = {
-  role: 'impl',
-  unit: `${TRANSFER_ROUTES}#prepareTransferSubmitCheck`,
-  anchor: 'await gates.get(row.id)!.save(tx, row.employeeId, transferRaw(effectiveDate, draftOf(row, {})), null)',
-};
-
-const SUBMIT_CHECK = call('POST', `${BASE}/:id/submit`, 'await transferCheck(tx, stored.effectiveDate)');
-const submitGuards = [
-  transferSourceGuard(SUBMIT_CHECK, TRANSFER_SUBMIT),
-  transferDirectGuard(SUBMIT_CHECK, TRANSFER_SUBMIT),
+/** 提交按新建口径逐行重判调动行：authorizeTransferRows → transferGate.rejudge → saveRow（来源员工、写权、联动授权）。 */
+const TRANSFER_SUBMIT: Evidence[] = [
+  rowAt('authorizeTransferRows', 'await transferGate(deps, ctx).rejudge(tx, view, rows)'),
+  rowAt('transferGate', 'await saveRow(tx, env, view, row.employeeId, row, null)'),
+  rowAt('saveRow', 'const access = await authorizeChange(tx, env, view,'),
 ];
-/** 提交的调动行重判：对象写权（保存链 requireTransferWrite → requireEmploymentWrite）与来源员工入口按钮。 */
-const SUBMIT_WRITE: Evidence[] = [SUBMIT_CHECK, TRANSFER_SUBMIT, ...TRANSFER_WRITE];
-const SUBMIT_BUTTON: Evidence[] = [SUBMIT_CHECK, TRANSFER_SUBMIT, ...TRANSFER_SOURCE_BUTTON];
+const SUBMIT_CHECK = call('POST', `${BASE}/:id/submit`, 'await authorizeTransferRows(tx, deps, ctx, stored)');
+const submitGuards = [transferSourceGuard('saveRow', SUBMIT_CHECK, ...TRANSFER_SUBMIT)];
+/** 提交的调动行重判：组织调整对象写权（authorizeChange → requireObjectWrite）与来源员工入口按钮。 */
+const SUBMIT_WRITE: Evidence[] = [SUBMIT_CHECK, ...TRANSFER_SUBMIT, ...OBJECT_WRITE];
+const SUBMIT_BUTTON: Evidence[] = [SUBMIT_CHECK, ...TRANSFER_SUBMIT, ...TRANSFER_SOURCE_BUTTON('saveRow')];
 
 // ---- 读取（BE-10d，路由 12～15）---------------------------------------------------------------------------------
 const READ = 'apps/api/src/modules/org-adjustment/read-routes.ts';

@@ -97,7 +97,7 @@ const itemRoute = (buttons: RoutePolicy, fields: FieldsFrom) =>
 /**
  * 调动明细写路由（BE-11c-b，路由 16～18）：主对象 update + 按钮 EditAdjustOrgDetailBtn@detail（§9.3），字段按
  * `transferItems.*`（含合同外部字段容器与逐行编码）；守卫 `orgAdjustment.item`（authorizeItem）在命令事务内（首次与重放都经过）
- * 判主体组织范围、来源员工与目标部门范围、联动授权；上限 / 范围 / 基线 / 同日入职等在写服务内判（前提 transferLimits）。
+ * 判主体组织范围、来源员工与目标部门范围、联动授权（不登记 `transfer.direct`，理由同提交路由）；上限 / 范围 / 基线 / 同日入职等在写服务内判（前提 transferLimits）。
  */
 const transferShape = shape('orgAdjustment.transferItems');
 const transferScope = guardScope('orgAdjustment.item', NOT_FOUND);
@@ -108,7 +108,7 @@ const transferRoute = (fields: FieldsFrom) =>
     operation: 'update',
     button: button('EditAdjustOrgDetailBtn', 'detail'),
     scope: transferScope,
-    guards: ['transfer.source', 'transfer.direct'],
+    guards: ['transfer.source'],
     fields: transferShape,
     write: write(fields, 'orgAdjustment.transferItem', 'orgAdjustment.transferItemReplay', {
       ledger: 'single',
@@ -201,8 +201,9 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     button: button('EditAdjustOrgDetailBtn', 'detail'),
     scope: headScope,
     // 全部明细涉及的组织按新建口径逐个在组织范围（orgScopeAuthorizer，§6.3）
-    // 调动行逐行再走保存链：来源员工范围（transfer.source）与直接调动动作（transfer.direct）同人工调动
-    guards: ['orgAdjustment.item', 'transfer.source', 'transfer.direct'],
+    // 调动行逐行再走保存链：来源员工范围（transfer.source）同人工调动；不登记 transfer.direct：组织调整是审批后由受信执行
+    // 端口落地（§8.3），保存链不消费“直接调动”开关（requireDirectTransfer / allowedActions），真实授权是下面的写权与联动授权
+    guards: ['orgAdjustment.item', 'transfer.source'],
     fields: adjustmentShape,
     // 提交无请求体；字段取库里明细行实际有值的 orgItems.*，经 authorizeItemFieldWrites 复核写权（F-428）
     write: headWrite({ guard: 'orgAdjustment.item' }, [...EDIT, 'orgAdjustment.submitGate']),
