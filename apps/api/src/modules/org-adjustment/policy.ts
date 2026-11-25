@@ -96,11 +96,11 @@ const itemRoute = (buttons: RoutePolicy, fields: FieldsFrom) =>
 
 /**
  * 调动明细写路由（BE-11c-b，路由 16～18）：主对象 update + 按钮 EditAdjustOrgDetailBtn@detail（§9.3），字段按
- * `transferItems.*`（含合同外部字段容器与逐行编码）；守卫 `orgAdjustment.transferItem` 在命令事务内（首次与重放都经过）
+ * `transferItems.*`（含合同外部字段容器与逐行编码）；守卫 `orgAdjustment.item`（authorizeItem）在命令事务内（首次与重放都经过）
  * 判主体组织范围、来源员工与目标部门范围、联动授权；上限 / 范围 / 基线 / 同日入职等在写服务内判（前提 transferLimits）。
  */
 const transferShape = shape('orgAdjustment.transferItems');
-const transferScope = guardScope('orgAdjustment.transferItem', NOT_FOUND);
+const transferScope = guardScope('orgAdjustment.item', NOT_FOUND);
 const TRANSFERS = `${BASE}/:id/transfer-items`;
 const transferRoute = (fields: FieldsFrom) =>
   object({
@@ -108,6 +108,7 @@ const transferRoute = (fields: FieldsFrom) =>
     operation: 'update',
     button: button('EditAdjustOrgDetailBtn', 'detail'),
     scope: transferScope,
+    guards: ['transfer.source', 'transfer.direct'],
     fields: transferShape,
     write: write(fields, 'orgAdjustment.transferItem', 'orgAdjustment.transferItemReplay', {
       ledger: 'single',
@@ -200,7 +201,8 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     button: button('EditAdjustOrgDetailBtn', 'detail'),
     scope: headScope,
     // 全部明细涉及的组织按新建口径逐个在组织范围（orgScopeAuthorizer，§6.3）
-    guards: ['orgAdjustment.item'],
+    // 调动行逐行再走保存链：来源员工范围（transfer.source）与直接调动动作（transfer.direct）同人工调动
+    guards: ['orgAdjustment.item', 'transfer.source', 'transfer.direct'],
     fields: adjustmentShape,
     // 提交无请求体；字段取库里明细行实际有值的 orgItems.*，经 authorizeItemFieldWrites 复核写权（F-428）
     write: headWrite({ guard: 'orgAdjustment.item' }, [...EDIT, 'orgAdjustment.submitGate']),
@@ -242,8 +244,8 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
   // 路由 16～18：调动明细新增 / 修改 / 删除
   [`POST ${TRANSFERS}`]: transferRoute('body'),
   [`PATCH ${TRANSFERS}/:itemId`]: transferRoute('body'),
-  // 删行无请求体，但命令内仍按旧联动判合同 / 职责转交等写权（gate.remove），字段写权由守卫 orgAdjustment.transferItem 判
-  [`DELETE ${TRANSFERS}/:itemId`]: transferRoute({ guard: 'orgAdjustment.transferItem' }),
+  // 删行无请求体，但命令内仍按旧联动判合同 / 职责转交等写权（gate.remove），字段写权由守卫 orgAdjustment.item 判
+  [`DELETE ${TRANSFERS}/:itemId`]: transferRoute({ guard: 'orgAdjustment.item' }),
   // 路由 8：单行刷新基线；section 只认 org，其它 404
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: itemRoute(
     buttonOnly(DETAIL, button('EditOrgApprovalDetail', 'list_row'), FORBIDDEN),

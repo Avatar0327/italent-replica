@@ -229,28 +229,87 @@ const TRANSFER_GUARD: Evidence = {
   unit: `${TRANSFER_ROUTES}#transferCommand`,
   anchor: 'await authorizeItem(tx, deps, ctx, {',
 };
+const TA = 'apps/api/src/modules/org-adjustment/transfer-access.ts';
+const TRF = 'apps/api/src/modules/transfer';
+const gateAt = (anchor: string): Evidence => ({ role: 'impl', unit: `${TA}#transferGate`, anchor });
+/** 调动写权：保存链先判任职字段写权（requireEmploymentWrite → requireObjectWrite），再按联动判合同 / 职责转交的写权。 */
+const TRANSFER_WRITE: Evidence[] = [
+  gateAt('await requireTransferWrite(ctx, input)'),
+  {
+    role: 'impl',
+    unit: `${TRF}/service.ts#requireTransferWrite`,
+    anchor: "await requireEmploymentWrite(ctx, 'create', input.writable)",
+  },
+  gateAt('await authorizeLinkageWrite(tx, ctx, access, {'),
+  {
+    role: 'impl',
+    unit: `${TRF}/linkage/access.ts#authorizeLinkageWrite`,
+    anchor: 'await requireObjectWrite(ctx.authorize, ctx, {',
+  },
+  HEAD_WRITE[1]!,
+];
 const transferOp = (method: string, path: string): Obligation => ({
   perm: `obj:${OBJ}:update`,
-  facts: ['object:objectContext', `objectOp:${OBJ}:update`],
+  facts: [
+    'object:objectContext',
+    `objectOp:${OBJ}:update`,
+    'object:object.* 动作',
+    'object:requireObjectWrite（对象写操作权）',
+  ],
   at: [
     transferCall(method, path, "const ctx = await objectContext(c, deps, OBJECT, 'update', revision(c))"),
     CONTEXT,
     ...OBJECT_CONST,
+    ...TRANSFER_WRITE,
   ],
 });
+/** 删行无请求体，不走保存链的任职字段写权；只在联动写权里问任职对象的创建（authorizeLinkageWrite → requireObjectWrite）。 */
+const transferDeleteRecord = (path: string): Obligation => ({
+  perm: 'obj:TenantBase.EmploymentRecord:create',
+  purpose: 'guard:transfer.direct',
+  inner: { role: 'required' },
+  facts: ['object:object.* 动作'],
+  at: [
+    transferCall('DELETE', path, 'return transferCommand('),
+    TRANSFER_GUARD,
+    gateAt('await authorizeLinkageWrite(tx, ctx, access, {'),
+    {
+      role: 'impl',
+      unit: `${TRF}/linkage/access.ts#authorizeLinkageWrite`,
+      anchor: 'await requireObjectWrite(ctx.authorize, ctx, {',
+    },
+    HEAD_WRITE[1]!,
+  ],
+});
+/** 来源员工入口按钮（HR 发起人）：与人工调动同一条 requireTransferSource → requireTransferButton。 */
+const TRANSFER_SOURCE_BUTTON: Evidence[] = [
+  gateAt('await requireTransferSource(tx, ctx, employeeId, INITIATOR)'),
+  {
+    role: 'impl',
+    unit: `${TRF}/access.ts#requireTransferSource`,
+    anchor: 'await requireTransferButton(ctx, initiator)',
+  },
+  {
+    role: 'impl',
+    unit: `${TRF}/access.ts#requireTransferButton`,
+    anchor: "buttonResource(EMPLOYMENT_OBJECT, ROLE_BUTTONS[initiator], 'detail')",
+  },
+];
 const transferBtn = (method: string, path: string): Obligation => ({
   perm: `btn:${OBJ}#EditAdjustOrgDetailBtn@detail`,
-  facts: ['button:button()', 'button:buttonResource', 'button:object.button'],
+  facts: ['button:button()', 'button:buttonResource', 'button:object.button', 'button:requireTransferButton'],
   at: [
     transferCall(method, path, 'await button(deps, ctx, OBJECT, ...HEAD_BUTTONS.update)'),
     BUTTON,
     TRANSFER_GUARD,
     ITEM_BUTTON,
+    ...TRANSFER_SOURCE_BUTTON,
   ],
 });
+/** 主体组织范围（authorizeItem）+ 来源员工范围（requireTransferSource）+ 目标部门预览里的直接调动动作。 */
 const transferScope = (method: string, path: string, anchor = 'return transferCommand('): Obligation => ({
-  perm: 'guard:orgAdjustment.transferItem',
-  facts: ['guard:orgAdjustment.transferItem'],
+  perm: 'guard:orgAdjustment.item',
+  facts: ['guard:orgAdjustment.item'],
   at: [
     transferCall(method, path, anchor),
     TRANSFER_GUARD,
@@ -258,6 +317,59 @@ const transferScope = (method: string, path: string, anchor = 'return transferCo
     SCOPES,
   ],
 });
+/** 来源员工范围（transfer.source）：保存链 / 删行 / 重放都先 requireTransferSource。 */
+const transferSourceGuard = (...entries: Evidence[]): Obligation => ({
+  perm: 'guard:transfer.source',
+  facts: ['guard:transfer.source'],
+  at: [
+    ...entries,
+    gateAt('await requireTransferSource(tx, ctx, employeeId, INITIATOR)'),
+    {
+      role: 'impl',
+      unit: `${TRF}/access.ts#requireTransferSource`,
+      anchor: "throw new AppError('NOT_FOUND', '员工不存在')",
+    },
+  ],
+});
+/** 直接调动动作（transfer.direct）：保存链预览里按 HR 发起人 + 租户设置求值，只影响 allowedActions 之外的联动写权。 */
+const transferDirectGuard = (...entries: Evidence[]): Obligation => ({
+  perm: 'guard:transfer.direct',
+  facts: ['guard:transfer.direct'],
+  at: [
+    ...entries,
+    gateAt('const preview = await previewTransfer(tx, ctx, employeeId, input)'),
+    {
+      role: 'impl',
+      unit: `${TRF}/preview.ts#previewTransfer`,
+      anchor: "transferDirectActions(accessContext, input.initiator === 'hr' && settings.allowDirectTransfer)",
+    },
+    { role: 'impl', unit: `${TRF}/access.ts#transferDirectActions`, anchor: "action: 'object.button'" },
+  ],
+});
+const transferGuards = (method: string, path: string, anchor = 'return transferCommand('): Obligation[] => {
+  const entry = transferCall(method, path, anchor);
+  return [transferSourceGuard(entry), transferDirectGuard(entry)];
+};
+const withFacts = (obligation: Obligation, extra: readonly string[], at: readonly Evidence[]): Obligation => ({
+  ...obligation,
+  facts: [...(obligation.facts ?? []), ...extra],
+  at: [...obligation.at, ...at],
+});
+/** 提交按新建口径逐行重判调动行：prepareTransferSubmitCheck 返回的函数走保存链（来源员工、写权、联动授权）。 */
+const TRANSFER_SUBMIT: Evidence = {
+  role: 'impl',
+  unit: `${TRANSFER_ROUTES}#prepareTransferSubmitCheck`,
+  anchor: 'await gates.get(row.id)!.save(tx, row.employeeId, transferRaw(effectiveDate, draftOf(row, {})), null)',
+};
+
+const SUBMIT_CHECK = call('POST', `${BASE}/:id/submit`, 'await transferCheck(tx, stored.effectiveDate)');
+const submitGuards = [
+  transferSourceGuard(SUBMIT_CHECK, TRANSFER_SUBMIT),
+  transferDirectGuard(SUBMIT_CHECK, TRANSFER_SUBMIT),
+];
+/** 提交的调动行重判：对象写权（保存链 requireTransferWrite → requireEmploymentWrite）与来源员工入口按钮。 */
+const SUBMIT_WRITE: Evidence[] = [SUBMIT_CHECK, TRANSFER_SUBMIT, ...TRANSFER_WRITE];
+const SUBMIT_BUTTON: Evidence[] = [SUBMIT_CHECK, TRANSFER_SUBMIT, ...TRANSFER_SOURCE_BUTTON];
 
 // ---- 读取（BE-10d，路由 12～15）---------------------------------------------------------------------------------
 const READ = 'apps/api/src/modules/org-adjustment/read-routes.ts';
@@ -406,15 +518,24 @@ export const ORG_ADJUSTMENT: RequiredTable = {
     head('POST', `${BASE}/:id/check`, 'authorizeHeadAction(tx, deps, ctx, {', 'authorizeHeadAction'),
   ],
   [`POST ${BASE}/:id/submit`]: [
-    op('POST', `${BASE}/:id/submit`, 'update', undefined, ownerWrite('authorizeOwnerAction')),
-    btn('POST', `${BASE}/:id/submit`, 'EditAdjustOrgDetailBtn', 'detail', 'authorizeOwnerAction'),
+    withFacts(
+      op('POST', `${BASE}/:id/submit`, 'update', undefined, ownerWrite('authorizeOwnerAction')),
+      ['object:object.* 动作', 'object:requireObjectWrite（对象写操作权）'],
+      SUBMIT_WRITE,
+    ),
+    withFacts(
+      btn('POST', `${BASE}/:id/submit`, 'EditAdjustOrgDetailBtn', 'detail', 'authorizeOwnerAction'),
+      ['button:requireTransferButton'],
+      SUBMIT_BUTTON,
+    ),
     head('POST', `${BASE}/:id/submit`, 'authorizeOwnerAction(tx, deps, ctx, {', 'authorizeOwnerAction'),
     {
       perm: 'guard:orgAdjustment.item',
       facts: ['guard:orgAdjustment.item'],
-      note: '全部明细（含暂存行）涉及的组织按新建口径逐个在组织对象范围（§6.3 路由 10，before = null）',
+      note: '全部明细（含暂存行）涉及的组织按新建口径逐个在组织对象范围（§6.3 路由 10，before = null）；调动行逐行再走保存链',
       at: [call('POST', `${BASE}/:id/submit`, 'await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds('), ORG_ROWS],
     },
+    ...submitGuards,
   ],
   [`POST ${BASE}/:id/withdraw`]: [
     op('POST', `${BASE}/:id/withdraw`, 'update', undefined, ownerWrite('authorizeWithdraw')),
@@ -491,16 +612,20 @@ export const ORG_ADJUSTMENT: RequiredTable = {
     transferOp('POST', TRANSFERS),
     transferBtn('POST', TRANSFERS),
     transferScope('POST', TRANSFERS),
+    ...transferGuards('POST', TRANSFERS),
   ],
   [`PATCH ${TRANSFERS}/:itemId`]: [
     transferOp('PATCH', `${TRANSFERS}/:itemId`),
     transferBtn('PATCH', `${TRANSFERS}/:itemId`),
     transferScope('PATCH', `${TRANSFERS}/:itemId`),
+    ...transferGuards('PATCH', `${TRANSFERS}/:itemId`),
   ],
   [`DELETE ${TRANSFERS}/:itemId`]: [
     transferOp('DELETE', `${TRANSFERS}/:itemId`),
     transferBtn('DELETE', `${TRANSFERS}/:itemId`),
     transferScope('DELETE', `${TRANSFERS}/:itemId`),
+    ...transferGuards('DELETE', `${TRANSFERS}/:itemId`),
+    transferDeleteRecord(`${TRANSFERS}/:itemId`),
   ],
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: [
     ITEM_OP('POST', `${BASE}/:id/items/:section/:itemId/rebase`),
