@@ -53,8 +53,10 @@ describe('AC-OA-52 单行（公开写入口）', () => {
       w.inTenant(async (tx) =>
         resultRows(
           await tx.execute(sql`SELECT
-            (SELECT jsonb_agg(v ORDER BY v.id) FROM establishment_versions v WHERE tenant_id=${w.tenant.id}) AS versions,
-            (SELECT count(*)::int FROM transfer_establishment_allocations WHERE tenant_id=${w.tenant.id}) AS allocations,
+            (SELECT jsonb_agg(v ORDER BY v.id) FROM establishment_versions v
+              WHERE tenant_id=${w.tenant.id}) AS versions,
+            (SELECT count(*)::int FROM transfer_establishment_allocations
+              WHERE tenant_id=${w.tenant.id}) AS allocations,
             (SELECT count(*)::int FROM transfer_requests WHERE tenant_id=${w.tenant.id}) AS transfers`),
         ),
       );
