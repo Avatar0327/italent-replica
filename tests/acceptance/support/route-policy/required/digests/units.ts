@@ -1300,7 +1300,7 @@ export const DIGESTS: Digests = {
     'route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': '1e61c566bb62',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': '97e258ae13f1',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/rebase': 'ac63c3cef614',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': 'af21c06cef04',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': '071c4ccdd31e',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/void': 'cdd608c01542',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw': '02aa646a57ac',
   },
