@@ -172,6 +172,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#editableModuleFields',
   ],
+  'apps/api/src/modules/transfer/linkage/access.ts#CONTRACT_LIST_PAGE': [
+    'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+  ],
   'apps/api/src/modules/transfer/linkage/access.ts#ORG_OBJECT': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
@@ -216,6 +219,14 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/transfer/linkage/access.ts#resolveLinkageAccess': [
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
+    '#CONTRACT_LIST_PAGE',
+    '#needsContractScope',
+    'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+  ],
+  'apps/api/src/modules/transfer/linkage/access.ts#resolveLinkageAccessInTransaction': [
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    '#CONTRACT_LIST_PAGE',
+    '#needsContractScope',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
   ],
   'apps/api/src/modules/transfer/linkage/approval.ts#contractFieldEntries': ['#CONTAINER'],
@@ -382,6 +393,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/linkage/store.ts#linkageBeforeCommand',
     'apps/api/src/tenant-context.ts#tenantOf',
   ],
+  'apps/api/src/modules/transfer/linkage/routes.ts#recheckLinkage': [
+    'apps/api/src/modules/transfer/linkage/access.ts#authorizeLinkageWrite',
+    'apps/api/src/modules/transfer/linkage/access.ts#resolveLinkageAccessInTransaction',
+    'apps/api/src/modules/transfer/linkage/store.ts#linkageBeforeCommand',
+  ],
   'apps/api/src/modules/transfer/linkage/routes.ts#route:GET /transfers/:id/linkage': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -426,6 +442,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
     'apps/api/src/modules/transfer/linkage/input.ts#normalizeLinkage',
     '#preauthorizeLinkage',
+    '#recheckLinkage',
     'apps/api/src/modules/transfer/linkage/service.ts#requireLinkageSource',
     'apps/api/src/modules/transfer/linkage/service.ts#updateTransferLinkage',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
@@ -787,6 +804,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/access.ts#requireTransferSource',
     'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
     'apps/api/src/modules/transfer/linkage/routes.ts#preauthorizeLinkage',
+    'apps/api/src/modules/transfer/linkage/routes.ts#recheckLinkage',
     'apps/api/src/modules/transfer/preview.ts#previewTransfer',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderCreateGuard',
     'apps/api/src/modules/transfer/service.ts#createTransfer',
@@ -874,6 +892,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
     'apps/api/src/modules/employment/transfer-locks.ts#sealTransferLocks',
     'apps/api/src/modules/employment/transfer-locks.ts#transferLocksCover',
+    'apps/api/src/modules/transfer/draft-slot.ts#lockTransferDraftHead',
     '#LOCK_PLAN_ATTEMPTS',
     '#planChanged',
     '#resolveLockTarget',
