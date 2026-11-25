@@ -32,10 +32,21 @@ import type { EmploymentContext } from './types.js';
 const notTransfer = transferReceiptNames('leave');
 
 /** 已有业务按业务头定位；创建按员工，并带上请求里职责转交的下属（与 createExitApplication 取齐的闭包一致）。 */
-function exitLockTarget(target: ExitGateTarget, scopeTarget: ExitScopeTarget): SameOrderLockTarget {
+function exitLockTarget(
+  target: ExitGateTarget,
+  scopeTarget: ExitScopeTarget,
+  cancellationId?: string,
+): SameOrderLockTarget {
+  // allHeads：改期 / 生效重试 / 直接生效作废转正等执行体会在读授权之后才锁该员工的其他业务头（lockOtherBusinessHeads），
+  // 一律提前到封口之前取齐（F-565 第 2 轮 P2-2，员工 → 业务头 → 子记录）；执行体里的再取是重入。
   return scopeTarget.businessId
-    ? { businessId: scopeTarget.businessId }
-    : { employeeId: target.employeeId, extra: exitDutySubordinates(target.exit?.dutyTransfer) };
+    ? { businessId: scopeTarget.businessId, allHeads: true }
+    : {
+        employeeId: target.employeeId,
+        extra: exitDutySubordinates(target.exit?.dutyTransfer),
+        allHeads: true,
+        ...(cancellationId ? { cancellationId } : {}),
+      };
 }
 
 /**
@@ -43,6 +54,10 @@ function exitLockTarget(target: ExitGateTarget, scopeTarget: ExitScopeTarget): S
  * 首次执行、同键重放、失败回查三个出口都先取锁、再在命令事务内按当前授权重新解析数据范围，校验员工、业务和请求里显式给出的
  * 目标部门的写入范围，再过 Dimission* 权限链。创建时没填的部门是从时间线继承来的（PATCH 也会重算继承），请求里看不到，
  * 由 runWrite 在同一份事务内范围上校验实际写入的结果（执行后）和原响应（重放时）。
+ *
+ * `entryAuthorize`：入口自己另有的授权检查（F-565 第 2 轮 P1-1：通用新建 POST /employees/:id/businesses 的离职 / 退休分支在入口
+ * 先验了对象新增权与通用新建按钮 Employment.Create 及实际请求字段，命令内也必须重验同一组，否则等锁期间只撤通用按钮仍 201）。
+ * 在离职专属复核之前执行，口径与 genericCreateGuard 一致；专用入口不传，继续只用各自的按钮契约。
  */
 export function exitCommandGuard(
   deps: TenantRouteDeps,
@@ -50,11 +65,14 @@ export function exitCommandGuard(
   operation: ExitOperation,
   target: ExitGateTarget,
   scopeTarget: ExitScopeTarget,
+  entryAuthorize?: (tx: Tx, scoped: EmploymentContext) => Promise<void>,
+  cancellationId?: string,
 ): ScopedCommandGuard {
   return sameOrderScopeGuard(deps, ctx, {
     ...notTransfer,
-    lock: exitLockTarget(target, scopeTarget),
+    lock: exitLockTarget(target, scopeTarget, cancellationId),
     authorize: async (tx, scoped) => {
+      await entryAuthorize?.(tx, scoped);
       await requireExitScope(tx, scoped, target, scopeTarget);
       await requireExitPermission(scoped, operation, target);
     },
@@ -72,10 +90,13 @@ export function exitEditGuard(
   target: ExitGateTarget,
   businessId: string,
   checkLinkedFields?: (tx: Tx, scoped: EmploymentContext) => Promise<void>,
+  /** 请求新增的职责转交下属（退休计划）：与执行体 lockExitForEdit 的参与人规划同一份，封口前纳入闭包（F-565 第 2 轮 P2-1）。 */
+  dutySubordinates: readonly string[] = [],
 ): ScopedCommandGuard {
   return sameOrderScopeGuard(deps, ctx, {
     ...notTransfer,
-    lock: { businessId },
+    // exitEdit：已有离职单改期会重做剩余失败职责，其下属也要在封口前入集合（F-140b2）；allHeads 见 exitLockTarget
+    lock: { businessId, extra: dutySubordinates, exitEdit: true, allHeads: true },
     authorize: async (tx, scoped) => {
       await requireExitScope(tx, scoped, target, { businessId });
       await requireExitEditRights(tx, scoped, target, businessId);
@@ -101,6 +122,7 @@ async function exitBatchLockTarget(
   return {
     employeeId: owner,
     extra: [...others, ...items.flatMap((item) => exitDutySubordinates(item.exit?.dutyTransfer))],
+    allHeads: true,
   };
 }
 
@@ -152,7 +174,7 @@ export function internRegularizationGuard(
 ): ScopedCommandGuard {
   return sameOrderScopeGuard(deps, ctx, {
     ...notTransfer,
-    lock: { employeeId },
+    lock: { employeeId, allHeads: true },
     authorize: (tx, scoped) => requireInternRegularizationAccess(tx, scoped, employeeId, business, departmentId),
   });
 }

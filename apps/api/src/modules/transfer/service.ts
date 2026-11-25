@@ -2,6 +2,7 @@ import { requireManagerBusinessReferences } from './manager-business-references.
 import { requireManagerReferenceValues } from './manager-references.js';
 import {
   existingTransferEmployees,
+  lockAllParticipantHeads,
   lockTransferHeads,
   lockTransferParticipants,
   sealTransferLocks,
@@ -288,8 +289,22 @@ export async function requireDirectTransfer(tx: Tx, ctx: EmploymentContext) {
  * - linkageItemId：联动子项重试——按子项行找所属单据、发起员工与被转交下属。
  */
 export type SameOrderLockTarget =
-  | { readonly businessId: string; readonly extra?: readonly string[] }
-  | { readonly employeeId: string; readonly extra?: readonly string[]; readonly releasesDraft?: boolean }
+  | {
+      readonly businessId: string;
+      readonly extra?: readonly string[];
+      /** 离职 / 退休编辑：按 lockExitForEdit 同一口径把本单（若是离职单）改期后会重做的剩余失败职责下属纳入闭包（F-140b2）。 */
+      readonly exitEdit?: boolean;
+      /** 执行体会在读授权后才取其他业务头的入口（改期 / 生效重试 / 直接生效）：把持锁集合内全部业务头提前取齐。 */
+      readonly allHeads?: boolean;
+    }
+  | {
+      readonly employeeId: string;
+      readonly extra?: readonly string[];
+      readonly releasesDraft?: boolean;
+      readonly allHeads?: boolean;
+      /** 执行体才 FOR UPDATE 的离职撤销记录行：在业务头之后、封口之前取（员工 → 业务头 → 子记录）。 */
+      readonly cancellationId?: string;
+    }
   | { readonly linkageItemId: string };
 
 async function resolveLockTarget(tx: Tx, ctx: EmploymentContext, target: SameOrderLockTarget) {
@@ -347,19 +362,40 @@ export async function lockSameOrderTarget(tx: Tx, ctx: EmploymentContext, target
   const [owner] = await existingTransferEmployees(tx, ctx, [employeeId]);
   if (!owner) return;
   const present = await existingTransferEmployees(tx, ctx, resolved.extra);
+  const rescheduledExitId =
+    'exitEdit' in target && target.exitEdit && businessId && (await isExitRequest(tx, ctx, businessId))
+      ? businessId
+      : undefined;
   for (let attempt = 0; ; attempt += 1) {
     if (attempt === LOCK_PLAN_ATTEMPTS) throw planChanged();
-    await lockTransferParticipants(tx, ctx, employeeId, present, { deferHeads: true });
+    await lockTransferParticipants(tx, ctx, employeeId, present, { deferHeads: true, rescheduledExitId });
     await lockEmploymentEmployee(tx, ctx, employeeId);
-    if (await transferLocksCover(tx, ctx, employeeId, present)) break;
+    if (await transferLocksCover(tx, ctx, employeeId, present, rescheduledExitId)) break;
   }
   await lockTransferHeads(tx, ctx, businessId);
+  if ('allHeads' in target && target.allHeads) await lockAllParticipantHeads(tx, ctx);
+  if ('cancellationId' in target && target.cancellationId) await lockCancellationRow(tx, ctx, target.cancellationId);
   // 覆盖暂存没有本单业务头，但会替换调用人的旧草稿：旧草稿头在封口前一并锁住（F-560 第 2 轮 P2-1）。
   // 只给会释放旧暂存的入口锁（releasesDraft）：通用新建不换草稿，锁了既多余，也会在升级前的结构上读到不存在的槽位表。
   if (!businessId && 'releasesDraft' in target && target.releasesDraft)
     await lockTransferDraftHead(tx, ctx, employeeId);
-  if (!(await transferLocksCover(tx, ctx, employeeId, present))) throw planChanged();
+  if (!(await transferLocksCover(tx, ctx, employeeId, present, rescheduledExitId))) throw planChanged();
   await sealTransferLocks(tx, ctx);
+}
+
+const isExitRequest = async (tx: Tx, ctx: EmploymentContext, businessId: string) =>
+  rowsOf(
+    await tx.execute(
+      sql`SELECT 1 FROM exit_requests WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid`,
+    ),
+  ).length > 0;
+
+/** 撤销记录行（只在记录存在且属于本租户时取；查不到交给执行体报 404，不在这里抛）。 */
+async function lockCancellationRow(tx: Tx, ctx: EmploymentContext, cancellationId: string) {
+  if (!isUuid(cancellationId)) return;
+  await tx.execute(
+    sql`SELECT id FROM exit_cancellations WHERE tenant_id=${ctx.tenantId} AND id=${cancellationId}::uuid FOR UPDATE`,
+  );
 }
 
 /** 同单操作按当前调用人的权限判断；原发起人类型仅是业务事实，不决定后续操作者的身份。 */

@@ -39,6 +39,7 @@ import { requireRetirementRestorePermission } from './retirement-actions.js';
 import { assertRetirementFields, assertRetirementImmutableKeys } from './retirement-application.js';
 import { rehireGuard, requireRehireWrite, resolveRehirePlan, splitRehireOptions } from './retirement-rehire.js';
 import { exitCommandGuard, exitEditGuard } from './exit-guards.js';
+import { dutySubordinateIds } from '../transfer/linkage/input.js';
 import { registerRetirementViews } from './retirement-view-routes.js';
 import { transitionEmployment } from './transitions.js';
 
@@ -139,6 +140,7 @@ function registerRetirementChanges(
       gate,
       id,
       duty ? (tx, scoped) => authorizeRetirementDutyPlan(tx, scoped, current.employeeId, duty) : undefined,
+      duty ? dutySubordinateIds(duty) : [],
     );
     return runWrite(
       c,

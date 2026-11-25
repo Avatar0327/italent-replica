@@ -306,7 +306,9 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
       exit,
     };
     const guard = isExitKind(input.kind)
-      ? exitCommandGuard(deps, ctx, 'create', gate, { departmentId: input.fields.departmentId })
+      ? exitCommandGuard(deps, ctx, 'create', gate, { departmentId: input.fields.departmentId }, (_tx, scoped) =>
+          requireGenericCreateRights(scoped, rawInput as object),
+        )
       : genericCreateGuard(deps, ctx, id, input, rawInput as object);
     return runWrite(
       c,
@@ -347,6 +349,17 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
   });
 }
 
+/** 通用新建入口的对象新增权 + 通用新建按钮（含实际请求字段）：通用类型与走离职守卫的离职 / 退休分支在命令内共用。 */
+async function requireGenericCreateRights(scoped: EmploymentContext, rawInput: object) {
+  await requirePermission(scoped.authorize!, {
+    ...scoped,
+    action: 'object.create',
+    resource: EMPLOYMENT_OBJECT,
+    fields: [],
+  });
+  await requireEmploymentWrite(scoped, 'create', rawInput, 'Employment.Create');
+}
+
 /**
  * 通用新建（非离职 / 退休类型）的同单守卫：员工行 → 业务头 → 封口 → 锁内读授权（F-560 口径）。
  * F-565①：此前只有要做编制确认的类型（调动 / 实习转正 / 退休返聘）走它，入职、转正等其余类型没有守卫，授权在入口读完，
@@ -367,13 +380,7 @@ function genericCreateGuard(
       extra: input.kind === 'transfer' ? (input.fields.addedSubordinateIds ?? []) : [],
     },
     authorize: async (tx, scoped) => {
-      await requirePermission(scoped.authorize!, {
-        ...scoped,
-        action: 'object.create',
-        resource: EMPLOYMENT_OBJECT,
-        fields: [],
-      });
-      await requireEmploymentWrite(scoped, 'create', rawInput, 'Employment.Create');
+      await requireGenericCreateRights(scoped, rawInput);
       const creator = await requireEmployeeInScope(tx, scoped, employeeId);
       if (input.kind === 'transfer') {
         await requireTransferSource(tx, scoped, employeeId, 'hr');
