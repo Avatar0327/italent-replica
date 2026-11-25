@@ -2056,6 +2056,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/entry-source-events.ts#entrySourceEvents': ['#publicContext', '#subscribers'],
   'apps/api/src/modules/employment/entry-source-events.ts#subscribers': ['#registry'],
+  'apps/api/src/modules/employment/entry-views.ts#collectionStatusSql': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
+  ],
   'apps/api/src/modules/employment/entry-views.ts#entryViewPredicate': [
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
@@ -2064,6 +2068,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
+    '#collectionStatusSql',
     '#entryViewPredicate',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
