@@ -89,10 +89,12 @@ describe('AC-OA-32 跨对象写授权', () => {
 });
 
 describe('AC-OA-09 变更合同', () => {
-  it('调动到另一法人公司并勾选变更合同：执行成功，新合同版本落到新法人公司 + 一条合同变更记录', async () => {
+  // 注意：组织模型没有“部门归属法人公司”（org_versions 无法人列），本用例只证明“调动联动把合同的法人公司字段改写”，
+  // 不是跨法人部门调动的证据；跨法人调动（DEC-029）的部门归属侧未覆盖，待组织模型补法人归属后再测（R4 P2-5）。
+  it('调动并勾选变更合同、联动把合同法人公司字段改成另一家：执行成功，新合同版本落到该法人公司 + 一条合同变更记录', async () => {
     const { w, mover, view } = await setup('oa09');
     const contractId = await w.contractOf(mover);
-    const otherCompany = await w.otherLegalCompany(); // 目标部门所属的另一法人公司（DEC-029 跨法人调动）
+    const otherCompany = await w.otherLegalCompany(); // 仅合同主数据里的另一家法人公司，部门 B 并不归属它
     const linkage = { contract: { targetId: contractId, fields: { endDate: '2029-10-09', companyId: otherCompany } } };
     await w.transfer(view.id, w.transferBody(mover, { orgId: w.b }, { linkage }));
     await w.submitted(view.id);

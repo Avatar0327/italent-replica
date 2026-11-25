@@ -199,7 +199,7 @@ export async function transferWorld(db: Db, label: string, options: Parameters<t
     return ((await res.json()) as { id: string }).id;
   }
 
-  /** 另一家法人公司（AC-OA-09 跨法人调动：联动里把合同的法人公司改成它）。 */
+  /** 另一家法人公司（合同主数据）：联动里把合同的法人公司字段改成它；部门没有法人归属，故不构成跨法人部门调动。 */
   const otherLegalCompany = (name = 'ZZ_另一法人公司') => contractMaster('companies', `${name}${uniqueSuffix()}`);
 
   async function contractChanges(employeeId: string) {
