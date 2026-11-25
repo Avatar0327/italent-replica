@@ -18,6 +18,7 @@ import {
 
 import { enqueueCollectionCreation, retireCollectionCreation } from './collection-jobs.js';
 import { closeCollectionTasks } from './collection-tasks.js';
+import { generateMaterialList } from './material-list.js';
 import { rebaseEntryPreparations } from './preparation-launch-state.js';
 
 const cases = onboardingEntryCases;
@@ -119,6 +120,7 @@ const lifecycle: EntryLifecyclePort = {
     if (created) {
       await auditCase(tx, ctx, 'create', null, created);
       await enqueueCollectionCreation(tx, ctx, created);
+      await generateMaterialList(tx, ctx, created);
       return created;
     }
     const current = await currentForUpdate(tx, ctx, entry);

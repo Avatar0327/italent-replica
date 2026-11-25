@@ -1207,8 +1207,16 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     operation: 'view',
     button: noButton('列表无按钮'),
     scope: listScope('module.scopeSql'),
+    guards: ['onboarding.entryMaterialProjection'],
     fields: projector('employment.response', 'employment.entryViews'),
     optional: {
+      materialStatus: object({
+        object: 'TenantBase.OnboardingMaterial',
+        operation: 'view',
+        button: noButton('材料状态列可选披露'),
+        scope: listScope('onboarding.materialEntryScope'),
+        fields: projector('onboarding.materialStatusScope', 'materialStatus'),
+      }),
       collectionStatus: object({
         object: 'TenantBase.OnboardingCollection',
         operation: 'view',

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
@@ -8,10 +9,13 @@ import { sharedRecovery } from '../foundation/forms/recovery.js';
 import { createFormStore, isLocked } from '../foundation/forms/store.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { changedFields, type Values } from '../foundation/forms/values.js';
+import { createRefusalMarks, useRefusalMarks } from '../approval/refusal-marks.js';
 import { collection, detailPath, type Detail } from './model.js';
 
 // DEC-955 只禁调动 / 审批写入：组织调整在浏览器不支持 Web Locks 时退回无锁登记，照常保存。
 const store = createFormStore({ recovery: sharedRecovery('org-adjustment', { requireLocks: false }) });
+/** F-566：与 store 同为模块级，详情、编辑弹窗、新建入口的各挂载实例共用（关闭重开详情也认得处理中的命令）。 */
+const marks = createRefusalMarks();
 type Action = 'create' | 'edit' | 'submit' | 'void';
 const required = ['subject', 'effectiveDate', 'adjustmentRange', 'approvalSubjectOrgId'] as const;
 
@@ -69,6 +73,10 @@ export function useAdjustmentCommand(row: Detail | undefined, updated: (id: stri
   const api = useApiClient();
   const id = row?.id;
   const command = useCommandForm(slotKey(collection, id), store);
+  useRefusalMarks(marks);
+  // 详情读回更新的版本后，过期竞争条目不再回填编辑草稿（F-566 第 3 轮 P2-4）。command 每次渲染都是新对象，
+  // 过期标记在 settle 里落定、条目对象不变时也会再核一次（核对只读存储，不满足条件不动）。
+  useEffect(() => marks.supersede(command, row?.revision), [command, row?.revision]);
   const baseline = formValues(row);
   const reload = id
     ? () =>
@@ -103,6 +111,7 @@ export function useAdjustmentCommand(row: Detail | undefined, updated: (id: stri
   }
 
   async function send(action: Action, values: Values = {}, editableFields: readonly string[] = []) {
+    marks.supersede(command, row?.revision);
     const state = command.peek();
     const latest = state?.latest?.values ?? baseline;
     if (action === 'edit' && row && !changedFields(values, latest, editableFields).length) {
@@ -113,29 +122,34 @@ export function useAdjustmentCommand(row: Detail | undefined, updated: (id: stri
     }
     const writing = action === 'create' ? collection : detailPath(id!);
     const url = action === 'submit' || action === 'void' ? `${writing}/${action}` : writing;
-    const result = await command.submit({
-      businessId: id,
-      revision: row?.revision ?? 0,
-      baseline,
-      values,
-      editableFields,
-      patchOnly: action === 'edit',
-      context: { action, effectiveDate: values.effectiveDate ?? latest.effectiveDate },
-      send: async (sent) => {
-        const receipt = await api.request<unknown>(url, {
-          method: action === 'edit' ? 'PATCH' : 'POST',
-          command: sent,
-        });
-        return acceptReceipt(receipt, id, sent.revision);
-      },
-    });
+    const submit = (issue: () => void) =>
+      command.submit({
+        businessId: id,
+        revision: row?.revision ?? 0,
+        baseline,
+        values,
+        editableFields,
+        patchOnly: action === 'edit',
+        context: { action, effectiveDate: values.effectiveDate ?? latest.effectiveDate },
+        send: async (sent) => {
+          issue();
+          const receipt = await api.request<unknown>(url, {
+            method: action === 'edit' ? 'PATCH' : 'POST',
+            command: sent,
+          });
+          return acceptReceipt(receipt, id, sent.revision);
+        },
+      });
+    const result = await marks.settle(command, submit);
     if (result.status !== 'done' || !result.businessId) throw result.error ?? new Error(messages.unknown);
     updated(result.businessId);
     command.clear();
   }
 
   return {
-    form: { ...command, reload, queryResult },
+    form: { ...command, state: marks.view(command.state), reload, queryResult },
+    /** 等锁超时等未发出的拒绝、而槽已交给别页命令时的原因（DEC-954），详情状态区另行显示。 */
+    notice: marks.notice(command.state),
     access: { ...access, field: recoveryField(access, row, command.state?.latest?.values) },
     baseline,
     send,
