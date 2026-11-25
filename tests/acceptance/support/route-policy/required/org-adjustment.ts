@@ -355,9 +355,35 @@ const transferGuards = (method: string, path: string, anchor = 'return transferC
   const entries = [transferCall(method, path, anchor), ...TRANSFER_GUARD(rowFn(method))];
   return [
     transferSourceGuard(rowFn(method), ...entries),
+    linkageGuard(rowFn(method), ...entries),
     ...(method === 'DELETE' ? [] : [saveRecordCreate(...entries)]),
   ];
 };
+/**
+ * 职责转交下属的任职范围（第 3 轮 P1-2b）：authorizeChange 对新旧两侧的下属逐个 requireLinkedEmploymentRecord
+ * （与人工转交同一函数，范围外 404 LINKED_RECORD_OUT_OF_SCOPE）；增 / 改 / 删 / 提交 / 刷新重判都经 authorizeChange。
+ */
+const linkageGuard = (fn: string, ...entries: Evidence[]): Obligation => ({
+  perm: 'guard:employment.linkage',
+  facts: ['guard:employment.linkage'],
+  at: [
+    ...entries,
+    rowAt(fn, 'const access = await authorizeChange(tx, env, view,'),
+    rowAt(
+      'authorizeChange',
+      'await authorizeDutySubordinates(tx, ctx, before?.linkage ?? null, after?.linkage ?? null)',
+    ),
+    rowAt(
+      'authorizeDutySubordinates',
+      'if (record) await requireLinkedEmploymentRecord(tx, ctx, id, record.fields.departmentId, record.id)',
+    ),
+    {
+      role: 'impl',
+      unit: 'apps/api/src/modules/employment/context.ts#requireLinkedEmploymentRecord',
+      anchor: "throw new AppError('LINKED_RECORD_OUT_OF_SCOPE'",
+    },
+  ],
+});
 const withFacts = (obligation: Obligation, extra: readonly string[], at: readonly Evidence[]): Obligation => ({
   ...obligation,
   facts: [...(obligation.facts ?? []), ...extra],
@@ -366,7 +392,7 @@ const withFacts = (obligation: Obligation, extra: readonly string[], at: readonl
 /** 提交按新建口径逐行重判调动行：authorizeTransferRows → transferGate.rejudge → saveRow（来源员工、写权、联动授权）。 */
 const TRANSFER_SUBMIT: Evidence[] = [
   rowAt('authorizeTransferRows', 'await transferGate(deps, ctx).rejudge(tx, view, rows)'),
-  rowAt('transferGate', 'await saveRow(tx, env, view, row.employeeId, row, null)'),
+  rowAt('transferGate', 'await saveRow(tx, env, view, row.employeeId, row, previous?.[index] ?? null)'),
   rowAt('saveRow', 'const access = await authorizeChange(tx, env, view,'),
 ];
 // 刷新基线（路由 8 section = transfer / 路由 9）：调动行先按申请人当前权限走保存链重判（新建口径），再取新基线
@@ -378,18 +404,19 @@ const REBASE_ITEM_CHAIN: Evidence[] = [
   { role: 'impl', unit: `${TRANSFER_ROUTES}#rebaseTransferRoute`, anchor: 'return transferCommand(' },
   TRANSFER_CHECK,
   { role: 'impl', unit: `${TRANSFER_ROUTES}#rebaseTransferRoute`, anchor: 'await gate.rejudge(tx, view, [row])' },
-  rowAt('transferGate', 'await saveRow(tx, env, view, row.employeeId, row, null)'),
+  rowAt('transferGate', 'await saveRow(tx, env, view, row.employeeId, row, previous?.[index] ?? null)'),
   rowAt('saveRow', 'const access = await authorizeChange(tx, env, view,'),
 ];
 const REBASE_ALL_CHAIN: Evidence[] = [
   call('POST', REBASE_ALL, 'await authorizeTransferRows(tx, deps, ctx, view)'),
   rowAt('authorizeTransferRows', 'await transferGate(deps, ctx).rejudge(tx, view, rows)'),
-  rowAt('transferGate', 'await saveRow(tx, env, view, row.employeeId, row, null)'),
+  rowAt('transferGate', 'await saveRow(tx, env, view, row.employeeId, row, previous?.[index] ?? null)'),
   rowAt('saveRow', 'const access = await authorizeChange(tx, env, view,'),
 ];
 const SUBMIT_CHECK = call('POST', `${BASE}/:id/submit`, 'await authorizeTransferRows(tx, deps, ctx, stored)');
 const submitGuards = [
   transferSourceGuard('saveRow', SUBMIT_CHECK, ...TRANSFER_SUBMIT),
+  linkageGuard('saveRow', SUBMIT_CHECK, ...TRANSFER_SUBMIT),
   saveRecordCreate(SUBMIT_CHECK, ...TRANSFER_SUBMIT),
 ];
 /** 提交的调动行重判：组织调整对象写权（authorizeChange → requireObjectWrite）与来源员工入口按钮。 */
@@ -654,14 +681,18 @@ export const ORG_ADJUSTMENT: RequiredTable = {
   ],
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: [
     withFacts(ITEM_OP('POST', REBASE_ITEM), REBASE_OP_FACTS, [...REBASE_ITEM_CHAIN, ...OBJECT_WRITE]),
-    withFacts(
-      ROW('EditOrgApprovalDetail')('POST', REBASE_ITEM, 'await button(deps, ctx, ...ROW_EDIT)'),
-      ['button:requireTransferButton'],
-      [...REBASE_ITEM_CHAIN, ...TRANSFER_SOURCE_BUTTON('saveRow')],
-    ),
+    {
+      ...withFacts(
+        ROW('EditOrgApprovalDetail')('POST', REBASE_ITEM, 'await button(deps, ctx, ...ROW_EDIT)'),
+        ['button:requireTransferButton'],
+        [...REBASE_ITEM_CHAIN, ...TRANSFER_SOURCE_BUTTON('saveRow')],
+      ),
+      or: 'section:org',
+    },
     // section = transfer 的按钮链：rebaseTransferRoute 先判主对象 EditAdjustOrgDetailBtn@detail（第 3 轮 P2-4）
     {
       perm: `btn:${OBJ}#EditAdjustOrgDetailBtn@detail`,
+      or: 'section:transfer',
       facts: ['button:button()', 'button:buttonResource', 'button:object.button', 'button:requireTransferButton'],
       at: [
         REBASE_ITEM_CHAIN[0]!,
@@ -678,6 +709,7 @@ export const ORG_ADJUSTMENT: RequiredTable = {
     },
     itemScope('POST', REBASE_ITEM),
     transferSourceGuard('saveRow', ...REBASE_ITEM_CHAIN),
+    linkageGuard('saveRow', ...REBASE_ITEM_CHAIN),
     saveRecordCreate(...REBASE_ITEM_CHAIN),
   ],
   [`POST ${BASE}/:id/rebase`]: [
@@ -696,6 +728,7 @@ export const ORG_ADJUSTMENT: RequiredTable = {
     ),
     itemScope('POST', REBASE_ALL),
     transferSourceGuard('saveRow', ...REBASE_ALL_CHAIN),
+    linkageGuard('saveRow', ...REBASE_ALL_CHAIN),
     saveRecordCreate(...REBASE_ALL_CHAIN),
   ],
   [`GET ${BASE}`]: LIST,

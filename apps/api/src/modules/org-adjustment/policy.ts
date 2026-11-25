@@ -109,7 +109,7 @@ const transferRoute = (fields: FieldsFrom) =>
     operation: 'update',
     button: button('EditAdjustOrgDetailBtn', 'detail'),
     scope: transferScope,
-    guards: ['transfer.source'],
+    guards: ['transfer.source', 'employment.linkage'],
     fields: transferShape,
     write: write(fields, 'orgAdjustment.transferItem', 'orgAdjustment.transferItemReplay', {
       ledger: 'single',
@@ -204,7 +204,7 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     // 全部明细涉及的组织按新建口径逐个在组织范围（orgScopeAuthorizer，§6.3）
     // 调动行逐行再走保存链：来源员工范围（transfer.source）同人工调动；不登记 transfer.direct：组织调整是审批后由受信执行
     // 端口落地（§8.3），保存链不消费“直接调动”开关（requireDirectTransfer / allowedActions），真实授权是下面的写权与联动授权
-    guards: ['orgAdjustment.item', 'transfer.source'],
+    guards: ['orgAdjustment.item', 'transfer.source', 'employment.linkage'],
     fields: adjustmentShape,
     // 提交无请求体；字段取库里明细行实际有值的 orgItems.*，经 authorizeItemFieldWrites 复核写权（F-428）
     write: headWrite({ guard: 'orgAdjustment.item' }, [...EDIT, 'orgAdjustment.submitGate']),
@@ -259,7 +259,7 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     ]),
     { guard: 'orgAdjustment.item' },
     // 调动行重判经保存链：来源员工范围同人工调动（transfer.source）
-    ['transfer.source'],
+    ['transfer.source', 'employment.linkage'],
   ),
   // 路由 9：整单刷新基线；按钮同改头
   [`POST ${BASE}/:id/rebase`]: object({
@@ -267,7 +267,7 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     operation: 'update',
     button: button('EditAdjustOrgDetailBtn', 'detail'),
     scope: itemScope,
-    guards: ['transfer.source'],
+    guards: ['transfer.source', 'employment.linkage'],
     fields: itemsShape,
     // 无请求体；调动行按当前权限重判（保存链的任职 / 联动写权），字段写权由守卫 orgAdjustment.item 判
     write: itemWrite({ guard: 'orgAdjustment.item' }),
