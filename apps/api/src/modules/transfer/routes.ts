@@ -38,7 +38,9 @@ import {
   type ResolvedTransferForm,
 } from './configuration.js';
 import { previewTransfer, visiblePartTimes } from './preview.js';
-import { preauthorizeLinkage, registerTransferLinkageRoutes } from './linkage/routes.js';
+import { preauthorizeLinkage, recheckLinkage, registerTransferLinkageRoutes } from './linkage/routes.js';
+import type { LinkageAccess } from './linkage/access.js';
+import { dutySubordinateIds } from './linkage/input.js';
 import { readTransferDraft, releaseTransferDraft } from './draft-slot.js';
 import { sameOrderCreateGuard, sameOrderWriteGuard } from './same-order-guard.js';
 import {
@@ -103,11 +105,10 @@ function registerTransferCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       };
     });
     await requireTransferWrite(prepared.context, prepared.input);
-    const linkageAccess = await preauthorizeLinkage(c, deps, prepared.context, {
-      employeeId: id,
-      operation: 'create',
-      options: prepared.input.linkage,
-    });
+    const linkageInput = { employeeId: id, operation: 'create' as const, options: prepared.input.linkage };
+    await preauthorizeLinkage(c, deps, prepared.context, linkageInput);
+    // 执行体用守卫在封口后重新解析的合同范围（recheckLinkage），不沿用上面命令外解析的快照。
+    let linkageAccess: LinkageAccess | undefined;
     return runWrite(
       c,
       deps,
@@ -115,7 +116,11 @@ function registerTransferCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       raw,
       async (tx, context) => ({
         status: 201,
-        body: await createTransfer(tx, context, id, { ...prepared.input, linkageAccess }),
+        body: await createTransfer(tx, context, id, {
+          ...prepared.input,
+          // 守卫必先于执行体跑；万一没跑，带联动时按空范围走（合同变更 404），不放行。
+          linkageAccess: linkageAccess ?? (prepared.input.linkage ? {} : undefined),
+        }),
       }),
       {
         // 命令事务内按当前授权重过对象 / 来源 / 字段写权限，来源与目标部门例外按当前范围重算（统一 guard）
@@ -124,6 +129,11 @@ function registerTransferCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
           employeeId: id,
           input: prepared.input,
           targetDepartmentId: prepared.targetDepartmentId,
+          // 与 createTransfer 取的参与者一致：新带入下属 + 职责转交下属（F-560，先取锁再读授权）。
+          extraParticipants: [
+            ...(prepared.input.employment.fields.addedSubordinateIds ?? []),
+            ...dutySubordinateIds(prepared.input.linkage),
+          ],
           authorize: async (tx, scoped) => {
             await requirePermission(scoped.authorize!, {
               ...scoped,
@@ -134,6 +144,9 @@ function registerTransferCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
             await requireTransferSource(tx, scoped, id, prepared.input.initiator);
             await requireTransferWrite(scoped, prepared.input);
             if (prepared.input.employment.mode === 'direct') await requireDirectTransfer(tx, scoped);
+          },
+          afterTarget: async (tx, scoped) => {
+            linkageAccess = await recheckLinkage(deps, tx, scoped, linkageInput);
           },
         }),
       },
