@@ -398,7 +398,13 @@ async function lockCancellationRow(tx: Tx, ctx: EmploymentContext, cancellationI
   );
 }
 
-/** 同单操作按当前调用人的权限判断；原发起人类型仅是业务事实，不决定后续操作者的身份。 */
+/**
+ * 同单操作按当前调用人的权限判断；原发起人类型仅是业务事实，不决定后续操作者的身份。
+ * 纯经理的参照检查（requireManagerBusinessReferences，403 会披露草稿里的部门 / 职务 / 经理是否仍在可选范围）：
+ * `deferManagerReferences` 为真时这里只判定“是不是纯经理”，把待检的修改记在返回上下文的 pendingManagerReferences 上，
+ * 由调用方在业务写范围复核之后调 requirePendingManagerReferences 再检——范围外一律 404，不借 403 区分（F-564，同 F-563）。
+ * 不延后时（命令执行体里，守卫已复核过范围）仍在这里立即检查。
+ */
 export async function transferBusinessContext(
   tx: Tx,
   ctx: EmploymentContext,
@@ -406,6 +412,7 @@ export async function transferBusinessContext(
   phase: 'read' | 'before-command' | 'command' = 'read',
   targetDepartmentId?: string | null,
   referenceChange?: EmploymentBusinessPatch,
+  options: { readonly deferManagerReferences?: boolean } = {},
 ) {
   const [request] = rowsOf<{ employeeId: string }>(
     await tx.execute(sql`
@@ -422,32 +429,48 @@ export async function transferBusinessContext(
   // 每次同单请求（包括命令缓存重放）都验权；首次执行仍在员工锁后复验。
   const manager = await requireManagerBusinessSource(tx, ctx, request.employeeId, phase !== 'read');
   // PATCH / submit 的缓存前检查与员工锁后复验共用此处；读取、撤回、删除不因目标撤权而受阻。
-  if (manager && referenceChange !== undefined)
+  const deferred = manager && referenceChange !== undefined && options.deferManagerReferences === true;
+  if (manager && referenceChange !== undefined && !deferred)
     await requireManagerBusinessReferences(tx, ctx, businessId, referenceChange);
+  // 每条返回路径都显式写 pendingManagerReferences：入口带来的旧待检不能漏到本次判定之外。
+  const settled = (value: EmploymentContext): EmploymentContext => ({
+    ...value,
+    pendingManagerReferences: deferred ? referenceChange : undefined,
+  });
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   // 是否需要目标部门例外按写入口径判断；DEC-177 放宽的只是“看”（F-015），不能因可见就跳过 Switch 31 例外。
   const writable = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope, 'write');
-  if (writable && (targetDepartmentId === undefined || targetDepartmentId === writable.fields.departmentId)) return ctx;
+  if (writable && (targetDepartmentId === undefined || targetDepartmentId === writable.fields.departmentId))
+    return settled(ctx);
   const business = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today);
   if (!business) throw new AppError('NOT_FOUND', '任职业务不存在');
   const form = await resolveTransferForm(tx, ctx.tenantId, business.formId);
   const settings = await readTransferSettings(tx, ctx.tenantId);
-  if (!form.isStandard || !settings.unrestrictTargetDepartment) return ctx;
+  if (!form.isStandard || !settings.unrestrictTargetDepartment) return settled(ctx);
   for (const initiator of ['hr', 'employee', 'manager'] as const) {
     try {
       await requireTransferSource(tx, ctx, request.employeeId, initiator);
-      return {
+      return settled({
         ...ctx,
         transferTarget: {
           employeeId: request.employeeId,
           departmentId: targetDepartmentId === undefined ? business.fields.departmentId : targetDepartmentId,
           businessId,
         },
-      };
+      });
     } catch (error) {
       if (!(error instanceof AppError) || !['FORBIDDEN', 'NOT_FOUND'].includes(error.code)) throw error;
     }
   }
-  if (writable || (await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope))) return ctx;
+  if (writable || (await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope))) return settled(ctx);
   throw new AppError('NOT_FOUND', '任职业务不存在');
+}
+
+/**
+ * 补做被延后的纯经理参照检查（transferBusinessContext 的 deferManagerReferences）：必须排在业务写范围复核之后调用。
+ * 没有待检内容（非纯经理 / 没带修改）时什么都不做；检查沿用 transferBusinessContext 判定时记下的修改。
+ */
+export async function requirePendingManagerReferences(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  if (ctx.pendingManagerReferences === undefined) return;
+  await requireManagerBusinessReferences(tx, ctx, businessId, ctx.pendingManagerReferences);
 }

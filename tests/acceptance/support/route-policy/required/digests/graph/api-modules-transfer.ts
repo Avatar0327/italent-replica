@@ -859,6 +859,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard': [
     'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
     '#refreshGuard',
+    'apps/api/src/modules/transfer/service.ts#requirePendingManagerReferences',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
   'apps/api/src/modules/transfer/service.ts#createTransfer': [
@@ -915,6 +916,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/configuration.ts#readEmploymentSettings',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/transfer/access.ts#transferDirectActions',
+  ],
+  'apps/api/src/modules/transfer/service.ts#requirePendingManagerReferences': [
+    'apps/api/src/modules/transfer/manager-business-references.ts#requireManagerBusinessReferences',
   ],
   'apps/api/src/modules/transfer/service.ts#requireTransferEditedWrite': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
