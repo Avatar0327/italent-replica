@@ -5,6 +5,7 @@ import type { EmploymentBusinessPatch, EmploymentContext } from '../employment/t
 import type { TenantRouteDeps } from '../../routes.js';
 import {
   lockTransferBusinessEmployee,
+  requirePendingManagerReferences,
   transferBusinessContext,
   transferTargetContext,
   type TransferInput,
@@ -22,7 +23,8 @@ import {
  *   1. 丢掉入口的旧例外，按当前授权解析数据范围（commandContext）并重判入口旗标（trustedScopeBypass）——这两项各解析一次；
  *   2. 重算同单来源与目标例外（transferBusinessContext 'command' / transferTargetContext）：只消费第 1 步的范围；
  *      Switch 31 备选来源会逐个发起人类型重查按钮与来源关系（可能与第 3 步再各查一次 Transfer.Hr 等按钮）；
- *   3. 由调用方的 authorize 按新上下文复核对象 / 按钮 / 字段 / 业务特有来源；
+ *   3. 由调用方的 authorize 按新上下文复核对象 / 按钮 / 字段 / 业务特有来源；随后复核业务写范围，范围之后才做纯经理的参照检查
+ *      （403 会披露单据内容，第 2 步只判定是否纯经理并记下待检的修改，F-564）与 afterScope；
  *   4. 登记为本事务的命令上下文（adoptCommandContext）——执行体、重放复核、结果复核和回执裁剪（runWrite）都读这一份。
  * 承诺的是“授权输入全部在封口之后、同一事务里读”，不是“每个授权输入只查一次”：第 1～3 步之间没有任何会阻塞的等锁，
  * 重复查询读到的只会是同样或更新的授权；后一次读到撤权就按撤权拒绝（fail-closed），不会拿等锁之前的旧值放行（DEC-996）。
@@ -122,6 +124,8 @@ export function sameOrderWriteGuard(
         'command',
         spec.targetDepartmentId,
         spec.referenceChange,
+        // 纯经理的参照检查（403）会披露单据内容：延后到下面业务写范围复核之后再做，范围外一律 404（F-564）。
+        { deferManagerReferences: true },
       );
       return spec.targetDepartmentId !== undefined && scoped.transferTarget
         ? { ...scoped, transferTarget: { ...scoped.transferTarget, departmentId: spec.targetDepartmentId } }
@@ -130,6 +134,7 @@ export function sameOrderWriteGuard(
     async (tx, scoped) => {
       await spec.authorize(tx, scoped);
       await requireBusinessWriteScope(tx, scoped.authorize!, scoped, spec.businessId, spec.employeeId);
+      await requirePendingManagerReferences(tx, scoped, spec.businessId);
       await spec.afterScope?.(tx, scoped);
     },
     // 请求新带入的下属也在取锁阶段一并取齐：写入执行体里的取锁此后都是重入，封口后不会再等锁。

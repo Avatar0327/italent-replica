@@ -102,7 +102,11 @@ import { employmentApprovalHooks } from './approval-hooks.js';
 import type { EmploymentBusiness, EmploymentBusinessPatch, EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
 import { requireTransferSource } from '../transfer/access.js';
-import { requireDirectTransfer, transferBusinessContext } from '../transfer/service.js';
+import {
+  requireDirectTransfer,
+  requirePendingManagerReferences,
+  transferBusinessContext,
+} from '../transfer/service.js';
 import { sameOrderScopeGuard, sameOrderWriteGuard, transferReceiptNames } from '../transfer/same-order-guard.js';
 import { batchEditEmploymentRecords, normalizeBatchEdit } from './batch-edit.js';
 import { recordOperationLog } from '../../audit/record.js';
@@ -540,9 +544,13 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const { result, input } = patch;
     const options = { commandOnly: patch.onlyResult };
     ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      transferBusinessContext(tx, ctx, id, 'before-command', input.fields?.departmentId, input),
+      transferBusinessContext(tx, ctx, id, 'before-command', input.fields?.departmentId, input, {
+        deferManagerReferences: true,
+      }),
     );
     const current = await authorizeBusinessWrite(deps, ctx, id);
+    // 纯经理的参照检查（403）排在业务写范围复核之后：范围外一律 404（F-564，同 F-563）。
+    await withTenant(deps.db, ctx.tenantId, (tx) => requirePendingManagerReferences(tx, ctx, id));
     requireResultApplicable(result, current.kind);
     const exitTarget = { employeeId: current.employeeId, kind: current.kind };
     await requireDraftEditWrite(inTenant(deps, ctx), ctx, id, input, options);
@@ -664,11 +672,15 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
         const id = uuidParam(c);
         let ctx = await readContext(c, deps, action === 'delete' ? 'object.delete' : 'object.update', revision(c));
         ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
-          transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
+          transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined, {
+            deferManagerReferences: true,
+          }),
         );
         const { ack, confirmed } = await transitionControls(c, action);
         await requireEmploymentTransitionWrite(ctx, action);
         const current = await authorizeBusinessWrite(deps, ctx, id);
+        // 提交时纯经理的参照检查（403）排在业务写范围复核之后（F-564，同 F-563 的提交顺序）。
+        await withTenant(deps.db, ctx.tenantId, (tx) => requirePendingManagerReferences(tx, ctx, id));
         if (ack !== undefined && !isExitKind(current.kind))
           throw new AppError('VALIDATION_FAILED', '只有离职提交可以带在途调动确认令牌');
         if (action === 'submit')
