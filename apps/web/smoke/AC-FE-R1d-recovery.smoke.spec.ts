@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { test, expect, employee, tenant, insecureContext, selfServiceButtons } from './fixtures.js';
+import { test, expect, demoRoutes, employee, tenant, insecureContext, selfServiceButtons } from './fixtures.js';
 
 const business = '50000000-0000-4000-8000-000000000002';
 const department = '60000000-0000-4000-8000-000000000002';
@@ -383,6 +383,20 @@ async function holdLockInOtherTab(page: Page) {
   );
   return other;
 }
+/** 持锁页上按锁名数正在排队的登记请求（navigator.locks.query）。 */
+const queuedOn = (holder: Page) =>
+  holder.evaluate(
+    async (name) => (await navigator.locks.query()).pending?.filter((lock) => lock.name === name).length ?? 0,
+    transferRecoveryKey,
+  );
+/** F-558 第 2 轮 P3：持锁页上确认 count 次登记都已在排队（navigator.locks.query），再释放，确保走的是登记竞争。 */
+async function releaseWhenQueued(holder: Page, count: number) {
+  try {
+    await expect.poll(() => queuedOn(holder)).toBe(count);
+  } finally {
+    await holder.close();
+  }
+}
 
 // F-110 第 2 轮 P2-1：http 非安全上下文没有 locks 与 randomUUID；提交前就拒绝，按钮不能停在忙碌。
 for (const manager of [false, true]) {
@@ -469,3 +483,126 @@ test('AC-FE-F110-27 正例：提交暂存申请已发出后被拒，仍须先重
   await submit.click();
   await expect.poll(() => submits).toEqual(['4', '5']);
 });
+
+const OTHER_TAB = '其他标签页有该对象未确认的命令，本次命令未发出；请等待结果或先查询结果。';
+// 查到成功但归属无法确认时的中性提示（F-558 第 3 轮）：不声称本页未提交。
+const FOUND_RESULT =
+  '已查到原命令执行成功，但无法确认是否由本页发出；本页输入仍保留在下方，请先在“我的申请”核对，避免重复提交。';
+// F-558 ①：同一单两页同时提交（第三页占着锁让两页排队），后登记的一页本次未发出，提示走内核 raceOf 的原因，
+// 不只显示“处理中”；先登记那页落定后，后一页解锁、原输入仍在。
+for (const manager of [false, true]) {
+  test(`AC-FE-F558-1 ${manager ? '经理' : '本人'}两页同时提交：后一页提示其他标签页、零请求，落定后输入保留`, async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(60_000);
+    const writes: { tab: number; command: string }[] = [];
+    let respond = () => {};
+    const answered = new Promise<void>((resolve) => (respond = resolve));
+    const pageB = await context.newPage();
+    await demoRoutes(pageB);
+    const tabs = [page, pageB];
+    const drawers = [];
+    for (const [tab, target] of tabs.entries()) {
+      await target.route(manager ? `**/transfers/employees/${employee}` : '**/self-service/transfer', async (route) => {
+        writes.push({ tab, command: route.request().headers()['idempotency-key']! });
+        await answered;
+        return route.fulfill({ status: 201, json: { ...draft, status: 'in_review' } }).catch(() => {});
+      });
+      const drawer = await setup(target, manager);
+      await drawer.locator('input[name="effectiveDate"]').fill('2026-11-02');
+      drawers.push(drawer);
+    }
+    // 第 2 轮 P3：按钮在持锁前定位并确认可点，持锁后只点击；释放前确认两次登记都在排队，竞争不靠时序碰运气。
+    const submits = drawers.map((drawer) => drawer.getByRole('button', { name: '提交', exact: true }));
+    for (const submit of submits) await expect(submit).toBeEnabled();
+    const holder = await holdLockInOtherTab(page);
+    for (const submit of submits) await submit.click();
+    await releaseWhenQueued(holder, 2);
+    await expect.poll(() => writes).toHaveLength(1);
+    const loser = drawers[1 - writes[0]!.tab]!;
+    await expect(loser.getByText(OTHER_TAB)).toBeVisible();
+    await expect(loser.getByText('处理中 / 结果待确认')).toBeVisible();
+    await expect(loser).toContainText(writes[0]!.command);
+    await expect(loser.getByRole('button', { name: '提交', exact: true })).toBeHidden();
+    respond();
+    // 先登记那页确认成功、删掉恢复记录；后一页收到 storage 事件解锁，提示随锁定一起消失，输入原样可再提交。
+    await expect(loser.getByText(OTHER_TAB)).toHaveCount(0);
+    await expect(loser.getByRole('button', { name: '提交', exact: true })).toBeEnabled();
+    await expect(loser.locator('input[name="effectiveDate"]')).toHaveValue('2026-11-02');
+    if (manager) await expect(loser.locator('select[name="employeeId"]')).toHaveValue(employee);
+    expect(writes).toHaveLength(1);
+    await pageB.close();
+  });
+}
+
+// F-558 第 2 轮 P2-3：后一页按提示查询，查到先登记那页的命令已成功（那页回执还没到）：这是“查到他页结果”，
+// 不是本页保存成功；后一页从未发出的输入原样保留在表单里，可核对后自行决定是否再提交。
+for (const manager of [false, true]) {
+  test(`AC-FE-F558-3 ${manager ? '经理' : '本人'}后一页查到他页成功：显示结果，本页原输入仍在、零写请求`, async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(60_000);
+    const writes: { tab: number; command: string }[] = [];
+    const queries: string[] = [];
+    let respond = () => {};
+    const answered = new Promise<void>((resolve) => (respond = resolve));
+    const dates = ['2026-11-02', '2026-11-09'];
+    const pageB = await context.newPage();
+    await demoRoutes(pageB);
+    const tabs = [page, pageB];
+    const drawers = [];
+    for (const [tab, target] of tabs.entries()) {
+      await target.route(manager ? `**/transfers/employees/${employee}` : '**/self-service/transfer', async (route) => {
+        writes.push({ tab, command: route.request().headers()['idempotency-key']! });
+        await answered;
+        return route.fulfill({ status: 201, json: { ...draft, status: 'in_review' } }).catch(() => {});
+      });
+      const drawer = await setup(target, manager);
+      // F-120 真实投影：服务端已按先登记那页的命令建好调动单（那页的回执还没到）。
+      await target.route('**/api/tenant/commands/*/result', (route) => {
+        queries.push(new URL(route.request().url()).pathname);
+        return route.fulfill({
+          json: {
+            commandId: writes[0]!.command,
+            status: 'succeeded',
+            commandType: manager
+              ? 'POST /api/tenant/employment/transfers/employees/:id'
+              : 'POST /api/tenant/self-service/transfer',
+            businessType: 'transfer',
+            businessId: business,
+            revision: 1,
+            httpStatus: 201,
+            completedAt: '2026-11-02T02:00:00.000Z',
+          },
+        });
+      });
+      await target.route(`**/employment/businesses/${business}`, (route) =>
+        route.fulfill({ json: { ...draft, revision: 1, status: 'in_review' } }),
+      );
+      await drawer.locator('input[name="effectiveDate"]').fill(dates[tab]!);
+      drawers.push(drawer);
+    }
+    const submits = drawers.map((drawer) => drawer.getByRole('button', { name: '提交', exact: true }));
+    for (const submit of submits) await expect(submit).toBeEnabled();
+    const holder = await holdLockInOtherTab(page);
+    for (const submit of submits) await submit.click();
+    await releaseWhenQueued(holder, 2);
+    await expect.poll(() => writes).toHaveLength(1);
+    const loserTab = 1 - writes[0]!.tab;
+    const loser = drawers[loserTab]!;
+    await expect(loser.getByText(OTHER_TAB)).toBeVisible();
+    await loser.getByRole('button', { name: '查询结果', exact: true }).click();
+    await expect(loser.getByText('处理中 / 结果待确认')).toHaveCount(0);
+    // 本页原输入仍在、可编辑（不被他页结果替换或清空），他页的结果另行显示。
+    await expect(loser.locator('input[name="effectiveDate"]')).toHaveValue(dates[loserTab]!);
+    await expect(loser.getByRole('button', { name: '提交', exact: true })).toBeEnabled();
+    await expect(loser.getByText(FOUND_RESULT)).toBeVisible();
+    await expect(loser).toContainText(business);
+    expect(queries).toEqual([`/api/tenant/commands/${writes[0]!.command}/result`]);
+    expect(writes).toHaveLength(1);
+    respond();
+    await pageB.close();
+  });
+}
