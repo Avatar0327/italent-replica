@@ -8,6 +8,11 @@
  * 挂真实合同行操作（RowActions → 审批模块存储 → CommandStatus），接口夹具同真实返回形态：
  * 列表 GET /api/tenant/approval/instances 返回 { items, page, pageSize }（queries.ts listInstances），
  * 详情与催办回执同 respondDetail（催办不推进版本）。别的标签页 A 的登记做法同 AC-FE-F566。期望值手写。
+ * 第 2 轮（Sol r1）：
+ * - P2-1 点击时重读失败（GET 503 / 断网 / 详情缺 actions）：命令没发出，提示“审批操作读取失败”，零 POST、可重试；
+ *   登录、权限、不存在保留接口提示；
+ * - P2-2 过期竞争：每次 DOM 提交都不渲染旧告警；撤销被拒留下的槽、过期竞争之后再点催办按最新版本发出并成功；
+ * - P2-3 催办 POST 回执无法解析（200 非 JSON）：按命令结果提示结果未知，保持原命令锁定，只发出一次。
  */
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -17,7 +22,7 @@ import { holdLock, installWebLocks } from './support/web-locks.js';
 
 let uninstallLocks = installWebLocks();
 const requireWeb = createRequire(resolve('apps/web/package.json'));
-const { createElement: h, act } = requireWeb('react');
+const { createElement: h, act, Profiler } = requireWeb('react');
 const { createRoot } = requireWeb('react-dom/client');
 const { MemoryRouter } = requireWeb('react-router');
 // 行内提示走 antd 静态 message：与入口 main.tsx 一样装 React 19 兼容补丁，提示才会渲染。
@@ -25,6 +30,7 @@ requireWeb('@ant-design/v5-patch-for-react-19');
 const { message } = requireWeb('antd');
 const { SessionProvider } = await import(resolve('apps/web/src/foundation/Session.tsx'));
 const { RowActions } = await import(resolve('apps/web/src/contracts/RowActions.tsx'));
+const { ApprovalDetail } = await import(resolve('apps/web/src/approval/ApprovalDetail.tsx'));
 
 const RECORDS = 'italent.commands.pending:approval';
 const CONTRACT = '5680a000-0000-4000-8000-000000000001';
@@ -32,6 +38,7 @@ const INSTANCE = '5680b000-0000-4000-8000-000000000002';
 const LIST_PATH = '/api/tenant/approval/instances';
 const DETAIL_PATH = `${LIST_PATH}/${INSTANCE}`;
 const URGE_PATH = `${DETAIL_PATH}/urge`;
+const WITHDRAW_PATH = `${DETAIL_PATH}/withdraw`;
 const LOCK_WAIT_MS = 3000;
 const LOCK_BUSY = '检测到你在另一个标签页打开了此单据，请关闭后重试。';
 const UNSUPPORTED = '当前浏览器环境不支持安全保存（需 https 访问），命令未发出。';
@@ -40,27 +47,31 @@ const RESULT_UNKNOWN = '服务端回执无法核对，结果未知';
 const KERNEL_UNKNOWN = '处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。';
 const URGED = '已催办';
 const STATE_CHANGED = '流程状态已变化，请刷新后重试';
+const READ_FAILED = '审批操作读取失败';
+const UNCERTAIN = '结果尚未确认，请先回查记录，勿重复提交';
+const LOAD_FAILED = '加载失败，请稍后重试';
+const DENIED = '暂无访问权限';
 
 // 与 GET /api/tenant/approval/instances?role=initiated&businessId= 的列表行同形（queries.ts listInstances）。
 const listRow = {
   id: INSTANCE,
   title: '合成员工的合同续签申请',
-  status: 'in_review',
+  status: 'running',
   approvalType: 'contract_renew',
   businessId: CONTRACT,
   currentNodeKey: 'n1',
   revision: 6,
   createdAt: '2026-11-20T01:00:00.000Z',
 };
-// 与 GET /api/tenant/approval/instances/:id 同形（respondDetail）：本人发起、审批中，可催办。
-const detail = (revision = 6, id = INSTANCE) => ({
+// 与 GET /api/tenant/approval/instances/:id 同形（respondDetail）：本人发起、审批中（running），可催办。
+const detail = (revision = 6, id = INSTANCE, actions: string[] = ['urge']) => ({
   id,
   title: listRow.title,
-  status: 'in_review',
+  status: 'running',
   approvalType: listRow.approvalType,
   revision,
   createdAt: listRow.createdAt,
-  actions: ['urge'],
+  actions,
   recordsHidden: false,
   form: { values: { effectiveDate: '2026-12-01' }, originals: {} },
   tasks: [{ id: '5680c000-0000-4000-8000-000000000003', nodeName: '部门负责人审批', status: 'pending' }],
@@ -69,25 +80,43 @@ const detail = (revision = 6, id = INSTANCE) => ({
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
-let posts: string[];
+/** 写请求：路径、幂等键与 If-Match（命令实际提交的版本）。 */
+let posts: { path: string; key: string; ifMatch: string | null }[];
+/** 每次 React 提交后的页面文字（合同行操作区 + 行内提示），证明中途也没渲染过旧告警。 */
+let commits: string[];
 let tenantId: string;
+/** 服务端当前版本：写请求 If-Match 不等于它时按 REVISION_CONFLICT 返回 409。 */
+let revision: number;
 /** 催办回执：默认是催办后的详情（实例不变、版本不变）。 */
 let urgeReply: () => Response;
+/** 详情 GET：默认按当前版本返回；用例在首载之后改它，模拟点击时重读失败。 */
+let detailReply: () => Response;
+let detailActions: string[];
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', () => ({ matches: false, addListener() {}, removeListener() {} }));
   posts = [];
+  commits = [];
   tenantId = randomUUID();
-  urgeReply = () => Response.json(detail());
+  revision = 6;
+  detailActions = ['urge'];
+  urgeReply = () => Response.json(detail(revision));
+  detailReply = () => Response.json(detail(revision, INSTANCE, detailActions));
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string, init: RequestInit = {}) => {
       const url = new URL(String(input), 'http://local');
       const method = init.method ?? 'GET';
-      if (method === 'POST' && url.pathname === URGE_PATH) {
-        posts.push(new Headers(init.headers).get('idempotency-key') ?? '');
-        return urgeReply();
+      if (method === 'POST') {
+        const headers = new Headers(init.headers);
+        const ifMatch = headers.get('if-match');
+        posts.push({ path: url.pathname, key: headers.get('idempotency-key') ?? '', ifMatch });
+        if (ifMatch !== String(revision))
+          return Response.json({ error: { code: 'REVISION_CONFLICT', message: '合成' } }, { status: 409 });
+        if (url.pathname === URGE_PATH) return urgeReply();
+        if (url.pathname === WITHDRAW_PATH)
+          return Response.json({ error: { code: 'APPROVAL_STATE_CHANGED', message: STATE_CHANGED } }, { status: 409 });
       }
       if (method === 'GET' && url.pathname === LIST_PATH)
         return Response.json({
@@ -95,7 +124,7 @@ beforeEach(() => {
           page: 1,
           pageSize: 1,
         });
-      if (method === 'GET' && url.pathname === DETAIL_PATH) return Response.json(detail());
+      if (method === 'GET' && url.pathname === DETAIL_PATH) return detailReply();
       return Response.json({ error: { code: 'NOT_FOUND', message: '合成' } }, { status: 404 });
     }),
   );
@@ -123,29 +152,79 @@ const text = () =>
   [host, ...Array.from(document.querySelectorAll('.ant-message-notice-wrapper:not(.ant-message-move-up-leave)'))]
     .map((node) => node.textContent ?? '')
     .join('');
+const record = () => commits.push(text());
 /** 逐个时间片推进（每片都在 act 里刷新 DOM），直到条件成立；超过 2 秒按超时失败。 */
 async function until(done: () => boolean) {
   for (let tick = 0; tick < 100 && !done(); tick += 1)
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 20)));
   expect(done(), `页面文字：${text()}`).toBe(true);
 }
-const urgeButton = () =>
-  Array.from(host.querySelectorAll('button')).find((item) => item.textContent?.replace(/\s/g, '') === '催办') as
+const buttonIn = (scope: ParentNode, label: string) =>
+  Array.from(scope.querySelectorAll('button')).find((item) => item.textContent?.replace(/\s/g, '') === label) as
     HTMLButtonElement | undefined;
-async function render() {
-  const session = { tenantId, identityKey: 'synthetic-user', displayName: '合成用户', source: 'server' };
+const urgeButton = () => buttonIn(host, '催办');
+const session = () => ({ tenantId, identityKey: 'synthetic-user', displayName: '合成用户', source: 'server' });
+/** 挂合同行操作；ready 为假时不等催办按钮（首载失败的用例）。 */
+async function render(ready = true) {
   await act(async () =>
     root.render(
       h(
         SessionProvider,
-        { session },
-        h(MemoryRouter, { initialEntries: ['/'] }, h(RowActions, { row: { id: CONTRACT }, onChanged: () => {} })),
+        { session: session() },
+        h(
+          MemoryRouter,
+          { initialEntries: ['/'] },
+          h(
+            Profiler,
+            { id: 'row-actions', onRender: record },
+            h(RowActions, { row: { id: CONTRACT }, onChanged: () => {} }),
+          ),
+        ),
       ),
     ),
   );
-  await until(() => !!urgeButton());
+  if (ready) await until(() => !!urgeButton());
 }
 const clickUrge = () => act(async () => urgeButton()!.click());
+const urges = () => posts.filter((post) => post.path === URGE_PATH);
+/** 别页 A 的登记读到后、本页处理冲突前 A 已落定删记录（同 AC-FE-F566）；返回锁请求探针与“放开 A 的锁”。 */
+async function staleConflict() {
+  const release = await holdLock(RECORDS); // A 持锁登记
+  const request = navigator.locks.request.bind(navigator.locks);
+  const spy = vi.spyOn(navigator.locks, 'request').mockImplementationOnce((...args: unknown[]) =>
+    (request as (...rest: unknown[]) => Promise<unknown>)(...args).catch((cause: unknown) => {
+      localStorage.removeItem(RECORDS);
+      throw cause;
+    }),
+  );
+  return { spy, release };
+}
+/**
+ * 同一审批模块存储里，先在审批详情（ApprovalDetail → FormOverlay）撤销被拒（业务 409）：
+ * 槽里留下一条已落定的撤销拒绝（F-147 共用槽），再回到合同行。
+ */
+async function withdrawRejected() {
+  detailActions = ['urge', 'withdraw'];
+  const page = document.createElement('div');
+  document.body.append(page);
+  const detailRoot = createRoot(page);
+  const row = { id: INSTANCE, title: listRow.title, approvalType: listRow.approvalType, status: 'running' };
+  const props = { row, layout: 'page', applications: true, onClose: () => {}, onChanged: () => {} };
+  await act(async () =>
+    detailRoot.render(
+      h(SessionProvider, { session: session() }, h(MemoryRouter, { initialEntries: ['/'] }, h(ApprovalDetail, props))),
+    ),
+  );
+  await until(() => !!buttonIn(page, '撤销'));
+  await act(async () => buttonIn(page, '撤销')!.click());
+  const footer = () => document.querySelector('.ant-modal .ant-modal-footer');
+  await until(() => !!footer());
+  await act(async () => buttonIn(footer()!, '保存')!.click());
+  await until(() => (document.body.textContent ?? '').includes(STATE_CHANGED));
+  expect(posts.map((post) => [post.path, post.ifMatch])).toEqual([[WITHDRAW_PATH, '6']]);
+  await act(() => detailRoot.unmount());
+  page.remove();
+}
 const scoped = (name: string) => JSON.stringify([tenantId, 'synthetic-user', name]);
 /** 别的标签页 A 在锁内登记了同一流程实例的命令（结果未知，占着本槽）。 */
 const registerA = () =>
@@ -214,6 +293,7 @@ describe('AC-FE-F568 合同行内催办：命令在登记阶段未发出时显�
     );
     await clickUrge();
     await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+    const before = commits.length;
     registerA();
     release();
     await until(() => urgeButton()!.disabled === false);
@@ -221,10 +301,96 @@ describe('AC-FE-F568 合同行内催办：命令在登记阶段未发出时显�
     expect(posts).toEqual([]);
     expect(text()).not.toContain(RESULT_UNKNOWN);
     expect(text()).not.toContain(OTHER_TAB);
+    // 第 2 轮 P2-2：处理拒绝期间每一次 React 提交都没渲染过“其他标签页”旧告警（状态区与行内提示）。
+    expect(commits.length).toBeGreaterThan(before);
+    expect(commits.slice(before).filter((page) => page.includes(OTHER_TAB))).toEqual([]);
 
     await clickUrge();
     await until(() => text().includes(URGED));
     expect(posts).toHaveLength(1);
+  });
+});
+
+describe('AC-FE-F568 第 2 轮 P2-1：点击时重读失败，命令没发出', () => {
+  it.each([
+    ['GET 503', () => Response.json({ error: { code: 'SERVICE_UNAVAILABLE', message: '合成' } }, { status: 503 })],
+    [
+      '断网',
+      () => {
+        throw new TypeError('Failed to fetch');
+      },
+    ],
+    ['详情缺 actions', () => Response.json({ ...detail(), actions: undefined })],
+  ])('%s：提示审批操作读取失败，不提示结果未知，零 POST、无恢复记录，可重试', async (_case, failure) => {
+    await render();
+    detailReply = failure;
+    await clickUrge();
+    await until(() => text().includes(READ_FAILED));
+    expect(posts).toEqual([]);
+    expect(text()).not.toContain(UNCERTAIN);
+    expect(text()).not.toContain(RESULT_UNKNOWN);
+    expect(text()).not.toContain(KERNEL_UNKNOWN);
+    expect(localStorage.getItem(RECORDS)).toBeNull();
+    expect(urgeButton()!.disabled).toBe(false);
+
+    detailReply = () => Response.json(detail(revision));
+    await clickUrge();
+    await until(() => text().includes(URGED));
+    expect(urges().map((post) => post.ifMatch)).toEqual(['6']);
+  });
+
+  it('正例：重读 403：保留权限提示原文，不改成读取失败，零 POST', async () => {
+    await render();
+    detailReply = () => Response.json({ error: { code: 'FORBIDDEN', message: '合成' } }, { status: 403 });
+    await clickUrge();
+    await until(() => text().includes(DENIED));
+    expect(posts).toEqual([]);
+    expect(text()).not.toContain(READ_FAILED);
+    expect(text()).not.toContain(UNCERTAIN);
+    expect(urgeButton()!.disabled).toBe(false);
+  });
+
+  it.each([
+    ['GET 503', () => Response.json({ error: { code: 'SERVICE_UNAVAILABLE', message: '合成' } }, { status: 503 })],
+    ['详情缺 actions', () => Response.json({ ...detail(), actions: undefined })],
+  ])('首载 %s：不显示按钮，提示读取失败与重试；点重试读到后显示催办', async (_case, failure) => {
+    detailReply = failure;
+    await render(false);
+    await until(() => text().includes(READ_FAILED) && !!buttonIn(host, '重试'));
+    expect(urgeButton()).toBeUndefined();
+    expect(posts).toEqual([]);
+
+    detailReply = () => Response.json(detail(revision));
+    await act(async () => buttonIn(host, '重试')!.click());
+    await until(() => !!urgeButton());
+    expect(text()).not.toContain(READ_FAILED);
+  });
+});
+
+describe('AC-FE-F568 第 2 轮 P2-2：撤销被拒 → 过期竞争 → 按新版本催办', () => {
+  it('槽里是已落定的撤销拒绝时遇到过期竞争：逐次提交无旧告警、零 POST；版本推进后再点按 7 发出并成功', async () => {
+    await withdrawRejected();
+    await render();
+    const { spy, release } = await staleConflict();
+    await clickUrge();
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+    const before = commits.length;
+    registerA();
+    release();
+    await until(() => urgeButton()!.disabled === false);
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 50)));
+    expect(urges()).toEqual([]);
+    expect(commits.length).toBeGreaterThan(before);
+    expect(commits.slice(before).filter((page) => page.includes(OTHER_TAB))).toEqual([]);
+    expect(text()).not.toContain(OTHER_TAB);
+    expect(text()).not.toContain(RESULT_UNKNOWN);
+
+    // 别的操作把流程推进到 7：再次点击按点击时重读到的 7 发出，不沿用残留拒绝里的 6。
+    revision = 7;
+    await clickUrge();
+    await until(() => text().includes(URGED));
+    expect(urges().map((post) => post.ifMatch)).toEqual(['7']);
+    expect(localStorage.getItem(RECORDS)).toBeNull();
   });
 });
 
@@ -238,6 +404,27 @@ describe('AC-FE-F568 合同行内催办：已发出后的结果', () => {
     expect(text()).toContain(KERNEL_UNKNOWN);
     expect(text()).not.toContain(URGED);
     expect(urgeButton()!.disabled).toBe(true);
+    // 第 2 轮 P2-3：原命令的恢复记录仍在（锁定的是发出去的那条命令），点击不再发出。
+    expect(localStorage.getItem(RECORDS)).toContain(urges()[0]!.key);
+    await clickUrge();
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 50)));
+    expect(posts).toHaveLength(1);
+  });
+
+  it('第 2 轮 P2-3：已发出、回执无法解析（200 非 JSON）：提示结果未知而非加载失败，保持原命令锁定，只发出一次', async () => {
+    urgeReply = () =>
+      new Response('<html>合成网关页</html>', { status: 200, headers: { 'content-type': 'text/html' } });
+    await render();
+    await clickUrge();
+    await until(() => text().includes(RESULT_UNKNOWN));
+    expect(text()).not.toContain(LOAD_FAILED);
+    expect(text()).not.toContain(URGED);
+    expect(text()).toContain(KERNEL_UNKNOWN);
+    expect(urgeButton()!.disabled).toBe(true);
+    expect(localStorage.getItem(RECORDS)).toContain(urges()[0]!.key);
+    await clickUrge();
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 50)));
+    expect(posts).toHaveLength(1);
   });
 
   it('正例：已发出、服务端明确拒绝（4xx）：显示服务端原文，不提示结果未知，可再催办', async () => {
