@@ -1,28 +1,26 @@
 /**
  * 调动明细写路由（R2-T08 §9.3 路由 16～18，BE-11c-b）：POST / PATCH / DELETE `…/adjustments/:id/transfer-items[/:itemId]`。
- * 与组织明细同一台账幂等；守卫（首次与重放都经过）在事务内按当前权限判：按钮 `EditAdjustOrgDetailBtn@detail`、
- * 主体组织在主对象范围、调动表单与联动授权（`transferGate`，与人工调动同一条链）；重放再按结果行复核来源员工与目标部门。
- * 联动目标范围（非事务连接）与任职对象上下文在命令外先算（PGlite 单连接下事务内嵌套会死锁）。
+ * 与组织明细同一台账幂等；守卫（首次与重放都经过）在命令事务内、锁住申请单之后，按当前权限与库里当前的行判：
+ * 按钮 `EditAdjustOrgDetailBtn@detail`、主体组织在主对象范围、新旧目标部门在组织对象范围、字段写权、调动表单、
+ * 联动与带编授权（`transferGate`，新旧两侧都判，与人工调动同一条链）；重放再按结果行按当前权限复核。
+ * 任职上下文与联动目标范围都在事务内解析（第 2 轮 P1-1：不在锁外先算）。
  * 响应按 `transferItems.*` 查看权裁剪；行的身份列总是返回。
  */
-import { withTenant, type Tx } from '@italent/db';
-import { ORG_ADJUSTMENT_CONTRACT_CONTAINER, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
+import type { Tx } from '@italent/db';
+import { ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
-import { tenantOf, type TenantEnv } from '../../tenant-context.js';
-import { contextOf, EMPLOYMENT_OBJECT } from '../employment/context.js';
+import type { TenantEnv } from '../../tenant-context.js';
 import { parseBody, revision, uuidParam } from '../job/context.js';
-import { resolveLinkageAccess } from '../transfer/linkage/access.js';
-import { normalizeLinkage, type LinkageOptions } from '../transfer/linkage/input.js';
 import { getModuleViewableFields } from '../permission/module-access.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { button, objectContext, writeFields } from '../permission/module-route-access.js';
-import { ADJUSTMENT_NOT_FOUND, authorizeItem, HEAD_BUTTONS } from './access.js';
+import { ADJUSTMENT_NOT_FOUND, HEAD_BUTTONS } from './access.js';
 import { hiddenItemIds } from './hidden-rows.js';
-import { loadAdjustment } from './service.js';
-import { transferGate } from './transfer-access.js';
+import { loadAdjustment, type AdjustmentView } from './service.js';
+import { LINKAGE_CODE, transferGate } from './transfer-access.js';
 import {
   addTransferItem,
   addTransferSchema,
@@ -31,7 +29,6 @@ import {
   EMPTY,
   patchTransferItem,
   patchTransferSchema,
-  transferRaw,
   type TransferGate,
   type TransferResult,
   type TransferWrite,
@@ -53,13 +50,6 @@ const FIELD_CODE: Readonly<Record<string, string>> = {
   dottedManagerId: 'directManagerId',
   withEstablishment: 'withEstablishment',
 };
-const LINKAGE_CODE: Readonly<Record<string, string>> = {
-  dutyTransfer: 'transferItems.dutyTransfer',
-  onTrial: 'transferItems.trial',
-  adjustSalary: 'transferItems.adjustSalary',
-  contract: ORG_ADJUSTMENT_CONTRACT_CONTAINER,
-};
-
 function transferFieldCodes(input: { readonly linkage?: Record<string, unknown> | null }, keys: readonly string[]) {
   const codes = keys.flatMap((key) => (FIELD_CODE[key] ? [`transferItems.${FIELD_CODE[key]}`] : []));
   const linkage = Object.keys(input.linkage ?? {}).flatMap((key) => (LINKAGE_CODE[key] ? [LINKAGE_CODE[key]!] : []));
@@ -73,11 +63,11 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
     const input = await parseBody(c, addTransferSchema);
     await button(deps, ctx, OBJECT, ...HEAD_BUTTONS.update);
     await writeFields(deps, ctx, OBJECT, 'update', transferFieldCodes(input, Object.keys(input)));
-    const gate = await gateFor(c, deps, ctx, input.linkage ? normalizeLinkage(input.linkage) : null, null);
+    const gate = transferGate(deps, ctx);
     return transferCommand(c, deps, ctx, id, input, {
+      kind: 'save',
       gate,
-      check: (tx, view) =>
-        gate.save(tx, input.employeeId, transferRaw(view.effectiveDate, draftOf(EMPTY, input)), null),
+      check: (tx, view) => gate.save(tx, view, input.employeeId, draftOf(EMPTY, input), null),
       execute: async (tx, commandCtx) =>
         addTransferItem(tx, commandCtx, id, input, gate, await hiddenItemIds(tx, deps, ctx, id)),
     });
@@ -90,14 +80,13 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
     const input = await parseBody(c, patchTransferSchema);
     await button(deps, ctx, OBJECT, ...HEAD_BUTTONS.update);
     await writeFields(deps, ctx, OBJECT, 'update', transferFieldCodes(input, Object.keys(input)));
-    const stored = await storedRow(deps, ctx, id, itemId);
-    const options = input.linkage !== undefined ? (input.linkage ? normalizeLinkage(input.linkage) : null) : null;
-    const gate = await gateFor(c, deps, ctx, options ?? stored?.linkage ?? null, stored?.linkage ?? null);
+    const gate = transferGate(deps, ctx);
     return transferCommand(c, deps, ctx, id, input, {
+      kind: 'save',
       gate,
       check: async (tx, view) => {
         const row = (await loadTransfers(tx, ctx.tenantId, id)).find((item) => item.id === itemId);
-        if (row) await gate.save(tx, row.employeeId, transferRaw(view.effectiveDate, draftOf(row, input)), row.linkage);
+        if (row) await gate.save(tx, view, row.employeeId, draftOf(row, input), row);
       },
       execute: async (tx, commandCtx) =>
         patchTransferItem(tx, commandCtx, id, itemId, input, gate, await hiddenItemIds(tx, deps, ctx, id)),
@@ -109,8 +98,7 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
     const id = uuidParam(c);
     const itemId = uuidParam(c, 'itemId');
     await button(deps, ctx, OBJECT, ...HEAD_BUTTONS.update);
-    const stored = await storedRow(deps, ctx, id, itemId);
-    const gate = await gateFor(c, deps, ctx, null, stored?.linkage ?? null);
+    const gate = transferGate(deps, ctx);
     return transferCommand(
       c,
       deps,
@@ -118,10 +106,11 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
       id,
       {},
       {
+        kind: 'remove',
         gate,
-        check: async (tx) => {
+        check: async (tx, view) => {
           const row = (await loadTransfers(tx, ctx.tenantId, id)).find((item) => item.id === itemId);
-          if (row) await gate.remove(tx, row);
+          if (row) await gate.remove(tx, view, row);
         },
         execute: (tx, commandCtx) => deleteTransferItem(tx, commandCtx, id, itemId, gate),
       },
@@ -129,58 +118,12 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
   });
 }
 
-/** 路由事务外：任职对象上下文（对象 create 权 + 任职范围）与联动目标范围按当前权限算好，交给事务内的 gate。 */
-async function gateFor(
-  c: Context<TenantEnv>,
-  deps: TenantRouteDeps,
-  ctx: ScopeBusinessContext,
-  options: LinkageOptions | null,
-  before: LinkageOptions | null,
-): Promise<TransferGate> {
-  const employment = await contextOf(
-    tenantOf(c),
-    deps,
-    'object.create',
-    ctx.expectedRevision,
-    undefined,
-    EMPLOYMENT_OBJECT,
-  );
-  const access = await resolveLinkageAccess(deps, tenantOf(c), options, before);
-  return transferGate(deps, employment, access);
-}
-
-/**
- * 提交（路由 10）的调动行复核（§6.3“提交”列：全部行按新建口径再判一遍当前权限）：联动目标范围与任职对象上下文在命令外按库里的行
- * 先算好；返回的函数在命令事务内（首次与重放都经过）逐行走保存同一条授权链（before = null）。没有调动行时什么都不做。
- */
-export async function prepareTransferSubmitCheck(
-  c: Context<TenantEnv>,
-  deps: TenantRouteDeps,
-  ctx: ScopeBusinessContext,
-  id: string,
-): Promise<(tx: Tx, effectiveDate: string) => Promise<void>> {
-  const rows = await withTenant(deps.db, ctx.tenantId, (tx) => loadTransfers(tx, ctx.tenantId, id));
-  if (!rows.length) return async () => {};
-  const gates = new Map<string, TransferGate>();
-  for (const row of rows) gates.set(row.id, await gateFor(c, deps, ctx, row.linkage, null));
-  return async (tx, effectiveDate) => {
-    for (const row of rows) {
-      await gates.get(row.id)!.save(tx, row.employeeId, transferRaw(effectiveDate, draftOf(row, {})), null);
-    }
-  };
-}
-
-/** 改 / 删前先读库里的行（只读，用于解析旧联动的目标范围）；申请单或行不存在由命令内报 404。 */
-async function storedRow(deps: TenantRouteDeps, ctx: ScopeBusinessContext, id: string, itemId: string) {
-  return withTenant(deps.db, ctx.tenantId, async (tx) =>
-    (await loadTransfers(tx, ctx.tenantId, id)).find((row) => row.id === itemId),
-  );
-}
-
 interface TransferCommand {
+  /** 保存类（增 / 改）重放按结果行的新值再判；删除类重放按被删的旧行再判。 */
+  readonly kind: 'save' | 'remove';
   readonly gate: TransferGate;
   /** 守卫内按当前权限与表单规则校验请求（首次与重放都经过）；行不存在留给写服务报 404。 */
-  check(tx: Tx, view: NonNullable<Awaited<ReturnType<typeof loadAdjustment>>>): Promise<unknown>;
+  check(tx: Tx, view: AdjustmentView): Promise<unknown>;
   execute(tx: Tx, ctx: ScopeBusinessContext): Promise<TransferWrite>;
 }
 
@@ -199,15 +142,15 @@ async function transferCommand(
       before: async (tx) => {
         const stored = await loadAdjustment(tx, ctx.tenantId, id, true);
         if (!stored) throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
-        await authorizeItem(tx, deps, ctx, {
-          button: [OBJECT, ...HEAD_BUTTONS.update],
-          subjectOrgId: stored.approvalSubjectOrgId,
-          orgIds: [],
-        });
         await command.check(tx, stored);
       },
       replayed: async (tx, stored) => {
-        await command.gate.replay(tx, (stored.body as TransferResult).items);
+        const view = await loadAdjustment(tx, ctx.tenantId, id);
+        if (!view) throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
+        const rows = (stored.body as TransferResult).items;
+        await (command.kind === 'save'
+          ? command.gate.rejudge(tx, view, rows)
+          : command.gate.rejudgeRemoved(tx, view, rows));
       },
     },
     execute: async (tx, commandId) => {

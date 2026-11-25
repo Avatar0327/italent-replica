@@ -13,12 +13,11 @@ import { AppError } from '../../errors.js';
 import { findCurrentRecord } from '../employment/read-model.js';
 import { rowsOf } from '../employment/record-store.js';
 import { invalid } from '../org/validation.js';
-import type { LinkageOptions } from '../transfer/linkage/input.js';
 import type { TransferInput } from '../transfer/service.js';
 import { ROW_NOT_FOUND } from './hidden-rows.js';
 import { bumpRevision } from './items-store.js';
 import { itemRef, loadWorld, orgRef, OUT_OF_RANGE, rangeNodes, type ItemWorld } from './item-tree.js';
-import { editable, type WriteContext } from './service.js';
+import { editable, type AdjustmentView, type WriteContext } from './service.js';
 import {
   auditTransfer,
   deleteTransfer,
@@ -40,10 +39,11 @@ const content = {
   postId: uuid.nullable().optional(),
   levelId: uuid.nullable().optional(),
   directManagerId: uuid.nullable().optional(),
-  // 显式给 null 表示清空虚线经理；不给则继承调动表单（DEC-1003 后的 dottedManagerSpecified）
+  // 显式给 null 表示清空虚线经理；不给则继承调动表单（11c-a 交接记录 be11ca_dev_result_r1.md 的 dottedManagerSpecified）
   dottedManagerId: uuid.nullable().optional(),
   transferTypeCode: z.string().min(1).max(64),
-  formId: z.string().min(1).max(128).optional(),
+  // 新增必须给表单 ID（第 2 轮 P2-3 保守口径：不按调动类型取默认表单）；PATCH 为 partial，可不给
+  formId: z.string().min(1).max(128),
   reasonCode: z.string().min(1).max(64).nullable().optional(),
   withEstablishment: z.boolean().optional(),
   // 联动选项的结构与业务校验交 normalizeLinkage / normalizeTransferInput，这里只收对象
@@ -57,12 +57,27 @@ export const patchTransferSchema = z
 export type AddTransferInput = z.infer<typeof addTransferSchema>;
 export type TransferPatch = z.infer<typeof patchTransferSchema>;
 
-/** 授权与调动表单校验（路由层注入）：返回规范化后的调动输入；`before` 为修改前的联动（新建为 null）。 */
+/**
+ * 授权与调动表单校验（路由层注入）：全部在命令事务内、锁住申请单之后判，新旧两侧都判（§6.3）。
+ * `before` 为修改前的整行（新建为 null）；`save` 返回规范化后的调动输入。
+ */
 export interface TransferGate {
-  save(tx: Tx, employeeId: string, raw: Record<string, unknown>, before: LinkageOptions | null): Promise<TransferInput>;
-  remove(tx: Tx, row: TransferItem): Promise<void>;
-  /** 幂等重放：按当前权限复核结果行的来源员工与目标部门，不重写。 */
-  replay(tx: Tx, rows: readonly TransferItem[]): Promise<void>;
+  save(
+    tx: Tx,
+    view: Pick<AdjustmentView, 'approvalSubjectOrgId' | 'effectiveDate'>,
+    employeeId: string,
+    draft: TransferContent,
+    before: TransferItem | null,
+  ): Promise<TransferInput>;
+  remove(
+    tx: Tx,
+    view: Pick<AdjustmentView, 'approvalSubjectOrgId' | 'effectiveDate'>,
+    row: TransferItem,
+  ): Promise<void>;
+  /** 幂等重放（保存类）：结果行按新建口径（before = null）按当前权限再判，不重写。 */
+  rejudge(tx: Tx, view: AdjustmentView, rows: readonly TransferItem[]): Promise<void>;
+  /** 幂等重放（删除类）：被删的行是旧值，按删除口径再判。 */
+  rejudgeRemoved(tx: Tx, view: AdjustmentView, rows: readonly TransferItem[]): Promise<void>;
 }
 
 /** 行内容 → normalizeTransferInput 的原始入参（HR 入口、直接生效口径，与执行器同形）。 */
@@ -137,7 +152,7 @@ export async function addTransferItem(
   if (world.transfers.some((row) => row.employeeId === input.employeeId)) throw duplicate(input.employeeId);
   const draft = draftOf(EMPTY, input);
   assertOrgItemTarget(world, draft, hidden);
-  const prepared = await gate.save(tx, input.employeeId, transferRaw(view.effectiveDate, draft), null);
+  const prepared = await gate.save(tx, view, input.employeeId, draft, null);
   const base = await captureBaseline(tx, ctx.tenantId, input.employeeId, view.effectiveDate);
   const row: TransferItem = {
     ...draft,
@@ -178,7 +193,7 @@ export async function patchTransferItem(
   const before = ownRow(world, itemId);
   const merged = draftOf(before, patch);
   assertOrgItemTarget(world, merged, hidden);
-  const prepared = await gate.save(tx, before.employeeId, transferRaw(view.effectiveDate, merged), before.linkage);
+  const prepared = await gate.save(tx, view, before.employeeId, merged, before);
   const after: TransferItem = { ...before, ...merged, ...resolved(prepared) };
   assertTransferInRange(world, after, world.transferSources.get(before.id) ?? null);
   await updateTransfer(tx, after);
@@ -197,7 +212,7 @@ export async function deleteTransferItem(
   const view = await editable(tx, ctx, id);
   const world = await loadWorld(tx, ctx.tenantId, view);
   const before = ownRow(world, itemId);
-  await gate.remove(tx, before);
+  await gate.remove(tx, view, before);
   await deleteTransfer(tx, before);
   const result = await finish(tx, ctx, world, 'org-adjustment.transfer-item.delete', [[before, null]]);
   return { status: 200, result };

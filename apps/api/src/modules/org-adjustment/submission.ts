@@ -26,6 +26,7 @@ import { loadWorld } from './item-tree.js';
 import { loadItems, loadItemTrail, type OrgItem } from './items-store.js';
 import { audit, editable, loadAdjustment, type AdjustmentView, type WriteContext } from './service.js';
 import { assertWhole } from './whole-check.js';
+import { authorizeTransferRows } from './transfer-access.js';
 
 const NOT_FOUND = '组织调整申请不存在';
 const BUSINESS = { businessType: 'org_adjustment' } as const;
@@ -151,6 +152,8 @@ export async function authorizeSubmission(tx: Tx, deps: OwnerDeps, ctx: TenantCo
   const trail = await loadItemTrail(tx, ctx.tenantId, items);
   await authorizeItemFieldWrites(tx, deps, ctx, writtenItemFieldCodes(items, trail));
   await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(items));
+  // 调动行同口径逐行重判（§6.3 提交 / 重提列）：与路由 10 共用一个事务内函数，审批中心重提不再只判头与组织行
+  await authorizeTransferRows(tx, deps, ctx, stored);
 }
 
 /** 撤回口径（路由 11、审批中心撤回）：没有按钮，主对象 update + 主体组织与调整范围（同路由 1）。 */

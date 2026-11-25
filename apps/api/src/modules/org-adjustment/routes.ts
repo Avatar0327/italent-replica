@@ -65,7 +65,8 @@ import {
 } from './service.js';
 import { rowOrgIds, submitAdjustment, withdrawAdjustment } from './submission.js';
 import { createSchema, normalizeHead, patchSchema } from './validation.js';
-import { prepareTransferSubmitCheck, registerTransferRoutes } from './transfer-routes.js';
+import { authorizeTransferRows } from './transfer-access.js';
+import { registerTransferRoutes } from './transfer-routes.js';
 import { pauseDisclosureHandler } from './pause-disclosure.js';
 
 const BASE = '/api/tenant/org-adjustment/adjustments';
@@ -184,7 +185,6 @@ function registerSubmitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const id = uuidParam(c);
     const input = await parseBody(c, z.strictObject({}));
     await button(deps, ctx, OBJECT, 'EditAdjustOrgDetailBtn', 'detail');
-    const transferCheck = await prepareTransferSubmitCheck(c, deps, ctx, id);
     return headCommand(c, deps, ctx, input, 200, {
       before: async (tx) => {
         const stored = await authorizeStored(tx, ctx, id, (subjectOrgId, rangeOrgIds) =>
@@ -199,7 +199,7 @@ function registerSubmitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         const trail = await loadItemTrail(tx, ctx.tenantId, items);
         await authorizeItemFieldWrites(tx, deps, ctx, writtenItemFieldCodes(items, trail));
         // 调动行：全部行按新建口径复核来源员工、任职字段、目标部门与联动授权（§6.3 提交列）
-        await transferCheck(tx, stored.effectiveDate);
+        await authorizeTransferRows(tx, deps, ctx, stored);
       },
       execute: async (tx, commandCtx) => {
         try {
