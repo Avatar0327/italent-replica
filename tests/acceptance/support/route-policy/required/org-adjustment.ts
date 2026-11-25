@@ -375,7 +375,7 @@ const linkageGuard = (fn: string, ...entries: Evidence[]): Obligation => ({
     ),
     rowAt(
       'authorizeDutySubordinates',
-      'if (record) await requireLinkedEmploymentRecord(tx, ctx, id, record.fields.departmentId, record.id)',
+      'await requireLinkedEmploymentRecord(tx, ctx, id, record.fields.departmentId, record.id)',
     ),
     {
       role: 'impl',
@@ -681,14 +681,8 @@ export const ORG_ADJUSTMENT: RequiredTable = {
   ],
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: [
     withFacts(ITEM_OP('POST', REBASE_ITEM), REBASE_OP_FACTS, [...REBASE_ITEM_CHAIN, ...OBJECT_WRITE]),
-    {
-      ...withFacts(
-        ROW('EditOrgApprovalDetail')('POST', REBASE_ITEM, 'await button(deps, ctx, ...ROW_EDIT)'),
-        ['button:requireTransferButton'],
-        [...REBASE_ITEM_CHAIN, ...TRANSFER_SOURCE_BUTTON('saveRow')],
-      ),
-      or: 'section:org',
-    },
+    // section = org 的按钮链只有明细对象 EditOrgApprovalDetail@list_row：组织行不走保存链，没有来源员工 / 联动证据（第 4 轮 P2-4）
+    { ...ROW('EditOrgApprovalDetail')('POST', REBASE_ITEM, 'await button(deps, ctx, ...ROW_EDIT)'), or: 'section:org' },
     // section = transfer 的按钮链：rebaseTransferRoute 先判主对象 EditAdjustOrgDetailBtn@detail（第 3 轮 P2-4）
     {
       perm: `btn:${OBJ}#EditAdjustOrgDetailBtn@detail`,
@@ -708,8 +702,9 @@ export const ORG_ADJUSTMENT: RequiredTable = {
       ],
     },
     itemScope('POST', REBASE_ITEM),
-    transferSourceGuard('saveRow', ...REBASE_ITEM_CHAIN),
-    linkageGuard('saveRow', ...REBASE_ITEM_CHAIN),
+    // 来源员工与联动授权只在 section = transfer 分支（rebaseTransferRoute → gate.rejudge → saveRow）
+    { ...transferSourceGuard('saveRow', ...REBASE_ITEM_CHAIN), or: 'section:transfer' },
+    { ...linkageGuard('saveRow', ...REBASE_ITEM_CHAIN), or: 'section:transfer' },
     saveRecordCreate(...REBASE_ITEM_CHAIN),
   ],
   [`POST ${BASE}/:id/rebase`]: [
