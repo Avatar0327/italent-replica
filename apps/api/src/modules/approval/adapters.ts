@@ -672,7 +672,10 @@ export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   offer_batch: offerBatchAdapter,
   // R2 BE-15b1：试用中考核 / 转正考核（业务单 = 考核记录）
   probation_assessment: assessmentAdapter,
-  entry_info_collection: entryInfoCollectionAdapter,
+  get entry_info_collection() {
+    // 采集发起与回调共用审批引擎，模块装载时延后取适配器。
+    return entryInfoCollectionAdapter;
+  },
   // R2-T08 BE-10a：组织调整（业务单 = 组织调整申请单），BE-10a 为占位，BE-10c 接入真适配器
   org_adjustment: orgAdjustmentAdapter,
   // R2 BE-5d2：意向退休日期申请（业务单 = 意向申请；通过只记录，不写人事字段，A-6）

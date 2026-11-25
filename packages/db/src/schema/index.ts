@@ -44,6 +44,7 @@ export * from './onboarding.js';
 export * from './onboarding-collection.js';
 export * from './onboarding-material.js';
 export * from './onboarding-collection-tasks.js';
+export * from './onboarding-collection-submissions.js';
 export * from './onboarding-integration-pool.js';
 export * from './onboarding-integration-schemes.js';
 export * from './onboarding-preparation.js';

@@ -72,6 +72,8 @@ const HUB_FUNCTIONS = new Set([
   'modules/approval/routes.ts#respondHistory',
   'modules/approval/routes.ts#respondOutcome',
   'modules/approval/routes.ts#processResponse',
+  // 采集表单按外部字段载体分派，双对象范围只约束采集载荷。
+  'modules/onboarding/collection-approval-fields.ts#collectionApprovalVisibility',
   'modules/transfer/manager-routes.ts#managerContext',
   'modules/transfer/linkage/routes.ts#preauthorizeLinkage',
   'modules/transfer/linkage/routes.ts#authorizeRetry',

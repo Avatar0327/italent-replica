@@ -27,6 +27,7 @@
       "TenantBase.Languageability",
       "TenantBase.Offer",
       "TenantBase.OfferBatchApproval",
+      "TenantBase.OnboardingCollection",
       "TenantBase.OrganizationApproval",
       "TenantBase.ProbationAssessment",
       "TenantBase.ProfessionalTechnicalPostInfo",
