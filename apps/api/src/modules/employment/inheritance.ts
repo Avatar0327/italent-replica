@@ -1,6 +1,7 @@
 import { applyInitiatorFieldModes } from '../transfer/initiator-fields.js';
 import { validateSelectedEmploymentType } from './employment-types.js';
 import { validateSelectedEmploymentForm } from './employment-forms.js';
+import type { FieldOriginState } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
@@ -28,7 +29,7 @@ import type {
 } from './types.js';
 
 import { derivePresetFields, derivationFields, type FieldDerivation } from './field-derivations.js';
-import type { FieldOriginDraft } from './field-origin-store.js';
+import { loadFieldOrigins, type FieldOriginDraft } from './field-origin-store.js';
 export { sequenceForNewPost } from './field-derivations.js';
 
 type CustomMode = 'editable' | 'readonly' | 'hidden' | 'absent';
@@ -396,7 +397,7 @@ export async function prepareEmploymentPatch(
   tx: Tx,
   ctx: EmploymentContext,
   input: InheritanceInput,
-  previous: PreparedInheritance,
+  previous: PreparedInheritance & { readonly businessId?: string },
 ): Promise<PreparedFormInheritance> {
   // 已保存申请的字段策略随申请冻结；修改表单配置不能把原单只读字段变成可伪造写入。
   const prepared = await prepareInheritance(
@@ -406,8 +407,17 @@ export async function prepareEmploymentPatch(
     previous.formSnapshot,
     previous.customFields,
   );
+  // F-036-S6：上一版哪些字段按延迟处理，以台账里的策略行为准；没有策略行的旧字段仍用载荷里的旧标记。
+  const states = previous.businessId ? await loadFieldOrigins(tx, ctx, previous.businessId) : new Map();
   const merged =
-    input.effectiveDate === previous.effectiveDate ? restoreFrozenDefaults(input, previous, prepared) : prepared;
+    input.effectiveDate === previous.effectiveDate
+      ? restoreFrozenDefaults(
+          input,
+          { ...previous, deferredFieldCodes: ledgerDeferred(previous, states) },
+          prepared,
+          states,
+        )
+      : prepared;
   // F-323 第 2 轮 P2-2：字段最终合并后，以锁内本单旧值为沿用基准判断是否改选，不以前驱类别为准；
   // 改期且未显式填写时类别按 DEC-041 从新前驱重新带出（人员类别无派生来源），带出值即沿用基准
   const reinherited =
@@ -425,12 +435,30 @@ export async function prepareEmploymentPatch(
   return merged;
 }
 
+function ledgerDeferred(
+  previous: Pick<PreparedInheritance, 'deferredFieldCodes'>,
+  states: ReadonlyMap<string, { readonly policy: string | null }>,
+): string[] {
+  const legacy = previous.deferredFieldCodes.filter((code) => !states.get(code)?.policy);
+  return [...[...states].filter(([, state]) => state.policy === 'deferred').map(([code]) => code), ...legacy];
+}
+
 /** 日期不变：恢复创建时冻结的默认值，本次显式填写与上一版显式 / 延后字段除外。 */
 function restoreFrozenDefaults(
   input: InheritanceInput,
   previous: PreparedInheritance,
   prepared: PreparedFormInheritance,
+  states: ReadonlyMap<string, FieldOriginState>,
 ): PreparedFormInheritance {
+  // 被适用性判定退回的继承行，保存值已被遮成空；冻结的默认值取台账里那一行的值（§4.6）。
+  const frozenValue = (code: string, saved: unknown) => {
+    const row = states.get(code)?.policyRow;
+    return row &&
+      (row.originKind === 'inherit' || row.originKind === 'copy') &&
+      states.get(code)!.suspended.has(row.seq)
+      ? row.value
+      : saved;
+  };
   const explicit = new Set(prepared.explicitFieldCodes);
   const oldDeferred = new Set(previous.deferredFieldCodes);
   const oldExplicit = new Set(previous.explicitFieldCodes);
@@ -450,14 +478,14 @@ function restoreFrozenDefaults(
         owns(input.fields ?? {}, 'postId') &&
         input.fields?.postId !== previous.fields.postId);
     if (!rederived && !explicit.has(code) && !oldDeferred.has(code) && !oldExplicit.has(code)) {
-      setField(fields, field, previous.fields[field]);
+      setField(fields, field, frozenValue(code, previous.fields[field]) as never);
       frozen.set(code, fields[field]);
     }
   }
   for (const id of Object.keys(customFields)) {
     const code = `custom:${id}`;
     if (!explicit.has(code) && !oldDeferred.has(code)) {
-      customFields[id] = previous.customFields[id] ?? null;
+      customFields[id] = (frozenValue(code, previous.customFields[id]) ?? null) as never;
       frozen.set(code, customFields[id]);
     }
   }
@@ -497,14 +525,27 @@ function frozenDerivations(
   ];
 }
 
+/** 一个延迟字段在落地时的解析结果：值与取值的前驱记录（无前驱时为空）。 */
+export interface FieldResolution {
+  readonly fieldCode: string;
+  readonly value: unknown;
+  readonly sourceRecordId: string | null;
+}
+
+// F-036 §4.4.2 #16：先定部门再定职位，其余字段按预置字段顺序；职位的适用性判断依赖有效部门。
+const RESOLUTION_FIRST = ['preset:departmentId', 'preset:positionId'];
+const byResolutionOrder = (a: string, b: string) =>
+  (RESOLUTION_FIRST.indexOf(a) + 1 || 99) - (RESOLUTION_FIRST.indexOf(b) + 1 || 99);
+
 export async function resolveEffectiveInheritance(
   _tx: Tx,
   _ctx: EmploymentContext,
   prepared: PreparedInheritance,
   effective: { staffId: string; predecessor: EmploymentRecord | null },
-): Promise<{ fields: PresetFields; customFields: CustomFields }> {
+): Promise<{ fields: PresetFields; customFields: CustomFields; resolutions: FieldResolution[] }> {
   const fields = { ...prepared.fields };
   const customFields = { ...prepared.customFields };
+  const resolutions: FieldResolution[] = [];
   const explicit = new Set(prepared.explicitFieldCodes);
   const previous = effective.predecessor?.staffId === effective.staffId ? effective.predecessor : null;
   // 冻结的表单默认值也不能越过新 StaffID 周期；显式填写的字段不受此清空影响。
@@ -517,18 +558,54 @@ export async function resolveEffectiveInheritance(
     for (const id of Object.keys(customFields)) if (!explicit.has(`custom:${id}`)) customFields[id] = null;
   }
   if (!prepared.formSnapshot.startsNewCycle) {
-    for (const code of prepared.deferredFieldCodes) {
-      if (explicit.has(code)) continue;
-      if (code.startsWith('preset:')) {
-        const field = code.slice('preset:'.length) as PresetField;
-        setField(fields, field, previous?.fields[field] ?? null);
-      } else if (code.startsWith('custom:')) {
-        const id = code.slice('custom:'.length);
-        customFields[id] = previous?.customFields[id] ?? null;
-      }
+    const codes = prepared.deferredFieldCodes.filter((code) => !explicit.has(code));
+    resolutions.push(...resolveFromPredecessor(codes, previous, fields, customFields));
+  }
+  return { fields, customFields, resolutions };
+}
+
+function resolveFromPredecessor(
+  deferredCodes: readonly string[],
+  previous: EmploymentRecord | null,
+  fields: PresetFields,
+  customFields: Record<string, CustomValue>,
+): FieldResolution[] {
+  const resolutions: FieldResolution[] = [];
+  for (const code of [...deferredCodes].sort(byResolutionOrder)) {
+    const sourceRecordId = previous?.id ?? null;
+    if (code.startsWith('preset:')) {
+      const field = code.slice('preset:'.length) as PresetField;
+      setField(fields, field, previous?.fields[field] ?? null);
+      resolutions.push({ fieldCode: code, value: fields[field], sourceRecordId });
+    } else if (code.startsWith('custom:')) {
+      const id = code.slice('custom:'.length);
+      customFields[id] = previous?.customFields[id] ?? null;
+      resolutions.push({ fieldCode: code, value: customFields[id], sourceRecordId });
     }
   }
-  return { fields, customFields };
+  return resolutions;
+}
+
+/**
+ * 落地时覆盖值被适用性判定退回、字段重新待定（§5.3）：在已定的有效部门之后，按同一前驱规则补解析这些字段。
+ * 与 resolveEffectiveInheritance 共用同一解析实现，不重复做跨周期清空。
+ */
+export function resolveReopenedFields(
+  codes: readonly string[],
+  base: {
+    fields: PresetFields;
+    customFields: CustomFields;
+    formSnapshot: Pick<PreparedInheritance['formSnapshot'], 'startsNewCycle'>;
+  },
+  effective: { staffId: string; predecessor: EmploymentRecord | null },
+) {
+  const fields = { ...base.fields };
+  const customFields = { ...base.customFields };
+  const previous = effective.predecessor?.staffId === effective.staffId ? effective.predecessor : null;
+  const resolutions = base.formSnapshot.startsNewCycle
+    ? []
+    : resolveFromPredecessor(codes, previous, fields, customFields);
+  return { fields, customFields, resolutions };
 }
 
 /** 仅裁剪预览；隐藏字段的可信快照仍保留供生效与审计使用。 */
