@@ -75,7 +75,10 @@ function contentIssues(world: ItemWorld, live: readonly OrgItem[]) {
   return issues;
 }
 
-/** 负责人变化的行：新负责人须在生效日于本组织任职（主职或兼职）；新增组织须在本单为其添加调动或兼职明细（随 10c）。 */
+/**
+ * 负责人变化的行：新负责人须在生效日于本组织任职（主职或兼职），并叠加本单调动明细（§5.2、§8.2，11c 起计入）：
+ * 本单把他调入该组织（含调入本单新增组织）算在；本单把他调出该组织算不在，调入优先。兼职明细随 11e2。
+ */
 async function headIssues(tx: Tx, world: ItemWorld, live: readonly OrgItem[]) {
   const changed = live.filter(
     (item) =>
@@ -88,8 +91,20 @@ async function headIssues(tx: Tx, world: ItemWorld, live: readonly OrgItem[]) {
     .map((item) => ({ employeeId: item.personInChargeId!, orgId: item.targetOrgId! }));
   const inOrg = await employeesInOrgs(tx, world.tenantId, pairs, world.view.effectiveDate);
   return changed
-    .filter((item) => !item.targetOrgId || !inOrg.has(`${item.personInChargeId}:${item.targetOrgId}`))
+    .filter((item) => !headInOrg(world, item, inOrg))
     .map((item) => issue(item, 'ORG_ADJUSTMENT_HEAD_NOT_IN_ORG', '请在本单为新负责人添加调动或兼职明细'));
+}
+
+function headInOrg(world: ItemWorld, item: OrgItem, inOrg: ReadonlySet<string>): boolean {
+  const employeeId = item.personInChargeId!;
+  const mine = world.transfers.filter((row) => row.employeeId === employeeId);
+  const movesIn = mine.some((row) =>
+    item.targetOrgId ? row.departmentId === item.targetOrgId : row.departmentItemId === item.id,
+  );
+  if (movesIn) return true;
+  const movesOut =
+    item.targetOrgId !== null && mine.some((row) => world.transferSources.get(row.id) === item.targetOrgId);
+  return !movesOut && item.targetOrgId !== null && inOrg.has(`${employeeId}:${item.targetOrgId}`);
 }
 
 /** 逐行跑保存时的同一套规则（连带行只剩调整范围可判，见 assertItemRules）；规则抛的业务错误转为该行的问题。 */
