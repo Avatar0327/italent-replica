@@ -19,7 +19,6 @@ import { newOrg } from './AC-OA-items-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
-const ITEMS = (id: string) => `/api/tenant/org-adjustment/adjustments/${id}/transfer-items`;
 const APPROVAL = '/api/tenant/approval';
 
 /** 编制方案 + 两个部门的编制容量：带编的行才有可写的编制（localCapacity）。 */
