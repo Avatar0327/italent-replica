@@ -30,6 +30,7 @@ import {
   refused,
   rows,
   state,
+  type BarrierWorld,
   type Scenario,
 } from './support/lock-barrier.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
@@ -446,7 +447,7 @@ describe.runIf(pg)('F-560 第 2 轮 P2-1：覆盖暂存的旧草稿头在封口�
     };
   }
 
-  const slotOf = async (w: LinkageWorld, employeeId: string) =>
+  const slotOf = async (w: BarrierWorld, employeeId: string) =>
     withTenant(w.db, w.session.tenant.id, async (tx) =>
       rows(
         await tx.execute(sql`SELECT business_id AS "businessId" FROM transfer_draft_slots
