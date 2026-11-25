@@ -170,19 +170,21 @@ export async function transferWorld(db: Db, label: string, options: Parameters<t
     });
   }
 
+  /** 合同主数据（走合同业务接口）：类型 / 法人公司。 */
+  async function contractMaster(kind: 'types' | 'companies', name: string) {
+    const res = await w.call('POST', `/api/tenant/contracts/master-data/${kind}`, {
+      ifMatch: 0,
+      body: { code: randomUUID(), name },
+    });
+    expect(res.status, await res.clone().text()).toBe(201);
+    return ((await res.json()) as { id: string }).id;
+  }
+
   /** 合同夹具（走合同业务接口）：先建类型与法人公司主数据，再给员工建一份现行合同；合同表读自己的租户。 */
   async function contractOf(employeeId: string) {
-    const master = async (kind: string, name: string) => {
-      const res = await w.call('POST', `/api/tenant/contracts/master-data/${kind}`, {
-        ifMatch: 0,
-        body: { code: randomUUID(), name },
-      });
-      expect(res.status, await res.clone().text()).toBe(201);
-      return ((await res.json()) as { id: string }).id;
-    };
     const fields = {
-      typeId: await master('types', 'ZZ_劳动合同'),
-      companyId: await master('companies', 'ZZ_合成法人公司'),
+      typeId: await contractMaster('types', 'ZZ_劳动合同'),
+      companyId: await contractMaster('companies', 'ZZ_合成法人公司'),
       effectiveDate: '2026-09-01',
       endDate: '2028-08-31',
       termType: 'fixed',
@@ -197,6 +199,9 @@ export async function transferWorld(db: Db, label: string, options: Parameters<t
     return ((await res.json()) as { id: string }).id;
   }
 
+  /** 另一家法人公司（AC-OA-09 跨法人调动：联动里把合同的法人公司改成它）。 */
+  const otherLegalCompany = (name = 'ZZ_另一法人公司') => contractMaster('companies', `${name}${uniqueSuffix()}`);
+
   async function contractChanges(employeeId: string) {
     return inTenant(async (tx) =>
       resultRows<{ before: string; after: string }>(
@@ -209,6 +214,7 @@ export async function transferWorld(db: Db, label: string, options: Parameters<t
   return {
     ...w,
     contractOf,
+    otherLegalCompany,
     contractChanges,
     inTenant,
     transferBody,

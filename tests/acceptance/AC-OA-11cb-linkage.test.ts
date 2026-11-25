@@ -89,10 +89,11 @@ describe('AC-OA-32 跨对象写授权', () => {
 });
 
 describe('AC-OA-09 变更合同', () => {
-  it('调动勾选变更合同：执行成功，新合同版本 + 一条合同变更记录', async () => {
+  it('调动到另一法人公司并勾选变更合同：执行成功，新合同版本落到新法人公司 + 一条合同变更记录', async () => {
     const { w, mover, view } = await setup('oa09');
     const contractId = await w.contractOf(mover);
-    const linkage = { contract: { targetId: contractId, fields: { endDate: '2029-10-09' } } };
+    const otherCompany = await w.otherLegalCompany(); // 目标部门所属的另一法人公司（DEC-029 跨法人调动）
+    const linkage = { contract: { targetId: contractId, fields: { endDate: '2029-10-09', companyId: otherCompany } } };
     await w.transfer(view.id, w.transferBody(mover, { orgId: w.b }, { linkage }));
     await w.submitted(view.id);
     await w.acted(view.id, w.hrbp, 'approve');
@@ -115,7 +116,7 @@ describe('AC-OA-09 变更合同', () => {
     expect(changes).toHaveLength(1);
     expect(changes[0]!.before).toBe(contractId);
     expect(changes[0]!.after).not.toBe(contractId);
-    // 新合同版本值：终止日改为联动值、版本号 + 1、指向原合同；类型与法人公司沿用原合同；原合同行保持原值
+    // 新合同版本值：终止日与法人公司改为联动值、版本号 + 1、指向原合同；类型沿用原合同；原合同行保持原值
     const versions = await w.inTenant(async (tx) =>
       resultRows<Record<string, unknown>>(
         await tx.execute(sql`SELECT id, version_no, previous_contract_id, root_contract_id, end_date::text AS end_date,
@@ -125,14 +126,15 @@ describe('AC-OA-09 变更合同', () => {
     expect(versions).toHaveLength(2);
     const [origin, next] = versions;
     expect(origin).toMatchObject({ id: contractId, version_no: 1, end_date: '2028-08-31' });
+    expect(origin!.company_id, '跨法人：原合同行保持原法人公司').not.toBe(otherCompany);
     expect(next).toMatchObject({
       id: changes[0]!.after,
       version_no: 2,
       previous_contract_id: contractId,
       root_contract_id: origin!.root_contract_id,
       end_date: '2029-10-09',
-      type_id: origin!.type_id,
-      company_id: origin!.company_id,
+      type_id: origin!.type_id, // 类型沿用原合同
+      company_id: otherCompany, // 法人公司随联动改到另一法人
     });
   });
 });

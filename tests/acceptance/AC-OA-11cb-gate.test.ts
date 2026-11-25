@@ -45,16 +45,22 @@ describe('AC-OA-17 未来生效（调动部分）', () => {
   });
 });
 
-describe('AC-OA-37 员工层', () => {
+describe('AC-OA-37 员工层（公开写入口落的调动行）', () => {
   it('申请人已无权该员工 → 该调动组 APPLICANT_OUT_OF_SCOPE、人员不变；范围内的组照常', async () => {
     const w = await transferWorld(testDb().db, 'oa37-transfer');
     const [kept, lost] = [await w.staff(w.a), await w.staff(w.b)];
-    const adjustment = await w.approvedWithTransfers([w.a, w.b], [[kept], [lost, { departmentId: w.a }]]);
+    // 公开写入口落两行（保存时申请人范围内都可见）：kept A→B，lost B→A；再提交、两节点同意
+    const view = await w.created(w.headBody({ adjustmentRange: [w.a, w.b] }));
+    await w.transfer(view.id, w.transferBody(kept, { orgId: w.b }));
+    await w.transfer(view.id, w.transferBody(lost, { orgId: w.a }));
+    await w.submitted(view.id);
+    await w.acted(view.id, w.hrbp, 'approve');
+    await w.acted(view.id, w.head, 'approve');
     w.scopes.employment = only(w.a); // 审批后收窄：只剩 A 下的员工，B 下的 lost 不再可见
 
     await w.run();
 
-    const rows = await w.transferRows(adjustment.id);
+    const rows = await w.transferRows(view.id);
     expect(rows.map((row) => [row.employee_id, row.execution_result, row.execution_reason])).toEqual([
       [kept, 1, null],
       [lost, 2, 'APPLICANT_OUT_OF_SCOPE'],

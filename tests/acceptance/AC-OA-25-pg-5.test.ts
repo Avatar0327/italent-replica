@@ -57,6 +57,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-OA-25-pg ⑤ 执行�
     if (order === '执行先') {
       expect(executed).toBe(true);
       expect(response.status, `离职应因员工 revision 已变 409：${text}`).toBe(409);
+      // 必须是“员工 revision 已变”这一具体拒绝，别的 409（幂等冲突、业务冲突等）不能算数
+      expect((JSON.parse(text) as { error: { code: string } }).error.code).toBe('REVISION_CONFLICT');
     } else {
       expect(left).toBe(true);
       expect(row).toMatchObject({ execution_result: 2, execution_reason: 'BASELINE_CHANGED' });
