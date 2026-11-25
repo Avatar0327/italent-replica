@@ -10,6 +10,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { COLLECTION } from '../onboarding/collection-access.js';
+import { entryMaterialProjection } from '../onboarding/material-list-routes.js';
 import {
   authorizeInTransaction,
   getModuleViewableFields,
@@ -242,6 +243,7 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const page = pageQuery(c);
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const collection = await entryCollectionQuery(c, deps, ctx, tx);
+      const material = await entryMaterialProjection(c, deps, tx, ctx);
       return listEntryView(
         tx,
         ctx.tenantId,
@@ -250,6 +252,7 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           today: tenantLocalDate(ctx.now, ctx.timezone),
           page,
           ...(collection ? { collection } : {}),
+          ...(material ? { material } : {}),
         },
         ctx.scope,
       );
@@ -270,8 +273,13 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           contractEndDate: _end,
           cancelRemark: _cancelRemark,
           collectionStatus,
+          materialStatus,
           ...record
-        }) => ({ ...record, ...(collectionStatus ? { collectionStatus } : {}) }),
+        }) => ({
+          ...record,
+          ...(collectionStatus ? { collectionStatus } : {}),
+          ...(materialStatus == null ? {} : { materialStatus }),
+        }),
       ),
     )) as object[];
     return c.json({

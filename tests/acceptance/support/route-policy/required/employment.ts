@@ -2592,6 +2592,25 @@ export const EMPLOYMENT: RequiredTable = {
   'GET /api/tenant/employment/pending-entries': [
     recordView(at(ENTRY, 'GET', '/pending-entries', "const ctx = await readPageContext(c, deps, 'list')")),
     {
+      perm: 'obj:TenantBase.OnboardingMaterial:view',
+      purpose: 'disclosure:materialStatus',
+      need: { scope: 'list', predicate: 'onboarding.materialEntryScope' },
+      facts: ['object:object.* 动作'],
+      at: [
+        at(ENTRY, 'GET', '/pending-entries', 'const material = await entryMaterialProjection(c, deps, tx, ctx)'),
+        fn(
+          'apps/api/src/modules/onboarding/material-list.ts',
+          'materialStatusScope',
+          "action: 'object.view', resource: MATERIAL",
+        ),
+        {
+          role: 'scope',
+          unit: 'apps/api/src/modules/onboarding/material-list.ts#materialStatusJoin',
+          anchor: 'materialEntryScope(tenantId, scope, department)',
+        },
+      ],
+    },
+    {
       perm: 'obj:TenantBase.OnboardingCollection:view',
       purpose: 'disclosure:collectionStatus',
       facts: ['object:object.* 动作'],
@@ -2611,6 +2630,18 @@ export const EMPLOYMENT: RequiredTable = {
         },
       ],
     },
+    ob(
+      'guard:onboarding.entryMaterialProjection',
+      [],
+      [
+        at(ENTRY, 'GET', '/pending-entries', 'const material = await entryMaterialProjection(c, deps, tx, ctx)'),
+        fn(
+          'apps/api/src/modules/onboarding/material-list-routes.ts',
+          'entryMaterialProjection',
+          "throw new AppError('FORBIDDEN', '筛选或排序字段不可查看')",
+        ),
+      ],
+    ),
   ],
   // ---- employment/intern-routes.ts：R2 BE-6a 实习四视图 / 直接实习转正 / 重聘判定 ------------------------------------------
   'GET /api/tenant/employment/interns': [
