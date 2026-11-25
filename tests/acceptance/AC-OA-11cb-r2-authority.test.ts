@@ -188,3 +188,21 @@ describe('P1-3 带编按编制对象权限判', () => {
     expect(await w.transferRows(view.id)).toHaveLength(1);
   });
 });
+
+describe('调动明细写路由：头“编辑”按钮是功能权，缺则 403', () => {
+  it('没有 EditAdjustOrgDetailBtn：新增 / 修改 / 删除 / 单行刷新都 403，行与 revision 原样', async () => {
+    const { w, mover, view } = await setup('r2-head-button');
+    const itemId = await w.seed(view.id, mover);
+    const before = await w.state(view.id);
+    w.access.deniedButtons.add('EditAdjustOrgDetailBtn');
+
+    const other = await w.staff(w.b);
+    await expectError(await w.addTransfer(view.id, w.transferBody(other, { orgId: w.a })), 403, 'FORBIDDEN');
+    await expectError(await w.patchTransfer(view.id, itemId, { department: { orgId: w.a } }), 403, 'FORBIDDEN');
+    await expectError(await w.deleteTransfer(view.id, itemId), 403, 'FORBIDDEN');
+    await expectError(await w.rebaseItem(view.id, itemId, undefined, 'transfer'), 403, 'FORBIDDEN');
+
+    expect(await w.transferRows(view.id)).toHaveLength(1);
+    expect(await w.state(view.id)).toEqual(before);
+  });
+});
