@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { type Db, eq, orgHierarchyLinks, orgVersions, sql, withTenant } from '@italent/db';
-import { MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
+import { CONTRACT_OBJECT, MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import { expect } from 'vitest';
 import type { AuthorizationRequest, Authorizer } from '../../apps/api/src/authorization.js';
 import { EMPLOYMENT_OBJECT } from '../../apps/api/src/modules/employment/context.js';
@@ -52,6 +52,10 @@ export interface HeadAccess {
   org: ModuleScope;
   /** 任职记录对象的员工范围：读路径逐员工失败（F-414③）与 F-458 人员联动失败都按它逐人裁剪；缺省看全部。 */
   employment: ModuleScope;
+  /** 合同对象的员工范围（调动明细的合同变更按它判可见与写权）；缺省看全部。 */
+  contract?: ModuleScope;
+  /** 只对某个用户生效的合同范围（审批人盲审用例按人区分），优先于 contract。 */
+  contractByUser?: Map<string, ModuleScope>;
   deniedButtons: Set<string>;
   deniedFields: Set<string>;
   /** 看不到的字段编码（查看权）。 */
@@ -96,6 +100,7 @@ export async function headWorld(db: Db, label: string) {
     scope: async (q) => {
       if (q.objectCode === MAIN) return access.main;
       if (q.objectCode === ORG) return access.org;
+      if (q.objectCode === CONTRACT_OBJECT) return access.contractByUser?.get(q.userId) ?? access.contract ?? ALL;
       return q.objectCode === EMPLOYMENT_OBJECT ? access.employment : ALL;
     },
     authorize: async (req) => decide(req),
