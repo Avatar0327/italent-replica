@@ -299,16 +299,25 @@ describe('F-565 ② 静态守卫：员工行取锁一律 FOR NO KEY UPDATE', () 
 // ───────────────────────── ④ 外键子表插行前先取员工行锁 ─────────────────────────
 
 /**
- * 注意：迁移 0024 建 personnel_attachments 时没有给运行时角色 app_user 授 INSERT（其余 personnel_* 表都授了），
- * 所以普通角色下这条路由放锁后会 42501 → 503，PGlite / 超级用户下则正常 201。授权缺口是独立遗留（需迁移，不在本任务范围，见 PR 的后补 F 候选）；
- * 本任务只关心“插子行之前先取员工行锁”，故“排队等锁”用 waited 判，放锁后的结果按授权现状分别断言，补上授权后自动收紧为 201。
+ * 迁移 0024 建 personnel_attachments 时没有给运行时角色 app_user 授 INSERT（其余 personnel_* 表都授了）：普通角色下这条路由
+ * 会 42501 → 503。这是独立遗留，改生产授权要走迁移，不在本任务范围（见 PR 的后补 F 候选）。
+ * 第 2 轮（P2-3）：仅在本用例的隔离测试库里补授 INSERT，保留应用角色与 RLS，这样才能断言“放锁后真实成功（200）且新增一行”，
+ * 而不是把 503 当作正例。测试库每个文件独立，授权不外溢；生产授权与迁移一概不动。
  */
-const insertGranted = async (db: ReturnType<typeof database>['db']) =>
-  (
-    rows(await db.execute(sql`SELECT has_table_privilege('app_user','personnel_attachments','INSERT') AS ok`)) as {
-      ok: boolean;
-    }[]
-  )[0]!.ok;
+async function grantAttachmentInsertForTest(db: ReturnType<typeof database>['db']) {
+  await db.execute(sql`GRANT SELECT, INSERT ON personnel_attachments TO app_user`);
+}
+const attachmentCount = (
+  w: { db: ReturnType<typeof database>['db']; session: { tenant: { id: string } } },
+  id: string,
+) =>
+  withTenant(w.db, w.session.tenant.id, async (tx) => {
+    const found = rows(
+      await tx.execute(sql`SELECT count(*)::int AS n FROM personnel_attachments
+        WHERE tenant_id=${w.session.tenant.id} AND employee_id=${id}::uuid`),
+    ) as { n: number }[];
+    return found[0]!.n;
+  });
 
 describe.runIf(pg)('F-565 ④ 登记人员附件先取员工行锁', () => {
   async function attachmentScene(label: string) {
@@ -322,22 +331,27 @@ describe.runIf(pg)('F-565 ④ 登记人员附件先取员工行锁', () => {
       });
     return { p, w, send };
   }
-  const expected = async (db: ReturnType<typeof database>['db']) => ((await insertGranted(db)) ? 201 : 503);
 
-  it('员工行已被另一事务以 NO KEY UPDATE 持有时，登记附件排队等锁（修前只取 KEY SHARE，不排队）', async () => {
+  it('员工行已被另一事务以 NO KEY UPDATE 持有时，登记附件排队等锁，放锁后 200 且新增一行（修前只取 KEY SHARE，不排队）', async () => {
     const { p, w, send } = await attachmentScene(`f565-att-${uniqueSuffix()}`);
+    await grantAttachmentInsertForTest(w.db);
+    const before = await attachmentCount(w, p.employee.id);
     const r = await race(
       { w, rights: {}, hold: { table: 'employees', id: p.employee.id, level: 'no-key' }, send },
       false,
     );
     expect(r.waited, '登记附件没有排到员工行锁上：插外键子行前未先取员工行锁').toBe(true);
-    expect(r.response.status, await r.response.clone().text()).toBe(await expected(w.db));
+    expect(r.response.status, await r.response.clone().text()).toBe(200);
+    expect(await attachmentCount(w, p.employee.id)).toBe(before + 1);
   });
 
-  it('对照：没有人持锁时登记附件照常办理（授权现状下的结果不变）', async () => {
-    const { w, send } = await attachmentScene(`f565-att-ok-${uniqueSuffix()}`);
+  it('对照：没有人持锁时登记附件 200 且新增一行', async () => {
+    const { p, w, send } = await attachmentScene(`f565-att-ok-${uniqueSuffix()}`);
+    await grantAttachmentInsertForTest(w.db);
+    const before = await attachmentCount(w, p.employee.id);
     const response = await send();
-    expect(response.status, await response.clone().text()).toBe(await expected(w.db));
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await attachmentCount(w, p.employee.id)).toBe(before + 1);
   });
 });
 

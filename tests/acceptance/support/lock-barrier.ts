@@ -16,6 +16,18 @@ export interface BarrierWorld {
   readonly session: { readonly tenant: { readonly id: string } };
 }
 export const pg = Boolean(process.env.TEST_DATABASE_URL);
+/** 可被另一事务持有的行：员工行、业务头、离职撤销记录行（F-565 第 2 轮：执行体才会等的子记录锁）。 */
+export type HeldTable = 'employees' | 'heads' | 'cancellations';
+const HELD_FROM = {
+  employees: sql`employment_employees`,
+  heads: sql`employment_business_objects`,
+  cancellations: sql`exit_cancellations`,
+} as const;
+const WAITED_TABLE = {
+  employees: '',
+  heads: 'employment_business_objects',
+  cancellations: 'exit_cancellations',
+} as const;
 export type Db = Parameters<typeof withTenant>[0];
 export const rows = (result: unknown) => (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows);
 
@@ -23,18 +35,12 @@ export const rows = (result: unknown) => (Array.isArray(result) ? result : (resu
  * 另开一个事务持有员工行（或业务头）直到 release，模拟“另一名经办人正在改这名员工 / 这张单”。
  * level = 'no-key'：只持 FOR NO KEY UPDATE（与任职写入口同强度），不挡外键子行插入的 KEY SHARE（F-565 ④）。
  */
-export function holdRow(
-  db: Db,
-  tenantId: string,
-  table: 'employees' | 'heads',
-  id: string,
-  level: 'update' | 'no-key' = 'update',
-) {
+export function holdRow(db: Db, tenantId: string, table: HeldTable, id: string, level: 'update' | 'no-key' = 'update') {
   let release!: () => void;
   const released = new Promise<void>((resolve) => (release = resolve));
   let locked!: () => void;
   const ready = new Promise<void>((resolve) => (locked = resolve));
-  const from = table === 'employees' ? sql`employment_employees` : sql`employment_business_objects`;
+  const from = HELD_FROM[table];
   const done = withTenant(db, tenantId, async (tx) => {
     const strength = level === 'update' ? sql`FOR UPDATE` : sql`FOR NO KEY UPDATE`;
     await tx.execute(sql`SELECT id FROM ${from} WHERE tenant_id=${tenantId} AND id=${id}::uuid ${strength}`);
@@ -50,13 +56,13 @@ export function holdRow(
   };
 }
 
-/** 等到有请求卡在业务头（employment_business_objects）的行锁上；`stop` 为真（请求已经返回）就不再等。 */
-export async function waitForHeadWaiter(db: Db, stop: () => boolean) {
+/** 等到有请求卡在业务头（缺省）或撤销记录（exit_cancellations）的行锁上；`stop` 为真（请求已经返回）就不再等。 */
+export async function waitForHeadWaiter(db: Db, stop: () => boolean, table = 'employment_business_objects') {
   for (let i = 0; i < 400; i++) {
     if (stop()) return;
     const found = rows(
       await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
-        WHERE datname=current_database() AND wait_event_type='Lock' AND query ILIKE '%employment_business_objects%'`),
+        WHERE datname=current_database() AND wait_event_type='Lock' AND query ILIKE ${'%' + table + '%'}`),
     ) as { n: number }[];
     if (found[0]!.n >= 1) return;
     await new Promise((resolve) => setTimeout(resolve, 25));
@@ -98,7 +104,7 @@ export interface Scenario {
   readonly w: BarrierWorld;
   readonly rights: ReturnType<typeof revocable>['rights'];
   /** 被另一事务持有的行：员工行或业务头。 */
-  readonly hold: { readonly table: 'employees' | 'heads'; readonly id: string; readonly level?: 'update' | 'no-key' };
+  readonly hold: { readonly table: HeldTable; readonly id: string; readonly level?: 'update' | 'no-key' };
   readonly send: () => Promise<Response>;
   /** 零写入快照额外要比的表（离职扩展表等）。 */
   readonly extraTables?: readonly string[];
@@ -126,7 +132,7 @@ export async function race(s: Scenario, revoke: Revoke | false) {
   const response = s.send();
   void response.finally(() => (done = true));
   if (s.hold.table === 'employees') await waitForLockWaiters(s.w.db, 1, () => done);
-  else await waitForHeadWaiter(s.w.db, () => done);
+  else await waitForHeadWaiter(s.w.db, () => done, WAITED_TABLE[s.hold.table]);
   const waited = !done;
   if (revoke) revoke(s.rights);
   await held.release();
