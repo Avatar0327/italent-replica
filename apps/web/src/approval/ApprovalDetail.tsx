@@ -200,6 +200,8 @@ function DetailBody(props: DetailProps & { state: DetailState; action: ActionSta
         <Alert type="warning" showIcon message={d.locked(decisionLabel(detail, action.pending, action.pendingExit))} />
       )}
       {action.command.status === 'unknown' && !action.action && <CommandStatus submission={action.command} />}
+      {/* 弹窗里由 FormOverlay 显示本次拒绝；弹窗不在（如重新进入详情）时这里给出未发出的原因（F-566 P2-3）。 */}
+      {action.notice && !action.action && <Alert type="error" showIcon message={action.notice} />}
       {detail?.status === 'approved' && <Alert type="info" message={m.approvedNotice} showIcon />}
       {detail && <DetailColumns detail={detail} todo={props.todo} applications={props.applications} />}
     </div>

@@ -7,6 +7,7 @@
 import { ACTIVE_COLLECTION_TASK_STATES, COLLECTION_TASK_STATES, sql, type Tx } from '@italent/db';
 import { EMPLOYEE_STATUS, ENTRY_STATUS, type EmployeeStatusCode, type EntryStatusCode } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
+import { materialStatusJoin, type MaterialStatus } from '../onboarding/material-list.js';
 import { preparationStatusSql, type PreparationStatus } from '../onboarding/preparation-launch-read.js';
 import { employmentCreator, employmentScopePredicate } from './context.js';
 import { ENTRY_KINDS } from './employee-status.js';
@@ -22,6 +23,11 @@ export const ENTRY_COLLECTION_STATUSES = [
   ...COLLECTION_TASK_STATES.filter((status) => status !== 'ready'),
 ] as const;
 type CollectionStatus = (typeof ENTRY_COLLECTION_STATUSES)[number];
+export interface EntryMaterialQuery {
+  readonly scope: EmploymentScope;
+  readonly filter?: MaterialStatus;
+  readonly order?: 'asc' | 'desc';
+}
 export interface EntryCollectionQuery {
   readonly scope: EmploymentScope;
   readonly status?: CollectionStatus;
@@ -56,6 +62,7 @@ export interface EntryViewItem {
    */
   readonly cancelRemark: string | null;
   readonly collectionStatus?: CollectionStatus | null;
+  readonly materialStatus?: MaterialStatus | null;
 }
 
 export function entryViewPredicate(view: EntryView, today: string): SQL {
@@ -78,12 +85,36 @@ interface EntryViewQuery {
   readonly today: string;
   readonly page: PageQuery;
   readonly collection?: EntryCollectionQuery;
+  readonly material?: EntryMaterialQuery;
 }
 
 /** 采集状态列表达式：范围谓词由调用方（listEntryView）传入，授权证据留在 listEntryView 内（F-039 锚点）。 */
 function collectionStatusSql(visible: SQL): SQL {
   return sql`CASE WHEN ${visible} THEN
     CASE ct.status WHEN 'ready' THEN 'not_sent' ELSE COALESCE(ct.status, 'not_started') END END`;
+}
+
+/** 采集任务列：取每个入职案例当前活跃的最新采集任务（无活跃任务时取最近一条）。 */
+function collectionJoin(): SQL {
+  const active = sql.join(
+    ACTIVE_COLLECTION_TASK_STATES.map((state) => sql`${state}`),
+    sql`,`,
+  );
+  return sql`LEFT JOIN onboarding_entry_cases ec ON ec.tenant_id=r.tenant_id
+      AND ec.employee_id=r.employee_id AND ec.current_business_id=r.id
+    LEFT JOIN LATERAL (SELECT task.status FROM onboarding_collection_tasks task
+      WHERE task.tenant_id=ec.tenant_id AND task.case_id=ec.id
+      ORDER BY (task.status IN (${active})) DESC,
+        task.created_at DESC, task.id DESC LIMIT 1) ct ON true`;
+}
+
+/** 采集 / 材料列的可选排序键（空值垫底），采集在前、材料在后，最后落到入职日与记录 ID。 */
+function entryOrderKeys(collection: EntryCollectionQuery | undefined, material: EntryMaterialQuery | undefined): SQL {
+  const dir = (order: 'asc' | 'desc') => (order === 'desc' ? sql`DESC` : sql`ASC`);
+  const keys: SQL[] = [];
+  if (collection?.order) keys.push(sql`"collectionStatus" ${dir(collection.order)} NULLS LAST,`);
+  if (material?.order) keys.push(sql`material_summary.status ${dir(material.order)} NULLS LAST,`);
+  return sql.join(keys, sql` `);
 }
 
 export async function listEntryView(
@@ -110,6 +141,8 @@ export async function listEntryView(
       employmentCreator(tenantId, sql`r.id`, true),
     );
   const status = collectionVisible && collectionStatusSql(collectionVisible);
+  const material = input.material;
+  const materialStatus = sql`material_summary.status`;
   return rowsOf<EntryViewItem>(
     await tx.execute(sql`
     SELECT r.id, r.employee_id AS "employeeId", e.code,
@@ -122,6 +155,7 @@ export async function listEntryView(
       cancel.remark AS "cancelRemark",
       ${preparationStatusSql(sql`r.tenant_id`, sql`r.id`)} AS "preparationStatus"
       ${status ? sql`, ${status} AS "collectionStatus"` : sql``}
+      ${material ? sql`, ${materialStatus} AS "materialStatus"` : sql``}
     FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
     JOIN employment_business_objects b ON b.tenant_id=r.tenant_id AND b.id=r.id
@@ -136,31 +170,17 @@ export async function listEntryView(
     LEFT JOIN LATERAL (SELECT p.department_id FROM employment_payload_versions p
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1) snap ON true
-    ${
-      collection
-        ? sql`LEFT JOIN onboarding_entry_cases ec ON ec.tenant_id=r.tenant_id
-      AND ec.employee_id=r.employee_id AND ec.current_business_id=r.id
-    LEFT JOIN LATERAL (SELECT task.status FROM onboarding_collection_tasks task
-      WHERE task.tenant_id=ec.tenant_id AND task.case_id=ec.id
-      ORDER BY (task.status IN (${sql.join(
-        ACTIVE_COLLECTION_TASK_STATES.map((state) => sql`${state}`),
-        sql`,`,
-      )})) DESC,
-        task.created_at DESC, task.id DESC LIMIT 1) ct ON true`
-        : sql``
-    }
+    ${collection ? collectionJoin() : sql``}
+    ${material ? materialStatusJoin(material.scope, tenantId, department) : sql``}
     WHERE r.tenant_id=${tenantId} AND r.kind IN (${sql.join(
       ENTRY_KINDS.map((kind) => sql`${kind}`),
       sql`, `,
     )})
       AND ${entryViewPredicate(input.view, input.today)} AND ${visible}
       ${collection?.status ? sql`AND ${status} = ${collection.status}` : sql``}
-    ORDER BY ${
-      collection?.order
-        ? sql`"collectionStatus" ${collection.order === 'asc' ? sql`ASC` : sql`DESC`}
-      NULLS LAST,`
-        : sql``
-    } t.start_date, r.id LIMIT ${input.page.limit} OFFSET ${input.page.offset}
+      ${material?.filter ? sql`AND ${materialStatus} = ${material.filter}` : sql``}
+    ORDER BY ${entryOrderKeys(collection, material)} t.start_date, r.id
+    LIMIT ${input.page.limit} OFFSET ${input.page.offset}
   `),
   );
 }
