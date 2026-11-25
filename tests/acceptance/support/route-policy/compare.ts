@@ -266,7 +266,7 @@ export function compareRoute(
       ['REQUIRED_ENTRY_MISSING', 'REQUIRED_TABLE_GAP', 'REQUIRED_STALE_FACT'].includes(finding.code),
     );
   // 未认领权限的用途不确定，只报告静态缺项；已登记权限、独立元数据、身份与选择器仍照常比较。
-  const observed: ObservedRoute = { ...raw, primitives: admissionPrimitives(raw, table[key] ?? [], incomplete) };
+  const observed: ObservedRoute = { ...raw, primitives: admissionPrimitives(key, raw, table[key] ?? [], incomplete) };
   const decl = declared(route.policy);
   const seen = new Set<string>();
   const report = (code: string, detail: string) => {
@@ -294,7 +294,7 @@ export function compareRoute(
       report(`OVERDECLARED:${dim}`, `声明有 ${dim}，现状代码里没有对应原语`);
     }
   }
-  const observedGuards = [...(observed.primitives['guard'] ?? []), ...branchOnlyGuards(raw, table[key] ?? [])];
+  const observedGuards = [...(observed.primitives['guard'] ?? []), ...branchOnlyGuards(key, raw, table[key] ?? [])];
   for (const guard of decl.union.guards) {
     if (KNOWN_GUARDS.has(guard) && !observedGuards.includes(guard)) {
       report('OVERDECLARED:guard', `声明守卫 ${guard}，现状代码里没有`);

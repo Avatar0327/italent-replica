@@ -140,7 +140,7 @@ describe('AC-PRM-FW-02 BE-11c-b 第 7 轮 P2②：分支豁免只认审定的（
     const hits = routes.flatMap((route) => {
       const key = `${route.method} ${route.path}`;
       const seen = contract.routes[key];
-      return seen ? branchOnlyGuards(seen, REQUIRED[key] ?? []).map((guard) => `${key} ${guard}`) : [];
+      return seen ? branchOnlyGuards(key, seen, REQUIRED[key] ?? []).map((guard) => `${key} ${guard}`) : [];
     });
     expect(hits.sort(), `命中 ${hits.length} 个：${hits.slice(0, 5).join('；')}`).toEqual(REVIEWED_HITS);
   });
@@ -153,6 +153,17 @@ describe('AC-PRM-FW-02 BE-11c-b 第 7 轮 P2②：分支豁免只认审定的（
       primitives: { guard: [name] },
     };
     const plain = { perm: `guard:${name}`, facts: [`guard:${name}`], at: [] } as unknown as Obligation;
-    expect(branchOnlyGuards(unregistered, [plain])).toEqual([]);
+    expect(branchOnlyGuards(KEY, unregistered, [plain])).toEqual([]);
+  });
+  it('同名守卫挂在没有审定的端点上也不豁免（豁免按端点登记，不按守卫名通用）', () => {
+    const other = 'GET /api/tenant/permission/other-endpoint';
+    const rebase = REQUIRED[KEY]!.filter((o) => o.perm === 'guard:transfer.source');
+    const seen: ObservedRoute = {
+      module: 'x',
+      edge: {} as ObservedRoute['edge'],
+      primitives: { guard: ['transfer.source'] },
+    };
+    expect(branchOnlyGuards(KEY, seen, rebase)).toEqual(['transfer.source']);
+    expect(branchOnlyGuards(other, seen, rebase)).toEqual([]);
   });
 });
