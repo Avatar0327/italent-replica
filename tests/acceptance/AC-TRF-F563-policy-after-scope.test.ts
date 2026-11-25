@@ -7,7 +7,7 @@
  *   修前：策略校验先抛 403，调用方能借此区分“经理校验失败”与“范围外 404”；
  *   修后：范围外一律 404「任职业务不存在」，与不存在的单据不可区分，策略校验一次都不会被碰到。
  * 时序用 runCommand 前置钩子在“入口之后、命令事务之前”（事务外）制造，PGlite 与 PostgreSQL 都跑，不依赖行锁等待。
- * 范围收回用真实的管理员写入口（scopedHr.revokeScope），经理失格用真实的 HR 改任职入口（hrEditCurrent）。
+ * 范围收回用真实的管理员写入口（scopedHr.revokeScope），经理失格用真实的组织改上级入口（目标部门改挂到别处）。
  */
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
