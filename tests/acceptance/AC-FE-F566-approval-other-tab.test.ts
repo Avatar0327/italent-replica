@@ -6,6 +6,7 @@
  * 弹窗里的 CommandStatus 不能残留“其他标签页有该对象未确认的命令”；真正的等锁超时（refused）仍显示 DEC-954 文案。
  * 挂真实审批详情（ApprovalDetail → FormOverlay → CommandStatus），每次 DOM 提交后记下页面文字，提交处理中
  * 内核短暂发布的 rejected 条目也不能把旧告警渲染出来。别的标签页 A 的登记做法同 AC-FE-F562。期望值手写。
+ * 第 2 轮：等锁超时（refused）时槽被 A 接管，弹窗仍显示 DEC-954 原文（不是“结果尚未确认”），A 的命令仍可查询。
  */
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -234,6 +235,33 @@ describe('AC-FE-F566 审批动作正例', () => {
     await act(async () => save().click());
     await until(() => changed.mock.calls.length === 1);
     expect(posts).toHaveLength(1);
+  });
+
+  it('第 2 轮 P2-3 等锁期间 A 登记同一审批单、B 等锁超时：弹窗显示 DEC-954 原文而非结果未知，零请求，A 仍可查询', async () => {
+    await render();
+    await openApprove();
+    const release = await holdLock(RECORDS);
+    try {
+      const spy = vi.spyOn(navigator.locks, 'request');
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      await clickSaveAndQueue(spy);
+      registerA(); // A 在锁内登记了同一审批单，锁一直不放。
+      await act(() => vi.advanceTimersByTimeAsync(LOCK_WAIT_MS));
+      vi.useRealTimers();
+      await until(() => !!buttonIn(modal()!, '查询结果'));
+    } finally {
+      vi.useRealTimers();
+      release();
+    }
+    expect(posts).toEqual([]);
+    expect(modal()?.textContent).toContain(LOCK_BUSY);
+    expect(document.body.textContent).not.toContain(UNCERTAIN);
+    expect(document.body.textContent).not.toContain(OTHER_TAB);
+    // 槽交给 A 的待确认命令：保存锁着，按 A 的命令 ID 查询结果。
+    expect(save().disabled).toBe(true);
+    await act(async () => buttonIn(modal()!, '查询结果').click());
+    await until(() => !!modal()?.textContent?.includes(RESULT_FAILED));
+    expect(posts).toEqual([]);
   });
 
   it('A 未确认时 B 提交被竞争拒绝，主动查询结果确认失败：弹窗照常显示已确认失败的告警', async () => {

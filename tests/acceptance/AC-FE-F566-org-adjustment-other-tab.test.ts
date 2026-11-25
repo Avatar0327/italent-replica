@@ -6,6 +6,8 @@
  * CommandStatus 不能残留“其他标签页有该对象未确认的命令”；真正的等锁超时（refused）仍显示 DEC-954 文案。
  * 挂真实编辑弹窗（ApplicationForm → FormOverlay → CommandStatus）与详情状态区的同款接法（AdjustmentDetail：
  * 非编辑时 CommandStatus + act 吞错），每次 DOM 提交后记下页面文字。A 的登记做法同 AC-FE-F562。期望值手写。
+ * 第 2 轮：隐去旧告警不能丢掉已核对的版本（实际 If-Match）；真实列表页上关闭重开详情后仍隐去；
+ * 等锁超时（refused）时槽被 A 接管，详情仍显示 DEC-954 原文，A 的命令仍可查询。
  */
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -17,7 +19,10 @@ installWebLocks();
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h, act, Profiler } = requireWeb('react');
 const { createRoot } = requireWeb('react-dom/client');
+const { MemoryRouter } = requireWeb('react-router');
 const { SessionProvider } = await import(resolve('apps/web/src/foundation/Session.tsx'));
+const { PermissionsProvider } = await import(resolve('apps/web/src/foundation/Permissions.tsx'));
+const { AdjustmentPage } = await import(resolve('apps/web/src/org-adjustment/AdjustmentPage.tsx'));
 const { CommandStatus } = await import(resolve('apps/web/src/foundation/forms/CommandStatus.tsx'));
 const { ApplicationForm } = await import(resolve('apps/web/src/org-adjustment/ApplicationForm.tsx'));
 const { useAdjustmentCommand } = await import(resolve('apps/web/src/org-adjustment/commands.ts'));
@@ -25,7 +30,9 @@ const { useAdjustmentCommand } = await import(resolve('apps/web/src/org-adjustme
 const RECORDS = 'italent.commands.pending:org-adjustment';
 const ID = '85660000-0000-4000-8000-000000000001';
 const ORG = '85660000-0000-4000-8000-0000000000a1';
-const DETAIL_PATH = `/api/tenant/org-adjustment/adjustments/${ID}`;
+const COLLECTION = '/api/tenant/org-adjustment/adjustments';
+const DETAIL_PATH = `${COLLECTION}/${ID}`;
+const OBJECT = 'TenantBase.OrganizationApproval';
 const SUBMIT_PATH = `${DETAIL_PATH}/submit`;
 const OTHER_TAB = '其他标签页有该对象未确认的命令，本次命令未发出；请等待结果或先查询结果。';
 const LOCK_BUSY = '检测到你在另一个标签页打开了此单据，请关闭后重试。';
@@ -57,8 +64,8 @@ const row = {
   contentView: { mode: 'live' },
   sections: {},
 };
-// 写接口回执（routes.ts headCommand → AdjustmentView）：同一申请单、版本推进过 If-Match 4。
-const receipt = (status: number) => ({
+// 写接口回执（routes.ts headCommand → AdjustmentView）：同一申请单、版本推进过 If-Match。
+const receipt = (status: number, revision: number) => ({
   id: ID,
   code: 'OA-566',
   subject: SUBJECT,
@@ -66,8 +73,16 @@ const receipt = (status: number) => ({
   approvalSubjectOrgId: ORG,
   adjustmentRange: [ORG],
   approvalStatus: status,
-  revision: 5,
+  revision,
 });
+// GET /api/tenant/permission/me/objects/:code（权限快照对象明细）：本人可编辑、提交暂存单（AdjustmentDetail edit）。
+const objectPermission = {
+  objectCode: OBJECT,
+  dataOperations: { read: true, create: true, update: true },
+  viewableFields: ['subject', 'effectiveDate', 'approvalSubjectOrgId', 'adjustmentRange', 'content'],
+  editableFields: ['subject', 'effectiveDate', 'approvalSubjectOrgId', 'adjustmentRange', 'content'],
+  buttons: [{ buttonCode: 'EditAdjustOrgDetailBtn', level: 'detail' }],
+};
 const access = {
   field: () => ({ visible: true, editable: true }),
   add: true,
@@ -78,6 +93,10 @@ const access = {
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 let writes: { method: string; path: string; body: unknown }[];
+/** 每次写请求实际带的 If-Match（client.ts 按命令 revision 发出）。 */
+let ifMatches: (string | null)[];
+/** 服务端当前版本：写请求 If-Match 不等于它时按 409 REVISION_CONFLICT 拒绝（routes.ts revision 校验）。 */
+let server: number;
 /** 每次 DOM 提交后的页面文字（含弹窗与 CommandStatus），用来证明中途也没渲染过旧告警。 */
 let commits: string[];
 let tenantId: string;
@@ -88,6 +107,8 @@ beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', () => ({ matches: false, addListener() {}, removeListener() {} }));
   writes = [];
+  ifMatches = [];
+  server = row.revision;
   commits = [];
   tenantId = randomUUID();
   updated.mockClear();
@@ -99,8 +120,28 @@ beforeEach(() => {
       const method = init.method ?? 'GET';
       if ((method === 'PATCH' && path === DETAIL_PATH) || (method === 'POST' && path === SUBMIT_PATH)) {
         writes.push({ method, path, body: JSON.parse(String(init.body)) });
-        return Response.json(receipt(method === 'PATCH' ? 0 : 1));
+        const ifMatch = new Headers(init.headers).get('if-match');
+        ifMatches.push(ifMatch);
+        // errors.ts 的 409 响应体：REVISION_CONFLICT + details.expected。
+        if (ifMatch !== String(server))
+          return Response.json(
+            {
+              error: {
+                code: 'REVISION_CONFLICT',
+                message: '申请单已被修改，请刷新后重试',
+                details: { expected: server },
+              },
+            },
+            { status: 409 },
+          );
+        server += 1;
+        return Response.json(receipt(method === 'PATCH' ? 0 : 1, server));
       }
+      if (method === 'GET' && path === DETAIL_PATH) return Response.json({ ...row, revision: server });
+      if (method === 'GET' && path === COLLECTION) return Response.json({ items: [row], total: 1 });
+      if (path === '/api/tenant/permission/me/snapshot')
+        return Response.json({ session: serverSession(), apps: [], scope: [], adminMenus: [] });
+      if (path === `/api/tenant/permission/me/objects/${OBJECT}`) return Response.json(objectPermission);
       // GET /api/tenant/commands/:commandId/result（F-120 返回结构）：A 的命令已确认执行失败。
       if (path === '/api/tenant/commands/synthetic-command-a/result') {
         return Response.json({
@@ -197,6 +238,48 @@ function settleABeforeRefusal() {
     }),
   );
 }
+/** 权限快照里服务端给的会话（permission-snapshot.ts loadSnapshot 以 userId 作身份键，与上面的恢复键一致）。 */
+const serverSession = () => ({
+  tenantId,
+  userId: 'synthetic-user',
+  tenantName: '合成租户',
+  timezone: 'Asia/Shanghai',
+  displayName: '合成用户',
+});
+/** 挂真实列表页（AdjustmentPage → AdjustmentDetail 抽屉）并直接打开本单详情，等“提交审批”可点。 */
+async function renderPage() {
+  const session = { tenantId, identityKey: 'synthetic-user', displayName: '合成用户', source: 'server' };
+  await act(async () =>
+    root.render(
+      h(
+        SessionProvider,
+        { session },
+        h(
+          PermissionsProvider,
+          null,
+          h(
+            MemoryRouter,
+            { initialEntries: [`/org/adjustments?id=${ID}`] },
+            h(Profiler, { id: 'org-adjustment-page', onRender: record }, h(AdjustmentPage)),
+          ),
+        ),
+      ),
+    ),
+  );
+  await until(() => !!detailSubmit() && !detailSubmit()!.disabled);
+}
+const detail = () => document.querySelector('.oa-detail') as HTMLElement | null;
+const detailSubmit = () => (detail() ? buttonIn(detail()!, '提交审批') : undefined);
+/** 关闭详情抽屉（列表页清掉 ?id，详情卸载）。 */
+async function closeDetail() {
+  await act(async () => (document.querySelector('.ant-drawer-close') as HTMLButtonElement).click());
+  await until(() => !detail());
+}
+/** 在列表里点本单主题重新打开详情（AdjustmentDetail 按 key 重新挂载）。 */
+async function reopenDetail() {
+  await act(async () => (host.querySelector(`button[aria-label="${row.subject}"]`) as HTMLButtonElement).click());
+  await until(() => !!detailSubmit());
+}
 
 describe('AC-FE-F566 组织调整登记冲突后占槽命令已落定', () => {
   it('编辑弹窗：B 登记被 A 的记录拒绝、处理拒绝前 A 已落定（内核不带 refused）：不残留其他标签页提示，可再保存', async () => {
@@ -248,6 +331,64 @@ describe('AC-FE-F566 组织调整登记冲突后占槽命令已落定', () => {
     await until(() => updated.mock.calls.length === 1);
     expect(writes).toEqual([{ method: 'POST', path: SUBMIT_PATH, body: {} }]);
   });
+
+  it('第 2 轮 P2-1 编辑弹窗：409 后重读并核对到 revision 5，再遇同样的交错，下次保存仍带 If-Match 5', async () => {
+    server = 5; // 别人已把申请单改到 revision 5，本页详情还是 4。
+    await render(true);
+    await editSubject();
+    await act(async () => save().click());
+    await until(() => !!buttonIn(modal()!, '重读最新版本'));
+    expect(ifMatches).toEqual(['4']);
+    await act(async () => buttonIn(modal()!, '重读最新版本').click());
+    await until(() => !!buttonIn(modal()!, '已核对差异，继续编辑'));
+    await act(async () => buttonIn(modal()!, '已核对差异，继续编辑').click());
+    await until(() => !save().disabled);
+    expect(subject()?.value).toBe(SUBJECT);
+
+    const release = await holdLock(RECORDS);
+    const spy = settleABeforeRefusal();
+    await act(async () => save().click());
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+    const before = commits.length;
+    registerA();
+    release();
+    await saveSettled();
+    // 本次零请求、不提示、输入保留。
+    expect(ifMatches).toEqual(['4']);
+    expect(commits.slice(before).filter((page) => page.includes(OTHER_TAB))).toEqual([]);
+    expect(subject()?.value).toBe(SUBJECT);
+
+    // 已核对的版本不丢：再保存按 revision 5 发出，一次成功。
+    await act(async () => save().click());
+    await until(() => ifMatches.length === 2);
+    expect(ifMatches).toEqual(['4', '5']);
+    await until(() => closed.mock.calls.length === 1);
+    expect(writes.at(-1)).toEqual({ method: 'PATCH', path: DETAIL_PATH, body: { subject: SUBJECT } });
+  });
+
+  it('第 2 轮 P2-2 真实详情：登记等锁时关闭并重开详情，再遇同样的交错，重开后的每次提交都不显示旧告警', async () => {
+    await renderPage();
+    const release = await holdLock(RECORDS);
+    const spy = settleABeforeRefusal();
+    await act(async () => detailSubmit()!.click());
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+    await closeDetail();
+    await reopenDetail();
+    // 重开的详情读到的是同一条处理中的命令：按钮锁着。
+    expect(detailSubmit()!.disabled).toBe(true);
+    const before = commits.length;
+    registerA();
+    release();
+    await until(() => !detailSubmit()!.disabled);
+    expect(writes).toEqual([]);
+    expect(commits.length).toBeGreaterThan(before);
+    expect(commits.slice(before).filter((page) => page.includes(OTHER_TAB))).toEqual([]);
+    expect(document.body.textContent).not.toContain(OTHER_TAB);
+
+    await act(async () => detailSubmit()!.click());
+    await until(() => writes.length === 1);
+    expect(writes).toEqual([{ method: 'POST', path: SUBMIT_PATH, body: {} }]);
+  });
 });
 
 describe('AC-FE-F566 组织调整正例', () => {
@@ -278,6 +419,32 @@ describe('AC-FE-F566 组织调整正例', () => {
     await act(async () => save().click());
     await until(() => closed.mock.calls.length === 1);
     expect(writes).toHaveLength(1);
+  });
+
+  it('第 2 轮 P2-3 真实详情：等锁期间 A 登记同一单、B 等锁超时：显示 DEC-954 原文，零请求，A 仍可查询', async () => {
+    await renderPage();
+    const release = await holdLock(RECORDS);
+    try {
+      const spy = vi.spyOn(navigator.locks, 'request');
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      await act(async () => detailSubmit()!.click());
+      await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+      registerA(); // A 在锁内登记了同一申请单，锁一直不放。
+      await act(() => vi.advanceTimersByTimeAsync(LOCK_WAIT_MS));
+      vi.useRealTimers();
+      await until(() => !!buttonIn(detail()!, '查询结果'));
+    } finally {
+      vi.useRealTimers();
+      release();
+    }
+    expect(writes).toEqual([]);
+    expect(detail()!.textContent).toContain(LOCK_BUSY);
+    expect(document.body.textContent).not.toContain(OTHER_TAB);
+    // 槽交给 A 的待确认命令：提交仍锁着，按 A 的命令 ID 查询结果。
+    expect(detailSubmit()!.disabled).toBe(true);
+    await act(async () => buttonIn(detail()!, '查询结果').click());
+    await until(() => !!detail()?.textContent?.includes(RESULT_FAILED));
+    expect(writes).toEqual([]);
   });
 
   it('A 未确认时 B 提交被竞争拒绝，主动查询结果确认失败：状态区照常显示已确认失败的告警', async () => {
