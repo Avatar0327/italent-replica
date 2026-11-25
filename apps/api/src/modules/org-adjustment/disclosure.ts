@@ -15,6 +15,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { disclosedFields } from '../approval/disclosure.js';
+import { foreignVisibility, type ForeignVisible } from '../approval/foreign-fields.js';
 import { contentViewFor, openApprovalDetail, type ContentView } from '../approval/frozen-read.js';
 import { latestInstanceOf } from '../approval/store.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
@@ -52,9 +53,11 @@ export interface Disclosure {
   readonly source: OrgContent | null;
   /** 内容来源说明（与审批中心详情的 contentView 同形）；无审批实例时为现值（F-476 §5.4）。 */
   readonly contentView: ContentView;
+  /** 合同变更字段（带明细身份的编码）按合同对象的查看权、目标合同范围与字段权判可见（foreign-fields.ts）。 */
+  readonly foreign: ForeignVisible;
 }
 
-type Deps = Pick<TenantRouteDeps, 'authorize' | 'clock'>;
+type Deps = Pick<TenantRouteDeps, 'authorize' | 'clock' | 'db'>;
 
 /** 审批人路径不按组织 / 任职对象范围裁剪（沿用审批中心可打开口径），也不展示逐员工失败行。 */
 const APPROVER_SCOPE = { orgScope: null, orgCreators: new Map<string, string>(), employmentScope: null };
@@ -72,6 +75,7 @@ export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantCon
   const view = await loadAdjustment(tx, ctx.tenantId, id);
   if (!view) throw notFound();
   const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+  const foreign = foreignVisibility(bound, ctx, tx);
   const instance = await latestInstanceOf(tx, ctx.tenantId, 'org_adjustment', id);
   const data = instance ? await openApprovalDetail(tx, bound, ctx, instance) : null;
   if (instance && data?.content.mode === 'frozen') {
@@ -88,11 +92,12 @@ export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantCon
       instanceId: instance.id,
       source,
       contentView: contentViewFor(instance, data),
+      foreign,
     } satisfies Disclosure;
   }
   const contentView = contentViewFor(instance, data);
   const hr = await hrDisclosure(tx, bound, ctx, view);
-  if (hr) return { ...hr, instanceId: instance?.id ?? null, source: null, contentView } satisfies Disclosure;
+  if (hr) return { ...hr, instanceId: instance?.id ?? null, source: null, contentView, foreign } satisfies Disclosure;
   if (instance && data) {
     const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, OBJECT, tx);
     const fields = disclosedFields(data, ctx.userId, viewable);
@@ -104,6 +109,7 @@ export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantCon
       instanceId: instance.id,
       source: null,
       contentView,
+      foreign,
     } satisfies Disclosure;
   }
   throw notFound();

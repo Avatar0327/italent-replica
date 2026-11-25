@@ -94,6 +94,28 @@ const itemRoute = (buttons: RoutePolicy, fields: FieldsFrom) =>
     { write: itemWrite(fields), ...byId },
   );
 
+/**
+ * 调动明细写路由（BE-11c-b，路由 16～18）：主对象 update + 按钮 EditAdjustOrgDetailBtn@detail（§9.3），字段按
+ * `transferItems.*`（含合同外部字段容器与逐行编码）；守卫 `orgAdjustment.transferItem` 在命令事务内（首次与重放都经过）
+ * 判主体组织范围、来源员工与目标部门范围、联动授权；上限 / 范围 / 基线 / 同日入职等在写服务内判（前提 transferLimits）。
+ */
+const transferShape = shape('orgAdjustment.transferItems');
+const transferScope = guardScope('orgAdjustment.transferItem', NOT_FOUND);
+const TRANSFERS = `${BASE}/:id/transfer-items`;
+const transferRoute = (fields: FieldsFrom) =>
+  object({
+    object: OBJECT,
+    operation: 'update',
+    button: button('EditAdjustOrgDetailBtn', 'detail'),
+    scope: transferScope,
+    fields: transferShape,
+    write: write(fields, 'orgAdjustment.transferItem', 'orgAdjustment.transferItemReplay', {
+      ledger: 'single',
+      preconditions: [...EDIT, 'orgAdjustment.transferLimits'],
+    }),
+    ...byId,
+  });
+
 // ---- 读取（BE-10d，路由 12～15）----------------------------------------------------------------------------------
 /** 读接口投影：头列按 OrganizationApproval 字段查看权，明细按 `orgItems.*`，派生列跟随源字段（§4.5）。 */
 const readView = projector('orgAdjustment.readView', 'orgAdjustment.read');
@@ -217,6 +239,10 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     buttonOnly(DETAIL, button('DelteOrgApprovalDetail', 'list_row'), FORBIDDEN),
     none('删行无请求体，不提取字段'),
   ),
+  // 路由 16～18：调动明细新增 / 修改 / 删除
+  [`POST ${TRANSFERS}`]: transferRoute('body'),
+  [`PATCH ${TRANSFERS}/:itemId`]: transferRoute('body'),
+  [`DELETE ${TRANSFERS}/:itemId`]: transferRoute(none('删行无请求体，不提取字段')),
   // 路由 8：单行刷新基线；section 只认 org，其它 404
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: itemRoute(
     buttonOnly(DETAIL, button('EditOrgApprovalDetail', 'list_row'), FORBIDDEN),

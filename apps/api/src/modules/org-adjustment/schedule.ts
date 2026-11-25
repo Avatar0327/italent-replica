@@ -26,7 +26,8 @@ export async function scheduleOrgAdjustmentExecution(
   tx: Tx,
   ctx: ScheduleContext,
   adjustmentId: string,
-  sections: ExecutionSections = {},
+  // BE-11c-b：生产排期计入调动明细（与运行器默认执行器同时开闸）；11b 之前的内部调用可显式关闭
+  sections: ExecutionSections = { includeTransfers: true },
 ) {
   const [head] = rowsOf<{ effective_date: string; approval_status: number; scheduled: boolean }>(
     await tx.execute(sql`SELECT a.effective_date::text, a.approval_status,

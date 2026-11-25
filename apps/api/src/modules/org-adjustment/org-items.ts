@@ -144,6 +144,15 @@ export async function deleteOrgItem(
       itemId: referencing.id,
     });
   }
+  // 调动行把目标部门指向同单新增组织（departmentItemId）：先改调动行，免得执行时引用悬空（§2.3）
+  const transferRef = world.transfers.find((row) => row.departmentItemId !== null && ids.has(row.departmentItemId));
+  if (transferRef) {
+    throw new AppError('CONFLICT', '该明细被本单调动明细引用为目标部门，请先修改调动明细', {
+      reason: 'ORG_ADJUSTMENT_ITEM_REFERENCED',
+      itemId: transferRef.id,
+      section: 'transfer',
+    });
+  }
   // 删行会让别的行回到原树位置（如改上级行被删后，本单新增行随子树回到更深处），与增改行同样只拦本次新造成的问题。
   assertPlan(
     world,

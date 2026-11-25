@@ -65,6 +65,7 @@ import {
 } from './service.js';
 import { rowOrgIds, submitAdjustment, withdrawAdjustment } from './submission.js';
 import { createSchema, normalizeHead, patchSchema } from './validation.js';
+import { prepareTransferSubmitCheck, registerTransferRoutes } from './transfer-routes.js';
 import { pauseDisclosureHandler } from './pause-disclosure.js';
 
 const BASE = '/api/tenant/org-adjustment/adjustments';
@@ -183,9 +184,10 @@ function registerSubmitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const id = uuidParam(c);
     const input = await parseBody(c, z.strictObject({}));
     await button(deps, ctx, OBJECT, 'EditAdjustOrgDetailBtn', 'detail');
+    const transferCheck = await prepareTransferSubmitCheck(c, deps, ctx, id);
     return headCommand(c, deps, ctx, input, 200, {
       before: async (tx) => {
-        await authorizeStored(tx, ctx, id, (subjectOrgId, rangeOrgIds) =>
+        const stored = await authorizeStored(tx, ctx, id, (subjectOrgId, rangeOrgIds) =>
           authorizeOwnerAction(tx, deps, ctx, { subjectOrgId, rangeOrgIds, button: HEAD_BUTTONS.update }),
         );
         // 先判全部明细的组织范围（隐藏行 → 与不存在的申请单同一 404），再判写过的字段，免得 403 / 404 带出隐藏行填过哪些字段
@@ -196,6 +198,8 @@ function registerSubmitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         // 明细行用户写过的 orgItems.* 字段写权，含写过又清空的（F-428，与审批中心重提的 authorizeSubmission 同口径）
         const trail = await loadItemTrail(tx, ctx.tenantId, items);
         await authorizeItemFieldWrites(tx, deps, ctx, writtenItemFieldCodes(items, trail));
+        // 调动行：全部行按新建口径复核来源员工、任职字段、目标部门与联动授权（§6.3 提交列）
+        await transferCheck(tx, stored.effectiveDate);
       },
       execute: async (tx, commandCtx) => {
         try {
@@ -294,6 +298,7 @@ function registerItemRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 
   registerRebaseRoutes(router, deps);
+  registerTransferRoutes(router, deps);
 }
 
 function registerRebaseRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {

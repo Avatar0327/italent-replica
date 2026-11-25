@@ -18,6 +18,13 @@ import { loadOrgContent, type ExecutionResult, type LoadOptions, type OrgContent
 import { canSee, notFound, orgInScope, orgSectionDisclosed, visibleItems, type Disclosure } from './disclosure.js';
 import { CONTENT_KEYS, type OrgItem } from './items-store.js';
 import { projectHeadRows } from './queries.js';
+import {
+  projectTransfer,
+  TRANSFER_SECTION,
+  transferSectionDisclosed,
+  visibleContractCodes,
+  visibleTransfers,
+} from './transfer-read.js';
 
 export const ORG_SECTION = 'org';
 
@@ -53,6 +60,11 @@ export async function readDetail(tx: Tx, tenantId: string, disclosure: Disclosur
     // §10 分区为空不返回：按查看人可见的行数判断，全部行被隐去时同样不返回（不经分区露出“有隐藏行”）。
     if (items.length > 0) sections[ORG_SECTION] = { count: items.length, hiddenRowCount };
   }
+  if (transferSectionDisclosed(disclosure)) {
+    const visibleOrg = new Set(visibleItems(disclosure, source.items).items.map((item) => item.id));
+    const { rows, hiddenRowCount } = await visibleTransfers(tx, tenantId, disclosure, source, visibleOrg);
+    if (rows.length > 0) sections[TRANSFER_SECTION] = { count: rows.length, hiddenRowCount };
+  }
   // 内容取 source（冻结时是办理时的头），并发元数据 revision 取当前业务现值：写请求带它做 If-Match（设计 §0.2）
   const { revision } = disclosure.view;
   return {
@@ -64,8 +76,11 @@ export async function readDetail(tx: Tx, tenantId: string, disclosure: Disclosur
   };
 }
 
-/** 明细（路由 14）：section 只接受 org；分区字段全不披露时与不存在同一 404。 */
+/** 明细（路由 14）：section 只接受 org / transfer；分区字段全不披露时与不存在同一 404。 */
 export async function readItems(tx: Tx, tenantId: string, disclosure: Disclosure, section: string) {
+  if (section === TRANSFER_SECTION && transferSectionDisclosed(disclosure)) {
+    return readTransferItems(tx, tenantId, disclosure);
+  }
   if (section !== ORG_SECTION || !orgSectionDisclosed(disclosure)) throw notFound();
   const source = await sourceOf(tx, tenantId, disclosure);
   const { items, hiddenRowCount } = visibleItems(disclosure, source.items);
@@ -82,6 +97,21 @@ export async function readItems(tx: Tx, tenantId: string, disclosure: Disclosure
   const context = { fields: disclosure.fields, names, itemNames, parents, results, failures };
   const projected = items.map((item) => projectItem(item, context));
   return { adjustmentId: source.head.id, section, items: projected, hiddenRowCount };
+}
+
+async function readTransferItems(tx: Tx, tenantId: string, disclosure: Disclosure) {
+  const source = await sourceOf(tx, tenantId, disclosure);
+  const visibleOrg = new Set(visibleItems(disclosure, source.items).items.map((item) => item.id));
+  const { rows, hiddenRowCount } = await visibleTransfers(tx, tenantId, disclosure, source, visibleOrg);
+  const context = {
+    fields: disclosure.fields,
+    contractCodes: await visibleContractCodes(tx, tenantId, disclosure, rows),
+    names: new Map(Object.entries(source.names)),
+    sources: new Map(Object.entries(source.transferSources ?? {})),
+    results: new Map((source.transferResults ?? []).map((row) => [row.id, row])),
+  };
+  const items = rows.map((row) => projectTransfer(row, context));
+  return { adjustmentId: source.head.id, section: TRANSFER_SECTION, items, hiddenRowCount };
 }
 
 interface ProjectContext {

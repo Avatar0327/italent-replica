@@ -8,6 +8,7 @@
 import { sql, type Tx } from '@italent/db';
 import { rowsOf } from '../org/read-model.js';
 import { loadItems, type OrgItem } from './items-store.js';
+import { loadTransfers, sourceDepartments, type TransferItem } from './transfer-items-store.js';
 import { loadPreviewInput, type PreviewInput, type PreviewLoad } from './preview-input.js';
 import { loadHead, memberNames, orgNamesAt, rangesOf, type HeadRow, type RangeOrg } from './queries.js';
 
@@ -24,6 +25,10 @@ export interface OrgContent {
   readonly creatorName: string | null;
   readonly items: readonly OrgItem[];
   readonly results: readonly ExecutionResult[];
+  /** 调动明细与其执行结果、基线任职部门（“变更前”）；办理份是 P1 形状（无调动分区）时缺省，读作没有调动明细。 */
+  readonly transfers?: readonly TransferItem[];
+  readonly transferResults?: readonly ExecutionResult[];
+  readonly transferSources?: Readonly<Record<string, string | null>>;
   /** 基线版本 ID → 行政上级组织 ID（“变更前”从版本链取，不单独建列）。 */
   readonly parents: Readonly<Record<string, string | null>>;
   /** 组织 ID → 单据生效日的名称。 */
@@ -51,6 +56,14 @@ async function executionResults(tx: Tx, tenantId: string, adjustmentId: string) 
   );
 }
 
+async function transferExecutionResults(tx: Tx, tenantId: string, adjustmentId: string) {
+  return rowsOf<ExecutionResult>(
+    await tx.execute(sql`SELECT id, execution_result AS result, execution_reason AS reason,
+        execution_message AS message
+      FROM org_adjustment_transfer_items WHERE tenant_id = ${tenantId} AND adjustment_id = ${adjustmentId}`),
+  );
+}
+
 async function baselineParents(tx: Tx, tenantId: string, items: readonly OrgItem[]) {
   const versionIds = [...new Set(items.flatMap((item) => (item.baseVersionId ? [item.baseVersionId] : [])))];
   if (!versionIds.length) return {};
@@ -73,11 +86,18 @@ export async function loadOrgContent(
   if (!head) return null;
   const items = await loadItems(tx, tenantId, adjustmentId);
   const parents = await baselineParents(tx, tenantId, items);
+  const transfers = await loadTransfers(tx, tenantId, adjustmentId);
+  const transferSources = await sourceDepartments(tx, tenantId, transfers);
   const orgIds = items.flatMap((item) => [item.targetOrgId, item.parentOrgId, item.transferToOrgId]);
   const names = await orgNamesAt(
     tx,
     tenantId,
-    [...orgIds, ...Object.values(parents)].filter((id): id is string => !!id),
+    [
+      ...orgIds,
+      ...Object.values(parents),
+      ...transfers.map((row) => row.departmentId),
+      ...transferSources.values(),
+    ].filter((id): id is string => !!id),
     head.effectiveDate,
   );
   const ranges = (await rangesOf(tx, tenantId, [head.id])).get(head.id) ?? [];
@@ -88,6 +108,9 @@ export async function loadOrgContent(
     creatorName,
     items,
     results: await executionResults(tx, tenantId, adjustmentId),
+    transfers,
+    transferResults: await transferExecutionResults(tx, tenantId, adjustmentId),
+    transferSources: Object.fromEntries(transferSources),
     parents,
     names: Object.fromEntries(names),
     preview:

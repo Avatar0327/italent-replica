@@ -16,7 +16,7 @@ import { orgContext, PLAN_MESSAGES, planIssues, type ItemWorld } from './item-tr
 import type { OrgItem } from './items-store.js';
 
 export interface ItemIssue {
-  readonly section: 'org';
+  readonly section: 'org' | 'transfer';
   readonly itemId: string;
   readonly reason: string;
   readonly message: string;

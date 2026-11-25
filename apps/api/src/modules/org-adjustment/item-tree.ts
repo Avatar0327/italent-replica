@@ -17,6 +17,7 @@ import { loadOrgSnapshot, type OrgRecord } from '../org/read-model.js';
 import type { OrgWriteContext } from '../org/validation.js';
 import { loadItems, type OrgItem } from './items-store.js';
 import type { AdjustmentView } from './service.js';
+import { loadTransfers, sourceDepartments, type TransferItem } from './transfer-items-store.js';
 
 export const OUT_OF_RANGE = 'ORG_ADJUSTMENT_OUT_OF_RANGE';
 export const PLAN_MESSAGES: Record<OrgPlanReason, string> = {
@@ -32,13 +33,18 @@ export interface ItemWorld {
   readonly items: OrgItem[];
   /** 生效日快照（含停用组织）。 */
   readonly orgs: ReadonlyMap<string, OrgRecord>;
+  /** 调动明细（BE-11c-b）与各行基线任职里的来源部门（“变更前”不单独建列）。 */
+  readonly transfers: TransferItem[];
+  readonly transferSources: ReadonlyMap<string, string | null>;
 }
 
 /** `view` 可以是改后的头（审批中编辑的候选状态）；组织快照按它的生效日取。 */
 export async function loadWorld(tx: Tx, tenantId: string, view: AdjustmentView): Promise<ItemWorld> {
   const items = await loadItems(tx, tenantId, view.id);
   const snapshot = await loadOrgSnapshot(tx, tenantId, view.effectiveDate);
-  return { tenantId, view, items, orgs: new Map(snapshot.map((org) => [org.id, org])) };
+  const transfers = await loadTransfers(tx, tenantId, view.id);
+  const transferSources = await sourceDepartments(tx, tenantId, transfers);
+  return { tenantId, view, items, orgs: new Map(snapshot.map((org) => [org.id, org])), transfers, transferSources };
 }
 
 /** 复用组织模块只读判断所需的上下文：只用到租户与当前时刻（编码预占是否过期），不落组织版本。 */
@@ -46,12 +52,12 @@ export function orgContext(tenantId: string, now = new Date(0)): OrgWriteContext
   return { tenantId, userId: '', timezone: 'UTC', rootName: '', now, commandId: '', expectedRevision: 0 };
 }
 
-const orgRef = (id: string): AdjustmentOrgRef => ({ kind: 'org', id });
-const itemRef = (id: string): AdjustmentOrgRef => ({ kind: 'item', id });
+export const orgRef = (id: string): AdjustmentOrgRef => ({ kind: 'org', id });
+export const itemRef = (id: string): AdjustmentOrgRef => ({ kind: 'item', id });
 const parentRef = (item: OrgItem) =>
   item.parentOrgId ? orgRef(item.parentOrgId) : item.parentItemId ? itemRef(item.parentItemId) : null;
 
-function rangeNodes(world: ItemWorld, items: readonly OrgItem[]): AdjustmentRangeNode[] {
+export function rangeNodes(world: ItemWorld, items: readonly OrgItem[]): AdjustmentRangeNode[] {
   const nodes: AdjustmentRangeNode[] = [...world.orgs.values()].map((org) => ({
     ref: orgRef(org.id),
     parent: org.parents.admin?.parentId ? orgRef(org.parents.admin.parentId) : null,
