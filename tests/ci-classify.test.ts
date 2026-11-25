@@ -236,6 +236,25 @@ describe('scripts/ci-classify.sh', () => {
       ]);
     });
 
+    it('改动清单为空（空提交）按 true 多跑：light 为 true，队首 full 为 false', () => {
+      git('checkout', '-q', main);
+      git('checkout', '-q', '-b', 'empty-on-main');
+      git('commit', '-q', '--allow-empty', '-m', 'empty');
+      const emptyOffMain = git('rev-parse', 'HEAD');
+      testMerge(main, emptyOffMain);
+      expect(git('diff', '--name-only', 'HEAD^1', 'HEAD')).toBe('');
+      expect(classifyOutput(light)).toEqual(['evidence_check=true', 'mode=light']);
+      expect(classifyOutput({ ...light, QUEUE_HEAD: 'true' })).toEqual(['evidence_check=false', 'mode=full']);
+    });
+
+    it('git diff 失败（无父提交）按 true 多跑：light 为 true，队首 full 为 false', () => {
+      // main 是仓库的根提交：HEAD^1 不存在，git diff 非零退出
+      git('checkout', '-q', '--detach', main);
+      expect(() => git('rev-parse', '--verify', '-q', 'HEAD^1')).toThrow();
+      expect(classifyOutput(light)).toEqual(['evidence_check=true', 'mode=light']);
+      expect(classifyOutput({ ...light, QUEUE_HEAD: 'true' })).toEqual(['evidence_check=false', 'mode=full']);
+    });
+
     it('无关 labeled 不开快检（即使改了 apps/api/src）', () => {
       testMerge(main, apiOffMain);
       const labeled = { ...light, EVENT_ACTION: 'labeled', EVENT_LABEL: 'reviewed' };
@@ -250,8 +269,15 @@ describe('scripts/ci-classify.sh', () => {
     const yml = readFileSync(CI_YML, 'utf8');
     expect(yml).toContain('evidence_check: ${{ steps.classify.outputs.evidence_check }}');
     const step = /- name: F090b 证据快检（F-573）\n([\s\S]*?)\n\s*\n/.exec(yml)?.[1] ?? '';
-    expect(step).toContain("needs.changes.outputs.mode == 'light'");
-    expect(step).toContain("needs.changes.outputs.evidence_check == 'true'");
+    // 完整 if 值逐字比对：把 && 换成 ||、加 false && 之类的改动都会让它失配
+    expect(/^\s*if: (.*)$/m.exec(step)?.[1]).toBe(
+      "needs.changes.outputs.mode == 'light' && needs.changes.outputs.evidence_check == 'true'",
+    );
+    // 步骤或整个 light job 设了 continue-on-error 都会让快检红了也不拦
+    expect(step).not.toContain('continue-on-error');
+    const lightJob = /\n {2}light:\n([\s\S]*?)\n {2}check-shards:/.exec(yml)?.[1] ?? '';
+    expect(lightJob).toContain('F090b 证据快检（F-573）');
+    expect(lightJob).not.toContain('continue-on-error');
     expect(step).toContain("ROUTE_POLICY_EVIDENCE_STRICT: '1'");
     expect(step).toContain('tests/acceptance/AC-PRM-FW-F090b-entries.test.ts');
     expect(step).toContain('tests/acceptance/AC-PRM-FW-02-evidence.test.ts');
