@@ -120,6 +120,11 @@ export interface EmploymentContext {
   readonly authorize?: Authorizer;
   readonly objectCode?: string;
   readonly trustedScopeBypass?: boolean;
+  /**
+   * 纯经理的参照检查被延后到业务写范围复核之后时，记待检的修改（只由 transferBusinessContext 设置、
+   * requirePendingManagerReferences 消费；每次 transferBusinessContext 都重写，不跨判定沿用）。
+   */
+  readonly pendingManagerReferences?: EmploymentBusinessPatch;
   /** Switch 31：仅经调动入口重验源员工后授予指定目标，不能用于任意员工或向后更新。 */
   readonly transferTarget?: {
     readonly employeeId: string;
