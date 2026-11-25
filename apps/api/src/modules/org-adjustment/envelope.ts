@@ -84,8 +84,9 @@ export function trimError(error: unknown, viewable: Viewable): unknown {
 }
 
 /**
- * 审批引擎回调（审批人编辑 / 同意兜底、发起人重提）里的错误信封按当前操作人的字段查看权裁剪（F-339 ②、F-427）；
- * 未注入字段访问按看不到处理（context.ts 同口径，fail-closed）。
+ * 审批引擎回调（审批人编辑 / 同意兜底、发起人重提）里的错误信封按当前操作人的披露裁剪（F-339 ②、F-427）：
+ * 有审批人授权能力且带单据 ID 时，行折叠与字段裁剪都用读接口同一份节点披露（hidden-rows.ts `envelopeViewForViewer`）；
+ * 否则按对象级字段查看权，未注入字段访问按看不到处理（context.ts 同口径，fail-closed）。
  */
 export async function trimmedForViewer(
   tx: Tx,
@@ -96,18 +97,15 @@ export async function trimmedForViewer(
   try {
     await work();
   } catch (error) {
+    if (adjustmentId && ctx.exitEditAuthorize) {
+      const deps = { authorize: ctx.exitEditAuthorize, clock: () => ctx.now };
+      const { envelopeViewForViewer } = await import('./hidden-rows.js');
+      const view = await envelopeViewForViewer(tx, deps, ctx, adjustmentId);
+      throw trimError(foldHiddenError(error, view.hidden), view.fields);
+    }
     const viewable = ctx.fields
       ? await ctx.fields.viewable(tx, ctx.userId, ORG_ADJUSTMENT_OBJECT_CODE)
       : new Set<string>();
-    // 第 3 轮 P2-2、第 4 轮 P2-3：按读接口同一份披露（审批人看节点表单投影）折叠看不到的行，信封不带行 ID
-    const folded = adjustmentId ? await foldForApprover(tx, ctx, adjustmentId, error) : error;
-    throw trimError(folded, viewable);
+    throw trimError(error, viewable);
   }
-}
-
-async function foldForApprover(tx: Tx, ctx: ApprovalContext, adjustmentId: string, error: unknown) {
-  if (!ctx.exitEditAuthorize) return error;
-  const deps = { authorize: ctx.exitEditAuthorize, clock: () => ctx.now };
-  const { hiddenEnvelopeIdsForViewer } = await import('./hidden-rows.js');
-  return foldHiddenError(error, await hiddenEnvelopeIdsForViewer(tx, deps, ctx, adjustmentId));
 }

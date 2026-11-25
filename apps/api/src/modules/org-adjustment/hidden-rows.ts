@@ -114,7 +114,11 @@ export async function hiddenTransferRows(
   return new Set((await loadTransfers(tx, ctx.tenantId, adjustmentId)).map((row) => row.id));
 }
 
-/** 信封折叠用：组织行隐藏集合 ∪ 调动行隐藏集合（两种行的 ID 互不相同，可并在一个集合里）。 */
+/**
+ * 信封折叠用：组织行隐藏集合 ∪ 调动行隐藏集合（两种行的 ID 互不相同，可并在一个集合里）。
+ * 组织分区字段全被遮蔽时整区折叠（与读接口同一规则，第 5 轮同根因）；调动行的引用可见性仍只看组织范围（`org`），
+ * 不随组织分区是否披露变化（detail.ts）。
+ */
 export async function hiddenEnvelopeIds(
   tx: Tx,
   deps: Deps,
@@ -122,20 +126,33 @@ export async function hiddenEnvelopeIds(
   adjustmentId: string,
 ): Promise<ReadonlySet<string>> {
   const org = await hiddenItemIds(tx, deps, ctx, adjustmentId);
-  return new Set([...org, ...(await hiddenTransferRows(tx, deps, ctx, adjustmentId, org))]);
+  const fields = await getModuleViewableFieldsInTransaction(deps, ctx, ORG_ADJUSTMENT_OBJECT_CODE, tx);
+  const orgRows = orgSectionDisclosed({ fields })
+    ? org
+    : new Set((await loadItems(tx, ctx.tenantId, adjustmentId)).map((item) => item.id));
+  return new Set([...orgRows, ...(await hiddenTransferRows(tx, deps, ctx, adjustmentId, org))]);
+}
+
+/** 审批人回调信封的披露视图：折叠行集合 + 错误字段裁剪用的可见字段集（与读接口同一份 `disclosure.fields`）。 */
+export interface EnvelopeView {
+  readonly hidden: ReadonlySet<string>;
+  /** 可见字段编码；undefined = 不受字段权限约束（HR 路径）。读不到本单时为空集（fail-closed）。 */
+  readonly fields: ReadonlySet<string> | undefined;
 }
 
 /**
- * 审批人回调（审批中编辑 / 同意兜底 / 重提）的信封折叠集合（第 4 轮 P2-3）：与读接口同一份披露
+ * 审批人回调（审批中编辑 / 同意兜底 / 重提）的信封披露（第 4 轮 P2-3、第 5 轮 P2-1 / P2-2）：与读接口同一份披露
  * （`orgAdjustmentDisclosure`：HR 对象查看权走范围裁剪，否则走审批人路径——节点表单 ∩ 字段查看权，不按范围裁剪）。
- * 分区没披露（节点表单 / 字段权限里没有该分区字段）整区折叠，披露了再按行可见性折叠；读不到本单（404）一律全折叠，fail-closed。
+ * - 行折叠：引用可见性与读接口同口径（`visibleItems` 不随分区是否披露变化，detail.ts），再按分区各自折叠：
+ *   分区没披露整区折叠，披露了按行可见性折叠；读不到本单（404）一律全折叠，fail-closed；
+ * - 字段裁剪：错误里的组织 ID / 编码用同一份 `disclosure.fields` 裁剪，不再回落对象级查看权。
  */
-export async function hiddenEnvelopeIdsForViewer(
+export async function envelopeViewForViewer(
   tx: Tx,
   deps: Pick<TenantRouteDeps, 'authorize' | 'clock'>,
   ctx: TenantContext,
   adjustmentId: string,
-): Promise<ReadonlySet<string>> {
+): Promise<EnvelopeView> {
   const [items, transfers] = [
     await loadItems(tx, ctx.tenantId, adjustmentId),
     await loadTransfers(tx, ctx.tenantId, adjustmentId),
@@ -149,17 +166,17 @@ export async function hiddenEnvelopeIdsForViewer(
     if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
     throw error;
   });
-  const shownOrg = new Set(
-    disclosure && orgSectionDisclosed(disclosure) ? visibleItems(disclosure, items).items.map((item) => item.id) : [],
-  );
+  if (!disclosure) return { hidden: new Set([...items, ...transfers].map((row) => row.id)), fields: new Set() };
+  const visibleOrg = new Set(visibleItems(disclosure, items).items.map((item) => item.id));
+  const shownOrg = orgSectionDisclosed(disclosure) ? visibleOrg : new Set<string>();
   const shownTransfer = new Set(
-    disclosure && transferSectionDisclosed(disclosure)
-      ? (await visibleTransfers(tx, ctx.tenantId, disclosure, { transfers }, shownOrg)).rows.map((row) => row.id)
+    transferSectionDisclosed(disclosure)
+      ? (await visibleTransfers(tx, ctx.tenantId, disclosure, { transfers }, visibleOrg)).rows.map((row) => row.id)
       : [],
   );
   const hidden = [
     ...items.filter((item) => !shownOrg.has(item.id)),
     ...transfers.filter((row) => !shownTransfer.has(row.id)),
   ];
-  return new Set(hidden.map((row) => row.id));
+  return { hidden: new Set(hidden.map((row) => row.id)), fields: disclosure.fields };
 }

@@ -84,4 +84,19 @@ describe('P2-2 行引用可见性不随组织分区是否披露变化', () => {
     expect(text, '组织分区不披露：组织行 ID 折叠').not.toContain(orgRow);
     expect((await bodyOf(res)).error?.details?.reason).toBeTruthy();
   });
+
+  it('同根因：HR 写路径（头 PATCH 缩小范围）的 400 同口径——组织分区遮蔽则折叠组织行，可读调动行保留', async () => {
+    const { w, view } = await blindWorld('r5-envelope-hr-head', () => true);
+    const orgRow = (await w.item(view.id, newOrg(w.b, { name: `ZZ_新增组织${uniqueSuffix()}` }))).items[0]!.id;
+    const transferRow = await w.seed(view.id, await w.staff(w.a), { departmentId: null, departmentItemId: orgRow });
+    for (const code of ORG_ADJUSTMENT_FORM_FIELDS.filter((c) => c.startsWith('orgItems.')))
+      w.access.hiddenFields.add(code);
+
+    const res = await w.patch(view.id, { adjustmentRange: [w.a] }, (await w.stored(view.id))!.revision);
+
+    await expectError(res, 400, 'VALIDATION_FAILED', 'ORG_ADJUSTMENT_OUT_OF_RANGE');
+    const text = await res.clone().text();
+    expect(text, '可读调动行保留').toContain(transferRow);
+    expect(text, '组织分区不披露：组织行 ID 折叠').not.toContain(orgRow);
+  });
 });

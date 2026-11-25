@@ -165,7 +165,7 @@ export function orgInScope(disclosure: Pick<Disclosure, 'orgScope' | 'orgCreator
 }
 
 /** 组织明细分区是否对查看人披露：至少一个 `orgItems.*` 字段可见。 */
-export function orgSectionDisclosed(disclosure: Disclosure): boolean {
+export function orgSectionDisclosed(disclosure: Pick<Disclosure, 'fields'>): boolean {
   const { fields } = disclosure;
   return fields === undefined || [...fields].some((field) => field.startsWith('orgItems.'));
 }
