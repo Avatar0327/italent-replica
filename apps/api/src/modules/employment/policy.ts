@@ -752,13 +752,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   ),
   // ---- transfer/routes.ts：调动预览与发起 ----------------------------------------------------------------------------
   // 只读预览：normalizeTransferInput（transfer.previewInput：结构 400、本人入口只读字段 403、入口 / 表单不匹配 400）；
-  // previewTransfer → requireTransferSource(initiator)（按钮 + 绑定 + 源范围）→ 有目标部门时 requireScopedEmploymentObject；
+  // previewTransfer → requireTransferSource(initiator)（按钮 + 绑定 + 源范围）→ 员工发起时按字段写权判定（employeePreviewWrite，
+  // DEC-205，先于表单校验）→ 有目标部门时 requireScopedEmploymentObject；
   // 响应：trimEmploymentResponse + visibleTransferForm（fieldModes 按可见 / 可编辑降级）+ allowedActions 布尔披露
   'POST /transfers/employees/:id/preview': object({
     object: EMPLOYMENT,
     operation: 'view',
     button: INITIATOR_BUTTON,
-    guards: ['transfer.direct', 'transfer.previewInput', TRANSFER_SOURCE],
+    guards: ['transfer.direct', 'transfer.previewInput', 'employment.employeePreviewWrite', TRANSFER_SOURCE],
     scope: guardScope('transfer.previewScope', NF_EMPLOYEE),
     fields: projector('transfer.preview', 'transfer.preview'),
     write: previewWrite,
@@ -1050,6 +1051,17 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: RESPONSE,
     ...byId,
   }),
+  // 字段来源（F-036-S5，设计 §4.9）：与业务详情同一批读上下文 / 守卫，字段与值只取详情会返回的那份内容；
+  // 定位业务三步的 404 / 403 归一为 404「任职业务不存在」（只读，不写审计、不带命令 ID）
+  'GET /businesses/:id/field-origins': object({
+    guards: ['transfer.source'],
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: INITIATOR_BUTTON,
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
+    fields: RESPONSE,
+    ...byId,
+  }),
   // 记录详情：loadEmploymentRecord（DEC-177 可见）→ 404「任职记录不存在」→ requirePermission(tenant.employment.read, employeeId)
   'GET /records/:id': object({
     object: EMPLOYMENT,
@@ -1189,12 +1201,22 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // preparationStatus（BE-16 16a-3a）由当前阶段与准备任务投影，按任职字段查看权裁剪。
   // cancelRemark（F-206，DEC-560）：最近一次取消动作的说明，无则 null，行可见即可见；
   // 记录字段按任职记录可见字段裁剪，姓名 / 工号按人员对象可见字段另行裁剪；hasDataPermission 协议键
+  // 采集列另按采集对象状态字段与行范围披露，筛选和排序复用相同判定（BE-16 16a-2a）。
   'GET /pending-entries': object({
     object: EMPLOYMENT,
     operation: 'view',
     button: noButton('列表无按钮'),
     scope: listScope('module.scopeSql'),
     fields: projector('employment.response', 'employment.entryViews'),
+    optional: {
+      collectionStatus: object({
+        object: 'TenantBase.OnboardingCollection',
+        operation: 'view',
+        button: noButton('采集状态列查看'),
+        scope: listScope('onboarding.collectionEntryScope'),
+        fields: projector('employment.response', 'employment.entryCollectionStatus'),
+      }),
+    },
   }),
   // ---- employment/intern-routes.ts：R2 BE-6a 实习生（B34～B38、B41、A48）-------------------------------------------------
   // 实习四视图：view / departmentId / keyword 不合法 400；按部门筛选须 departmentId 可见、按关键字须 name / code 可见（否则 403

@@ -8,7 +8,7 @@
     "contract-board": 3,
     "contracts": 25,
     "duty-transfer": 5,
-    "employment": 191,
+    "employment": 192,
     "esign": 20,
     "establishment": 16,
     "evaluation": 34,
@@ -42,5 +42,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 981
+  "total": 982
 }

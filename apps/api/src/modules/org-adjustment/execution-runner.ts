@@ -12,9 +12,11 @@ import { latestInstanceOf } from '../approval/store.js';
 import { activeTenants, type TenantRow } from '../employment/active-tenants.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import {
+  executionGroupsOf,
+  executionRefs,
+  executionTable,
   groupScope,
   loadAdjustmentHead,
-  loadExecutionGroups,
   loadExecutionItems,
   type AdjustmentHead,
   type ExecutionGroup,
@@ -125,9 +127,14 @@ export async function runOrgAdjustmentTenant(
 
 /** 不传执行器 = 产品路径：组织明细执行器 + 申请人主体层复核（activation-scheduler 即如此调用）。 */
 function runnerDefaults(options: RunnerOptions) {
-  if (options.executors) return { executors: options.executors, subjectCheck: options.subjectCheck };
+  if (options.executors && !options.executors.transfer) {
+    return { executors: options.executors, subjectCheck: options.subjectCheck };
+  }
   const scopeOf = options.scopeOf ?? resolveApplicantScope;
-  return { executors: orgExecutors(scopeOf), subjectCheck: options.subjectCheck ?? applicantSubjectCheck(scopeOf) };
+  return {
+    executors: options.executors ?? orgExecutors(scopeOf),
+    subjectCheck: options.subjectCheck ?? applicantSubjectCheck(scopeOf),
+  };
 }
 
 /** §7.6A：锁序 ⓪ → ③ 本单行 → ④ 组织设置；按当前树重算 S′，扩大的组记 SCOPE_CHANGED，暂停行 = 其余组 S′ 之并。 */
@@ -138,13 +145,13 @@ async function start(tx: Tx, run: Run) {
   await lockOrganizationSettings(tx, tenantId);
   const at = { tenantId, timezone: run.tenant.timezone, now: run.lease.clock() };
   const allowed = (await run.subjectCheck?.(tx, run.adjustment, at)) ?? true;
-  const items = await loadExecutionItems(tx, tenantId, id);
+  const items = await loadRunItems(tx, run);
   const scope = rowsOf<{ group_item_id: string; org_id: string }>(
     await tx.execute(sql`SELECT group_item_id, org_id FROM org_adjustment_scope_orgs
       WHERE tenant_id=${tenantId} AND adjustment_id=${id}::uuid`),
   );
   const paused = new Set<string>();
-  for (const group of await loadExecutionGroups(tx, tenantId, id, effectiveDate)) {
+  for (const group of await executionGroupsOf(tx, tenantId, items, effectiveDate)) {
     if (!allowed) {
       await failGroup(tx, run, group, failed('APPLICANT_OUT_OF_SCOPE', '申请人已无权调整该组织'));
       continue;
@@ -171,8 +178,8 @@ async function start(tx: Tx, run: Run) {
 /** 串行推进各组；'retry' = 可恢复失败未满次数、'unconfirmed' = 步间回执待确认，本刻停止，下一刻续同一组。 */
 async function runGroups(run: Run): Promise<'complete' | 'retry' | 'unconfirmed'> {
   const { db, lease, adjustment } = run;
-  const groups = await withTenant(db, lease.tenantId, (tx) =>
-    loadExecutionGroups(tx, lease.tenantId, adjustment.id, adjustment.effectiveDate),
+  const groups = await withTenant(db, lease.tenantId, async (tx) =>
+    executionGroupsOf(tx, lease.tenantId, await loadRunItems(tx, run), adjustment.effectiveDate),
   );
   const results = new Map<string, number | null>();
   for (const group of groups) {
@@ -190,7 +197,7 @@ async function runGroups(run: Run): Promise<'complete' | 'retry' | 'unconfirmed'
 }
 
 async function runGroup(run: Run, group: ExecutionGroup, results: ReadonlyMap<string, number | null>) {
-  const refs = group.items.flatMap((item) => [item.parentItemId, item.transferToItemId]);
+  const refs = group.items.flatMap(executionRefs);
   const external = refs.filter((ref): ref is string => !!ref && !group.items.some((item) => item.id === ref));
   if (external.some((ref) => results.get(ref) !== 1))
     return recordFailure(run, group, failed('DEPENDENCY_FAILED', '所依赖的同单明细未执行成功'));
@@ -272,8 +279,9 @@ async function confirmStep(run: Run, group: ExecutionGroup, before: string, erro
 async function progressMark(tx: Tx, run: Run, group: ExecutionGroup) {
   const [row] = rowsOf<{ mark: string }>(
     await tx.execute(sql`SELECT coalesce(md5(string_agg(i::text, '|' ORDER BY i.id)), '') AS mark
-      FROM org_adjustment_org_items i
-      WHERE i.tenant_id=${run.lease.tenantId} AND i.id=ANY(${idsOf(group)}::uuid[])`),
+      FROM ${executionTable(group)} i
+      WHERE i.tenant_id=${run.lease.tenantId} AND i.adjustment_id=${run.adjustment.id}::uuid
+        AND i.id=ANY(${idsOf(group)}::uuid[])`),
   );
   return row!.mark;
 }
@@ -318,15 +326,19 @@ async function storedResults(run: Run, group: ExecutionGroup) {
   const { tenantId } = run.lease;
   const rows = await withTenant(run.db, tenantId, async (tx) =>
     rowsOf<{ id: string; execution_result: number | null }>(
-      await tx.execute(sql`SELECT id, execution_result FROM org_adjustment_org_items
-        WHERE tenant_id=${tenantId} AND id=ANY(${idsOf(group)}::uuid[])`),
+      await tx.execute(sql`SELECT id, execution_result FROM ${executionTable(group)}
+        WHERE tenant_id=${tenantId} AND adjustment_id=${run.adjustment.id}::uuid AND id=ANY(${idsOf(group)}::uuid[])`),
     ),
   );
   return rows.map((row) => [row.id, row.execution_result] as const);
 }
 
+function loadRunItems(tx: Tx, run: Run) {
+  return loadExecutionItems(tx, run.lease.tenantId, run.adjustment.id, { includeTransfers: !!run.executors.transfer });
+}
+
 async function reloadGroup(tx: Tx, run: Run, group: ExecutionGroup): Promise<ExecutionGroup> {
-  const byId = new Map((await loadExecutionItems(tx, run.lease.tenantId, run.adjustment.id)).map((i) => [i.id, i]));
+  const byId = new Map((await loadRunItems(tx, run)).map((i) => [i.id, i]));
   const items = group.items.map((item) => byId.get(item.id) ?? item);
   return { id: group.id, lead: byId.get(group.lead.id) ?? group.lead, items };
 }
@@ -334,8 +346,9 @@ async function reloadGroup(tx: Tx, run: Run, group: ExecutionGroup): Promise<Exe
 /** 组内各行都已收尾（exec_phase=2）时取组首行的执行结果；否则 null。 */
 async function settledResult(tx: Tx, run: Run, group: ExecutionGroup) {
   const rows = rowsOf<{ id: string; exec_phase: number; execution_result: number | null }>(
-    await tx.execute(sql`SELECT id, exec_phase, execution_result FROM org_adjustment_org_items
-      WHERE tenant_id=${run.lease.tenantId} AND id=ANY(${idsOf(group)}::uuid[])`),
+    await tx.execute(sql`SELECT id, exec_phase, execution_result FROM ${executionTable(group)}
+      WHERE tenant_id=${run.lease.tenantId} AND adjustment_id=${run.adjustment.id}::uuid
+        AND id=ANY(${idsOf(group)}::uuid[])`),
   );
   if (!rows.length || rows.some((row) => row.exec_phase !== 2)) return null;
   return rows.find((row) => row.id === group.id)?.execution_result ?? null;
@@ -343,15 +356,17 @@ async function settledResult(tx: Tx, run: Run, group: ExecutionGroup) {
 
 async function succeedGroup(tx: Tx, run: Run, group: ExecutionGroup) {
   // 执行器可先写逐行结果（如 EMPLOYMENT_PARTIAL，§7.5）；未写的行记成功。
-  await tx.execute(sql`UPDATE org_adjustment_org_items SET execution_result=coalesce(execution_result, 1), exec_phase=2
-    WHERE tenant_id=${run.lease.tenantId} AND id=ANY(${idsOf(group)}::uuid[])`);
+  await tx.execute(sql`UPDATE ${executionTable(group)} SET execution_result=coalesce(execution_result, 1), exec_phase=2
+    WHERE tenant_id=${run.lease.tenantId} AND adjustment_id=${run.adjustment.id}::uuid
+      AND id=ANY(${idsOf(group)}::uuid[])`);
   await audit(tx, run, 'group.succeeded', { groupItemId: group.id });
 }
 
 async function failGroup(tx: Tx, run: Run, group: ExecutionGroup, failure: Failure) {
-  await tx.execute(sql`UPDATE org_adjustment_org_items SET execution_result=2, exec_phase=2,
+  await tx.execute(sql`UPDATE ${executionTable(group)} SET execution_result=2, exec_phase=2,
       execution_reason=${failure.reason}, execution_message=${failure.message}
-    WHERE tenant_id=${run.lease.tenantId} AND id=ANY(${idsOf(group)}::uuid[])`);
+    WHERE tenant_id=${run.lease.tenantId} AND adjustment_id=${run.adjustment.id}::uuid
+      AND id=ANY(${idsOf(group)}::uuid[])`);
   await audit(tx, run, 'group.failed', { groupItemId: group.id, ...failure });
 }
 
@@ -363,7 +378,7 @@ async function finalize(tx: Tx, run: Run) {
   const { id, createdBy } = run.adjustment;
   await tx.execute(sql`SELECT id FROM org_adjustments WHERE tenant_id=${tenantId} AND id=${id}::uuid FOR UPDATE`);
   await lockOrganizationSettings(tx, tenantId);
-  const items = await loadExecutionItems(tx, tenantId, id);
+  const items = await loadRunItems(tx, run);
   const success = items.filter((item) => item.executionResult === 1).length;
   const failure = items.length - success;
   const now = clock();

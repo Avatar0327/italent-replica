@@ -359,6 +359,7 @@ describe('AC-OA-29 变更组顺序：按生效日完整新树', () => {
     // 真实组织写入口：顺序错了会被“组织层级不得形成循环”拒绝。
     const order: string[] = [];
     const executor: GroupExecutor = async (tx, { group }) => {
+      if (group.lead.adjustType !== 2) throw new Error('此夹具只接收组织变更组');
       order.push(group.id);
       const [object] = resultRows<{ revision: number }>(
         await tx.execute(sql`SELECT revision FROM org_objects
