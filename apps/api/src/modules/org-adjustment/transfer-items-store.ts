@@ -3,7 +3,7 @@
  * `base_employee_revision`）在建行时取生效日现行任职与员工 revision，“变更前”部门不单独建列，从基线任职记录读（硬规则 3）。
  * 所有写都在调用方已锁申请单行之后进行。
  */
-import { and, asc, eq, orgAdjustmentTransferItems as table, sql, type Tx } from '@italent/db';
+import { and, asc, contractRecords, eq, inArray, orgAdjustmentTransferItems as table, sql, type Tx } from '@italent/db';
 import { recordAudit } from '../../audit/record.js';
 import { rowsOf } from '../org/read-model.js';
 import type { LinkageOptions } from '../transfer/linkage/input.js';
@@ -109,4 +109,37 @@ export async function contractOwners(
       WHERE tenant_id = ${tenantId} AND id = ANY(${`{${ids.join(',')}}`}::uuid[]) AND NOT deleted`),
   );
   return new Map(found.map((row) => [row.id, { employeeId: row.employeeId, creatorId: row.creatorId }]));
+}
+
+/** 合同现值：合同对象字段编码（标准字段名 / `custom:<id>`）→ 当前值，缺省为 null。 */
+export type ContractValues = Readonly<Record<string, unknown>>;
+
+const NUMERIC_FIELDS = ['probationSalary', 'regularSalary'] as const;
+
+/**
+ * 合同变更目标合同的现值（审批快照的“原值”，§4.5）：取提交 / 重算那一刻的现值，与新值同口径（日期字符串、金额数字）。
+ * 目标合同已删则不在表里（按“无原值”处理，披露侧本就 fail-closed）。
+ */
+export async function contractCurrentValues(
+  tx: Tx,
+  tenantId: string,
+  rows: readonly TransferItem[],
+): Promise<Map<string, ContractValues>> {
+  const ids = [...new Set(rows.flatMap((row) => (row.linkage?.contract ? [row.linkage.contract.targetId] : [])))];
+  if (!ids.length) return new Map();
+  const found = await tx
+    .select()
+    .from(contractRecords)
+    .where(
+      and(eq(contractRecords.tenantId, tenantId), inArray(contractRecords.id, ids), eq(contractRecords.deleted, false)),
+    );
+  return new Map(
+    found.map((record): [string, ContractValues] => {
+      const { customFields, ...standard } = record;
+      const values: Record<string, unknown> = { ...standard };
+      for (const field of NUMERIC_FIELDS) if (record[field] !== null) values[field] = Number(record[field]);
+      for (const [id, value] of Object.entries(customFields ?? {})) values[`custom:${id}`] = value;
+      return [record.id, values];
+    }),
+  );
 }

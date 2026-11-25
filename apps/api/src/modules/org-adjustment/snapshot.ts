@@ -25,10 +25,12 @@ import { loadItems, type OrgItem } from './items-store.js';
 import { loadAdjustment, type AdjustmentView } from './service.js';
 import { transferSection } from './transfer-snapshot.js';
 import {
+  contractCurrentValues,
   contractOwners,
   loadTransfers,
   sourceDepartments,
   type ContractOwner,
+  type ContractValues,
   type TransferItem,
 } from './transfer-items-store.js';
 
@@ -92,10 +94,11 @@ export function buildSnapshot(
   transfers: readonly TransferItem[] = [],
   sources: ReadonlyMap<string, string | null> = new Map(),
   owners: ReadonlyMap<string, ContractOwner> = new Map(),
+  contractValues: ReadonlyMap<string, ContractValues> = new Map(),
 ): BusinessSnapshot {
   const head = headValues(view);
   const org = orgSection(items, baselines);
-  const transfer = transferSection(transfers, sources, owners);
+  const transfer = transferSection(transfers, sources, owners, contractValues);
   const section = {
     values: { ...org.values, ...transfer.values },
     originals: { ...org.originals, ...transfer.originals },
@@ -181,6 +184,7 @@ export async function orgAdjustmentSnapshot(tx: Tx, tenantId: string, id: string
     transfers,
     await sourceDepartments(tx, tenantId, transfers),
     await contractOwners(tx, tenantId, transfers),
+    await contractCurrentValues(tx, tenantId, transfers),
   );
 }
 

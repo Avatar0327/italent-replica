@@ -16,6 +16,7 @@ import {
   tenantLocalDate,
 } from '@italent/domain';
 import { requirePermission, type Authorizer } from '../../authorization.js';
+import { AppError } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { employmentCapacityContext } from '../permission/module-capacity-authorization.js';
 import { carriedCandidates } from '../establishment/carried-candidates.js';
@@ -209,6 +210,32 @@ async function authorizeChange(
   return access;
 }
 
+/**
+ * 联动白名单（P1-4）：本片快照只覆盖合同变更 / 调薪 / 试岗 / 职责转交；兼职终止、电子签、交接、社保调整
+ * 执行器会照做，但审批人看不到也盲审不到，所以入口一律拒绝（空值 / null 等同未设置，放行）。
+ */
+export const UNSUPPORTED_LINKAGE = [
+  'partTimes',
+  'esign',
+  'handover',
+  'adjustedInsuranceRegionCode',
+  'adjustedInsurancePlanId',
+  'adjustedInsuranceCompanyId',
+] as const;
+
+export function assertLinkageSupported(linkage: unknown): void {
+  const given = (linkage ?? {}) as Record<string, unknown>;
+  const used = UNSUPPORTED_LINKAGE.filter((key) => {
+    const value = given[key];
+    return value !== null && value !== undefined && !(Array.isArray(value) && value.length === 0);
+  });
+  if (!used.length) return;
+  throw new AppError('VALIDATION_FAILED', '本版调动明细暂不支持该联动，请改用人工调动', {
+    reason: 'ORG_ADJUSTMENT_LINKAGE_UNSUPPORTED',
+    fields: Object.fromEntries(used.map((key) => [`linkage.${key}`, '组织调整调动明细暂不支持'])),
+  });
+}
+
 async function saveRow(
   tx: Tx,
   env: Env,
@@ -217,6 +244,7 @@ async function saveRow(
   draft: TransferContent,
   before: TransferItem | null,
 ) {
+  assertLinkageSupported(draft.linkage);
   const ctx = await employment(tx, env);
   const access = await authorizeChange(tx, env, view, ctx, employeeId, before, draft);
   const input = await normalizeTransferInput(tx, ctx, transferRaw(view.effectiveDate, draft));

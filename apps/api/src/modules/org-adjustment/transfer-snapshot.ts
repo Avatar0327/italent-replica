@@ -6,7 +6,7 @@
 import { CONTRACT_OBJECT, contractChangeFieldCode, ORG_ADJUSTMENT_CONTRACT_CONTAINER } from '@italent/domain';
 import type { ForeignField } from '../approval/foreign-fields.js';
 import { contractFieldEntries } from '../transfer/linkage/approval.js';
-import type { ContractOwner, TransferItem } from './transfer-items-store.js';
+import type { ContractOwner, ContractValues, TransferItem } from './transfer-items-store.js';
 
 type ItemValue = { readonly itemId: string; readonly value: unknown };
 type Sections = {
@@ -20,6 +20,15 @@ const PREFIX = 'transferItems.';
 const isEmpty = (value: unknown) =>
   value === null || value === undefined || value === false || (Array.isArray(value) && value.length === 0);
 
+/**
+ * 虚线经理随直线经理编码（FOLLOWS）：显式给了虚线经理（含显式清空）时值带上两者，执行器会按它改 / 清虚线经理，
+ * 不能因直线经理为空就从快照里消失（否则看不到该字段的审批人不会被盲审拦下，P1-4）。
+ */
+function directManagerValue(row: TransferItem): unknown {
+  if (!row.dottedManagerSpecified) return row.directManagerId;
+  return { directManagerId: row.directManagerId, dottedManagerId: row.dottedManagerId };
+}
+
 /** 行内容 → 静态编码取值；目标部门指向同单新增组织时写 `{ itemRef }`，与已有组织 ID 区分。 */
 function staticValues(row: TransferItem): Record<string, unknown> {
   return {
@@ -28,7 +37,7 @@ function staticValues(row: TransferItem): Record<string, unknown> {
     positionId: row.positionId ?? (row.positionItemId ? { itemRef: row.positionItemId } : null),
     postId: row.postId,
     levelId: row.levelId,
-    directManagerId: row.directManagerId,
+    directManagerId: directManagerValue(row),
     dutyTransfer: row.linkage?.dutyTransfer ?? null,
     trial: row.linkage?.onTrial ?? null,
     adjustSalary: row.linkage?.adjustSalary ?? false,
@@ -69,6 +78,7 @@ export function transferSection(
   rows: readonly TransferItem[],
   sources: ReadonlyMap<string, string | null>,
   owners: ReadonlyMap<string, ContractOwner> = new Map(),
+  contractValues: ReadonlyMap<string, ContractValues> = new Map(),
 ): Sections {
   const values: Sections['values'] = {};
   const originals: Sections['originals'] = {};
@@ -80,9 +90,14 @@ export function transferSection(
       (values[code] ??= []).push({ itemId: row.id, value });
     }
     const owner = row.linkage?.contract ? owners.get(row.linkage.contract.targetId) : undefined;
+    const current = row.linkage?.contract ? contractValues.get(row.linkage.contract.targetId) : undefined;
     for (const entry of contractEntries(row)) {
       // 显式 null / false 是清空或置否，同样改写合同，与人工调动口径一致（DEC-057 / 058）
       (values[entry.code] ??= []).push({ itemId: row.id, value: entry.value });
+      // 原值 = 目标合同现值（§4.5 values / originals 对称）；目标合同 ID 本身不是被改的字段，不登记原值
+      if (current && entry.field !== 'id') {
+        (originals[entry.code] ??= []).push({ itemId: row.id, value: current[entry.field] ?? null });
+      }
       // 目标合同查不到归属（已删）时不登记外部字段：fail-closed，视为不可见
       if (owner) {
         foreignFields.push({
