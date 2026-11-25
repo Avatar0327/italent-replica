@@ -63,6 +63,29 @@ function evidenceCheck(env: Record<string, string>): string {
   return classifyOutput(env).find((l) => l.startsWith('evidence_check=')) ?? '';
 }
 
+/**
+ * F-573：从 ci.yml 文本里取出 light job 块和块内的快检步骤（找不到则为空串）。
+ * 不引入 YAML 解析依赖（DEC-1006），按缩进做文本截取：job 键恰好两格缩进，后面可跟空格和行尾 # 注释。
+ * 依据：YAML 块文本（run: | 等）的内容缩进必须深于父键，所以两格缩进的 job 键不会出现在任何 run 脚本之内；
+ * 两格缩进的 `# key:` 独立注释以 # 开头，不匹配 job 键。块在“下一个同级 job 键或文件末尾”结束，不依赖 job 排列顺序。
+ */
+const JOB_KEY_LINE = String.raw`[A-Za-z0-9_-]+:[ \t]*(?:#[^\n]*)?`;
+const LIGHT_JOB = new RegExp(String.raw`\n {2}light:[ \t]*(?:#[^\n]*)?\n([\s\S]*?)(?=\n {2}${JOB_KEY_LINE}(?:\n|$)|$)`);
+// 步骤到下一个步骤、或任何缩进浅于步骤内容的行（job 间的两格缩进注释、下一个 job 键）、或块末为止
+const QUICK_STEP = /- name: F090b 证据快检（F-573）\n([\s\S]*?)(?=\n {6}- |\n {0,5}\S|$)/;
+
+function quickCheck(yml: string): { lightJob: string; step: string } {
+  const lightJob = LIGHT_JOB.exec(yml)?.[1] ?? '';
+  // 步骤末尾的换行取决于它后面是空行、下一个 job 还是文件末尾，比较前去掉
+  return { lightJob, step: (QUICK_STEP.exec(lightJob)?.[1] ?? '').trimEnd() };
+}
+
+/** 整个快检步骤（含 `- name:` 行，以换行结尾），用来在内存里改写 ci.yml 构造变体。 */
+function quickStepText(yml: string): string {
+  const start = yml.indexOf('      - name: F090b 证据快检（F-573）\n');
+  return yml.slice(start, yml.indexOf('\n\n', start) + 1);
+}
+
 let main = '';
 let feature = '';
 let docsOffFeature = '';
@@ -268,10 +291,7 @@ describe('scripts/ci-classify.sh', () => {
   it('F-573：ci.yml 的 light job 只在 light + evidence_check=true 时 strict 跑 F090b 两个测试', () => {
     const yml = readFileSync(CI_YML, 'utf8');
     expect(yml).toContain('evidence_check: ${{ steps.classify.outputs.evidence_check }}');
-    // 先按“下一个同级 job（任意 job 键）或文件末尾”截取 light 块，再在块内找快检步骤：
-    // 不依赖 job 的排列顺序，快检步骤被移到别的 job 里就找不到
-    const lightJob = /\n {2}light:\n([\s\S]*?)(?=\n {2}[A-Za-z0-9_-]+:\n|$)/.exec(yml)?.[1] ?? '';
-    const step = /- name: F090b 证据快检（F-573）\n([\s\S]*?)(?=\n {6}- |$)/.exec(lightJob)?.[1] ?? '';
+    const { lightJob, step } = quickCheck(yml);
     expect(step).not.toBe('');
     // 完整 if 值逐字比对：把 && 换成 ||、加 false && 之类的改动都会让它失配
     expect(/^\s*if: (.*)$/m.exec(step)?.[1]).toBe(
@@ -283,5 +303,62 @@ describe('scripts/ci-classify.sh', () => {
     expect(step).toContain("ROUTE_POLICY_EVIDENCE_STRICT: '1'");
     expect(step).toContain('tests/acceptance/AC-PRM-FW-F090b-entries.test.ts');
     expect(step).toContain('tests/acceptance/AC-PRM-FW-02-evidence.test.ts');
+  });
+
+  describe('F-573：light 块截取对 ci.yml 变体的健壮性（内存改写，不写文件）', () => {
+    const yml = readFileSync(CI_YML, 'utf8');
+    const baseStep = quickCheck(yml).step;
+    // 把快检步骤从 light 挪到 targetHeader 所在 job 的 steps 开头
+    const moveStepInto = (text: string, targetHeader: string): string => {
+      const step = quickStepText(text);
+      const rest = text.replace(step, '');
+      const at = rest.indexOf(targetHeader);
+      expect(at).toBeGreaterThan(-1);
+      const steps = rest.indexOf('    steps:\n', at) + '    steps:\n'.length;
+      return rest.slice(0, steps) + step + rest.slice(steps);
+    };
+
+    it('基线：当前 ci.yml 能在 light 块里找到快检步骤', () => {
+      expect(baseStep).toContain('ROUTE_POLICY_EVIDENCE_STRICT');
+    });
+
+    it('变体①：job 键带行尾注释时，快检移出 light 仍判失败（check-shards / 插入的 decoy）', () => {
+      const commented = yml.replace('\n  check-shards:\n', '\n  check-shards: # 完整分片\n');
+      expect(commented).not.toBe(yml);
+      expect(quickCheck(moveStepInto(commented, '\n  check-shards: # 完整分片\n')).step).toBe('');
+      const step = quickStepText(commented);
+      const decoy = commented
+        .replace(step, '')
+        .replace('\n  check-shards:', `\n  decoy: # x\n    steps:\n${step}\n  check-shards:`);
+      expect(decoy).toContain('  decoy: # x\n');
+      expect(quickCheck(decoy).step).toBe('');
+      // 对照：快检仍在 light 里，注释边界不影响判定
+      expect(quickCheck(commented).step).toBe(baseStep);
+      expect(quickCheck(commented.replace('\n  light:\n', '\n  light: # 轻量\n')).step).toBe(baseStep);
+    });
+
+    it('变体②：仅把 check-shards 调到 light 前面，仍通过', () => {
+      const lightAt = yml.indexOf('  # 轻量检查：在途 PR');
+      const shardsAt = yml.indexOf('  check-shards:\n');
+      const shardsEnd = yml.indexOf('  # 必需检查 1');
+      expect(lightAt).toBeGreaterThan(-1);
+      expect(lightAt).toBeLessThan(shardsAt);
+      expect(shardsAt).toBeLessThan(shardsEnd);
+      const reordered =
+        yml.slice(0, lightAt) + yml.slice(shardsAt, shardsEnd) + yml.slice(lightAt, shardsAt) + yml.slice(shardsEnd);
+      expect(reordered.indexOf('\n  check-shards:')).toBeLessThan(reordered.indexOf('\n  light:'));
+      expect(quickCheck(reordered).step).toBe(baseStep);
+    });
+
+    it('变体③：light 放文件末尾（有 / 无末尾换行）仍通过', () => {
+      const lightAt = yml.indexOf('  # 轻量检查：在途 PR');
+      const lightEnd = yml.indexOf('  check-shards:\n');
+      const moved =
+        yml.slice(0, lightAt) + yml.slice(lightEnd).trimEnd() + '\n\n' + yml.slice(lightAt, lightEnd).trimEnd();
+      expect(moved.lastIndexOf('\n  light:')).toBeGreaterThan(moved.lastIndexOf('\n  test-pg:'));
+      expect(quickCheck(`${moved}\n`).step).toBe(baseStep);
+      expect(moved.endsWith('\n')).toBe(false);
+      expect(quickCheck(moved).step).toBe(baseStep);
+    });
   });
 });
