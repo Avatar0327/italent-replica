@@ -1947,7 +1947,7 @@ export const EMPLOYMENT: RequiredTable = {
           TRF,
           'POST',
           '/transfers/employees/:id',
-          'const linkageAccess = await preauthorizeLinkage(c, deps, prepared.context, {',
+          'await preauthorizeLinkage(c, deps, prepared.context, linkageInput);',
         ),
         {
           role: 'impl',
@@ -1957,14 +1957,7 @@ export const EMPLOYMENT: RequiredTable = {
         },
       ],
     ),
-    linkage(
-      at(
-        TRF,
-        'POST',
-        '/transfers/employees/:id',
-        'body: await createTransfer(tx, context, id, { ...prepared.input, linkageAccess })',
-      ),
-    ),
+    linkage(at(TRF, 'POST', '/transfers/employees/:id', 'body: await createTransfer(tx, context, id, {')),
   ],
   // F-181a：他人调动申请暂存的元数据读口与清除（槽位按用户 × 员工，draft-slot.ts）
   'GET /api/tenant/employment/transfers/employees/:id/draft': [
@@ -2134,7 +2127,7 @@ export const EMPLOYMENT: RequiredTable = {
       'guard:linkage.preauthorize',
       ['guard:linkage.preauthorize'],
       [
-        at(LNK, 'PUT', '/transfers/:id/linkage', 'const access = await preauthorizeLinkage(c, deps, ctx, input)'),
+        at(LNK, 'PUT', '/transfers/:id/linkage', 'await preauthorizeLinkage(c, deps, ctx, input);'),
         {
           role: 'impl',
           unit: `${LNK}#preauthorizeLinkage`,
@@ -2144,7 +2137,12 @@ export const EMPLOYMENT: RequiredTable = {
       ],
     ),
     linkage(
-      at(LNK, 'PUT', '/transfers/:id/linkage', 'body: await updateTransferLinkage(tx, context, id, options, access)'),
+      at(
+        LNK,
+        'PUT',
+        '/transfers/:id/linkage',
+        'body: await updateTransferLinkage(tx, context, id, options, access ?? {}),',
+      ),
     ),
   ],
   'POST /api/tenant/employment/transfers/linkage-items/:id/retry': [
