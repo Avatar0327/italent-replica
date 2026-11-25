@@ -8166,6 +8166,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
   ],
   'apps/api/src/modules/employment/routes.ts#authorizeTransition': [
+    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
     'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
   ],

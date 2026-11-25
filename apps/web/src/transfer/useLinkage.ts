@@ -1,6 +1,8 @@
 /** 联动草稿的候选数据与联动详情（R1-T10）。 */
 import { useEffect, useState } from 'react';
+import { commandId } from '../foundation/client.js';
 import { requestError } from './api.js';
+import { transferCommands } from './commands.js';
 import { loadContractChoices, loadLinkage, retryLinkageItem } from './linkage-api.js';
 import type { LinkageItemView, LinkageView, TransferFormModel } from './types.js';
 
@@ -39,10 +41,16 @@ export function useLinkageDetail(tenantId: string, businessId: string | null) {
     };
   }, [tenantId, businessId, reload]);
   const retry = async (item: LinkageItemView) => {
+    // DEC-955：重试同是调动写入，与调动提交共用内核的前置拒绝；在生成命令 ID 之前拦截，不发请求、不重读。
+    const refused = transferCommands.refusal();
+    if (refused) {
+      setError(refused);
+      return;
+    }
     setBusy(true);
     setError('');
     try {
-      await retryLinkageItem(tenantId, item, crypto.randomUUID());
+      await retryLinkageItem(tenantId, item, commandId());
     } catch (cause) {
       setError(requestError(cause));
     } finally {
