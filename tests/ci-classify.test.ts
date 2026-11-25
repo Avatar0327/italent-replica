@@ -268,15 +268,17 @@ describe('scripts/ci-classify.sh', () => {
   it('F-573：ci.yml 的 light job 只在 light + evidence_check=true 时 strict 跑 F090b 两个测试', () => {
     const yml = readFileSync(CI_YML, 'utf8');
     expect(yml).toContain('evidence_check: ${{ steps.classify.outputs.evidence_check }}');
-    const step = /- name: F090b 证据快检（F-573）\n([\s\S]*?)\n\s*\n/.exec(yml)?.[1] ?? '';
+    // 先按“下一个同级 job（任意 job 键）或文件末尾”截取 light 块，再在块内找快检步骤：
+    // 不依赖 job 的排列顺序，快检步骤被移到别的 job 里就找不到
+    const lightJob = /\n {2}light:\n([\s\S]*?)(?=\n {2}[A-Za-z0-9_-]+:\n|$)/.exec(yml)?.[1] ?? '';
+    const step = /- name: F090b 证据快检（F-573）\n([\s\S]*?)(?=\n {6}- |$)/.exec(lightJob)?.[1] ?? '';
+    expect(step).not.toBe('');
     // 完整 if 值逐字比对：把 && 换成 ||、加 false && 之类的改动都会让它失配
     expect(/^\s*if: (.*)$/m.exec(step)?.[1]).toBe(
       "needs.changes.outputs.mode == 'light' && needs.changes.outputs.evidence_check == 'true'",
     );
     // 步骤或整个 light job 设了 continue-on-error 都会让快检红了也不拦
     expect(step).not.toContain('continue-on-error');
-    const lightJob = /\n {2}light:\n([\s\S]*?)\n {2}check-shards:/.exec(yml)?.[1] ?? '';
-    expect(lightJob).toContain('F090b 证据快检（F-573）');
     expect(lightJob).not.toContain('continue-on-error');
     expect(step).toContain("ROUTE_POLICY_EVIDENCE_STRICT: '1'");
     expect(step).toContain('tests/acceptance/AC-PRM-FW-F090b-entries.test.ts');
