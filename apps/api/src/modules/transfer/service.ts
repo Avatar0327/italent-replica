@@ -36,7 +36,7 @@ import { dutySubordinateIds, normalizeLinkage, type LinkageOptions } from './lin
 import { saveNewTransferLinkage, type LinkageTarget } from './linkage/service.js';
 import type { LinkageAccess } from './linkage/access.js';
 import { hasLinkage } from './linkage/store.js';
-import { holdTransferDraft, occupiesDraftSlot, releaseTransferDraft } from './draft-slot.js';
+import { holdTransferDraft, lockTransferDraftHead, occupiesDraftSlot, releaseTransferDraft } from './draft-slot.js';
 
 const schema = z.strictObject({
   initiator: z.enum(['hr', 'manager', 'employee']),
@@ -353,6 +353,8 @@ export async function lockSameOrderTarget(tx: Tx, ctx: EmploymentContext, target
     if (await transferLocksCover(tx, ctx, employeeId, present)) break;
   }
   await lockTransferHeads(tx, ctx, businessId);
+  // 发起 / 覆盖暂存没有本单业务头，但会替换调用人的旧草稿：旧草稿头在封口前一并锁住（F-560 第 2 轮 P2-1）。
+  if (!businessId) await lockTransferDraftHead(tx, ctx, employeeId);
   if (!(await transferLocksCover(tx, ctx, employeeId, present))) throw planChanged();
   await sealTransferLocks(tx, ctx);
 }

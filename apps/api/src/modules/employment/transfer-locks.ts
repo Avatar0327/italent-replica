@@ -189,7 +189,7 @@ async function lockHeads(tx: Tx, ctx: EmploymentContext, ids: readonly string[],
 export async function lockTransferHeads(tx: Tx, ctx: EmploymentContext, businessId?: string): Promise<void> {
   const held = await heldIds(tx, ctx);
   if (held.length > 1) return lockHeads(tx, ctx, held);
-  // 还没有本单业务头的入口（发起调动）单人闭包没有头可锁：员工行已锁，覆盖暂存的旧草稿头也只经员工行写（F-560）。
+  // 还没有本单业务头的入口（发起调动）单人闭包没有头可锁；覆盖暂存的旧草稿头由 lockSameOrderTarget 另行提前锁（F-560 第 2 轮 P2-1）。
   if (!businessId) return;
   await tx.execute(sql`
     SELECT id FROM employment_business_objects WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE
@@ -198,7 +198,7 @@ export async function lockTransferHeads(tx: Tx, ctx: EmploymentContext, business
 
 /**
  * 请求里点名的员工中现在存在的那些（普通读，不取锁、不被行锁阻塞）。员工主档不删除、标识由服务端生成，
- * 存在与否在本事务内是稳定事实；查无此人的不取锁，留给首次执行的业务校验（DEC-996，见 lockTransferBusinessEmployee）。
+ * 存在与否在本事务内是稳定事实；查无此人的不取锁，留给首次执行的业务校验（DEC-996，见 lockSameOrderTarget）。
  */
 export async function existingTransferEmployees(
   tx: Tx,

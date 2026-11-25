@@ -185,6 +185,11 @@ export function sameOrderCreateGuard(
     /** 请求新带入的下属（addedSubordinateIds 与职责转交下属）：与发起员工一起在取锁阶段取齐。 */
     readonly extraParticipants: readonly string[];
     readonly authorize: (tx: Tx, scoped: EmploymentContext) => Promise<void>;
+    /**
+     * 目标部门例外算完之后的复核（联动授权：合同范围等入口快照要在这里按锁内当前授权重解析，F-560 第 2 轮 P1-1）。
+     * 排在例外之后：联动里的组织范围判定要用含目标例外的上下文，与入口 / 执行体同一口径。
+     */
+    readonly afterTarget?: (tx: Tx, scoped: EmploymentContext) => Promise<void>;
   },
 ): ScopedCommandGuard {
   return refreshGuard(
@@ -195,7 +200,7 @@ export function sameOrderCreateGuard(
       await spec.authorize(tx, fresh);
       return transferTargetContext(tx, fresh, spec.employeeId, spec.input, spec.targetDepartmentId);
     },
-    async () => undefined,
+    async (tx, scoped) => spec.afterTarget?.(tx, scoped),
     { employeeId: spec.employeeId, extra: spec.extraParticipants },
   );
 }
