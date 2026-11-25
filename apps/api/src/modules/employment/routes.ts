@@ -580,6 +580,9 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
               targetDepartmentId: departmentId,
               referenceChange: input,
               authorize: async (tx, scoped) => {
+                // 策略校验（保存值经理是否合格，403）会披露单据内容：先复核业务写范围，范围外一律 404（F-564，同 F-563）。
+                // 守卫随后还会按同一口径再复核一次，只读、幂等。
+                await requireBusinessWriteScope(tx, scoped.authorize!, scoped, id, current.employeeId);
                 await requireDraftEditWrite((run) => run(tx), scoped, id, input, options);
                 if (departmentId !== undefined)
                   await requireScopedEmploymentObject(tx, scoped, current.employeeId, departmentId, id);
