@@ -10,6 +10,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { AppError } from '../../errors.js';
 import { checkScope } from '../contracts/context.js';
+import { collectionApprovalVisibility, COLLECTION_VALUES } from '../onboarding/collection-approval-fields.js';
 import {
   authorizeInTransaction,
   getModuleViewableFieldsInTransaction,
@@ -64,8 +65,13 @@ export function foreignVisibility(
   tx: Tx,
 ): ForeignVisible {
   const objects = new Map<string, ReturnType<typeof objectAccess>>();
+  let collectionVisible: ForeignVisible | undefined;
   return async (field) => {
-    // 嵌入审批载荷的只有合同对象与社保档案对象；其他对象没有判定入口，按看不到处理。
+    if (field.container === COLLECTION_VALUES) {
+      collectionVisible ??= collectionApprovalVisibility(tx, deps, ctx);
+      return collectionVisible(field);
+    }
+    // 其他来源仍按各自已登记的载体校验。
     const profile = field.objectCode === MODULE_OBJECTS.socialSecurityProfile.code;
     if (field.objectCode !== CONTRACT_OBJECT && !profile) return false;
     if (!objects.has(field.objectCode)) objects.set(field.objectCode, objectAccess(deps, ctx, tx, field.objectCode));

@@ -17,7 +17,7 @@ import {
 } from '../employment/onboarding-entry-port.js';
 
 import { enqueueCollectionCreation, retireCollectionCreation } from './collection-jobs.js';
-import { closeCollectionTasks } from './collection-tasks.js';
+import { retireCollectionSubmission } from './collection-approval.js';
 import { generateMaterialList } from './material-list.js';
 import { rebaseEntryPreparations } from './preparation-launch-state.js';
 
@@ -136,6 +136,7 @@ const lifecycle: EntryLifecyclePort = {
     const current = await currentForUpdate(tx, ctx, change);
     if (change.kind === 'cancel' && current.state === 'cancelled') return current;
     const patch = lifecyclePatch(ctx, current, change);
+    await retireCollectionSubmission(tx, ctx, current, change.kind === 'replace');
     const [updated] = await tx
       .update(cases)
       .set({ ...patch, revision: current.revision + 1, updatedAt: ctx.now, updatedBy: ctx.userId })
@@ -145,7 +146,6 @@ const lifecycle: EntryLifecyclePort = {
     await rebaseEntryPreparations(tx, ctx, updated);
     if (updated.state !== 'pending') {
       await retireCollectionCreation(tx, ctx, updated);
-      await closeCollectionTasks(tx, ctx, updated);
     }
     await auditCase(tx, ctx, change.kind, current, updated);
     return updated;

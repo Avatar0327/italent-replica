@@ -1653,6 +1653,13 @@
       "when": 1795554817134,
       "tag": "0235_be16_material_config",
       "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1795554817135,
+      "tag": "0236_be16_collection_submissions",
+      "breakpoints": true
     }
   ]
 }
