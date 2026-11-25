@@ -6,9 +6,9 @@ import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 
-// F-576：personnel_attachments 缺 app_user INSERT 授权（0024 建表后从未授权）。
-// PG16 普通角色（app_owner，NOBYPASSRLS）与 PGlite 的应用角色下，附件登记路由在员工行锁之后返回 503；超级用户连接返回 200，
-// 把缺口掩盖掉。本用例走 HTTP 入口，断言 200 且在本租户落一行、他租户看不到（RLS 不变）。
+// F-576：personnel_attachments 缺 app_user 授权（0024 建表后从未授权）。租户事务内执行身份是 app_user
+// （连接身份无论 postgres 还是 app_owner），基线上附件登记路由返回 503。
+// 本用例走 HTTP 入口，断言 200 且在本租户落一行、他租户看不到（RLS 不变）。
 it('AC-PER-F576 附件登记在应用角色下返回 200 且落库，他租户不可见', async () => {
   const s = await personnelSession(database().db, 'att-grant');
   const other = await personnelSession(database().db, 'att-grant-other');

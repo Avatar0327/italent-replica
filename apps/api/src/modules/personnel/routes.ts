@@ -99,8 +99,17 @@ export function registerPersonnelRoutes(router: Hono<TenantEnv>, deps: TenantRou
       const input = parse(schema, await body(c));
       const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', {}, 'update', revision(c));
       const employeeId = uuidParam(c);
-      return write(c, deps, ctx, employeeId, 'update', {}, (tx, command) =>
-        registerAttachment(tx, command, employeeId, input),
+      // DEC-067：命令指纹带上解析后的请求体，同键异体才会报 IDEMPOTENCY_CONFLICT；字段授权载荷仍为空对象
+      return write(
+        c,
+        deps,
+        ctx,
+        employeeId,
+        'update',
+        {},
+        (tx, command) => registerAttachment(tx, command, employeeId, input),
+        'update',
+        input,
       );
     }),
   );
