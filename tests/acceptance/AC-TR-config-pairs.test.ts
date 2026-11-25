@@ -173,7 +173,7 @@ describe('存量租户补装 T04 预置字段（审查 P2-4；DEC-361 统一机�
         })
         .from(talentReviewFields)
         .where(eq(talentReviewFields.preset, true))
-        // 无 ORDER BY 时行序取决于物理位置（回补 UPDATE 后会变），整表 toEqual 会偶发红；code 在租户内唯一（F-572）
+        // 无 ORDER BY 时返回顺序无保证，整表 toEqual 会偶发红；code 在租户内唯一，按它排序即为全序（F-572）
         .orderBy(talentReviewFields.code),
     );
   const createAudits = (tenant: string) =>
