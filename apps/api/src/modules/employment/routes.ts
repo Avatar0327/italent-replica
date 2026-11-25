@@ -610,14 +610,21 @@ async function routesToCancel(deps: TenantRouteDeps, ctx: EmploymentContext, id:
   });
 }
 
-/** 首次执行与同键重放共用：校验员工单据与写权限。J5 不在这里：它必须排在业务写范围复核之后（见 afterScope）。 */
+/**
+ * 首次执行与同键重放共用：校验员工单据与写权限。J5 不在这里：它必须排在业务写范围复核之后（见 afterScope）。
+ * 提交时的员工保存值策略校验（requireEmployeeTransferBusiness，403 会披露单据上的直线经理是否合格）排在业务写范围复核
+ * 之后：范围已收回的人一律只得到 404，不能借 403 区分“经理校验失败”与“范围外”（F-563）。
+ */
 async function authorizeTransition(
   tx: Tx,
   scoped: EmploymentContext,
   id: string,
   action: Parameters<typeof requireEmploymentTransitionWrite>[1],
 ) {
-  if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
+  if (action === 'submit') {
+    await requireBusinessWriteScope(tx, scoped.authorize!, scoped, id);
+    await requireEmployeeTransferBusiness(tx, scoped, id);
+  }
   await requireEmploymentTransitionWrite(scoped, action);
 }
 
