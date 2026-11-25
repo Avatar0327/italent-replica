@@ -18,6 +18,7 @@ import {
 
 import { enqueueCollectionCreation, retireCollectionCreation } from './collection-jobs.js';
 import { closeCollectionTasks } from './collection-tasks.js';
+import { rebaseEntryPreparations } from './preparation-launch-state.js';
 
 const cases = onboardingEntryCases;
 const businesses = employmentBusinessObjects;
@@ -139,6 +140,7 @@ const lifecycle: EntryLifecyclePort = {
       .where(and(eq(cases.tenantId, ctx.tenantId), eq(cases.id, current.id)))
       .returning();
     if (!updated) return unavailable();
+    await rebaseEntryPreparations(tx, ctx, updated);
     if (updated.state !== 'pending') {
       await retireCollectionCreation(tx, ctx, updated);
       await closeCollectionTasks(tx, ctx, updated);

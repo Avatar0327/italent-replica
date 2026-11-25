@@ -7,6 +7,7 @@
 import { ACTIVE_COLLECTION_TASK_STATES, COLLECTION_TASK_STATES, sql, type Tx } from '@italent/db';
 import { EMPLOYEE_STATUS, ENTRY_STATUS, type EmployeeStatusCode, type EntryStatusCode } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
+import { preparationStatusSql, type PreparationStatus } from '../onboarding/preparation-launch-read.js';
 import { employmentCreator, employmentScopePredicate } from './context.js';
 import { ENTRY_KINDS } from './employee-status.js';
 import { personnelHooks } from './personnel-hooks.js';
@@ -37,6 +38,7 @@ export interface EntryViewItem {
   readonly effectiveDate: string;
   readonly employeeStatus: EmployeeStatusCode;
   readonly entryStatus: EntryStatusCode | null;
+  readonly preparationStatus: PreparationStatus;
   readonly departmentId: string | null;
   /** 业务 revision：取消 / 改期 / 编辑 / 办理 / 删除路由的 If-Match。 */
   readonly revision: number;
@@ -78,6 +80,12 @@ interface EntryViewQuery {
   readonly collection?: EntryCollectionQuery;
 }
 
+/** 采集状态列表达式：范围谓词由调用方（listEntryView）传入，授权证据留在 listEntryView 内（F-039 锚点）。 */
+function collectionStatusSql(visible: SQL): SQL {
+  return sql`CASE WHEN ${visible} THEN
+    CASE ct.status WHEN 'ready' THEN 'not_sent' ELSE COALESCE(ct.status, 'not_started') END END`;
+}
+
 export async function listEntryView(
   tx: Tx,
   tenantId: string,
@@ -101,10 +109,7 @@ export async function listEntryView(
       department,
       employmentCreator(tenantId, sql`r.id`, true),
     );
-  const status =
-    collectionVisible &&
-    sql`CASE WHEN ${collectionVisible} THEN
-    CASE ct.status WHEN 'ready' THEN 'not_sent' ELSE COALESCE(ct.status, 'not_started') END END`;
+  const status = collectionVisible && collectionStatusSql(collectionVisible);
   return rowsOf<EntryViewItem>(
     await tx.execute(sql`
     SELECT r.id, r.employee_id AS "employeeId", e.code,
@@ -114,7 +119,8 @@ export async function listEntryView(
       ${department} AS "departmentId", b.revision, pp.probation,
       pp.months AS "probationMonths", pc.contract_company_id::text AS "contractCompanyId",
       pc.start_date::text AS "contractStartDate", pc.end_date::text AS "contractEndDate",
-      cancel.remark AS "cancelRemark"
+      cancel.remark AS "cancelRemark",
+      ${preparationStatusSql(sql`r.tenant_id`, sql`r.id`)} AS "preparationStatus"
       ${status ? sql`, ${status} AS "collectionStatus"` : sql``}
     FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
