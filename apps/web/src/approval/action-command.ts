@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useReducer, useRef, useState } from 'react';
 import { useApiClient } from '../foundation/index.js';
 import { queryCommandResult, type CommandResult } from '../foundation/forms/command-result.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
-import { lockedContext, type Values } from '../foundation/forms/store.js';
+import { lockedContext, type Outcome, type Submission, type Values } from '../foundation/forms/store.js';
 import { acceptReceipt, approvalFailure, approvalRequest, readApproval } from './api.js';
 import { approvalNotice, confirmNotice } from './before-approve.js';
 import { actionTask, editFields, editValues } from './edit-model.js';
@@ -40,6 +40,42 @@ async function confirmResult(
   if (detail.id !== instanceId || !advanced(detail.revision)) throw new Error(kernel.invalidReceipt);
   return detail;
 }
+/**
+ * F-566（同 F-562 第 2 轮 P2-1）：本次提交处理中内核在返回前就发布 rejected 条目；登记冲突后占槽命令已在本页处理
+ * 拒绝前落定时，它的 error 是旧的“其他标签页”文案，审批弹窗的 CommandStatus 不能读。处理完之后的 rejected
+ * （未发出的 refused、已发出被拒、主动查询结果确认失败）照常显示。
+ */
+function statusState(state: Submission | undefined, settling: boolean) {
+  return settling && state?.status === 'rejected' ? undefined : state;
+}
+/**
+ * 本次未发出的拒绝只取内核 refused 的文案（DEC-954 / DEC-955、存储不可用），条目留给 CommandStatus 显示；
+ * 竞争（race）仍按原样显示占槽命令。两者都不带时 error 是旧的“其他标签页”文案：清掉条目，
+ * 抛空值让弹窗保持打开、保留输入且不提示（FormOverlay 只对有值的错误显示提示）。
+ */
+function refuseUnsent(result: Outcome, issued: boolean, clear: () => void) {
+  if (result.status !== 'rejected' || issued || result.race) return;
+  if (result.refused) throw new Error(result.refused);
+  clear();
+  throw undefined;
+}
+/**
+ * 提交处理中的标记：调用内核前同步置上，内核返回后放下并按当前条目重新渲染（refused 时内核不再发布新条目，
+ * 不重渲染就一直拿着处理中被隐去的状态），再按 refuseUnsent 处理未发出的拒绝。
+ */
+function useSettling() {
+  const settling = useRef(false);
+  const [, settled] = useReducer((count: number) => count + 1, 0);
+  const settle = async (pending: Promise<Outcome>, issued: () => boolean, clear: () => void) => {
+    const result = await pending.finally(() => {
+      settling.current = false;
+      settled();
+    });
+    refuseUnsent(result, issued(), clear);
+    return result;
+  };
+  return { settling, settle };
+}
 /** 各动作可编辑的字段：意见、转交对象；撤销不带字段（后端 strictObject 只收这些键）。 */
 export const actionFields: Record<ApprovalAction, readonly string[]> = {
   approve: ['comment'],
@@ -58,6 +94,7 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
   const api = useApiClient();
   const command = useApprovalCommand(`/api/tenant/approval/instances/${row.id}`);
   const [chosen, setChosen] = useState<ActionContext>();
+  const { settling, settle } = useSettling();
   // 槽里还有未确认的命令（处理中、结果未知、冲突）时以槽里的动作为准，换按钮重开不另起命令。
   const pending = lockedContext<ActionContext>(command.state);
   const context = pending ?? chosen;
@@ -103,13 +140,16 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
     await confirmNotice(
       approvalNotice({ ...detail, form: { values: { ...detail.form.values, ...businessValues } } }, action),
     );
-    const result = await command.submit({
+    let issued = false;
+    settling.current = true;
+    const submitted = command.submit({
       values,
       baseline: editValues(detail, action),
       editableFields: [...actionFields[action], ...fields.map(({ key }) => key)],
       revision: detail.revision,
       businessId: detail.id,
       send: async (sent) => {
+        issued = true;
         // 重读后出口已不在最新 exits 里时 approvalRequest 直接拒绝，不发请求（不自动改投其他出口）。
         const request = approvalRequest(detail, action, taskId, sent.body, exit);
         const receipt = await api
@@ -121,11 +161,12 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
       },
       context: { action, ...(taskId ? { taskId } : {}), ...(exit === undefined ? {} : { exit }) },
     });
+    const result = await settle(submitted, () => issued, command.clear);
     if (result.status !== 'done') throw result.error ?? new Error(kernel.unknown);
     command.clear();
   }
   return {
-    command: { ...command, reload, queryResult },
+    command: { ...command, state: statusState(command.state, settling.current), reload, queryResult },
     /** 弹窗只在用户点了按钮后打开；锁定时标题与提交仍按槽里的动作。 */
     action: chosen && context?.action !== 'urge' ? context?.action : undefined,
     exit: chosen && context?.action !== 'urge' ? context?.exit : undefined,
