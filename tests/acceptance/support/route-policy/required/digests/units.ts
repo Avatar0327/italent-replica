@@ -458,7 +458,7 @@ export const DIGESTS: Digests = {
     'route:POST /pending-entries/:id/postpone': '4280a51d02a0',
   },
   'apps/api/src/modules/employment/entry-views.ts': {
-    listEntryView: 'a434f35278d8',
+    listEntryView: '97343eaf4d51',
   },
   'apps/api/src/modules/employment/exit-account-routes.ts': {
     readScopedAccountTask: 'b2d95a016a31',
@@ -2617,7 +2617,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/entry-routes.ts#route:PATCH /pending-entries/:id': '4c782a5e1f57',
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/complete': '7a8b25e5e52e',
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/postpone': '589484677a4f',
-  'apps/api/src/modules/employment/entry-views.ts#listEntryView': 'da347e1eb4b5',
+  'apps/api/src/modules/employment/entry-views.ts#listEntryView': '917d6fc6ae53',
   'apps/api/src/modules/employment/exit-account-routes.ts#readScopedAccountTask': 'c31756f60f54',
   'apps/api/src/modules/employment/exit-account-routes.ts#retry': '43b14ff83cf9',
   'apps/api/src/modules/employment/exit-account-routes.ts#route:GET /exit-account/settings': '899867760ed4',
