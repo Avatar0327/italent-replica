@@ -107,6 +107,8 @@ interface AcquireOptions {
   readonly rescheduledExitId?: string;
   /** 只取员工锁，业务头留给调用方在员工闭包取齐之后用 lockTransferHeads 统一取（同单写入口的补锁循环，DEC-996）。 */
   readonly deferHeads?: boolean;
+  /** 组织调整执行器：单人闭包也提前取本人业务头，保持“员工 → 业务头 → 调整单”的锁序。 */
+  readonly lockBusinessHeads?: boolean;
 }
 
 async function acquire(
@@ -157,13 +159,14 @@ async function acquire(
       throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
   }
   await tx.execute(sql`SELECT set_config(${settingKey(ctx.tenantId)},${JSON.stringify(all)},true)`);
-  if (!options.deferHeads) await lockHeads(tx, ctx, planned);
+  if (!options.deferHeads) await lockHeads(tx, ctx, planned, options.lockBusinessHeads === true);
   return 'acquired';
 }
 
 /** 各参与者的业务头在审批实例之前取锁；员工锁保证业务集合不会再被其他事务改写。 */
-async function lockHeads(tx: Tx, ctx: EmploymentContext, ids: readonly string[]) {
-  if (ids.length > 1)
+async function lockHeads(tx: Tx, ctx: EmploymentContext, ids: readonly string[], force = false) {
+  // force：组织调整执行器单人闭包也要在组织调整单锁之前先取本人业务头（§9.1 锁序）。
+  if (force || ids.length > 1)
     await tx.execute(sql`
     SELECT id FROM employment_business_objects WHERE tenant_id=${ctx.tenantId} AND employee_id=ANY(${array(ids)})
     ORDER BY employee_id,id FOR UPDATE
@@ -230,6 +233,19 @@ export const lockTransferParticipants = (
   extra: readonly string[] = [],
   options: AcquireOptions = {},
 ): Promise<SweepLockOutcome> => acquire(tx, ctx, employeeId, extra, options);
+
+/** §9.1：取组织锁后只复核闭包，禁止在较晚的锁级补取员工或业务头。 */
+export async function assertTransferPlanHeld(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  extra: readonly string[],
+) {
+  const actual = await participants(tx, ctx, employeeId, extra);
+  const held = new Set(await heldIds(tx, ctx));
+  if (actual.some((id) => !held.has(id)))
+    throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'ORG_EMPLOYMENT_PLAN_CHANGED' });
+}
 
 /**
  * 断言这些员工的锁已在本事务的预锁集合内（落地 / 执行只能重入、复核，不得再新取员工锁：新取会在持组织锁之后逆序，与先锁下属再取
