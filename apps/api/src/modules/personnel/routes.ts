@@ -85,6 +85,13 @@ export function registerPersonnelRoutes(router: Hono<TenantEnv>, deps: TenantRou
       );
     }),
   );
+  registerAttachmentRegistration(router, deps);
+  registerEmployeeReads(router, deps);
+  registerSubsetRoutes(router, deps);
+  registerSubsetAttachmentRoutes(router, deps);
+  registerChangeRequestRoutes(router, deps);
+}
+function registerAttachmentRegistration(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post(`${base}/:id/attachments`, (c) =>
     safe(async () => {
       const schema = z
@@ -113,10 +120,6 @@ export function registerPersonnelRoutes(router: Hono<TenantEnv>, deps: TenantRou
       );
     }),
   );
-  registerEmployeeReads(router, deps);
-  registerSubsetRoutes(router, deps);
-  registerSubsetAttachmentRoutes(router, deps);
-  registerChangeRequestRoutes(router, deps);
 }
 function registerEmployeeReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(`${base}/:id/tenure`, (c) =>
