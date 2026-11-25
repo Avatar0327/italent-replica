@@ -8,6 +8,8 @@
  * 非编辑时 CommandStatus + act 吞错），每次 DOM 提交后记下页面文字。A 的登记做法同 AC-FE-F562。期望值手写。
  * 第 2 轮：隐去旧告警不能丢掉已核对的版本（实际 If-Match）；真实列表页上关闭重开详情后仍隐去；
  * 等锁超时（refused）时槽被 A 接管，详情仍显示 DEC-954 原文，A 的命令仍可查询。
+ * 第 3 轮：重开详情读到更新的版本后，过期条目不能再把旧版本带进提交（实际 If-Match）；
+ * 重开编辑时字段被裁剪、内核复制了草稿条目，同一次命令的过期拒绝仍隐去（逐次 DOM）。
  */
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -100,6 +102,8 @@ let server: number;
 /** 每次 DOM 提交后的页面文字（含弹窗与 CommandStatus），用来证明中途也没渲染过旧告警。 */
 let commits: string[];
 let tenantId: string;
+/** 详情 GET 是否按字段权限裁掉“调整主题”（服务端不返回该键，detail.ts 字段投影）。 */
+let trimSubject: boolean;
 const updated = vi.fn();
 const closed = vi.fn();
 
@@ -109,6 +113,7 @@ beforeEach(() => {
   writes = [];
   ifMatches = [];
   server = row.revision;
+  trimSubject = false;
   commits = [];
   tenantId = randomUUID();
   updated.mockClear();
@@ -137,7 +142,10 @@ beforeEach(() => {
         server += 1;
         return Response.json(receipt(method === 'PATCH' ? 0 : 1, server));
       }
-      if (method === 'GET' && path === DETAIL_PATH) return Response.json({ ...row, revision: server });
+      if (method === 'GET' && path === DETAIL_PATH) {
+        const { subject: _subject, ...trimmed } = row;
+        return Response.json({ ...(trimSubject ? trimmed : row), revision: server });
+      }
       if (method === 'GET' && path === COLLECTION) return Response.json({ items: [row], total: 1 });
       if (path === '/api/tenant/permission/me/snapshot')
         return Response.json({ session: serverSession(), apps: [], scope: [], adminMenus: [] });
@@ -388,6 +396,68 @@ describe('AC-FE-F566 组织调整登记冲突后占槽命令已落定', () => {
     await act(async () => detailSubmit()!.click());
     await until(() => writes.length === 1);
     expect(writes).toEqual([{ method: 'POST', path: SUBMIT_PATH, body: {} }]);
+  });
+
+  it('第 3 轮 P2-4 真实详情：等锁期间 A 把单子存到 revision 5，关闭重开读到 5 后提交审批带 If-Match 5', async () => {
+    await renderPage();
+    const release = await holdLock(RECORDS);
+    const spy = settleABeforeRefusal();
+    await act(async () => detailSubmit()!.click());
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+    server = 5; // A 保存同一暂存单到 revision 5，随后删掉自己的恢复记录（settleABeforeRefusal）。
+    registerA();
+    release();
+    await until(() => !detailSubmit()!.disabled);
+    expect(writes).toEqual([]);
+
+    await closeDetail();
+    await reopenDetail();
+    await until(() => !detailSubmit()!.disabled);
+    await act(async () => detailSubmit()!.click());
+    await until(() => ifMatches.length === 1);
+    // 重开的详情按新读回的 revision 5 提交，不沿用过期条目的 revision 4。
+    expect(ifMatches).toEqual(['5']);
+    await until(() => !detailSubmit() || !detailSubmit()!.disabled);
+    expect(writes).toEqual([{ method: 'POST', path: SUBMIT_PATH, body: {} }]);
+    expect(document.body.textContent).not.toContain('申请单已被修改');
+  });
+
+  it('第 3 轮 P2-5 真实详情：409 核对后遇过期竞争，重开详情裁掉“调整主题”再打开编辑，每次提交都不显示旧告警', async () => {
+    await renderPage();
+    server = 5; // 别人已把申请单改到 revision 5，本页详情还是 4。
+    await act(async () => buttonIn(detail()!, '修改申请').click());
+    await until(() => !!subject());
+    await editSubject();
+    await act(async () => save().click());
+    await until(() => !!buttonIn(modal()!, '重读最新版本'));
+    await act(async () => buttonIn(modal()!, '重读最新版本').click());
+    await until(() => !!buttonIn(modal()!, '已核对差异，继续编辑'));
+    await act(async () => buttonIn(modal()!, '已核对差异，继续编辑').click());
+    await until(() => !save().disabled);
+
+    const release = await holdLock(RECORDS);
+    const spy = settleABeforeRefusal();
+    await act(async () => save().click());
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+    registerA();
+    release();
+    await saveSettled();
+    expect(ifMatches).toEqual(['4']);
+    expect(document.body.textContent).not.toContain(OTHER_TAB);
+
+    await act(async () => buttonIn(modal()!.querySelector('.ant-modal-footer')!, '取消').click());
+    await until(() => !subject());
+    await closeDetail();
+    trimSubject = true; // 这次服务端按字段权限裁掉“调整主题”，仍允许修改申请。
+    await reopenDetail();
+    const before = commits.length;
+    await act(async () => buttonIn(detail()!, '修改申请').click());
+    await until(() => !!modal() && !save().disabled);
+    // 打开编辑后内核按可提交字段改写草稿（换了条目对象），同一次命令的过期拒绝仍隐去。
+    expect(commits.length).toBeGreaterThan(before);
+    expect(commits.slice(before).filter((page) => page.includes(OTHER_TAB))).toEqual([]);
+    expect(document.body.textContent).not.toContain(OTHER_TAB);
+    expect(writes).toEqual([]);
   });
 });
 
