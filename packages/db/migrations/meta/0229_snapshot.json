@@ -1,5 +1,5 @@
 {
-  "id": "11aad510-d52d-4caa-b764-1756e97ecc94",
+  "id": "9d4320d6-aa50-4f18-a912-d872151dd63c",
   "prevId": "2625e27b-391d-42f1-b3ef-e6e2539c24f0",
   "version": "7",
   "dialect": "postgresql",
@@ -72149,16 +72149,10 @@
       },
       "isRLSEnabled": false
     },
-    "public.onboarding_material_items": {
-      "name": "onboarding_material_items",
+    "public.onboarding_integration_schemes": {
+      "name": "onboarding_integration_schemes",
       "schema": "",
       "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
         "id": {
           "name": "id",
           "type": "uuid",
@@ -72166,479 +72160,17 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "case_id": {
-          "name": "case_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rule_id": {
-          "name": "rule_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rule_revision": {
-          "name": "rule_revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "definition_id": {
-          "name": "definition_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "definition_revision": {
-          "name": "definition_revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "definition_name": {
-          "name": "definition_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "required": {
-          "name": "required",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "allow_supplement": {
-          "name": "allow_supplement",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "submitted_at": {
-          "name": "submitted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "received_at": {
-          "name": "received_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "onboarding_material_item_definition": {
-          "name": "onboarding_material_item_definition",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "rule_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "definition_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "onboarding_material_items_tenant_id_tenants_id_fk": {
-          "name": "onboarding_material_items_tenant_id_tenants_id_fk",
-          "tableFrom": "onboarding_material_items",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "onboarding_material_items_created_by_fk": {
-          "name": "onboarding_material_items_created_by_fk",
-          "tableFrom": "onboarding_material_items",
-          "tableTo": "tenant_memberships",
-          "columnsFrom": [
-            "tenant_id",
-            "created_by"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "user_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "onboarding_material_items_updated_by_fk": {
-          "name": "onboarding_material_items_updated_by_fk",
-          "tableFrom": "onboarding_material_items",
-          "tableTo": "tenant_memberships",
-          "columnsFrom": [
-            "tenant_id",
-            "updated_by"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "user_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "onboarding_material_item_case_fk": {
-          "name": "onboarding_material_item_case_fk",
-          "tableFrom": "onboarding_material_items",
-          "tableTo": "onboarding_entry_cases",
-          "columnsFrom": [
-            "tenant_id",
-            "case_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "onboarding_material_item_definition_fk": {
-          "name": "onboarding_material_item_definition_fk",
-          "tableFrom": "onboarding_material_items",
-          "tableTo": "onboarding_material_rule_items",
-          "columnsFrom": [
-            "tenant_id",
-            "rule_id",
-            "definition_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "rule_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "onboarding_material_items_tenant_id": {
-          "name": "onboarding_material_items_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        },
-        "onboarding_material_item_case_definition": {
-          "name": "onboarding_material_item_case_definition",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "case_id",
-            "definition_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "onboarding_material_item_versions": {
-          "name": "onboarding_material_item_versions",
-          "value": "\"onboarding_material_items\".\"revision\" > 0 AND \"onboarding_material_items\".\"rule_revision\" > 0 AND \"onboarding_material_items\".\"definition_revision\" > 0 AND \"onboarding_material_items\".\"position\" >= 0"
-        },
-        "onboarding_material_item_status": {
-          "name": "onboarding_material_item_status",
-          "value": "(\"onboarding_material_items\".\"status\" = 'pending' AND \"onboarding_material_items\".\"submitted_at\" IS NULL AND \"onboarding_material_items\".\"received_at\" IS NULL)\n        OR (\"onboarding_material_items\".\"status\" = 'submitted' AND \"onboarding_material_items\".\"submitted_at\" IS NOT NULL AND \"onboarding_material_items\".\"received_at\" IS NULL)\n        OR (\"onboarding_material_items\".\"status\" = 'received' AND \"onboarding_material_items\".\"submitted_at\" IS NOT NULL\n          AND \"onboarding_material_items\".\"received_at\" IS NOT NULL AND \"onboarding_material_items\".\"received_at\" >= \"onboarding_material_items\".\"submitted_at\")"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.onboarding_material_rule_items": {
-      "name": "onboarding_material_rule_items",
-      "schema": "",
-      "columns": {
         "tenant_id": {
           "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "rule_id": {
-          "name": "rule_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
         "name": {
           "name": "name",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
-        },
-        "required": {
-          "name": "required",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "allow_supplement": {
-          "name": "allow_supplement",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "archived": {
-          "name": "archived",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        }
-      },
-      "indexes": {
-        "onboarding_material_rule_item_list": {
-          "name": "onboarding_material_rule_item_list",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "rule_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "archived",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "position",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "onboarding_material_rule_items_tenant_id_tenants_id_fk": {
-          "name": "onboarding_material_rule_items_tenant_id_tenants_id_fk",
-          "tableFrom": "onboarding_material_rule_items",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "onboarding_material_rule_item_rule_fk": {
-          "name": "onboarding_material_rule_item_rule_fk",
-          "tableFrom": "onboarding_material_rule_items",
-          "tableTo": "onboarding_material_rules",
-          "columnsFrom": [
-            "tenant_id",
-            "rule_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "onboarding_material_rule_items_tenant_rule_id": {
-          "name": "onboarding_material_rule_items_tenant_rule_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "rule_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "onboarding_material_rule_item_revision": {
-          "name": "onboarding_material_rule_item_revision",
-          "value": "\"onboarding_material_rule_items\".\"revision\" > 0"
-        },
-        "onboarding_material_rule_item_position": {
-          "name": "onboarding_material_rule_item_position",
-          "value": "\"onboarding_material_rule_items\".\"position\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.onboarding_material_rules": {
-      "name": "onboarding_material_rules",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "archived": {
-          "name": "archived",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "priority": {
           "name": "priority",
@@ -72646,65 +72178,75 @@
           "primaryKey": false,
           "notNull": true
         },
-        "remind_after_hire": {
-          "name": "remind_after_hire",
-          "type": "boolean",
+        "description": {
+          "name": "description",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": false
+          "notNull": false
         },
-        "remind_days": {
-          "name": "remind_days",
+        "failure_recipient_id": {
+          "name": "failure_recipient_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conditions": {
+          "name": "conditions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_key": {
+          "name": "scope_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reminder_days": {
+          "name": "reminder_days",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
         }
       },
-      "indexes": {
-        "onboarding_material_rules_match": {
-          "name": "onboarding_material_rules_match",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "archived",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "enabled",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "priority",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
-        "onboarding_material_rules_tenant_id_tenants_id_fk": {
-          "name": "onboarding_material_rules_tenant_id_tenants_id_fk",
-          "tableFrom": "onboarding_material_rules",
+        "onboarding_integration_schemes_tenant_id_tenants_id_fk": {
+          "name": "onboarding_integration_schemes_tenant_id_tenants_id_fk",
+          "tableFrom": "onboarding_integration_schemes",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -72715,9 +72257,24 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "onboarding_material_rules_created_by_fk": {
-          "name": "onboarding_material_rules_created_by_fk",
-          "tableFrom": "onboarding_material_rules",
+        "onboarding_scheme_recipient_fk": {
+          "name": "onboarding_scheme_recipient_fk",
+          "tableFrom": "onboarding_integration_schemes",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "failure_recipient_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_scheme_creator_fk": {
+          "name": "onboarding_scheme_creator_fk",
+          "tableFrom": "onboarding_integration_schemes",
           "tableTo": "tenant_memberships",
           "columnsFrom": [
             "tenant_id",
@@ -72730,9 +72287,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "onboarding_material_rules_updated_by_fk": {
-          "name": "onboarding_material_rules_updated_by_fk",
-          "tableFrom": "onboarding_material_rules",
+        "onboarding_scheme_updater_fk": {
+          "name": "onboarding_scheme_updater_fk",
+          "tableFrom": "onboarding_integration_schemes",
           "tableTo": "tenant_memberships",
           "columnsFrom": [
             "tenant_id",
@@ -72748,38 +72305,35 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "onboarding_material_rules_tenant_id": {
-          "name": "onboarding_material_rules_tenant_id",
+        "onboarding_scheme_tenant_id": {
+          "name": "onboarding_scheme_tenant_id",
           "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "id"
           ]
+        },
+        "onboarding_scheme_priority_scope": {
+          "name": "onboarding_scheme_priority_scope",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "priority",
+            "scope_key"
+          ]
         }
       },
       "policies": {},
       "checkConstraints": {
-        "onboarding_material_rule_revision": {
-          "name": "onboarding_material_rule_revision",
-          "value": "\"onboarding_material_rules\".\"revision\" > 0"
-        },
-        "onboarding_material_rule_archive": {
-          "name": "onboarding_material_rule_archive",
-          "value": "NOT \"onboarding_material_rules\".\"archived\" OR NOT \"onboarding_material_rules\".\"enabled\""
-        },
-        "onboarding_material_rule_priority": {
-          "name": "onboarding_material_rule_priority",
-          "value": "\"onboarding_material_rules\".\"priority\" >= 0"
-        },
-        "onboarding_material_rule_remind_days": {
-          "name": "onboarding_material_rule_remind_days",
-          "value": "(\"onboarding_material_rules\".\"remind_days\" IS NULL OR \"onboarding_material_rules\".\"remind_days\" > 0)\n        AND (NOT \"onboarding_material_rules\".\"remind_after_hire\" OR \"onboarding_material_rules\".\"remind_days\" IS NOT NULL)"
+        "onboarding_scheme_values": {
+          "name": "onboarding_scheme_values",
+          "value": "\"onboarding_integration_schemes\".\"priority\" >= 0 AND \"onboarding_integration_schemes\".\"revision\" > 0\n      AND \"onboarding_integration_schemes\".\"reminder_days\" > 0 AND char_length(\"onboarding_integration_schemes\".\"description\") <= 500\n      AND jsonb_typeof(\"onboarding_integration_schemes\".\"name\") = 'object' AND jsonb_typeof(\"onboarding_integration_schemes\".\"conditions\") = 'object'"
         }
       },
       "isRLSEnabled": false
     },
-    "public.onboarding_material_scope_orgs": {
-      "name": "onboarding_material_scope_orgs",
+    "public.onboarding_integration_scope_orgs": {
+      "name": "onboarding_integration_scope_orgs",
       "schema": "",
       "columns": {
         "tenant_id": {
@@ -72788,8 +72342,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "rule_id": {
-          "name": "rule_id",
+        "scheme_id": {
+          "name": "scheme_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -72802,8 +72356,8 @@
         }
       },
       "indexes": {
-        "onboarding_material_scope_org": {
-          "name": "onboarding_material_scope_org",
+        "onboarding_scope_org_match": {
+          "name": "onboarding_scope_org_match",
           "columns": [
             {
               "expression": "tenant_id",
@@ -72818,7 +72372,7 @@
               "nulls": "last"
             },
             {
-              "expression": "rule_id",
+              "expression": "scheme_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -72831,37 +72385,24 @@
         }
       },
       "foreignKeys": {
-        "onboarding_material_scope_orgs_tenant_id_tenants_id_fk": {
-          "name": "onboarding_material_scope_orgs_tenant_id_tenants_id_fk",
-          "tableFrom": "onboarding_material_scope_orgs",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "onboarding_material_scope_rule_fk": {
-          "name": "onboarding_material_scope_rule_fk",
-          "tableFrom": "onboarding_material_scope_orgs",
-          "tableTo": "onboarding_material_rules",
+        "onboarding_scope_org_scheme_fk": {
+          "name": "onboarding_scope_org_scheme_fk",
+          "tableFrom": "onboarding_integration_scope_orgs",
+          "tableTo": "onboarding_integration_schemes",
           "columnsFrom": [
             "tenant_id",
-            "rule_id"
+            "scheme_id"
           ],
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "onboarding_material_scope_org_fk": {
-          "name": "onboarding_material_scope_org_fk",
-          "tableFrom": "onboarding_material_scope_orgs",
+        "onboarding_scope_org_fk": {
+          "name": "onboarding_scope_org_fk",
+          "tableFrom": "onboarding_integration_scope_orgs",
           "tableTo": "org_objects",
           "columnsFrom": [
             "tenant_id",
@@ -72876,11 +72417,11 @@
         }
       },
       "compositePrimaryKeys": {
-        "onboarding_material_scope_orgs_tenant_id_rule_id_org_id_pk": {
-          "name": "onboarding_material_scope_orgs_tenant_id_rule_id_org_id_pk",
+        "onboarding_scope_org_pk": {
+          "name": "onboarding_scope_org_pk",
           "columns": [
             "tenant_id",
-            "rule_id",
+            "scheme_id",
             "org_id"
           ]
         }
@@ -72888,6 +72429,502 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.onboarding_integration_settings": {
+      "name": "onboarding_integration_settings",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "auto_start": {
+          "name": "auto_start",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "onboarding_integration_settings_tenant_id_tenants_id_fk": {
+          "name": "onboarding_integration_settings_tenant_id_tenants_id_fk",
+          "tableFrom": "onboarding_integration_settings",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_integration_settings_updater_fk": {
+          "name": "onboarding_integration_settings_updater_fk",
+          "tableFrom": "onboarding_integration_settings",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "updated_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "onboarding_integration_settings_revision": {
+          "name": "onboarding_integration_settings_revision",
+          "value": "\"onboarding_integration_settings\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.onboarding_integration_stage_tasks": {
+      "name": "onboarding_integration_stage_tasks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stage_id": {
+          "name": "stage_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pool_task_id": {
+          "name": "pool_task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_unit": {
+          "name": "start_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_ordinal": {
+          "name": "start_ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "due_unit": {
+          "name": "due_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "due_ordinal": {
+          "name": "due_ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignee_type": {
+          "name": "assignee_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignee_role": {
+          "name": "assignee_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignee_user_id": {
+          "name": "assignee_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignee_position_id": {
+          "name": "assignee_position_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignee_post_id": {
+          "name": "assignee_post_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignee_profile_id": {
+          "name": "assignee_profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "employee_visible": {
+          "name": "employee_visible",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reminder_days": {
+          "name": "reminder_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "onboarding_stage_task_order": {
+          "name": "onboarding_stage_task_order",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "stage_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sequence",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "onboarding_stage_task_pool": {
+          "name": "onboarding_stage_task_pool",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pool_task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "onboarding_stage_task_stage_fk": {
+          "name": "onboarding_stage_task_stage_fk",
+          "tableFrom": "onboarding_integration_stage_tasks",
+          "tableTo": "onboarding_integration_stages",
+          "columnsFrom": [
+            "tenant_id",
+            "stage_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "onboarding_stage_task_pool_fk": {
+          "name": "onboarding_stage_task_pool_fk",
+          "tableFrom": "onboarding_integration_stage_tasks",
+          "tableTo": "onboarding_integration_task_pool",
+          "columnsFrom": [
+            "tenant_id",
+            "pool_task_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "onboarding_stage_task_member_fk": {
+          "name": "onboarding_stage_task_member_fk",
+          "tableFrom": "onboarding_integration_stage_tasks",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "assignee_user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_stage_task_position_fk": {
+          "name": "onboarding_stage_task_position_fk",
+          "tableFrom": "onboarding_integration_stage_tasks",
+          "tableTo": "job_position_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "assignee_position_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_stage_task_post_fk": {
+          "name": "onboarding_stage_task_post_fk",
+          "tableFrom": "onboarding_integration_stage_tasks",
+          "tableTo": "job_post_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "assignee_post_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_stage_task_profile_fk": {
+          "name": "onboarding_stage_task_profile_fk",
+          "tableFrom": "onboarding_integration_stage_tasks",
+          "tableTo": "permission_profiles",
+          "columnsFrom": [
+            "tenant_id",
+            "assignee_profile_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "onboarding_stage_task_tenant_id": {
+          "name": "onboarding_stage_task_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "onboarding_stage_task_dates": {
+          "name": "onboarding_stage_task_dates",
+          "value": "\"onboarding_integration_stage_tasks\".\"start_unit\" IN ('day','week','month') AND \"onboarding_integration_stage_tasks\".\"due_unit\" IN ('day','week','month')\n    AND \"onboarding_integration_stage_tasks\".\"start_ordinal\" > 0 AND \"onboarding_integration_stage_tasks\".\"due_ordinal\" > 0"
+        },
+        "onboarding_stage_task_reminder": {
+          "name": "onboarding_stage_task_reminder",
+          "value": "\"onboarding_integration_stage_tasks\".\"reminder_days\" >= 0"
+        },
+        "onboarding_stage_task_assignee": {
+          "name": "onboarding_stage_task_assignee",
+          "value": "\n      (\"onboarding_integration_stage_tasks\".\"assignee_type\" = 'member') = (\"onboarding_integration_stage_tasks\".\"assignee_user_id\" IS NOT NULL)\n      AND (\"onboarding_integration_stage_tasks\".\"assignee_type\" = 'role') = (\"onboarding_integration_stage_tasks\".\"assignee_role\" IS NOT NULL)\n      AND \"onboarding_integration_stage_tasks\".\"assignee_role\" IN ('department_head','direct_manager','mentor','hrbp')\n      AND (\"onboarding_integration_stage_tasks\".\"assignee_type\" = 'position') = (\"onboarding_integration_stage_tasks\".\"assignee_position_id\" IS NOT NULL)\n      AND (\"onboarding_integration_stage_tasks\".\"assignee_type\" = 'post') = (\"onboarding_integration_stage_tasks\".\"assignee_post_id\" IS NOT NULL)\n      AND (\"onboarding_integration_stage_tasks\".\"assignee_type\" = 'identity') = (\"onboarding_integration_stage_tasks\".\"assignee_profile_id\" IS NOT NULL)\n      AND (\"onboarding_integration_stage_tasks\".\"assignee_type\" <> 'employee' OR \"onboarding_integration_stage_tasks\".\"employee_visible\")\n      AND \"onboarding_integration_stage_tasks\".\"assignee_type\" IN ('member','role','position','post','identity','employee')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.onboarding_integration_stages": {
+      "name": "onboarding_integration_stages",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scheme_id": {
+          "name": "scheme_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_unit": {
+          "name": "start_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_ordinal": {
+          "name": "start_ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "due_unit": {
+          "name": "due_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "due_ordinal": {
+          "name": "due_ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "onboarding_stage_order": {
+          "name": "onboarding_stage_order",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scheme_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sequence",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "onboarding_stage_scheme_fk": {
+          "name": "onboarding_stage_scheme_fk",
+          "tableFrom": "onboarding_integration_stages",
+          "tableTo": "onboarding_integration_schemes",
+          "columnsFrom": [
+            "tenant_id",
+            "scheme_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "onboarding_stage_tenant_id": {
+          "name": "onboarding_stage_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "onboarding_stage_dates": {
+          "name": "onboarding_stage_dates",
+          "value": "\"onboarding_integration_stages\".\"start_unit\" IN ('day','week','month') AND \"onboarding_integration_stages\".\"due_unit\" IN ('day','week','month')\n    AND \"onboarding_integration_stages\".\"start_ordinal\" > 0 AND \"onboarding_integration_stages\".\"due_ordinal\" > 0"
+        }
+      },
       "isRLSEnabled": false
     }
   },

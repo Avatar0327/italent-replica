@@ -12,7 +12,8 @@ import {
 } from '../../transfer/establishment-confirm.js';
 import { presetLabels, text as t } from '../../transfer/messages.js';
 import type { TransferBusiness } from '../../transfer/types.js';
-import type { ApplicationCommandRunner } from '../shared/application-command.js';
+import { ApplicationCommandHandled, type ApplicationCommandRunner } from '../shared/application-command.js';
+import { commandId as newCommandId } from '../../foundation/client.js';
 
 type Draft = TransferBusiness & {
   employeeId?: string;
@@ -43,7 +44,7 @@ export function SavedApplication({
     try {
       // F-026：提交时部门已超编则先确认，确认后带 confirmed 以新命令重提；取消不发请求，草稿保持可再提交
       await sendWithEstablishmentConfirm(async (confirmed) => {
-        const commandId = crypto.randomUUID();
+        const commandId = newCommandId();
         return run(
           {
             commandId,
@@ -57,8 +58,10 @@ export function SavedApplication({
         );
       }, confirmEstablishment);
     } catch (cause) {
-      // 页面级入口保留未确认标记或显示确定的拒绝；不自动重试。取消超编确认没有发请求，草稿版本未变，不必强制重读。
-      if (needsEstablishmentConfirm(cause)) setMustRead(false);
+      // 页面级入口保留未确认标记或显示确定的拒绝；不自动重试。取消超编确认、登记阶段被拒（F-110 第 2 轮 P2-4）
+      // 都没有发请求，草稿版本未变，不必强制重读；发出后的结果仍要先重读。
+      const notSent = cause instanceof ApplicationCommandHandled && cause.notSent;
+      if (needsEstablishmentConfirm(cause) || notSent) setMustRead(false);
     }
   };
   return (

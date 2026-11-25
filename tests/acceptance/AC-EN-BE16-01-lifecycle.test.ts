@@ -7,6 +7,8 @@ import {
   employmentEmployees,
   employmentOutbox,
   eq,
+  onboardingCollectionJobs,
+  onboardingCollectionTasks,
   onboardingEntryCases,
   pgErrorCode,
   sql,
@@ -36,6 +38,7 @@ const cases = onboardingEntryCases;
 const NOT_CURRENT = { code: 'CONFLICT', details: { reason: 'ENTRY_CASE_NOT_CURRENT' } };
 const ONBOARDING = '/api/tenant/onboarding';
 const TASK_POOL = `${ONBOARDING}/integration/task-pool`;
+const SCHEMES = `${ONBOARDING}/integration/schemes`;
 
 async function fixture(label: string, db = testDb().db) {
   const { tenant, user } = await seedTenantWithMember(db, label);
@@ -72,8 +75,17 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
     const f = await fixture('ZZ_BE16_LIFECYCLE');
     const { entry, run, context, replacements } = f;
     const { port, app } = install(f.db);
-    // 采集配置（16a-1）与材料规则 / 清单（16a-4a）路由不在本断言范围；其余入职路由只允许融入任务池（16b-0）
-    const COLLECTION = /^\/api\/tenant\/onboarding\/(?:collection-(?:templates|rules)(?:\/:id)?|collection-settings)$/;
+    // 采集 / 准备配置（16a-1、16a-3a）、材料规则 / 清单（16a-4a）与采集任务（16a-2a）路由不在本断言范围；其余入职路由只允许融入任务池（16b-0）
+    const CONFIG_GROUPS = 'collection-(?:templates|rules)|preparation-(?:items|rules)';
+    const CONFIG = new RegExp(`^${ONBOARDING}/(?:(?:${CONFIG_GROUPS})(?:/:id)?|collection-settings)$`);
+    const collectionTask = `${ONBOARDING}/entries/:businessId/collection`;
+    const taskRoutes = new Set([
+      `GET ${collectionTask}`,
+      `POST ${collectionTask}/start`,
+      `POST ${collectionTask}/remind`,
+      `POST ${collectionTask}/comments`,
+      `POST ${ONBOARDING}/collection/start-batch`,
+    ]);
     const materialRoutes = new Set([
       'GET /api/tenant/onboarding/material-rules',
       'GET /api/tenant/onboarding/material-rules/:id',
@@ -87,15 +99,23 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
     expect(new Set(keys.filter((key) => materialRoutes.has(key)))).toEqual(materialRoutes);
     expect(
       onboardingRoutes
-        .filter(({ method, path }) => !COLLECTION.test(path) && !materialRoutes.has(`${method} ${path}`))
+        .filter(
+          ({ method, path }) =>
+            !CONFIG.test(path) && !taskRoutes.has(`${method} ${path}`) && !materialRoutes.has(`${method} ${path}`),
+        )
         .map(({ method, path }) => `${method} ${path}`)
         .sort(),
     ).toEqual([
+      `DELETE ${SCHEMES}/:id`,
       `DELETE ${TASK_POOL}/:id`,
+      `GET ${SCHEMES}`,
+      `GET ${SCHEMES}/:id`,
       `GET ${TASK_POOL}`,
       `GET ${TASK_POOL}/:id`,
       `GET ${TASK_POOL}/categories`,
+      `PATCH ${SCHEMES}/:id`,
       `PATCH ${TASK_POOL}/:id`,
+      `POST ${SCHEMES}`,
       `POST ${TASK_POOL}`,
     ]);
     const created = await run((tx) => port.create(tx, context(), entry));
@@ -385,6 +405,30 @@ describe('AC-EN-BE16-01 阶段表约束', () => {
           tx.select().from(employmentBusinessObjects).where(eq(employmentBusinessObjects.id, entry.businessId)),
         ),
       ).toEqual([expect.objectContaining({ id: entry.businessId, revision: 1 })]);
+    } finally {
+      await handle.close();
+    }
+  });
+  it('AC-EN-BE16-02 升级保留已存在的阶段，未给旧阶段补建采集作业', async () => {
+    const handle = await createTestDb({ migrateBefore: '_be16_collection_tasks' });
+    try {
+      const { run, entry, context } = await fixture('ZZ_BE16_COLLECTION_UPGRADE', handle.db);
+      const [old] = await run((tx) =>
+        tx
+          .insert(cases)
+          .values({
+            tenantId: context().tenantId,
+            employeeId: entry.employeeId,
+            rootBusinessId: entry.businessId,
+            currentBusinessId: entry.businessId,
+            pendingDate: entry.pendingDate,
+          })
+          .returning(),
+      );
+      await handle.migrate();
+      expect(await run((tx) => tx.select().from(cases))).toEqual([old]);
+      expect(await run((tx) => tx.select().from(onboardingCollectionTasks))).toEqual([]);
+      expect(await run((tx) => tx.select().from(onboardingCollectionJobs))).toEqual([]);
     } finally {
       await handle.close();
     }

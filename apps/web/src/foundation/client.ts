@@ -114,9 +114,21 @@ export function rejectionMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : ui.uncertain;
 }
 
+/**
+ * 命令 ID（UUID v4）。crypto.randomUUID 只在安全上下文提供（Web Cryptography 规范），http 页面与老浏览器没有；
+ * getRandomValues 不受此限，按 RFC 9562 §5.4 置版本与变体位生成同格式的 ID（F-110 第 2 轮 P2-1）。
+ */
+export function commandId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 export function newCommand<T>(body: T, revision?: number): Command<T> {
   // 固定本次命令的内容，调用方显式回查后才可重放同一命令；修改表单须新建命令。
-  return { id: crypto.randomUUID(), body: structuredClone(body), revision };
+  return { id: commandId(), body: structuredClone(body), revision };
 }
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

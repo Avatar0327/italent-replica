@@ -3,10 +3,13 @@
 import { resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { afterEach, expect, it, vi } from 'vitest';
+import { installWebLocks } from './support/web-locks.js';
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement, act } = requireWeb('react');
 const { createRoot } = requireWeb('react-dom/client');
 const path = resolve('apps/web/src/transfer/TransferPage.tsx');
+// 员工自助调动写入无 Web Locks 时按 DEC-955 拒绝（F-110 第 2 轮）；https 浏览器都有，happy-dom 没有，装测试用的一份。
+installWebLocks();
 let root: ReturnType<typeof createRoot>;
 afterEach(async () => {
   if (root) await act(() => root.unmount());

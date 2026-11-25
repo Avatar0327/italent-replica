@@ -6,9 +6,15 @@ import type { GroupExecutors } from '../execution-groups.js';
 import { applicantSubjectCheck, resolveApplicantScope, type ApplicantScopeOf } from './applicant-scope.js';
 import { orgChangeExecutor, orgDeactivateExecutor } from './org-change.js';
 import { orgCreateExecutor } from './org-create.js';
+import { transferExecutor } from './transfer.js';
 
 export function orgExecutors(scopeOf: ApplicantScopeOf = resolveApplicantScope): GroupExecutors {
   return { 1: orgCreateExecutor(scopeOf), 2: orgChangeExecutor(scopeOf), 3: orgDeactivateExecutor(scopeOf) };
+}
+
+/** 内部验收使用同一生产执行器，定时器继续使用 orgExecutors，开闸随 11c-b。 */
+export function transferExecutors(scopeOf: ApplicantScopeOf = resolveApplicantScope): GroupExecutors {
+  return { ...orgExecutors(scopeOf), transfer: transferExecutor(scopeOf) };
 }
 
 export { applicantSubjectCheck, resolveApplicantScope, type ApplicantScopeOf };

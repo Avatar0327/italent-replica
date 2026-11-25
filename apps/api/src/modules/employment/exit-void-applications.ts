@@ -416,6 +416,7 @@ export async function voidLandedTransfers(
   for (const id of detached.map((item) => item.recordId).sort()) {
     const business = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: heads.get(id)! }, id);
     business.employee = exit.employee;
+    // DEC-991：这些调动已先被摘下、不在时间轴上，墓碑的 timeline_start_date 留空；是否曾实际生效看摘除台账（窗口起点 ≤ 摘除当天）。
     await insertEmploymentRow(tx, 'employment_record_tombstones', {
       id: randomUUID(),
       tenantId: ctx.tenantId,

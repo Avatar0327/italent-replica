@@ -16,7 +16,10 @@ import {
   type EntryLifecyclePort,
 } from '../employment/onboarding-entry-port.js';
 
+import { enqueueCollectionCreation, retireCollectionCreation } from './collection-jobs.js';
+import { closeCollectionTasks } from './collection-tasks.js';
 import { generateMaterialList } from './material-list.js';
+import { rebaseEntryPreparations } from './preparation-launch-state.js';
 
 const cases = onboardingEntryCases;
 const businesses = employmentBusinessObjects;
@@ -116,6 +119,7 @@ const lifecycle: EntryLifecyclePort = {
       .returning();
     if (created) {
       await auditCase(tx, ctx, 'create', null, created);
+      await enqueueCollectionCreation(tx, ctx, created);
       await generateMaterialList(tx, ctx, created);
       return created;
     }
@@ -138,6 +142,11 @@ const lifecycle: EntryLifecyclePort = {
       .where(and(eq(cases.tenantId, ctx.tenantId), eq(cases.id, current.id)))
       .returning();
     if (!updated) return unavailable();
+    await rebaseEntryPreparations(tx, ctx, updated);
+    if (updated.state !== 'pending') {
+      await retireCollectionCreation(tx, ctx, updated);
+      await closeCollectionTasks(tx, ctx, updated);
+    }
     await auditCase(tx, ctx, change.kind, current, updated);
     return updated;
   },
@@ -163,7 +172,7 @@ const lifecycle: EntryLifecyclePort = {
   },
 };
 
-/** 本片装配事务端口。现有待入职写入口在 16a-1 调用，采集任务从 16a-2a 起消费。 */
+/** 本片装配事务端口。创建事件随待入职业务事务提交。 */
 export function registerOnboardingContract(): void {
   registerEntryLifecyclePort(lifecycle);
 }

@@ -120,6 +120,7 @@ function registerTransferCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       {
         // 命令事务内按当前授权重过对象 / 来源 / 字段写权限，来源与目标部门例外按当前范围重算（统一 guard）
         guard: sameOrderCreateGuard(deps, prepared.context, {
+          receiptNames: true, // 调动专用入口：只发起 / 覆盖暂存调动单（DEC-1000）
           employeeId: id,
           input: prepared.input,
           targetDepartmentId: prepared.targetDepartmentId,
@@ -185,6 +186,7 @@ function registerDraftRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       {
         // 命令事务内按当前授权重过删除授权链（调动同单写统一 guard：来源 / 范围 / 目标例外都在命令内重算）
         guard: sameOrderWriteGuard(deps, ctx, {
+          receiptNames: true, // 调动专用入口，恒为调动单（DEC-1000）
           businessId,
           employeeId: id,
           authorize: (_tx, scoped) => requireEmploymentWrite(scoped, 'delete', {}, 'Employment.Delete'),
