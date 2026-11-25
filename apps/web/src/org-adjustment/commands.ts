@@ -74,7 +74,8 @@ export function useAdjustmentCommand(row: Detail | undefined, updated: (id: stri
   const id = row?.id;
   const command = useCommandForm(slotKey(collection, id), store);
   useRefusalMarks(marks);
-  // 详情读回更新的版本后，过期竞争条目不再回填编辑草稿（F-566 第 3 轮 P2-4）。
+  // 详情读回更新的版本后，过期竞争条目不再回填编辑草稿（F-566 第 3 轮 P2-4）。command 每次渲染都是新对象，
+  // 过期标记在 settle 里落定、条目对象不变时也会再核一次（核对只读存储，不满足条件不动）。
   useEffect(() => marks.supersede(command, row?.revision), [command, row?.revision]);
   const baseline = formValues(row);
   const reload = id
