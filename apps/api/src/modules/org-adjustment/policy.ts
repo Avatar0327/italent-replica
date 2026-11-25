@@ -78,7 +78,7 @@ const ITEM_EDIT = [...EDIT, 'orgAdjustment.itemLimits'];
 const itemWrite = (fields: FieldsFrom) =>
   write(fields, 'orgAdjustment.item', 'orgAdjustment.itemReplay', { ledger: 'single', preconditions: ITEM_EDIT });
 /** 明细写入口：主对象 update（按钮另由 `buttons` 声明）AND 按钮；字段 / 范围 / 写都挂在主对象节点上。 */
-const itemRoute = (buttons: RoutePolicy, fields: FieldsFrom) =>
+const itemRoute = (buttons: RoutePolicy, fields: FieldsFrom, guards: readonly string[] = []) =>
   all(
     [
       object({
@@ -86,6 +86,7 @@ const itemRoute = (buttons: RoutePolicy, fields: FieldsFrom) =>
         operation: 'update',
         button: noButton('按钮由入口 / 行操作决定，在 buttonOnly 分支'),
         scope: itemScope,
+        ...(guards.length ? { guards } : {}),
         fields: itemsShape,
       }),
       buttons,
@@ -252,6 +253,8 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: itemRoute(
     buttonOnly(DETAIL, button('EditOrgApprovalDetail', 'list_row'), FORBIDDEN),
     { guard: 'orgAdjustment.item' },
+    // 调动行重判经保存链：来源员工范围同人工调动（transfer.source）
+    ['transfer.source'],
   ),
   // 路由 9：整单刷新基线；按钮同改头
   [`POST ${BASE}/:id/rebase`]: object({
@@ -259,6 +262,7 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     operation: 'update',
     button: button('EditAdjustOrgDetailBtn', 'detail'),
     scope: itemScope,
+    guards: ['transfer.source'],
     fields: itemsShape,
     // 无请求体；调动行按当前权限重判（保存链的任职 / 联动写权），字段写权由守卫 orgAdjustment.item 判
     write: itemWrite({ guard: 'orgAdjustment.item' }),

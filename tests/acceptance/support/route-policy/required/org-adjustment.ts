@@ -264,11 +264,12 @@ const transferOp = (method: string, path: string): Obligation => ({
  * 删行的任职对象创建权：removeRow 先取 employment(tx, env)（requirePermission object.create 任职对象），
  * 再按旧联动判合同 / 职责转交的写权；归在来源员工守卫之下（同一个任职上下文）。
  */
+const RECORD_CREATE_FACT = 'objectOp:TenantBase.EmploymentRecord:create';
 const transferDeleteRecord = (path: string): Obligation => ({
   perm: 'obj:TenantBase.EmploymentRecord:create',
   purpose: 'guard:transfer.source',
   inner: { role: 'required' },
-  facts: ['object:object.* 动作'],
+  facts: ['object:object.* 动作', RECORD_CREATE_FACT],
   at: [
     transferCall('DELETE', path, 'return transferCommand('),
     TRANSFER_CHECK,
@@ -331,12 +332,32 @@ const transferSourceGuard = (fn: string, ...entries: Evidence[]): Obligation => 
   ],
 });
 /**
- * 不登记 transfer.direct：组织调整调动行由审批后的受信执行端口落地（§8.3），保存链不消费“直接调动”开关；
- * 真实授权是 authorizeChange 的对象 / 字段写权、保存链的任职字段写权与联动写权。
+ * 保存链上的任职对象创建权：saveRow 先取 employment(tx, env)（object.create 任职对象），
+ * 归在来源员工守卫之下（同一个任职上下文）；增 / 改 / 提交 / 刷新重判都经 saveRow。
  */
-const transferGuards = (method: string, path: string, anchor = 'return transferCommand('): Obligation[] => [
-  transferSourceGuard(rowFn(method), transferCall(method, path, anchor), ...TRANSFER_GUARD(rowFn(method))),
-];
+const saveRecordCreate = (...entries: Evidence[]): Obligation => ({
+  perm: 'obj:TenantBase.EmploymentRecord:create',
+  purpose: 'guard:transfer.source',
+  inner: { role: 'required' },
+  facts: ['object:object.* 动作', RECORD_CREATE_FACT],
+  at: [
+    ...entries,
+    rowAt('saveRow', 'const ctx = await employment(tx, env)'),
+    rowAt('employment', "action: 'object.create', resource: EMPLOYMENT_OBJECT, fields: []"),
+  ],
+});
+/**
+ * 不登记 transfer.direct：保存链走 previewTransferChecked（不计算 allowedActions），组织调整的调动行由审批后的受信
+ * 执行端口落地（§8.3），不消费“直接调动”开关；真实授权是 authorizeChange 的对象 / 字段写权、保存链的任职字段写权
+ * 与联动写权（第 2 轮 P2-4，探测器也不再观测到该守卫）。
+ */
+const transferGuards = (method: string, path: string, anchor = 'return transferCommand('): Obligation[] => {
+  const entries = [transferCall(method, path, anchor), ...TRANSFER_GUARD(rowFn(method))];
+  return [
+    transferSourceGuard(rowFn(method), ...entries),
+    ...(method === 'DELETE' ? [] : [saveRecordCreate(...entries)]),
+  ];
+};
 const withFacts = (obligation: Obligation, extra: readonly string[], at: readonly Evidence[]): Obligation => ({
   ...obligation,
   facts: [...(obligation.facts ?? []), ...extra],
@@ -348,8 +369,29 @@ const TRANSFER_SUBMIT: Evidence[] = [
   rowAt('transferGate', 'await saveRow(tx, env, view, row.employeeId, row, null)'),
   rowAt('saveRow', 'const access = await authorizeChange(tx, env, view,'),
 ];
+// 刷新基线（路由 8 section = transfer / 路由 9）：调动行先按申请人当前权限走保存链重判（新建口径），再取新基线
+const REBASE_ITEM = `${BASE}/:id/items/:section/:itemId/rebase`;
+const REBASE_ALL = `${BASE}/:id/rebase`;
+const REBASE_OP_FACTS = ['object:object.* 动作', 'object:requireObjectWrite（对象写操作权）'];
+const REBASE_ITEM_CHAIN: Evidence[] = [
+  call('POST', REBASE_ITEM, "if (c.req.param('section') === 'transfer') return rebaseTransferRoute(c, deps)"),
+  { role: 'impl', unit: `${TRANSFER_ROUTES}#rebaseTransferRoute`, anchor: 'return transferCommand(' },
+  TRANSFER_CHECK,
+  { role: 'impl', unit: `${TRANSFER_ROUTES}#rebaseTransferRoute`, anchor: 'await gate.rejudge(tx, view, [row])' },
+  rowAt('transferGate', 'await saveRow(tx, env, view, row.employeeId, row, null)'),
+  rowAt('saveRow', 'const access = await authorizeChange(tx, env, view,'),
+];
+const REBASE_ALL_CHAIN: Evidence[] = [
+  call('POST', REBASE_ALL, 'await authorizeTransferRows(tx, deps, ctx, view)'),
+  rowAt('authorizeTransferRows', 'await transferGate(deps, ctx).rejudge(tx, view, rows)'),
+  rowAt('transferGate', 'await saveRow(tx, env, view, row.employeeId, row, null)'),
+  rowAt('saveRow', 'const access = await authorizeChange(tx, env, view,'),
+];
 const SUBMIT_CHECK = call('POST', `${BASE}/:id/submit`, 'await authorizeTransferRows(tx, deps, ctx, stored)');
-const submitGuards = [transferSourceGuard('saveRow', SUBMIT_CHECK, ...TRANSFER_SUBMIT)];
+const submitGuards = [
+  transferSourceGuard('saveRow', SUBMIT_CHECK, ...TRANSFER_SUBMIT),
+  saveRecordCreate(SUBMIT_CHECK, ...TRANSFER_SUBMIT),
+];
 /** 提交的调动行重判：组织调整对象写权（authorizeChange → requireObjectWrite）与来源员工入口按钮。 */
 const SUBMIT_WRITE: Evidence[] = [SUBMIT_CHECK, ...TRANSFER_SUBMIT, ...OBJECT_WRITE];
 const SUBMIT_BUTTON: Evidence[] = [SUBMIT_CHECK, ...TRANSFER_SUBMIT, ...TRANSFER_SOURCE_BUTTON('saveRow')];
@@ -611,25 +653,33 @@ export const ORG_ADJUSTMENT: RequiredTable = {
     transferDeleteRecord(`${TRANSFERS}/:itemId`),
   ],
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: [
-    ITEM_OP('POST', `${BASE}/:id/items/:section/:itemId/rebase`),
-    ROW('EditOrgApprovalDetail')(
-      'POST',
-      `${BASE}/:id/items/:section/:itemId/rebase`,
-      'await button(deps, ctx, ...ROW_EDIT)',
+    withFacts(ITEM_OP('POST', REBASE_ITEM), REBASE_OP_FACTS, [...REBASE_ITEM_CHAIN, ...OBJECT_WRITE]),
+    withFacts(
+      ROW('EditOrgApprovalDetail')('POST', REBASE_ITEM, 'await button(deps, ctx, ...ROW_EDIT)'),
+      ['button:requireTransferButton'],
+      [...REBASE_ITEM_CHAIN, ...TRANSFER_SOURCE_BUTTON('saveRow')],
     ),
-    itemScope('POST', `${BASE}/:id/items/:section/:itemId/rebase`),
+    itemScope('POST', REBASE_ITEM),
+    transferSourceGuard('saveRow', ...REBASE_ITEM_CHAIN),
+    saveRecordCreate(...REBASE_ITEM_CHAIN),
   ],
   [`POST ${BASE}/:id/rebase`]: [
-    ITEM_OP('POST', `${BASE}/:id/rebase`),
-    itemBtn(
-      'POST',
-      `${BASE}/:id/rebase`,
-      OBJ,
-      'EditAdjustOrgDetailBtn',
-      'detail',
-      'await button(deps, ctx, OBJECT, code, level)',
+    withFacts(ITEM_OP('POST', REBASE_ALL), REBASE_OP_FACTS, [...REBASE_ALL_CHAIN, ...OBJECT_WRITE]),
+    withFacts(
+      itemBtn(
+        'POST',
+        REBASE_ALL,
+        OBJ,
+        'EditAdjustOrgDetailBtn',
+        'detail',
+        'await button(deps, ctx, OBJECT, code, level)',
+      ),
+      ['button:requireTransferButton'],
+      [...REBASE_ALL_CHAIN, ...TRANSFER_SOURCE_BUTTON('saveRow')],
     ),
-    itemScope('POST', `${BASE}/:id/rebase`),
+    itemScope('POST', REBASE_ALL),
+    transferSourceGuard('saveRow', ...REBASE_ALL_CHAIN),
+    saveRecordCreate(...REBASE_ALL_CHAIN),
   ],
   [`GET ${BASE}`]: LIST,
   [`GET ${BASE}/:id`]: reader(`${BASE}/:id`, READER_ANCHOR),

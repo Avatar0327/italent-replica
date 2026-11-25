@@ -34,7 +34,7 @@ import {
 } from '../transfer/linkage/access.js';
 import type { LinkageOptions } from '../transfer/linkage/input.js';
 import { normalizeLinkage } from '../transfer/linkage/input.js';
-import { previewTransfer } from '../transfer/preview.js';
+import { previewTransferChecked } from '../transfer/preview.js';
 import { normalizeTransferInput, requireTransferWrite } from '../transfer/service.js';
 import { authorizeItem, HEAD_BUTTONS } from './access.js';
 import type { AdjustmentView } from './service.js';
@@ -255,7 +255,7 @@ async function saveRow(
   await requireTransferSource(tx, ctx, employeeId, INITIATOR);
   await requireTransferWrite(ctx, input);
   // 目标部门是同单新增组织时没有正式 ID：预览只判已选的部门（未选部门的场景表单允许预览）
-  const preview = await previewTransfer(tx, ctx, employeeId, input);
+  const preview = await previewTransferChecked(tx, ctx, employeeId, input);
   await requireTransferWrite(preview.context, input);
   await authorizeLinkageWrite(tx, ctx, access, {
     employeeId,
