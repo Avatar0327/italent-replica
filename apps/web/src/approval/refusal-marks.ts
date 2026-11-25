@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useReducer } from 'react';
 import { ApiError } from '../foundation/client.js';
 import type { Outcome, Submission } from '../foundation/forms/store.js';
 
@@ -26,11 +26,7 @@ export function createRefusalMarks() {
   /** 等锁超时等 refused 时接管本槽的别页命令条目 → 本次未发出的原因；条目换掉（如查询结果落定）即失效。 */
   const notices = new WeakMap<Submission, string>();
   const listeners = new Set<() => void>();
-  let version = 0;
-  const changed = () => {
-    version += 1;
-    listeners.forEach((listener) => listener());
-  };
+  const changed = () => listeners.forEach((listener) => listener());
   const subscribe = (listener: () => void) => {
     listeners.add(listener);
     return () => void listeners.delete(listener);
@@ -52,7 +48,6 @@ export function createRefusalMarks() {
 
   return {
     subscribe,
-    version: () => version,
     /** 给 CommandStatus 的状态：隐去的 rejected 显示为空闲，草稿、基线、最新记录引用不变（表单回填照常）。 */
     view(state: Submission | undefined): Submission | undefined {
       return state && hidden(state) ? { ...state, status: 'idle', error: undefined } : state;
@@ -89,7 +84,12 @@ export function createRefusalMarks() {
 }
 export type RefusalMarks = ReturnType<typeof createRefusalMarks>;
 
-/** 标记变化时让同一存储上的各挂载实例重新渲染（refused 落定后内核不再发布新条目）。 */
+/**
+ * 标记变化时让同一存储上的各挂载实例重新渲染（refused 落定后内核不再发布新条目）。
+ * 只订阅本模块的标记，不订阅命令存储（命令存储只经内核 useCommandForm，AC-FE-F142）。
+ * 标记只在 settle 的异步过程里变化，挂载后才订阅不会漏掉它与本次渲染之间的变化。
+ */
 export function useRefusalMarks(marks: RefusalMarks) {
-  useSyncExternalStore(marks.subscribe, marks.version);
+  const [, rerender] = useReducer((count: number) => count + 1, 0);
+  useEffect(() => marks.subscribe(rerender), [marks]);
 }
