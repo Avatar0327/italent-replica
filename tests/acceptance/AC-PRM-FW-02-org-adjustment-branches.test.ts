@@ -9,10 +9,12 @@ import { type ManifestRoute, routeManifest, type RoutePolicy } from '@italent/ap
 import { createTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
-import type { ObservedRoute } from './support/route-policy/contract.js';
+import { compareRoute } from './support/route-policy/compare.js';
+import type { ObservedContract, ObservedRoute } from './support/route-policy/contract.js';
 import { declaredPerms } from './support/route-policy/perms.js';
 import { checkRoute } from './support/route-policy/required.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
+import type { Obligation } from './support/route-policy/required/types.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const KEY = 'POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase';
@@ -23,6 +25,7 @@ const TRANSFER_BUTTON = 'EditAdjustOrgDetailBtn@detail';
 let handle: Awaited<ReturnType<typeof createTestDb>>;
 let real: ManifestRoute;
 let observed: ObservedRoute | undefined;
+let contract: ObservedContract;
 
 beforeAll(async () => {
   handle = await createTestDb();
@@ -32,6 +35,7 @@ beforeAll(async () => {
   real = found;
   const frozen = readFrozenContract();
   if (!frozen) throw new Error('冻结基准不存在：先跑 AC-PRM-FW-02.test.ts 生成');
+  contract = frozen;
   observed = frozen.routes[KEY];
 }, 300_000);
 afterAll(async () => handle?.close());
@@ -87,5 +91,35 @@ describe('AC-PRM-FW-02 BE-11c-b 第 5 轮 P2-3：rebase 单行按 section 分支
     const { guards: _dropped, ...stripped } = transfer as Node & { guards?: unknown };
     const findings = check(withBranch({ ...anyNode(), of: [org!, stripped as RoutePolicy] } as RoutePolicy));
     expect(findings.join('\n')).toMatch(/guard:transfer\.source|guard:employment\.linkage|section:transfer/);
+  });
+
+  it('第 6 轮 P2-2：删掉调动备选的联动守卫与义务，把原探测事实 / 证据挂到同分支调动按钮上 → 不得零发现（WEAKER:guard）', () => {
+    const [org, transfer] = anyNode().of!;
+    const LINKAGE = 'employment.linkage';
+    const mutated = withBranch({
+      ...anyNode(),
+      of: [
+        org!,
+        { ...transfer, guards: (transfer as Node & { guards: string[] }).guards.filter((g) => g !== LINKAGE) },
+      ],
+    } as RoutePolicy);
+    const table = REQUIRED[KEY]!;
+    const dropped = table.find((o) => o.perm === `guard:${LINKAGE}` && o.or === 'section:transfer')!;
+    const button = table.find((o) => o.perm.endsWith(TRANSFER_BUTTON) && o.or === 'section:transfer')!;
+    expect(dropped && button, '真实表里两条义务都在').toBeTruthy();
+    const moved: Obligation = {
+      ...button,
+      facts: [...(button.facts ?? []), ...dropped.facts!],
+      at: [...button.at, ...dropped.at],
+    };
+    const forged = table.filter((o) => o !== dropped).map((o) => (o === button ? moved : o));
+
+    const required = checkRoute(KEY, forged, { ...real, policy: mutated }, observed).map((f) => f.code);
+    const compared = compareRoute(contract, { ...real, policy: mutated }, { ...REQUIRED, [KEY]: forged });
+
+    expect(
+      [...required, ...compared.map((f) => f.code)],
+      compared.map((f) => `${f.code}: ${f.detail}`).join('\n'),
+    ).toContain('WEAKER:guard');
   });
 });
