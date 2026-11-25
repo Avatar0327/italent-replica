@@ -10,6 +10,7 @@ import {
   transferTargetContext,
   type TransferInput,
 } from './service.js';
+import { occupiesDraftSlot } from './draft-slot.js';
 
 /**
  * 调动单“同单写”入口的统一 CommandGuard（#403 第 3 轮 P2，DEC-431① 同类统一）。
@@ -201,6 +202,11 @@ export function sameOrderCreateGuard(
       return transferTargetContext(tx, fresh, spec.employeeId, spec.input, spec.targetDepartmentId);
     },
     async (tx, scoped) => spec.afterTarget?.(tx, scoped),
-    { employeeId: spec.employeeId, extra: spec.extraParticipants },
+    {
+      employeeId: spec.employeeId,
+      extra: spec.extraParticipants,
+      // 与 createTransfer 释放旧暂存的条件同一判定（F-181a occupiesDraftSlot）
+      releasesDraft: occupiesDraftSlot({ initiator: spec.input.initiator, mode: spec.input.employment.mode }),
+    },
   );
 }

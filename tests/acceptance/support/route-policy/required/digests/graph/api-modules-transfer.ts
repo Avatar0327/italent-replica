@@ -848,6 +848,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/service.ts#lockSameOrderTarget',
   ],
   'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderCreateGuard': [
+    'apps/api/src/modules/transfer/draft-slot.ts#occupiesDraftSlot',
     '#refreshGuard',
     'apps/api/src/modules/transfer/service.ts#transferTargetContext',
   ],

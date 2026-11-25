@@ -283,12 +283,13 @@ export async function requireDirectTransfer(tx: Tx, ctx: EmploymentContext) {
 /**
  * 任职写入口“取锁阶段”的锁定目标（F-560）。入口只给出它手里有的那一个标识，owner 员工 / 业务头由本步骤解析：
  * - businessId：任意单据（调动或非调动）——按 employment_business_objects 找发起员工；联动保存另带 extra（请求新带入的下属）；
- * - employeeId：发起 / 覆盖暂存、通用新建——还没有本单业务头；
+ * - employeeId：发起 / 覆盖暂存、通用新建——还没有本单业务头；`releasesDraft` 只由会换掉调用人旧暂存的入口声明
+ *   （他人调动申请的暂存 / 提交，与 occupiesDraftSlot 同一判定），其余新建不去碰暂存槽位表；
  * - linkageItemId：联动子项重试——按子项行找所属单据、发起员工与被转交下属。
  */
 export type SameOrderLockTarget =
   | { readonly businessId: string; readonly extra?: readonly string[] }
-  | { readonly employeeId: string; readonly extra?: readonly string[] }
+  | { readonly employeeId: string; readonly extra?: readonly string[]; readonly releasesDraft?: boolean }
   | { readonly linkageItemId: string };
 
 async function resolveLockTarget(tx: Tx, ctx: EmploymentContext, target: SameOrderLockTarget) {
@@ -353,8 +354,10 @@ export async function lockSameOrderTarget(tx: Tx, ctx: EmploymentContext, target
     if (await transferLocksCover(tx, ctx, employeeId, present)) break;
   }
   await lockTransferHeads(tx, ctx, businessId);
-  // 发起 / 覆盖暂存没有本单业务头，但会替换调用人的旧草稿：旧草稿头在封口前一并锁住（F-560 第 2 轮 P2-1）。
-  if (!businessId) await lockTransferDraftHead(tx, ctx, employeeId);
+  // 覆盖暂存没有本单业务头，但会替换调用人的旧草稿：旧草稿头在封口前一并锁住（F-560 第 2 轮 P2-1）。
+  // 只给会释放旧暂存的入口锁（releasesDraft）：通用新建不换草稿，锁了既多余，也会在升级前的结构上读到不存在的槽位表。
+  if (!businessId && 'releasesDraft' in target && target.releasesDraft)
+    await lockTransferDraftHead(tx, ctx, employeeId);
   if (!(await transferLocksCover(tx, ctx, employeeId, present))) throw planChanged();
   await sealTransferLocks(tx, ctx);
 }
