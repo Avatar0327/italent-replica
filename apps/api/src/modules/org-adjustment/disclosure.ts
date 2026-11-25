@@ -72,7 +72,14 @@ export function canSee(fields: ReadonlySet<string> | undefined, code: string): b
  * 先取审批参与上下文再按所选内容来源授权（F-476 §5.4）：本人已办且有办理份 → 读冻结份，走审批人路径（办理时的披露上限 ∩
  * 办理节点表单 ∩ 当前权限）；否则保持原顺序（HR → 审批人）读现值。缺份 503，不退回现值。
  */
-export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantContext, id: string) {
+export async function orgAdjustmentDisclosure(
+  tx: Tx,
+  deps: Deps,
+  ctx: TenantContext,
+  id: string,
+  /** 审批中心回调（审批人编辑 / 同意兜底）：有可打开的审批实例时直接走审批人路径，不让 HR 查看权抢先（DEC-1010）。 */
+  options: { readonly approverFirst?: boolean } = {},
+) {
   const view = await loadAdjustment(tx, ctx.tenantId, id);
   if (!view) throw notFound();
   const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
@@ -98,7 +105,7 @@ export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantCon
     } satisfies Disclosure;
   }
   const contentView = contentViewFor(instance, data);
-  const hr = await hrDisclosure(tx, bound, ctx, view);
+  const hr = options.approverFirst && instance && data ? null : await hrDisclosure(tx, bound, ctx, view);
   if (hr) return { ...hr, instanceId: instance?.id ?? null, source: null, contentView, foreign } satisfies Disclosure;
   if (instance && data) {
     const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, OBJECT, tx);

@@ -143,6 +143,8 @@ export interface EnvelopeView {
 /**
  * 审批人回调（审批中编辑 / 同意兜底 / 重提）的信封披露（第 4 轮 P2-3、第 5 轮 P2-1 / P2-2）：与读接口同一份披露
  * （`orgAdjustmentDisclosure`：HR 对象查看权走范围裁剪，否则走审批人路径——节点表单 ∩ 字段查看权，不按范围裁剪）。
+ * 审批人出口（`approverFirst`，第 8 轮 DEC-1010）有可打开的审批实例时直接走审批人路径：审批人另有 HR 查看权也按审批中心的
+ * 节点字段 ∩ 对象字段权披露，不被 HR 字段集抢先；发起人出口不传，沿用 F-427 口径。
  * - 行折叠：引用可见性与读接口同口径（`visibleItems` 不随分区是否披露变化，detail.ts），再按分区各自折叠：
  *   分区没披露整区折叠，披露了按行可见性折叠；读不到本单（404）一律全折叠，fail-closed；
  * - 字段裁剪：错误里的组织 ID / 编码用同一份 `disclosure.fields` 裁剪，不再回落对象级查看权。
@@ -152,6 +154,7 @@ export async function envelopeViewForViewer(
   deps: Pick<TenantRouteDeps, 'authorize' | 'clock'>,
   ctx: TenantContext,
   adjustmentId: string,
+  approverFirst = false,
 ): Promise<EnvelopeView> {
   const [items, transfers] = [
     await loadItems(tx, ctx.tenantId, adjustmentId),
@@ -162,6 +165,7 @@ export async function envelopeViewForViewer(
     deps as Parameters<typeof orgAdjustmentDisclosure>[1],
     ctx,
     adjustmentId,
+    { approverFirst },
   ).catch((error: unknown) => {
     if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
     throw error;

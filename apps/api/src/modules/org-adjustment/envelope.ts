@@ -126,7 +126,8 @@ export async function trimmedForViewer(
     if (adjustmentId && ctx.exitEditAuthorize) {
       const deps = { authorize: ctx.exitEditAuthorize, clock: () => ctx.now };
       const { envelopeViewForViewer } = await import('./hidden-rows.js');
-      const view = await envelopeViewForViewer(tx, deps, ctx, adjustmentId);
+      // 审批人出口按审批中心的节点字段 ∩ 对象字段权披露，不让 HR 查看权抢先；发起人出口保持 F-427 口径（DEC-1010）
+      const view = await envelopeViewForViewer(tx, deps, ctx, adjustmentId, !initiator);
       throw trimError(foldHiddenError(error, view.hidden), view.fields, initiator);
     }
     const viewable = ctx.fields
