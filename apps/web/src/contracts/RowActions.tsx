@@ -7,6 +7,7 @@ import { useApiClient, useSession } from '../foundation/Session.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { forAction } from '../foundation/forms/action.js';
 import { slotKey } from '../foundation/forms/slot.js';
+import type { Outcome } from '../foundation/forms/store.js';
 import { useApprovalCommand } from '../approval/commands.js';
 import { ApprovalDetail } from '../approval/ApprovalDetail.js';
 import { readApproval } from '../approval/api.js';
@@ -54,6 +55,23 @@ function useRowApproval(api: Api, businessId?: string) {
   return { current: state, failed, retry: () => setGeneration((n) => n + 1) };
 }
 /**
+ * F-568：按内核 outcome 提示本次催办（同 F-562 / F-566 口径，store.ts Outcome）。
+ * 未发出：竞争提示 race 原因；等锁超时、不支持锁、存储不可用提示 refused 原文；登记冲突而占槽命令已落定时两者都没有，
+ * error 是过期的“其他标签页”文案，不提示，可再催办。已发出：被拒显示服务端原文，回执无法核对或结果未知才提示结果未知。
+ * 槽内状态（锁定、查询入口）仍由 CommandStatus 显示。
+ */
+function notifyUrge(result: Outcome, sent: boolean) {
+  if (result.status === 'done') return void message.success(m.urged);
+  if (result.race) return void message.warning(result.race.reason);
+  if (!sent) {
+    if (result.status === 'rejected' && result.refused) void message.error(result.refused);
+    return;
+  }
+  const text = result.error instanceof ApiError ? result.error.message : m.invalidReceipt;
+  if (result.status === 'rejected') void message.error(text);
+  else if (result.status === 'unknown') void message.warning(text);
+}
+/**
  * 催办走表单内核，与审批详情的转交、撤销共用流程实例的恢复槽（审批模块级存储，F-147），动作记在槽上下文：
  * 切换视图 / 子页重挂载后仍锁定，不生成新的幂等键（DEC-464/475）；任一动作结果未知时其他动作一并锁定。
  * 流程实例未读到时没有催办按钮，槽暂挂在集合路径上，不会提交。
@@ -63,25 +81,26 @@ function useUrge(api: Api, instanceId?: string) {
   const send = async (target: Approval) => {
     // 点击时重读到的流程实例换了（极少见），本行的槽不对应它，按不可用处理。
     if (target.instance.id !== instanceId) return void message.warning(m.approvalUnavailable.urge);
+    let sent = false;
     const result = await urge.submit({
       values: {},
       baseline: {},
       editableFields: [],
       revision: target.detail.revision,
       businessId: target.instance.id,
-      send: async (command) =>
-        parseUrgeReceipt(
+      send: async (command) => {
+        sent = true;
+        return parseUrgeReceipt(
           await api.request<unknown>(`${approval}/${encodeURIComponent(target.instance.id)}/urge`, {
             method: 'POST',
             command,
           }),
           { instanceId: target.instance.id, revision: command.revision ?? target.detail.revision },
-        ),
+        );
+      },
     });
     if (result.status === 'done' || result.status === 'rejected') urge.clear();
-    if (result.status === 'done') void message.success(m.urged);
-    if (result.status === 'rejected')
-      void message.error(result.error instanceof ApiError ? result.error.message : m.invalidReceipt);
+    notifyUrge(result, sent);
   };
   const reload = () =>
     urge.reread(async (id) => {
