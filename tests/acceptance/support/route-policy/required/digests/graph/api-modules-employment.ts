@@ -8367,6 +8367,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/regularization.ts#updateRegularizationApplication',
     'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard',
+    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
     '#authorizeBusinessWrite',
     '#inTenant',
     '#patchContext',
