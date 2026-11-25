@@ -1275,7 +1275,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/org-adjustment/disclosure.ts': {
     OBJECT: 'b007f3f6067a',
     hrDisclosure: 'e95fadfbd629',
-    orgAdjustmentDisclosure: '675d01292ce4',
+    orgAdjustmentDisclosure: '886fe5b77608',
   },
   'apps/api/src/modules/org-adjustment/queries.ts': {
     listAdjustments: '4d3bcb00cad6',
@@ -1300,9 +1300,15 @@ export const DIGESTS: Digests = {
     'route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': '722c6990ca62',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': '97e258ae13f1',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/rebase': '79d4de41814f',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': '5bd31851d51e',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': '11369303e4c9',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/void': 'cdd608c01542',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw': '02aa646a57ac',
+  },
+  'apps/api/src/modules/org-adjustment/transfer-routes.ts': {
+    'route:DELETE /api/tenant/org-adjustment/adjustments/:id/transfer-items/:itemId': 'df5d824a77c2',
+    'route:PATCH /api/tenant/org-adjustment/adjustments/:id/transfer-items/:itemId': '1ffcc431747c',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/transfer-items': '7a8ee82b628b',
+    transferCommand: '09de6a504a64',
   },
   'apps/api/src/modules/org/employment-linkage.ts': {
     authorizeOrgEmploymentReplay: 'fc158c7c64c2',
@@ -3180,7 +3186,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/access.ts#requireScopes': 'b32893294b0a',
   'apps/api/src/modules/org-adjustment/disclosure.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/disclosure.ts#hrDisclosure': '54f6273797d7',
-  'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': '1d332a82da86',
+  'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': '01a76cb37806',
   'apps/api/src/modules/org-adjustment/queries.ts#listAdjustments': '3a58b73d2896',
   'apps/api/src/modules/org-adjustment/read-routes.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments': '55dfa5d7fbca',
@@ -3211,11 +3217,18 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/rebase':
     'efd7a72dd542',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/submit':
-    '18b159f7b5a6',
+    '1c9bf4764f06',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/void':
     'b17c3833a45e',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw':
     '6ff7710d5889',
+  'apps/api/src/modules/org-adjustment/transfer-routes.ts#route:DELETE /api/tenant/org-adjustment/adjustments/:id/transfer-items/:itemId':
+    'c476669badcb',
+  'apps/api/src/modules/org-adjustment/transfer-routes.ts#route:PATCH /api/tenant/org-adjustment/adjustments/:id/transfer-items/:itemId':
+    '888dd94ec542',
+  'apps/api/src/modules/org-adjustment/transfer-routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/transfer-items':
+    '51d5e41e8993',
+  'apps/api/src/modules/org-adjustment/transfer-routes.ts#transferCommand': '9acc21e5429a',
   'apps/api/src/modules/org/employment-linkage.ts#authorizeOrgEmploymentReplay': 'e8222d212587',
   'apps/api/src/modules/org/routes.ts#OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/org/routes.ts#anyPersonFieldEditable': '7c428d724e80',
