@@ -10,6 +10,7 @@ import type { Tx } from '@italent/db';
 import { ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { ApprovalContext } from '../approval/context.js';
+import { ORG_INACTIVE } from './range.js';
 
 type Viewable = ReadonlySet<string> | undefined;
 type Issue = Readonly<Record<string, unknown>>;
@@ -25,10 +26,15 @@ export const TARGET_ORG_FIELD = 'orgItems.targetOrgId';
 export const PARENT_ORG_FIELD = 'orgItems.parentOrgId';
 export const TRANSFER_DEPARTMENT_FIELD = 'transferItems.departmentId';
 const FIELD_KEY = 'field';
-/** 停用的新上级：沿用 F-427（随目标组织查看权）且新上级自己的字段也须可见，两个都看得到才带出（fail-closed）。 */
-export const PARENT_INACTIVE_FIELD = `${PARENT_ORG_FIELD},${TARGET_ORG_FIELD}`;
-const sourceFields = (issue: Issue): string[] =>
-  typeof issue[FIELD_KEY] === 'string' ? issue[FIELD_KEY].split(',') : [TARGET_ORG_FIELD];
+/**
+ * 停用的新上级（ORG_INACTIVE）命中的是新上级字段，审批节点只按 `orgItems.parentOrgId` 判（第 7 轮 P2①，与读接口同口径）。
+ * 只有发起人重提出口（F-427，`initiator`）保留既有口径：随目标组织查看权，且新上级自己的字段也须可见，两个都看得到才带出。
+ */
+const sourceFields = (issue: Issue, initiator = false): string[] => {
+  const fields = typeof issue[FIELD_KEY] === 'string' ? issue[FIELD_KEY].split(',') : [TARGET_ORG_FIELD];
+  const widened = initiator && issue.reason === ORG_INACTIVE && fields.includes(PARENT_ORG_FIELD);
+  return widened ? [...fields, TARGET_ORG_FIELD] : fields;
+};
 
 export const ORG_CODE_DUPLICATE = 'ORG_CODE_DUPLICATE';
 /** 编码重复的文案；看不到 `orgItems.code` 时不带编码（保存的 409 与整单校验问题共用）。 */
@@ -46,12 +52,12 @@ function hideUsedCode(issue: Issue, viewable: Viewable): Issue {
 }
 
 /** 逐条裁剪问题；看得见时原样返回。 */
-export function trimIssues<T extends object>(issues: readonly T[], viewable: Viewable): T[] {
+export function trimIssues<T extends object>(issues: readonly T[], viewable: Viewable, initiator = false): T[] {
   const headOrgs = sees(viewable, 'approvalSubjectOrgId', 'adjustmentRange');
   return issues.map((issue) => {
     if ('section' in issue) {
       const row = issue as Issue;
-      const shown = sees(viewable, ...sourceFields(row)) ? row : without(row, 'orgId');
+      const shown = sees(viewable, ...sourceFields(row, initiator)) ? row : without(row, 'orgId');
       return hideUsedCode(without(shown, FIELD_KEY), viewable) as T;
     }
     return (headOrgs ? issue : without(issue as Issue, 'orgIds')) as T;
@@ -86,14 +92,15 @@ export function foldHiddenError(error: unknown, hiddenItemIds: ReadonlySet<strin
 }
 
 /** 校验类错误的 details：`items` 逐条裁剪；顶层 `orgIds` / `orgId` 与头 / 明细问题同口径。其它错误原样返回。 */
-export function trimError(error: unknown, viewable: Viewable): unknown {
+export function trimError(error: unknown, viewable: Viewable, initiator = false): unknown {
   if (!(error instanceof AppError) || !error.details || typeof error.details !== 'object') return error;
   const hidden = hideUsedCode({ message: error.message, details: error.details }, viewable);
   const message = hidden.message as string;
   let details = hidden.details as Issue;
-  if (Array.isArray(details.items)) details = { ...details, items: trimIssues(details.items as Issue[], viewable) };
+  if (Array.isArray(details.items))
+    details = { ...details, items: trimIssues(details.items as Issue[], viewable, initiator) };
   // 顶层组织 ID 随命中的字段（缺省目标组织）；带 field 的 `orgIds` 同样按该字段判，不带 field 的是头问题。
-  const fields = sourceFields(details);
+  const fields = sourceFields(details, initiator);
   if (!sees(viewable, ...fields)) details = without(details, 'orgId');
   const headIds = FIELD_KEY in details ? fields : ['approvalSubjectOrgId', 'adjustmentRange'];
   if (!sees(viewable, ...headIds)) details = without(details, 'orgIds');
@@ -104,12 +111,14 @@ export function trimError(error: unknown, viewable: Viewable): unknown {
  * 审批引擎回调（审批人编辑 / 同意兜底、发起人重提）里的错误信封按当前操作人的披露裁剪（F-339 ②、F-427）：
  * 有审批人授权能力且带单据 ID 时，行折叠与字段裁剪都用读接口同一份节点披露（hidden-rows.ts `envelopeViewForViewer`）；
  * 否则按对象级字段查看权，未注入字段访问按看不到处理（context.ts 同口径，fail-closed）。
+ * `initiator` = 发起人重提出口（F-427）：停用的新上级沿用“随目标组织查看权”的既有口径；审批人出口不传，按新上级字段判。
  */
 export async function trimmedForViewer(
   tx: Tx,
   ctx: ApprovalContext,
   work: () => Promise<void>,
   adjustmentId?: string,
+  initiator = false,
 ): Promise<void> {
   try {
     await work();
@@ -118,11 +127,11 @@ export async function trimmedForViewer(
       const deps = { authorize: ctx.exitEditAuthorize, clock: () => ctx.now };
       const { envelopeViewForViewer } = await import('./hidden-rows.js');
       const view = await envelopeViewForViewer(tx, deps, ctx, adjustmentId);
-      throw trimError(foldHiddenError(error, view.hidden), view.fields);
+      throw trimError(foldHiddenError(error, view.hidden), view.fields, initiator);
     }
     const viewable = ctx.fields
       ? await ctx.fields.viewable(tx, ctx.userId, ORG_ADJUSTMENT_OBJECT_CODE)
       : new Set<string>();
-    throw trimError(error, viewable);
+    throw trimError(error, viewable, initiator);
   }
 }

@@ -207,7 +207,8 @@ function registerSubmitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           return await submitAdjustment(tx, commandCtx, id, approvalFields(deps, ctx));
         } catch (error) {
           const folded = foldHiddenError(error, await hiddenEnvelopeIds(tx, deps, ctx, id));
-          throw trimError(folded, await getModuleViewableFieldsInTransaction(deps, ctx, OBJECT, tx));
+          // 发起人提交出口：停用的新上级与审批中心重提同口径（F-427）；其余出口按命中的字段判
+          throw trimError(folded, await getModuleViewableFieldsInTransaction(deps, ctx, OBJECT, tx), true);
         }
       },
     });
