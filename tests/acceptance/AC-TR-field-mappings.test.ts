@@ -145,6 +145,11 @@ describe('预置“标签 → 标签”映射（DEC-361 种子补装登记表）
     withTenant(testDb().db, tenant, (tx) =>
       tx.select().from(talentReviewFieldMappings).where(eq(talentReviewFieldMappings.preset, true)),
     );
+  // 无 ORDER BY 时返回顺序无保证，整表前后 toEqual 会在多行时偶发红；按主键 id 排序即为全序（F-575，同 F-572）
+  const allMappings = (tenant: string) =>
+    withTenant(testDb().db, tenant, (tx) =>
+      tx.select().from(talentReviewFieldMappings).orderBy(talentReviewFieldMappings.id),
+    );
 
   it('开通 / 回补装入同一套：缺失才装、已有不动；预置映射不可改不可删', async () => {
     const db = testDb().db;
@@ -185,10 +190,10 @@ describe('预置“标签 → 标签”映射（DEC-361 种子补装登记表）
     await withTenant(db, w.as.tenant, (tx) =>
       tx.update(talentReviewFieldMappings).set({ preset: false }).where(eq(talentReviewFieldMappings.preset, true)),
     );
-    const before = await withTenant(db, w.as.tenant, (tx) => tx.select().from(talentReviewFieldMappings));
+    const before = await allMappings(w.as.tenant);
     const again = await run();
     expect(again.find((item) => item.key === 'preset-field-mappings')).toMatchObject({ installed: [], existing: 1 });
-    expect(await withTenant(db, w.as.tenant, (tx) => tx.select().from(talentReviewFieldMappings))).toEqual(before);
+    expect(await allMappings(w.as.tenant)).toEqual(before);
   });
 
   it('补装前租户已停用“标签”字段：不新建映射，登记表以 skipped 返回受控原因；字段恢复后再补装才装入', async () => {
