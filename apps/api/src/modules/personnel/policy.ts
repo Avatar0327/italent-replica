@@ -208,7 +208,10 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     scope: employeePoint('id'),
     // 附件登记回执经 write() 按 EmployeeInformation 查看权过滤键（现状）
     fields: shape('personnel.attachmentReceipt'),
-    write: personnelWrite(none('附件元数据不是人员字段，requireObjectWrite 收到空字段集合'), 'employeeId'),
+    // F-565④：registerAttachment 在插子行之前先 lockPerson（员工行 FOR NO KEY UPDATE）
+    write: personnelWrite(none('附件元数据不是人员字段，requireObjectWrite 收到空字段集合'), 'employeeId', [
+      'lockPerson',
+    ]),
     ...byUuid,
   }),
   [`GET ${EMPLOYEES}/:id/tenure`]: object({

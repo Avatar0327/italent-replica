@@ -15883,6 +15883,7 @@
       "module": "employment",
       "primitives": {
         "command": [
+          "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
         ],
@@ -15906,7 +15907,8 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）"
+          "readContext（非配置对象）",
+          "scope.all"
         ],
         "scopePoint": [
           "employment point"
@@ -16272,7 +16274,8 @@
         "scope": [
           "checkScope",
           "employment scope",
-          "employment visibility"
+          "employment visibility",
+          "scope.all"
         ],
         "scopePoint": [
           "employment point"
@@ -22470,7 +22473,8 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）"
+          "readContext（非配置对象）",
+          "scope.all"
         ],
         "scopePoint": [
           "employment point"
@@ -22763,7 +22767,8 @@
         ],
         "scope": [
           "employment scope",
-          "employment visibility"
+          "employment visibility",
+          "scope.all"
         ],
         "scopePoint": [
           "employment point"
@@ -23100,7 +23105,8 @@
         ],
         "scope": [
           "employment scope",
-          "employment visibility"
+          "employment visibility",
+          "scope.all"
         ],
         "scopePoint": [
           "employment point"
@@ -23155,7 +23161,8 @@
         ],
         "scope": [
           "employment scope",
-          "employment visibility"
+          "employment visibility",
+          "scope.all"
         ],
         "scopePoint": [
           "employment point"
@@ -24239,7 +24246,8 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）"
+          "readContext（非配置对象）",
+          "scope.all"
         ],
         "scopePoint": [
           "employment point"

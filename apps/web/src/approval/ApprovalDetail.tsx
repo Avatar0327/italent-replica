@@ -13,7 +13,7 @@ import { actionTask, editValues } from './edit-model.js';
 import { InsuranceField } from './InsuranceField.js';
 import { INSURANCE_ORIGIN, NAME_KEYS, namedValue, sameValue } from './named-fields.js';
 import { useApprovalAction } from './action-command.js';
-import { decisionButtons, logActor, logComment, readApproval, uuidPattern, visibleActions } from './api.js';
+import { decisionButtons, logActor, logComment, readApproval, readError, uuidPattern, visibleActions } from './api.js';
 import {
   detailText as d,
   fieldLabels,
@@ -194,7 +194,7 @@ function DetailBody(props: DetailProps & { state: DetailState; action: ActionSta
       </header>
       <DecisionNote id="approval-detail" />
       {demo && <Alert type="info" message={m.demo} description={m.demoDetail} showIcon />}
-      {!!state.error && <PageState kind="error" error={state.error} retry={state.refresh} />}
+      {!!state.error && <PageState kind="error" error={readError(state.error)} retry={state.refresh} />}
       {!state.error && !detail && <PageState kind="loading" />}
       {action.pending && (
         <Alert type="warning" showIcon message={d.locked(decisionLabel(detail, action.pending, action.pendingExit))} />
