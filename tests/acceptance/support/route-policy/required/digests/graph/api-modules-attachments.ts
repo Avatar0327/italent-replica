@@ -53,7 +53,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/attachments/blob-store.ts#PgBlobStore',
   ],
   'apps/api/src/modules/attachments/blob-store.ts#PgBlobStore': ['#where'],
-  'apps/api/src/modules/attachments/carrier-read.ts#attachmentSummaries': ['#boundRows', '#idsWithBytes', '#lower'],
+  'apps/api/src/modules/attachments/carrier-read.ts#attachmentSummaries': [
+    'apps/api/src/modules/attachments/binding.ts#EXIT_BUSINESS_TYPE',
+    '#LIVE_STATUSES',
+    '#boundRows',
+    '#idsWithBytes',
+    '#lower',
+  ],
   'apps/api/src/modules/attachments/carrier-read.ts#boundRows': [
     'apps/api/src/modules/attachments/binding.ts#EXIT_BUSINESS_TYPE',
     '#LIVE_STATUSES',
