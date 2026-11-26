@@ -20,10 +20,12 @@ function syncIcon(icon: Element) {
   if (leaving) icon.setAttribute('aria-hidden', 'true');
   else icon.removeAttribute('aria-hidden');
 }
-function syncWithin(node: Element) {
+/** 只扫 node 自身及其子树，不重扫 root：新增的可能是内含已结束加载按钮的整个容器（F-582 第 1 轮审查）。 */
+function syncSubtree(node: Element) {
   if (node.classList.contains(LOADING_ICON)) syncIcon(node);
-  else if (node.classList.contains(BUTTON)) node.querySelectorAll(`.${LOADING_ICON}`).forEach(syncIcon);
+  node.querySelectorAll(`.${LOADING_ICON}`).forEach(syncIcon);
 }
+const isButtonOrIcon = (node: Element) => node.classList.contains(BUTTON) || node.classList.contains(LOADING_ICON);
 
 /** 监听 root 下按钮与图标的 class 变化；弹窗、抽屉挂在 body 上，传 document.body 即覆盖全部入口。 */
 export function hideLeavingLoadingIcons(root: Element): () => void {
@@ -31,9 +33,10 @@ export function hideLeavingLoadingIcons(root: Element): () => void {
   const observer = new MutationObserver((records) => {
     for (const record of records) {
       if (record.type === 'attributes') {
-        if (record.target instanceof Element) syncWithin(record.target);
+        // class 变化只看按钮与图标本身，其他元素换 class 不扫子树。
+        if (record.target instanceof Element && isButtonOrIcon(record.target)) syncSubtree(record.target);
       } else {
-        record.addedNodes.forEach((node) => node instanceof Element && syncWithin(node));
+        record.addedNodes.forEach((node) => node instanceof Element && syncSubtree(node));
       }
     }
   });

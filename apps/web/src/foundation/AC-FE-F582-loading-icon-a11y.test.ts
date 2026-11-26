@@ -161,3 +161,23 @@ it('AC-FE-F582 离场中重新进入加载态时图标恢复可读；自带图�
   expect(loadingIcon(exporting)).toBeNull();
   expect(nameOf(exporting)).toBe('下载 导出');
 });
+
+it('AC-FE-F582 离线容器内已结束加载的按钮随容器插入页面后，可访问名只剩按钮文字', async () => {
+  await mount(h(App));
+  // 容器先不挂到页面上：加载结束时 body 上的观察器看不到它，图标随整个容器一次插入。
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  roots.push({ host, root });
+  await act(async () => root.render(h(Button, { loading: true }, '提交')));
+  await act(async () => root.render(h(Button, { loading: false }, '提交')));
+  // 离场动画的 class 切换在离线时走完，插入后不再有属性变化可供观察器捕获。
+  await settle();
+  const button = host.querySelector('button')!;
+  expect(loadingIcon(button)).not.toBeNull();
+  expect(nameOf(button)).toBe('loading 提 交');
+
+  await act(async () => document.body.append(host));
+  await settle();
+  expect(loadingIcon(button)).not.toBeNull();
+  expect(nameOf(button)).toBe('提 交');
+});
