@@ -16,16 +16,8 @@ import { runSubsetSavePolicy, type SubsetSource } from './subset-policy.js';
 import { persistSubset } from './subsets.js';
 import { camel, rows, type PersonnelContext, type Row } from './store.js';
 
-/** 撤回后仍保留的员工字段：姓名与个人邮箱；账号 / 重聘标记不是采集内容，保持原值。 */
-const KEEP = new Set([
-  'name',
-  'displayName',
-  'email',
-  'allowToLoginIn',
-  'isRehire',
-  'rehireType',
-  'confirmRehireUserId',
-]);
+/** 撤回后仍保留的员工字段：只有姓名与个人邮箱（设计 §4.1 第 7 条）；账号 / 重聘标记同属可编辑资料，一并清空。 */
+const KEEP = new Set(['name', 'displayName', 'email']);
 const withdrawnRehire = () =>
   new AppError('CONFLICT', '重聘或返聘入职不可撤回', { reason: 'COLLECTION_WITHDRAW_REHIRE' });
 
