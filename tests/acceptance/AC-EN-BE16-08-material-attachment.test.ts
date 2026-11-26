@@ -422,7 +422,7 @@ describe('AC-EN-BE16-08 材料附件：受信绑定缺参即拒（返工 P2-1）
         previous: [],
         actor: w.hr.id,
         ...input,
-      } as Parameters<typeof bindAttachmentRefs>[2]),
+      } as unknown as Parameters<typeof bindAttachmentRefs>[2]),
     );
 
   it('省略 employeeId：拒绝，文件仍是 uploaded（不会替别的员工绑定）', async () => {
