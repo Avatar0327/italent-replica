@@ -22,6 +22,8 @@ describe('AC-TR-template-copy 权限', () => {
     });
     expect(post.status).toBe(201);
     const t = (await post.json()) as TemplateView;
+    // GET /templates 经 listConfig 固定按 name、id 排序（template-routes.ts registerTemplateRoutes → config-kit.ts），
+    // 同一状态下两次读取顺序一致，整体 toEqual 不依赖物理行序（F-575 核实，未改产品）
     const list = async () => await (await setup.request('GET', `${TR_BASE}/templates`, base.asAdmin)).json();
     const before = await list();
     const denied = await templateOperator(world, { orgId, view: false });

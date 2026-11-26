@@ -721,7 +721,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employment/routes.ts': {
     authorizeBusinessWrite: '46b194fe1218',
-    authorizeImport: '763e69540af4',
+    authorizeImport: '173c57e41af5',
     importEmployment: 'b070f68a6a66',
     importWithTransferAuthorization: '15babb451c1a',
     registerBusinessTransitions: '91cb2c63115b',
@@ -1498,7 +1498,7 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/personnel/employees/:id/history': '91fa9765d77c',
     'route:GET /api/tenant/personnel/employees/:id/tenure': '5cd53c71c374',
     'route:PATCH /api/tenant/personnel/employees/:id': 'c869de2ed539',
-    'route:POST /api/tenant/personnel/employees/:id/attachments': 'a58c9e435628',
+    'route:POST /api/tenant/personnel/employees/:id/attachments': '6e3261e66704',
   },
   'apps/api/src/modules/personnel/subset-attachment-routes.ts': {
     attachmentWrite: '4763a186401f',
@@ -2827,7 +2827,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     '8dd26fedbf17',
   'apps/api/src/modules/employment/retirement-views.ts#retirementRehireDetail': '03a3711539e7',
   'apps/api/src/modules/employment/routes.ts#authorizeBusinessWrite': 'ade517b5e6f6',
-  'apps/api/src/modules/employment/routes.ts#authorizeImport': '43cc051bf35f',
+  'apps/api/src/modules/employment/routes.ts#authorizeImport': 'cf596c6fc5a3',
   'apps/api/src/modules/employment/routes.ts#importEmployment': '70bca03f3fb8',
   'apps/api/src/modules/employment/routes.ts#importWithTransferAuthorization': '087c4f894163',
   'apps/api/src/modules/employment/routes.ts#registerBusinessTransitions': 'c60bde0ff5b2',

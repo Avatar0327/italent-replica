@@ -3332,7 +3332,8 @@ export const EMPLOYMENT: RequiredTable = {
         fn(
           EMP,
           'authorizeImport',
-          "if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')",
+          // F-567：已生效记录的编辑写权判定（草稿改走 requireDraftEditPermission，策略校验与范围复核同一事务快照）
+          "if (current.status === 'effective') await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')",
         ),
         WRITE_OBJECT,
         // F-202 / F-208：编辑行与新建行在命令事务内按当前授权再判一次（同键重放、失败回查也过这道），见 replay-guard.ts
@@ -5168,7 +5169,8 @@ function importGuards(call: Evidence): Obligation[] {
         {
           role: 'impl',
           unit: `${EMP}#authorizeImport`,
-          anchor: 'await authorizeBusinessWrite(deps, ctx, item.id, employeeId)',
+          // F-567：范围复核与员工保存值策略放进 within 回调，同一事务快照
+          anchor: 'const current = await authorizeBusinessWrite(deps, ctx, item.id, employeeId, async (tx, value) => {',
         },
         BUSINESS_WRITE_ENTRY,
         BUSINESS_WRITE,

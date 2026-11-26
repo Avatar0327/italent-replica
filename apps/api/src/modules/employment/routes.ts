@@ -1184,7 +1184,7 @@ function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
 
 /**
  * 员工自助单据上同值的职位、职务、职级、序列不算本次输入（DEC-950）：先定本次输入，字段写权校验只问扣完之后的这份。
- * 修改、其同键重放与导入编辑行都走这一个函数。
+ * 修改与其同键重放走这一个函数；导入编辑行在同一事务里先做策略校验，再单独调 requireDraftEditPermission（F-567）。
  */
 async function requireDraftEditWrite(
   inTx: <T>(run: (tx: Tx) => Promise<T>) => Promise<T>,
@@ -1208,11 +1208,6 @@ async function requireDraftEditPermission(
     commandOnly: writeIsCommandOnly(options, input, current),
   });
 }
-
-const inTenant =
-  (deps: TenantRouteDeps, ctx: EmploymentContext) =>
-  <T>(run: (tx: Tx) => Promise<T>) =>
-    withTenant(deps.db, ctx.tenantId, run);
 
 /**
  * 扣掉同值字段之后一个业务字段都不剩（请求体只带了同值字段）：按没有变化的整版重提处理，
@@ -1292,14 +1287,19 @@ async function authorizeImport(
       creates.push({ business: item.business as object, departmentId: business.fields.departmentId });
     } else {
       const patch = normalizeBusinessPatch(item.patch);
-      const current = await authorizeBusinessWrite(deps, ctx, item.id, employeeId);
+      // 写范围复核与员工保存值策略（403 会披露草稿内容）读同一份事务快照，先范围后策略：分成两个事务时，
+      // HR 可在两步之间改动目标，策略校验读到新版本，对已在范围外的草稿返回 403 而不是 404（F-567，同 F-564 P2-1）。
+      let checked: Awaited<ReturnType<typeof requireEmployeeTransferBusiness>>;
+      const current = await authorizeBusinessWrite(deps, ctx, item.id, employeeId, async (tx, value) => {
+        // 导入编辑的对象是已生效的任职记录，按生效记录契约校验对象、范围与本次字段写权（同 PATCH /records/:id）；
+        // 员工草稿的只读上限与保存值可信度只约束未生效的草稿，生效后员工的旧命令不能再卡 HR 的编辑（F-036 S4 P2-3）。
+        if (value.status !== 'effective') checked = await requireEmployeeTransferBusiness(tx, ctx, item.id, patch);
+      });
       targets.push({ id: item.id, employeeId, kind: current.kind, patch });
-      // 导入编辑的对象是已生效的任职记录，按生效记录契约校验对象、范围与本次字段写权（同 PATCH /records/:id）；
-      // 员工草稿的只读上限与保存值可信度只约束未生效的草稿，生效后员工的旧命令不能再卡 HR 的编辑（F-036 S4 P2-3）。
-      if (current.status === 'effective') {
-        if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit');
-      } else if (preview) await inTenant(deps, ctx)((tx) => requireEmployeeTransferBusiness(tx, ctx, item.id, patch));
-      else await requireDraftEditWrite(inTenant(deps, ctx), ctx, item.id, patch, {});
+      if (!preview) {
+        if (current.status === 'effective') await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit');
+        else await requireDraftEditPermission(ctx, patch, checked, {});
+      }
       const departmentId = patch.fields?.departmentId;
       if (departmentId !== undefined)
         await withTenant(deps.db, ctx.tenantId, (tx) =>
