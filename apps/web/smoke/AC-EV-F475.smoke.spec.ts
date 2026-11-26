@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { EVALUATION_OBJECTS } from '../../../packages/domain/src/evaluation/catalog.js';
+import { actionButton } from './action-button.js';
 import { test, expect } from './fixtures.js';
 import { ev, id, setupR3b } from './r3b-fixtures.js';
 
@@ -109,37 +110,44 @@ test('AC-EV-F475 评定独立列表与评审组详情只读取真实接口结构
   await expect(drawer.locator('.ant-tag')).toHaveText('组长');
 });
 
-test('AC-EV-F475 活动冲突后改回原值仍用重读版本，成功后返回详情', async ({ page }) => {
-  await setupR3b(page, '/evaluation');
-  let attempts = 0;
-  await page.route(`**/evaluation/activities/${id}`, (route) => {
-    const request = route.request();
-    if (request.method() === 'GET')
-      return route.fulfill({ json: attempts ? { ...ev, revision: 3, name: '合成并发值' } : ev });
-    attempts++;
-    if (attempts === 1) return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } });
-    expect(request.headers()['if-match']).toBe('3');
-    expect(request.postDataJSON()).toMatchObject({ name: ev.name });
-    return route.fulfill({ json: { ...ev, ...request.postDataJSON(), revision: 4 } });
+// F-580：保存经历过 loading 后，antd loading 图标的离场动画未结束时图标仍在按钮里（宽 0、透明），
+// 可访问名变成「loading 保 存」；「动画未结束」变体在 409 前禁用过渡，确定性复现这一状态。
+for (const motion of ['正常', '动画未结束'] as const) {
+  test(`AC-EV-F475 活动冲突后改回原值仍用重读版本，成功后返回详情（图标离场${motion}）`, async ({ page }) => {
+    await setupR3b(page, '/evaluation');
+    let attempts = 0;
+    await page.route(`**/evaluation/activities/${id}`, async (route) => {
+      const request = route.request();
+      if (request.method() === 'GET')
+        return route.fulfill({ json: attempts ? { ...ev, revision: 3, name: '合成并发值' } : ev });
+      attempts++;
+      if (attempts === 1) {
+        if (motion === '动画未结束') await page.addStyleTag({ content: '* { transition: none !important; }' });
+        return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } });
+      }
+      expect(request.headers()['if-match']).toBe('3');
+      expect(request.postDataJSON()).toMatchObject({ name: ev.name });
+      return route.fulfill({ json: { ...ev, ...request.postDataJSON(), revision: 4 } });
+    });
+    await page.getByRole('button', edit).click();
+    const form = page.locator('.evaluation-full-page');
+    await form.getByLabel('名称', { exact: true }).fill('合成草稿');
+    await form.getByRole('button', { name: '下一步' }).click();
+    await form.getByRole('button', { name: '下一步' }).click();
+    await actionButton(form, '保存').click();
+    await expect(form).toContainText('版本冲突');
+    await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+    await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+    await form.getByRole('button', { name: '上一步' }).click();
+    await form.getByRole('button', { name: '上一步' }).click();
+    await form.getByLabel('名称', { exact: true }).fill(ev.name);
+    await form.getByRole('button', { name: '下一步' }).click();
+    await form.getByRole('button', { name: '下一步' }).click();
+    await actionButton(form, '保存').click();
+    await expect(form).toHaveCount(0);
+    expect(attempts).toBe(2);
   });
-  await page.getByRole('button', edit).click();
-  const form = page.locator('.evaluation-full-page');
-  await form.getByLabel('名称', { exact: true }).fill('合成草稿');
-  await form.getByRole('button', { name: '下一步' }).click();
-  await form.getByRole('button', { name: '下一步' }).click();
-  await form.getByRole('button', { name: /^保\s*存$/, exact: true }).click();
-  await expect(form).toContainText('版本冲突');
-  await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
-  await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
-  await form.getByRole('button', { name: '上一步' }).click();
-  await form.getByRole('button', { name: '上一步' }).click();
-  await form.getByLabel('名称', { exact: true }).fill(ev.name);
-  await form.getByRole('button', { name: '下一步' }).click();
-  await form.getByRole('button', { name: '下一步' }).click();
-  await form.getByRole('button', { name: /^保\s*存$/, exact: true }).click();
-  await expect(form).toHaveCount(0);
-  expect(attempts).toBe(2);
-});
+}
 
 test('AC-EV-F475 评价表保存期间离开后迟到回执不改变当前页面，返回读取最新列表', async ({ page }) => {
   const form = await forms(page);
