@@ -151,6 +151,7 @@ const TASK_OBJECT_DOMAIN = [
   OFFER_BATCH_OBJECT,
   PROBATION_ASSESSMENT_OBJECT,
   ORG_ADJUSTMENT_OBJECT_CODE,
+  MODULE_OBJECTS.onboardingCollection.code,
 ];
 const TASK_OBJECT: ObjectSelector = {
   from: 'record',

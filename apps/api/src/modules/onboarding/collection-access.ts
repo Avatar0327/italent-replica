@@ -21,15 +21,12 @@ export const COLLECTION_BUTTONS = {
   remind: { code: 'BE16.CollectionRemind', level: 'detail' },
   comments: { code: 'BE16.CollectionComment', level: 'detail' },
   batch: { code: 'BE16.CollectionStartBatch', level: 'list' },
+  rehire: { code: 'BE16.CollectionConfirmRehire', level: 'detail' },
 } as const;
-export type WriteAction = CollectionAction | 'batch';
+export type WriteAction = CollectionAction | 'batch' | 'rehire';
+type AccessDeps = Pick<TenantRouteDeps, 'authorize' | 'clock'>;
 
-export async function requireCollectionWrite(
-  tx: Tx,
-  deps: TenantRouteDeps,
-  ctx: EmploymentContext,
-  action: WriteAction,
-) {
+export async function requireCollectionWrite(tx: Tx, deps: AccessDeps, ctx: EmploymentContext, action: WriteAction) {
   const authorize = authorizeInTransaction(deps.authorize, tx);
   const button = COLLECTION_BUTTONS[action];
   await requireObjectWrite(authorize, ctx, { objectCode: EMPLOYMENT_OBJECT, operation: 'update', payload: {} });
@@ -52,7 +49,7 @@ export async function requireCollectionWrite(
 
 export async function requireCollectionTarget(
   tx: Tx,
-  deps: TenantRouteDeps,
+  deps: AccessDeps,
   ctx: EmploymentContext,
   id: string,
   access: 'read' | 'write',

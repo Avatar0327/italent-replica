@@ -79,6 +79,7 @@ export function ApplicationForm({
       groups={[{ title: '', fields }]}
       initialValues={command.baseline}
       submission={{ ...command.form, locked: command.form.locked || !editable }}
+      notice={command.race}
       footerExtra={editable && <EditorPlaceholder disabled={command.form.locked} />}
       onClose={onClose}
       onSubmit={(values) =>
