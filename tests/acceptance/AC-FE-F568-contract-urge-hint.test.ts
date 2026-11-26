@@ -137,10 +137,8 @@ beforeEach(() => {
 afterEach(async () => {
   await act(() => root.unmount());
   host.remove();
-  // 行内提示挂在 antd 全局 message 容器里：只清提示、不清 body，否则后续用例的提示渲染到已脱离的容器。
-  // happy-dom 里离场动画不会结束，已清的提示停在离场态，读页面时排除（见 text）。
-  await act(async () => message.destroy());
-  vi.useRealTimers();
+  vi.useRealTimers(); // 先恢复真实定时器，下面等提示离场用真实时间片
+  await clearMessages();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   uninstallLocks();
@@ -149,7 +147,26 @@ afterEach(async () => {
   sessionStorage.clear();
 });
 
-/** 页面文字：合同行操作区（含 CommandStatus）+ 仍在显示的行内提示（离场中的旧提示不算）。 */
+/**
+ * 用例收尾清掉行内提示。提示挂在 antd 全局 message 容器里：只清提示、不清 body，否则后续用例的提示渲染到已脱离的容器。
+ * message.destroy() 只让提示转入离场；happy-dom 不跑 CSS 动画，离场结束事件不会自己来，提示的 Notice 一直挂着，
+ * 它的 3 秒自动关闭定时器也就一直不清；测试环境销毁（删掉全局 window）后它才到期，就留下
+ * “ReferenceError: window is not defined” 未处理错误（F-587）。这里补发离场结束事件让离场走完，
+ * Notice 卸载时清掉自己的定时器（rc-notification 默认 pauseOnHover，卸载即 clearTimeout）。
+ */
+async function clearMessages() {
+  await act(async () => message.destroy());
+  const notices = () => Array.from(document.querySelectorAll('.ant-message-notice-wrapper'));
+  // 离场要先走到 active 步骤（按动画帧推进）才认结束事件，所以逐个时间片补发，直到节点全部移除。
+  for (let tick = 0; tick < 50 && notices().length > 0; tick += 1)
+    await act(async () => {
+      for (const node of notices()) node.dispatchEvent(new Event('animationend'));
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    });
+  expect(notices(), '行内提示未卸载，自动关闭定时器会残留到环境销毁后').toEqual([]);
+}
+
+/** 页面文字：合同行操作区（含 CommandStatus）+ 仍在显示的行内提示（用例中途离场的旧提示不算）。 */
 const text = () =>
   [host, ...Array.from(document.querySelectorAll('.ant-message-notice-wrapper:not(.ant-message-move-up-leave)'))]
     .map((node) => node.textContent ?? '')
