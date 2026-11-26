@@ -1335,6 +1335,7 @@ export const GRAPH: Graph = {
     '#writeResponse',
   ],
   'apps/api/src/modules/onboarding/welcome-routes.ts#route:POST /handbooks/:id/preview': [
+    'apps/api/src/audit/request-context.ts#exemptFromFailureAudit',
     'apps/api/src/modules/job/context.ts#parseBody',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/onboarding/handbook.ts#previewHandbook',
@@ -1350,6 +1351,7 @@ export const GRAPH: Graph = {
     '#writeResponse',
   ],
   'apps/api/src/modules/onboarding/welcome-routes.ts#route:POST /welcome-letters/:id/preview': [
+    'apps/api/src/audit/request-context.ts#exemptFromFailureAudit',
     'apps/api/src/modules/job/context.ts#parseBody',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/onboarding/welcome-access.ts#requireWelcomeView',

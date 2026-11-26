@@ -135,6 +135,7 @@ export const GRAPH: Graph = {
     '#recordFailedImport',
   ],
   'apps/api/src/audit/request-context.ts#currentAuditRequest': ['#storage'],
+  'apps/api/src/audit/request-context.ts#exemptFromFailureAudit': ['#storage'],
   'apps/api/src/audit/routes.ts#appCondition': ['packages/domain/src/audit/labels.ts#auditAppScope'],
   'apps/api/src/audit/routes.ts#appFilter': ['packages/domain/src/audit/labels.ts#AUDIT_APPS'],
   'apps/api/src/audit/routes.ts#auditContext': [
