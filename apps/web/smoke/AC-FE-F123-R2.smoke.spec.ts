@@ -10,12 +10,14 @@ const edit = { name: /编\s*辑/, exact: true };
 const field = (form: Locator, label: string) =>
   form.locator('.ant-form-item').filter({ has: form.page().locator(`label[title="${label}"]`) });
 
-// F-475：「允许破格」复选框改为「是否允许破格提名」是 / 否单选（第一项为「是」）
+// F-475：「允许破格」复选框改为「是否允许破格提名」是 / 否单选，按选项精确名称定位。
+// 外层字段 label 包住整组单选，首项可访问名会并入字段标题，故按选项自身 label 文本精确匹配
 const exception = (form: Locator) =>
   form
     .locator('label')
     .filter({ hasText: /^是否允许破格提名/ })
     .first();
+const exceptionOption = (form: Locator, name: '是' | '否') => exception(form).getByLabel(name, { exact: true });
 
 async function expectContentLocked(form: Locator) {
   const content = field(form, '题目与计分');
@@ -133,14 +135,16 @@ for (const completed of [false, true]) {
     await form.getByRole('button', { name: '下一步', exact: true }).click();
     if (!completed) {
       await form.getByRole('textbox', { name: '环节名称', exact: true }).first().fill('我的链路草稿');
-      await exception(form).getByRole('radio').first().check();
+      await exceptionOption(form, '是').check();
     }
     await save(form).click();
     await actionButton(form, '重读最新版本').click();
     await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
     if (!completed) {
-      await expect(exception(form).getByRole('radio').nth(1)).toBeChecked();
-      for (const radio of await exception(form).getByRole('radio').all()) await expect(radio).toBeDisabled();
+      await expect(exceptionOption(form, '否')).toBeChecked();
+      await expect(exceptionOption(form, '是')).not.toBeChecked();
+      await expect(exceptionOption(form, '是')).toBeDisabled();
+      await expect(exceptionOption(form, '否')).toBeDisabled();
       await expect(form.getByRole('textbox', { name: '环节名称', exact: true }).first()).toHaveValue('我的链路草稿');
     }
     if (completed) {
