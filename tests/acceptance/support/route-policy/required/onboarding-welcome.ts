@@ -59,7 +59,7 @@ function actions(r: Resource, route: string, operation: 'create' | 'update'): Ob
     purpose: 'disclosure:availableActions',
     need: NONE,
     at: [
-      call(route, `await ${r.name.toLowerCase()}AvailableActions(authorize, tenant, '${operation}')`),
+      call(route, `await ${r.name.toLowerCase()}AvailableActions(authorize, tenant, '${operation}'`),
       inAccess('availableActions', 'resource: WELCOME_SETTINGS, fields'),
       SETTINGS_CONST,
       r.fields,
