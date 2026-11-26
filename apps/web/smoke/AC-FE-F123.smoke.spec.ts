@@ -1,8 +1,13 @@
+import type { Locator, Page } from '@playwright/test';
 import { actionButton } from './action-button.js';
 import { test, expect } from './fixtures.js';
 import { activity, ev, id, setupR3b } from './r3b-fixtures.js';
 
-const save = { name: /保\s*存/, exact: true };
+// F-475：评定向导第三步另有「保存并发布」占位按钮，须整名匹配；保存经历过 loading 后，
+// antd 图标离场未完成时可访问名带 loading 前缀（见 action-button.ts），沿用同一定位
+const save = (form: Locator) => actionButton(form, '保存');
+const evaluationDetail = (page: Page) => page.getByRole('dialog', { name: ev.name, exact: true });
+const evaluationForm = (page: Page) => page.locator('.evaluation-full-page[aria-label="编辑活动"]');
 for (const kind of ['survey360', 'evaluation'] as const) {
   test(`AC-FE-F123 ${kind} 编辑冲突保留输入、显式重读核对后重提`, async ({ page }) => {
     const original = kind === 'survey360' ? activity : ev;
@@ -20,14 +25,16 @@ for (const kind of ['survey360', 'evaluation'] as const) {
         : route.fulfill({ json: { ...original, revision: original.revision + 2 } });
     });
     await page.getByRole('button', { name: original.name, exact: true }).click();
-    await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
-    const form = page.getByRole('dialog', { name: '编辑', exact: true });
+    // F-475：评定详情是以活动名命名的弹窗、编辑是整页向导；360 详情是整页、编辑仍是「编辑」弹窗
+    const detail = kind === 'survey360' ? page.locator('.survey-detail-page') : evaluationDetail(page);
+    await detail.getByRole('button', { name: /编\s*辑/, exact: true }).click();
+    const form = kind === 'survey360' ? page.getByRole('dialog', { name: '编辑', exact: true }) : evaluationForm(page);
     await form.getByRole('textbox', { name: /名称$/, exact: true }).fill('我的未保存名称');
     if (kind === 'evaluation') {
       await form.getByRole('button', { name: '下一步', exact: true }).click();
       await form.getByRole('button', { name: '下一步', exact: true }).click();
     }
-    await form.getByRole('button', save).click();
+    await save(form).click();
     if (kind === 'survey360')
       await expect(form.getByRole('textbox', { name: /名称$/, exact: true })).toHaveValue('我的未保存名称');
     await expect(actionButton(form, '重读最新版本')).toBeVisible();
@@ -35,9 +42,9 @@ for (const kind of ['survey360', 'evaluation'] as const) {
     await expect(form).toContainText('他人名称');
     await expect(form).toContainText('我的未保存名称');
     expect(requests).toHaveLength(1);
-    await expect(form.getByRole('button', save)).toBeDisabled();
+    await expect(save(form)).toBeDisabled();
     await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
-    await form.getByRole('button', save).click();
+    await save(form).click();
     await expect(form).toHaveCount(0);
     expect(requests).toHaveLength(2);
     expect(requests[1]).toMatchObject({ revision: String(original.revision + 1), body: { name: '我的未保存名称' } });
@@ -59,14 +66,15 @@ test('AC-FE-F123 既有活动结果未知，关闭详情重开仍只读且不生
   await open();
   const form = page.getByRole('dialog', { name: '编辑', exact: true });
   await form.getByRole('textbox', { name: /名称$/, exact: true }).fill('未确认改名');
-  await form.getByRole('button', save).click();
+  await save(form).click();
   await expect(form).toContainText('结果待确认');
   await form.getByRole('button', { name: /取\s*消/, exact: true }).click();
-  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+  // F-475：360 详情改为整页，离开详情用「返回活动列表」
+  await page.locator('.survey-detail-page').getByRole('button', { name: '返回活动列表', exact: true }).click();
   await open();
   await expect(form.getByRole('textbox', { name: /名称$/, exact: true })).toHaveValue('未确认改名');
   await expect(form.getByRole('textbox', { name: /名称$/, exact: true })).toBeDisabled();
-  await expect(form.getByRole('button', save)).toBeDisabled();
+  await expect(save(form)).toBeDisabled();
   expect(writes).toBe(1);
 });
 
@@ -76,7 +84,8 @@ test('AC-FE-F123 提交中重复点击只发一次，只提交当前可编辑字
     route.fulfill({
       json: {
         objectCode: 'Survey360.Activity',
-        dataOperations: { read: true },
+        // 3910d4477 起 360 保存先核对对象级 update 写权限（FE 规则 c）；本用例只验证字段级裁剪
+        dataOperations: { read: true, update: true },
         viewableFields: ['name', 'welcome', 'status'],
         editableFields: ['name'],
         buttons: [{ buttonCode: 'update', level: 'detail' }],
@@ -105,7 +114,7 @@ test('AC-FE-F123 提交中重复点击只发一次，只提交当前可编辑字
   const form = page.getByRole('dialog', { name: '编辑', exact: true });
   const name = form.getByRole('textbox', { name: /名称$/, exact: true });
   await name.fill('第一次改名');
-  await form.getByRole('button', save).evaluate((button: HTMLButtonElement) => {
+  await save(form).evaluate((button: HTMLButtonElement) => {
     button.click();
     button.click();
   });
@@ -115,7 +124,7 @@ test('AC-FE-F123 提交中重复点击只发一次，只提交当前可编辑字
   await expect(name).toBeEnabled();
   await expect(name).toHaveValue('第一次改名');
   await name.fill('修正名称');
-  await form.getByRole('button', save).click();
+  await save(form).click();
   await expect.poll(() => requests.length).toBe(2);
   expect(requests.map((r) => r.body)).toEqual([{ name: '第一次改名' }, { name: '修正名称' }]);
   expect(requests[0]!.command).not.toBe(requests[1]!.command);

@@ -85,6 +85,13 @@ export function registerPersonnelRoutes(router: Hono<TenantEnv>, deps: TenantRou
       );
     }),
   );
+  registerAttachmentRegistration(router, deps);
+  registerEmployeeReads(router, deps);
+  registerSubsetRoutes(router, deps);
+  registerSubsetAttachmentRoutes(router, deps);
+  registerChangeRequestRoutes(router, deps);
+}
+function registerAttachmentRegistration(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post(`${base}/:id/attachments`, (c) =>
     safe(async () => {
       const schema = z
@@ -99,15 +106,20 @@ export function registerPersonnelRoutes(router: Hono<TenantEnv>, deps: TenantRou
       const input = parse(schema, await body(c));
       const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', {}, 'update', revision(c));
       const employeeId = uuidParam(c);
-      return write(c, deps, ctx, employeeId, 'update', {}, (tx, command) =>
-        registerAttachment(tx, command, employeeId, input),
+      // DEC-067：命令指纹带上解析后的请求体，同键异体才会报 IDEMPOTENCY_CONFLICT；字段授权载荷仍为空对象
+      return write(
+        c,
+        deps,
+        ctx,
+        employeeId,
+        'update',
+        {},
+        (tx, command) => registerAttachment(tx, command, employeeId, input),
+        'update',
+        input,
       );
     }),
   );
-  registerEmployeeReads(router, deps);
-  registerSubsetRoutes(router, deps);
-  registerSubsetAttachmentRoutes(router, deps);
-  registerChangeRequestRoutes(router, deps);
 }
 function registerEmployeeReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(`${base}/:id/tenure`, (c) =>

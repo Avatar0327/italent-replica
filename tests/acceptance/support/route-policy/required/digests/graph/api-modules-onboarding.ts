@@ -426,6 +426,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/onboarding/collection-access.ts#COLLECTION_BUTTONS',
     'apps/api/src/modules/onboarding/collection-access.ts#requireCollectionTarget',
     'apps/api/src/modules/onboarding/collection-access.ts#requireCollectionWrite',
+    'apps/api/src/modules/onboarding/collection-tasks.ts#isRestartableCollection',
   ],
   'apps/api/src/modules/onboarding/collection-task-view.ts#projectCollectionTask': [
     'apps/api/src/modules/onboarding/collection-access.ts#COLLECTION',
@@ -464,6 +465,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-case.ts#entryCaseContext',
     'apps/api/src/modules/onboarding/collection-config-match.ts#matchEntryCollection',
     '#auditTask',
+    '#isRestartableCollection',
     '#loadCollectionTask',
     '#lockCollectionEntry',
     'apps/api/src/system-actor.ts#auditActor',

@@ -73,6 +73,14 @@ export function logComment(log: ApprovalLog): string | null {
 export function logActor(log: ApprovalLog): string | null {
   return log.actorUserId === null ? d.systemActor : (log.actorName ?? null);
 }
+/** 读取后仍有意义的接口提示：登录、权限、不存在、限流。 */
+const readHints = new Set<string>(['login', 'forbidden', 'not-found', 'rate-limit']);
+/**
+ * F-577：详情、流程日志只发 GET，没有命令。登录、权限、不存在、限流保留接口提示；其余（5xx、断网、响应不符）
+ * 不把错误交给 PageState，只显示“加载失败”，不借用 ApiError 的结果未知文案（同 F-568 RowActions readFailure）。
+ */
+export const readError = (error: unknown) =>
+  error instanceof ApiError && readHints.has(error.kind) ? error : undefined;
 export const readApproval = (api: ApiClient, id: string, signal?: AbortSignal) =>
   api.request<ApprovalDetail>(`${base}/instances/${encodeURIComponent(id)}`, { signal });
 
