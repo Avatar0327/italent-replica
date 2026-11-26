@@ -83,7 +83,8 @@ import { previewExit } from './exit-preview.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import { businessDate, normalizeEmploymentInput, normalizedUuid } from './fields.js';
 import type { BusinessWriteGuard } from './entry-routes.js';
-import { exitBatchGuard, exitCommandGuard, exitEditGuard, exitImportGuard } from './replay-guard.js';
+import { exitBatchGuard, exitCommandGuard, exitEditGuard } from './exit-guards.js';
+import { exitImportGuard } from './replay-guard.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import { transitionEmployment } from './transitions.js';
 import {
@@ -389,20 +390,21 @@ function registerExitChanges(
       async (tx, context) => ({ status: 200, body: await updateExitFields(tx, context, id, patch) }),
       {
         guard: exitEditGuard(deps, ctx, gate, id),
-        project: async (body) => {
+        // 投影一律按命令事务内采用的当前范围（current）裁剪，不用入口旧范围（F-565 第 2 轮 P1-2）
+        project: async (body, current) => {
           const { downstreamHints, successor, ...business } = body as {
             downstreamHints?: Downstream;
             employeeId: string;
             successor?: object;
           };
-          const trimmed = (await trimEmploymentResponse(deps, ctx, business)) as object;
+          const trimmed = (await trimEmploymentResponse(deps, current, business)) as object;
           if (!downstreamHints) return trimmed;
-          const visible = await withTenant(deps.db, ctx.tenantId, (tx) =>
-            trimDownstream(tx, ctx, downstreamHints, business.employeeId),
+          const visible = await withTenant(deps.db, current.tenantId, (tx) =>
+            trimDownstream(tx, current, downstreamHints, business.employeeId),
           );
           return {
             ...trimmed,
-            ...(successor ? { successor: await trimEmploymentResponse(deps, ctx, successor) } : {}),
+            ...(successor ? { successor: await trimEmploymentResponse(deps, current, successor) } : {}),
             downstreamHints: {
               items: visible.items.filter((item) => item.status === 'found'),
               probes: visible.items.map(({ kind, status }) => ({ kind, status })),
@@ -445,6 +447,7 @@ const retirementCancelSchema = z.strictObject({ confirmed: z.boolean().optional(
 /**
  * 撤销回执响应前的按查看人裁剪：业务头按任职字段权，撤销清单目标按各自对象的可见性（不可见只计 hiddenCount）。
  * 命令台账里存的是未裁剪的清单，重放同样走这里，所以撤权后重放得到的也是按当前权限裁剪的结果。
+ * `ctx` 必须是 runWrite 传给 project 的 current（命令事务内采用的范围），不是入口 ctx（F-565 第 2 轮 P1-2）。
  */
 async function projectCancelReceipt(deps: TenantRouteDeps, ctx: EmploymentContext, body: unknown) {
   const { cancellation, downstream, ...business } = body as {
@@ -501,7 +504,7 @@ export async function runExitCancel(
     async (tx, context) => ({ status: 200, body: await cancelExit(tx, context, id, input) }),
     {
       guard: exitCommandGuard(deps, ctx, 'cancel', { employeeId, deleting, kind }, { businessId: id }),
-      project: (body) => projectCancelReceipt(deps, ctx, body),
+      project: (body, current) => projectCancelReceipt(deps, current, body),
     },
   );
 }
@@ -563,7 +566,11 @@ function registerExitCancel(
       ctx,
       { id, reason },
       async (tx, context) => ({ status: 200, body: await updateCancellationReason(tx, context, id, reason) }),
-      { guard: exitCommandGuard(deps, ctx, 'cancel', { employeeId: owner.employeeId }, {}), project: (body) => body },
+      {
+        // 撤销记录没有范围，按所属员工判权；记录行在读授权之前与员工、业务头一起取锁（F-565 第 2 轮 P2-2）
+        guard: exitCommandGuard(deps, ctx, 'cancel', { employeeId: owner.employeeId }, {}, undefined, id),
+        project: (body) => body,
+      },
     );
   });
 }
