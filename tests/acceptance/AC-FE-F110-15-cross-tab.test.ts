@@ -164,8 +164,9 @@ describe('AC-FE-F110-15 两个标签页协调恢复槽', () => {
 
     enter(b);
     const execute = vi.fn(async () => business);
+    // F-558：B 本次被挡的原因是“其他标签页”（内核 raceOf），不再只报“处理中”（原断言即 F-558 ① 的缺陷口径）。
     await expect(b.app.runApplicationCommand(scope, { ...command, commandId: randomUUID() }, execute)).rejects.toThrow(
-      PROCESSING,
+      OTHER_TAB,
     );
     expect(execute).not.toHaveBeenCalled();
     expect(b.app.readApplicationSession(scope)).toMatchObject({

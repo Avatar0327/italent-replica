@@ -23,7 +23,11 @@ import { EMPLOYMENT_OBJECT } from '../../employment/context.js';
 import { rowsOf } from '../../employment/record-store.js';
 import type { EmploymentContext } from '../../employment/types.js';
 import { requireTransferOrganizationScope } from '../../org/write-service.js';
-import { resolveModuleScope, type ModuleScope } from '../../permission/module-access.js';
+import {
+  resolveModuleScope,
+  resolveModuleScopeInTransaction,
+  type ModuleScope,
+} from '../../permission/module-access.js';
 import { requireObjectWrite } from '../../permission/object-write.js';
 import { linkageFieldValues } from './approval.js';
 import type { DutyRelation, LinkageOptions, OrgRole } from './input.js';
@@ -44,12 +48,32 @@ export async function resolveLinkageAccess(
   before: LinkageOptions | null = null,
 ): Promise<LinkageAccess> {
   // 原选项里的合同同样要判范围：删除或改动合同联动也是在改写对该合同的变更计划（第三轮 P1-2）。
-  const contractScope =
-    options?.contract || before?.contract
-      ? await resolveModuleScope(deps, tenant, undefined, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`)
-      : undefined;
+  const contractScope = needsContractScope(options, before)
+    ? await resolveModuleScope(deps, tenant, undefined, CONTRACT_OBJECT, CONTRACT_LIST_PAGE)
+    : undefined;
   return contractScope ? { contractScope } : {};
 }
+
+/**
+ * 命令事务内（已封口）重新解析联动目标对象的范围（F-560 第 2 轮 P1-1）。数据来源与入口 / 合同候选列表同一个
+ * （合同模块的 list 页面），只是改在调用方的租户事务里读：入口解析的范围是请求内快照，等锁期间撤权后不能再沿用。
+ */
+export async function resolveLinkageAccessInTransaction(
+  deps: Pick<TenantRouteDeps, 'authorize' | 'clock'>,
+  tenant: TenantContext,
+  tx: Tx,
+  options: LinkageOptions | null,
+  before: LinkageOptions | null = null,
+): Promise<LinkageAccess> {
+  const contractScope = needsContractScope(options, before)
+    ? await resolveModuleScopeInTransaction(deps, tenant, tx, CONTRACT_OBJECT, CONTRACT_LIST_PAGE)
+    : undefined;
+  return contractScope ? { contractScope } : {};
+}
+
+const CONTRACT_LIST_PAGE = `${CONTRACT_OBJECT}.list`;
+const needsContractScope = (options: LinkageOptions | null, before: LinkageOptions | null) =>
+  Boolean(options?.contract || before?.contract);
 
 /**
  * 新旧选项不同的任职联动字段（与审批载荷同一编码）。清空、置 false、删掉嵌套字段同样算改动（第三轮 P1-2），

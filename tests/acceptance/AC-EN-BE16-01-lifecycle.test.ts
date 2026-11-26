@@ -75,8 +75,9 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
     const f = await fixture('ZZ_BE16_LIFECYCLE');
     const { entry, run, context, replacements } = f;
     const { port, app } = install(f.db);
-    // 采集配置（16a-1）与采集任务（16a-2a）路由不在本断言范围；其余入职路由只允许融入任务池（16b-0）
-    const COLLECTION = /^\/api\/tenant\/onboarding\/(?:collection-(?:templates|rules)(?:\/:id)?|collection-settings)$/;
+    // 采集 / 准备配置（16a-1、16a-3a）、材料规则 / 清单（16a-4a）与采集任务（16a-2a）路由不在本断言范围；其余入职路由只允许融入任务池（16b-0）
+    const CONFIG_GROUPS = 'collection-(?:templates|rules)|preparation-(?:items|rules)';
+    const CONFIG = new RegExp(`^${ONBOARDING}/(?:(?:${CONFIG_GROUPS})(?:/:id)?|collection-settings)$`);
     const collectionTask = `${ONBOARDING}/entries/:businessId/collection`;
     const taskRoutes = new Set([
       `GET ${collectionTask}`,
@@ -85,14 +86,26 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
       `POST ${collectionTask}/comments`,
       `POST ${ONBOARDING}/collection/start-batch`,
     ]);
-    const onboardingRoutes = app.routes
-      .filter(
-        ({ method, path }) =>
-          path.startsWith(ONBOARDING) && !COLLECTION.test(path) && !taskRoutes.has(`${method} ${path}`),
-      )
-      .map(({ method, path }) => `${method} ${path}`)
-      .sort();
-    expect(onboardingRoutes).toEqual([
+    const materialRoutes = new Set([
+      'GET /api/tenant/onboarding/material-rules',
+      'GET /api/tenant/onboarding/material-rules/:id',
+      'POST /api/tenant/onboarding/material-rules',
+      'PATCH /api/tenant/onboarding/material-rules/:id',
+      'DELETE /api/tenant/onboarding/material-rules/:id',
+      'GET /api/tenant/onboarding/entries/:businessId/materials',
+    ]);
+    const onboardingRoutes = app.routes.filter(({ path }) => path.startsWith(ONBOARDING));
+    const keys = onboardingRoutes.map(({ method, path }) => `${method} ${path}`);
+    expect(new Set(keys.filter((key) => materialRoutes.has(key)))).toEqual(materialRoutes);
+    expect(
+      onboardingRoutes
+        .filter(
+          ({ method, path }) =>
+            !CONFIG.test(path) && !taskRoutes.has(`${method} ${path}`) && !materialRoutes.has(`${method} ${path}`),
+        )
+        .map(({ method, path }) => `${method} ${path}`)
+        .sort(),
+    ).toEqual([
       `DELETE ${SCHEMES}/:id`,
       `DELETE ${TASK_POOL}/:id`,
       `GET ${SCHEMES}`,

@@ -4,11 +4,14 @@ import { requireBusinessWriteScope } from '../employment/replay-guard.js';
 import type { EmploymentBusinessPatch, EmploymentContext } from '../employment/types.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import {
-  lockTransferBusinessEmployee,
+  lockSameOrderTarget,
+  requirePendingManagerReferences,
   transferBusinessContext,
+  type SameOrderLockTarget,
   transferTargetContext,
   type TransferInput,
 } from './service.js';
+import { occupiesDraftSlot } from './draft-slot.js';
 
 /**
  * 调动单“同单写”入口的统一 CommandGuard（#403 第 3 轮 P2，DEC-431① 同类统一）。
@@ -16,13 +19,14 @@ import {
  * 入口（事务外）算出的数据范围与 Switch 31 目标部门例外（transferTarget）只是请求内快照。命令事务里不能再沿用它们：
  * 重放命中台账时执行体不会再跑，范围收空后仍会把原回执（单据、员工、目标部门、生效日期）返回出去。
  * 这里在 CommandGuard.before（首次执行、直接重放、失败回查都先经过它）里，严格按这个顺序（DEC-993 单入口）：
- *   0. 取锁阶段（lock 步骤，lockTransferBusinessEmployee）：先循环取齐参与员工闭包（含请求新带入、且现存的下属）与员工行，
+ *   0. 取锁阶段（lock 步骤，lockSameOrderTarget；F-560 起全部任职写入口都经这一步，取锁目标是各入口守卫的必填参数）：先循环取齐参与员工闭包（含请求新带入、且现存的下属）与员工行，
  *      再统一锁各参与者业务头，复核集合没有变大后封口。此时一个授权输入都还没读——等锁期间别人收回的授权，要在等完锁之后才读；
  *      封口之后本事务不再因新参与者等锁（需要新锁就 409 TRANSFER_LOCK_PLAN_CHANGED，放弃本事务，由重入先取齐锁再读授权）；
  *   1. 丢掉入口的旧例外，按当前授权解析数据范围（commandContext）并重判入口旗标（trustedScopeBypass）——这两项各解析一次；
  *   2. 重算同单来源与目标例外（transferBusinessContext 'command' / transferTargetContext）：只消费第 1 步的范围；
  *      Switch 31 备选来源会逐个发起人类型重查按钮与来源关系（可能与第 3 步再各查一次 Transfer.Hr 等按钮）；
- *   3. 由调用方的 authorize 按新上下文复核对象 / 按钮 / 字段 / 业务特有来源；
+ *   3. 由调用方的 authorize 按新上下文复核对象 / 按钮 / 字段 / 业务特有来源；随后复核业务写范围，范围之后才做纯经理的参照检查
+ *      （403 会披露单据内容，第 2 步只判定是否纯经理并记下待检的修改，F-564）与 afterScope；
  *   4. 登记为本事务的命令上下文（adoptCommandContext）——执行体、重放复核、结果复核和回执裁剪（runWrite）都读这一份。
  * 承诺的是“授权输入全部在封口之后、同一事务里读”，不是“每个授权输入只查一次”：第 1～3 步之间没有任何会阻塞的等锁，
  * 重复查询读到的只会是同样或更新的授权；后一次读到撤权就按撤权拒绝（fail-closed），不会拿等锁之前的旧值放行（DEC-996）。
@@ -46,16 +50,16 @@ function refreshGuard(
   receiptNames: boolean,
   derive: (tx: Tx, fresh: EmploymentContext) => Promise<EmploymentContext>,
   check: (tx: Tx, scoped: EmploymentContext) => Promise<void>,
-  lock?: (tx: Tx) => Promise<void>,
+  lock: SameOrderLockTarget,
 ): ScopedCommandGuard {
   const guard = scopedGuard({
     before: async (tx) => {
-      await lock?.(tx);
+      await lockSameOrderTarget(tx, entry, lock);
       const resolved = await commandContext(tx, deps, { ...entry, transferTarget: undefined });
       // 入口旗标是入口时读的 data.scope.all：它决定写入口径范围之外还要不要追加 tenant.employment.write，也属于授权输入，
-      // 只在上了锁的同单写入口里按本事务当前授权重判（入口未带旗标的上下文原样不动）。
+      // 在取完锁的任职写入口里按本事务当前授权重判（入口未带旗标的上下文原样不动）。
       const fresh =
-        lock && entry.trustedScopeBypass !== undefined
+        entry.trustedScopeBypass !== undefined
           ? {
               ...resolved,
               trustedScopeBypass: await resolved.authorize!({
@@ -122,6 +126,8 @@ export function sameOrderWriteGuard(
         'command',
         spec.targetDepartmentId,
         spec.referenceChange,
+        // 纯经理的参照检查（403）会披露单据内容：延后到下面业务写范围复核之后再做，范围外一律 404（F-564）。
+        { deferManagerReferences: true },
       );
       return spec.targetDepartmentId !== undefined && scoped.transferTarget
         ? { ...scoped, transferTarget: { ...scoped.transferTarget, departmentId: spec.targetDepartmentId } }
@@ -130,12 +136,13 @@ export function sameOrderWriteGuard(
     async (tx, scoped) => {
       await spec.authorize(tx, scoped);
       await requireBusinessWriteScope(tx, scoped.authorize!, scoped, spec.businessId, spec.employeeId);
+      await requirePendingManagerReferences(tx, scoped, spec.businessId);
       await spec.afterScope?.(tx, scoped);
     },
     // 请求新带入的下属也在取锁阶段一并取齐：写入执行体里的取锁此后都是重入，封口后不会再等锁。
     // 查无此人的不在这里报错，留给首次执行的业务校验，免得遮蔽同键异内容的 409（第 5 轮 P2-3）。
-    (tx) =>
-      lockTransferBusinessEmployee(tx, entry, spec.businessId, spec.referenceChange?.fields?.addedSubordinateIds ?? []),
+    // 非调动单据也经这里：发起员工从 employment_business_objects 解析（F-560），此前它们什么都不锁。
+    { businessId: spec.businessId, extra: spec.referenceChange?.fields?.addedSubordinateIds ?? [] },
   );
 }
 
@@ -147,6 +154,8 @@ export function sameOrderScopeGuard(
   deps: TenantRouteDeps,
   entry: EmploymentContext,
   spec: ReceiptNamesSpec & {
+    /** 取锁目标（必填，F-560）：每个入口都得说清“锁谁”，没法漏掉取锁直接读授权。 */
+    readonly lock: SameOrderLockTarget;
     readonly authorize: (tx: Tx, scoped: EmploymentContext) => Promise<void>;
     readonly writeScope?: { readonly businessId: string; readonly employeeId?: string };
   },
@@ -167,6 +176,7 @@ export function sameOrderScopeGuard(
           spec.writeScope.employeeId,
         );
     },
+    spec.lock,
   );
 }
 
@@ -178,7 +188,14 @@ export function sameOrderCreateGuard(
     readonly employeeId: string;
     readonly input: TransferInput;
     readonly targetDepartmentId: string | null;
+    /** 请求新带入的下属（addedSubordinateIds 与职责转交下属）：与发起员工一起在取锁阶段取齐。 */
+    readonly extraParticipants: readonly string[];
     readonly authorize: (tx: Tx, scoped: EmploymentContext) => Promise<void>;
+    /**
+     * 目标部门例外算完之后的复核（联动授权：合同范围等入口快照要在这里按锁内当前授权重解析，F-560 第 2 轮 P1-1）。
+     * 排在例外之后：联动里的组织范围判定要用含目标例外的上下文，与入口 / 执行体同一口径。
+     */
+    readonly afterTarget?: (tx: Tx, scoped: EmploymentContext) => Promise<void>;
   },
 ): ScopedCommandGuard {
   return refreshGuard(
@@ -189,6 +206,12 @@ export function sameOrderCreateGuard(
       await spec.authorize(tx, fresh);
       return transferTargetContext(tx, fresh, spec.employeeId, spec.input, spec.targetDepartmentId);
     },
-    async () => undefined,
+    async (tx, scoped) => spec.afterTarget?.(tx, scoped),
+    {
+      employeeId: spec.employeeId,
+      extra: spec.extraParticipants,
+      // 与 createTransfer 释放旧暂存的条件同一判定（F-181a occupiesDraftSlot）
+      releasesDraft: occupiesDraftSlot({ initiator: spec.input.initiator, mode: spec.input.employment.mode }),
+    },
   );
 }

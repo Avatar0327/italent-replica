@@ -92,8 +92,8 @@ export const CONTENT_PROVIDERS: Readonly<Record<BusinessType, ContentProvider>> 
   probation_assessment: { kind: 'extended', ext: (tx, tenantId, id) => loadAssessmentContent(tx, tenantId, id) },
   retirement_intention: { kind: 'extended', ext: (tx, tenantId, id) => loadIntentionContent(tx, tenantId, id) },
   exit_handover: SNAPSHOT_ONLY,
+  entry_info_collection: SNAPSHOT_ONLY,
   // 结果审批尚无真实 provider（适配器本身是占位，不可发起）：到达这里一律拒绝，不写空份
-  entry_info_collection: { kind: 'not-wired', reason: '入职前信息采集审批的办理份尚未接入' },
   talent_review: { kind: 'not-wired', reason: '盘点结果审批的办理份 provider 尚未接入' },
 };
 

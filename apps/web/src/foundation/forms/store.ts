@@ -68,7 +68,11 @@ export interface Race {
   /** 占着恢复槽的命令 ID：页面只在当前锁定的正是这条命令时显示原因。 */
   commandId: string;
 }
-export type Outcome = Submission & { race?: Race };
+/**
+ * race：登记竞争（锁到别页命令上）；refused：普通拒绝（DEC-954 等锁超时、DEC-955、存储不可用）的提示，是本次操作的结果。
+ * 两者分开带出（F-558 第 2 轮 P2-1）：登记冲突时占槽命令若已落定，两者都没有，调用方不另猜竞争。
+ */
+export type Outcome = Submission & { race?: Race; refused?: string };
 /** F-141 起对外的比较名；实现只有 values.ts 的 sameValue 一份（DEC-502②），空值口径相同：0 与 false 不算空。 */
 export const equal = sameValue;
 export const isLocked = (state?: Submission) => !!state && ['submitting', 'unknown', 'conflict'].includes(state.status);
@@ -315,7 +319,11 @@ function createCore(recovery?: CommandRecovery, precheck?: () => Error | undefin
       next = { ...state, reading: false, readError };
     }
     // 迟到查询不能覆盖新状态；同一次查询期间 replay/reread 也会被 reading 挡住。
-    return land(key, reading, next);
+    const landed = land(key, reading, next);
+    // 查询期间 reading 挡住了同步（F-558 第 2 轮 P2-2）：别页已落定、记录已删的恢复条目，查询仍未确认时按记录再同步一次。
+    // 已确认的结果由 land 按本条目保留后同步过；本页自己发出的未知命令不是恢复条目，不受影响。
+    if (unconfirmed(landed)) sync();
+    return landed;
   };
   return { entries, listeners, notify, pins, put, persist, land, recover, sync, refusal, raceAt };
 }
@@ -376,7 +384,7 @@ async function submitTo(core: Core, key: string, input: SubmitInput, claim: read
   if (refused) {
     const rejected = refusedState(draft, refused);
     core.put(key, rejected);
-    return rejected;
+    return { ...rejected, refused };
   }
   const body = commandBody(input, baseline);
   // 生效日期是调用方提供的租户业务日期，不从浏览器时区推算。
@@ -391,10 +399,14 @@ async function submitTo(core: Core, key: string, input: SubmitInput, claim: read
   } catch (error) {
     // 四类都未发出命令，按“明确拒绝”落定：输入保留，可改正后重提。本命令没有登记，不排删除。
     // 落定时放开本命令的槽并再同步（land）：别页抢先登记的命令此时接过槽，同一条目时条目换成别页的恢复态。
-    const rejected = refusedState(state, registerRefusal(error));
+    const reason = registerRefusal(error);
+    const rejected = refusedState(state, reason);
     core.land(key, state, rejected, false);
-    // 返回本次的拒绝（第 2 轮 P2-3）；只有登记冲突才是竞争，等锁超时（DEC-954）等普通拒绝不带。
-    return error instanceof RecoveryConflict ? { ...rejected, race: core.raceAt(key, slots) } : rejected;
+    // 返回本次的拒绝（第 2 轮 P2-3）；只有登记冲突才是竞争，等锁超时（DEC-954）等普通拒绝带 refused、不带 race。
+    // 冲突时占槽命令可能已在本页处理拒绝前落定：raceAt 找不到就不带 race，也不当普通拒绝（F-558 第 2 轮 P2-1）。
+    return error instanceof RecoveryConflict
+      ? { ...rejected, race: core.raceAt(key, slots) }
+      : { ...rejected, refused: reason };
   }
   core.land(key, state, await delivered(state, input.send));
   return core.entries.get(key)!;

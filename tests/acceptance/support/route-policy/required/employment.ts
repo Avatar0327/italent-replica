@@ -583,7 +583,14 @@ function transition(action: 'submit' | 'withdraw' | 'revoke' | 'delete'): Obliga
       [TRANSITIONS, READ, write, access, op === 'delete' ? WRITE_DELETE : WRITE_OBJECT, RECORD_CONST],
     ),
     ob(`btn:${RECORD}#${button}@detail`, [], [write, access, WRITE_BUTTON, RECORD_CONST]),
-    businessWrite(fn(EMP, 'registerBusinessTransitions', 'await authorizeBusinessWrite(deps, ctx, id)')),
+    // F-564：范围复核与员工保存值策略放进 authorizeBusinessWrite 的 within 回调，同一事务快照
+    businessWrite(
+      fn(
+        EMP,
+        'registerBusinessTransitions',
+        'const current = await authorizeBusinessWrite(deps, ctx, id, undefined, async (tx, value) => {',
+      ),
+    ),
     ob(
       'guard:transfer.source',
       ['guard:transfer.source', 'button:requireTransferButton'],
@@ -1947,7 +1954,7 @@ export const EMPLOYMENT: RequiredTable = {
           TRF,
           'POST',
           '/transfers/employees/:id',
-          'const linkageAccess = await preauthorizeLinkage(c, deps, prepared.context, {',
+          'await preauthorizeLinkage(c, deps, prepared.context, linkageInput);',
         ),
         {
           role: 'impl',
@@ -1957,14 +1964,7 @@ export const EMPLOYMENT: RequiredTable = {
         },
       ],
     ),
-    linkage(
-      at(
-        TRF,
-        'POST',
-        '/transfers/employees/:id',
-        'body: await createTransfer(tx, context, id, { ...prepared.input, linkageAccess })',
-      ),
-    ),
+    linkage(at(TRF, 'POST', '/transfers/employees/:id', 'body: await createTransfer(tx, context, id, {')),
   ],
   // F-181a：他人调动申请暂存的元数据读口与清除（槽位按用户 × 员工，draft-slot.ts）
   'GET /api/tenant/employment/transfers/employees/:id/draft': [
@@ -2134,7 +2134,7 @@ export const EMPLOYMENT: RequiredTable = {
       'guard:linkage.preauthorize',
       ['guard:linkage.preauthorize'],
       [
-        at(LNK, 'PUT', '/transfers/:id/linkage', 'const access = await preauthorizeLinkage(c, deps, ctx, input)'),
+        at(LNK, 'PUT', '/transfers/:id/linkage', 'await preauthorizeLinkage(c, deps, ctx, input);'),
         {
           role: 'impl',
           unit: `${LNK}#preauthorizeLinkage`,
@@ -2144,7 +2144,12 @@ export const EMPLOYMENT: RequiredTable = {
       ],
     ),
     linkage(
-      at(LNK, 'PUT', '/transfers/:id/linkage', 'body: await updateTransferLinkage(tx, context, id, options, access)'),
+      at(
+        LNK,
+        'PUT',
+        '/transfers/:id/linkage',
+        'body: await updateTransferLinkage(tx, context, id, options, access ?? {}),',
+      ),
     ),
   ],
   'POST /api/tenant/employment/transfers/linkage-items/:id/retry': [
@@ -2538,8 +2543,8 @@ export const EMPLOYMENT: RequiredTable = {
           EMP,
           'PATCH',
           '/businesses/:id',
-          // F-036 S4：入口写权收进 requireDraftEditWrite（本人单据先定“本次输入”，再按它判字段写权）
-          'await requireDraftEditWrite(inTenant(deps, ctx), ctx, id, input, options)',
+          // F-036 S4：本人单据先定“本次输入”（F-564：在 authorizeBusinessWrite 的同一快照里算出 checked），再按它判字段写权
+          'await requireDraftEditPermission(ctx, input, checked, options)',
         ),
         WRITE_BUTTON,
       ],
@@ -2557,7 +2562,8 @@ export const EMPLOYMENT: RequiredTable = {
           EMP,
           'PATCH',
           '/businesses/:id',
-          'await requireDraftEditWrite(inTenant(deps, ctx), ctx, id, input, options)',
+          // F-564：员工保存值策略在范围复核之后、同一事务快照里执行（authorizeBusinessWrite 的 within 回调）
+          'checked = await requireEmployeeTransferBusiness(tx, ctx, id, input)',
         ),
         EMPLOYEE_TRANSFER,
       ],
@@ -2574,7 +2580,14 @@ export const EMPLOYMENT: RequiredTable = {
       at(EMP, 'PATCH', '/businesses/:id', 'await updateEmploymentBusiness(tx, confirmable, id, input)'),
       'F-140：共用改期编排的联动守卫；通用 approved / effective 日期编辑仍先拒绝',
     ),
-    businessWrite(at(EMP, 'PATCH', '/businesses/:id', 'const current = await authorizeBusinessWrite(deps, ctx, id)')),
+    businessWrite(
+      at(
+        EMP,
+        'PATCH',
+        '/businesses/:id',
+        'const current = await authorizeBusinessWrite(deps, ctx, id, undefined, async (tx, value) => {',
+      ),
+    ),
   ],
   'POST /api/tenant/employment/businesses/:id/submit': transition('submit'),
   'POST /api/tenant/employment/businesses/:id/withdraw': transition('withdraw'),
@@ -2593,6 +2606,25 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   'GET /api/tenant/employment/pending-entries': [
     recordView(at(ENTRY, 'GET', '/pending-entries', "const ctx = await readPageContext(c, deps, 'list')")),
+    {
+      perm: 'obj:TenantBase.OnboardingMaterial:view',
+      purpose: 'disclosure:materialStatus',
+      need: { scope: 'list', predicate: 'onboarding.materialEntryScope' },
+      facts: ['object:object.* 动作'],
+      at: [
+        at(ENTRY, 'GET', '/pending-entries', 'const material = await entryMaterialProjection(c, deps, tx, ctx)'),
+        fn(
+          'apps/api/src/modules/onboarding/material-list.ts',
+          'materialStatusScope',
+          "action: 'object.view', resource: MATERIAL",
+        ),
+        {
+          role: 'scope',
+          unit: 'apps/api/src/modules/onboarding/material-list.ts#materialStatusJoin',
+          anchor: 'materialEntryScope(tenantId, scope, department)',
+        },
+      ],
+    },
     {
       perm: 'obj:TenantBase.OnboardingCollection:view',
       purpose: 'disclosure:collectionStatus',
@@ -2613,6 +2645,18 @@ export const EMPLOYMENT: RequiredTable = {
         },
       ],
     },
+    ob(
+      'guard:onboarding.entryMaterialProjection',
+      [],
+      [
+        at(ENTRY, 'GET', '/pending-entries', 'const material = await entryMaterialProjection(c, deps, tx, ctx)'),
+        fn(
+          'apps/api/src/modules/onboarding/material-list-routes.ts',
+          'entryMaterialProjection',
+          "throw new AppError('FORBIDDEN', '筛选或排序字段不可查看')",
+        ),
+      ],
+    ),
   ],
   // ---- employment/intern-routes.ts：R2 BE-6a 实习四视图 / 直接实习转正 / 重聘判定 ------------------------------------------
   'GET /api/tenant/employment/interns': [

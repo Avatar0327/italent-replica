@@ -102,7 +102,11 @@ import { employmentApprovalHooks } from './approval-hooks.js';
 import type { EmploymentBusiness, EmploymentBusinessPatch, EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
 import { requireTransferSource } from '../transfer/access.js';
-import { requireDirectTransfer, transferBusinessContext } from '../transfer/service.js';
+import {
+  requireDirectTransfer,
+  requirePendingManagerReferences,
+  transferBusinessContext,
+} from '../transfer/service.js';
 import { sameOrderScopeGuard, sameOrderWriteGuard, transferReceiptNames } from '../transfer/same-order-guard.js';
 import { batchEditEmploymentRecords, normalizeBatchEdit } from './batch-edit.js';
 import { recordOperationLog } from '../../audit/record.js';
@@ -359,6 +363,11 @@ function genericCapacityCreateGuard(
   if (!checksEmploymentCapacity(input.kind)) return undefined;
   return sameOrderScopeGuard(deps, ctx, {
     ...transferReceiptNames(input.kind),
+    // 员工行（调动再加新带入的下属）先于授权读取取齐并封口；执行体里的取锁此后都是重入（F-560）
+    lock: {
+      employeeId,
+      extra: input.kind === 'transfer' ? (input.fields.addedSubordinateIds ?? []) : [],
+    },
     authorize: async (tx, scoped) => {
       await requirePermission(scoped.authorize!, {
         ...scoped,
@@ -540,12 +549,19 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const { result, input } = patch;
     const options = { commandOnly: patch.onlyResult };
     ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      transferBusinessContext(tx, ctx, id, 'before-command', input.fields?.departmentId, input),
+      transferBusinessContext(tx, ctx, id, 'before-command', input.fields?.departmentId, input, {
+        deferManagerReferences: true,
+      }),
     );
-    const current = await authorizeBusinessWrite(deps, ctx, id);
-    requireResultApplicable(result, current.kind);
+    // 业务写范围复核、纯经理的参照检查（403）与员工保存值策略（403）读同一份事务快照、按这个顺序：
+    // 范围外一律 404；不会因两步之间 HR 改了草稿，就对已在范围外的新版本返回 403（F-564 第 2、3 轮，同 F-563）。
+    let checked: Awaited<ReturnType<typeof requireEmployeeTransferBusiness>>;
+    const current = await authorizeBusinessWrite(deps, ctx, id, undefined, async (tx, value) => {
+      requireResultApplicable(result, value.kind);
+      checked = await requireEmployeeTransferBusiness(tx, ctx, id, input);
+    });
     const exitTarget = { employeeId: current.employeeId, kind: current.kind };
-    await requireDraftEditWrite(inTenant(deps, ctx), ctx, id, input, options);
+    await requireDraftEditPermission(ctx, input, checked, options);
     const departmentId = input.fields?.departmentId;
     if (departmentId !== undefined && ctx.transferTarget)
       ctx = { ...ctx, transferTarget: { ...ctx.transferTarget, departmentId } };
@@ -580,6 +596,9 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
               targetDepartmentId: departmentId,
               referenceChange: input,
               authorize: async (tx, scoped) => {
+                // 策略校验（保存值经理是否合格，403）会披露单据内容：先复核业务写范围，范围外一律 404（F-564，同 F-563）。
+                // 守卫随后还会按同一口径再复核一次，只读、幂等。
+                await requireBusinessWriteScope(tx, scoped.authorize!, scoped, id, current.employeeId);
                 await requireDraftEditWrite((run) => run(tx), scoped, id, input, options);
                 if (departmentId !== undefined)
                   await requireScopedEmploymentObject(tx, scoped, current.employeeId, departmentId, id);
@@ -610,14 +629,21 @@ async function routesToCancel(deps: TenantRouteDeps, ctx: EmploymentContext, id:
   });
 }
 
-/** 首次执行与同键重放共用：校验员工单据与写权限。J5 不在这里：它必须排在业务写范围复核之后（见 afterScope）。 */
+/**
+ * 首次执行与同键重放共用：校验员工单据与写权限。J5 不在这里：它必须排在业务写范围复核之后（见 afterScope）。
+ * 提交时的员工保存值策略校验（requireEmployeeTransferBusiness，403 会披露单据上的直线经理是否合格）排在业务写范围复核
+ * 之后：范围已收回的人一律只得到 404，不能借 403 区分“经理校验失败”与“范围外”（F-563）。
+ */
 async function authorizeTransition(
   tx: Tx,
   scoped: EmploymentContext,
   id: string,
   action: Parameters<typeof requireEmploymentTransitionWrite>[1],
 ) {
-  if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
+  if (action === 'submit') {
+    await requireBusinessWriteScope(tx, scoped.authorize!, scoped, id);
+    await requireEmployeeTransferBusiness(tx, scoped, id);
+  }
   await requireEmploymentTransitionWrite(scoped, action);
 }
 
@@ -654,15 +680,18 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
         const id = uuidParam(c);
         let ctx = await readContext(c, deps, action === 'delete' ? 'object.delete' : 'object.update', revision(c));
         ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
-          transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
+          transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined, {
+            deferManagerReferences: true,
+          }),
         );
         const { ack, confirmed } = await transitionControls(c, action);
         await requireEmploymentTransitionWrite(ctx, action);
-        const current = await authorizeBusinessWrite(deps, ctx, id);
-        if (ack !== undefined && !isExitKind(current.kind))
-          throw new AppError('VALIDATION_FAILED', '只有离职提交可以带在途调动确认令牌');
-        if (action === 'submit')
-          await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id));
+        // 提交时业务写范围复核、纯经理的参照检查（403）与员工保存值策略（403）同一事务快照、按这个顺序（F-564，同 F-563）。
+        const current = await authorizeBusinessWrite(deps, ctx, id, undefined, async (tx, value) => {
+          if (ack !== undefined && !isExitKind(value.kind))
+            throw new AppError('VALIDATION_FAILED', '只有离职提交可以带在途调动确认令牌');
+          if (action === 'submit') await requireEmployeeTransferBusiness(tx, ctx, id);
+        });
         // 离职 / 退休单的通用 DELETE 映射到撤销（设计 §4，B4；退休 R2-T04 §6，5a′）：与 POST exits|retirements/:id/cancel
         // 同一实现，不留绕过 §6B 的删除路径；已作废 / 未通过的单仍是清理删除，走下面的通用流程
         if (
@@ -814,6 +843,7 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
             )
           : sameOrderScopeGuard(deps, ctx, {
               ...transferReceiptNames(current.kind),
+              lock: { businessId: id }, // 员工行 → 业务头 → 封口 → 读授权（F-560）
               writeScope: { businessId: id, employeeId: current.employeeId },
               authorize: (_tx, scoped) => requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation'),
             }),
@@ -874,7 +904,33 @@ function registerBatchEdit(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 }
 
-async function authorizeBusinessWrite(deps: TenantRouteDeps, ctx: EmploymentContext, id: string, employeeId?: string) {
+type BusinessWriteValue = Awaited<ReturnType<typeof requireBusinessWriteScope>>;
+
+/**
+ * 入口的写范围复核。带 within 或有延后的纯经理参照检查时，范围复核与其后的载荷校验必须读同一个版本：
+ * 分成两个事务时，HR 可在两步之间把目标改到范围外，后一步读到新版本，就会对范围外的草稿返回 403，
+ * 与不存在的单据（404）可区分（F-564 第 3 轮）。所以放进同一 REPEATABLE READ 快照，顺序固定为：
+ * 复核写范围（范围外 404）→ 补检延后的纯经理参照（403）→ 调用方的载荷校验（within）。
+ */
+async function authorizeBusinessWrite(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  id: string,
+  employeeId?: string,
+  within?: (tx: Tx, value: BusinessWriteValue) => Promise<void>,
+) {
+  if (ctx.pendingManagerReferences !== undefined || within !== undefined)
+    return withTenant(
+      deps.db,
+      ctx.tenantId,
+      async (tx) => {
+        const value = await requireBusinessWriteScope(tx, deps.authorize, ctx, id, employeeId);
+        await requirePendingManagerReferences(tx, ctx, id);
+        await within?.(tx, value);
+        return value;
+      },
+      { isolationLevel: 'repeatable read' },
+    );
   // 幂等重放也重验当前范围，不能依赖可能被命令台账跳过的 execute；同一道判定在命令内由 replay-guard 再过一遍。
   return withTenant(deps.db, ctx.tenantId, (tx) => requireBusinessWriteScope(tx, deps.authorize, ctx, id, employeeId));
 }
@@ -1129,7 +1185,16 @@ async function requireDraftEditWrite(
   options: { readonly commandOnly?: boolean },
 ) {
   const current = await inTx((tx) => requireEmployeeTransferBusiness(tx, ctx, id, input));
-  // 写权校验要走授权器自己的连接，不能放在事务里等：调用方已在事务里时 inTx 直接复用它。
+  await requireDraftEditPermission(ctx, input, current, options);
+}
+
+/** 草稿编辑的字段写权校验（授权器自己的连接，不能放在事务里等）；`current` 是扣掉同值字段之后的本次输入。 */
+async function requireDraftEditPermission(
+  ctx: EmploymentContext,
+  input: EmploymentBusinessPatch,
+  current: Awaited<ReturnType<typeof requireEmployeeTransferBusiness>>,
+  options: { readonly commandOnly?: boolean },
+) {
   await requireEmploymentWrite(ctx, 'update', current ?? input, 'Employment.Edit', undefined, {
     commandOnly: writeIsCommandOnly(options, input, current),
   });

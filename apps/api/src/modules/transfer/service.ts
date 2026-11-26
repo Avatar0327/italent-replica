@@ -7,7 +7,7 @@ import {
   sealTransferLocks,
   transferLocksCover,
 } from '../employment/transfer-locks.js';
-import { sql, type Tx } from '@italent/db';
+import { isUuid, sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
@@ -36,7 +36,7 @@ import { dutySubordinateIds, normalizeLinkage, type LinkageOptions } from './lin
 import { saveNewTransferLinkage, type LinkageTarget } from './linkage/service.js';
 import type { LinkageAccess } from './linkage/access.js';
 import { hasLinkage } from './linkage/store.js';
-import { holdTransferDraft, occupiesDraftSlot, releaseTransferDraft } from './draft-slot.js';
+import { holdTransferDraft, lockTransferDraftHead, occupiesDraftSlot, releaseTransferDraft } from './draft-slot.js';
 
 const schema = z.strictObject({
   initiator: z.enum(['hr', 'manager', 'employee']),
@@ -280,14 +280,44 @@ export async function requireDirectTransfer(tx: Tx, ctx: EmploymentContext) {
   if (!actions.directList && !actions.directRow) throw new AppError('FORBIDDEN', '无权发起直接调动');
 }
 
-async function transferRequestEmployee(tx: Tx, ctx: EmploymentContext, businessId: string) {
-  const [request] = rowsOf<{ employeeId: string }>(
+/**
+ * 任职写入口“取锁阶段”的锁定目标（F-560）。入口只给出它手里有的那一个标识，owner 员工 / 业务头由本步骤解析：
+ * - businessId：任意单据（调动或非调动）——按 employment_business_objects 找发起员工；联动保存另带 extra（请求新带入的下属）；
+ * - employeeId：发起 / 覆盖暂存、通用新建——还没有本单业务头；`releasesDraft` 只由会换掉调用人旧暂存的入口声明
+ *   （他人调动申请的暂存 / 提交，与 occupiesDraftSlot 同一判定），其余新建不去碰暂存槽位表；
+ * - linkageItemId：联动子项重试——按子项行找所属单据、发起员工与被转交下属。
+ */
+export type SameOrderLockTarget =
+  | { readonly businessId: string; readonly extra?: readonly string[] }
+  | { readonly employeeId: string; readonly extra?: readonly string[]; readonly releasesDraft?: boolean }
+  | { readonly linkageItemId: string };
+
+async function resolveLockTarget(tx: Tx, ctx: EmploymentContext, target: SameOrderLockTarget) {
+  if ('employeeId' in target) return { employeeId: target.employeeId, extra: target.extra ?? [] };
+  if ('businessId' in target) {
+    if (!isUuid(target.businessId)) return undefined;
+    const [head] = rowsOf<{ employeeId: string }>(
+      await tx.execute(sql`
+    SELECT employee_id::text AS "employeeId" FROM employment_business_objects
+    WHERE tenant_id=${ctx.tenantId} AND id=${target.businessId}::uuid
+  `),
+    );
+    return head && { employeeId: head.employeeId, businessId: target.businessId, extra: target.extra ?? [] };
+  }
+  if (!isUuid(target.linkageItemId)) return undefined;
+  const [item] = rowsOf<{ employeeId: string; businessId: string; subordinateId: string | null }>(
     await tx.execute(sql`
-    SELECT employee_id AS "employeeId" FROM transfer_requests
-    WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid
+    SELECT employee_id::text AS "employeeId", business_id::text AS "businessId", subordinate_id::text AS "subordinateId"
+    FROM transfer_linkage_items WHERE tenant_id=${ctx.tenantId} AND id=${target.linkageItemId}::uuid
   `),
   );
-  return request?.employeeId;
+  return (
+    item && {
+      employeeId: item.employeeId,
+      businessId: item.businessId,
+      extra: item.subordinateId ? [item.subordinateId] : [],
+    }
+  );
 }
 
 /** 取锁—复核—再取锁的上限：参与集合每轮都在涨说明有人持续改关系，放弃本次交还调用方刷新重试。 */
@@ -297,27 +327,26 @@ const planChanged = () =>
   new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
 
 /**
- * 同单写入口的“取锁阶段”（DEC-993 单入口；第 6 轮拆段，DEC-996）：只按单据找到发起员工，按锁序分两段取齐会阻塞的锁。
+ * 任职写入口的统一“取锁阶段”（DEC-993 单入口；第 6 轮拆段，DEC-996；F-560 推广到全部任职写入口）：
+ * 次序固定为“员工行 → 业务头 → 封口 → 读授权”，授权输入一个都不在这里读。
  * ① 员工段：参与员工闭包（含 extra 里请求新带入、且现存的下属）→ 发起员工行，取完重新规划；集合在取锁期间变大
  *   （如别人把某员工的虚线经理改成发起员工）就继续按 UUID 序补员工锁——这一段手上只有员工锁，不持任何业务头；
  * ② 业务头段：员工闭包取齐后统一锁各参与者的业务头（单人闭包也锁本单业务头，第 7 轮 P2-1），再规划一次；此时集合若又变大，
  *   不再回头等员工锁（那会在持业务头时等员工锁，逆序），直接 409 TRANSFER_LOCK_PLAN_CHANGED 放弃本事务，
  *   由重入（失败回查 / 客户端显式重提）重新规划。
  * 审批实例只在首次执行体里锁（重放 / 回查不到那一步），不在此预锁。两段取齐后封口：本函数返回后事务里不会再因新参与者等锁；
- * transferBusinessContext 'command' 阶段的取锁都是重入。本函数不读任何授权输入。
+ * transferBusinessContext 'command' 阶段与各执行体里的取锁都是重入（含通用新建调动在同一事务里取两次）。
  * 请求点名但查无此人的新增下属不取锁、不在这里报错（第 5 轮 P2-3）：报错会抢在台账指纹比对之前，把同键异内容的 409 遮成 400；
  * 留给首次执行的业务校验（validateTransferSubordinates → 400 TRANSFER_PERSON_NOT_ELIGIBLE），那时授权与指纹都已判过。
- * 单据不是调动单时什么都不取。
+ * 找不到单据 / 员工 / 子项时什么都不取（后续授权与业务校验照常给出 404）。非调动单据的闭包只有发起员工本人，同一套次序。
  */
-export async function lockTransferBusinessEmployee(
-  tx: Tx,
-  ctx: EmploymentContext,
-  businessId: string,
-  extra: readonly string[] = [],
-) {
-  const employeeId = await transferRequestEmployee(tx, ctx, businessId);
-  if (!employeeId) return;
-  const present = await existingTransferEmployees(tx, ctx, extra);
+export async function lockSameOrderTarget(tx: Tx, ctx: EmploymentContext, target: SameOrderLockTarget) {
+  const resolved = await resolveLockTarget(tx, ctx, target);
+  if (!resolved) return;
+  const { employeeId, businessId } = resolved;
+  const [owner] = await existingTransferEmployees(tx, ctx, [employeeId]);
+  if (!owner) return;
+  const present = await existingTransferEmployees(tx, ctx, resolved.extra);
   for (let attempt = 0; ; attempt += 1) {
     if (attempt === LOCK_PLAN_ATTEMPTS) throw planChanged();
     await lockTransferParticipants(tx, ctx, employeeId, present, { deferHeads: true });
@@ -325,11 +354,21 @@ export async function lockTransferBusinessEmployee(
     if (await transferLocksCover(tx, ctx, employeeId, present)) break;
   }
   await lockTransferHeads(tx, ctx, businessId);
+  // 覆盖暂存没有本单业务头，但会替换调用人的旧草稿：旧草稿头在封口前一并锁住（F-560 第 2 轮 P2-1）。
+  // 只给会释放旧暂存的入口锁（releasesDraft）：通用新建不换草稿，锁了既多余，也会在升级前的结构上读到不存在的槽位表。
+  if (!businessId && 'releasesDraft' in target && target.releasesDraft)
+    await lockTransferDraftHead(tx, ctx, employeeId);
   if (!(await transferLocksCover(tx, ctx, employeeId, present))) throw planChanged();
   await sealTransferLocks(tx, ctx);
 }
 
-/** 同单操作按当前调用人的权限判断；原发起人类型仅是业务事实，不决定后续操作者的身份。 */
+/**
+ * 同单操作按当前调用人的权限判断；原发起人类型仅是业务事实，不决定后续操作者的身份。
+ * 纯经理的参照检查（requireManagerBusinessReferences，403 会披露草稿里的部门 / 职务 / 经理是否仍在可选范围）：
+ * `deferManagerReferences` 为真时这里只判定“是不是纯经理”，把待检的修改记在返回上下文的 pendingManagerReferences 上，
+ * 由调用方在业务写范围复核之后调 requirePendingManagerReferences 再检——范围外一律 404，不借 403 区分（F-564，同 F-563）。
+ * 不延后时（命令执行体里，守卫已复核过范围）仍在这里立即检查。
+ */
 export async function transferBusinessContext(
   tx: Tx,
   ctx: EmploymentContext,
@@ -337,6 +376,7 @@ export async function transferBusinessContext(
   phase: 'read' | 'before-command' | 'command' = 'read',
   targetDepartmentId?: string | null,
   referenceChange?: EmploymentBusinessPatch,
+  options: { readonly deferManagerReferences?: boolean } = {},
 ) {
   const [request] = rowsOf<{ employeeId: string }>(
     await tx.execute(sql`
@@ -353,32 +393,48 @@ export async function transferBusinessContext(
   // 每次同单请求（包括命令缓存重放）都验权；首次执行仍在员工锁后复验。
   const manager = await requireManagerBusinessSource(tx, ctx, request.employeeId, phase !== 'read');
   // PATCH / submit 的缓存前检查与员工锁后复验共用此处；读取、撤回、删除不因目标撤权而受阻。
-  if (manager && referenceChange !== undefined)
+  const deferred = manager && referenceChange !== undefined && options.deferManagerReferences === true;
+  if (manager && referenceChange !== undefined && !deferred)
     await requireManagerBusinessReferences(tx, ctx, businessId, referenceChange);
+  // 每条返回路径都显式写 pendingManagerReferences：入口带来的旧待检不能漏到本次判定之外。
+  const settled = (value: EmploymentContext): EmploymentContext => ({
+    ...value,
+    pendingManagerReferences: deferred ? referenceChange : undefined,
+  });
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   // 是否需要目标部门例外按写入口径判断；DEC-177 放宽的只是“看”（F-015），不能因可见就跳过 Switch 31 例外。
   const writable = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope, 'write');
-  if (writable && (targetDepartmentId === undefined || targetDepartmentId === writable.fields.departmentId)) return ctx;
+  if (writable && (targetDepartmentId === undefined || targetDepartmentId === writable.fields.departmentId))
+    return settled(ctx);
   const business = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today);
   if (!business) throw new AppError('NOT_FOUND', '任职业务不存在');
   const form = await resolveTransferForm(tx, ctx.tenantId, business.formId);
   const settings = await readTransferSettings(tx, ctx.tenantId);
-  if (!form.isStandard || !settings.unrestrictTargetDepartment) return ctx;
+  if (!form.isStandard || !settings.unrestrictTargetDepartment) return settled(ctx);
   for (const initiator of ['hr', 'employee', 'manager'] as const) {
     try {
       await requireTransferSource(tx, ctx, request.employeeId, initiator);
-      return {
+      return settled({
         ...ctx,
         transferTarget: {
           employeeId: request.employeeId,
           departmentId: targetDepartmentId === undefined ? business.fields.departmentId : targetDepartmentId,
           businessId,
         },
-      };
+      });
     } catch (error) {
       if (!(error instanceof AppError) || !['FORBIDDEN', 'NOT_FOUND'].includes(error.code)) throw error;
     }
   }
-  if (writable || (await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope))) return ctx;
+  if (writable || (await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope))) return settled(ctx);
   throw new AppError('NOT_FOUND', '任职业务不存在');
+}
+
+/**
+ * 补做被延后的纯经理参照检查（transferBusinessContext 的 deferManagerReferences）：必须排在业务写范围复核之后调用。
+ * 没有待检内容（非纯经理 / 没带修改）时什么都不做；检查沿用 transferBusinessContext 判定时记下的修改。
+ */
+export async function requirePendingManagerReferences(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  if (ctx.pendingManagerReferences === undefined) return;
+  await requireManagerBusinessReferences(tx, ctx, businessId, ctx.pendingManagerReferences);
 }

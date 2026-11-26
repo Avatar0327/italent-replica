@@ -66,6 +66,8 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
   HANDOVER_OBJECT: { adapter: 'exit_handover', codes: [APPROVAL_TYPES.exit_handover.objectCode] },
   // org-adjustment/snapshot.ts（R2-T08 BE-10c）：组织调整申请，字段权限按申请单对象（§4.5）
   ORG_ADJUSTMENT_OBJECT_CODE: { adapter: 'org_adjustment', codes: [ORG_ADJUSTMENT_OBJECT_CODE] },
+  // onboarding/collection-approval.ts（BE-16 16a-2b）：采集审批用采集对象，人员源字段另行裁剪。
+  COLLECTION: { adapter: 'entry_info_collection', codes: [APPROVAL_TYPES.entry_info_collection.objectCode] },
 };
 
 /**
@@ -73,8 +75,6 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
  * 并把它的 fieldObjectCode 表达式登记到上表（否则上面的检查直接失败）。
  */
 export const NO_SNAPSHOT_YET: Readonly<Record<string, string>> = {
-  // onboarding/approval-contract.ts：BE-16 16a-2b 接入真实采集业务单前，只有审批类型与出厂草稿。
-  entry_info_collection: 'ENTRY_INFO_COLLECTION_UNAVAILABLE',
   // talent-review/approval-adapter.ts：R3-T04 PR-A 只占业务类型位置，PR-D 接入前任何回调 409
   talent_review: 'TALENT_REVIEW_APPROVAL_UNAVAILABLE',
 };

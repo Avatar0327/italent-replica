@@ -539,7 +539,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/idp/approval-adapter.ts#idpAdapter',
     'apps/api/src/modules/offer/approval-adapter.ts#offerAdapter',
     'apps/api/src/modules/offer/approval-adapter.ts#offerBatchAdapter',
-    'apps/api/src/modules/onboarding/approval-contract.ts#entryInfoCollectionAdapter',
+    'apps/api/src/modules/onboarding/collection-approval.ts#collectionApprovalAdapter',
     'apps/api/src/modules/org-adjustment/approval-adapter.ts#orgAdjustmentAdapter',
     'apps/api/src/modules/talent-review/approval-adapter.ts#talentReviewAdapter',
   ],
@@ -1676,6 +1676,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility': [
     '#objectAccess',
     'apps/api/src/modules/contracts/context.ts#checkScope',
+    'apps/api/src/modules/onboarding/collection-approval-fields.ts#COLLECTION_VALUES',
+    'apps/api/src/modules/onboarding/collection-approval-fields.ts#collectionApprovalVisibility',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],

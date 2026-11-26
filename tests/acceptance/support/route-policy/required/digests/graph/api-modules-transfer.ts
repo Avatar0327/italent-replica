@@ -172,6 +172,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#editableModuleFields',
   ],
+  'apps/api/src/modules/transfer/linkage/access.ts#CONTRACT_LIST_PAGE': [
+    'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+  ],
   'apps/api/src/modules/transfer/linkage/access.ts#ORG_OBJECT': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
@@ -216,6 +219,14 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/transfer/linkage/access.ts#resolveLinkageAccess': [
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
+    '#CONTRACT_LIST_PAGE',
+    '#needsContractScope',
+    'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+  ],
+  'apps/api/src/modules/transfer/linkage/access.ts#resolveLinkageAccessInTransaction': [
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    '#CONTRACT_LIST_PAGE',
+    '#needsContractScope',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
   ],
   'apps/api/src/modules/transfer/linkage/approval.ts#contractFieldEntries': ['#CONTAINER'],
@@ -382,6 +393,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/linkage/store.ts#linkageBeforeCommand',
     'apps/api/src/tenant-context.ts#tenantOf',
   ],
+  'apps/api/src/modules/transfer/linkage/routes.ts#recheckLinkage': [
+    'apps/api/src/modules/transfer/linkage/access.ts#authorizeLinkageWrite',
+    'apps/api/src/modules/transfer/linkage/access.ts#resolveLinkageAccessInTransaction',
+    'apps/api/src/modules/transfer/linkage/store.ts#linkageBeforeCommand',
+  ],
   'apps/api/src/modules/transfer/linkage/routes.ts#route:GET /transfers/:id/linkage': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -423,8 +439,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
     'apps/api/src/modules/transfer/linkage/input.ts#normalizeLinkage',
     '#preauthorizeLinkage',
+    '#recheckLinkage',
     'apps/api/src/modules/transfer/linkage/service.ts#requireLinkageSource',
     'apps/api/src/modules/transfer/linkage/service.ts#updateTransferLinkage',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
@@ -791,7 +809,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/transfer/access.ts#requireTransferSource',
+    'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
     'apps/api/src/modules/transfer/linkage/routes.ts#preauthorizeLinkage',
+    'apps/api/src/modules/transfer/linkage/routes.ts#recheckLinkage',
     'apps/api/src/modules/transfer/preview.ts#previewTransfer',
     'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderCreateGuard',
     'apps/api/src/modules/transfer/service.ts#createTransfer',
@@ -832,8 +852,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#adoptCommandContext',
     'apps/api/src/modules/employment/context.ts#commandContext',
     'apps/api/src/modules/employment/context.ts#scopedGuard',
+    'apps/api/src/modules/transfer/service.ts#lockSameOrderTarget',
   ],
   'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderCreateGuard': [
+    'apps/api/src/modules/transfer/draft-slot.ts#occupiesDraftSlot',
     '#refreshGuard',
     'apps/api/src/modules/transfer/service.ts#transferTargetContext',
   ],
@@ -844,7 +866,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard': [
     'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
     '#refreshGuard',
-    'apps/api/src/modules/transfer/service.ts#lockTransferBusinessEmployee',
+    'apps/api/src/modules/transfer/service.ts#requirePendingManagerReferences',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
   'apps/api/src/modules/transfer/service.ts#createTransfer': [
@@ -872,16 +894,17 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/draft-slot.ts#holdTransferDraft',
     'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
   ],
-  'apps/api/src/modules/transfer/service.ts#lockTransferBusinessEmployee': [
+  'apps/api/src/modules/transfer/service.ts#lockSameOrderTarget': [
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/transfer-locks.ts#existingTransferEmployees',
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferHeads',
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
     'apps/api/src/modules/employment/transfer-locks.ts#sealTransferLocks',
     'apps/api/src/modules/employment/transfer-locks.ts#transferLocksCover',
+    'apps/api/src/modules/transfer/draft-slot.ts#lockTransferDraftHead',
     '#LOCK_PLAN_ATTEMPTS',
     '#planChanged',
-    '#transferRequestEmployee',
+    '#resolveLockTarget',
   ],
   'apps/api/src/modules/transfer/service.ts#normalizeTransferInput': [
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
@@ -897,11 +920,17 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/transfer/access.ts#transferDirectActions',
   ],
+  'apps/api/src/modules/transfer/service.ts#requirePendingManagerReferences': [
+    'apps/api/src/modules/transfer/manager-business-references.ts#requireManagerBusinessReferences',
+  ],
   'apps/api/src/modules/transfer/service.ts#requireTransferEditedWrite': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
   ],
   'apps/api/src/modules/transfer/service.ts#requireTransferWrite': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+  ],
+  'apps/api/src/modules/transfer/service.ts#resolveLockTarget': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/transfer/service.ts#transferBusinessContext': [
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
@@ -914,9 +943,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
     'apps/api/src/modules/transfer/manager-business-references.ts#requireManagerBusinessReferences',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
-  ],
-  'apps/api/src/modules/transfer/service.ts#transferRequestEmployee': [
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/transfer/service.ts#transferTargetContext': [
     'apps/api/src/modules/transfer/access.ts#requireTransferSource',
