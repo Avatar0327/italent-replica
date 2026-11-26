@@ -75,6 +75,8 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   offer_dictionary: { label: 'Offer 字典', app: ORG_PEOPLE },
   'onboarding-integration-task-pool': { label: '融入任务池', app: ORG_PEOPLE },
   'onboarding-integration-scheme': { label: '融入方案', app: ORG_PEOPLE },
+  'onboarding-welcome-letter': { label: '欢迎信模板', app: ORG_PEOPLE },
+  'onboarding-handbook': { label: '入职手册', app: ORG_PEOPLE },
   offer_batch_approval: { label: 'Offer 批量审批单', app: ORG_PEOPLE },
   // BE-7 兼职（R2-T05 §7.4）：兼职记录（含期限链）与兼职申请
   'employment-part-time': { label: '兼职记录', app: ORG_PEOPLE },
@@ -504,6 +506,8 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'exit_dictionary',
   'offer_dictionary',
   'onboarding-integration-task-pool',
+  'onboarding-welcome-letter',
+  'onboarding-handbook',
   'blacklist_rule',
   'exit_handover_item',
   'retirement_rule',

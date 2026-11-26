@@ -77,7 +77,10 @@ describe('AC-EN-BE16-01 阶段事务端口', () => {
     const { port, app } = install(f.db);
     // 采集 / 准备配置（16a-1、16a-3a）、材料规则 / 清单（16a-4a）与采集任务（16a-2a）路由不在本断言范围；其余入职路由只允许融入任务池（16b-0）
     const CONFIG_GROUPS = 'collection-(?:templates|rules)|preparation-(?:items|rules)';
-    const CONFIG = new RegExp(`^${ONBOARDING}/(?:(?:${CONFIG_GROUPS})(?:/:id)?|collection-settings)$`);
+    // 16a-7 欢迎信与手册配置（含预览）同属配置路由，装配断言只核对其余入职路由
+    const CONFIG = new RegExp(
+      `^${ONBOARDING}/(?:(?:${CONFIG_GROUPS}|welcome-letters|handbooks)(?:/:id(?:/preview)?)?|collection-settings)$`,
+    );
     const collectionTask = `${ONBOARDING}/entries/:businessId/collection`;
     const taskRoutes = new Set([
       `GET ${collectionTask}`,
