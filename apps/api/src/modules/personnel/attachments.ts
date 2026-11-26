@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import type { PersonnelContext, Row } from './store.js';
-import { insert, rows } from './store.js';
+import { insert, lockPerson, rows } from './store.js';
 
 const ATTACHMENT_FIELDS = new Set([
   'idPhoto',
@@ -32,12 +32,14 @@ export async function validateAttachments(
     throw new AppError('VALIDATION_FAILED', '附件未登记或不属于当前租户与员工');
 }
 
+/** 约定（F-565④，见 store.ts lockPerson）：往员工外键子表插行前先取员工行锁，否则只持 KEY SHARE、绕过员工级串行。 */
 export async function registerAttachment(
   tx: Tx,
   ctx: PersonnelContext,
   employeeId: string,
   input: { purpose: string; filename: string; contentType: string; byteSize: number; sha256: string },
 ) {
+  await lockPerson(tx, ctx, employeeId);
   const row = {
     id: randomUUID(),
     tenantId: ctx.tenantId,

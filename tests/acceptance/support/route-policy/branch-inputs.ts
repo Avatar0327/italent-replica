@@ -149,7 +149,7 @@ export const BRANCH_INPUTS: Readonly<Record<string, readonly BranchInput[]>> = {
         call(`${EMPLOYMENT}#importEmployment`, 'const input = normalizeEmploymentImport(raw)'),
         call(
           `${EMPLOYMENT}#authorizeImport`,
-          "if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')",
+          "if (current.status === 'effective') await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')",
         ),
         IMPORT_SCHEMA,
       ],
