@@ -11,6 +11,7 @@ import { ATTACHMENT_PURPOSES } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { PgBlobStore } from './blob-store.js';
 import { record, type FileRow } from './audit.js';
+import { MATERIAL_BUSINESS_TYPE, MATERIAL_CARRIER } from './material-read.js';
 
 export interface BindingContext {
   readonly tenantId: string;
@@ -23,10 +24,17 @@ export const EXIT_CARRIER = 'employment.exit';
 export const EXIT_BUSINESS_TYPE = 'employment';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** 本函数支持的载体及其绑定后的归属类型：由载体固定，调用方不能指定，三种载体的同一业务 ID 才不会串位。 */
+const BOUND_BUSINESS_TYPES: Readonly<Record<string, string>> = {
+  [EXIT_CARRIER]: EXIT_BUSINESS_TYPE,
+  [MATERIAL_CARRIER]: MATERIAL_BUSINESS_TYPE,
+};
+
 const purposeOf = (carrier: string) => {
   const found = Object.entries(ATTACHMENT_PURPOSES).find(([, config]) => config.carrier === carrier);
-  if (!found) throw new AppError('VALIDATION_FAILED', '附件载体不支持');
-  return { code: found[0], config: found[1] };
+  const businessType = Object.hasOwn(BOUND_BUSINESS_TYPES, carrier) ? BOUND_BUSINESS_TYPES[carrier] : undefined;
+  if (!found || !businessType) throw new AppError('VALIDATION_FAILED', '附件载体不支持');
+  return { code: found[0], config: found[1], businessType };
 };
 
 /** 错误体只回显请求里的下标，不回显该 ID 的任何元数据（自查 9：不泄露别人文件是否存在）。 */
@@ -58,14 +66,12 @@ export interface BindInput {
   readonly previous: readonly string[] | null;
   readonly next: unknown;
   readonly actor: string;
-  /** 绑定后的归属类型；缺省按离职（employment）。材料等新载体在此声明自己的类型，与别的载体互不认领。 */
-  readonly businessType?: string;
   /**
    * 未绑定行的登记标记（登记时写在 business_type 里，如材料项标记）：新增文件的标记必须与此完全一致，
-   * 缺省表示“不带标记”（离职口径）。标记不符的文件一律按不可用处理。
+   * 缺省表示“不带标记”（离职口径）。标记不符的文件一律按不可用处理。材料载体必填。
    */
   readonly targetTag?: string;
-  /** 受信代传场景（HR 为员工上传）：新增文件登记时的目标员工必须是此人；缺省不核。 */
+  /** 受信代传场景（HR 为员工上传）：新增文件登记时的目标员工必须是此人；离职口径缺省不核，材料载体必填。 */
   readonly employeeId?: string;
 }
 
@@ -91,14 +97,20 @@ export async function move(tx: Tx, ctx: BindingContext, before: FileRow, operati
 
 /** 返回规范化后要写进 exit_requests.attachment_refs 的列表（顺序以它为准）。 */
 export async function bindAttachmentRefs(tx: Tx, ctx: BindingContext, input: BindInput): Promise<string[]> {
-  const { code: purpose, config } = purposeOf(input.carrier);
+  const { code: purpose, config, businessType } = purposeOf(input.carrier);
+  // 材料载体由 HR 代员工上传：缺目标员工或材料项标记就无法判定“这是谁的哪一项”，一律拒绝而不是放宽
+  if (input.carrier === MATERIAL_CARRIER && (!input.employeeId || !input.targetTag))
+    throw new AppError('VALIDATION_FAILED', '材料附件绑定必须指明目标员工和材料项');
   const next = normalize(input.next, config.maxFiles);
   const previous = lower(input.previous);
   const files = await lockFiles(tx, ctx.tenantId, [...new Set([...previous, ...next])]);
   const business = input.businessId.toLowerCase();
-  const businessType = input.businessType ?? EXIT_BUSINESS_TYPE;
+  // 保留与释放同样核对用途：同类型同业务 ID 但用途不符的行不是本载体的文件
   const owned = (row: FileRow | undefined) =>
-    row?.status === 'bound' && row.businessType === businessType && row.businessId?.toLowerCase() === business;
+    row?.status === 'bound' &&
+    row.purpose === purpose &&
+    row.businessType === businessType &&
+    row.businessId?.toLowerCase() === business;
   for (const [index, id] of next.entries()) {
     const row = files.get(id);
     if (previous.includes(id)) {
