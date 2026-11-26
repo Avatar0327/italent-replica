@@ -5,7 +5,12 @@
  */
 import { attachmentFiles, sql, withTenant } from '@italent/db';
 import { describe, expect, it, vi } from 'vitest';
-import { bindAttachmentRefs } from '../../apps/api/src/modules/attachments/binding.js';
+import {
+  EXIT_CARRIER,
+  EXIT_BUSINESS_TYPE,
+  bindAttachmentRefs,
+} from '../../apps/api/src/modules/attachments/binding.js';
+import { PgBlobStore } from '../../apps/api/src/modules/attachments/blob-store.js';
 import { attachmentSummaries, readCarrierAttachment } from '../../apps/api/src/modules/attachments/carrier-read.js';
 import {
   MATERIAL_BUSINESS_TYPE as PORT_BUSINESS_TYPE,
@@ -16,6 +21,11 @@ import {
 import type { FileRow } from '../../apps/api/src/modules/attachments/audit.js';
 import * as service from '../../apps/api/src/modules/attachments/service.js';
 import { bindSubsetAttachments } from '../../apps/api/src/modules/attachments/subset-binding.js';
+import {
+  SUBSET_BUSINESS_TYPE,
+  SUBSET_PURPOSE,
+  subsetTargetTag,
+} from '../../apps/api/src/modules/attachments/subset-read.js';
 import { attachmentWorld, png, registration, PURPOSE as EXIT_PURPOSE } from './AC-ATT-support.js';
 import {
   materialInput,
@@ -51,7 +61,6 @@ function bindMaterial(
     bindAttachmentRefs(tx, w.ctxOf(actor), {
       carrier: CARRIER,
       businessId: opts.submissionId,
-      businessType: MATERIAL_BUSINESS_TYPE,
       targetTag: materialTag(opts.itemId),
       employeeId: opts.employeeId ?? w.employeeA,
       previous: opts.previous ?? [],
@@ -121,7 +130,16 @@ describe('AC-EN-BE16-08 材料附件：受信绑定 / 释放', () => {
     );
     expect(summaries.map((s) => s.id)).toEqual([file.id]);
     const read = await w.tenantTx((tx) =>
-      readCarrierAttachment(tx, w.tenant.id, submissionId, refs, file.id, { mode: 'live' }, MATERIAL_BUSINESS_TYPE),
+      readCarrierAttachment(
+        tx,
+        w.tenant.id,
+        submissionId,
+        refs,
+        file.id,
+        { mode: 'live' },
+        MATERIAL_BUSINESS_TYPE,
+        async () => true,
+      ),
     );
     expect(Buffer.from(read.bytes).equals(png())).toBe(true);
     // 释放：把引用列表改成空，本提交名下的文件转待清理（从未封存）
@@ -135,7 +153,7 @@ describe('AC-EN-BE16-08 材料附件：受信绑定 / 释放', () => {
     expect(gone?.code).toBe('NOT_FOUND');
   });
 
-  it('绑定条件逐项拒绝（400 ATTACHMENT_INVALID，同一错误体）：别人上传、别的员工、别的材料项、已过期、别单已绑定、未带标记', async () => {
+  it('绑定条件逐项拒绝（400 ATTACHMENT_INVALID，同一错误体）：别人上传、别的员工、别的材料项、已过期、别单已绑定', async () => {
     const w = await materialWorld(useDb().db, 'be16m-refuse');
     const itemId = w.newItemId();
     const submissionId = w.newItemId();
@@ -150,22 +168,6 @@ describe('AC-EN-BE16-08 材料附件：受信绑定 / 释放', () => {
       ['别的员工名下的', await attempt(otherEmployee.id)],
       ['别的材料项的', await attempt(otherItem.id)],
       ['不存在的', await attempt(w.newItemId())],
-      [
-        '未带材料项标记（按离职口径）',
-        await failure(
-          w.tenantTx((tx) =>
-            bindAttachmentRefs(tx, w.ctxOf(w.hr.id), {
-              carrier: CARRIER,
-              businessId: submissionId,
-              businessType: MATERIAL_BUSINESS_TYPE,
-              employeeId: w.employeeA,
-              previous: [],
-              next: [mine.id],
-              actor: w.hr.id,
-            }),
-          ),
-        ),
-      ],
     ] as const) {
       expect(error?.code, name).toBe('ATTACHMENT_INVALID');
     }
@@ -218,6 +220,7 @@ describe('AC-EN-BE16-08 材料附件：下载再验权（隐藏材料不能下�
     const file = await w.stored({ itemId });
     const refs = await bindMaterial(w, { itemId, submissionId, next: [file.id] });
     const reauthorize = vi.fn(async (_row: FileRow) => false);
+    const readBytes = vi.spyOn(PgBlobStore, 'read');
     const denied = await failure(
       w.tenantTx((tx) =>
         readCarrierAttachment(
@@ -235,6 +238,8 @@ describe('AC-EN-BE16-08 材料附件：下载再验权（隐藏材料不能下�
     expect(denied?.code).toBe('NOT_FOUND');
     expect(reauthorize).toHaveBeenCalledTimes(1);
     expect(reauthorize.mock.calls[0]![0]).toMatchObject({ id: file.id, purpose: MATERIAL_PURPOSE });
+    expect(readBytes).not.toHaveBeenCalled(); // 先验权后读字节：被拒时字节从未读出
+    readBytes.mockRestore();
     // 不在本提交引用列表里的 ID：不触发回调，也不泄露存在性
     reauthorize.mockClear();
     const unlisted = await failure(
@@ -405,5 +410,239 @@ describe('AC-EN-BE16-08 材料附件：与离职申请 / 人员子集隔离，�
     expect((await a.meta(me, file.id)).status).toBe(404);
     expect((await a.content(me, file.id)).status).toBe(404);
     expect((await a.remove(me, file.id, file.revision)).status).toBe(404);
+  });
+});
+
+/** 返工 P2-1：材料绑定的归属类型由载体固定，目标员工与材料项标记是必填；保留 / 释放同样核对用途与本提交归属。 */
+describe('AC-EN-BE16-08 材料附件：受信绑定缺参即拒（返工 P2-1）', () => {
+  const rawBind = (w: MaterialWorld, input: Record<string, unknown>) =>
+    w.tenantTx((tx) =>
+      bindAttachmentRefs(tx, w.ctxOf(w.hr.id), {
+        carrier: CARRIER,
+        previous: [],
+        actor: w.hr.id,
+        ...input,
+      } as Parameters<typeof bindAttachmentRefs>[2]),
+    );
+
+  it('省略 employeeId：拒绝，文件仍是 uploaded（不会替别的员工绑定）', async () => {
+    const w = await materialWorld(useDb().db, 'be16m-miss-employee');
+    const itemId = w.newItemId();
+    const forB = await w.stored({ itemId, employeeId: w.employeeB });
+    const error = await failure(
+      rawBind(w, { businessId: w.newItemId(), targetTag: materialTag(itemId), next: [forB.id] }),
+    );
+    expect(error?.code).toBe('VALIDATION_FAILED');
+    expect(await w.fileRow(forB.id)).toMatchObject({ status: 'uploaded', businessId: null });
+  });
+
+  it('省略 targetTag：拒绝，无登记标记的文件不能被绑定，带标记的也不行（标记是必填）', async () => {
+    const w = await materialWorld(useDb().db, 'be16m-miss-tag');
+    const itemId = w.newItemId();
+    const tagged = await w.stored({ itemId });
+    const untagged = await w.stored({ itemId });
+    // 无登记标记的材料用途文件（直接改行造出）
+    await w.tenantTx((tx) =>
+      tx.execute(sql`UPDATE attachment_files SET business_type = NULL WHERE id = ${untagged.id}`),
+    );
+    const bind = (id: string) =>
+      failure(rawBind(w, { businessId: w.newItemId(), employeeId: w.employeeA, next: [id] }));
+    expect((await bind(untagged.id))?.code).toBe('VALIDATION_FAILED');
+    expect((await bind(tagged.id))?.code).toBe('VALIDATION_FAILED');
+    expect(await w.fileRow(untagged.id)).toMatchObject({ status: 'uploaded', businessType: null });
+    expect(await w.fileRow(tagged.id)).toMatchObject({ status: 'uploaded', businessId: null });
+  });
+
+  it('省略 businessType（本就不是入参）：归属类型由载体固定为材料，传入别的类型也被忽略；默认离职摘要读不到', async () => {
+    const w = await materialWorld(useDb().db, 'be16m-miss-type');
+    const itemId = w.newItemId();
+    const submissionId = w.newItemId();
+    const file = await w.stored({ itemId });
+    const refs = await rawBind(w, {
+      businessId: submissionId,
+      targetTag: materialTag(itemId),
+      employeeId: w.employeeA,
+      businessType: EXIT_BUSINESS_TYPE, // 旧入参：不再有效
+      next: [file.id],
+    });
+    expect(await w.fileRow(file.id)).toMatchObject({ status: 'bound', businessType: MATERIAL_BUSINESS_TYPE });
+    const asExit = await w.tenantTx((tx) => attachmentSummaries(tx, w.tenant.id, submissionId, refs));
+    expect(asExit).toEqual([]);
+    const asMaterial = await w.tenantTx((tx) =>
+      attachmentSummaries(tx, w.tenant.id, submissionId, refs, MATERIAL_BUSINESS_TYPE),
+    );
+    expect(asMaterial.map((s) => s.id)).toEqual([file.id]);
+  });
+
+  it('保留 / 释放都核对用途：同提交 ID、同归属类型但用途不是材料的行，不能当作本提交材料文件保留或释放', async () => {
+    const w = await materialWorld(useDb().db, 'be16m-release-purpose');
+    const submissionId = w.newItemId();
+    const bytes = png();
+    // 造出串位行：离职用途文件，经离职载体绑定后把归属类型改成材料（模拟脏数据 / 别的写入口误写）
+    const stray = await w.tenantTx(async (tx) => {
+      const self = w.ownerOf(w.hr.id, w.employeeA);
+      const input = { ...materialInput(bytes), purpose: EXIT_PURPOSE };
+      const registered = await service.registerFile(tx, self, w.ctxOf(w.hr.id), input);
+      return service.uploadFile(
+        tx,
+        self,
+        w.ctxOf(w.hr.id),
+        registered.id,
+        registered.revision,
+        bytes.toString('base64'),
+      );
+    });
+    await w.tenantTx((tx) =>
+      bindAttachmentRefs(tx, w.ctxOf(w.hr.id), {
+        carrier: EXIT_CARRIER,
+        businessId: submissionId,
+        previous: [],
+        next: [stray.id],
+        actor: w.hr.id,
+      }),
+    );
+    await w.tenantTx((tx) =>
+      tx.execute(sql`UPDATE attachment_files SET business_type = ${MATERIAL_BUSINESS_TYPE} WHERE id = ${stray.id}`),
+    );
+    const itemId = w.newItemId();
+    const released = await bindMaterial(w, { itemId, submissionId, previous: [stray.id], next: [] });
+    expect(released).toEqual([]);
+    expect(await w.fileRow(stray.id)).toMatchObject({ status: 'bound', purpose: EXIT_PURPOSE });
+    const kept = await failure(bindMaterial(w, { itemId, submissionId, previous: [stray.id], next: [stray.id] }));
+    expect(kept?.code).toBe('ATTACHMENT_INVALID');
+  });
+});
+
+/** 返工 P2-1：同一业务 ID 下，离职、人员子集、材料三种载体的绑定与读取互不串位。 */
+describe('AC-EN-BE16-08 材料附件：同一业务 ID 下三种载体互相隔离（返工 P2-1）', () => {
+  it('同一个业务 ID 分别绑定离职、子集、材料附件：各按自己的类型读取，互相读不到对方', async () => {
+    const w = await materialWorld(useDb().db, 'be16m-same-id');
+    const shared = w.newItemId();
+    const itemId = w.newItemId();
+    const material = await w.stored({ itemId });
+    const materialRefs = await bindMaterial(w, { itemId, submissionId: shared, next: [material.id] });
+    const bytes = png();
+    const register = (purpose: string, tag?: string) =>
+      w.tenantTx(async (tx) => {
+        const self = w.ownerOf(w.hr.id, w.employeeA);
+        const input = { ...materialInput(bytes), purpose };
+        const registered = await service.registerFile(tx, self, w.ctxOf(w.hr.id), input, purpose, tag);
+        return service.uploadFile(
+          tx,
+          self,
+          w.ctxOf(w.hr.id),
+          registered.id,
+          registered.revision,
+          bytes.toString('base64'),
+          purpose,
+        );
+      });
+    const exitFile = await register(EXIT_PURPOSE);
+    const exitRefs = await w.tenantTx((tx) =>
+      bindAttachmentRefs(tx, w.ctxOf(w.hr.id), {
+        carrier: EXIT_CARRIER,
+        businessId: shared,
+        previous: [],
+        next: [exitFile.id],
+        actor: w.hr.id,
+      }),
+    );
+    const subsetFile = await register(SUBSET_PURPOSE, subsetTargetTag('education', 'attachmentId'));
+    await w.tenantTx((tx) =>
+      bindSubsetAttachments(tx, w.ctxOf(w.hr.id), {
+        kind: 'education',
+        source: { type: 'hr_direct' },
+        employeeId: w.employeeA,
+        recordId: shared,
+        previous: null,
+        next: { attachmentId: subsetFile.id },
+      }),
+    );
+    expect(await w.fileRow(exitFile.id)).toMatchObject({ status: 'bound', businessType: EXIT_BUSINESS_TYPE });
+    expect(await w.fileRow(subsetFile.id)).toMatchObject({ status: 'bound', businessType: SUBSET_BUSINESS_TYPE });
+    expect(await w.fileRow(material.id)).toMatchObject({ status: 'bound', businessType: MATERIAL_BUSINESS_TYPE });
+    const all = [exitFile.id, subsetFile.id, material.id];
+    const names = async (type?: string) =>
+      (await w.tenantTx((tx) => attachmentSummaries(tx, w.tenant.id, shared, all, type))).map((s) => s.id);
+    expect(await names()).toEqual([exitFile.id]);
+    expect(await names(MATERIAL_BUSINESS_TYPE)).toEqual([material.id]);
+    expect(await names(SUBSET_BUSINESS_TYPE)).toEqual([subsetFile.id]);
+    const download = (id: string, type?: string) =>
+      failure(
+        w.tenantTx((tx) =>
+          readCarrierAttachment(tx, w.tenant.id, shared, all, id, { mode: 'live' }, type, async () => true),
+        ),
+      );
+    expect((await download(material.id))?.code).toBe('NOT_FOUND'); // 默认离职类型读不到材料
+    expect((await download(exitFile.id, MATERIAL_BUSINESS_TYPE))?.code).toBe('NOT_FOUND');
+    expect((await download(subsetFile.id, MATERIAL_BUSINESS_TYPE))?.code).toBe('NOT_FOUND');
+    expect(materialRefs).toEqual([material.id]);
+    expect(exitRefs).toEqual([exitFile.id]);
+  });
+});
+
+/** 返工 P2-2：材料下载必须经过再验权；缺回调与回调返回否同为 404，且都在读字节前。旧载体的回调仍是可选。 */
+describe('AC-EN-BE16-08 材料附件：下载必须再验权（返工 P2-2）', () => {
+  it('缺回调：同一个 404，字节存储未被读取；回调返回否同样未读字节；回调返回是才放行', async () => {
+    const w = await materialWorld(useDb().db, 'be16m-reauth-required');
+    const itemId = w.newItemId();
+    const submissionId = w.newItemId();
+    const file = await w.stored({ itemId });
+    const refs = await bindMaterial(w, { itemId, submissionId, next: [file.id] });
+    const readBytes = vi.spyOn(PgBlobStore, 'read');
+    const download = (reauthorize?: (row: FileRow) => Promise<boolean>) =>
+      failure(
+        w.tenantTx((tx) =>
+          readCarrierAttachment(
+            tx,
+            w.tenant.id,
+            submissionId,
+            refs,
+            file.id,
+            { mode: 'live' },
+            MATERIAL_BUSINESS_TYPE,
+            reauthorize,
+          ),
+        ),
+      );
+    const missing = await download();
+    const denied = await download(async () => false);
+    expect(missing?.code).toBe('NOT_FOUND');
+    expect(denied?.code).toBe('NOT_FOUND');
+    expect(missing?.message).toBe(denied?.message);
+    expect(readBytes).not.toHaveBeenCalled();
+    expect(await download(async () => true)).toBeUndefined();
+    expect(readBytes).toHaveBeenCalledTimes(1);
+    readBytes.mockRestore();
+  });
+
+  it('旧载体（离职）的回调仍是可选：不传照常读出', async () => {
+    const w = await materialWorld(useDb().db, 'be16m-reauth-exit-optional');
+    const bytes = png();
+    const exitFile = await w.tenantTx(async (tx) => {
+      const self = w.ownerOf(w.hr.id, w.employeeA);
+      const input = { ...materialInput(bytes), purpose: EXIT_PURPOSE };
+      const registered = await service.registerFile(tx, self, w.ctxOf(w.hr.id), input);
+      return service.uploadFile(
+        tx,
+        self,
+        w.ctxOf(w.hr.id),
+        registered.id,
+        registered.revision,
+        bytes.toString('base64'),
+      );
+    });
+    const businessId = w.newItemId();
+    const refs = await w.tenantTx((tx) =>
+      bindAttachmentRefs(tx, w.ctxOf(w.hr.id), {
+        carrier: EXIT_CARRIER,
+        businessId,
+        previous: [],
+        next: [exitFile.id],
+        actor: w.hr.id,
+      }),
+    );
+    const read = await w.tenantTx((tx) => readCarrierAttachment(tx, w.tenant.id, businessId, refs, exitFile.id));
+    expect(Buffer.from(read.bytes).equals(bytes)).toBe(true);
   });
 });
