@@ -21,149 +21,34 @@ import type { EmploymentContext } from '../../apps/api/src/modules/employment/ty
 import { employmentSession } from './AC-EMP-support.js';
 import { linkageWorld, type LinkageWorld } from './AC-LNK-support.js';
 import { waitForLockWaiters } from './AC-TRF-F181a-support.js';
+import {
+  emptyContractRange,
+  emptyRange,
+  entryCases as barrierCases,
+  pg,
+  race,
+  refused,
+  rows,
+  state,
+  type BarrierWorld,
+  type Scenario,
+} from './support/lock-barrier.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { revocable } from './support/revocable-rights.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
-const pg = Boolean(process.env.TEST_DATABASE_URL);
 const BASE = '/api/tenant/employment';
 const D = '2026-10-10';
 /** 失败子项 / 失败生效的夹具在 10-10 跑过定时生效，重试在其后一天。 */
 const RETRY_AT = '2026-10-11T02:00:00Z';
 const DRAFT_AT = '2026-10-01T01:00:00Z';
 
-type Db = Parameters<typeof withTenant>[0];
 type Person = Awaited<ReturnType<LinkageWorld['hire']>>;
-const rows = (result: unknown) => (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows);
 
-/** 另开一个事务持有员工行（或业务头）直到 release，模拟“另一名经办人正在改这名员工 / 这张单”。 */
-function holdRow(db: Db, tenantId: string, table: 'employees' | 'heads', id: string) {
-  let release!: () => void;
-  const released = new Promise<void>((resolve) => (release = resolve));
-  let locked!: () => void;
-  const ready = new Promise<void>((resolve) => (locked = resolve));
-  const from = table === 'employees' ? sql`employment_employees` : sql`employment_business_objects`;
-  const done = withTenant(db, tenantId, async (tx) => {
-    await tx.execute(sql`SELECT id FROM ${from} WHERE tenant_id=${tenantId} AND id=${id}::uuid FOR UPDATE`);
-    locked();
-    await released;
-  });
-  return {
-    ready: Promise.race([ready, done]),
-    release: async () => {
-      release();
-      await done;
-    },
-  };
-}
-
-/** 等到有请求卡在业务头（employment_business_objects）的行锁上；`stop` 为真（请求已经返回）就不再等。 */
-async function waitForHeadWaiter(db: Db, stop: () => boolean) {
-  for (let i = 0; i < 400; i++) {
-    if (stop()) return;
-    const found = rows(
-      await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
-        WHERE datname=current_database() AND wait_event_type='Lock' AND query ILIKE '%employment_business_objects%'`),
-    ) as { n: number }[];
-    if (found[0]!.n >= 1) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error('没有请求卡在业务头行锁上');
-}
-
-/** 全行快照：同时捕获新增与原地改写，“零写入”拿它比。 */
-async function state(w: LinkageWorld) {
-  return withTenant(w.db, w.session.tenant.id, async (tx) => {
-    const result: Record<string, unknown> = {};
-    for (const table of [
-      'employment_employees',
-      'employment_business_objects',
-      'employment_payload_versions',
-      'employment_state_events',
-      'employment_records',
-      'employment_activation_attempts',
-      'employment_outbox',
-      'transfer_requests',
-      'transfer_linkage_versions',
-      'transfer_linkage_runs',
-      'transfer_linkage_items',
-      'transfer_draft_slots',
-      'audit_events',
-      'command_ledger',
-    ]) {
-      const found = await tx.execute(sql`SELECT to_jsonb(t) AS value FROM ${sql.identifier(table)} t
-        WHERE tenant_id=${w.session.tenant.id} ORDER BY to_jsonb(t)::text`);
-      result[table] = rows(found);
-    }
-    return result;
-  });
-}
-
-interface Scenario {
-  readonly w: LinkageWorld;
-  readonly rights: ReturnType<typeof revocable>['rights'];
-  /** 被另一事务持有的行：员工行或业务头。 */
-  readonly hold: { readonly table: 'employees' | 'heads'; readonly id: string };
-  readonly send: () => Promise<Response>;
-}
-
-/**
- * 屏障：持锁 → 发请求 → 等它排到锁上 → （revoke 时）收回范围 → 放锁。
- * `waited` 为假说明请求没有排到锁上就已返回（夹具没走到窗口），断言里单独判，避免用例空过。
- */
-type Revoke = (rights: Scenario['rights']) => void;
-/** 收回整份数据范围（事务内解析到空范围）。 */
-const emptyRange: Revoke = (rights) => {
-  rights.scope = undefined;
-  rights.emptyScope = true;
-};
-/** 只收回合同对象的范围，任职等其他对象的范围不动。 */
-const emptyContractRange: Revoke = (rights) => {
-  rights.objectScopes = { [CONTRACT_OBJECT]: EMPTY_SCOPE };
-};
-
-async function race(s: Scenario, revoke: Revoke | false) {
-  const held = holdRow(s.w.db, s.w.session.tenant.id, s.hold.table, s.hold.id);
-  await held.ready;
-  let done = false;
-  const response = s.send();
-  void response.finally(() => (done = true));
-  if (s.hold.table === 'employees') await waitForLockWaiters(s.w.db, 1, () => done);
-  else await waitForHeadWaiter(s.w.db, () => done);
-  const waited = !done;
-  if (revoke) revoke(s.rights);
-  await held.release();
-  return { waited, response: await response };
-}
-
-const refused = (status: number) => [403, 404].includes(status);
-
-/** 一个入口的两条用例：等锁期间收回范围 → 拒绝且零写入；对照：没收回 → 等完锁后照常成功。 */
-function entryCases(name: string, build: (label: string) => Promise<Scenario>, success: number | readonly number[]) {
-  const accepted = Array.isArray(success) ? success : [success];
-  describe.runIf(pg)(name, () => {
-    it('等锁期间数据范围被收回：放锁后按收回后的授权拒绝，零写入', async () => {
-      const s = await build(`f560-${uniqueSuffix()}`);
-      const before = await state(s.w);
-      const r = await race(s, emptyRange);
-      expect(r.waited, '请求没有排到锁上，屏障没有生效').toBe(true);
-      const text = await r.response.clone().text();
-      expect(refused(r.response.status), `等锁期间撤权后应 403 / 404，实际 ${r.response.status}：${text}`).toBe(true);
-      expect(await state(s.w)).toEqual(before);
-    });
-
-    it('对照：范围没被收回：等完锁后照常成功（修前合法路径仍成功）', async () => {
-      const s = await build(`f560-${uniqueSuffix()}-ok`);
-      const before = await state(s.w);
-      const r = await race(s, false);
-      expect(r.waited, '请求没有排到锁上，屏障没有生效').toBe(true);
-      expect(accepted, await r.response.clone().text()).toContain(r.response.status);
-      expect(await state(s.w)).not.toEqual(before);
-    });
-  });
-}
+const entryCases = (name: string, build: (label: string) => Promise<Scenario>, success: number | readonly number[]) =>
+  barrierCases('f560', name, build, success);
 
 /** 入口放行、事务内可撤权的 API（见文件头）。 */
 function revocableApi(w: LinkageWorld, at: string) {
@@ -562,7 +447,7 @@ describe.runIf(pg)('F-560 第 2 轮 P2-1：覆盖暂存的旧草稿头在封口�
     };
   }
 
-  const slotOf = async (w: LinkageWorld, employeeId: string) =>
+  const slotOf = async (w: BarrierWorld, employeeId: string) =>
     withTenant(w.db, w.session.tenant.id, async (tx) =>
       rows(
         await tx.execute(sql`SELECT business_id AS "businessId" FROM transfer_draft_slots

@@ -273,8 +273,10 @@ async function runCandidate(
   try {
     const result = await withTenant(db, tenant.id, async (tx) => {
       const [locked] = rowsOf(
+        // FOR NO KEY UPDATE（F-565②）：与任职写入口同强度，仍与同一把锁互斥并保持 SKIP LOCKED 语义；不挡外键子行插入。
+        // 员工行的 (tenant_id,id) 被各表外键引用，但从不被改写或删除（无 DELETE，id 不更新），无需 FOR UPDATE。
         await tx.execute(sql`SELECT id FROM employment_employees WHERE tenant_id=${tenant.id}
-            AND id=${candidate.employeeId}::uuid FOR UPDATE SKIP LOCKED`),
+            AND id=${candidate.employeeId}::uuid FOR NO KEY UPDATE SKIP LOCKED`),
       );
       if (!locked) return 'locked';
       const [done] = rowsOf(
@@ -310,8 +312,9 @@ async function recoverCandidate(db: Db, ctx: ContractContext, candidate: Candida
   // 提交结果未知时先回查成功记录；存储不可用则继续抛出，不能伪造业务失败。
   return withTenant(db, ctx.tenantId, async (tx) => {
     // 失败事务已释放锁；重新按员工 → 业务顺序串行，避免覆盖另一实例刚写入的成功结果。
+    // 同上降为 FOR NO KEY UPDATE（F-565②）：此处是失败后第二次取员工锁，若仍是 FOR UPDATE 就是对任职入口已持强度的升级。
     await tx.execute(sql`SELECT id FROM employment_employees WHERE tenant_id=${ctx.tenantId}
-      AND id=${candidate.employeeId}::uuid FOR UPDATE`);
+      AND id=${candidate.employeeId}::uuid FOR NO KEY UPDATE`);
     const [done] = rowsOf(
       await tx.execute(sql`SELECT id FROM contract_job_attempts WHERE tenant_id=${ctx.tenantId}
       AND object_id=${candidate.id}::uuid AND kind=${candidate.kind} AND state='succeeded' LIMIT 1`),

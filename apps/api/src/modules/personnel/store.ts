@@ -54,10 +54,19 @@ export async function update(tx: Tx, table: string, values: Row, where: SQL) {
     )}
     WHERE ${where}`);
 }
+/**
+ * 人员写入口的员工行锁，与任职写入口同一把、同一强度：FOR NO KEY UPDATE（F-565②）。
+ * 员工行的 (tenant_id,id) 是各表外键的引用目标，但从不被改写或删除；code 上只有表达式唯一索引，不能作外键目标，
+ * 所以 NO KEY UPDATE 足够，且不与外键子行插入（KEY SHARE）互等。
+ *
+ * 约定（F-565④）：往以员工为外键的子表（personnel_attachments、personnel_* 子集表、合同 / 调动子表等）插行之前，
+ * 必须先取这把锁（或 lockEmploymentEmployee）；否则插入只持 KEY SHARE，与已持锁的任职写入口并行，绕过员工级串行。
+ * 守卫：tests/acceptance/AC-EMP-F565-lock-order.test.ts（静态扫描 + 屏障用例，变异自证）。
+ */
 export async function lockPerson(tx: Tx, ctx: PersonnelContext, employeeId: string) {
   const [person] = rows(
     await tx.execute(sql`SELECT id,name,code FROM employment_employees
-    WHERE tenant_id=${ctx.tenantId} AND id=${employeeId}::uuid FOR UPDATE`),
+    WHERE tenant_id=${ctx.tenantId} AND id=${employeeId}::uuid FOR NO KEY UPDATE`),
   );
   if (!person) throw new AppError('NOT_FOUND', '人员不存在');
   return person;

@@ -1,7 +1,6 @@
 import { CUSTOM_FIELD_OBJECT_TYPES } from '@italent/domain';
 import { withEstablishmentConfirmation } from './activation-checks.js';
 import { deleteConfirmed, splitConfirmed } from './establishment-confirmation.js';
-import { checksEmploymentCapacity } from '../establishment/employment-check.js';
 import { customFieldWriteGuard } from './custom-field-guard.js';
 import { listVisibleCustomFields } from '../personnel/custom-field-directory.js';
 import { composeBusiness, disclosedBy, selectEmploymentRead, type EmploymentRead } from './approval-content.js';
@@ -68,8 +67,8 @@ import { splitExitOptions } from './exit-initiation.js';
 import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentImport } from './forward-import.js';
 import { requireSavedValuesApplicable } from './field-origin-write.js';
 import { editEmploymentRecord } from './record-edit.js';
+import { exitCommandGuard } from './exit-guards.js';
 import {
-  exitCommandGuard,
   importWriteGuard,
   type CreateTarget,
   recordEditGuard,
@@ -311,8 +310,10 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
       exit,
     };
     const guard = isExitKind(input.kind)
-      ? exitCommandGuard(deps, ctx, 'create', gate, { departmentId: input.fields.departmentId })
-      : genericCapacityCreateGuard(deps, ctx, id, input, rawInput as object);
+      ? exitCommandGuard(deps, ctx, 'create', gate, { departmentId: input.fields.departmentId }, (_tx, scoped) =>
+          requireGenericCreateRights(scoped, rawInput as object),
+        )
+      : genericCreateGuard(deps, ctx, id, input, rawInput as object);
     return runWrite(
       c,
       deps,
@@ -352,15 +353,29 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
   });
 }
 
-/** 通用新建的编制确认共用事务内授权；普通调动另校验发起来源和直接调动开关。 */
-function genericCapacityCreateGuard(
+/** 通用新建入口的对象新增权 + 通用新建按钮（含实际请求字段）：通用类型与走离职守卫的离职 / 退休分支在命令内共用。 */
+async function requireGenericCreateRights(scoped: EmploymentContext, rawInput: object) {
+  await requirePermission(scoped.authorize!, {
+    ...scoped,
+    action: 'object.create',
+    resource: EMPLOYMENT_OBJECT,
+    fields: [],
+  });
+  await requireEmploymentWrite(scoped, 'create', rawInput, 'Employment.Create');
+}
+
+/**
+ * 通用新建（非离职 / 退休类型）的同单守卫：员工行 → 业务头 → 封口 → 锁内读授权（F-560 口径）。
+ * F-565①：此前只有要做编制确认的类型（调动 / 实习转正 / 退休返聘）走它，入职、转正等其余类型没有守卫，授权在入口读完，
+ * 等员工行锁期间被收回的范围仍被沿用；现在所有类型一律经此。普通调动另校验发起来源和直接调动开关。
+ */
+function genericCreateGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   employeeId: string,
   input: ReturnType<typeof normalizeEmploymentInput>,
   rawInput: object,
 ) {
-  if (!checksEmploymentCapacity(input.kind)) return undefined;
   return sameOrderScopeGuard(deps, ctx, {
     ...transferReceiptNames(input.kind),
     // 员工行（调动再加新带入的下属）先于授权读取取齐并封口；执行体里的取锁此后都是重入（F-560）
@@ -369,13 +384,7 @@ function genericCapacityCreateGuard(
       extra: input.kind === 'transfer' ? (input.fields.addedSubordinateIds ?? []) : [],
     },
     authorize: async (tx, scoped) => {
-      await requirePermission(scoped.authorize!, {
-        ...scoped,
-        action: 'object.create',
-        resource: EMPLOYMENT_OBJECT,
-        fields: [],
-      });
-      await requireEmploymentWrite(scoped, 'create', rawInput, 'Employment.Create');
+      await requireGenericCreateRights(scoped, rawInput);
       const creator = await requireEmployeeInScope(tx, scoped, employeeId);
       if (input.kind === 'transfer') {
         await requireTransferSource(tx, scoped, employeeId, 'hr');
@@ -1175,7 +1184,7 @@ function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
 
 /**
  * 员工自助单据上同值的职位、职务、职级、序列不算本次输入（DEC-950）：先定本次输入，字段写权校验只问扣完之后的这份。
- * 修改、其同键重放与导入编辑行都走这一个函数。
+ * 修改与其同键重放走这一个函数；导入编辑行在同一事务里先做策略校验，再单独调 requireDraftEditPermission（F-567）。
  */
 async function requireDraftEditWrite(
   inTx: <T>(run: (tx: Tx) => Promise<T>) => Promise<T>,
@@ -1199,11 +1208,6 @@ async function requireDraftEditPermission(
     commandOnly: writeIsCommandOnly(options, input, current),
   });
 }
-
-const inTenant =
-  (deps: TenantRouteDeps, ctx: EmploymentContext) =>
-  <T>(run: (tx: Tx) => Promise<T>) =>
-    withTenant(deps.db, ctx.tenantId, run);
 
 /**
  * 扣掉同值字段之后一个业务字段都不剩（请求体只带了同值字段）：按没有变化的整版重提处理，
@@ -1283,14 +1287,19 @@ async function authorizeImport(
       creates.push({ business: item.business as object, departmentId: business.fields.departmentId });
     } else {
       const patch = normalizeBusinessPatch(item.patch);
-      const current = await authorizeBusinessWrite(deps, ctx, item.id, employeeId);
+      // 写范围复核与员工保存值策略（403 会披露草稿内容）读同一份事务快照，先范围后策略：分成两个事务时，
+      // HR 可在两步之间改动目标，策略校验读到新版本，对已在范围外的草稿返回 403 而不是 404（F-567，同 F-564 P2-1）。
+      let checked: Awaited<ReturnType<typeof requireEmployeeTransferBusiness>>;
+      const current = await authorizeBusinessWrite(deps, ctx, item.id, employeeId, async (tx, value) => {
+        // 导入编辑的对象是已生效的任职记录，按生效记录契约校验对象、范围与本次字段写权（同 PATCH /records/:id）；
+        // 员工草稿的只读上限与保存值可信度只约束未生效的草稿，生效后员工的旧命令不能再卡 HR 的编辑（F-036 S4 P2-3）。
+        if (value.status !== 'effective') checked = await requireEmployeeTransferBusiness(tx, ctx, item.id, patch);
+      });
       targets.push({ id: item.id, employeeId, kind: current.kind, patch });
-      // 导入编辑的对象是已生效的任职记录，按生效记录契约校验对象、范围与本次字段写权（同 PATCH /records/:id）；
-      // 员工草稿的只读上限与保存值可信度只约束未生效的草稿，生效后员工的旧命令不能再卡 HR 的编辑（F-036 S4 P2-3）。
-      if (current.status === 'effective') {
-        if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit');
-      } else if (preview) await inTenant(deps, ctx)((tx) => requireEmployeeTransferBusiness(tx, ctx, item.id, patch));
-      else await requireDraftEditWrite(inTenant(deps, ctx), ctx, item.id, patch, {});
+      if (!preview) {
+        if (current.status === 'effective') await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit');
+        else await requireDraftEditPermission(ctx, patch, checked, {});
+      }
       const departmentId = patch.fields?.departmentId;
       if (departmentId !== undefined)
         await withTenant(deps.db, ctx.tenantId, (tx) =>

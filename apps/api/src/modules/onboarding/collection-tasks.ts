@@ -92,11 +92,16 @@ export function collectionReceipt(task: OnboardingCollectionTask) {
   return { id: task.id, revision: task.revision, status: task.status, notificationStatus: 'unavailable' as const };
 }
 
+/** 终态任务（已关闭 / 已撤回）允许重新发起；发起入口与详情动作共用这一判定，避免两边漂移。 */
+export function isRestartableCollection(status: string): boolean {
+  return status === 'closed' || status === 'withdrawn';
+}
+
 /** 锁内读取当前任职、阶段、规则。人工和创建作业共享这条任务创建路径。 */
 export async function startCollection(tx: Tx, ctx: EmploymentContext, ref: EntryCaseWriteRef, mode: 'auto' | 'manual') {
   const stage = await lockCollectionEntry(tx, ctx, ref);
   const previous = await loadCollectionTask(tx, ctx.tenantId, stage.id);
-  if (previous && previous.status !== 'closed' && previous.status !== 'withdrawn') {
+  if (previous && !isRestartableCollection(previous.status)) {
     if (mode === 'manual' && ctx.expectedRevision !== previous.revision)
       throw new AppError('REVISION_CONFLICT', '已存在采集任务，请刷新后重提');
     return { status: 'existing' as const, task: previous };
