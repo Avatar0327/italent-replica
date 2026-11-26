@@ -33,8 +33,9 @@ async function waitForFieldLock(db: Db) {
   }
   throw new Error('请求没有等到字段行锁');
 }
+// 本文件只断言 toEqual([]) 与 toHaveLength，不依赖行序；仍按主键 id 排序，避免日后有人对整列表做 toEqual（F-575，同 F-572）
 const mappingRows = async (db: Db, tenant: string) =>
-  withTenant(db, tenant, (tx) => tx.select().from(talentReviewFieldMappings));
+  withTenant(db, tenant, (tx) => tx.select().from(talentReviewFieldMappings).orderBy(talentReviewFieldMappings.id));
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TR-field-mappings-pg 映射 × 字段删除交错（真 PG）', () => {
   it('字段删除先提交：等待中的映射新建得到 404，不落库', async () => {

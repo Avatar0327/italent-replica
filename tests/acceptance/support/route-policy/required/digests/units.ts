@@ -1496,7 +1496,7 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/personnel/employees/:id/history': '91fa9765d77c',
     'route:GET /api/tenant/personnel/employees/:id/tenure': '5cd53c71c374',
     'route:PATCH /api/tenant/personnel/employees/:id': 'c869de2ed539',
-    'route:POST /api/tenant/personnel/employees/:id/attachments': 'a58c9e435628',
+    'route:POST /api/tenant/personnel/employees/:id/attachments': '6e3261e66704',
   },
   'apps/api/src/modules/personnel/subset-attachment-routes.ts': {
     attachmentWrite: '4763a186401f',

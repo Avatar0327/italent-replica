@@ -27,6 +27,8 @@ export interface FormOverlayProps {
   /** 旧入口使用 id:revision；接入内核时只用稳定业务 ID，由内核保留草稿并核对冲突。 */
   recordKey: string;
   submission?: CommandForm;
+  /** 接入层按当前命令状态给出的提示（如锁到别页命令的原因，F-570），紧随状态区显示；不传则不显示。 */
+  notice?: ReactNode;
   title: string;
   titleExtra?: ReactNode;
   footerExtra?: ReactNode;
@@ -104,7 +106,7 @@ function OpenForm(props: FormOverlayProps) {
   );
   const content = (
     <>
-      {submission && <CommandStatus submission={submission} labels={formLabels(props.groups)} />}
+      <FormStatus submission={submission} notice={props.notice} groups={props.groups} />
       {!!error && (!submission || !submission.state?.error) && (
         <Alert
           type="error"
@@ -162,6 +164,15 @@ function OpenForm(props: FormOverlayProps) {
     >
       {content}
     </Drawer>
+  );
+}
+
+function FormStatus({ submission, notice, groups }: Pick<FormOverlayProps, 'submission' | 'notice' | 'groups'>) {
+  return (
+    <>
+      {submission && <CommandStatus submission={submission} labels={formLabels(groups)} />}
+      {notice && <Alert type="error" showIcon message={notice} />}
+    </>
   );
 }
 
