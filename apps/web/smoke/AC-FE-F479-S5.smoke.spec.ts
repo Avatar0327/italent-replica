@@ -328,7 +328,10 @@ test('AC-FE-ATT-10 三载体只走 blob、下载与新标签打开；切换租�
   // HR 载体：离职管理详情的缩略图与下载
   reads = await signIn(context, baseURL!, hr);
   await page.goto('/exits?view=all');
-  await page.getByRole('button', { name: '查看详情', exact: true }).first().click();
+  // 租户 A 还有合成本人乙的离职单（ATT-07 夹具）；HR 看不到 createdAt 时列表按 id 排序（exit-dependencies.ts 排序回退），
+  // 两张单的先后随 UUID 而定，所以按本单 id 找行，不取第一行（F-578）
+  const row = page.locator(`.ant-table-row[data-row-key="${exitId}"]`);
+  await row.getByRole('button', { name: '查看详情', exact: true }).click();
   const drawer = page.locator('.ant-drawer, .ant-modal').filter({ hasText: FIELD }).first();
   await expect(thumbs(drawer)).toHaveCount(1);
   await expectDownload(page, drawer, reads, NAMES[0]!);
