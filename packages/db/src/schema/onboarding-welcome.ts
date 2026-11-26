@@ -113,11 +113,12 @@ export const onboardingHandbooks = pgTable(
   ],
 );
 
-export const WELCOME_JOB_STATUSES = ['pending', 'done', 'skipped', 'failed'] as const;
+export const WELCOME_JOB_STATUSES = ['pending', 'awaiting_delivery', 'done', 'skipped', 'failed'] as const;
 
 /**
  * 欢迎信生效任务：随生效（hire）事务写入，同一阶段只有一条（§8、AC-EN-BE16-12）。
- * done 只表示“已交付”，当前没有真实投递适配器，消费者不会写 done；任务保持 pending 并留原因。
+ * done 只表示“已交付”，当前没有真实投递适配器，消费者不会写 done。pending / failed 才进入定时扫描；
+ * 复核通过但适配器未接入的转 awaiting_delivery（内部待投递，不被扫描），适配器随后续片接入时才恢复投递扫描。
  */
 export const onboardingWelcomeJobs = pgTable(
   'onboarding_welcome_jobs',
@@ -140,7 +141,10 @@ export const onboardingWelcomeJobs = pgTable(
       columns: [t.tenantId, t.caseId],
       foreignColumns: [onboardingEntryCases.tenantId, onboardingEntryCases.id],
     }),
-    check('onboarding_welcome_job_status', sql`${t.status} IN ('pending','done','skipped','failed')`),
+    check(
+      'onboarding_welcome_job_status',
+      sql`${t.status} IN ('pending','awaiting_delivery','done','skipped','failed')`,
+    ),
     check('onboarding_welcome_job_attempts', sql`${t.attempts} >= 0`),
   ],
 );

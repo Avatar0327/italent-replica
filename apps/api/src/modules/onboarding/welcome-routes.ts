@@ -1,6 +1,7 @@
 import { withTenant, type Tx } from '@italent/db';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
+import { exemptFromFailureAudit } from '../../audit/request-context.js';
 import { runCommand, type CommandResult } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import { policedSub } from '../../route-policy/index.js';
@@ -145,7 +146,7 @@ function welcomeRoutes(module: Module, deps: TenantRouteDeps, read: Read) {
       const id = uuidParam(c);
       await requireWelcomeView(authorize, tenant);
       const row = await readWelcomeLetter(tx, tenant.tenantId, id);
-      const availableActions = await welcomeAvailableActions(authorize, tenant, 'update');
+      const availableActions = await welcomeAvailableActions(authorize, tenant, 'update', row.archivedAt !== null);
       c.header('ETag', `"${row.revision}"`);
       return c.json({ ...welcomeLetterView(row), availableActions });
     }),
@@ -193,6 +194,7 @@ function welcomeRoutes(module: Module, deps: TenantRouteDeps, read: Read) {
     return c.body(null, 204);
   });
   module.post('/welcome-letters/:id/preview', async (c) => {
+    exemptFromFailureAudit();
     const id = uuidParam(c);
     const { samples } = await parseBody(c, previewBody);
     return read(c, async (tx, tenant, authorize) => {
@@ -217,7 +219,7 @@ function handbookRoutes(module: Module, deps: TenantRouteDeps, read: Read) {
       const id = uuidParam(c);
       await requireHandbookView(authorize, tenant);
       const row = await readHandbook(tx, tenant.tenantId, id);
-      const availableActions = await handbookAvailableActions(authorize, tenant, 'update');
+      const availableActions = await handbookAvailableActions(authorize, tenant, 'update', row.archivedAt !== null);
       c.header('ETag', `"${row.revision}"`);
       return c.json({ ...handbookView(row), availableActions });
     }),
@@ -264,6 +266,7 @@ function handbookRoutes(module: Module, deps: TenantRouteDeps, read: Read) {
     return c.body(null, 204);
   });
   module.post('/handbooks/:id/preview', async (c) => {
+    exemptFromFailureAudit();
     const id = uuidParam(c);
     const { samples } = await parseBody(c, previewBody);
     return read(c, async (tx, tenant, authorize) => {

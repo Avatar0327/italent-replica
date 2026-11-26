@@ -19,7 +19,8 @@ export function captureCommandFailures(db: Db): MiddlewareHandler<TenantEnv> {
     const error = c.error;
     const commandId = c.req.header('idempotency-key');
     if (!error || !WRITE_METHODS.has(c.req.method) || !commandId || !COMMAND_ID.test(commandId)) return;
-    if (currentAuditRequest()?.state.failureRecorded) return;
+    const state = currentAuditRequest()?.state;
+    if (state?.failureRecorded || state?.failureAuditExempt) return;
     // 租户路径上经平台命令执行的写入（如成员授予 / 撤销）：沿用平台执行器的分类（含提交阶段的结果未知），
     // 租户审计与平台受限通道各记一条、口径一致（第四轮：平台入口同类路径）
     const failure = platformFailureOf(error) ?? classifyCommandFailure(error, 'execute');

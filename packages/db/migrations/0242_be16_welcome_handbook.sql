@@ -27,7 +27,7 @@ CREATE TABLE "onboarding_welcome_jobs" (
 	"next_attempt_at" timestamp with time zone NOT NULL,
 	"updated_at" timestamp with time zone NOT NULL,
 	CONSTRAINT "onboarding_welcome_jobs_tenant_id_case_id_pk" PRIMARY KEY("tenant_id","case_id"),
-	CONSTRAINT "onboarding_welcome_job_status" CHECK ("onboarding_welcome_jobs"."status" IN ('pending','done','skipped','failed')),
+	CONSTRAINT "onboarding_welcome_job_status" CHECK ("onboarding_welcome_jobs"."status" IN ('pending','awaiting_delivery','done','skipped','failed')),
 	CONSTRAINT "onboarding_welcome_job_attempts" CHECK ("onboarding_welcome_jobs"."attempts" >= 0)
 );
 --> statement-breakpoint

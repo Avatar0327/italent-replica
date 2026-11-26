@@ -14,18 +14,16 @@ import {
   type OnboardingEntryCase,
   type Tx,
 } from '@italent/db';
-import { EMPLOYEE_STATUS } from '@italent/domain';
+import { EMPLOYEE_STATUS, tenantLocalDate } from '@italent/domain';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { activeTenants } from '../employment/active-tenants.js';
-import { lockEmploymentEmployee, rowsOf } from '../employment/record-store.js';
+import { rowsOf } from '../employment/record-store.js';
 import type { EmploymentContext } from '../employment/types.js';
 import type { EntryLifecycleContext } from '../employment/onboarding-entry-port.js';
 
 const unfinished = inArray(jobs.status, ['pending', 'failed']);
 const jobKey = (tenantId: string, caseId: string) => and(eq(jobs.tenantId, tenantId), eq(jobs.caseId, caseId));
 const BATCH_SIZE = 100;
-/** 没有投递适配器时的复查间隔；适配器随后续片接入。 */
-const ADAPTER_RETRY_MS = 3_600_000;
 
 /** 与「入职生效」同事务入队：回滚即无作业；同一入职阶段只入一次（主键 + onConflictDoNothing）。 */
 export async function enqueueWelcomeLetter(tx: Tx, ctx: EntryLifecycleContext, stage: OnboardingEntryCase) {
@@ -45,33 +43,47 @@ function welcomeTargets(tx: Tx, tenantId: string, now: Date) {
     .limit(BATCH_SIZE);
 }
 
-/** §6.2：以当前事实复核任职记录仍有效，未来生效日不提前触发。 */
-async function hireStillEffective(tx: Tx, tenantId: string, stage: OnboardingEntryCase) {
-  if (stage.state !== 'hired' || !stage.hiredRecordId) return false;
+/**
+ * §6.2：以租户业务日的当前任职复核原入职记录仍属当前有效周期。只看入职那条历史记录不够：离职 / 退休是
+ * 时间线上追加的新版本，不会改动它；所以取业务日当天及以前最后一条，要求与入职记录同周期且状态仍在职。
+ */
+async function employmentStillCurrent(tx: Tx, ctx: EmploymentContext, employeeId: string, stage: OnboardingEntryCase) {
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
   const rows = await tx.execute(sql`
-    SELECT 1 FROM employment_record_status(${tenantId}::uuid, ${stage.hiredRecordId}::uuid) s
-    WHERE s.employee_status IN (${EMPLOYEE_STATUS.probation}, ${EMPLOYEE_STATUS.regular})`);
+    SELECT 1 FROM employment_records hired,
+      LATERAL (SELECT t.record_id, t.staff_id FROM employment_timeline t
+        WHERE t.tenant_id = ${ctx.tenantId} AND t.employee_id = ${employeeId}::uuid AND t.start_date <= ${today}::date
+        ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1) cur,
+      LATERAL employment_record_status(${ctx.tenantId}::uuid, cur.record_id) s
+    WHERE hired.tenant_id = ${ctx.tenantId} AND hired.id = ${stage.hiredRecordId}::uuid
+      AND hired.employee_id = ${employeeId}::uuid AND cur.staff_id = hired.staff_id
+      AND s.employee_status IN (${EMPLOYEE_STATUS.probation}, ${EMPLOYEE_STATUS.regular})`);
   return rowsOf(rows).length > 0;
 }
 
 async function decide(tx: Tx, ctx: EmploymentContext, stage: OnboardingEntryCase | undefined) {
-  if (!stage || !(await hireStillEffective(tx, ctx.tenantId, stage)))
+  if (!stage || stage.state !== 'hired' || !stage.hiredRecordId)
     return { status: 'skipped' as const, reason: 'ENTRY_CASE_CLOSED' };
+  if (!(await employmentStillCurrent(tx, ctx, stage.employeeId, stage)))
+    return { status: 'skipped' as const, reason: 'EMPLOYMENT_ENDED' };
   const [enabled] = await tx
     .select({ id: letters.id })
     .from(letters)
     .where(and(eq(letters.tenantId, ctx.tenantId), eq(letters.enabled, true), sql`${letters.archivedAt} IS NULL`));
   if (!enabled) return { status: 'skipped' as const, reason: 'WELCOME_NOT_CONFIGURED' };
-  // 投递端口未接入：保持待处理，绝不写 done，也不产生任何对外发送。
-  return {
-    status: 'pending' as const,
-    reason: 'DELIVERY_ADAPTER_UNAVAILABLE',
-    nextAttemptAt: new Date(ctx.now.getTime() + ADAPTER_RETRY_MS),
-  };
+  // 投递端口未接入：转内部待投递，退出定时扫描；绝不写 done，也不产生任何对外发送。
+  return { status: 'awaiting_delivery' as const, reason: 'DELIVERY_ADAPTER_UNAVAILABLE' };
+}
+
+/** 员工锁与调度同强度（FOR NO KEY UPDATE），遇忙锁跳过而不等待：HR 事务持锁时不拖住共享调度。 */
+async function tryLockEmployee(tx: Tx, tenantId: string, employeeId: string) {
+  const rows = await tx.execute(sql`SELECT id FROM employment_employees
+    WHERE tenant_id = ${tenantId} AND id = ${employeeId}::uuid FOR NO KEY UPDATE SKIP LOCKED`);
+  return rowsOf(rows).length > 0;
 }
 
 async function consumeWelcome(tx: Tx, ctx: EmploymentContext, target: { id: string; employeeId: string }) {
-  await lockEmploymentEmployee(tx, ctx, target.employeeId);
+  if (!(await tryLockEmployee(tx, ctx.tenantId, target.employeeId))) return;
   const key = jobKey(ctx.tenantId, target.id);
   const [job] = await tx
     .select()

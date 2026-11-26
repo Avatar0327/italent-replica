@@ -27,27 +27,38 @@ async function requireWrite(authorize: Authorizer, ctx: TenantContext, operation
   });
 }
 
+/** 详情动作按当前行状态过滤：归档项只读（不可 edit、delete），仍可预览（DEC-983、设计 §9.1）。 */
 async function availableActions(
   authorize: Authorizer,
   ctx: TenantContext,
   operation: Operation,
   fields: readonly string[],
+  archived = false,
 ) {
   const writable = await authorize({ ...ctx, action: `object.${operation}`, resource: WELCOME_SETTINGS, fields });
   if (!writable) return [];
-  return operation === 'create' ? ['create'] : ['edit', 'preview', 'delete'];
+  if (operation === 'create') return ['create'];
+  return archived ? ['preview'] : ['edit', 'preview', 'delete'];
 }
 
 export const requireWelcomeView = (authorize: Authorizer, ctx: TenantContext) =>
   requireView(authorize, ctx, WELCOME_FIELDS);
 export const requireWelcomeWrite = (authorize: Authorizer, ctx: TenantContext, operation: Operation) =>
   requireWrite(authorize, ctx, operation, 'welcomeLetters');
-export const welcomeAvailableActions = (authorize: Authorizer, ctx: TenantContext, operation: Operation) =>
-  availableActions(authorize, ctx, operation, WELCOME_FIELDS);
+export const welcomeAvailableActions = (
+  authorize: Authorizer,
+  ctx: TenantContext,
+  operation: Operation,
+  archived = false,
+) => availableActions(authorize, ctx, operation, WELCOME_FIELDS, archived);
 
 export const requireHandbookView = (authorize: Authorizer, ctx: TenantContext) =>
   requireView(authorize, ctx, HANDBOOK_FIELDS);
 export const requireHandbookWrite = (authorize: Authorizer, ctx: TenantContext, operation: Operation) =>
   requireWrite(authorize, ctx, operation, 'handbooks');
-export const handbookAvailableActions = (authorize: Authorizer, ctx: TenantContext, operation: Operation) =>
-  availableActions(authorize, ctx, operation, HANDBOOK_FIELDS);
+export const handbookAvailableActions = (
+  authorize: Authorizer,
+  ctx: TenantContext,
+  operation: Operation,
+  archived = false,
+) => availableActions(authorize, ctx, operation, HANDBOOK_FIELDS, archived);
