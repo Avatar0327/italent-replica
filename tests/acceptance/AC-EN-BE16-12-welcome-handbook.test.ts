@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  auditCommandFailures,
   auditEvents,
   commandLedger,
   eq,
@@ -92,6 +93,7 @@ async function counts(db: Db, tenantId: string) {
   return withTenant(db, tenantId, async (tx) => ({
     ledger: (await tx.select().from(commandLedger)).length,
     audit: (await tx.select().from(auditEvents)).length,
+    failures: (await tx.select().from(auditCommandFailures)).length,
     letters: (await tx.select().from(onboardingWelcomeLetters)).length,
   }));
 }
@@ -151,6 +153,52 @@ describe('AC-EN-BE16-12 欢迎信模板与预览', () => {
     expect(next.status).toBe(201);
   });
 
+  it('完整双花括号占位先识别再按白名单拒绝：{{employee_name}} 等未知名称不能保存', async () => {
+    const { admin } = await fixture();
+    for (const body of ['{{employee_name}}你好', '{{ 员工 }}', '{{}}', '{{employeeName id}}']) {
+      const response = await admin('POST', WELCOME, { ifMatch: 0, body: letter({ body }) });
+      expect(response.status, body).toBe(400);
+      expect(await response.json(), body).toMatchObject({
+        error: { details: { reason: 'WELCOME_VARIABLE_UNKNOWN' } },
+      });
+    }
+    const title = await admin('POST', WELCOME, { ifMatch: 0, body: letter({ title: '欢迎{{company_name}}' }) });
+    expect(title.status).toBe(400);
+    const spaced = await admin('POST', WELCOME, { ifMatch: 0, body: letter({ body: '{{ employeeName }}你好' }) });
+    expect(spaced.status).toBe(201);
+  });
+
+  it('预览是只读路由：带命令键校验失败时，台账、业务审计、失败审计均无新增', async () => {
+    const { db, tenantId, admin } = await fixture();
+    const { id } = await (await admin('POST', WELCOME, { ifMatch: 0, body: letter() })).json();
+    const before = await counts(db, tenantId);
+    const { companyName: _omitted, ...partial } = samples;
+    const key = `ZZ_BE16_PREVIEW_${uniqueSuffix()}`;
+    const missing = await admin('POST', `${WELCOME}/${id}/preview`, {
+      idempotencyKey: key,
+      body: { samples: partial },
+    });
+    expect(missing.status).toBe(400);
+    const invalid = await admin('POST', `${WELCOME}/${id}/preview`, { idempotencyKey: key, body: { nope: 1 } });
+    expect(invalid.status).toBe(400);
+    expect(await counts(db, tenantId)).toEqual(before);
+  });
+
+  it('归档后详情按当前行状态过滤动作：不含 edit、delete', async () => {
+    const { admin } = await fixture();
+    const made = await (await admin('POST', WELCOME, { ifMatch: 0, body: letter() })).json();
+    expect((await (await admin('GET', `${WELCOME}/${made.id}`)).json()).availableActions).toEqual([
+      'edit',
+      'preview',
+      'delete',
+    ]);
+    expect((await admin('DELETE', `${WELCOME}/${made.id}`, { ifMatch: made.revision })).status).toBe(204);
+    const detail = await (await admin('GET', `${WELCOME}/${made.id}`)).json();
+    expect(detail.status).toBe('archived');
+    expect(detail.availableActions).not.toContain('edit');
+    expect(detail.availableActions).not.toContain('delete');
+  });
+
   it('非租户管理员无权读写配置，也不能预览', async () => {
     const { admin, hr } = await fixture();
     const made = await (await admin('POST', WELCOME, { ifMatch: 0, body: letter() })).json();
@@ -180,6 +228,49 @@ describe('AC-EN-BE16-12 入职手册', () => {
       body: handbook({ blocks: [{ type: 'paragraph', text: '{{idNumber}}' }] }),
     });
     expect(unknown.status).toBe(400);
+  });
+
+  it('完整双花括号占位先识别再按白名单拒绝：{{employee_name}} 等未知名称不能保存', async () => {
+    const { admin } = await fixture();
+    for (const text of ['{{employee_name}}', '{{ 员工 }}', '{{}}']) {
+      const response = await admin('POST', HANDBOOK, {
+        ifMatch: 0,
+        body: handbook({ blocks: [{ type: 'list', items: ['正常', text] }] }),
+      });
+      expect(response.status, text).toBe(400);
+      expect(await response.json(), text).toMatchObject({ error: { details: { reason: 'WELCOME_VARIABLE_UNKNOWN' } } });
+    }
+  });
+
+  it('预览是只读路由：带命令键校验失败时，台账、业务审计、失败审计均无新增', async () => {
+    const { db, tenantId, admin } = await fixture();
+    const { id } = await (await admin('POST', HANDBOOK, { ifMatch: 0, body: handbook() })).json();
+    const before = await counts(db, tenantId);
+    const { departmentName: _omitted, ...partial } = samples;
+    const key = `ZZ_BE16_HB_PREVIEW_${uniqueSuffix()}`;
+    const missing = await admin('POST', `${HANDBOOK}/${id}/preview`, {
+      idempotencyKey: key,
+      body: { samples: partial },
+    });
+    expect(missing.status).toBe(400);
+    const invalid = await admin('POST', `${HANDBOOK}/${id}/preview`, { idempotencyKey: key, body: {} });
+    expect(invalid.status).toBe(400);
+    expect(await counts(db, tenantId)).toEqual(before);
+  });
+
+  it('归档后详情按当前行状态过滤动作：不含 edit、delete', async () => {
+    const { admin } = await fixture();
+    const made = await (await admin('POST', HANDBOOK, { ifMatch: 0, body: handbook() })).json();
+    expect((await (await admin('GET', `${HANDBOOK}/${made.id}`)).json()).availableActions).toEqual([
+      'edit',
+      'preview',
+      'delete',
+    ]);
+    expect((await admin('DELETE', `${HANDBOOK}/${made.id}`, { ifMatch: made.revision })).status).toBe(204);
+    const detail = await (await admin('GET', `${HANDBOOK}/${made.id}`)).json();
+    expect(detail.status).toBe('archived');
+    expect(detail.availableActions).not.toContain('edit');
+    expect(detail.availableActions).not.toContain('delete');
   });
 
   it('手册没有扫码报到：无报到路由，库里没有报到事件或表', async () => {
@@ -236,7 +327,7 @@ describe('AC-EN-BE16-12 欢迎信作业', () => {
     ]);
   });
 
-  it('有启用模板但投递能力未接入：作业保持待处理，重放不会变成已发送', async () => {
+  it('有启用模板但投递能力未接入：作业转内部待投递，不再被扫描，也不会变成已发送', async () => {
     const { db } = testDb();
     const w = await entryWorld(db, 'ZZ_BE16_JOB_PENDING');
     const tenantId = w.session.tenant.id;
@@ -245,14 +336,31 @@ describe('AC-EN-BE16-12 欢迎信作业', () => {
     expect((await entryAction(w, entry.recordId, 'complete', { probation: false })).status).toBe(200);
     await poll(db, '2026-10-01T12:00:00Z');
     const [first] = await jobsOf(db, tenantId);
-    expect(first).toMatchObject({ status: 'pending', reason: 'DELIVERY_ADAPTER_UNAVAILABLE', attempts: 1 });
+    expect(first).toMatchObject({ status: 'awaiting_delivery', reason: 'DELIVERY_ADAPTER_UNAVAILABLE', attempts: 1 });
     await poll(db, '2026-10-01T12:00:00Z');
-    expect(await jobsOf(db, tenantId)).toEqual([first]);
     await poll(db, '2026-10-01T14:00:00Z');
-    const rows = await jobsOf(db, tenantId);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ status: 'pending', attempts: 2 });
-    expect(rows.some((row) => row.status === 'done')).toBe(false);
+    await poll(db, '2026-10-02T14:00:00Z');
+    // 适配器就绪前不进入扫描：不再取锁、不再改行，attempts 与 updatedAt 都不变
+    expect(await jobsOf(db, tenantId)).toEqual([first]);
+    expect((await jobsOf(db, tenantId)).some((row) => row.status === 'done')).toBe(false);
+  });
+
+  it('离职先于首次消费：旧周期的欢迎信作业进入 skipped', async () => {
+    const { db } = testDb();
+    const w = await entryWorld(db, 'ZZ_BE16_JOB_LEFT');
+    const tenantId = w.session.tenant.id;
+    await enableLetter(db, tenantId, w.session.user.id);
+    const entry = await addPending(w, '2026-09-29', 'ZZ_BE16_JOB_LEFT');
+    expect((await entryAction(w, entry.recordId, 'complete', { probation: false })).status).toBe(200);
+    const employee = await w.session.getEmployee(entry.employee.id);
+    // 最后工作日 09-30，离职自 10-01 生效；入职那条历史记录本身仍是正式，只有当前任职变成离职
+    await w.session.business(
+      entry.employee.id,
+      { kind: 'leave', mode: 'direct', lastWorkDate: '2026-09-30' },
+      employee.revision,
+    );
+    await poll(db, '2026-10-01T12:00:00Z');
+    expect(await jobsOf(db, tenantId)).toMatchObject([{ status: 'skipped', reason: 'EMPLOYMENT_ENDED', attempts: 1 }]);
   });
 
   it('未来入职日不提前入队，到日落地后才有一条作业', async () => {
@@ -299,6 +407,8 @@ describe('AC-EN-BE16-12 欢迎信作业', () => {
           hiredRecordId: entry.recordId,
           hiredOn: '2026-09-29',
         });
+        // 先证明事务内确实入了队，再抛错；事务外为零才说明是回滚而不是根本没入队
+        expect(await tx.select().from(onboardingWelcomeJobs)).toHaveLength(1);
         throw new Error('ZZ_BE16_ROLLBACK');
       }),
     ).rejects.toThrow('ZZ_BE16_ROLLBACK');
@@ -307,5 +417,66 @@ describe('AC-EN-BE16-12 欢迎信作业', () => {
       tx.select().from(onboardingEntryCases).where(eq(onboardingEntryCases.id, stage!.id)),
     );
     expect(after).toMatchObject({ state: 'pending' });
+  });
+});
+
+const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+describe.skipIf(!realPostgres)('AC-EN-BE16-12 欢迎信作业遇忙锁（真 PG）', () => {
+  it('某作业的员工锁被持有时：消费者跳过它，后续候选与下一轮任职调度照常推进', async () => {
+    const { db } = testDb();
+    const w = await entryWorld(db, 'ZZ_BE16_JOB_LOCK');
+    const tenantId = w.session.tenant.id;
+    await enableLetter(db, tenantId, w.session.user.id);
+    const held = await addPending(w, '2026-09-29', 'ZZ_BE16_LOCK_HELD');
+    const free = await addPending(w, '2026-09-29', 'ZZ_BE16_LOCK_FREE');
+    const later = await addPending(w, '2026-10-03', 'ZZ_BE16_LOCK_LATER');
+    for (const entry of [held, free, later]) {
+      expect((await entryAction(w, entry.recordId, 'complete', { probation: false })).status).toBe(200);
+    }
+    expect(await jobsOf(db, tenantId)).toHaveLength(2);
+
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let locked = false;
+    const holder = withTenant(db, tenantId, async (tx) => {
+      await tx.execute(sql`SELECT 1 FROM employment_employees
+        WHERE tenant_id = ${tenantId} AND id = ${held.employee.id}::uuid FOR NO KEY UPDATE`);
+      locked = true;
+      await gate;
+    });
+    try {
+      while (!locked) await pause(5);
+      const errors: unknown[] = [];
+      const at = '2026-10-03T12:00:00Z';
+      const finished = startEmploymentActivationScheduler(db, {
+        clock: () => new Date(at),
+        onError: (e) => errors.push(e),
+      })
+        .stop()
+        .then(() => 'finished' as const);
+      const outcome = await Promise.race([finished, pause(15_000).then(() => 'blocked' as const)]);
+      expect(outcome).toBe('finished');
+      expect(errors).toEqual([]);
+      const rows = await jobsOf(db, tenantId);
+      // 下一轮任职调度照常推进：第三个未来入职日的员工已落地并入队
+      expect(rows).toHaveLength(3);
+      const byCase = new Map(rows.map((row) => [row.caseId, row]));
+      const cases = await withTenant(db, tenantId, (tx) => tx.select().from(onboardingEntryCases));
+      const caseOf = (employeeId: string) => cases.find((row) => row.employeeId === employeeId)!.id;
+      expect(byCase.get(caseOf(held.employee.id))).toMatchObject({ status: 'pending', attempts: 0 });
+      expect(byCase.get(caseOf(free.employee.id))).toMatchObject({ status: 'awaiting_delivery', attempts: 1 });
+      expect(byCase.get(caseOf(later.employee.id))).toMatchObject({ status: 'awaiting_delivery', attempts: 1 });
+    } finally {
+      release();
+      await holder;
+    }
+    await poll(db, '2026-10-03T13:00:00Z');
+    expect((await jobsOf(db, tenantId)).map((row) => row.status)).toEqual([
+      'awaiting_delivery',
+      'awaiting_delivery',
+      'awaiting_delivery',
+    ]);
   });
 });
