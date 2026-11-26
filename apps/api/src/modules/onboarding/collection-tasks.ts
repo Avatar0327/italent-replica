@@ -57,7 +57,7 @@ export async function readCollectionComments(
     .offset(page.offset);
 }
 
-async function auditTask(
+export async function auditTask(
   tx: Tx,
   ctx: EntryLifecycleContext,
   stage: OnboardingEntryCase,

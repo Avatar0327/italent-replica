@@ -18,6 +18,7 @@ import {
 import { onboardingCollectionRules, onboardingCollectionTemplates } from './onboarding-collection.js';
 import { onboardingEntryCases } from './onboarding.js';
 import { tenantMemberships } from './tenancy.js';
+import { approvalInstances } from './approval.js';
 
 export const COLLECTION_TASK_STATES = [
   'ready',
@@ -65,6 +66,9 @@ export const onboardingCollectionTasks = pgTable(
     verificationMode: text('verification_mode', { enum: ['independent_channel', 'phone_otp'] }).notNull(),
     requiresApproval: boolean('requires_approval').notNull(),
     status: text('status', { enum: COLLECTION_TASK_STATES }).notNull().default('ready'),
+    approvalInstanceId: uuid('approval_instance_id'),
+    submittedAt: timestampUtc('submitted_at'),
+    completedAt: timestampUtc('completed_at'),
     nextRemindOn: date('next_remind_on'),
     revision: integer('revision').notNull().default(1),
     createdAt: timestampUtc('created_at').notNull(),
@@ -81,6 +85,12 @@ export const onboardingCollectionTasks = pgTable(
     index('onboarding_collection_task_template').on(t.tenantId, t.templateId),
     index('onboarding_collection_task_rule').on(t.tenantId, t.ruleId),
     index('onboarding_collection_task_remind').on(t.tenantId, t.status, t.nextRemindOn, t.id),
+    unique('onboarding_collection_task_approval').on(t.tenantId, t.approvalInstanceId),
+    foreignKey({
+      name: 'onboarding_collection_task_approval_fk',
+      columns: [t.tenantId, t.approvalInstanceId],
+      foreignColumns: [approvalInstances.tenantId, approvalInstances.id],
+    }),
     foreignKey({
       name: 'onboarding_collection_task_case_fk',
       columns: [t.tenantId, t.caseId],
