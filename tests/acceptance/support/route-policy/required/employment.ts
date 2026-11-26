@@ -583,7 +583,14 @@ function transition(action: 'submit' | 'withdraw' | 'revoke' | 'delete'): Obliga
       [TRANSITIONS, READ, write, access, op === 'delete' ? WRITE_DELETE : WRITE_OBJECT, RECORD_CONST],
     ),
     ob(`btn:${RECORD}#${button}@detail`, [], [write, access, WRITE_BUTTON, RECORD_CONST]),
-    businessWrite(fn(EMP, 'registerBusinessTransitions', 'await authorizeBusinessWrite(deps, ctx, id)')),
+    // F-564：范围复核与员工保存值策略放进 authorizeBusinessWrite 的 within 回调，同一事务快照
+    businessWrite(
+      fn(
+        EMP,
+        'registerBusinessTransitions',
+        'const current = await authorizeBusinessWrite(deps, ctx, id, undefined, async (tx, value) => {',
+      ),
+    ),
     ob(
       'guard:transfer.source',
       ['guard:transfer.source', 'button:requireTransferButton'],
@@ -2536,8 +2543,8 @@ export const EMPLOYMENT: RequiredTable = {
           EMP,
           'PATCH',
           '/businesses/:id',
-          // F-036 S4：入口写权收进 requireDraftEditWrite（本人单据先定“本次输入”，再按它判字段写权）
-          'await requireDraftEditWrite(inTenant(deps, ctx), ctx, id, input, options)',
+          // F-036 S4：本人单据先定“本次输入”（F-564：在 authorizeBusinessWrite 的同一快照里算出 checked），再按它判字段写权
+          'await requireDraftEditPermission(ctx, input, checked, options)',
         ),
         WRITE_BUTTON,
       ],
@@ -2555,7 +2562,8 @@ export const EMPLOYMENT: RequiredTable = {
           EMP,
           'PATCH',
           '/businesses/:id',
-          'await requireDraftEditWrite(inTenant(deps, ctx), ctx, id, input, options)',
+          // F-564：员工保存值策略在范围复核之后、同一事务快照里执行（authorizeBusinessWrite 的 within 回调）
+          'checked = await requireEmployeeTransferBusiness(tx, ctx, id, input)',
         ),
         EMPLOYEE_TRANSFER,
       ],
@@ -2572,7 +2580,14 @@ export const EMPLOYMENT: RequiredTable = {
       at(EMP, 'PATCH', '/businesses/:id', 'await updateEmploymentBusiness(tx, confirmable, id, input)'),
       'F-140：共用改期编排的联动守卫；通用 approved / effective 日期编辑仍先拒绝',
     ),
-    businessWrite(at(EMP, 'PATCH', '/businesses/:id', 'const current = await authorizeBusinessWrite(deps, ctx, id)')),
+    businessWrite(
+      at(
+        EMP,
+        'PATCH',
+        '/businesses/:id',
+        'const current = await authorizeBusinessWrite(deps, ctx, id, undefined, async (tx, value) => {',
+      ),
+    ),
   ],
   'POST /api/tenant/employment/businesses/:id/submit': transition('submit'),
   'POST /api/tenant/employment/businesses/:id/withdraw': transition('withdraw'),
