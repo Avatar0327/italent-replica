@@ -1212,7 +1212,7 @@ export const DIGESTS: Digests = {
     taskCommand: '43156b40b94c',
   },
   'apps/api/src/modules/onboarding/collection-task-view.ts': {
-    collectionActions: '5e5deb53d8ed',
+    collectionActions: '67897e106473',
     visibleForm: '51cf79d8252d',
   },
   'apps/api/src/modules/onboarding/integration-pool-access.ts': {
@@ -3183,7 +3183,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/onboarding/collection-task-routes.ts#route:POST /entries/:businessId/collection/start':
     '21203e65bd76',
   'apps/api/src/modules/onboarding/collection-task-routes.ts#taskCommand': '5590b3e889da',
-  'apps/api/src/modules/onboarding/collection-task-view.ts#collectionActions': 'bc2e91145399',
+  'apps/api/src/modules/onboarding/collection-task-view.ts#collectionActions': 'df9c64135e12',
   'apps/api/src/modules/onboarding/collection-task-view.ts#visibleForm': 'afa114457ff8',
   'apps/api/src/modules/onboarding/integration-pool-access.ts#POOL_FIELDS': 'e3b0c44298fc',
   'apps/api/src/modules/onboarding/integration-pool-access.ts#POOL_SETTINGS': '962a8dd9a03e',

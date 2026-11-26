@@ -69,6 +69,9 @@ export const onboardingCollectionTasks = pgTable(
     approvalInstanceId: uuid('approval_instance_id'),
     submittedAt: timestampUtc('submitted_at'),
     completedAt: timestampUtc('completed_at'),
+    // 16a-2c：撤回时间与备注；撤回后任务终态为 withdrawn，授权单次消费靠这个状态
+    withdrawnAt: timestampUtc('withdrawn_at'),
+    withdrawRemark: text('withdraw_remark'),
     nextRemindOn: date('next_remind_on'),
     revision: integer('revision').notNull().default(1),
     createdAt: timestampUtc('created_at').notNull(),
