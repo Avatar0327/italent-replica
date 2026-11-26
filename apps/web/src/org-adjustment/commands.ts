@@ -9,7 +9,7 @@ import { sharedRecovery } from '../foundation/forms/recovery.js';
 import { createFormStore, isLocked, type Submission } from '../foundation/forms/store.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { changedFields, type Values } from '../foundation/forms/values.js';
-import { createRefusalMarks, useRefusalMarks } from '../approval/refusal-marks.js';
+import { createRefusalMarks, useRefusalMarks } from '../foundation/forms/refusal-marks.js';
 import { collection, detailPath, type Detail } from './model.js';
 
 // DEC-955 只禁调动 / 审批写入：组织调整在浏览器不支持 Web Locks 时退回无锁登记，照常保存。
