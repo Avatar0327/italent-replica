@@ -39,6 +39,13 @@ const CONTENT = /\/attachments\/[^/]+\/content$/;
 let backend: ChildProcess;
 let manifest: Manifest;
 let exitId = '';
+/**
+ * ATT-06 / 08 / 10 用的是前序用例留下的同一张单（ATT-05 建单提交，ATT-08 驳回后删一张重提），本文件串行，
+ * 不能用 -g 单跑其中一条：缺前序时在用例开头直接失败并写明原因，不让它到后面的缩略图计数处等满超时（F-578）。
+ */
+function requirePriorExit() {
+  expect(exitId, '依赖 ATT-05 建的离职单：须整份 spec 串行跑，不能用 -g 单跑').toMatch(/^[0-9a-f-]{36}$/);
+}
 
 test.describe.configure({ mode: 'serial' });
 test.beforeAll(async () => {
@@ -230,6 +237,7 @@ test('AC-FE-ATT-06 审批人打开待办下载：带租户头、200、attachment
   page,
   baseURL,
 }) => {
+  requirePriorExit();
   const approver = personas().approver;
   const reads = await signIn(context, baseURL!, approver);
   await openTodo(page);
@@ -255,6 +263,7 @@ test('AC-FE-ATT-08 驳回后删除一张再提交：本人列表与后端一致�
   page,
   baseURL,
 }) => {
+  requirePriorExit();
   const { employee: me, approver } = personas();
   const rejected = await context.request.post(`${manifest.url}/__smoke/reject`, { data: { exitId } });
   expect(rejected.status(), await rejected.text()).toBe(200);
@@ -290,6 +299,7 @@ test('AC-FE-ATT-10 三载体只走 blob、下载与新标签打开；切换租�
   page,
   baseURL,
 }) => {
+  requirePriorExit();
   const { employee: me, approver, hr, other } = personas();
   // 本人表单：缩略图、放大预览、点文件名新标签打开 blob:
   let reads = await signIn(context, baseURL!, me);
