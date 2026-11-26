@@ -80,6 +80,7 @@ export async function transferLocksCover(
   ctx: EmploymentContext,
   employeeId: string,
   extra: readonly string[] = [],
+  rescheduledExitId?: string,
 ): Promise<boolean> {
   const held = new Set(await heldIds(tx, ctx));
   const planned = await participants(
@@ -87,6 +88,7 @@ export async function transferLocksCover(
     ctx,
     employeeId.toLowerCase(),
     extra.map((id) => id.toLowerCase()),
+    rescheduledExitId,
   );
   return planned.every((id) => held.has(id));
 }
@@ -194,6 +196,15 @@ export async function lockTransferHeads(tx: Tx, ctx: EmploymentContext, business
   await tx.execute(sql`
     SELECT id FROM employment_business_objects WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE
   `);
+}
+
+/**
+ * 持锁集合内全部参与者的业务头（含单人闭包的本人全部头）按 员工 → 头 序统一取锁。F-565 第 2 轮 P2-2：离职改期 / 生效重试 /
+ * 直接生效作废转正等执行体会在读授权之后才 lockOtherBusinessHeads；这些入口的守卫带 allHeads，把同一批头提前到读授权之前，
+ * 执行体里的再取是重入。必须在员工闭包取齐之后调用（锁序：员工 → 业务头）。
+ */
+export async function lockAllParticipantHeads(tx: Tx, ctx: EmploymentContext): Promise<void> {
+  await lockHeads(tx, ctx, await heldIds(tx, ctx), true);
 }
 
 /**

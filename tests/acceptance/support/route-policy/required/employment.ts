@@ -14,6 +14,7 @@ const SRC = 'apps/api/src/modules';
 const EMP = `${SRC}/employment/routes.ts`;
 const CTX = `${SRC}/employment/context.ts`;
 const REPLAY = `${SRC}/employment/replay-guard.ts`;
+const EXIT_GUARDS = `${SRC}/employment/exit-guards.ts`; // F-565：离职类命令内复核迁到同单守卫之上
 const TRANSITION_ACCESS = `${SRC}/employment/transition-access.ts`;
 const TRF = `${SRC}/transfer/routes.ts`;
 const MGR = `${SRC}/transfer/manager-routes.ts`;
@@ -690,7 +691,7 @@ const EXIT_PERMISSION: Evidence = {
   unit: `${SRC}/employment/exit-gate.ts#requireExitPermission`,
   anchor: 'await requireEmploymentWrite(ctx, spec.op, spec.payload, button, undefined, options)',
 };
-const EXIT_GUARD = fn(REPLAY, 'exitCommandGuard', 'await requireExitPermission(scoped, operation, target)');
+const EXIT_GUARD = fn(EXIT_GUARDS, 'exitCommandGuard', 'await requireExitPermission(scoped, operation, target)');
 const exitCall = (name: string, anchor: string) => fn(EXIT, name, anchor);
 function exitPreview(button: string, file = EXIT, path = '/exits/employees/:id/preview', pass = ''): Obligation[] {
   const group = `exitPreview:${button}`;
@@ -3331,7 +3332,8 @@ export const EMPLOYMENT: RequiredTable = {
         fn(
           EMP,
           'authorizeImport',
-          "if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')",
+          // F-567：已生效记录的编辑写权判定（草稿改走 requireDraftEditPermission，策略校验与范围复核同一事务快照）
+          "if (current.status === 'effective') await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')",
         ),
         WRITE_OBJECT,
         // F-202 / F-208：编辑行与新建行在命令事务内按当前授权再判一次（同键重放、失败回查也过这道），见 replay-guard.ts
@@ -3995,7 +3997,7 @@ export const EMPLOYMENT: RequiredTable = {
       [],
       [
         at(EXIT, 'POST', '/exits/batch', 'const guard = exitBatchGuard(deps, ctx, items)'),
-        fn(REPLAY, 'exitBatchGuard', "await requireExitPermission(scoped, 'create', target)"),
+        fn(EXIT_GUARDS, 'exitBatchGuard', "await requireExitPermission(scoped, 'create', target)"),
         EXIT_PERMISSION,
         WRITE_BUTTON,
       ],
@@ -4004,7 +4006,7 @@ export const EMPLOYMENT: RequiredTable = {
     ob(
       'guard:employment.scope',
       [],
-      [fn(REPLAY, 'exitBatchGuard', 'await requireExitScope(tx, scoped, target, {})'), EMPLOYMENT_SCOPE],
+      [fn(EXIT_GUARDS, 'exitBatchGuard', 'await requireExitScope(tx, scoped, target, {})'), EMPLOYMENT_SCOPE],
     ),
     linkage(at(EXIT, 'POST', '/exits/batch', 'body: await createExitBatch(tx, context, items, guard.failures())')),
   ],
@@ -4077,7 +4079,7 @@ export const EMPLOYMENT: RequiredTable = {
       ['button:object.button', 'button:buttonResource'],
       [
         at(EXIT, 'PATCH', '/exits/:id', 'guard: exitEditGuard(deps, ctx, gate, id)'),
-        fn(REPLAY, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
+        fn(EXIT_GUARDS, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
         fn(
           REPLAY,
           'requireExitEditRights',
@@ -4215,7 +4217,7 @@ export const EMPLOYMENT: RequiredTable = {
       ['button:object.button', 'button:buttonResource'],
       [
         at(RETIRE, 'PATCH', '/retirements/:id', 'const guard = exitEditGuard('),
-        fn(REPLAY, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
+        fn(EXIT_GUARDS, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
         fn(
           REPLAY,
           'requireExitEditRights',
@@ -5167,7 +5169,8 @@ function importGuards(call: Evidence): Obligation[] {
         {
           role: 'impl',
           unit: `${EMP}#authorizeImport`,
-          anchor: 'await authorizeBusinessWrite(deps, ctx, item.id, employeeId)',
+          // F-567：范围复核与员工保存值策略放进 within 回调，同一事务快照
+          anchor: 'const current = await authorizeBusinessWrite(deps, ctx, item.id, employeeId, async (tx, value) => {',
         },
         BUSINESS_WRITE_ENTRY,
         BUSINESS_WRITE,

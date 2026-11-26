@@ -39,7 +39,7 @@ import { internRegularizationInput, regularizationBusiness, regularizeIntern } f
 import { internTerminationGate, internTerminationInput, terminateIntern } from './intern-termination.js';
 import { INTERN_SORT_FIELDS, listInternView, type InternViewItem, type InternViewSort } from './intern-views.js';
 import { matchRehire, rehireMatchInput } from './rehire-match.js';
-import { exitCommandGuard, internRegularizationGuard } from './replay-guard.js';
+import { exitCommandGuard, internRegularizationGuard } from './exit-guards.js';
 import type { EmploymentContext } from './types.js';
 
 const viewFilter = z.strictObject({

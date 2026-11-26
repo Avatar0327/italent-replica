@@ -193,7 +193,8 @@ const TALENT_ANCHORS = [
 const QUALIFICATION_CATALOG = 'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS';
 const AUTHORIZE_IMPORT = `${MODULES}/employment/routes.ts#authorizeImport`;
 const EMPLOYMENT_CREATE = "if (!preview) await requireEmploymentWrite(ctx, 'create', item.business as object";
-const EMPLOYMENT_UPDATE = "if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')";
+const EMPLOYMENT_UPDATE =
+  "if (current.status === 'effective') await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')";
 const TODOS = `${MODULES}/contracts/todos.ts#registerMergedTodos`;
 const PART_TIME_REQUEST_ROUTE = `${MODULES}/employment/part-time/request-routes.ts#route:POST /part-time-requests`;
 const PART_TIME_DATE_ROUTE = `${MODULES}/employment/part-time/request-routes.ts#createDateRequestRoute`;
