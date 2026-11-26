@@ -62,10 +62,39 @@ it('AC-EN-04 r2-1 撤回后审批已办详情与冻结办理份不再披露曾�
   const { submissions, task } = await x.state();
   expect(task.status).toBe('withdrawn');
   expect(JSON.stringify(submissions.map((row) => row.values))).toContain(school);
-  // 迟到的办理不落地
+});
+
+it('AC-EN-04 r2-1b 审批在办时取消并撤回，迟到的办理被拒为 APPROVAL_TASK_CLOSED，人员 / 采集 / 审批状态不变', async () => {
+  const x = await world('hire', true);
+  const a = await publishApproval(x);
+  await submitForReview(x);
+  // 不驳回：采集审批保持在办，取消与撤回由系统自己关闭
+  const open = await x.state();
+  expect(open.instances).toHaveLength(1);
+  expect(open.instances[0]).toMatchObject({ status: 'running' });
+  const [work] = open.approvalWork;
+  expect(work).toMatchObject({ status: 'pending' });
+  await x.cancel();
+  await x.withdraw();
+  const settled = await x.state();
+  expect(settled.task.status).toBe('withdrawn');
+  const [instance] = settled.instances;
+  expect(instance!.status).not.toBe('running');
+  const [closedWork] = settled.approvalWork;
+  expect(closedWork).toMatchObject({ id: work!.id });
+  expect(closedWork!.status).not.toBe('pending');
+  const snapshot = async () => ({
+    person: await x.person(),
+    ...(await x.state()),
+    education: await liveCount(x, 'personnel_education'),
+  });
+  const before = await snapshot();
+  // 取最新实例修订发起办理：先过修订校验，才会落到 approval/actions.ts:92 assertOpen 的关闭判定
   const late = await a.decide(work!.id, instance!.revision, 'approve');
-  expect(late.status).toBeGreaterThanOrEqual(400);
-  expect(await liveCount(x, 'personnel_education')).toBe(0);
+  expect(late.status, await late.clone().text()).toBe(409);
+  expect(await late.json()).toMatchObject({ error: { details: { reason: 'APPROVAL_TASK_CLOSED' } } });
+  expect(await snapshot()).toEqual(before);
+  expect(before.education).toBe(0);
 });
 
 it('AC-EN-04 r2-4 改期恢复后再次取消，签发于第一次取消的撤回授权被拒，新授权可用且单次', async () => {
