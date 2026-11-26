@@ -58,6 +58,15 @@ export interface BindInput {
   readonly previous: readonly string[] | null;
   readonly next: unknown;
   readonly actor: string;
+  /** 绑定后的归属类型；缺省按离职（employment）。材料等新载体在此声明自己的类型，与别的载体互不认领。 */
+  readonly businessType?: string;
+  /**
+   * 未绑定行的登记标记（登记时写在 business_type 里，如材料项标记）：新增文件的标记必须与此完全一致，
+   * 缺省表示“不带标记”（离职口径）。标记不符的文件一律按不可用处理。
+   */
+  readonly targetTag?: string;
+  /** 受信代传场景（HR 为员工上传）：新增文件登记时的目标员工必须是此人；缺省不核。 */
+  readonly employeeId?: string;
 }
 
 export async function lockFiles(tx: Tx, tenantId: string, ids: readonly string[]) {
@@ -87,8 +96,9 @@ export async function bindAttachmentRefs(tx: Tx, ctx: BindingContext, input: Bin
   const previous = lower(input.previous);
   const files = await lockFiles(tx, ctx.tenantId, [...new Set([...previous, ...next])]);
   const business = input.businessId.toLowerCase();
+  const businessType = input.businessType ?? EXIT_BUSINESS_TYPE;
   const owned = (row: FileRow | undefined) =>
-    row?.status === 'bound' && row.businessType === EXIT_BUSINESS_TYPE && row.businessId?.toLowerCase() === business;
+    row?.status === 'bound' && row.businessType === businessType && row.businessId?.toLowerCase() === business;
   for (const [index, id] of next.entries()) {
     const row = files.get(id);
     if (previous.includes(id)) {
@@ -99,12 +109,14 @@ export async function bindAttachmentRefs(tx: Tx, ctx: BindingContext, input: Bin
       row &&
       row.purpose === purpose &&
       row.ownerUserId.toLowerCase() === input.actor.toLowerCase() &&
+      (row.businessType ?? null) === (input.targetTag ?? null) &&
+      (!input.employeeId || row.ownerEmployeeId.toLowerCase() === input.employeeId.toLowerCase()) &&
       row.status === 'uploaded' &&
       (!row.expiresAt || row.expiresAt > ctx.now);
     if (!fresh) throw invalid(index);
     await move(tx, ctx, row, 'bind', {
       status: 'bound',
-      businessType: EXIT_BUSINESS_TYPE,
+      businessType,
       businessId: input.businessId,
       expiresAt: null,
     });

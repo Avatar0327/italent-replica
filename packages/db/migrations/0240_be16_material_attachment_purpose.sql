@@ -1,0 +1,2 @@
+ALTER TABLE "attachment_files" DROP CONSTRAINT "attachment_files_purpose";--> statement-breakpoint
+ALTER TABLE "attachment_files" ADD CONSTRAINT "attachment_files_purpose" CHECK ("attachment_files"."purpose" IN ('exit.handwritten_application','personnel.subset_attachment','onboarding.material_attachment'));

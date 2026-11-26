@@ -1,7 +1,8 @@
 /**
  * F-479 附件用途表（docs/08_设计/F-479_通用附件能力_设计.md §1.3）。
  * 用途是服务端的权威配置：个数、大小、类型、扩展名、临时文件有效期都在这里，前后端共用同一份。
- * 用途：离职手写申请（§1.3）、人员子集附件（§10，F-361②，载体 = 人员子集记录）。
+ * 用途：离职手写申请（§1.3）、人员子集附件（§10，F-361②，载体 = 人员子集记录）、
+ * 入职材料附件（R2-T01 设计 §4.2，载体 = 材料提交）。
  */
 export const ATTACHMENT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/bmp'] as const;
 export type AttachmentImageType = (typeof ATTACHMENT_IMAGE_TYPES)[number];
@@ -38,6 +39,16 @@ export const ATTACHMENT_PURPOSES = {
     tempTtlHours: 24,
     maxTemporaryPerOwner: 20,
     carrier: 'personnel.subset',
+  },
+  // R2-T01 §4.2（16a-4b0）：材料独立用途，不与离职、人员子集混用；单次提交最多 5 张图片，不收 pdf（保守口径，见 PR 未决）
+  'onboarding.material_attachment': {
+    maxFiles: 5,
+    maxBytes: 10 * 1024 * 1024,
+    types: ATTACHMENT_IMAGE_TYPES,
+    extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp'],
+    tempTtlHours: 24,
+    maxTemporaryPerOwner: 20,
+    carrier: 'onboarding.material',
   },
 } as const satisfies Record<string, AttachmentPurposeConfig>;
 

@@ -7,6 +7,13 @@ import { attachmentFiles, sql, withTenant } from '@italent/db';
 import { describe, expect, it, vi } from 'vitest';
 import { bindAttachmentRefs } from '../../apps/api/src/modules/attachments/binding.js';
 import { attachmentSummaries, readCarrierAttachment } from '../../apps/api/src/modules/attachments/carrier-read.js';
+import {
+  MATERIAL_BUSINESS_TYPE as PORT_BUSINESS_TYPE,
+  MATERIAL_CARRIER,
+  MATERIAL_PURPOSE as PORT_PURPOSE,
+  materialTargetTag,
+} from '../../apps/api/src/modules/attachments/material-read.js';
+import type { FileRow } from '../../apps/api/src/modules/attachments/audit.js';
 import * as service from '../../apps/api/src/modules/attachments/service.js';
 import { bindSubsetAttachments } from '../../apps/api/src/modules/attachments/subset-binding.js';
 import { attachmentWorld, png, registration, PURPOSE as EXIT_PURPOSE } from './AC-ATT-support.js';
@@ -55,6 +62,15 @@ function bindMaterial(
 }
 
 describe('AC-EN-BE16-08 材料附件：独立用途（登记 → 上传）', () => {
+  it('契约常量与验收夹具口径一致（16a-4b 经这些常量接线）', () => {
+    expect([PORT_PURPOSE, MATERIAL_CARRIER, PORT_BUSINESS_TYPE]).toEqual([
+      MATERIAL_PURPOSE,
+      CARRIER,
+      MATERIAL_BUSINESS_TYPE,
+    ]);
+    expect(materialTargetTag('item-1')).toBe(materialTag('item-1'));
+  });
+
   it('材料用途可登记并上传：未绑定行带材料项标记、有临时有效期；只收图片，pdf 被拒', async () => {
     const w = await materialWorld(useDb().db, 'be16m-purpose');
     const itemId = w.newItemId();
@@ -201,7 +217,7 @@ describe('AC-EN-BE16-08 材料附件：下载再验权（隐藏材料不能下�
     const submissionId = w.newItemId();
     const file = await w.stored({ itemId });
     const refs = await bindMaterial(w, { itemId, submissionId, next: [file.id] });
-    const reauthorize = vi.fn(async () => false);
+    const reauthorize = vi.fn(async (_row: FileRow) => false);
     const denied = await failure(
       w.tenantTx((tx) =>
         readCarrierAttachment(

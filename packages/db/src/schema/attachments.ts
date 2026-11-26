@@ -30,6 +30,13 @@ const at = (name: string) => timestamp(name, { withTimezone: true });
 
 export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 
+/** 迁移里写死的用途集合（0240 起含材料附件）；改动必须同步新迁移，不随领域配置自动变。 */
+const PURPOSE_LITERALS = [
+  "'exit.handwritten_application'",
+  "'personnel.subset_attachment'",
+  "'onboarding.material_attachment'",
+].join(',');
+
 export const attachmentFiles = pgTable(
   'attachment_files',
   {
@@ -77,10 +84,7 @@ export const attachmentFiles = pgTable(
       'attachment_files_status',
       sql`${t.status} IN ('registered','uploaded','bound','detached','pending_cleanup','purged')`,
     ),
-    check(
-      'attachment_files_purpose',
-      sql`${t.purpose} IN ('exit.handwritten_application','personnel.subset_attachment')`,
-    ),
+    check('attachment_files_purpose', sql`${t.purpose} IN (${sql.raw(PURPOSE_LITERALS)})`),
     check('attachment_files_size', sql`${t.byteSize} BETWEEN 1 AND ${sql.raw(String(ATTACHMENT_MAX_BYTES))}`),
     check('attachment_files_hash', sql`${t.sha256} ~ '^[a-f0-9]{64}$'`),
     check(
