@@ -1,6 +1,7 @@
 import { Alert, Button, Empty, Modal, Space } from 'antd';
 import { useEffect, useState, type ReactNode } from 'react';
 import { PageState, useApiClient, useSession } from '../foundation/index.js';
+import { readError } from './api.js';
 import { centerText as c, detailText as d, messages as m } from './messages.js';
 import type { ApprovalLog } from './types.js';
 
@@ -65,7 +66,7 @@ function LogModal({
   return (
     <Modal open title={d.processLog} onCancel={close} footer={null} width={760}>
       {error ? (
-        <PageState kind="error" error={error} retry={() => setGeneration((n) => n + 1)} />
+        <PageState kind="error" error={readError(error)} retry={() => setGeneration((n) => n + 1)} />
       ) : !data ? (
         <PageState kind="loading" />
       ) : data.recordsHidden ? (
