@@ -42,6 +42,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/personnel/approval-hooks.ts#personnelApprovalHooks': ['#hooks'],
   'apps/api/src/modules/personnel/attachments.ts#registerAttachment': [
     'apps/api/src/modules/personnel/store.ts#insert',
+    'apps/api/src/modules/personnel/store.ts#lockPerson',
   ],
   'apps/api/src/modules/personnel/attachments.ts#validateAttachments': [
     '#ATTACHMENT_FIELDS',

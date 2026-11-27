@@ -203,28 +203,6 @@ export interface ExitScopeTarget {
   readonly departmentId?: string | null;
 }
 
-/**
- * 离职入口（create / PATCH / submit / withdraw / DELETE /businesses/:id / activation/retry）的命令内复核（#199，F-195）：
- * 首次执行、同键重放、失败回查三个出口都先在命令事务内按当前授权重新解析数据范围，校验员工、业务和请求里显式给出的
- * 目标部门的写入范围，再过 Dimission* 权限链。创建时没填的部门是从时间线继承来的（PATCH 也会重算继承），请求里看不到，
- * 由 runWrite 在同一份事务内范围上校验实际写入的结果（执行后）和原响应（重放时）。
- */
-export function exitCommandGuard(
-  deps: TenantRouteDeps,
-  ctx: EmploymentContext,
-  operation: ExitOperation,
-  target: ExitGateTarget,
-  scopeTarget: ExitScopeTarget,
-): ScopedCommandGuard {
-  return scopedGuard({
-    before: async (tx) => {
-      const scoped = await commandContext(tx, deps, ctx);
-      await requireExitScope(tx, scoped, target, scopeTarget);
-      await requireExitPermission(scoped, operation, target);
-    },
-  });
-}
-
 /** 离职类入口的“范围 + Dimission* 权限链”两步（与 exitCommandGuard 同一对原语）：读口逐行下发“结束实习”时调用。 */
 export async function requireExitCommandAccess(
   tx: Tx,
@@ -235,28 +213,6 @@ export async function requireExitCommandAccess(
 ) {
   await requireExitScope(tx, scoped, target, scopeTarget);
   await requireExitPermission(scoped, operation, target);
-}
-
-/**
- * 编辑离职 PATCH exits/:id 的命令内复核：同 exitCommandGuard（update），另加——单据处于审批中时，HR 编辑与审批编辑同约束，
- * DimissionEdit 之外还要审批管理员（干预）按钮（设计 §4B / §9.1 PATCH 行，B-65a）。状态取命令事务内读到的当前值；
- * 读到之后若单据被提交 / 撤回，业务 revision 已变，If-Match 不符，本命令随即 409。
- */
-export function exitEditGuard(
-  deps: TenantRouteDeps,
-  ctx: EmploymentContext,
-  target: ExitGateTarget,
-  businessId: string,
-  checkLinkedFields?: (tx: Tx, scoped: EmploymentContext) => Promise<void>,
-): ScopedCommandGuard {
-  return scopedGuard({
-    before: async (tx) => {
-      const scoped = await commandContext(tx, deps, ctx);
-      await requireExitScope(tx, scoped, target, { businessId });
-      await requireExitEditRights(tx, scoped, target, businessId);
-      await checkLinkedFields?.(tx, scoped);
-    },
-  });
 }
 
 /**
@@ -311,43 +267,7 @@ export const exitBatchRejected = (failures: readonly ExitBatchFailure[]) =>
     items: [...failures].sort((a, b) => a.index - b.index),
   });
 
-/**
- * 批量离职的命令内复核（#199）：逐人按当前授权重过员工范围与离职申请权限链（同单人创建的 exitCommandGuard）。
- * 某人不通过不在这里抛出，而是交给执行阶段与其余人的业务前置条件一起作为逐条原因（B-25 / B-64：整批 409、逐条原因）；
- * 命中台账的重放不再执行，有人不通过就在 replayed 里整批 409，不返回缓存的成功回执。
- */
-export function exitBatchGuard(deps: TenantRouteDeps, ctx: EmploymentContext, items: readonly ExitBatchItem[]) {
-  let failures: ExitBatchFailure[] = [];
-  const guard = scopedGuard({
-    before: async (tx) => {
-      const scoped = await commandContext(tx, deps, ctx);
-      failures = [];
-      for (const [index, item] of items.entries()) {
-        const target: ExitGateTarget = {
-          employeeId: item.employeeId,
-          initiation: 'hr',
-          mode: 'application',
-          lastWorkDate: item.lastWorkDate,
-          exit: item.exit ?? {},
-        };
-        try {
-          await requireExitScope(tx, scoped, target, {});
-          await requireExitPermission(scoped, 'create', target);
-        } catch (error) {
-          const failure = exitBatchFailure(index, item.employeeId, error);
-          if (!failure) throw error;
-          failures.push(failure);
-        }
-      }
-    },
-    replayed: async () => {
-      if (failures.length) throw exitBatchRejected(failures);
-    },
-  });
-  return Object.assign(guard, { failures: () => failures });
-}
-
-async function requireExitScope(
+export async function requireExitScope(
   tx: Tx,
   scoped: EmploymentContext,
   target: ExitGateTarget,
@@ -393,20 +313,6 @@ export async function requireInternRegularizationAccess(
   await requireEmployeeInScope(tx, scoped, employeeId);
   await requireEmploymentWrite(scoped, 'create', business, 'Employment.Create');
   if (departmentId !== undefined) requireEmploymentScope(scoped, employeeId, departmentId);
-}
-
-/** 直接实习转正（BE-6a）的命令内复核：按当前授权重过入口同一口径（新增权、按钮、字段创建权、员工与目标部门范围）。 */
-export function internRegularizationGuard(
-  deps: TenantRouteDeps,
-  ctx: EmploymentContext,
-  employeeId: string,
-  business: object,
-  departmentId: string,
-): ScopedCommandGuard {
-  return scopedGuard({
-    before: async (tx) =>
-      requireInternRegularizationAccess(tx, await commandContext(tx, deps, ctx), employeeId, business, departmentId),
-  });
 }
 
 /**

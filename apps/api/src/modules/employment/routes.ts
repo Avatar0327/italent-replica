@@ -1,7 +1,6 @@
 import { CUSTOM_FIELD_OBJECT_TYPES } from '@italent/domain';
 import { withEstablishmentConfirmation } from './activation-checks.js';
 import { deleteConfirmed, splitConfirmed } from './establishment-confirmation.js';
-import { checksEmploymentCapacity } from '../establishment/employment-check.js';
 import { customFieldWriteGuard } from './custom-field-guard.js';
 import { listVisibleCustomFields } from '../personnel/custom-field-directory.js';
 import { composeBusiness, disclosedBy, selectEmploymentRead, type EmploymentRead } from './approval-content.js';
@@ -68,8 +67,8 @@ import { splitExitOptions } from './exit-initiation.js';
 import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentImport } from './forward-import.js';
 import { requireSavedValuesApplicable } from './field-origin-write.js';
 import { editEmploymentRecord } from './record-edit.js';
+import { exitCommandGuard } from './exit-guards.js';
 import {
-  exitCommandGuard,
   importWriteGuard,
   type CreateTarget,
   recordEditGuard,
@@ -311,8 +310,10 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
       exit,
     };
     const guard = isExitKind(input.kind)
-      ? exitCommandGuard(deps, ctx, 'create', gate, { departmentId: input.fields.departmentId })
-      : genericCapacityCreateGuard(deps, ctx, id, input, rawInput as object);
+      ? exitCommandGuard(deps, ctx, 'create', gate, { departmentId: input.fields.departmentId }, (_tx, scoped) =>
+          requireGenericCreateRights(scoped, rawInput as object),
+        )
+      : genericCreateGuard(deps, ctx, id, input, rawInput as object);
     return runWrite(
       c,
       deps,
@@ -352,15 +353,29 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
   });
 }
 
-/** 通用新建的编制确认共用事务内授权；普通调动另校验发起来源和直接调动开关。 */
-function genericCapacityCreateGuard(
+/** 通用新建入口的对象新增权 + 通用新建按钮（含实际请求字段）：通用类型与走离职守卫的离职 / 退休分支在命令内共用。 */
+async function requireGenericCreateRights(scoped: EmploymentContext, rawInput: object) {
+  await requirePermission(scoped.authorize!, {
+    ...scoped,
+    action: 'object.create',
+    resource: EMPLOYMENT_OBJECT,
+    fields: [],
+  });
+  await requireEmploymentWrite(scoped, 'create', rawInput, 'Employment.Create');
+}
+
+/**
+ * 通用新建（非离职 / 退休类型）的同单守卫：员工行 → 业务头 → 封口 → 锁内读授权（F-560 口径）。
+ * F-565①：此前只有要做编制确认的类型（调动 / 实习转正 / 退休返聘）走它，入职、转正等其余类型没有守卫，授权在入口读完，
+ * 等员工行锁期间被收回的范围仍被沿用；现在所有类型一律经此。普通调动另校验发起来源和直接调动开关。
+ */
+function genericCreateGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   employeeId: string,
   input: ReturnType<typeof normalizeEmploymentInput>,
   rawInput: object,
 ) {
-  if (!checksEmploymentCapacity(input.kind)) return undefined;
   return sameOrderScopeGuard(deps, ctx, {
     ...transferReceiptNames(input.kind),
     // 员工行（调动再加新带入的下属）先于授权读取取齐并封口；执行体里的取锁此后都是重入（F-560）
@@ -369,13 +384,7 @@ function genericCapacityCreateGuard(
       extra: input.kind === 'transfer' ? (input.fields.addedSubordinateIds ?? []) : [],
     },
     authorize: async (tx, scoped) => {
-      await requirePermission(scoped.authorize!, {
-        ...scoped,
-        action: 'object.create',
-        resource: EMPLOYMENT_OBJECT,
-        fields: [],
-      });
-      await requireEmploymentWrite(scoped, 'create', rawInput, 'Employment.Create');
+      await requireGenericCreateRights(scoped, rawInput);
       const creator = await requireEmployeeInScope(tx, scoped, employeeId);
       if (input.kind === 'transfer') {
         await requireTransferSource(tx, scoped, employeeId, 'hr');

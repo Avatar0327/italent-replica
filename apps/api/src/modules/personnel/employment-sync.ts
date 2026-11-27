@@ -48,8 +48,14 @@ export async function syncEmploymentHistory(
     ),
     ...(trigger ? await previousHistory(tx, ctx, employeeId, recordId, kind === 'intern_regularization') : []),
   ].map(camel);
+  // 采集撤回软删过本记录的履历投影（subset-withdraw）：唯一键仍占着，不能再插新行（会 23505），保持撤回结果。
+  // 改期恢复会换新的业务头（新记录 id），新记录有自己的投影，不会回到这条已撤回的记录。
+  const withdrawn =
+    trigger && !existing.some((row) => row.employmentRecordId === recordId)
+      ? await hasWithdrawnProjection(tx, ctx, employeeId, recordId)
+      : false;
   // TODO(需取证 Q-M0-37)：离职是否另建历史行未取证；只同步已知工作区间终点，不虚构离职后任期。
-  if (mayCreate && trigger && !terminal && !existing.some((row) => row.employmentRecordId === recordId))
+  if (mayCreate && trigger && !terminal && !withdrawn && !existing.some((row) => row.employmentRecordId === recordId))
     existing.push({ employmentRecordId: recordId });
   for (const previous of existing) {
     const record = await loadEmploymentRecord(tx, ctx.tenantId, String(previous.employmentRecordId), effectiveDate);
@@ -59,6 +65,14 @@ export async function syncEmploymentHistory(
         : (previous.leaveDate ?? null);
     await syncOne(tx, ctx, employeeId, previous, record, leaveDate);
   }
+}
+async function hasWithdrawnProjection(tx: Tx, ctx: EmploymentContext, employeeId: string, recordId: string) {
+  const [found] = rows(
+    await tx.execute(sql`SELECT 1 FROM personnel_job_history j
+      WHERE j.tenant_id=${ctx.tenantId} AND j.employee_id=${employeeId}::uuid AND j.deleted
+        AND j.employment_record_id=${recordId}::uuid AND j.source_type='employment_sync' LIMIT 1`),
+  );
+  return Boolean(found);
 }
 /**
  * 时间轴上（生效日 + 同日操作先后）排在触发记录之前、同周期内最近一条已有履历的任职，其结束日随之变化。

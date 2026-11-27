@@ -23,7 +23,7 @@ import {
   requireCollectionTarget,
   requireCollectionWrite,
 } from './collection-access.js';
-import { readCollectionComments } from './collection-tasks.js';
+import { isRestartableCollection, readCollectionComments } from './collection-tasks.js';
 
 const preview = {
   title: '入职前信息采集',
@@ -84,7 +84,8 @@ async function collectionActions(
   stage: OnboardingEntryCase,
   task?: OnboardingCollectionTask,
 ) {
-  if (stage.state !== 'pending' || (task && task.status !== 'ready' && task.status !== 'closed')) return [];
+  if (stage.state !== 'pending' || (task && task.status !== 'ready' && !isRestartableCollection(task.status)))
+    return [];
   const action = task?.status === 'ready' ? 'comments' : 'start';
   try {
     await requireCollectionWrite(tx, deps, ctx, action);
