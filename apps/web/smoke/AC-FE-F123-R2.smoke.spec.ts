@@ -3,10 +3,21 @@ import type { Locator } from '@playwright/test';
 import { test, expect } from './fixtures.js';
 import { activity, ev, id, questionnaire, setupR3b } from './r3b-fixtures.js';
 
-const save = { name: /保\s*存/, exact: true };
+// F-475：评定向导第三步另有「保存并发布」占位按钮，须整名匹配；保存经历过 loading 后，
+// antd 图标离场未完成时可访问名带 loading 前缀（见 action-button.ts），沿用同一定位
+const save = (form: Locator) => actionButton(form, '保存');
 const edit = { name: /编\s*辑/, exact: true };
 const field = (form: Locator, label: string) =>
   form.locator('.ant-form-item').filter({ has: form.page().locator(`label[title="${label}"]`) });
+
+// F-475：「允许破格」复选框改为「是否允许破格提名」是 / 否单选，按选项精确名称定位。
+// 外层字段 label 包住整组单选，首项可访问名会并入字段标题，故按选项自身 label 文本精确匹配
+const exception = (form: Locator) =>
+  form
+    .locator('label')
+    .filter({ hasText: /^是否允许破格提名/ })
+    .first();
+const exceptionOption = (form: Locator, name: '是' | '否') => exception(form).getByLabel(name, { exact: true });
 
 async function expectContentLocked(form: Locator) {
   const content = field(form, '题目与计分');
@@ -43,7 +54,7 @@ for (const [tab, path] of [
       await page.getByRole('button', edit).click();
       const form = page.getByRole('dialog', { name: '编辑', exact: true });
       await field(form, '名称').getByRole('textbox').fill('待保存名称');
-      await form.getByRole('button', save).click();
+      await save(form).click();
       await expect.poll(() => writes.length).toBe(1);
       try {
         if (outcome === 'conflict') await expect(form.getByText('重读最新版本', { exact: true })).toBeVisible();
@@ -85,13 +96,13 @@ test('AC-FE-F123-R2 360 冲突重读启用后只读评价形式显示最新值�
   await page.getByRole('button', edit).click();
   const form = page.getByRole('dialog', { name: '编辑', exact: true });
   await field(form, '名称').getByRole('textbox').fill('保留名称草稿');
-  await form.getByRole('button', save).click();
+  await save(form).click();
   await actionButton(form, '重读最新版本').click();
   await expect(field(form, '评价形式')).toContainText('single');
   await expect(field(form, '评价形式').getByRole('combobox')).toHaveCount(0);
   await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
   await expect(field(form, '名称').getByRole('textbox')).toHaveValue('保留名称草稿');
-  await form.getByRole('button', save).click();
+  await save(form).click();
   await expect(form).toHaveCount(0);
   expect(writes[1]).toEqual({ name: '保留名称草稿' });
 });
@@ -116,21 +127,24 @@ for (const completed of [false, true]) {
       return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } });
     });
     await page.getByRole('button', { name: ev.name, exact: true }).click();
-    await page.getByRole('button', edit).click();
-    const form = page.getByRole('dialog', { name: '编辑', exact: true });
+    // F-475：评定详情是以活动名命名的弹窗，编辑改为整页向导
+    await page.getByRole('dialog', { name: ev.name, exact: true }).getByRole('button', edit).click();
+    const form = page.locator('.evaluation-full-page[aria-label="编辑活动"]');
     await form.getByRole('textbox', { name: /名称$/, exact: true }).fill('我的名称草稿');
     await form.getByRole('button', { name: '下一步', exact: true }).click();
     await form.getByRole('button', { name: '下一步', exact: true }).click();
     if (!completed) {
       await form.getByRole('textbox', { name: '环节名称', exact: true }).first().fill('我的链路草稿');
-      await form.getByRole('checkbox').check();
+      await exceptionOption(form, '是').check();
     }
-    await form.getByRole('button', save).click();
+    await save(form).click();
     await actionButton(form, '重读最新版本').click();
     await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
     if (!completed) {
-      await expect(form.getByRole('checkbox')).not.toBeChecked();
-      await expect(form.getByRole('checkbox')).toBeDisabled();
+      await expect(exceptionOption(form, '否')).toBeChecked();
+      await expect(exceptionOption(form, '是')).not.toBeChecked();
+      await expect(exceptionOption(form, '是')).toBeDisabled();
+      await expect(exceptionOption(form, '否')).toBeDisabled();
       await expect(form.getByRole('textbox', { name: '环节名称', exact: true }).first()).toHaveValue('我的链路草稿');
     }
     if (completed) {
@@ -173,13 +187,13 @@ test('AC-FE-F123-R2 套卷重读变为已使用，只读分值用最新值且可
   const form = page.getByRole('dialog', { name: '编辑', exact: true });
   await form.getByRole('spinbutton', { name: /^分值/ }).fill('9');
   await form.getByRole('textbox', { name: '选项文字', exact: true }).fill('我的选项草稿');
-  await form.getByRole('button', save).click();
+  await save(form).click();
   await actionButton(form, '重读最新版本').click();
   await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
   await expect(form.getByRole('spinbutton', { name: /^分值/ })).toHaveValue('7');
   await expect(form.getByRole('spinbutton', { name: /^分值/ })).toBeDisabled();
   await expect(form.getByRole('textbox', { name: '选项文字', exact: true })).toHaveValue('我的选项草稿');
-  await form.getByRole('button', save).click();
+  await save(form).click();
   await expect(form).toHaveCount(0);
   expect(writes[1]?.content?.scales[0]?.options[0]).toMatchObject({ value: 7, label: '我的选项草稿' });
 });
@@ -198,7 +212,7 @@ test('AC-FE-F123-R2 已使用套卷只改名称，不把只读投影误判为内
   await page.getByRole('button', edit).click();
   const form = page.getByRole('dialog', { name: '编辑', exact: true });
   await field(form, '名称').getByRole('textbox').fill('只改名称');
-  await form.getByRole('button', save).click();
+  await save(form).click();
   await expect(form).toHaveCount(0);
   expect(writes).toEqual([{ name: '只改名称' }]);
 });

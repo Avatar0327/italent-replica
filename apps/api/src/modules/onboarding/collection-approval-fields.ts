@@ -73,7 +73,9 @@ export function collectionApprovalVisibility(
 
   async function collectionEmployee(taskId: string) {
     return notVisible(async () => {
-      const { stage } = await collectionBinding(tx, ctx.tenantId, taskId);
+      const { stage, task } = await collectionBinding(tx, ctx.tenantId, taskId);
+      // 撤回后曾提交值不再对任何审批读披露（实时详情与冻结办理份同走这里）；版本行仍保留作受控历史（设计 §4.1 第 7 条）
+      if (task.status === 'withdrawn') return null;
       await requireCollectionTarget(tx, deps, context, stage.currentBusinessId, 'read');
       const container = await getModuleViewableFieldsInTransaction(deps, ctx, COLLECTION, tx);
       return !container || container.has(COLLECTION_VALUES) ? stage.employeeId : null;
