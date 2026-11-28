@@ -453,7 +453,23 @@ describe('AC-EN-BE16-08 材料附件：受信绑定缺参即拒（返工 P2-1）
     expect(await w.fileRow(tagged.id)).toMatchObject({ status: 'uploaded', businessId: null });
   });
 
-  it('省略 businessType（本就不是入参）：归属类型由载体固定为材料，传入别的类型也被忽略；默认离职摘要读不到', async () => {
+  it('省略 businessType：材料载体必须显式提供且与载体一致，拒绝后文件仍是 uploaded、没有绑定行', async () => {
+    const w = await materialWorld(useDb().db, 'be16m-omit-type');
+    const itemId = w.newItemId();
+    const submissionId = w.newItemId();
+    const file = await w.stored({ itemId });
+    const base = { businessId: submissionId, targetTag: materialTag(itemId), employeeId: w.employeeA, next: [file.id] };
+    expect((await failure(rawBind(w, base)))?.code).toBe('VALIDATION_FAILED');
+    // 与载体不一致同样拒绝（不是静默改写成载体的类型）
+    expect((await failure(rawBind(w, { ...base, businessType: EXIT_BUSINESS_TYPE })))?.code).toBe('VALIDATION_FAILED');
+    expect(await w.fileRow(file.id)).toMatchObject({
+      status: 'uploaded',
+      businessType: materialTag(itemId),
+      businessId: null,
+    });
+  });
+
+  it('显式传入与载体一致的类型：绑定成功，归属固定为材料；默认离职摘要读不到材料文件', async () => {
     const w = await materialWorld(useDb().db, 'be16m-miss-type');
     const itemId = w.newItemId();
     const submissionId = w.newItemId();
@@ -462,7 +478,7 @@ describe('AC-EN-BE16-08 材料附件：受信绑定缺参即拒（返工 P2-1）
       businessId: submissionId,
       targetTag: materialTag(itemId),
       employeeId: w.employeeA,
-      businessType: EXIT_BUSINESS_TYPE, // 旧入参：不再有效
+      businessType: MATERIAL_BUSINESS_TYPE,
       next: [file.id],
     });
     expect(await w.fileRow(file.id)).toMatchObject({ status: 'bound', businessType: MATERIAL_BUSINESS_TYPE });
