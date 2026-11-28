@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { actionButton } from './action-button.js';
 import { entryId, initialEntry, nextId, objectGrant, setupEntries } from './entry-fixtures.js';
 import { expect, test } from './fixtures.js';
 
@@ -9,7 +10,8 @@ const historyName = '电子签署';
 const template = { id: '71000000-0000-4000-8000-000000000007', name: 'ZZ_F505_合成签署文件' };
 const taskId = '71000000-0000-4000-8000-000000000008';
 const dialogOf = (page: Page) => page.getByRole('dialog', { name: '发起电子签署' });
-const confirmOf = (page: Page) => dialogOf(page).getByRole('button', { name: /^确\s*定$/ });
+// F-583：确定经历过 loading 后可访问名可能带 loading 前缀（见 action-button.ts），沿用同一定位
+const confirmOf = (page: Page) => actionButton(dialogOf(page), '确定');
 const pickerOf = (page: Page) => dialogOf(page).locator('select[name="esignTemplateIds"]');
 const context = (id = entryId, revision = 9, items = [template]) => ({
   sourceId: id,
@@ -41,7 +43,7 @@ test('AC-ESIGN-F505-FE-02 列表裁剪状态和版本时仍按当前来源上下
   await sign.click();
   const dialog = page.getByRole('dialog', { name: '发起电子签署' });
   await expect(dialog.getByText('当前来源不满足发起条件。')).toBeVisible();
-  await expect(dialog.getByRole('button', { name: /^确\s*定$/ })).toBeDisabled();
+  await expect(confirmOf(page)).toBeDisabled();
   expect(reads).toBeGreaterThan(0);
   expect(state.writes).toEqual([]);
 });
@@ -188,43 +190,51 @@ test('AC-ESIGN-F505-FE-04 丢响应按原键回查，回执后的读取失败和
   expect(posts).toHaveLength(1);
 });
 
-test('AC-ESIGN-F505-FE-04 409 只重读原来源，改期替换后新记录不继承旧模板选择', async ({ page, baseURL }) => {
-  const state = await setupEntries(page, baseURL!);
-  const posts: string[] = [];
-  let replaced = false;
-  await page.route('**/pending-entries/*/esign-context', (route) => {
-    const id = new URL(route.request().url()).pathname.split('/').at(-2)!;
-    if (replaced && id === entryId)
-      return route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: '来源已更换' } } });
-    return route.fulfill({ json: context(id) });
-  });
-  await page.route('**/pending-entries/*/esign-tasks', (route) => {
-    posts.push(new URL(route.request().url()).pathname);
-    return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '来源已变化' } } });
-  });
-  await (await menu(page)).click();
-  await pickerOf(page).selectOption(template.id);
-  await confirmOf(page).click();
-  const dialog = dialogOf(page);
-  const refresh = dialog.getByRole('button', { name: '刷新签署上下文' });
-  await expect(refresh).toBeVisible();
-  await expect(confirmOf(page)).toBeDisabled();
+// F-583：确定经历过 loading 后，antd loading 图标离场未完成时仍留在按钮里（宽 0、透明），可访问名为
+// 「loading 确 定」（同 F-580）；「动画未结束」变体在 409 前禁用过渡，确定性复现这一状态。
+for (const motion of ['正常', '动画未结束'] as const) {
+  test(`AC-ESIGN-F505-FE-04 409 只重读原来源，改期替换后新记录不继承旧模板选择（图标离场${motion}）`, async ({
+    page,
+    baseURL,
+  }) => {
+    const state = await setupEntries(page, baseURL!);
+    const posts: string[] = [];
+    let replaced = false;
+    await page.route('**/pending-entries/*/esign-context', (route) => {
+      const id = new URL(route.request().url()).pathname.split('/').at(-2)!;
+      if (replaced && id === entryId)
+        return route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: '来源已更换' } } });
+      return route.fulfill({ json: context(id) });
+    });
+    await page.route('**/pending-entries/*/esign-tasks', async (route) => {
+      posts.push(new URL(route.request().url()).pathname);
+      if (motion === '动画未结束') await page.addStyleTag({ content: '* { transition: none !important; }' });
+      return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '来源已变化' } } });
+    });
+    await (await menu(page)).click();
+    await pickerOf(page).selectOption(template.id);
+    await confirmOf(page).click();
+    const dialog = dialogOf(page);
+    const refresh = dialog.getByRole('button', { name: '刷新签署上下文' });
+    await expect(refresh).toBeVisible();
+    await expect(confirmOf(page)).toBeDisabled();
 
-  replaced = true;
-  state.row.id = nextId;
-  await refresh.click();
-  await expect(dialog.getByText('签署来源不存在或已不可访问。')).toBeVisible();
-  await dialog
-    .getByRole('button', { name: /^关\s*闭$/ })
-    .last()
-    .click();
-  await selectTab(page, '今日待入职');
-  await expect(row(page)).toHaveAttribute('data-row-key', nextId);
-  await (await menu(page)).click();
-  await expect(pickerOf(page)).toHaveValues([]);
-  await expect(confirmOf(page)).toBeDisabled();
-  expect(posts).toEqual([`/api/tenant/employment/pending-entries/${entryId}/esign-tasks`]);
-});
+    replaced = true;
+    state.row.id = nextId;
+    await refresh.click();
+    await expect(dialog.getByText('签署来源不存在或已不可访问。')).toBeVisible();
+    await dialog
+      .getByRole('button', { name: /^关\s*闭$/ })
+      .last()
+      .click();
+    await selectTab(page, '今日待入职');
+    await expect(row(page)).toHaveAttribute('data-row-key', nextId);
+    await (await menu(page)).click();
+    await expect(pickerOf(page)).toHaveValues([]);
+    await expect(confirmOf(page)).toBeDisabled();
+    expect(posts).toEqual([`/api/tenant/employment/pending-entries/${entryId}/esign-tasks`]);
+  });
+}
 
 test('AC-ESIGN-F505-FE-04 切视图后迟到的旧来源模板不会写进新弹窗', async ({ page, baseURL }) => {
   const state = await setupEntries(page, baseURL!);
