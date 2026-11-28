@@ -13,6 +13,8 @@ import { auditActor } from '../../system-actor.js';
 import { rowsOf } from '../org/read-model.js';
 import { checkOrgItems } from './item-check.js';
 import { type ItemWorld, loadWorld, OUT_OF_RANGE, outOfRange } from './item-tree.js';
+import { checkTransferItems } from './transfer-check.js';
+import { transferMisses } from './transfer-items.js';
 import { assertOrgsActive, inactiveOrgs, ORG_INACTIVE } from './range.js';
 import type { HeadInput, HeadPatch } from './validation.js';
 
@@ -111,12 +113,12 @@ export async function assertHeadPatch(tx: Tx, world: ItemWorld, patch: HeadPatch
   const next = world.view;
   await assertOrgsActive(tx, world.tenantId, [next.approvalSubjectOrgId, ...next.adjustmentRange], next.effectiveDate);
   if (!patch.adjustmentRange && !patch.effectiveDate) return;
-  const misses = outOfRange(world, world.items, next.adjustmentRange);
+  const misses = [
+    ...outOfRange(world, world.items, next.adjustmentRange).map((miss) => ({ section: 'org', ...miss })),
+    ...transferMisses(world),
+  ];
   if (misses.length) {
-    throw new AppError('VALIDATION_FAILED', '已有明细不在新的调整范围内', {
-      reason: OUT_OF_RANGE,
-      items: misses.map((miss) => ({ section: 'org', ...miss })),
-    });
+    throw new AppError('VALIDATION_FAILED', '已有明细不在新的调整范围内', { reason: OUT_OF_RANGE, items: misses });
   }
 }
 
@@ -179,7 +181,7 @@ export async function checkWorld(tx: Tx, world: ItemWorld, now: Date) {
     [view.approvalSubjectOrgId, ...view.adjustmentRange],
     view.effectiveDate,
   );
-  const items = await checkOrgItems(tx, world, now);
+  const items = [...(await checkOrgItems(tx, world, now)), ...(await checkTransferItems(tx, world))];
   const all = [...(orgIds.length > 0 ? [{ reason: ORG_INACTIVE, orgIds }] : []), ...items];
   const errors = all.slice(0, CHECK_LIMIT);
   return { valid: all.length === 0, errors, warnings: [], ...(all.length > CHECK_LIMIT && { truncated: true }) };

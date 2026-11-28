@@ -39,6 +39,11 @@ export interface HandlingContent {
    * fieldObjectCode，这两个字段另存一份。null = 办理人不受约束；系统份存空数组；profileFields 为空的类型没有这个键。
    */
   readonly profileCeiling?: readonly string[] | null;
+  /**
+   * snapshot.foreignFields（嵌套的其他对象字段，如调动的合同变更逐行编码）里办理人办理时看得见的编码（P1-5）。
+   * 对象级披露上限（disclosure_ceiling）不含逐行编码；缺键 / 系统份按全部看不到（失败闭合）。
+   */
+  readonly foreignCeiling?: readonly string[];
 }
 
 /**
@@ -159,7 +164,10 @@ export async function prepareHandlingContent(
   // 系统份无办理人、不带字段权，viewableOf 返回空集，上限存空（失败闭合）
   const profile = snapshot.profileFields.length ? await facts.viewableOf(PERSONNEL_OBJECT) : undefined;
   const profileCeiling = snapshot.profileFields.length ? { profileCeiling: profile ? [...profile].sort() : null } : {};
-  const json = JSON.stringify({ snapshot, ext, ...profileCeiling } satisfies HandlingContent);
+  const foreignCeiling = snapshot.foreignFields?.length
+    ? { foreignCeiling: await visibleForeignCodes(tx, ctx, snapshot) }
+    : {};
+  const json = JSON.stringify({ snapshot, ext, ...profileCeiling, ...foreignCeiling } satisfies HandlingContent);
   const bytes = Buffer.byteLength(json, 'utf8');
   if (bytes > MAX_PAYLOAD_BYTES) {
     throw approvalError('PAYLOAD_TOO_LARGE', 'APPROVAL_CONTENT_TOO_LARGE', '本单内容过大，无法保存办理记录', {
@@ -173,6 +181,21 @@ export async function prepareHandlingContent(
     ceiling: viewable ? [...viewable].sort() : null,
     businessVersion: snapshot.version,
   };
+}
+
+/** 办理人当下看得见的嵌套字段编码；没有办理人（系统份）或未注入判定时一个都不收（失败闭合）。 */
+async function visibleForeignCodes(tx: Tx, ctx: ApprovalContext, snapshot: BusinessSnapshot): Promise<string[]> {
+  const userId = actorOf(ctx);
+  const fields = ctx.fields;
+  if (!userId || !fields?.foreignVisible) return [];
+  // 第 3 轮 P1-4：办理时容器（调动明细的“合同变更”）本身看不到，其下逐行合同字段一个都不收；之后补授容器权也不补露
+  const own = await fields.viewable(tx, userId, snapshot.fieldObjectCode);
+  const codes: string[] = [];
+  for (const field of snapshot.foreignFields ?? []) {
+    if (own !== undefined && !own.has(field.container)) continue;
+    if (await fields.foreignVisible(tx, userId, field)) codes.push(field.code);
+  }
+  return codes.sort();
 }
 
 /** 办理份的锚点：关闭的任务与本次办理写下的那条日志。 */
@@ -340,6 +363,11 @@ export async function selectBusinessContent(
 /** 已办读取时 profileFields 的办理时上限（F-511）：现值读不设限（null）；冻结读缺键按看不到（失败闭合）。 */
 export function profileCeilingOf(selection: ContentSelection): ReadonlySet<string> | null {
   return selection.mode === 'frozen' ? storedCeiling(selection.frozen.content.profileCeiling) : null;
+}
+
+/** 已办读取时嵌套字段（foreignFields）的办理时上限（P1-5）：现值读不设限（null）；冻结读缺键按看不到。 */
+export function foreignCeilingOf(selection: ContentSelection): ReadonlySet<string> | null {
+  return selection.mode === 'frozen' ? new Set(selection.frozen.content.foreignCeiling ?? []) : null;
 }
 
 /** 响应里的“内容来源”说明（设计 §5.5）：前端据此区分办理时快照与现值。 */

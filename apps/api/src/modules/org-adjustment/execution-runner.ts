@@ -25,7 +25,7 @@ import {
 } from './execution-groups.js';
 import {
   applicantSubjectCheck,
-  orgExecutors,
+  transferExecutors,
   resolveApplicantScope,
   type ApplicantScopeOf,
 } from './executors/index.js';
@@ -125,14 +125,14 @@ export async function runOrgAdjustmentTenant(
   }
 }
 
-/** 不传执行器 = 产品路径：组织明细执行器 + 申请人主体层复核（activation-scheduler 即如此调用）。 */
+/** 不传执行器 = 产品路径：组织明细 + 调动明细执行器与申请人主体层复核（activation-scheduler 即如此调用，BE-11c-b 开闸）。 */
 function runnerDefaults(options: RunnerOptions) {
   if (options.executors && !options.executors.transfer) {
     return { executors: options.executors, subjectCheck: options.subjectCheck };
   }
   const scopeOf = options.scopeOf ?? resolveApplicantScope;
   return {
-    executors: options.executors ?? orgExecutors(scopeOf),
+    executors: options.executors ?? transferExecutors(scopeOf),
     subjectCheck: options.subjectCheck ?? applicantSubjectCheck(scopeOf),
   };
 }

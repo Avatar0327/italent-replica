@@ -126,6 +126,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentExceeded',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/establishment/carried-transfer.ts#authorizeCarriedWrites': ['#readCarriedTarget'],
   'apps/api/src/modules/establishment/carried-transfer.ts#carryEstablishment': [
     'apps/api/src/modules/establishment/capacity-read.ts#readCapacity',
     'apps/api/src/modules/establishment/carried-candidates.ts#carriedCandidates',
@@ -146,6 +147,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/establishment/carried-transfer.ts#netAudit': ['#sum'],
+  'apps/api/src/modules/establishment/carried-transfer.ts#readCarriedTarget': [
+    'apps/api/src/modules/establishment/capacity-read.ts#readCapacity',
+    'apps/api/src/modules/establishment/schemes.ts#loadScheme',
+  ],
   'apps/api/src/modules/establishment/carried-transfer.ts#reconcileCarriedEstablishment': [
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/timeline.ts#employmentTimelineNeighbors',

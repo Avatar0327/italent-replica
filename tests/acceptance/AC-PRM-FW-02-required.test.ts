@@ -297,11 +297,11 @@ describe('AC-PRM-FW-02 显式表：组合公式与共享原语', () => {
       { perm: 'obj:TalentCenter.TalentCriterion:view', facts: [shared], at: [call] },
       { perm: 'obj:TalentCenter.TalentCriterion:update', purpose: 'disclosure:canEdit', facts: [shared], at: [call] },
     ];
-    expect(admissionPrimitives(observed, obligations)['object']).toContain('objectContext');
+    expect(admissionPrimitives(MODEL_IMAGE, observed, obligations)['object']).toContain('objectContext');
     const onlyDisclosure: Obligation[] = [
       { perm: 'obj:TalentCenter.TalentCriterion:update', purpose: 'disclosure:canEdit', facts: [shared], at: [call] },
     ];
-    expect(admissionPrimitives(observed, onlyDisclosure)['object']).toBeUndefined();
+    expect(admissionPrimitives(MODEL_IMAGE, observed, onlyDisclosure)['object']).toBeUndefined();
   });
 });
 

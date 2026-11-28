@@ -100,13 +100,18 @@ it('内部排期将调动明细计入数据量，按组保存源与目标组织 
   );
 });
 
-it('默认排期与默认执行入口维持关闭，即使表已有内部夹具也不发现调动组', async () => {
+it('BE-11c-b 开闸：默认排期计入调动明细，默认运行器（不传执行器）执行；显式关闭排期分区时不计入', async () => {
+  const closed = await fixture();
+  await closed.row();
+  expect((await closed.schedule(false)).dataVolume).toBe(0);
+  expect(await closed.scopeRows()).toEqual([]);
+
   const f = await fixture();
   await f.row();
-  expect((await f.schedule(false)).dataVolume).toBe(0);
-  expect(await f.scopeRows()).toEqual([]);
+  const scheduled = await f.inTenant((tx) => scheduleOrgAdjustmentExecution(tx, f.ctx, f.id));
+  expect(scheduled.dataVolume).toBe(1);
   await runOrgAdjustmentTenant(f.db, f.tenant, f.w.clock, { scopeOf: async () => ALL });
-  expect(await f.results()).toMatchObject([{ exec_phase: 0, created_business_id: null }]);
+  expect(await f.results()).toMatchObject([{ exec_phase: 2, execution_result: 1 }]);
 });
 
 it('受信组绕过仅限人工的租户开关，写完整调动并在提交回执丢失后按落库终态完成', async () => {
@@ -314,13 +319,15 @@ it('依赖组失败及人员范围撤销各按业务失败回写，调动业务�
   ]);
 });
 
-it('公开写入口维持未注册，负责人两项联动继续拒绝', async () => {
+it('职位 / 编制 / 兼职写入口维持未注册，负责人两项联动继续拒绝（调动写入口已由 BE-11c-b 注册）', async () => {
   const w = await itemsWorld(testDb().db, 'ZZ_BE11C_CLOSED');
   const view = await w.created();
-  for (const method of ['POST', 'PATCH', 'DELETE']) {
-    const suffix = method === 'POST' ? '' : `/${randomUUID()}`;
-    const response = await w.call(method, `${BASE}/${view.id}/transfer-items${suffix}`, { ifMatch: view.revision });
-    expect(response.status).toBe(404);
+  for (const section of ['position-items', 'establishment-items', 'part-time-items']) {
+    for (const method of ['POST', 'PATCH', 'DELETE']) {
+      const suffix = method === 'POST' ? '' : `/${randomUUID()}`;
+      const response = await w.call(method, `${BASE}/${view.id}/${section}${suffix}`, { ifMatch: view.revision });
+      expect(response.status, `${method} ${section}`).toBe(404);
+    }
   }
   const worker = await w.person('ZZ_BE11C_负责人', w.a);
   for (const key of ['transferOldHeadSubordinates', 'adjustNewHeadManager']) {

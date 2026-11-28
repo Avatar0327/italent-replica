@@ -278,7 +278,7 @@ export function mutantsOf(route: ManifestRoute, contract: ObservedContract, tabl
   if (!raw) return [];
   // 只对准入义务承接的事实施加削弱（披露 / 守卫内部 / 条件准入的事实由表分流，见 required.ts）
   const obligations = table[key] ?? [];
-  const observed = { ...raw, primitives: admissionPrimitives(raw, obligations) };
+  const observed = { ...raw, primitives: admissionPrimitives(key, raw, obligations) };
   // 基准观测到、且是必备义务的维度：被“或”关系原语吸收、又不在其任何一支里的维度（如执行人路由里 HR 范围的解析）
   // 现状不要求，不施加对应削弱
   const ors = DISJUNCTIONS.filter((d) => observed.primitives['or']?.includes(d.name));

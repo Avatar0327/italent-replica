@@ -176,7 +176,7 @@ export const SELF_SERVICE: RequiredTable = {
         route('POST', '/transfer/preview', 'ownTransferPreview(tx, self.ctx, self.employee.id, raw, deps)'),
         {
           role: 'impl',
-          unit: 'apps/api/src/modules/transfer/preview.ts#previewTransfer',
+          unit: 'apps/api/src/modules/transfer/preview.ts#previewTransferChecked',
           anchor: 'await requireTransferSource(tx, ctx, employeeId, input.initiator)',
         },
         ...SOURCE_IMPL,
@@ -191,7 +191,7 @@ export const SELF_SERVICE: RequiredTable = {
         {
           role: 'impl',
           unit: 'apps/api/src/modules/transfer/preview.ts#previewTransfer',
-          anchor: "transferDirectActions(accessContext, input.initiator === 'hr' && settings.allowDirectTransfer)",
+          anchor: 'transferDirectActions(accessOf(tx, ctx, input), direct)',
         },
         DIRECT_IMPL[1],
       ],

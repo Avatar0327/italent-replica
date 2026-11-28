@@ -1,5 +1,6 @@
 /**
- * 组织调整的审批快照（R2-T08 §4.5，BE-10c）：头（含调整范围）+ 组织分区；调动 / 职位 / 编制 / 兼职分区不在本片。
+ * 组织调整的审批快照（R2-T08 §4.5，BE-10c / BE-11c-b）：头（含调整范围）+ 组织分区 + 调动分区（transfer-snapshot.ts）；
+ * 职位 / 编制 / 兼职分区不在本片。
  * - 头字段按编码直接取值；组织分区每个编码一份 `[{ itemId, value }]`，只列本单相对基线实际有变化的行（编码按
  *   itemId，与行序无关），另带 `orgItems.count`（明细行数，不是表单字段，不进变化字段）；
  * - 原值：改组织行按建行基线版本（base_version_id）取组织字段的原值，`originals` 同形 `[{ itemId, value: 基线值 }]`；
@@ -22,6 +23,16 @@ import type { BusinessSnapshot } from '../approval/adapters.js';
 import { rowsOf } from '../org/read-model.js';
 import { loadItems, type OrgItem } from './items-store.js';
 import { loadAdjustment, type AdjustmentView } from './service.js';
+import { transferSection } from './transfer-snapshot.js';
+import {
+  contractCurrentValues,
+  contractOwners,
+  loadTransfers,
+  sourceDepartments,
+  type ContractOwner,
+  type ContractValues,
+  type TransferItem,
+} from './transfer-items-store.js';
 
 type Values = Record<string, unknown>;
 type ItemValue = { readonly itemId: string; readonly value: unknown };
@@ -80,9 +91,18 @@ export function buildSnapshot(
   view: AdjustmentView,
   items: readonly OrgItem[],
   baselines: ReadonlyMap<string, Baseline>,
+  transfers: readonly TransferItem[] = [],
+  sources: ReadonlyMap<string, string | null> = new Map(),
+  owners: ReadonlyMap<string, ContractOwner> = new Map(),
+  contractValues: ReadonlyMap<string, ContractValues> = new Map(),
 ): BusinessSnapshot {
   const head = headValues(view);
-  const section = orgSection(items, baselines);
+  const org = orgSection(items, baselines);
+  const transfer = transferSection(transfers, sources, owners, contractValues);
+  const section = {
+    values: { ...org.values, ...transfer.values },
+    originals: { ...org.originals, ...transfer.originals },
+  };
   return {
     approvalType: 'org_adjustment',
     businessType: 'org_adjustment',
@@ -92,9 +112,15 @@ export function buildSnapshot(
     subjectEmployeeId: null,
     // 标题不含组织名等业务数据（DEC-057），单号足以区分
     title: `${APPROVAL_TYPES.org_adjustment.name}申请 ${view.code}`,
-    values: { ...head, ...section.values, 'orgItems.count': items.length },
+    values: {
+      ...head,
+      ...section.values,
+      'orgItems.count': items.length,
+      ...(transfers.length ? { 'transferItems.count': transfers.length } : {}),
+    },
     originals: Object.keys(section.originals).length ? section.originals : null,
     changedFields: [...Object.keys(head).filter((field) => filled(head[field])), ...Object.keys(section.values)],
+    ...(transfer.foreignFields.length ? { foreignFields: transfer.foreignFields } : {}),
     conditionValues: {
       processCode: ORG_ADJUSTMENT_PROCESS_CODE,
       'adjustment.approvalSubjectOrgId': view.approvalSubjectOrgId,
@@ -150,7 +176,16 @@ export async function orgAdjustmentSnapshot(tx: Tx, tenantId: string, id: string
   const view = await loadAdjustment(tx, tenantId, id);
   if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
   const items = await loadItems(tx, tenantId, id);
-  return buildSnapshot(view, items, await loadBaselines(tx, tenantId, items));
+  const transfers = await loadTransfers(tx, tenantId, id);
+  return buildSnapshot(
+    view,
+    items,
+    await loadBaselines(tx, tenantId, items),
+    transfers,
+    await sourceDepartments(tx, tenantId, transfers),
+    await contractOwners(tx, tenantId, transfers),
+    await contractCurrentValues(tx, tenantId, transfers),
+  );
 }
 
 /**

@@ -13,9 +13,31 @@ import { transferPartTimePort, type OngoingPartTimes } from './linkage/part-time
 import { requireTransferEditedWrite, transferTargetContext, type TransferInput } from './service.js';
 import { requireEmployeeTransferFields } from './employee-policy.js';
 
+const accessOf = (tx: Tx, ctx: EmploymentContext, input: TransferInput) => {
+  const managed = { ...ctx, managerTransfer: input.initiator === 'manager' };
+  return { ...managed, authorize: ctx.authorize ? authorizeInTransaction(ctx.authorize, tx) : undefined };
+};
+
+/** 人工调动预览：在 `previewTransferChecked` 之上补 UI 披露用的 allowedActions（直接调动开关只影响披露，不拒绝请求）。 */
 export async function previewTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
+  const preview = await previewTransferChecked(tx, ctx, employeeId, input);
+  const direct = preview.value.allowDirectTransfer;
+  return {
+    ...preview,
+    value: {
+      ...preview.value,
+      allowedActions: { application: true, ...(await transferDirectActions(accessOf(tx, ctx, input), direct)) },
+    },
+  };
+}
+
+/**
+ * 预览的校验与上下文部分（来源范围、字段写权、继承、表单、目标范围）。组织调整的调动明细保存链只要这部分
+ * （受信执行端口不消费“直接调动”开关，R2-T08 §8.3），所以不经 allowedActions 的计算（BE-11c-b 第 2 轮 P2-4）。
+ */
+export async function previewTransferChecked(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
   ctx = { ...ctx, managerTransfer: input.initiator === 'manager' };
-  const accessContext = { ...ctx, authorize: ctx.authorize ? authorizeInTransaction(ctx.authorize, tx) : undefined };
+  const accessContext = accessOf(tx, ctx, input);
   await requireTransferSource(tx, ctx, employeeId, input.initiator);
   if (input.initiator === 'employee') {
     ctx = { ...ctx, selfServiceEmployeeId: employeeId };
@@ -65,10 +87,6 @@ export async function previewTransfer(tx: Tx, ctx: EmploymentContext, employeeId
         : null,
       employeeRevision: employee.revision,
       allowDirectTransfer: input.initiator === 'hr' && settings.allowDirectTransfer,
-      allowedActions: {
-        application: true,
-        ...(await transferDirectActions(accessContext, input.initiator === 'hr' && settings.allowDirectTransfer)),
-      },
     },
   };
 }

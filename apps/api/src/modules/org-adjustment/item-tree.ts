@@ -15,8 +15,10 @@ import {
 import { AppError } from '../../errors.js';
 import { loadOrgSnapshot, type OrgRecord } from '../org/read-model.js';
 import type { OrgWriteContext } from '../org/validation.js';
+import { PARENT_ORG_FIELD, TARGET_ORG_FIELD } from './envelope.js';
 import { loadItems, type OrgItem } from './items-store.js';
 import type { AdjustmentView } from './service.js';
+import { loadTransfers, sourceDepartments, type TransferItem } from './transfer-items-store.js';
 
 export const OUT_OF_RANGE = 'ORG_ADJUSTMENT_OUT_OF_RANGE';
 export const PLAN_MESSAGES: Record<OrgPlanReason, string> = {
@@ -32,13 +34,18 @@ export interface ItemWorld {
   readonly items: OrgItem[];
   /** 生效日快照（含停用组织）。 */
   readonly orgs: ReadonlyMap<string, OrgRecord>;
+  /** 调动明细（BE-11c-b）与各行基线任职里的来源部门（“变更前”不单独建列）。 */
+  readonly transfers: TransferItem[];
+  readonly transferSources: ReadonlyMap<string, string | null>;
 }
 
 /** `view` 可以是改后的头（审批中编辑的候选状态）；组织快照按它的生效日取。 */
 export async function loadWorld(tx: Tx, tenantId: string, view: AdjustmentView): Promise<ItemWorld> {
   const items = await loadItems(tx, tenantId, view.id);
   const snapshot = await loadOrgSnapshot(tx, tenantId, view.effectiveDate);
-  return { tenantId, view, items, orgs: new Map(snapshot.map((org) => [org.id, org])) };
+  const transfers = await loadTransfers(tx, tenantId, view.id);
+  const transferSources = await sourceDepartments(tx, tenantId, transfers);
+  return { tenantId, view, items, orgs: new Map(snapshot.map((org) => [org.id, org])), transfers, transferSources };
 }
 
 /** 复用组织模块只读判断所需的上下文：只用到租户与当前时刻（编码预占是否过期），不落组织版本。 */
@@ -46,12 +53,12 @@ export function orgContext(tenantId: string, now = new Date(0)): OrgWriteContext
   return { tenantId, userId: '', timezone: 'UTC', rootName: '', now, commandId: '', expectedRevision: 0 };
 }
 
-const orgRef = (id: string): AdjustmentOrgRef => ({ kind: 'org', id });
-const itemRef = (id: string): AdjustmentOrgRef => ({ kind: 'item', id });
+export const orgRef = (id: string): AdjustmentOrgRef => ({ kind: 'org', id });
+export const itemRef = (id: string): AdjustmentOrgRef => ({ kind: 'item', id });
 const parentRef = (item: OrgItem) =>
   item.parentOrgId ? orgRef(item.parentOrgId) : item.parentItemId ? itemRef(item.parentItemId) : null;
 
-function rangeNodes(world: ItemWorld, items: readonly OrgItem[]): AdjustmentRangeNode[] {
+export function rangeNodes(world: ItemWorld, items: readonly OrgItem[]): AdjustmentRangeNode[] {
   const nodes: AdjustmentRangeNode[] = [...world.orgs.values()].map((org) => ({
     ref: orgRef(org.id),
     parent: org.parents.admin?.parentId ? orgRef(org.parents.admin.parentId) : null,
@@ -66,13 +73,16 @@ function rangeNodes(world: ItemWorld, items: readonly OrgItem[]): AdjustmentRang
  */
 export function outOfRange(world: ItemWorld, items: readonly OrgItem[], range: readonly string[]) {
   const nodes = rangeNodes(world, items);
-  const misses: { itemId: string; orgId: string }[] = [];
+  const misses: { itemId: string; orgId: string; field: string }[] = [];
   for (const item of items) {
-    const refs = item.adjustType === 1 ? [itemRef(item.id)] : [orgRef(item.targetOrgId!)];
+    // 每个待判的组织带上它的字段来源：信封里的 orgId 随命中字段的查看权，不一律按目标组织（第 6 轮 P2-1）。
+    const refs = [
+      { ref: item.adjustType === 1 ? itemRef(item.id) : orgRef(item.targetOrgId!), field: TARGET_ORG_FIELD },
+    ];
     const parent = item.adjustType === 2 ? parentRef(item) : null;
-    if (parent) refs.push(parent);
-    const miss = refs.find((ref) => !isInAdjustmentRange(ref, range, nodes));
-    if (miss) misses.push({ itemId: item.id, orgId: miss.id });
+    if (parent) refs.push({ ref: parent, field: PARENT_ORG_FIELD });
+    const miss = refs.find(({ ref }) => !isInAdjustmentRange(ref, range, nodes));
+    if (miss) misses.push({ itemId: item.id, orgId: miss.ref.id, field: miss.field });
   }
   return misses;
 }
@@ -80,7 +90,11 @@ export function outOfRange(world: ItemWorld, items: readonly OrgItem[], range: r
 export function assertInRange(world: ItemWorld, items: readonly OrgItem[], item: OrgItem) {
   const [miss] = outOfRange(world, items, world.view.adjustmentRange).filter((m) => m.itemId === item.id);
   if (miss) {
-    throw new AppError('VALIDATION_FAILED', '组织不在本单调整范围内', { reason: OUT_OF_RANGE, orgId: miss.orgId });
+    throw new AppError('VALIDATION_FAILED', '组织不在本单调整范围内', {
+      reason: OUT_OF_RANGE,
+      orgId: miss.orgId,
+      field: miss.field,
+    });
   }
 }
 

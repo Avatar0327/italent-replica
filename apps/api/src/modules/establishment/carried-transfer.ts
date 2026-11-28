@@ -116,6 +116,49 @@ export async function carryEstablishment(
   }
 }
 
+/**
+ * 带编写入的对象写权（第 3 轮 P1-3）：执行器以系统身份落编制、不再判操作人，所以保存 / 提交链要在这里按“真正写的字段”
+ * 判编制对象的 update 与字段写权（localCapacity / inclusiveCapacity / subdivisions / 预留列），不止数据范围。
+ * 候选与载荷形状同 carryEstablishment → applyCapacityNet：跳过未生效 / 停用 / 被方案排除的对象，写什么字段就判什么字段。
+ */
+export async function authorizeCarriedWrites(
+  tx: Tx,
+  ctx: EstablishmentContext,
+  candidates: readonly { id: string }[],
+  today: string,
+) {
+  for (const { id } of candidates) {
+    const target = await readCarriedTarget(tx, ctx, id, today);
+    if (!target) continue;
+    const { record, scheme } = target;
+    await ctx.authorizeCapacity?.(tx, {
+      operation: 'update',
+      id,
+      orgId: record.orgId,
+      payload: {
+        effectiveDate: today,
+        reservedLocal: record.reservedLocal,
+        reservedInclusive: record.reservedInclusive,
+        ...(scheme.subdivision === 'position'
+          ? { subdivisions: record.subdivisions }
+          : { localCapacity: record.localCapacity, inclusiveCapacity: record.inclusiveCapacity }),
+      },
+    });
+  }
+}
+
+/** 尚未生效 / 停用 / 被方案排除的对象不参与调编（与 carryEstablishment 同口径）；其余错误照抛。 */
+async function readCarriedTarget(tx: Tx, ctx: EstablishmentContext, id: string, today: string) {
+  try {
+    const record = await readCapacity(tx, ctx.tenantId, id, today);
+    const scheme = await loadScheme(tx, ctx.tenantId, record.schemeId, today);
+    return scheme.enabled && !scheme.excludedOrgIds.includes(record.orgId) ? { record, scheme } : null;
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
+    throw error;
+  }
+}
+
 function delta(
   record: CapacityRecord,
   scheme: SchemeRecord,
