@@ -21,7 +21,7 @@
     "insurance": 4,
     "job": 20,
     "offers": 24,
-    "onboarding": 44,
+    "onboarding": 56,
     "org": 17,
     "org-adjustment": 19,
     "permission": 52,
@@ -42,5 +42,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 1001
+  "total": 1013
 }

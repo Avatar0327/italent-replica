@@ -39,6 +39,24 @@
       "obj:TenantBase.EmploymentSettings:update"
     ]
   },
+  "DELETE /api/tenant/onboarding/handbooks/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "d3933e5bd3d6",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
   "DELETE /api/tenant/onboarding/integration/schemes/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -132,6 +150,24 @@
     "scopeQueries": [
       "scope:TenantBase/TenantBase.EmploymentSettings/-"
     ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
+  "DELETE /api/tenant/onboarding/welcome-letters/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "856140d3cfb0",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
     "trace": [
       "admin:other_settings",
       "obj:TenantBase.EmploymentSettings:update"
@@ -259,6 +295,36 @@
     "trace": [
       "obj:TenantBase.EmploymentRecord:view",
       "obj:TenantBase.OnboardingMaterial:view"
+    ]
+  },
+  "GET /api/tenant/onboarding/handbooks": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:create",
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "GET /api/tenant/onboarding/handbooks/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "d3933e5bd3d6",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:view"
     ]
   },
   "GET /api/tenant/onboarding/integration/schemes": {
@@ -443,6 +509,36 @@
       "obj:TenantBase.EmploymentSettings:view"
     ]
   },
+  "GET /api/tenant/onboarding/welcome-letters": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:create",
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "GET /api/tenant/onboarding/welcome-letters/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "856140d3cfb0",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
   "PATCH /api/tenant/onboarding/collection-rules/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -478,6 +574,24 @@
     "scopeQueries": [
       "scope:TenantBase/TenantBase.EmploymentSettings/-"
     ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
+  "PATCH /api/tenant/onboarding/handbooks/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "953c35b2231d",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
     "trace": [
       "admin:other_settings",
       "obj:TenantBase.EmploymentSettings:update"
@@ -577,6 +691,24 @@
       "obj:TenantBase.EmploymentSettings:update"
     ]
   },
+  "PATCH /api/tenant/onboarding/welcome-letters/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "953c35b2231d",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
   "POST /api/tenant/onboarding/collection-rules": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -670,6 +802,37 @@
     "scopeQueries": [],
     "trace": []
   },
+  "POST /api/tenant/onboarding/handbooks": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "6a2e702d1bb3",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:create"
+    ]
+  },
+  "POST /api/tenant/onboarding/handbooks/:id/preview": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "0238504db40b",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "POST /api/tenant/onboarding/integration/schemes": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -731,6 +894,37 @@
     "fieldQueries": [],
     "gap": {
       "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/onboarding/welcome-letters": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "6c291f6986d1",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:create"
+    ]
+  },
+  "POST /api/tenant/onboarding/welcome-letters/:id/preview": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "0238504db40b",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
     },
     "scopeQueries": [],
     "trace": []

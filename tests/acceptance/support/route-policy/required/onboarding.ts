@@ -3,6 +3,7 @@ import { ONBOARDING_COLLECTION } from './onboarding-collection.js';
 import { ONBOARDING_MATERIAL } from './onboarding-material.js';
 import { PREPARATION_REQUIRED } from './onboarding-preparation.js';
 import { ONBOARDING_TASKS } from './onboarding-tasks.js';
+import { ONBOARDING_WELCOME } from './onboarding-welcome.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 import { ONBOARDING_SCHEMES } from './onboarding-schemes.js';
 
@@ -124,6 +125,7 @@ export const ONBOARDING: RequiredTable = {
   ...ONBOARDING_TASKS,
   ...ONBOARDING_SCHEMES,
   ...ONBOARDING_MATERIAL,
+  ...ONBOARDING_WELCOME,
   [`GET ${BASE}/categories`]: read(
     'GET /categories',
     'await requirePoolView(authorizeInTransaction(deps.authorize, tx), tenantOf(c))',

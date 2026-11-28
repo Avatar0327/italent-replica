@@ -7,6 +7,7 @@ import { registerPreparationConfig } from './modules/onboarding/preparation-conf
 import { registerCollectionConfig } from './modules/onboarding/collection-config-routes.js';
 import { registerMaterialConfig } from './modules/onboarding/material-config-routes.js';
 import { registerIntegrationPoolRoutes } from './modules/onboarding/integration-pool-routes.js';
+import { registerWelcomeRoutes } from './modules/onboarding/welcome-routes.js';
 import { registerIntegrationSchemeRoutes } from './modules/onboarding/integration-schemes-routes.js';
 import { registerOnboardingContract } from './modules/onboarding/entry-lifecycle.js';
 import { registerOfferRoutes } from './modules/offer/routes.js';
@@ -73,6 +74,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerCollectionTasks, // BE-16 采集任务
   registerIntegrationPoolRoutes, // BE-16 16b-0 融入任务池
   registerIntegrationSchemeRoutes, // BE-16 16b-1 融入方案
+  registerWelcomeRoutes, // BE-16 16a-7 欢迎信与手册
   registerEmploymentRoutes, // R1-T05 任职记录版本链
   registerPersonnelRoutes, // R1-T12 人员信息与子集
   registerApprovalRoutes, // R1-T07 审批中心

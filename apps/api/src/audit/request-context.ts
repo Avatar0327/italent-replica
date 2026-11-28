@@ -21,13 +21,22 @@ export interface AuditRequest {
   /** 与业务写入同一个时钟（测试注入），失败命令审计的事件时间与业务时间口径一致。 */
   readonly clock: () => Date;
   /** 同一请求只记一次失败命令审计：执行器记过后，入口兜底（capture.ts）不再重复记录。 */
-  readonly state: { failureRecorded: boolean; usedDerivedCommand?: true };
+  readonly state: { failureRecorded: boolean; usedDerivedCommand?: true; failureAuditExempt?: true };
 }
 
 const storage = new AsyncLocalStorage<AuditRequest>();
 
 export function currentAuditRequest(): AuditRequest | undefined {
   return storage.getStore();
+}
+
+/**
+ * 只读预览（POST 但不写任何数据、不进命令台账）声明自己不是写命令：校验失败时入口兜底（capture.ts）不记失败命令审计，
+ * 否则带 Idempotency-Key 的预览请求会在审计里留下“失败命令”，而业务根本没有命令可言。
+ */
+export function exemptFromFailureAudit(): void {
+  const request = storage.getStore();
+  if (request) request.state.failureAuditExempt = true;
 }
 
 /** 在指定的请求上下文里运行（测试 / 进程内可信端口造数时补上 HTTP 中间件本来放进去的时钟与来源）。 */

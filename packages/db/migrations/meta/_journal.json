@@ -1674,6 +1674,13 @@
       "when": 1795648282055,
       "tag": "0238_be16_collection_withdraw",
       "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1795690240052,
+      "tag": "0239_be16_welcome_handbook",
+      "breakpoints": true
     }
   ]
 }

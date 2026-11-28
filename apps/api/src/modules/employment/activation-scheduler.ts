@@ -1,4 +1,5 @@
 import { runCollectionCreationSlot } from '../onboarding/collection-jobs.js';
+import { runWelcomeLetterSlot } from '../onboarding/welcome-jobs.js';
 import { dueEntryCaseEmployees, finishDueEntryCases } from './entry-case.js';
 import { dueHandoverCandidates, readDueHandoverEnabled, runDueHandovers } from './exit-handover-launch.js';
 import { plannedEffectiveDate } from './timeline.js';
@@ -318,4 +319,6 @@ async function runSlot(db: Db, slot: number, clock: () => Date, onError: (error:
   // BE-11a（R2-T08 §7.2）：已排期的组织调整按租户串行执行，同一定时器、同一时间槽
   await runOrgAdjustmentSlot(db, clock, onError);
   await runCollectionCreationSlot(db, clock, onError);
+  // BE-16 16a-7（R2-T01 §8）：欢迎信作业，接在采集创建之后
+  await runWelcomeLetterSlot(db, clock, onError);
 }
