@@ -60,6 +60,7 @@ function bindMaterial(
   return w.tenantTx((tx) =>
     bindAttachmentRefs(tx, w.ctxOf(actor), {
       carrier: CARRIER,
+      businessType: MATERIAL_BUSINESS_TYPE,
       businessId: opts.submissionId,
       targetTag: materialTag(opts.itemId),
       employeeId: opts.employeeId ?? w.employeeA,
@@ -419,6 +420,7 @@ describe('AC-EN-BE16-08 材料附件：受信绑定缺参即拒（返工 P2-1）
     w.tenantTx((tx) =>
       bindAttachmentRefs(tx, w.ctxOf(w.hr.id), {
         carrier: CARRIER,
+        businessType: MATERIAL_BUSINESS_TYPE,
         previous: [],
         actor: w.hr.id,
         ...input,
@@ -459,7 +461,7 @@ describe('AC-EN-BE16-08 材料附件：受信绑定缺参即拒（返工 P2-1）
     const submissionId = w.newItemId();
     const file = await w.stored({ itemId });
     const base = { businessId: submissionId, targetTag: materialTag(itemId), employeeId: w.employeeA, next: [file.id] };
-    expect((await failure(rawBind(w, base)))?.code).toBe('VALIDATION_FAILED');
+    expect((await failure(rawBind(w, { ...base, businessType: undefined })))?.code).toBe('VALIDATION_FAILED');
     // 与载体不一致同样拒绝（不是静默改写成载体的类型）
     expect((await failure(rawBind(w, { ...base, businessType: EXIT_BUSINESS_TYPE })))?.code).toBe('VALIDATION_FAILED');
     expect(await w.fileRow(file.id)).toMatchObject({

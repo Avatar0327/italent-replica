@@ -67,6 +67,11 @@ export interface BindInput {
   readonly next: unknown;
   readonly actor: string;
   /**
+   * 调用方声明的归属类型。绑定后的类型始终由载体固定，这里只是核对声明：材料载体必填且必须与载体一致，
+   * 否则 VALIDATION_FAILED；离职载体可省略（原调用方式不变），提供时同样须一致。
+   */
+  readonly businessType?: string;
+  /**
    * 未绑定行的登记标记（登记时写在 business_type 里，如材料项标记）：新增文件的标记必须与此完全一致，
    * 缺省表示“不带标记”（离职口径）。标记不符的文件一律按不可用处理。材料载体必填。
    */
@@ -101,6 +106,9 @@ export async function bindAttachmentRefs(tx: Tx, ctx: BindingContext, input: Bin
   // 材料载体由 HR 代员工上传：缺目标员工或材料项标记就无法判定“这是谁的哪一项”，一律拒绝而不是放宽
   if (input.carrier === MATERIAL_CARRIER && (!input.employeeId || !input.targetTag))
     throw new AppError('VALIDATION_FAILED', '材料附件绑定必须指明目标员工和材料项');
+  // 归属类型由载体决定；材料调用必须显式声明且一致，声明不符时拒绝而不是静默改写
+  const declared = input.businessType ?? (input.carrier === MATERIAL_CARRIER ? undefined : businessType);
+  if (declared !== businessType) throw new AppError('VALIDATION_FAILED', '附件归属类型与载体不一致');
   const next = normalize(input.next, config.maxFiles);
   const previous = lower(input.previous);
   const files = await lockFiles(tx, ctx.tenantId, [...new Set([...previous, ...next])]);
