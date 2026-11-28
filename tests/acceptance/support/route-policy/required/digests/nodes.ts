@@ -1306,7 +1306,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/attachments/binding.ts#EXIT_CARRIER': ['aa32b3e8de00', 'e3b0c44298fc'],
   'apps/api/src/modules/attachments/binding.ts#UUID': ['16bf86523a5c', 'e3b0c44298fc'],
   'apps/api/src/modules/attachments/binding.ts#assertRefsUnchanged': ['ba2d5c2aaacb', 'e34f675cabea'],
-  'apps/api/src/modules/attachments/binding.ts#bindAttachmentRefs': ['1afe648e1c51', '58f382eecd7a'],
+  'apps/api/src/modules/attachments/binding.ts#bindAttachmentRefs': ['d472946a07a5', 'ba8454dc62d0'],
   'apps/api/src/modules/attachments/binding.ts#inheritAttachments': ['8858219602ef', '66779af40698'],
   'apps/api/src/modules/attachments/binding.ts#invalid': ['242473c6ae05', '583ee92c250c'],
   'apps/api/src/modules/attachments/binding.ts#lockFiles': ['e362c3a08942', 'df77a8d0271f'],
