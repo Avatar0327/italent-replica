@@ -168,6 +168,19 @@ describe('AC-EN-BE16-12 欢迎信模板与预览', () => {
     expect(spaced.status).toBe(201);
   });
 
+  it('占位名称含单花括号或未闭合的双花括号一律拒绝：{{employee{nickname} }} 等不能保存', async () => {
+    const { admin } = await fixture();
+    for (const body of ['{{employee{nickname} }}', '{{{x}}}', '{{ }}', '{{employeeName', '{{employeeName}} {{x']) {
+      const response = await admin('POST', WELCOME, { ifMatch: 0, body: letter({ body }) });
+      expect(response.status, body).toBe(400);
+      expect(await response.json(), body).toMatchObject({
+        error: { details: { reason: 'WELCOME_VARIABLE_UNKNOWN' } },
+      });
+    }
+    const title = await admin('POST', WELCOME, { ifMatch: 0, body: letter({ title: '欢迎{{employee{nickname} }}' }) });
+    expect(title.status).toBe(400);
+  });
+
   it('预览是只读路由：带命令键校验失败时，台账、业务审计、失败审计均无新增', async () => {
     const { db, tenantId, admin } = await fixture();
     const { id } = await (await admin('POST', WELCOME, { ifMatch: 0, body: letter() })).json();
@@ -236,6 +249,18 @@ describe('AC-EN-BE16-12 入职手册', () => {
       const response = await admin('POST', HANDBOOK, {
         ifMatch: 0,
         body: handbook({ blocks: [{ type: 'list', items: ['正常', text] }] }),
+      });
+      expect(response.status, text).toBe(400);
+      expect(await response.json(), text).toMatchObject({ error: { details: { reason: 'WELCOME_VARIABLE_UNKNOWN' } } });
+    }
+  });
+
+  it('占位名称含单花括号或未闭合的双花括号一律拒绝：{{employee{nickname} }} 等不能保存', async () => {
+    const { admin } = await fixture();
+    for (const text of ['{{employee{nickname} }}', '{{{x}}}', '{{ }}', '{{employeeName', '{{employeeName}} {{x']) {
+      const response = await admin('POST', HANDBOOK, {
+        ifMatch: 0,
+        body: handbook({ blocks: [{ type: 'paragraph', text }] }),
       });
       expect(response.status, text).toBe(400);
       expect(await response.json(), text).toMatchObject({ error: { details: { reason: 'WELCOME_VARIABLE_UNKNOWN' } } });
