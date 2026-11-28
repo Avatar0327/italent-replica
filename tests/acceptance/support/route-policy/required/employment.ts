@@ -1794,7 +1794,7 @@ export const EMPLOYMENT: RequiredTable = {
         at(TRF, 'POST', '/transfers/employees/:id/preview', 'return previewTransfer(tx, ctx, id, input)'),
         {
           role: 'impl',
-          unit: `${SRC}/transfer/preview.ts#previewTransfer`,
+          unit: `${SRC}/transfer/preview.ts#previewTransferChecked`,
           anchor: 'await requireTransferSource(tx, ctx, employeeId, input.initiator)',
         },
         ...SOURCE,
@@ -1808,7 +1808,7 @@ export const EMPLOYMENT: RequiredTable = {
         {
           role: 'impl',
           unit: `${SRC}/transfer/preview.ts#previewTransfer`,
-          anchor: "transferDirectActions(accessContext, input.initiator === 'hr' && settings.allowDirectTransfer)",
+          anchor: 'transferDirectActions(accessOf(tx, ctx, input), direct)',
         },
         DIRECT[1]!,
       ],
@@ -1833,7 +1833,7 @@ export const EMPLOYMENT: RequiredTable = {
         at(TRF, 'POST', '/transfers/employees/:id/preview', 'return previewTransfer(tx, ctx, id, input)'),
         {
           role: 'impl',
-          unit: `${SRC}/transfer/preview.ts#previewTransfer`,
+          unit: `${SRC}/transfer/preview.ts#previewTransferChecked`,
           anchor: 'await requireScopedEmploymentObject(tx, context, employeeId, prepared.fields.departmentId)',
         },
         DIRECT_OPERATION,
@@ -1846,7 +1846,7 @@ export const EMPLOYMENT: RequiredTable = {
         at(TRF, 'POST', '/transfers/employees/:id/preview', 'return previewTransfer(tx, ctx, id, input)'),
         {
           role: 'impl',
-          unit: `${SRC}/transfer/preview.ts#previewTransfer`,
+          unit: `${SRC}/transfer/preview.ts#previewTransferChecked`,
           anchor: 'await requireTransferEditedWrite(accessContext, input)',
         },
       ],
@@ -1860,7 +1860,7 @@ export const EMPLOYMENT: RequiredTable = {
           at(TRF, 'POST', '/transfers/employees/:id/preview', 'return previewTransfer(tx, ctx, id, input)'),
           {
             role: 'impl',
-            unit: `${SRC}/transfer/preview.ts#previewTransfer`,
+            unit: `${SRC}/transfer/preview.ts#previewTransferChecked`,
             anchor: 'await requireTransferEditedWrite(accessContext, input)',
           },
           {

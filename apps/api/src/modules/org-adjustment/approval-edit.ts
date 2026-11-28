@@ -16,19 +16,39 @@ import type { ApprovalContext } from '../approval/context.js';
 import { invalid } from '../org/validation.js';
 import { authorizeHead, orgScopeAuthorizer } from './access.js';
 import { trimmedForViewer } from './envelope.js';
-import { hiddenAmong } from './hidden-rows.js';
+import { hiddenAmong, hiddenTransferIds } from './hidden-rows.js';
 import { patchItemSchema, type ItemPatch } from './item-validation.js';
-import { loadWorld } from './item-tree.js';
+import { loadWorld, type ItemWorld } from './item-tree.js';
 import { bumpRevision, type OrgItem } from './items-store.js';
 import { persistRevisions, planRevisions } from './org-items.js';
 import { assertHeadPatch, loadAdjustment, persistHead, type AdjustmentView } from './service.js';
 import { rowOrgIds } from './submission.js';
+import { rejudgeApproverEdits, transferGate, type ApproverEditRecord } from './transfer-access.js';
+import {
+  assertOrgItemTarget,
+  draftOf,
+  patchTransferSchema,
+  persistTransferEdits,
+  resolved,
+  type TransferPatch,
+} from './transfer-items.js';
+import type { TransferItem } from './transfer-items-store.js';
 import { normalizeHead, patchSchema, type HeadPatch } from './validation.js';
 import { assertWhole } from './whole-check.js';
 
 type Row = Readonly<Record<string, unknown>>;
 
 const ITEM_PREFIX = 'orgItems.';
+const TRANSFER_PREFIX = 'transferItems.';
+/** 审批中可改的调动明细列；员工 / 联动区块（合同、职责转交、调薪、试岗）不在审批中改，要改请驳回后由申请人改。 */
+const TRANSFER_COLUMNS = new Set([
+  'departmentId',
+  'positionId',
+  'postId',
+  'levelId',
+  'directManagerId',
+  'withEstablishment',
+]);
 /** 明细编码 → 申请人改行载荷的键；行身份、调整类型、暂存标记不在审批中改。 */
 const ITEM_KEYS: Readonly<Record<string, string>> = { parentOrgId: 'parent', transferToOrgId: 'transferTo' };
 const FIXED_ITEM_COLUMNS = new Set(['adjustType', 'targetOrgId', 'isStaged']);
@@ -42,7 +62,9 @@ const reference = (value: unknown) => {
 };
 
 function parseHead(fields: Row): HeadPatch | undefined {
-  const head = Object.fromEntries(Object.entries(fields).filter(([code]) => !code.startsWith(ITEM_PREFIX)));
+  const head = Object.fromEntries(
+    Object.entries(fields).filter(([code]) => !code.startsWith(ITEM_PREFIX) && !code.startsWith(TRANSFER_PREFIX)),
+  );
   if (!Object.keys(head).length) return undefined;
   const parsed = patchSchema.safeParse(head);
   if (!parsed.success) throw invalid(Object.keys(head)[0]!, parsed.error.issues[0]?.message ?? '字段格式不正确');
@@ -68,6 +90,44 @@ function parseItems(fields: Row): Map<string, ItemPatch> {
   for (const [itemId, patch] of raw) {
     const parsed = patchItemSchema.safeParse(patch);
     if (!parsed.success) throw invalid('orgItems', parsed.error.issues[0]?.message ?? '明细字段格式不正确');
+    patches.set(itemId, parsed.data);
+  }
+  return patches;
+}
+
+/** 调动明细一列的值 → 改行载荷（与申请人 PATCH 同形）：目标部门是组织 ID 或 `{ itemRef }`，直线经理可带虚线经理。 */
+function transferPatchOf(column: string, value: unknown, code: string): Record<string, unknown> {
+  if (column === 'departmentId') {
+    if (typeof value === 'string') return { department: { orgId: value } };
+    const ref = (value as { itemRef?: unknown } | null)?.itemRef;
+    if (ref === undefined) throw invalid(code, '调动目标部门须是组织 ID 或本单新增组织的引用');
+    return { department: { itemId: ref } };
+  }
+  if (column === 'directManagerId' && value !== null && typeof value === 'object') {
+    const pair = value as { directManagerId?: unknown; dottedManagerId?: unknown };
+    return { directManagerId: pair.directManagerId, dottedManagerId: pair.dottedManagerId };
+  }
+  return { [column]: value };
+}
+
+/** 调动明细编码按行分组成改行载荷；每行再按申请人改行同一 schema 校验。 */
+function parseTransfers(fields: Row): Map<string, TransferPatch> {
+  const raw = new Map<string, Record<string, unknown>>();
+  for (const [code, rows] of Object.entries(fields)) {
+    if (!code.startsWith(TRANSFER_PREFIX)) continue;
+    const column = code.slice(TRANSFER_PREFIX.length);
+    if (!TRANSFER_COLUMNS.has(column)) throw invalid(code, '该明细字段不能在审批中修改');
+    if (!Array.isArray(rows) || !rows.length) throw invalid(code, '明细字段须按行给值');
+    for (const entry of rows as { itemId?: unknown; value?: unknown }[]) {
+      if (typeof entry?.itemId !== 'string' || !('value' in entry)) throw invalid(code, '明细字段须按行给值');
+      const key = entry.itemId.toLowerCase();
+      raw.set(key, { ...raw.get(key), ...transferPatchOf(column, entry.value, code) });
+    }
+  }
+  const patches = new Map<string, TransferPatch>();
+  for (const [itemId, patch] of raw) {
+    const parsed = patchTransferSchema.safeParse(patch);
+    if (!parsed.success) throw invalid('transferItems', parsed.error.issues[0]?.message ?? '明细字段格式不正确');
     patches.set(itemId, parsed.data);
   }
   return patches;
@@ -101,25 +161,79 @@ async function edit(tx: Tx, ctx: ApprovalContext, id: string, fields: Row) {
   }
   const head = parseHead(fields);
   const patches = parseItems(fields);
+  const transferPatches = parseTransfers(fields);
   const next: AdjustmentView = head ? { ...view, ...head } : view;
   const world = await loadWorld(tx, ctx.tenantId, next);
   const touched = [...patches.keys()].map((itemId) =>
     world.items.find((item) => item.id === itemId && !item.cascadedFromItemId),
   );
   // 审批人组织范围外的隐藏行与不存在的行同一 400，不经“组织不存在”暴露行存在（F-343 BE-10c 补充）
-  const hidden = patches.size ? await hiddenAmong(tx, approverDeps(ctx), ctx, world.items) : new Set<string>();
+  const touchesRows = patches.size > 0 || transferPatches.size > 0;
+  const hidden = touchesRows ? await hiddenAmong(tx, approverDeps(ctx), ctx, world.items) : new Set<string>();
   if (touched.some((item) => !item || hidden.has(item.id))) throw invalid('orgItems', ROW_MISSING);
   const before = touched.map((item) => item!);
   const after = before.map((item) => ({ ...item, ...toRefs(patches.get(item.id)!) }));
   if (head) await authorizeApprover(tx, ctx, next, fields);
   await assertRowsInScope(tx, ctx, [...before, ...after]);
+  const transferEdits = await authorizeTransferEdits(tx, ctx, next, world, transferPatches, hidden);
   const planned = patches.size ? await planRevisions(tx, ctx.now, world, patches) : { items: world.items, changes: [] };
-  const candidate = { ...world, items: planned.items };
+  const edited = new Map(transferEdits.map(([row, changed]) => [row.id, changed]));
+  const candidate = {
+    ...world,
+    items: planned.items,
+    transfers: world.transfers.map((row) => edited.get(row.id) ?? row),
+  };
   if (head) await assertHeadPatch(tx, candidate, head);
   await assertWhole(tx, candidate, ctx.now);
   if (head) await persistHead(tx, ctx, view, head);
   else await bumpRevision(tx, ctx, id);
   await persistRevisions(tx, ctx, next, planned.changes);
+  await persistTransferEdits(tx, ctx, next, transferEdits);
+}
+
+/**
+ * 审批人改调动行（第 2 轮 P2-1）：行须存在、不是生成行、审批人看得到（任职范围、目标部门范围），否则与不存在同一 400；
+ * 再按审批人当前权限走与申请人保存同一条授权链（transferGate：`EditApprovalIngApply` + 字段写权 + 范围 + 调动表单 +
+ * 联动 / 带编，新旧两侧都判），范围类 404 与行不存在同一 400（存在性不外泄，F-339 ③）。返回改前改后的整行。
+ */
+async function authorizeTransferEdits(
+  tx: Tx,
+  ctx: ApprovalContext,
+  view: AdjustmentView,
+  world: ItemWorld,
+  patches: ReadonlyMap<string, TransferPatch>,
+  hiddenOrg: ReadonlySet<string>,
+): Promise<[TransferItem, TransferItem][]> {
+  if (!patches.size) return [];
+  const rows = [...patches.keys()].map((rowId) => world.transfers.find((row) => row.id === rowId));
+  const hiddenRows = await hiddenTransferIds(tx, approverDeps(ctx), ctx, view.id, hiddenOrg);
+  if (rows.some((row) => !row || row.generatedByItemId || hiddenRows.has(row.id))) {
+    throw invalid('transferItems', ROW_MISSING);
+  }
+  const base = { tenantId: ctx.tenantId, userId: ctx.userId, timezone: ctx.timezone };
+  const gate = transferGate(approverDeps(ctx), base, 'current_approver');
+  const edits: [TransferItem, TransferItem][] = [];
+  for (const row of rows as TransferItem[]) {
+    const draft = draftOf(row, patches.get(row.id)!);
+    const prepared = await asRowMissing(async () => {
+      assertOrgItemTarget(world, draft, hiddenOrg);
+      return gate.save(tx, view, row.employeeId, draft, row);
+    });
+    const after = { ...row, ...draft, ...resolved(prepared) };
+    edits.push([row, after]);
+    ctx.editRecords?.push({ before: row, after } satisfies ApproverEditRecord);
+  }
+  return edits;
+}
+
+/** 范围类 404 与行不存在同一 400（ROW_MISSING）；其余错误（403、表单 400）原样抛。 */
+async function asRowMissing<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') throw invalid('transferItems', ROW_MISSING);
+    throw error;
+  }
 }
 
 /**
@@ -146,7 +260,7 @@ function toRefs(patch: ItemPatch) {
 }
 
 export async function editFromApproval(tx: Tx, ctx: ApprovalContext, id: string, fields: Row): Promise<void> {
-  await trimmedForViewer(tx, ctx, () => edit(tx, ctx, id, fields));
+  await trimmedForViewer(tx, ctx, () => edit(tx, ctx, id, fields), id);
 }
 
 /**
@@ -154,9 +268,39 @@ export async function editFromApproval(tx: Tx, ctx: ApprovalContext, id: string,
  * 再调本函数（approval/actions.ts approveTask），库里即编辑后的最终候选态。
  */
 export async function assertApprovable(tx: Tx, ctx: ApprovalContext, id: string): Promise<void> {
-  await trimmedForViewer(tx, ctx, async () => {
-    const view = await loadAdjustment(tx, ctx.tenantId, id);
-    if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
-    await assertWhole(tx, await loadWorld(tx, ctx.tenantId, view), ctx.now);
-  });
+  await trimmedForViewer(
+    tx,
+    ctx,
+    async () => {
+      const view = await loadAdjustment(tx, ctx.tenantId, id);
+      if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
+      await assertWhole(tx, await loadWorld(tx, ctx.tenantId, view), ctx.now);
+    },
+    id,
+  );
+}
+
+/**
+ * 审批中编辑 / 编辑并同意的同键重放（第 3 轮 P2-1、第 4 轮 P2-2）：首次成功后撤了编辑按钮、字段权或范围，原键重放也要拒绝。
+ * 头与明细按审批人当前授权（authorizeApprover）判；调动行按命令台账里记下的首次新旧两侧，走保存同一条授权链重判。
+ */
+export async function replayApproverEdit(
+  tx: Tx,
+  ctx: ApprovalContext,
+  id: string,
+  fields: Row,
+  records: readonly ApproverEditRecord[],
+): Promise<void> {
+  await trimmedForViewer(
+    tx,
+    ctx,
+    async () => {
+      const view = await loadAdjustment(tx, ctx.tenantId, id);
+      if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
+      await authorizeApprover(tx, ctx, view, fields);
+      const base = { tenantId: ctx.tenantId, userId: ctx.userId, timezone: ctx.timezone };
+      await rejudgeApproverEdits(tx, approverDeps(ctx), base, view, records);
+    },
+    id,
+  );
 }

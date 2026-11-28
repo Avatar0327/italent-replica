@@ -921,6 +921,8 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
     derive: (viewable) =>
       viewable?.has('integrationTaskPool') ? new Set([...viewable, 'integrationTaskPool.action']) : viewable,
   },
+  'onboarding-welcome-letter': { code: MODULE_OBJECTS.employmentSettings.code },
+  'onboarding-handbook': { code: MODULE_OBJECTS.employmentSettings.code },
   blacklist_rule: { code: 'TenantBase.EmploymentSettings' },
   exit_handover_item: { code: 'TenantBase.EmploymentSettings' },
   retirement_rule: { code: 'TenantBase.EmploymentSettings' },

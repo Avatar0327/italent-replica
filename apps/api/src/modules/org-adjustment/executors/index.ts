@@ -12,7 +12,7 @@ export function orgExecutors(scopeOf: ApplicantScopeOf = resolveApplicantScope):
   return { 1: orgCreateExecutor(scopeOf), 2: orgChangeExecutor(scopeOf), 3: orgDeactivateExecutor(scopeOf) };
 }
 
-/** 内部验收使用同一生产执行器，定时器继续使用 orgExecutors，开闸随 11c-b。 */
+/** 生产默认执行器（BE-11c-b 起运行器默认用它）：组织三类 + 调动明细同一组织内的执行器。 */
 export function transferExecutors(scopeOf: ApplicantScopeOf = resolveApplicantScope): GroupExecutors {
   return { ...orgExecutors(scopeOf), transfer: transferExecutor(scopeOf) };
 }

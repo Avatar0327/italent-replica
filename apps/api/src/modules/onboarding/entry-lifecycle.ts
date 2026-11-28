@@ -20,6 +20,7 @@ import { enqueueCollectionCreation, retireCollectionCreation } from './collectio
 import { retireCollectionSubmission } from './collection-approval.js';
 import { generateMaterialList } from './material-list.js';
 import { rebaseEntryPreparations } from './preparation-launch-state.js';
+import { enqueueWelcomeLetter } from './welcome-jobs.js';
 
 const cases = onboardingEntryCases;
 const businesses = employmentBusinessObjects;
@@ -147,6 +148,8 @@ const lifecycle: EntryLifecyclePort = {
     if (updated.state !== 'pending') {
       await retireCollectionCreation(tx, ctx, updated);
     }
+    // R2-T01 §8：入职生效（非审批通过）才入队欢迎信；与本事务同提交，回滚即无作业
+    if (updated.state === 'hired') await enqueueWelcomeLetter(tx, ctx, updated);
     await auditCase(tx, ctx, change.kind, current, updated);
     return updated;
   },

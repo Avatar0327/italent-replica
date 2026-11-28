@@ -15,6 +15,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/esign/source-command-result.ts#ESIGN_COMMAND_RESULTS',
     'apps/api/src/modules/onboarding/integration-pool-result.ts#INTEGRATION_POOL_COMMAND_RESULTS',
     'apps/api/src/modules/onboarding/integration-schemes-result.ts#INTEGRATION_SCHEME_COMMAND_RESULTS',
+    'apps/api/src/modules/onboarding/welcome-result.ts#WELCOME_COMMAND_RESULTS',
   ],
   'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': [
     'apps/api/src/advisory-lock.ts#tryAdvisoryLock',

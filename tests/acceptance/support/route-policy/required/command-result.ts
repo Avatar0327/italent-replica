@@ -7,6 +7,8 @@ const SOURCE = 'apps/api/src/modules/esign/source-command-result.ts';
 const TASK = 'apps/api/src/modules/esign/source-result-access.ts';
 const POOL = 'apps/api/src/modules/onboarding/integration-pool-result.ts';
 const POOL_ACCESS = 'apps/api/src/modules/onboarding/integration-pool-access.ts';
+const WELCOME_RESULT = 'apps/api/src/modules/onboarding/welcome-result.ts';
+const WELCOME_ACCESS = 'apps/api/src/modules/onboarding/welcome-access.ts';
 const SCHEMES = 'apps/api/src/modules/onboarding/integration-schemes';
 const SCHEME_RESULT_SCOPE: Evidence = {
   role: 'scope',
@@ -18,6 +20,12 @@ const DISPATCH: Evidence = {
   role: 'call',
   unit: `${SERVICE}#readOwnCommandResult`,
   anchor: 'return readRegisteredCommandResult(tx, deps, ctx, registration, entry.responseBody)',
+};
+
+const WELCOME_RESULT_SCOPE: Evidence = {
+  role: 'scope',
+  unit: `${WELCOME_RESULT}#WELCOME_COMMAND_RESULTS`,
+  anchor: 'if (httpStatus !== 204) await resource.read(tx, ctx.tenantId, receipt(body).id)',
 };
 
 const POOL_RESULT_SCOPE: Evidence = {
@@ -47,7 +55,7 @@ export const COMMAND_RESULT: RequiredTable = {
     {
       perm: 'guard:command.result.registered',
       facts: ['guard:command.result.registered'],
-      note: '签署核来源、任务与历史变量；任务池按当前任职设置权限复核，融入方案另核当前组织范围',
+      note: '签署核来源、任务与历史变量；任务池与欢迎信、手册按当前任职设置权限复核，融入方案另核当前组织范围',
       at: [
         DISPATCH,
         {
@@ -55,7 +63,7 @@ export const COMMAND_RESULT: RequiredTable = {
           unit: `${SERVICE}#commandResultRegistry`,
           anchor:
             'createCommandResultRegistry([...ESIGN_COMMAND_RESULTS, ...INTEGRATION_POOL_COMMAND_RESULTS, ' +
-            '...INTEGRATION_SCHEME_COMMAND_RESULTS,])',
+            '...INTEGRATION_SCHEME_COMMAND_RESULTS, ...WELCOME_COMMAND_RESULTS,])',
         },
         {
           role: 'impl',
@@ -76,6 +84,11 @@ export const COMMAND_RESULT: RequiredTable = {
           role: 'impl',
           unit: `${SCHEMES}-result.ts#INTEGRATION_SCHEME_COMMAND_RESULTS`,
           anchor: 'await requireSchemeWriteScope(tx, deps, ctx, operation)',
+        },
+        {
+          role: 'impl',
+          unit: `${WELCOME_RESULT}#WELCOME_COMMAND_RESULTS`,
+          anchor: 'await resource.requireWrite(authorizeInTransaction(deps.authorize, tx), ctx, operation)',
         },
         {
           role: 'impl',
@@ -112,10 +125,16 @@ export const COMMAND_RESULT: RequiredTable = {
         DISPATCH,
         POOL_RESULT_SCOPE,
         SCHEME_RESULT_SCOPE,
+        WELCOME_RESULT_SCOPE,
         {
           role: 'impl',
           unit: `${POOL_ACCESS}#requirePoolWrite`,
           anchor: 'await requirePermission(authorize, { ...ctx, action: POOL_WRITE_ALIAS, resource: POOL_SETTINGS })',
+        },
+        {
+          role: 'impl',
+          unit: `${WELCOME_ACCESS}#requireWrite`,
+          anchor: 'action: WELCOME_WRITE_ALIAS, resource: WELCOME_SETTINGS',
         },
       ],
     },
@@ -127,6 +146,7 @@ export const COMMAND_RESULT: RequiredTable = {
         DISPATCH,
         POOL_RESULT_SCOPE,
         SCHEME_RESULT_SCOPE,
+        WELCOME_RESULT_SCOPE,
         {
           role: 'const',
           unit: `${POOL}#POOL_RESULT_TYPES`,
@@ -136,6 +156,11 @@ export const COMMAND_RESULT: RequiredTable = {
           role: 'impl',
           unit: `${POOL_ACCESS}#requirePoolWrite`,
           anchor: 'objectCode: POOL_SETTINGS, operation, payload: { integrationTaskPool: true }',
+        },
+        {
+          role: 'impl',
+          unit: `${WELCOME_ACCESS}#requireWrite`,
+          anchor: 'objectCode: WELCOME_SETTINGS,',
         },
       ],
     })),

@@ -1411,6 +1411,38 @@
         ]
       }
     },
+    "DELETE /api/tenant/onboarding/handbooks/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
     "DELETE /api/tenant/onboarding/integration/schemes/:id": {
       "edge": {
         "anonymous": {
@@ -1583,6 +1615,38 @@
         ]
       }
     },
+    "DELETE /api/tenant/onboarding/welcome-letters/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
     "DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId": {
       "edge": {
         "anonymous": {
@@ -1622,7 +1686,67 @@
           "org result"
         ],
         "scope": [
-          "creator scope"
+          "creator scope",
+          "scopeSql"
+        ]
+      }
+    },
+    "DELETE /api/tenant/org-adjustment/adjustments/:id/transfer-items/:itemId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button",
+          "requireTransferButton"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "checkFields",
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite",
+          "transfer write"
+        ],
+        "guard": [
+          "employment.linkage",
+          "orgAdjustment.item",
+          "transfer.source"
+        ],
+        "object": [
+          "object.* 动作",
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create",
+          "TenantBase.OrganizationApproval:update"
+        ],
+        "scope": [
+          "checkScope",
+          "employment scope",
+          "scope.all",
+          "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -9868,6 +9992,62 @@
         ]
       }
     },
+    "GET /api/tenant/onboarding/handbooks": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
+    "GET /api/tenant/onboarding/handbooks/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
     "GET /api/tenant/onboarding/integration/schemes": {
       "edge": {
         "anonymous": {
@@ -10199,6 +10379,62 @@
         ]
       }
     },
+    "GET /api/tenant/onboarding/welcome-letters": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
+    "GET /api/tenant/onboarding/welcome-letters/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
     "GET /api/tenant/org-adjustment/adjustments": {
       "edge": {
         "anonymous": {
@@ -10257,11 +10493,13 @@
         ],
         "scope": [
           "adminScope",
+          "checkScope",
           "creator scope",
           "employment visibility",
           "instanceScopeSql",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -10294,9 +10532,11 @@
         ],
         "scope": [
           "adminScope",
+          "checkScope",
           "creator scope",
           "instanceScopeSql",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -10329,8 +10569,10 @@
         ],
         "scope": [
           "adminScope",
+          "checkScope",
           "creator scope",
-          "instanceScopeSql"
+          "instanceScopeSql",
+          "visible()"
         ]
       }
     },
@@ -10363,8 +10605,10 @@
         ],
         "scope": [
           "adminScope",
+          "checkScope",
           "creator scope",
-          "instanceScopeSql"
+          "instanceScopeSql",
+          "visible()"
         ]
       }
     },
@@ -17136,6 +17380,38 @@
         ]
       }
     },
+    "PATCH /api/tenant/onboarding/handbooks/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
     "PATCH /api/tenant/onboarding/integration/schemes/:id": {
       "edge": {
         "anonymous": {
@@ -17308,6 +17584,38 @@
         ]
       }
     },
+    "PATCH /api/tenant/onboarding/welcome-letters/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
     "PATCH /api/tenant/org-adjustment/adjustments/:id": {
       "edge": {
         "anonymous": {
@@ -17404,6 +17712,67 @@
         ],
         "scope": [
           "creator scope"
+        ]
+      }
+    },
+    "PATCH /api/tenant/org-adjustment/adjustments/:id/transfer-items/:itemId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button",
+          "requireTransferButton"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "checkFields",
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite",
+          "transfer write",
+          "writeFields"
+        ],
+        "guard": [
+          "employment.linkage",
+          "orgAdjustment.item",
+          "transfer.source"
+        ],
+        "object": [
+          "object.* 动作",
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create",
+          "TenantBase.OrganizationApproval:update"
+        ],
+        "scope": [
+          "checkScope",
+          "creator scope",
+          "employment scope",
+          "scope.all",
+          "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -24631,7 +25000,6 @@
         ],
         "scope": [
           "employment scope",
-          "employment visibility",
           "visible()"
         ],
         "scopePoint": [
@@ -27041,6 +27409,66 @@
         ]
       }
     },
+    "POST /api/tenant/onboarding/handbooks": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "POST /api/tenant/onboarding/handbooks/:id/preview": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
     "POST /api/tenant/onboarding/integration/schemes": {
       "edge": {
         "anonymous": {
@@ -27213,6 +27641,66 @@
         ]
       }
     },
+    "POST /api/tenant/onboarding/welcome-letters": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "POST /api/tenant/onboarding/welcome-letters/:id/preview": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "onboarding",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
     "POST /api/tenant/org-adjustment/adjustments": {
       "edge": {
         "anonymous": {
@@ -27323,26 +27811,45 @@
         "button": [
           "button()",
           "buttonResource",
-          "object.button"
+          "object.button",
+          "requireTransferButton"
         ],
         "command": [
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "fieldsIn": [
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite",
+          "transfer write"
+        ],
         "guard": [
-          "orgAdjustment.item"
+          "employment.linkage",
+          "orgAdjustment.item",
+          "transfer.source"
         ],
         "object": [
-          "objectContext"
+          "object.* 动作",
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:create",
           "TenantBase.OrganizationApproval:update"
         ],
         "postcheck": [
           "org result"
         ],
         "scope": [
-          "creator scope"
+          "creator scope",
+          "employment scope",
+          "scope.all",
+          "scopeSql",
+          "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -27414,26 +27921,47 @@
         "button": [
           "button()",
           "buttonResource",
-          "object.button"
+          "object.button",
+          "requireTransferButton"
         ],
         "command": [
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "fieldsIn": [
+          "checkFields",
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite",
+          "transfer write"
+        ],
         "guard": [
-          "orgAdjustment.item"
+          "employment.linkage",
+          "orgAdjustment.item",
+          "transfer.source"
         ],
         "object": [
-          "objectContext"
+          "object.* 动作",
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:create",
           "TenantBase.OrganizationApproval:update"
         ],
         "postcheck": [
           "org result"
         ],
         "scope": [
-          "creator scope"
+          "checkScope",
+          "creator scope",
+          "employment scope",
+          "scope.all",
+          "scopeSql",
+          "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -27457,34 +27985,110 @@
         "button": [
           "button()",
           "buttonResource",
-          "object.button"
+          "object.button",
+          "requireTransferButton"
         ],
         "command": [
           "revision(c)",
           "runCommand / runWrite"
         ],
         "fieldsIn": [
-          "requireObjectWrite"
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite",
+          "transfer write"
         ],
         "fieldsOut": [
           "trimModuleResponse"
         ],
         "guard": [
+          "employment.linkage",
           "orgAdjustment.head",
-          "orgAdjustment.item"
+          "orgAdjustment.item",
+          "transfer.source"
         ],
         "object": [
+          "object.* 动作",
           "objectContext",
           "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:create",
           "TenantBase.OrganizationApproval:update"
         ],
         "postcheck": [
           "org result"
         ],
         "scope": [
-          "creator scope"
+          "creator scope",
+          "employment scope",
+          "scope.all",
+          "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/org-adjustment/adjustments/:id/transfer-items": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button",
+          "requireTransferButton"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "checkFields",
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite",
+          "transfer write",
+          "writeFields"
+        ],
+        "guard": [
+          "employment.linkage",
+          "orgAdjustment.item",
+          "transfer.source"
+        ],
+        "object": [
+          "object.* 动作",
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create",
+          "TenantBase.OrganizationApproval:update"
+        ],
+        "scope": [
+          "checkScope",
+          "creator scope",
+          "employment scope",
+          "employment visibility",
+          "scope.all",
+          "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },

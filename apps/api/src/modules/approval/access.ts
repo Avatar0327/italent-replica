@@ -28,6 +28,7 @@ import type { TenantContext } from '../../tenant-context.js';
 import { requireAssessmentResubmitRight } from '../employment/assessment-access.js';
 import { employmentCreator } from '../employment/context.js';
 import { authorizeIntentionApproval } from '../employment/retirement-intention-access.js';
+import type { ApproverEditRecord } from '../org-adjustment/transfer-access.js';
 import { isStageMentor, mentorSourcesOf } from '../idp/plan-mentor.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
 import {
@@ -39,9 +40,9 @@ import {
 } from '../permission/module-access.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { requireObjectWrite } from '../permission/object-write.js';
-import { approvalError, rowsOf } from './context.js';
+import { approvalError, rowsOf, type ApprovalContext } from './context.js';
 import { personOfUser } from './resolver.js';
-import { loadInstance } from './store.js';
+import { instanceOfTask, loadInstance } from './store.js';
 
 for (const object of APPROVAL_OBJECTS) registerObjectDefinition(object);
 
@@ -185,6 +186,28 @@ async function orgAdjustmentOwner(
 ) {
   const { authorizeOwnerOf } = await import('../org-adjustment/submission.js');
   await authorizeOwnerOf(tx, deps, ctx, instance.businessId, mode);
+}
+
+/**
+ * 审批中编辑 / 编辑并同意的同键重放复核（第 3 轮 P2-1）：只在重放时按审批人当前授权再判一遍首次成功的编辑，首次执行的
+ * 错误码与顺序不变。目前只有组织调整在审批中开放明细编辑；其他业务类型不做事。
+ */
+export function approvalEditGuard(
+  ctx: ApprovalContext,
+  taskId: string,
+  fields: Readonly<Record<string, unknown>> | undefined,
+): CommandGuard | undefined {
+  if (!fields || !Object.keys(fields).length) return undefined;
+  return {
+    before: async () => undefined,
+    replayed: async (tx, result) => {
+      const instance = await loadInstance(tx, ctx.tenantId, await instanceOfTask(tx, ctx.tenantId, taskId));
+      if (instance.businessType !== 'org_adjustment') return;
+      const { replayApproverEdit } = await import('../org-adjustment/approval-edit.js');
+      const records = (result.body as { editRecords?: unknown[] }).editRecords ?? [];
+      await replayApproverEdit(tx, ctx, instance.businessId, fields, records as ApproverEditRecord[]);
+    },
+  };
 }
 
 /**
