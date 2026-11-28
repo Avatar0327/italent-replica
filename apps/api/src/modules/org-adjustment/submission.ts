@@ -26,6 +26,7 @@ import { loadWorld } from './item-tree.js';
 import { loadItems, loadItemTrail, type OrgItem } from './items-store.js';
 import { audit, editable, loadAdjustment, type AdjustmentView, type WriteContext } from './service.js';
 import { assertWhole } from './whole-check.js';
+import { authorizeTransferRows } from './transfer-access.js';
 
 const NOT_FOUND = '组织调整申请不存在';
 const BUSINESS = { businessType: 'org_adjustment' } as const;
@@ -98,7 +99,7 @@ async function lockStored(tx: Tx, ctx: WriteContext, id: string) {
 /** 审批侧重提（openOwn 已判发起人与实例 revision）：只接受已驳回单，按提交口径重判后 → 1；不带修正。 */
 export async function resubmitFromApproval(tx: Tx, ctx: ApprovalContext, id: string, corrections: object) {
   // 校验类错误按重提人的字段查看权裁剪（与路由 10 同口径，F-427）
-  await trimmedForViewer(tx, ctx, () => resubmit(tx, ctx, id, corrections));
+  await trimmedForViewer(tx, ctx, () => resubmit(tx, ctx, id, corrections), id, true);
 }
 
 async function resubmit(tx: Tx, ctx: ApprovalContext, id: string, corrections: object) {
@@ -151,6 +152,8 @@ export async function authorizeSubmission(tx: Tx, deps: OwnerDeps, ctx: TenantCo
   const trail = await loadItemTrail(tx, ctx.tenantId, items);
   await authorizeItemFieldWrites(tx, deps, ctx, writtenItemFieldCodes(items, trail));
   await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(items));
+  // 调动行同口径逐行重判（§6.3 提交 / 重提列）：与路由 10 共用一个事务内函数，审批中心重提不再只判头与组织行
+  await authorizeTransferRows(tx, deps, ctx, stored);
 }
 
 /** 撤回口径（路由 11、审批中心撤回）：没有按钮，主对象 update + 主体组织与调整范围（同路由 1）。 */

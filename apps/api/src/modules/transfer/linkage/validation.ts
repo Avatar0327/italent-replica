@@ -61,7 +61,7 @@ export async function validateLinkage(
     await requireRoleHolder(tx, ctx, employeeId, item.orgId, item.role);
 }
 
-const notEligible = () =>
+export const notEligible = () =>
   new AppError('VALIDATION_FAILED', '联动人员须为本租户在职员工且不能为调动人本人', {
     reason: 'TRANSFER_PERSON_NOT_ELIGIBLE',
   });

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { type Db, eq, orgHierarchyLinks, orgVersions, sql, withTenant } from '@italent/db';
-import { MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
+import { CONTRACT_OBJECT, MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import { expect } from 'vitest';
 import type { AuthorizationRequest, Authorizer } from '../../apps/api/src/authorization.js';
 import { EMPLOYMENT_OBJECT } from '../../apps/api/src/modules/employment/context.js';
@@ -20,6 +20,12 @@ export const only = (...orgIds: string[]): ModuleScope => ({
   orgIds,
   hasDataPermission: true,
   terms: [{ dimension: 'management', orgIds, personIds: [] }],
+});
+
+/** 范围只含指定员工：组织维度按部门 ID 判不中在职员工（部门列为 NULL），按人判才命中。 */
+export const onlyPeople = (orgId: string, ...personIds: string[]): ModuleScope => ({
+  ...only(orgId),
+  terms: [{ dimension: 'management', orgIds: [orgId], personIds }],
 });
 
 export interface AdjustmentView {
@@ -52,6 +58,12 @@ export interface HeadAccess {
   org: ModuleScope;
   /** 任职记录对象的员工范围：读路径逐员工失败（F-414③）与 F-458 人员联动失败都按它逐人裁剪；缺省看全部。 */
   employment: ModuleScope;
+  /** 合同对象的员工范围（调动明细的合同变更按它判可见与写权）；缺省看全部。 */
+  contract?: ModuleScope;
+  /** 只对某个用户生效的合同范围（审批人盲审用例按人区分），优先于 contract。 */
+  contractByUser?: Map<string, ModuleScope>;
+  /** 编制对象的组织范围（带编调动按它判，F-039 编制写权）；缺省看全部。 */
+  establishment?: ModuleScope;
   deniedButtons: Set<string>;
   deniedFields: Set<string>;
   /** 看不到的字段编码（查看权）。 */
@@ -96,6 +108,8 @@ export async function headWorld(db: Db, label: string) {
     scope: async (q) => {
       if (q.objectCode === MAIN) return access.main;
       if (q.objectCode === ORG) return access.org;
+      if (q.objectCode === CONTRACT_OBJECT) return access.contractByUser?.get(q.userId) ?? access.contract ?? ALL;
+      if (q.objectCode === MODULE_OBJECTS.establishment.code) return access.establishment ?? ALL;
       return q.objectCode === EMPLOYMENT_OBJECT ? access.employment : ALL;
     },
     authorize: async (req) => decide(req),

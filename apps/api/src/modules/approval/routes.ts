@@ -9,7 +9,7 @@ import { todoForm, todoSummary } from './todo-summary.js';
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
  */
 import { designerSourcesQuery, listDesignerSources } from './designer-sources.js';
-import { foreignVisibility, viewableWithForeign } from './foreign-fields.js';
+import { capForeign, foreignVisibility, viewableWithForeign } from './foreign-fields.js';
 import {
   pgErrorCode,
   registerMembershipPrelockHook,
@@ -53,6 +53,7 @@ import {
   requireWithdrawRight,
   resubmitGuard,
   withdrawGuard,
+  approvalEditGuard,
 } from './access.js';
 import {
   addSign,
@@ -98,7 +99,7 @@ import {
   type DetailData,
   type Viewer,
 } from './disclosure.js';
-import { capViewable, profileCeilingOf } from './handling-content.js';
+import { capViewable, foreignCeilingOf, profileCeilingOf } from './handling-content.js';
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
 import {
@@ -188,6 +189,23 @@ async function command(
   }
 }
 
+/**
+ * 带编辑字段的办理命令：给适配器一个授权记录收集口，成功后把首次编辑的新旧两侧并进命令台账的结果体
+ * （第 4 轮 P2-2）；响应只取 `instanceId`，多出的字段不外露，同键重放按它重判。
+ */
+function recordingEdits(
+  fields: Readonly<Record<string, unknown>> | undefined,
+  run: (tx: Tx, ctx: ApprovalContext) => Promise<CommandResult>,
+): (tx: Tx, ctx: ApprovalContext) => Promise<CommandResult> {
+  if (!fields || !Object.keys(fields).length) return run;
+  return async (tx, ctx) => {
+    const editRecords: unknown[] = [];
+    const result = await run(tx, { ...ctx, editRecords });
+    if (result.status !== 200 || !editRecords.length) return result;
+    return { ...result, body: { ...(result.body as object), editRecords } };
+  };
+}
+
 /** 查看人的两个管理员按钮各自的实例范围（第四轮 N8：详情逐按钮公布动作）。 */
 async function viewerOf(deps: TenantRouteDeps, ctx: TenantContext): Promise<Viewer> {
   return {
@@ -205,7 +223,11 @@ async function detailViewable(deps: TenantRouteDeps, ctx: TenantContext, data: D
   // R1-T10：嵌套的合同字段按合同对象、范围与字段判断（PR #74 第三轮 P1-1）。
   const viewable = await ownViewable(deps, ctx, data);
   return withTenant(deps.db, ctx.tenantId, (tx) =>
-    viewableWithForeign(data.snapshot, viewable, foreignVisibility(deps, ctx, tx)),
+    viewableWithForeign(
+      data.snapshot,
+      viewable,
+      capForeign(foreignVisibility(deps, ctx, tx), foreignCeilingOf(data.content)),
+    ),
   );
 }
 
@@ -719,8 +741,13 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         ...(input.exitReschedule ? { exitReschedule: input.exitReschedule } : {}),
         ...(input.exit ? { exit: input.exit } : {}),
       };
-      const result = await command(c, deps, ctx, decisionLedger(path, request), (tx, context) =>
-        act(tx, context, request, viewable),
+      const result = await command(
+        c,
+        deps,
+        ctx,
+        decisionLedger(path, request),
+        recordingEdits(input.fields, (tx, context) => act(tx, context, request, viewable)),
+        approvalEditGuard(ctx, taskId, input.fields),
       );
       return respondOutcome(c, deps, result);
     });
@@ -759,7 +786,14 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       fields: input.fields,
       ...(input.exitReschedule ? { exitReschedule: input.exitReschedule } : {}),
     };
-    const result = await command(c, deps, ctx, request, (tx, context) => editTask(tx, context, request, viewable));
+    const result = await command(
+      c,
+      deps,
+      ctx,
+      request,
+      recordingEdits(input.fields, (tx, context) => editTask(tx, context, request, viewable)),
+      approvalEditGuard(ctx, taskId, input.fields),
+    );
     return respondOutcome(c, deps, result);
   });
   registerRelayRoutes(router, deps);

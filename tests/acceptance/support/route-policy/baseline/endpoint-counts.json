@@ -23,7 +23,7 @@
     "offers": 24,
     "onboarding": 56,
     "org": 17,
-    "org-adjustment": 16,
+    "org-adjustment": 19,
     "permission": 52,
     "personnel": 23,
     "platform": 9,
@@ -42,5 +42,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 1010
+  "total": 1013
 }

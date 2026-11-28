@@ -31,7 +31,7 @@ type TransferExecutionItem = Pick<
 export type ExecutionItem = OrgExecutionItem | TransferExecutionItem;
 
 export interface ExecutionSections {
-  /** 内部显式开启。生产排期与执行的调动分区统一随 BE-11c-b 接入。 */
+  /** 排期默认开启（BE-11c-b）；运行器按是否登记了调动执行器决定。 */
   readonly includeTransfers?: boolean;
 }
 

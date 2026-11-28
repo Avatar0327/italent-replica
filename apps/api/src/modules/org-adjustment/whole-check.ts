@@ -8,9 +8,11 @@ import { AppError } from '../../errors.js';
 import { assertWorldBaselines } from './baseline.js';
 import type { ItemWorld } from './item-tree.js';
 import { checkWorld } from './service.js';
+import { assertTransferBaselines } from './transfer-check.js';
 
 export async function assertWhole(tx: Tx, world: ItemWorld, now: Date): Promise<void> {
   assertWorldBaselines(world);
+  await assertTransferBaselines(tx, world);
   const { errors } = await checkWorld(tx, world, now);
   const first = errors[0] as { reason: string; message?: string } | undefined;
   if (first) {

@@ -47,6 +47,11 @@ export interface ApprovalContext extends TenantContext {
   readonly handlingAuthorize?: Authorizer;
   /** 审计与日志记录的操作人；系统自动处理（如成员停用时的接管，DEC-123）可为平台操作人或空。缺省为 userId。 */
   readonly actorUserId?: string | null;
+  /**
+   * 审批中编辑的授权记录收集口（第 4 轮 P2-2）：适配器把首次编辑用于授权的“改前 / 改后”整行写进来，路由把它存进命令台账
+   * 的结果体；同键重放时按当前权限逐侧重判，不能拿重放时的当前行同时当新旧两侧。其他业务不用，未注入时不收集。
+   */
+  readonly editRecords?: unknown[];
   /** 系统代发（BE-15a 自动转正）：发起人由规则配置，发起日志 detail 带 systemProxy（R2e7“提交（系统代发）”）。 */
   readonly systemProxy?: boolean;
 }

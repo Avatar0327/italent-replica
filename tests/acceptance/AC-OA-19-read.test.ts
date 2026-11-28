@@ -166,11 +166,14 @@ describe('AC-OA-19 详情与明细分区（路由 13 / 14）', () => {
     expect(byId.get(stagedId!)).toMatchObject({ isStaged: true, stagedLabel: '暂存（未执行）' });
   });
 
-  it('只有组织分区：其它分区、未知分区一律 404；不存在的申请单 404', async () => {
+  it('组织与调动分区之外（职位 / 编制 / 兼职 / 未知）一律 404；不存在的申请单 404', async () => {
     const w = await itemsWorld(testDb().db, 'oa19');
     const r = reader(w);
     const view = await w.created(w.head());
-    for (const section of ['transfer', 'position', 'establishment', 'partTime', 'nope']) {
+    // 调动分区自 BE-11c-b 起开放（无调动行时空列表），其余分区仍关闭
+    const open = await r.itemsRes(view.id, 'transfer');
+    expect(open.status, await open.clone().text()).toBe(200);
+    for (const section of ['position', 'establishment', 'partTime', 'nope']) {
       await expectError(await r.itemsRes(view.id, section), 404, 'NOT_FOUND');
     }
     await expectError(await r.detailRes(randomUUID()), 404, 'NOT_FOUND');

@@ -57,15 +57,23 @@ function branch(predicate: string): RoutePolicy {
 }
 
 describe('AC-PRM-FW-F474-3 待办备选关系与摘要披露边界', () => {
+  // 收窄成单个本人关系后，R1d（每个“或”组组内备选都要被某个准入备选覆盖）必然只剩“另一组内备选无人覆盖”这一条：
+  // 它证明本分支只要求自己的本人关系；不放宽 R1d，也不让另一备选同时成立来换取空结果。
   it.each([
-    ['无 view', 'approval.recipient'],
-    ['view=pending', 'approval.recipient'],
-    ['view=completed', 'approval.initiatedOrParticipated'],
-    ['view=initiated', 'approval.initiatedOrParticipated'],
-  ])('%s 只要求对应本人关系，不要求另一备选同时成立', (_view, predicate) => {
+    ['无 view', 'approval.recipient', 'history', 'approval.initiatedOrParticipated'],
+    ['view=pending', 'approval.recipient', 'history', 'approval.initiatedOrParticipated'],
+    ['view=completed', 'approval.initiatedOrParticipated', 'pending', 'approval.recipient'],
+    ['view=initiated', 'approval.initiatedOrParticipated', 'pending', 'approval.recipient'],
+  ])('%s 只要求对应本人关系，不要求另一备选同时成立', (_view, predicate, otherName, otherPredicate) => {
     const policy = branch(predicate);
     expect([...declaredPerms(policy).alternatives[0]!.keys()]).toEqual([`own:${predicate}`]);
-    expect(checkRequired(APPROVAL, observed, [{ ...route, policy }])).toEqual([]);
+    expect(checkRequired(APPROVAL, observed, [{ ...route, policy }])).toEqual([
+      {
+        route: key,
+        code: 'REQUIRED_OR_UNCOVERED',
+        detail: `“或”组 todoOwner 的组内备选 ${otherName}（own:${otherPredicate}）没有任何准入备选满足`,
+      },
+    ]);
   });
 
   it('卡片摘要不计算详情动作，剩余准入 / 披露事实全部有正式义务承接', () => {

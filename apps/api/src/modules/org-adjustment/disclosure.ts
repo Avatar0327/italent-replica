@@ -15,7 +15,9 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { disclosedFields } from '../approval/disclosure.js';
+import { capForeign, foreignVisibility, type ForeignVisible } from '../approval/foreign-fields.js';
 import { contentViewFor, openApprovalDetail, type ContentView } from '../approval/frozen-read.js';
+import { foreignCeilingOf } from '../approval/handling-content.js';
 import { latestInstanceOf } from '../approval/store.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import {
@@ -52,9 +54,11 @@ export interface Disclosure {
   readonly source: OrgContent | null;
   /** 内容来源说明（与审批中心详情的 contentView 同形）；无审批实例时为现值（F-476 §5.4）。 */
   readonly contentView: ContentView;
+  /** 合同变更字段（带明细身份的编码）按合同对象的查看权、目标合同范围与字段权判可见（foreign-fields.ts）。 */
+  readonly foreign: ForeignVisible;
 }
 
-type Deps = Pick<TenantRouteDeps, 'authorize' | 'clock'>;
+type Deps = Pick<TenantRouteDeps, 'authorize' | 'clock' | 'db'>;
 
 /** 审批人路径不按组织 / 任职对象范围裁剪（沿用审批中心可打开口径），也不展示逐员工失败行。 */
 const APPROVER_SCOPE = { orgScope: null, orgCreators: new Map<string, string>(), employmentScope: null };
@@ -68,10 +72,18 @@ export function canSee(fields: ReadonlySet<string> | undefined, code: string): b
  * 先取审批参与上下文再按所选内容来源授权（F-476 §5.4）：本人已办且有办理份 → 读冻结份，走审批人路径（办理时的披露上限 ∩
  * 办理节点表单 ∩ 当前权限）；否则保持原顺序（HR → 审批人）读现值。缺份 503，不退回现值。
  */
-export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantContext, id: string) {
+export async function orgAdjustmentDisclosure(
+  tx: Tx,
+  deps: Deps,
+  ctx: TenantContext,
+  id: string,
+  /** 审批中心回调（审批人编辑 / 同意兜底）：有可打开的审批实例时直接走审批人路径，不让 HR 查看权抢先（DEC-1010）。 */
+  options: { readonly approverFirst?: boolean } = {},
+) {
   const view = await loadAdjustment(tx, ctx.tenantId, id);
   if (!view) throw notFound();
   const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+  const foreign = foreignVisibility(bound, ctx, tx);
   const instance = await latestInstanceOf(tx, ctx.tenantId, 'org_adjustment', id);
   const data = instance ? await openApprovalDetail(tx, bound, ctx, instance) : null;
   if (instance && data?.content.mode === 'frozen') {
@@ -88,11 +100,13 @@ export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantCon
       instanceId: instance.id,
       source,
       contentView: contentViewFor(instance, data),
+      // 办理后才授予的合同权限不补露办理时看不到的行（P1-5）：逐行编码 ∩ 办理时上限 ∩ 当前权限
+      foreign: capForeign(foreign, foreignCeilingOf(data.content)),
     } satisfies Disclosure;
   }
   const contentView = contentViewFor(instance, data);
-  const hr = await hrDisclosure(tx, bound, ctx, view);
-  if (hr) return { ...hr, instanceId: instance?.id ?? null, source: null, contentView } satisfies Disclosure;
+  const hr = options.approverFirst && instance && data ? null : await hrDisclosure(tx, bound, ctx, view);
+  if (hr) return { ...hr, instanceId: instance?.id ?? null, source: null, contentView, foreign } satisfies Disclosure;
   if (instance && data) {
     const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, OBJECT, tx);
     const fields = disclosedFields(data, ctx.userId, viewable);
@@ -104,6 +118,7 @@ export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantCon
       instanceId: instance.id,
       source: null,
       contentView,
+      foreign,
     } satisfies Disclosure;
   }
   throw notFound();
@@ -157,7 +172,7 @@ export function orgInScope(disclosure: Pick<Disclosure, 'orgScope' | 'orgCreator
 }
 
 /** 组织明细分区是否对查看人披露：至少一个 `orgItems.*` 字段可见。 */
-export function orgSectionDisclosed(disclosure: Disclosure): boolean {
+export function orgSectionDisclosed(disclosure: Pick<Disclosure, 'fields'>): boolean {
   const { fields } = disclosure;
   return fields === undefined || [...fields].some((field) => field.startsWith('orgItems.'));
 }

@@ -16,23 +16,26 @@ import { orgContext, PLAN_MESSAGES, planIssues, type ItemWorld } from './item-tr
 import type { OrgItem } from './items-store.js';
 
 export interface ItemIssue {
-  readonly section: 'org';
+  readonly section: 'org' | 'transfer';
   readonly itemId: string;
   readonly reason: string;
   readonly message: string;
   readonly orgId?: string;
+  /** 组织 ID 的字段来源（内部标记，envelope.ts 按它裁剪后去掉）；缺省 = 目标组织。 */
+  readonly field?: string;
   /** 编码重复时被占用的编码；随 `orgItems.code` 查看权（envelope.ts）。 */
   readonly code?: string;
 }
 
 export const BASELINE_CHANGED = 'ORG_ADJUSTMENT_BASELINE_CHANGED';
 const idsSql = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
-const issue = (item: OrgItem, reason: string, message: string, orgId?: string): ItemIssue => ({
+const issue = (item: OrgItem, reason: string, message: string, orgId?: string, field?: string): ItemIssue => ({
   section: 'org',
   itemId: item.id,
   reason,
   message,
   ...(orgId && { orgId }),
+  ...(orgId && field && { field }),
 });
 
 export async function checkOrgItems(tx: Tx, world: ItemWorld, now: Date): Promise<ItemIssue[]> {
@@ -75,7 +78,10 @@ function contentIssues(world: ItemWorld, live: readonly OrgItem[]) {
   return issues;
 }
 
-/** 负责人变化的行：新负责人须在生效日于本组织任职（主职或兼职）；新增组织须在本单为其添加调动或兼职明细（随 10c）。 */
+/**
+ * 负责人变化的行：新负责人须在生效日于本组织任职（主职或兼职），并叠加本单调动明细（§5.2、§8.2，11c 起计入）：
+ * 本单把他调入该组织（含调入本单新增组织）算在；本单把他调出该组织算不在，调入优先。兼职明细随 11e2。
+ */
 async function headIssues(tx: Tx, world: ItemWorld, live: readonly OrgItem[]) {
   const changed = live.filter(
     (item) =>
@@ -86,10 +92,31 @@ async function headIssues(tx: Tx, world: ItemWorld, live: readonly OrgItem[]) {
   const pairs = changed
     .filter((item) => item.targetOrgId)
     .map((item) => ({ employeeId: item.personInChargeId!, orgId: item.targetOrgId! }));
-  const inOrg = await employeesInOrgs(tx, world.tenantId, pairs, world.view.effectiveDate);
+  const { effectiveDate } = world.view;
+  const inOrg = await employeesInOrgs(tx, world.tenantId, pairs, effectiveDate);
+  // 本单把主职调出时只替换“主职归属”，生效日仍有效的兼职要保留（第 3 轮 P2-3）
+  const partTime = await employeesInOrgs(tx, world.tenantId, pairs, effectiveDate, 'partTime');
   return changed
-    .filter((item) => !item.targetOrgId || !inOrg.has(`${item.personInChargeId}:${item.targetOrgId}`))
+    .filter((item) => !headInOrg(world, item, inOrg, partTime))
     .map((item) => issue(item, 'ORG_ADJUSTMENT_HEAD_NOT_IN_ORG', '请在本单为新负责人添加调动或兼职明细'));
+}
+
+function headInOrg(
+  world: ItemWorld,
+  item: OrgItem,
+  inOrg: ReadonlySet<string>,
+  partTime: ReadonlySet<string>,
+): boolean {
+  const employeeId = item.personInChargeId!;
+  const mine = world.transfers.filter((row) => row.employeeId === employeeId);
+  const movesIn = mine.some((row) =>
+    item.targetOrgId ? row.departmentId === item.targetOrgId : row.departmentItemId === item.id,
+  );
+  if (movesIn) return true;
+  const movesOut =
+    item.targetOrgId !== null && mine.some((row) => world.transferSources.get(row.id) === item.targetOrgId);
+  if (item.targetOrgId === null) return false;
+  return (movesOut ? partTime : inOrg).has(`${employeeId}:${item.targetOrgId}`);
 }
 
 /** 逐行跑保存时的同一套规则（连带行只剩调整范围可判，见 assertItemRules）；规则抛的业务错误转为该行的问题。 */
@@ -126,12 +153,19 @@ async function stopIssues(tx: Tx, world: ItemWorld, live: readonly OrgItem[]) {
 function fromError(item: OrgItem, error: unknown): ItemIssue {
   const codes = ['VALIDATION_FAILED', 'CONFLICT', 'NOT_FOUND'];
   if (!(error instanceof AppError) || !codes.includes(error.code)) throw error;
-  const details = (error.details ?? {}) as { reason?: string; orgId?: string; orgIds?: string[]; code?: string };
+  const details = (error.details ?? {}) as {
+    reason?: string;
+    orgId?: string;
+    orgIds?: string[];
+    code?: string;
+    field?: string;
+  };
   const found = issue(
     item,
     details.reason ?? 'ORG_ADJUSTMENT_ITEM_INVALID',
     error.message,
     details.orgId ?? details.orgIds?.[0],
+    details.field,
   );
   return details.reason === ORG_CODE_DUPLICATE && details.code ? { ...found, code: details.code } : found;
 }

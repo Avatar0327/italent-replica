@@ -696,7 +696,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/preview.ts#PART_TIME_FIELD_CODES': [
     'packages/domain/src/employment/part-time-constants.ts#partTimePermissionCode',
   ],
+  'apps/api/src/modules/transfer/preview.ts#accessOf': [
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+  ],
   'apps/api/src/modules/transfer/preview.ts#previewTransfer': [
+    'apps/api/src/modules/transfer/access.ts#transferDirectActions',
+    '#accessOf',
+    '#previewTransferChecked',
+  ],
+  'apps/api/src/modules/transfer/preview.ts#previewTransferChecked': [
     'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
     'apps/api/src/modules/employment/configuration.ts#readEmploymentSettings',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
@@ -705,12 +713,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/record-store.ts#readEmploymentEmployee',
-    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/transfer/access.ts#requireTransferSource',
-    'apps/api/src/modules/transfer/access.ts#transferDirectActions',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferFields',
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
     'apps/api/src/modules/transfer/linkage/part-time.ts#transferPartTimePort',
+    '#accessOf',
     'apps/api/src/modules/transfer/service.ts#requireTransferEditedWrite',
     'apps/api/src/modules/transfer/service.ts#transferTargetContext',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',

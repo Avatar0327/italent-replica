@@ -78,7 +78,7 @@ const ITEM_EDIT = [...EDIT, 'orgAdjustment.itemLimits'];
 const itemWrite = (fields: FieldsFrom) =>
   write(fields, 'orgAdjustment.item', 'orgAdjustment.itemReplay', { ledger: 'single', preconditions: ITEM_EDIT });
 /** 明细写入口：主对象 update（按钮另由 `buttons` 声明）AND 按钮；字段 / 范围 / 写都挂在主对象节点上。 */
-const itemRoute = (buttons: RoutePolicy, fields: FieldsFrom) =>
+const itemRoute = (buttons: RoutePolicy, fields: FieldsFrom, guards: readonly string[] = []) =>
   all(
     [
       object({
@@ -86,6 +86,7 @@ const itemRoute = (buttons: RoutePolicy, fields: FieldsFrom) =>
         operation: 'update',
         button: noButton('按钮由入口 / 行操作决定，在 buttonOnly 分支'),
         scope: itemScope,
+        ...(guards.length ? { guards } : {}),
         fields: itemsShape,
       }),
       buttons,
@@ -93,6 +94,29 @@ const itemRoute = (buttons: RoutePolicy, fields: FieldsFrom) =>
     itemsShape,
     { write: itemWrite(fields), ...byId },
   );
+
+/**
+ * 调动明细写路由（BE-11c-b，路由 16～18）：主对象 update + 按钮 EditAdjustOrgDetailBtn@detail（§9.3），字段按
+ * `transferItems.*`（含合同外部字段容器与逐行编码）；守卫 `orgAdjustment.item`（authorizeItem）在命令事务内（首次与重放都经过）
+ * 判主体组织范围、来源员工与目标部门范围、联动授权（不登记 `transfer.direct`，理由同提交路由）；上限 / 范围 / 基线 / 同日入职等在写服务内判（前提 transferLimits）。
+ */
+const transferShape = shape('orgAdjustment.transferItems');
+const transferScope = guardScope('orgAdjustment.item', NOT_FOUND);
+const TRANSFERS = `${BASE}/:id/transfer-items`;
+const transferRoute = (fields: FieldsFrom) =>
+  object({
+    object: OBJECT,
+    operation: 'update',
+    button: button('EditAdjustOrgDetailBtn', 'detail'),
+    scope: transferScope,
+    guards: ['transfer.source', 'employment.linkage'],
+    fields: transferShape,
+    write: write(fields, 'orgAdjustment.transferItem', 'orgAdjustment.transferItemReplay', {
+      ledger: 'single',
+      preconditions: [...EDIT, 'orgAdjustment.transferLimits'],
+    }),
+    ...byId,
+  });
 
 // ---- 读取（BE-10d，路由 12～15）----------------------------------------------------------------------------------
 /** 读接口投影：头列按 OrganizationApproval 字段查看权，明细按 `orgItems.*`，派生列跟随源字段（§4.5）。 */
@@ -178,7 +202,9 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     button: button('EditAdjustOrgDetailBtn', 'detail'),
     scope: headScope,
     // 全部明细涉及的组织按新建口径逐个在组织范围（orgScopeAuthorizer，§6.3）
-    guards: ['orgAdjustment.item'],
+    // 调动行逐行再走保存链：来源员工范围（transfer.source）同人工调动；不登记 transfer.direct：组织调整是审批后由受信执行
+    // 端口落地（§8.3），保存链不消费“直接调动”开关（requireDirectTransfer / allowedActions），真实授权是下面的写权与联动授权
+    guards: ['orgAdjustment.item', 'transfer.source', 'employment.linkage'],
     fields: adjustmentShape,
     // 提交无请求体；字段取库里明细行实际有值的 orgItems.*，经 authorizeItemFieldWrites 复核写权（F-428）
     write: headWrite({ guard: 'orgAdjustment.item' }, [...EDIT, 'orgAdjustment.submitGate']),
@@ -217,10 +243,25 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     buttonOnly(DETAIL, button('DelteOrgApprovalDetail', 'list_row'), FORBIDDEN),
     none('删行无请求体，不提取字段'),
   ),
-  // 路由 8：单行刷新基线；section 只认 org，其它 404
+  // 路由 16～18：调动明细新增 / 修改 / 删除
+  [`POST ${TRANSFERS}`]: transferRoute('body'),
+  [`PATCH ${TRANSFERS}/:itemId`]: transferRoute('body'),
+  // 删行无请求体，但命令内仍按旧联动判合同 / 职责转交等写权（gate.remove），字段写权由守卫 orgAdjustment.item 判
+  [`DELETE ${TRANSFERS}/:itemId`]: transferRoute({ guard: 'orgAdjustment.item' }),
+  // 路由 8：单行刷新基线；section = org 按组织行，= transfer 按调动行（隐藏 / 不存在同一 404，再按当前权限重判）
+  // 无请求体；调动行重判经保存链复核任职 / 联动写权，字段写权由守卫 orgAdjustment.item 判
+  // 按钮按 section 分两条链（第 3 轮 P2-4，与路由 4 的入口九选一同形，用 any 逐支登记证据）：
+  // section = org 为明细对象 EditOrgApprovalDetail@list_row；section = transfer 为主对象 EditAdjustOrgDetailBtn@detail
   [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: itemRoute(
-    buttonOnly(DETAIL, button('EditOrgApprovalDetail', 'list_row'), FORBIDDEN),
-    none('刷新基线无请求体，不提取字段'),
+    any([
+      buttonOnly(DETAIL, button('EditOrgApprovalDetail', 'list_row'), FORBIDDEN),
+      // 调动行重判经保存链：来源员工范围同人工调动（transfer.source）、联动写权（employment.linkage）只挂调动备选，
+      // 组织分支只走明细按钮与组织行授权（第 5 轮 P2-3：守卫不挂两分支共用的对象节点）
+      buttonOnly(OBJECT, button('EditAdjustOrgDetailBtn', 'detail'), FORBIDDEN, {
+        guards: ['transfer.source', 'employment.linkage'],
+      }),
+    ]),
+    { guard: 'orgAdjustment.item' },
   ),
   // 路由 9：整单刷新基线；按钮同改头
   [`POST ${BASE}/:id/rebase`]: object({
@@ -228,8 +269,10 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     operation: 'update',
     button: button('EditAdjustOrgDetailBtn', 'detail'),
     scope: itemScope,
+    guards: ['transfer.source', 'employment.linkage'],
     fields: itemsShape,
-    write: itemWrite(none('刷新基线无请求体，不提取字段')),
+    // 无请求体；调动行按当前权限重判（保存链的任职 / 联动写权），字段写权由守卫 orgAdjustment.item 判
+    write: itemWrite({ guard: 'orgAdjustment.item' }),
     ...byId,
   }),
 });

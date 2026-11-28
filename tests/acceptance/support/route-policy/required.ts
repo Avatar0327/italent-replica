@@ -48,8 +48,53 @@ export function rawFacts(observed: ObservedRoute): string[] {
   return Object.entries(observed.primitives).flatMap(([dim, names]) => names.map((name) => `${dim}:${name}`));
 }
 
+/**
+ * 审定过的分支专属守卫（第 5 轮 P2-3，第 6 轮 P2-2 收紧，第 7 轮 P2②）：端点 → 守卫名 → 它只属于的“或”分支（组:备选）。
+ * rebase 单行刷新的来源员工、联动授权守卫只在 section = transfer 分支里判（rebaseTransferRoute → gate.rejudge → saveRow），
+ * 第二道比较“每个备选都要有该守卫”对它们不成立。豁免按（端点，守卫，分支）三元组登记：不在名单里的端点 / 守卫一律没有豁免，
+ * 查不到登记时不参与任何相等比较（缺失值不得当作匹配，第 7 轮 P2②）。新增条目属于共享口径变更，须随审查确认。
+ */
+export const BRANCH_OWNED_GUARDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  'POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': {
+    'transfer.source': 'section:transfer',
+    'employment.linkage': 'section:transfer',
+  },
+};
+
+/** 端点上审定的守卫分支；端点或守卫没有登记返回 undefined（调用方必须先判 undefined，不得拿它去比较）。 */
+export function reviewedBranch(route: string, guard: string): string | undefined {
+  const guards = Object.hasOwn(BRANCH_OWNED_GUARDS, route) ? BRANCH_OWNED_GUARDS[route] : undefined;
+  return guards && Object.hasOwn(guards, guard) ? guards[guard] : undefined;
+}
+
+/**
+ * 守卫事实只由“同名守卫义务 + 审定过的分支归属”承接时才豁免：先确认（端点，守卫）有登记，再要求承接者全是准入义务、
+ * 权限键正是 `guard:<该名>`、且 `or` 恰为登记的分支。按钮等其它义务带 `or` 去认领守卫事实不算（那样删掉守卫义务、把事实
+ * 挂到同分支按钮上，声明少了守卫也零发现，第 6 轮 P2-2）；没有登记的一律不豁免，照常逐备选比较。
+ */
+function isBranchOnly(route: string, name: string, claimers: readonly Obligation[]): boolean {
+  const branch = reviewedBranch(route, name);
+  if (branch === undefined) return false;
+  return (
+    claimers.length > 0 &&
+    claimers.every((o) => isAdmission(o) && o.perm === `guard:${name}` && o.or !== undefined && o.or === branch)
+  );
+}
+
+/** 观测到、但只属于某个“或”分支的守卫名：不进“每个备选都要有”，也不算声明过度。 */
+export function branchOnlyGuards(route: string, observed: ObservedRoute, obligations: readonly Obligation[]): string[] {
+  return (observed.primitives['guard'] ?? []).filter((name) =>
+    isBranchOnly(
+      route,
+      name,
+      obligations.filter((o) => o.facts?.includes(`guard:${name}`)),
+    ),
+  );
+}
+
 /** 第二道比较的输入：去掉只由非准入义务承接的事实（披露 / 守卫内部 / 条件准入）。 */
 export function admissionPrimitives(
+  route: string,
   observed: ObservedRoute,
   obligations: readonly Obligation[],
   registeredOnly = false,
@@ -60,6 +105,9 @@ export function admissionPrimitives(
       const claimers = obligations.filter((o) => o.facts?.includes(`${dim}:${name}`));
       // 缺登记时只排除用途未知的权限事实，范围 / 字段 / 前提等独立元数据仍须硬比较（#248 P2-1）。
       if (registeredOnly && !claimers.length && PERMISSION_DIMENSIONS.has(dim)) return false;
+      // 守卫事实只由“或”分支的准入义务承接时，按分支的归属由 R1 逐备选核对（第 5 轮 P2-3：来源员工 / 联动守卫只在
+      // section:transfer 备选）；第二道比较“每个备选都要有该守卫”对这类分支专属守卫不成立，不进准入比较。
+      if (dim === 'guard' && isBranchOnly(route, name, claimers)) return false;
       return !claimers.length || claimers.some(isAdmission);
     });
     if (kept.length) out[dim] = kept;
@@ -149,6 +197,16 @@ export function checkRoute(
       report('REQUIRED_MISSING', `${label(i)}不满足“或”组 ${group}（${want}）${why}`);
     }
   });
+  // R1d：“或”组里每个组内备选至少被一个准入备选满足：删掉整条分支（备选）时，其余分支满足组内别的备选也不能掩盖
+  for (const [group, alts] of groups) {
+    for (const [name, os] of alts) {
+      if (decl.alternatives.some((alt) => os.every((o) => holds(alt, o)))) continue;
+      report(
+        'REQUIRED_OR_UNCOVERED',
+        `“或”组 ${group} 的组内备选 ${name}（${os.map((o) => o.perm).join('+')}）没有任何准入备选满足`,
+      );
+    }
+  }
   // R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务必须写 need
   const unbound = new Set<string>();
   for (const alt of decl.alternatives) {
@@ -267,6 +325,20 @@ export function checkRoute(
     }
     for (const fact of claimed) {
       if (!facts.has(fact)) report('REQUIRED_STALE_FACT', `义务登记的事实 ${fact} 探测器已观测不到`);
+    }
+    // R10：审定的分支专属守卫（BRANCH_OWNED_GUARDS）观测到了，表里必须有同名守卫义务、在登记的分支上承接它；
+    // 删掉守卫义务、把事实挂到按钮等别的义务上不算承接（第 7 轮 P2②：checkRoute 独立拒绝，不靠第二道比较）
+    for (const name of observed.primitives['guard'] ?? []) {
+      const branch = reviewedBranch(key, name);
+      if (branch === undefined) continue;
+      const owned = obligations.some((o) => isAdmission(o) && o.perm === `guard:${name}` && o.or === branch);
+      const claimers = obligations.filter((o) => o.facts?.includes(`guard:${name}`));
+      if (!owned || claimers.some((o) => o.perm !== `guard:${name}`)) {
+        report(
+          'BRANCH_GUARD_UNOWNED',
+          `审定的分支专属守卫 ${name} 须由 ${branch} 分支的同名守卫义务承接，且不得挂在别的义务上`,
+        );
+      }
     }
   }
   return findings;

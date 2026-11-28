@@ -9,7 +9,7 @@ import { actionTask, editFields, editValues } from './edit-model.js';
 import { ApiError, type ApiClient } from '../foundation/client.js';
 import { messages as m } from './messages.js';
 import { useApprovalCommand } from './commands.js';
-import { createRefusalMarks, useRefusalMarks } from './refusal-marks.js';
+import { createRefusalMarks, useRefusalMarks } from '../foundation/forms/refusal-marks.js';
 import type { ApprovalAction, ApprovalDetail, ApprovalRow } from './types.js';
 
 /**
