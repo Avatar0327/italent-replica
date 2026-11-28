@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { AppError } from '../../errors.js';
 
 /** R2-T01 §9.2：预览只用管理员提供的合成样例做纯渲染，转义后输出，不读真实员工，不写任何数据。 */
-// 先识别完整的双花括号占位（内容不限字符），再按白名单判名称；若先按字符集筛，{{employee_name}} 会漏过白名单。
-const PLACEHOLDER = /\{\{([^{}]*)\}\}/g;
+// 先以外层 {{ 与最近的 }} 识别完整占位（内容不限字符，含单花括号），再按白名单判整个名称；
+// 若先按字符集筛，{{employee_name}}、{{employee{nickname} }} 会漏过白名单。
+const PLACEHOLDER = /\{\{([\s\S]*?)\}\}/g;
 const WHITELIST: ReadonlySet<string> = new Set(WELCOME_VARIABLES);
 
 export function escapeHtml(text: string): string {
@@ -14,8 +15,13 @@ export function escapeHtml(text: string): string {
 /** 抽取文本中的变量；白名单外的变量保存时即拒绝，避免模板带入未登记的数据。 */
 export function usedVariables(...texts: readonly string[]): WelcomeVariable[] {
   const found = new Set<string>();
-  for (const text of texts) for (const [, name] of text.matchAll(PLACEHOLDER)) found.add(name!.trim());
-  const unknown = [...found].filter((name) => !WHITELIST.has(name));
+  const unclosed: string[] = [];
+  for (const text of texts) {
+    for (const [, name] of text.matchAll(PLACEHOLDER)) found.add(name!.trim());
+    // 取走完整占位后仍剩 {{ 即未闭合，按最保守口径拒绝，避免半截占位被当作普通文字保存。
+    if (text.replace(PLACEHOLDER, '').includes('{{')) unclosed.push('{{');
+  }
+  const unknown = [...[...found].filter((name) => !WHITELIST.has(name)), ...unclosed];
   if (unknown.length > 0)
     throw new AppError('VALIDATION_FAILED', '模板含未登记的通知变量', {
       reason: 'WELCOME_VARIABLE_UNKNOWN',
