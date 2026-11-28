@@ -22,15 +22,21 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/attachments/audit.ts#snapshot': ['#receipt'],
+  'apps/api/src/modules/attachments/binding.ts#BOUND_BUSINESS_TYPES': [
+    '#EXIT_BUSINESS_TYPE',
+    '#EXIT_CARRIER',
+    'apps/api/src/modules/attachments/material-read.ts#MATERIAL_BUSINESS_TYPE',
+    'apps/api/src/modules/attachments/material-read.ts#MATERIAL_CARRIER',
+  ],
   'apps/api/src/modules/attachments/binding.ts#assertRefsUnchanged': ['#lower'],
   'apps/api/src/modules/attachments/binding.ts#bindAttachmentRefs': [
-    '#EXIT_BUSINESS_TYPE',
     '#invalid',
     '#lockFiles',
     '#lower',
     '#move',
     '#normalize',
     '#purposeOf',
+    'apps/api/src/modules/attachments/material-read.ts#MATERIAL_CARRIER',
   ],
   'apps/api/src/modules/attachments/binding.ts#inheritAttachments': [
     'apps/api/src/modules/attachments/audit.ts#record',
@@ -43,6 +49,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/attachments/binding.ts#move': ['apps/api/src/modules/attachments/audit.ts#record'],
   'apps/api/src/modules/attachments/binding.ts#normalize': ['#UUID', '#invalid'],
   'apps/api/src/modules/attachments/binding.ts#purposeOf': [
+    '#BOUND_BUSINESS_TYPES',
     'packages/domain/src/attachments/purposes.ts#ATTACHMENT_PURPOSES',
   ],
   'apps/api/src/modules/attachments/binding.ts#sealAttachments': [
@@ -53,7 +60,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/attachments/blob-store.ts#PgBlobStore',
   ],
   'apps/api/src/modules/attachments/blob-store.ts#PgBlobStore': ['#where'],
-  'apps/api/src/modules/attachments/carrier-read.ts#attachmentSummaries': ['#boundRows', '#idsWithBytes', '#lower'],
+  'apps/api/src/modules/attachments/carrier-read.ts#REAUTHORIZE_REQUIRED': [
+    'apps/api/src/modules/attachments/material-read.ts#MATERIAL_BUSINESS_TYPE',
+  ],
+  'apps/api/src/modules/attachments/carrier-read.ts#attachmentSummaries': [
+    'apps/api/src/modules/attachments/binding.ts#EXIT_BUSINESS_TYPE',
+    '#LIVE_STATUSES',
+    '#boundRows',
+    '#idsWithBytes',
+    '#lower',
+  ],
   'apps/api/src/modules/attachments/carrier-read.ts#boundRows': [
     'apps/api/src/modules/attachments/binding.ts#EXIT_BUSINESS_TYPE',
     '#LIVE_STATUSES',
@@ -72,6 +88,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/attachments/blob-store.ts#PgBlobStore',
     '#FROZEN_STATUSES',
     '#LIVE_STATUSES',
+    '#REAUTHORIZE_REQUIRED',
     '#boundRows',
     '#lower',
     '#missingFile',

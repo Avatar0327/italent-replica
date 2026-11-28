@@ -10,6 +10,7 @@ import { AppError } from '../../errors.js';
 import { PgBlobStore } from './blob-store.js';
 import type { FileRow } from './audit.js';
 import { EXIT_BUSINESS_TYPE } from './binding.js';
+import { MATERIAL_BUSINESS_TYPE } from './material-read.js';
 
 export interface AttachmentSummary {
   readonly id: string;
@@ -104,9 +105,11 @@ export async function attachmentSummaries(
   tenantId: string,
   businessId: string,
   refs: readonly string[] | null | undefined,
+  businessType: string = EXIT_BUSINESS_TYPE,
 ): Promise<AttachmentSummary[]> {
   const ids = (refs ?? []).map(lower);
-  const rows = new Map((await boundRows(tx, tenantId, businessId, ids)).map((row) => [lower(row.id), row]));
+  const found = await boundRows(tx, tenantId, businessId, ids, LIVE_STATUSES, businessType);
+  const rows = new Map(found.map((row) => [lower(row.id), row]));
   const withBytes = await idsWithBytes(
     tx,
     tenantId,
@@ -155,6 +158,14 @@ export async function frozenAttachmentSummaries(
 export type CarrierReadMode =
   { readonly mode: 'live' } | { readonly mode: 'frozen'; readonly captured: readonly string[] };
 
+/**
+ * 下载再验权回调（16a-4b0）：载体在归属判定通过后、读字节前调用，由调用方按“当前”的待入职 / 已入职范围、字段权等
+ * 重新判定；返回 false 与“文件不存在”同为 404，不回显该文件存在。归属判定不通过时不调用。
+ * 材料载体必须提供（缺省同样 404，读字节前）；离职、人员子集等旧载体维持可选。
+ */
+export type ReauthorizeAttachment = (row: FileRow) => Promise<boolean>;
+const REAUTHORIZE_REQUIRED: ReadonlySet<string> = new Set([MATERIAL_BUSINESS_TYPE]);
+
 /** 载体下载：文件必须在本单引用列表里、状态合格、归属本单、字节存在；否则 404 “附件不存在”。 */
 export async function readCarrierAttachment(
   tx: Tx,
@@ -164,6 +175,7 @@ export async function readCarrierAttachment(
   fileId: string,
   read: CarrierReadMode = { mode: 'live' },
   businessType: string = EXIT_BUSINESS_TYPE,
+  reauthorize?: ReauthorizeAttachment,
 ): Promise<{ row: FileRow; bytes: Uint8Array }> {
   const id = lower(fileId);
   if (!(refs ?? []).some((ref) => lower(ref) === id)) throw missingFile();
@@ -171,6 +183,8 @@ export async function readCarrierAttachment(
   const statuses = read.mode === 'frozen' ? FROZEN_STATUSES : LIVE_STATUSES;
   const [row] = await boundRows(tx, tenantId, businessId, [id], statuses, businessType);
   if (!row?.contentType) throw missingFile();
+  if (!reauthorize && REAUTHORIZE_REQUIRED.has(businessType)) throw missingFile();
+  if (reauthorize && !(await reauthorize(row))) throw missingFile();
   const bytes = await PgBlobStore.read(tx, tenantId, row.id);
   if (!bytes) throw missingFile();
   return { row, bytes };
