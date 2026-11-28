@@ -1,6 +1,6 @@
 {
   "id": "23e9c36b-bf08-4a7a-8c88-a87ffdd23a26",
-  "prevId": "5b63449d-8a0a-4ad3-ba04-52bf55c57e97",
+  "prevId": "7c2cabc6-d36b-4282-9727-b65f76f7cf92",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -73072,6 +73072,523 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.onboarding_handbooks": {
+      "name": "onboarding_handbooks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blocks": {
+          "name": "blocks",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "onboarding_handbooks_list": {
+          "name": "onboarding_handbooks_list",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "onboarding_handbooks_tenant_id_tenants_id_fk": {
+          "name": "onboarding_handbooks_tenant_id_tenants_id_fk",
+          "tableFrom": "onboarding_handbooks",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_handbooks_creator_fk": {
+          "name": "onboarding_handbooks_creator_fk",
+          "tableFrom": "onboarding_handbooks",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "created_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_handbooks_updater_fk": {
+          "name": "onboarding_handbooks_updater_fk",
+          "tableFrom": "onboarding_handbooks",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "updated_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "onboarding_handbooks_tenant_id": {
+          "name": "onboarding_handbooks_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "onboarding_handbooks_revision": {
+          "name": "onboarding_handbooks_revision",
+          "value": "\"onboarding_handbooks\".\"revision\" > 0"
+        },
+        "onboarding_handbooks_text": {
+          "name": "onboarding_handbooks_text",
+          "value": "char_length(btrim(\"onboarding_handbooks\".\"name\")) BETWEEN 1 AND 100 AND char_length(btrim(\"onboarding_handbooks\".\"title\")) BETWEEN 1 AND 200"
+        },
+        "onboarding_handbooks_blocks": {
+          "name": "onboarding_handbooks_blocks",
+          "value": "jsonb_typeof(\"onboarding_handbooks\".\"blocks\") = 'array'"
+        },
+        "onboarding_handbooks_archived": {
+          "name": "onboarding_handbooks_archived",
+          "value": "\"onboarding_handbooks\".\"archived_at\" IS NULL OR NOT \"onboarding_handbooks\".\"enabled\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.onboarding_welcome_jobs": {
+      "name": "onboarding_welcome_jobs",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "case_id": {
+          "name": "case_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "onboarding_welcome_job_due": {
+          "name": "onboarding_welcome_job_due",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "next_attempt_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "case_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"onboarding_welcome_jobs\".\"status\" IN ('pending','failed')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "onboarding_welcome_job_case_fk": {
+          "name": "onboarding_welcome_job_case_fk",
+          "tableFrom": "onboarding_welcome_jobs",
+          "tableTo": "onboarding_entry_cases",
+          "columnsFrom": [
+            "tenant_id",
+            "case_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "onboarding_welcome_jobs_tenant_id_case_id_pk": {
+          "name": "onboarding_welcome_jobs_tenant_id_case_id_pk",
+          "columns": [
+            "tenant_id",
+            "case_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "onboarding_welcome_job_status": {
+          "name": "onboarding_welcome_job_status",
+          "value": "\"onboarding_welcome_jobs\".\"status\" IN ('pending','awaiting_delivery','done','skipped','failed')"
+        },
+        "onboarding_welcome_job_attempts": {
+          "name": "onboarding_welcome_job_attempts",
+          "value": "\"onboarding_welcome_jobs\".\"attempts\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.onboarding_welcome_letters": {
+      "name": "onboarding_welcome_letters",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "variables": {
+          "name": "variables",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "onboarding_welcome_letters_one_enabled": {
+          "name": "onboarding_welcome_letters_one_enabled",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"onboarding_welcome_letters\".\"enabled\"",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "onboarding_welcome_letters_list": {
+          "name": "onboarding_welcome_letters_list",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "onboarding_welcome_letters_tenant_id_tenants_id_fk": {
+          "name": "onboarding_welcome_letters_tenant_id_tenants_id_fk",
+          "tableFrom": "onboarding_welcome_letters",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_welcome_letters_creator_fk": {
+          "name": "onboarding_welcome_letters_creator_fk",
+          "tableFrom": "onboarding_welcome_letters",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "created_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "onboarding_welcome_letters_updater_fk": {
+          "name": "onboarding_welcome_letters_updater_fk",
+          "tableFrom": "onboarding_welcome_letters",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "updated_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "onboarding_welcome_letters_tenant_id": {
+          "name": "onboarding_welcome_letters_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "onboarding_welcome_letters_revision": {
+          "name": "onboarding_welcome_letters_revision",
+          "value": "\"onboarding_welcome_letters\".\"revision\" > 0"
+        },
+        "onboarding_welcome_letters_text": {
+          "name": "onboarding_welcome_letters_text",
+          "value": "char_length(btrim(\"onboarding_welcome_letters\".\"name\")) BETWEEN 1 AND 100 AND char_length(btrim(\"onboarding_welcome_letters\".\"title\")) BETWEEN 1 AND 200\n        AND char_length(btrim(\"onboarding_welcome_letters\".\"body\")) BETWEEN 1 AND 5000"
+        },
+        "onboarding_welcome_letters_variables": {
+          "name": "onboarding_welcome_letters_variables",
+          "value": "jsonb_typeof(\"onboarding_welcome_letters\".\"variables\") = 'array'"
+        },
+        "onboarding_welcome_letters_archived": {
+          "name": "onboarding_welcome_letters_archived",
+          "value": "\"onboarding_welcome_letters\".\"archived_at\" IS NULL OR NOT \"onboarding_welcome_letters\".\"enabled\""
+        }
+      },
       "isRLSEnabled": false
     },
     "public.onboarding_collection_comments": {
